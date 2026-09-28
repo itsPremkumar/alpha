@@ -491,7 +491,22 @@ class FreeLLMRouter:
     # ------------------------------------------------------------------
 
     def probe(self) -> dict[str, Any]:
-        """Small liveness probe per attemptable provider; honest tri-state."""
+        """Small liveness probe per attemptable provider; honest tri-state.
+
+        A provider is only probeable once its model list is known, so a cold
+        router that has never refreshed would otherwise return ``{}`` - an empty
+        result that reads as "nothing to check" while actually meaning "nothing
+        has been discovered yet". That is the exact failure
+        ``POST /api/models/free/probe`` used to report on every cold boot: HTTP
+        200, ``{"probes": {}}``, and a keyless model advertised in the picker
+        that could not answer. Discovery therefore runs first when this is a
+        cold call. :meth:`sync_daily_models` already refreshes before probing, so
+        the extra call is skipped there via the single-flight/TTL guard in
+        :meth:`refresh`.
+        """
+        if not self._loaded or not any(state.models for state in self._states.values()):
+            self.refresh()
+
         summary: dict[str, Any] = {}
         for spec, mid in self._candidates_for_probe():
             probe_result = self._layer.health_probe(spec, mid)

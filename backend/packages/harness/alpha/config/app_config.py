@@ -31,6 +31,11 @@ from alpha.config.input_polish_config import InputPolishConfig
 from alpha.config.loop_detection_config import LoopDetectionConfig
 from alpha.config.mcp_tasks_config import McpTasksConfig
 from alpha.config.memory_config import MemoryConfig, load_memory_config_from_dict
+from alpha.config.model_catalog_schema import (
+    CatalogProviderEntry,
+    FreeGatewayEntry,
+    ModelPriceEntry,
+)
 from alpha.config.model_config import ModelConfig, ProviderConfig
 from alpha.config.model_routing_config import ModelRoutingConfig
 from alpha.config.network_resilience_config import NetworkResilienceConfig
@@ -308,6 +313,36 @@ class AppConfig(BaseModel):
             "turn can never name a model the factory would reject."
         ),
     )
+    # config.yaml is the only model configuration file. These three keys used to
+    # live in a separate models.yaml that no first-run step reliably created,
+    # which left a fresh install with an empty keyless-gateway list while the
+    # picker still advertised `alpha-free`. The shared shapes live in
+    # model_catalog_schema so this file and the models package validate identically.
+    model_catalog: list[CatalogProviderEntry] = Field(
+        default_factory=list,
+        description=(
+            "Bring-your-own-provider offers shown in Settings: the provider, where to get a key, and the "
+            "models it serves. A name that also exists in `models` must declare identical capabilities "
+            "(checked at boot by alpha.models.catalog_consistency)."
+        ),
+    )
+    free_gateways: list[FreeGatewayEntry] = Field(
+        default_factory=list,
+        description=(
+            "Keyless public gateways the free router may use with no API key. `auth_header` holds anonymous "
+            "constants only, never a personal credential. Anonymous endpoints change without notice; a "
+            "gateway listed here that has stopped serving keyless traffic will simply fail its probe and "
+            "the router will fall through to the next one."
+        ),
+    )
+    model_pricing: dict[str, ModelPriceEntry] = Field(
+        default_factory=dict,
+        description=(
+            "Fallback price per model name, per 1M tokens, used when a `models[]` entry omits `pricing`. "
+            "Keep `models[].pricing` authoritative for anything you actually run; this is so an unpriced "
+            "model still gets a cost estimate instead of none."
+        ),
+    )
     sandbox: SandboxConfig = Field(
         description=format_field_description(
             "sandbox",
@@ -562,7 +597,6 @@ class AppConfig(BaseModel):
         config_data["extensions"] = extensions_data
 
         result = cls.model_validate(config_data)
-        result._apply_models_catalog()
         if not result.models:
             logger.warning(
                 "No models are configured in %s. Add at least one entry under `models:` (see the commented examples in config.example.yaml) or run `make setup`.",
@@ -571,65 +605,6 @@ class AppConfig(BaseModel):
         acp_agents = cls._validate_acp_agents(config_data.get("acp_agents", {}))
         cls._apply_singleton_configs(result, acp_agents)
         return result
-
-    def _apply_models_catalog(self) -> None:
-        """Overlay ``models.yaml`` beneath this config's own model declarations.
-
-        ``models.yaml`` is the base layer and ``config.yaml`` overrides it, so an
-        existing deployment is untouched while an operator migrates entries into
-        the dedicated catalog at their own pace. A ``models[]`` entry is replaced
-        **wholesale by name**, not field-merged: one file stays authoritative for
-        any given name, which is what makes a capability declared in exactly one
-        place. ``providers`` merges per key for the same reason.
-
-        Re-runs the derived state afterwards: the merged model list changes the
-        name index, the positional default, and whether every routing chain
-        resolves.
-        """
-        from alpha.config.models_catalog import get_models_catalog
-
-        try:
-            catalog = get_models_catalog()
-        except FileNotFoundError:
-            # An explicit path/env var naming a missing file is an operator
-            # assertion; surface it rather than silently running on config.yaml
-            # alone with the operator believing the catalog is in effect.
-            raise
-        except Exception:
-            # A malformed catalog must not make config.yaml-only deployments
-            # unbootable, but it must be loud: a half-read catalog is exactly
-            # the silent-drift failure this file exists to prevent.
-            logger.warning("Could not load models.yaml; continuing with config.yaml model declarations only.", exc_info=True)
-            return
-
-        if not (catalog.models or catalog.providers or catalog.routing.categories or catalog.routing.tiers or catalog.routing.default_model or catalog.default_model):
-            return
-
-        merged: dict[str, ModelConfig] = {model.name: model for model in catalog.models}
-        for model in self.models:
-            merged[model.name] = model
-        self.models = list(merged.values())
-
-        merged_providers: dict[str, ProviderConfig] = dict(catalog.providers)
-        merged_providers.update(self.providers)
-        self.providers = merged_providers
-
-        if self.default_model is None and catalog.default_model is not None:
-            self.default_model = catalog.default_model
-
-        routing = self.model_routing
-        if not routing.categories:
-            routing.categories = dict(catalog.routing.categories)
-        if not routing.tiers:
-            routing.tiers = dict(catalog.routing.tiers)
-        if routing.default_model is None:
-            routing.default_model = catalog.routing.default_model
-
-        self._models_by_name = {}
-        for model in self.models:
-            self._models_by_name.setdefault(model.name, model)
-        self._validate_default_model()
-        self._validate_model_routing()
 
     @classmethod
     def _validate_acp_agents(

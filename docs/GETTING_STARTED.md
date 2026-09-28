@@ -21,7 +21,7 @@ installed outside the project folder:
 | Node.js | Resolves your existing install, or reports exactly what is missing |
 | nginx | Downloads the pinned Windows build into `.tools/` — this is the `:2026` entry point |
 | Dependencies | `uv sync --locked` for the backend, `pnpm install` for the frontend |
-| Config | Creates `config.yaml`, `models.yaml`, `.env`, `frontend/.env`, `extensions_config.json` from the tracked `*.example` templates, generating a secure `BETTER_AUTH_SECRET` |
+| Config | Creates `config.yaml` (which carries every model setting), `.env`, `frontend/.env`, `extensions_config.json` from the tracked `*.example` templates, generating a secure `BETTER_AUTH_SECRET` |
 | Autostart | Offers to register the three Windows scheduled tasks (start at logon, health check every 5 min, tray status) |
 | Verification | Starts Alpha, waits for the Gateway and frontend, checks the health endpoint, the launcher process, and the watchdog chain — and **fails loudly rather than claiming success** if any of it is not healthy |
 

@@ -99,28 +99,34 @@ class ProviderSpec:
     openai_compat: bool = True
 
 
-def _providers_from_catalog() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:
-    """Build the keyless-gateway list from ``models.yaml -> free_gateways``.
+def _providers_from_config() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:
+    """Build the keyless-gateway list from ``config.yaml -> free_gateways``.
 
     The gateway endpoints and their documented model ids used to be ~80 lines of
     literals in this module. They are operator configuration, not code: anonymous
     gateway reachability changes without notice, and a hardcoded list goes stale
-    silently. ``models.yaml`` is the single source of truth and is hot-reloadable,
+    silently. ``config.yaml`` is the single source of truth and is hot-reloadable,
     so an operator can add or drop a gateway without a code change.
 
-    Returns ``({}, ())`` when no catalog is configured, which degrades the free
+    This used to read a separate ``models.yaml``. That is why a deployment
+    following the documented first-run path had **no gateways at all** and every
+    run on ``alpha-free`` failed with "discovery has not succeeded for any
+    provider yet" while the model was still advertised in the picker: the file
+    the gateways lived in was not one any first-run step created.
+
+    Returns ``({}, ())`` when nothing is configured, which degrades the free
     router to "no gateways available" rather than contacting a stale endpoint.
     """
-    try:
-        from alpha.config.models_catalog import get_models_catalog
+    from alpha.config.app_config import get_app_config
 
-        catalog = get_models_catalog()
-    except Exception:
-        logger.debug("models.yaml unavailable; no free gateways configured", exc_info=True)
-        return {}, ()
     providers: dict[str, ProviderSpec] = {}
     order: list[str] = []
-    for entry in catalog.free_gateways:
+    for entry in get_app_config().free_gateways:
+        if entry.id in providers:
+            # A duplicate id is a config error, not a merge opportunity: there is
+            # no second file left to arbitrate between, so keep the first and say so.
+            logger.warning("free gateway id '%s' is declared more than once in config.yaml; using the first", entry.id)
+            continue
         providers[entry.id] = ProviderSpec(
             name=entry.id,
             base_url=entry.base_url,
@@ -134,19 +140,19 @@ def _providers_from_catalog() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]
     return providers, tuple(order)
 
 
-#: Lazily resolved from ``models.yaml`` on first use. Call
-#: :func:`refresh_free_gateways` after editing the catalog in a long-lived process.
-PROVIDERS, PROVIDER_ORDER = _providers_from_catalog()
+#: Lazily resolved from ``config.yaml`` on first use. Call
+#: :func:`refresh_free_gateways` after editing the list in a long-lived process.
+PROVIDERS, PROVIDER_ORDER = _providers_from_config()
 
 
 def refresh_free_gateways() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:
-    """Re-read the keyless-gateway list from ``models.yaml`` and rebind the module globals.
+    """Re-read the keyless-gateway list from ``config.yaml`` and rebind the globals.
 
-    Resolved on each router construction so a catalog edit applies without a
-    restart, matching how ``config.yaml`` is hot-reloaded.
+    Called on each router construction so a ``config.yaml`` edit applies without a
+    restart, matching how the rest of the config is hot-reloaded.
     """
     global PROVIDERS, PROVIDER_ORDER
-    PROVIDERS, PROVIDER_ORDER = _providers_from_catalog()
+    PROVIDERS, PROVIDER_ORDER = _providers_from_config()
     return PROVIDERS, PROVIDER_ORDER
 
 

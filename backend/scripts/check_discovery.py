@@ -19,7 +19,7 @@ from alpha.models import discovery
 def main() -> int:
     providers = discovery.known_providers()
     if not providers:
-        print("No discoverable providers. Declare a `catalog:` entry with a base_url in models.yaml.")
+        print("No discoverable providers. Declare a `model_catalog:` entry with a base_url in config.yaml.")
         return 1
     print(f"discoverable providers: {', '.join(providers)}\n")
     for provider in providers:

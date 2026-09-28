@@ -295,7 +295,7 @@ Open **<http://localhost:2026>**. Later: `start.bat` and `stop.bat`.
 git clone https://github.com/itsPremkumar/alpha.git
 cd alpha
 
-make config      # config.yaml + models.yaml + .env + extensions_config.json from templates
+make config      # config.yaml (app + every model setting) + .env + extensions_config.json from templates
 make install     # backend (uv) + frontend (pnpm) dependencies
 make dev         # start Gateway :8001, Frontend :3000, Nginx :2026
 ```

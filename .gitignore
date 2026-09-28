@@ -96,8 +96,6 @@ web/
 # *.example.* templates.
 config.yaml
 config.yaml.bak
-models.yaml
-models.yml
 extensions_config.json
 mcp_config.json
 

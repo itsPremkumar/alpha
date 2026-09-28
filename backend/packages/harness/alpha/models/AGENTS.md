@@ -14,19 +14,33 @@
 - **Credit exhaustion is a typed, routed condition.** `models/fallback.py::CreditExhaustedError` normalizes HTTP 402 / `insufficient_quota` / "out of credits" (rate-limit phrasing is excluded so a throttle is not misread as billing), counts as retryable, and moves the chain forward; an exhausted chain sets `budget_status="CREDIT_EXHAUSTED"`. Provider switches are recorded as `FailoverEvent`s (`get_last_failover_events()`, optional `on_failover` callback) instead of only being logged, and an empty member response fails over too.
 - **Cost accounting is wired.** `FallbackChatModel` charges the provider-reported usage of the member that actually served the call to `CostGovernor.record_usage` via `cost_governor.record_token_usage`, attributed through `usage_attribution(...)` / `ALPHA_COST_PROJECT_ID`. Accounting never fails an answer: a tripped breaker is recorded as a `budget_exhausted` `FailoverEvent`. Tests: `tests/test_byo_model_egress_policy.py`, `tests/test_credit_exhaustion_failover.py`.
 
-### Model catalog data lives in `models.yaml`, never in code
+### Model catalog data lives in `config.yaml`, never in code
 
 `provider_manager.PROVIDER_SPECS` and `free_router.PROVIDERS` used to be ~550
-lines of literals in this package. They are now read from the dedicated
-`models.yaml` catalog (`alpha.config.models_catalog`), because a hand-maintained
-provider list is a second source of truth that drifts silently. Add a provider
-or gateway in YAML, not in Python. Both are re-resolved per call
-(`refresh_provider_specs`, `refresh_free_gateways`) so a catalog edit is visible
+lines of literals in this package. They are now read from `config.yaml` — the
+bring-your-own-provider offers from `model_catalog:` and the keyless router
+gateways from `free_gateways:` — because a hand-maintained provider list is a
+second source of truth that drifts silently. **Add a provider or gateway in
+`config.yaml`, not in Python.** Both are re-resolved per call
+(`refresh_provider_specs`, `refresh_free_gateways`) so a config edit is visible
 without a restart; the module-level `PROVIDER_SPECS` / `PROVIDERS` bindings exist
-only for importers that captured them at import time. With no catalog configured
+only for importers that captured them at import time. With nothing configured
 they are **empty**, which is honest — offering a stale in-code list is the exact
-drift this removed. Regenerate `models.example.yaml` from a pre-catalog build
-with `backend/scripts/gen_models_example.py`.
+drift this removed.
+
+These two keys used to live only in a separate `models.yaml` read exclusively
+through `alpha.config.models_catalog.get_models_catalog()`, which returns an empty
+catalog when the file is absent. **No first-run step created one** — `make setup`
+never did and `make config` did, so the two documented setup paths disagreed — and
+a fresh install therefore had **no gateways at all**: every `alpha-free` run
+failed with *"no free provider candidates: discovery has not succeeded for any
+provider yet"* while the model was still advertised in the picker and
+`POST /api/models/free/probe` answered HTTP 200 with `{"probes": {}}`. The keys are
+declared on `AppConfig` (shapes in `alpha.config.model_catalog_schema`) and the
+second file, its loader, its template and its generator script are all **removed**,
+not deprecated — see
+[the config guide](../config/AGENTS.md#main-configuration-configyaml). Do not add a
+provider list in Python to compensate, and do not reintroduce a second file.
 
 ### Cross-namespace capability drift (`catalog_consistency.py`)
 
@@ -89,8 +103,8 @@ so `POST /api/bots/route-task` returned a `primary` the factory rejects and the
 lead agent silently degraded to the default model — a "quick" task quietly ran on
 the flagship and billed accordingly.
 
-Now: `model_routing.categories` / `model_routing.tiers` in `models.yaml` (or
-`config.yaml`) are the only executable routing source, every declared name is
+Now: `model_routing.categories` / `model_routing.tiers` in `config.yaml` are the
+only executable routing source, every declared name is
 validated against `models[]` at load, and a chain that filters to nothing returns
 an **empty `chain`/`primary` plus a `reason`** instead of inventing a route.
 Escalation never invents one either. The built-in tables remain only as clearly

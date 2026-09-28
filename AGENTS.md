@@ -78,8 +78,7 @@ that pin them — are consolidated in
 ```
 alpha/
 ├── Makefile                        # Root orchestration for the full stack (dev/start/stop, docker, setup, update-*)
-├── config.example.yaml             # Template → config.yaml (gitignored): main app config
-├── models.example.yaml             # Template → models.yaml (gitignored): the model catalog
+├── config.example.yaml             # Template → config.yaml (gitignored): main app config AND every model setting
 ├── extensions_config.example.json  # Template → extensions_config.json (gitignored): MCP servers + skills
 ├── backend/                        # Python backend — see backend/AGENTS.md for its own tree and depth
 ├── frontend/                       # Next.js frontend (pnpm) — see frontend/AGENTS.md
@@ -89,19 +88,33 @@ alpha/
 └── examples/alpha-extension-example/ # Demonstrates all extension contribution kinds
 ```
 
-**`models.yaml` — the one model catalog.** Every model name Alpha knows lives in
-this dedicated file, not in code: runtime-buildable `models`, shared `providers`
-profiles, `routing` (intent category / cost tier -> ordered model names),
-`catalog` (bring-your-own-provider offers), `free_gateways`, `pricing`, and
-`default_model`. `make setup` creates it; `$ALPHA_MODELS_CONFIG_PATH`
-relocates it. `models.yaml` is the **base** layer and `config.yaml` overrides it,
-so an existing deployment is untouched, and a `models[]` entry is replaced
-wholesale by name so exactly one file is authoritative. Every name declared under
-`routing:` is validated against `models[]` at load, so a typo is a startup error
-rather than a silent fallback to the default model. Model lists also refresh
-themselves from the provider (`GET /api/models/discovery`), so a daily-rotating
-catalog such as OpenRouter's `:free` set is fetched rather than hand-maintained.
-Config schema, precedence, and the hot-reload/honest-failure rules are in
+**`config.yaml` — the one file for every model setting.** Every model name Alpha
+knows is configured in `config.yaml`, not in code and not in a second file:
+runtime-buildable `models[]`, shared `providers:` profiles, `model_routing`
+(intent category / cost tier -> ordered model names), `default_model`,
+`model_catalog:` (bring-your-own-provider offers), `free_gateways:` (keyless
+no-signup endpoints `alpha-free` may use), and `model_pricing:` (fallback
+per-1M prices). Every name declared under `model_routing:` is validated against
+`models[]` at load, so a typo is a startup error rather than a silent fallback to
+the default model. Model lists also refresh themselves from the provider
+(`GET /api/models/discovery`), so a daily-rotating catalog such as OpenRouter's
+`:free` set is fetched rather than hand-maintained.
+
+There is **no second model file**, and the loader for one was removed rather than
+deprecated. The three catalog-only sections used to live in a `models.yaml` read
+*exclusively* through `get_models_catalog()`, which returns an empty catalog when
+the file is absent, and **no first-run step created one** — `make setup` never
+did while `make config` did, so the two documented setup paths disagreed. A fresh
+install therefore had an empty keyless-gateway list: every `alpha-free` run failed
+with "no free provider candidates: discovery has not succeeded for any provider
+yet" while the model was still advertised in the picker and
+`POST /api/models/free/probe` answered HTTP 200 with `{"probes": {}}`. A
+deprecation window would have left that failure reachable for anyone who deleted
+the wrong file, so `models.example.yaml`, `alpha.config.models_catalog`,
+`backend/scripts/gen_models_example.py`, and `$ALPHA_MODELS_CONFIG_PATH` are all
+gone. A duplicate gateway or provider id is now a config error rather than
+something to arbitrate between two files. Config schema, precedence, and the
+hot-reload/honest-failure rules are in
 [backend/packages/harness/alpha/config/AGENTS.md](backend/packages/harness/alpha/config/AGENTS.md);
 discovery, cross-namespace drift detection, and the fail-closed routers are in
 [backend/packages/harness/alpha/models/AGENTS.md](backend/packages/harness/alpha/models/AGENTS.md).

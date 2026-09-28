@@ -339,18 +339,21 @@ def supports_discovery(provider: str) -> bool:
 
     True for every declared adapter plus any other provider, because the default
     OpenAI-compatible probe is correct for a gateway that does not need a special
-    path. Only a provider with no ``base_url`` in ``models.yaml`` cannot be
-    discovered, and that is reported by :func:`known_providers` instead.
+    path. Only a provider with no ``base_url`` in ``config.yaml``'s
+    ``model_catalog:`` cannot be discovered, and that is reported by
+    :func:`known_providers` instead.
     """
     return provider in ADAPTERS or provider in _catalog_provider_ids()
 
 
 def _catalog_provider_ids() -> set[str]:
+    """Provider ids declared in ``config.yaml -> model_catalog``."""
     try:
-        from alpha.config.models_catalog import get_models_catalog
+        from alpha.config.app_config import get_app_config
 
-        return {entry.id for entry in get_models_catalog().catalog}
+        return {entry.id for entry in get_app_config().model_catalog}
     except Exception:
+        logger.debug("config.yaml model_catalog unavailable", exc_info=True)
         return set()
 
 
@@ -453,31 +456,28 @@ async def aget_state(provider: str, *, ttl: float = DEFAULT_TTL_SECONDS) -> Disc
 
 
 def configured_endpoint(provider: str) -> tuple[str, str | None]:
-    """Base URL and API key for a discovery provider, from ``models.yaml``.
+    """Base URL and API key for a discovery provider, from ``config.yaml``.
 
-    Raises ``ValueError`` when the provider is not declared under ``catalog:`` or
-    has no ``base_url``, so a caller reports "not configured" instead of guessing
-    an endpoint.
+    Raises ``ValueError`` when the provider is not declared under
+    ``model_catalog:`` or has no ``base_url``, so a caller reports "not
+    configured" instead of guessing an endpoint.
     """
-    from alpha.config.models_catalog import get_models_catalog
+    import os
 
-    catalog = get_models_catalog()
-    for entry in catalog.catalog:
+    from alpha.config.app_config import get_app_config
+
+    for entry in get_app_config().model_catalog:
         if entry.id != provider:
             continue
         if not entry.base_url:
-            raise ValueError(f"provider '{provider}' has no base_url in models.yaml")
-        key = None
-        if entry.key_env:
-            import os
-
-            key = os.getenv(entry.key_env) or None
-        return entry.base_url, key
-    raise ValueError(f"provider '{provider}' is not declared under `catalog:` in models.yaml")
+            raise ValueError(f"provider '{provider}' has no base_url in config.yaml (model_catalog)")
+        key = os.getenv(entry.key_env) if entry.key_env else None
+        return entry.base_url, key or None
+    raise ValueError(f"provider '{provider}' is not declared under `model_catalog:` in config.yaml")
 
 
 def known_providers() -> list[str]:
-    """Provider ids declared in ``models.yaml`` that can be discovered.
+    """Provider ids declared in ``config.yaml``'s ``model_catalog:`` that can be discovered.
 
     Any provider with a ``base_url`` qualifies, because the default adapter
     probes the OpenAI-compatible ``GET {base}/models`` shape that essentially
@@ -485,11 +485,13 @@ def known_providers() -> list[str]:
     native-SDK entries such as Bedrock or Vertex) is excluded rather than probed
     at a guessed URL.
     """
-    from alpha.config.models_catalog import get_models_catalog
+    from alpha.config.app_config import get_app_config
 
-    try:
-        catalog = get_models_catalog()
-    except Exception:
-        logger.debug("models.yaml unavailable; no discovery providers", exc_info=True)
-        return []
-    return [entry.id for entry in catalog.catalog if entry.base_url]
+    seen: set[str] = set()
+    out: list[str] = []
+    for entry in get_app_config().model_catalog:
+        if not entry.base_url or entry.id in seen:
+            continue
+        seen.add(entry.id)
+        out.append(entry.id)
+    return out

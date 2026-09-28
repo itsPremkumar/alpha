@@ -64,7 +64,7 @@ import { checkForEvolutionUpdate, getEvolutionUpdateState, requestEvolutionUpdat
 // it a second source of truth that silently drifted: it advertised
 // `union-alpha` with thinking support while the backend declared
 // `supports_thinking: false`, so the UI offered a control the factory rejects.
-// The catalog is now served from the backend's models.yaml over
+// The catalog is now served from the backend's config.yaml over
 // `GET /api/models/providers`. A failed read renders as unavailable rather than
 // silently substituting a stale list.
 
@@ -235,7 +235,7 @@ export function SettingsSection({
       const [mList, pCat, pResult, v, f, ih, id, updateState] = await Promise.all([
         fetchAvailableModels().catch(() => BUILTIN_FREE_MODELS),
         // A failed catalog read must surface, never become a stale hardcoded
-        // list. The provider catalog is served from the backend's models.yaml;
+        // list. The provider catalog is served from the backend's config.yaml;
         // a hand-copied fallback in the browser is a second source of truth that
         // drifts (it is how `union-alpha` came to advertise thinking support the
         // backend rejects). An empty list here means "the call failed" and is
@@ -626,13 +626,13 @@ export function SettingsSection({
 
             {providersCatalogUnavailable ? (
               <ErrorBox
-                message="Could not read the provider catalog from the Gateway. This is a failed request, not an empty catalog. Check that the Gateway is running and that models.yaml declares providers under `catalog:`."
+                message="Could not read the provider catalog from the Gateway. This is a failed request, not an empty catalog. Check that the Gateway is running and that config.yaml declares providers under `model_catalog:`."
                 onRetry={() => void loadData()}
               />
             ) : providersCatalog.length === 0 ? (
               <EmptyState
                 title="No providers declared"
-                hint="Add entries under `catalog:` in models.yaml (see models.example.yaml) to offer providers here."
+                hint="Add entries under `model_catalog:` in config.yaml (see config.example.yaml) to offer providers here."
               />
             ) : null}
 

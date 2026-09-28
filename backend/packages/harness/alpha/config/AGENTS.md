@@ -30,50 +30,68 @@ raise, and API create/update validation remains strict.
 
 Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** directory.
 
-**Model catalog (`models.yaml`)**: every model name Alpha knows about lives in one
-dedicated file. `make setup` copies `models.example.yaml` -> `models.yaml` (both
-gitignored). It holds `models` (runtime-buildable), `providers` (connection
-profiles), `routing` (intent category / cost tier -> ordered model names),
-`catalog` (bring-your-own-provider offers), `free_gateways` (keyless router
-gateways), `pricing` (fallback per-1M prices), and `default_model`. Schema and
-loader: `packages/harness/alpha/config/models_catalog.py`; tests:
-`tests/test_models_catalog.py`.
+**Model catalog — one file, `config.yaml`**: every model name Alpha knows about
+is configured in `config.yaml`, alongside everything else. There is no second
+model file. The keys are:
 
-- **Precedence is `models.yaml` as the BASE layer, `config.yaml` overriding it.**
-  `AppConfig._apply_models_catalog()` runs from `from_file`, so an existing
-  deployment is unaffected. A `models[]` entry is replaced **wholesale by name**,
-  never field-merged, so exactly one file is authoritative for a given name —
-  that is what makes a capability declared in one place.
-- **Path resolution mirrors `extensions_config.json`**: explicit `config_path` ->
-  `$ALPHA_MODELS_CONFIG_PATH` -> project root -> `backend/` and repo
-  root -> `None`. An explicit path or env var naming a missing file raises
-  `FileNotFoundError`; only the fallback search returns `None` (the catalog is
-  optional and a deployment may configure everything through `config.yaml`).
-  Path derivation is `__file__`-relative — never an absolute developer path.
-- **`$VAR` resolves on load and the resolved catalog is never written back.** Use
-  `read_raw_models_catalog()` for anything operator-facing; there is no writer,
-  because a round-trip would persist secrets and erase the references.
-- **Hot reload** via `get_models_catalog()`: a content digest (not mtime, which
-  is stale on network/object-store mounts) re-reads the file when it changes, so
-  a `max_tokens` or routing edit applies to the next message without a restart.
-- **Load-time validation is fail-closed.** `ModelsCatalog` is
-  `extra="forbid"`, so a misspelled key is an error rather than a half-read
-  file. `AppConfig._validate_model_routing` rejects any `routing:` name absent
-  from `models[]`, and `_validate_default_model` rejects an unknown
-  `default_model`. An empty declared chain is rejected by `ModelRoutingConfig`
-  so it cannot read as "declared but unusable" and silently degrade.
-- **A malformed catalog must not make a `config.yaml`-only deployment
-  unbootable**: a load failure is caught and logged, and `config.yaml`'s own
-  declarations stand. An explicit path/env-var `FileNotFoundError` still
-  propagates, because both are an operator assertion.
+| Key | Holds |
+| --- | --- |
+| `models[]` | runtime-buildable models (the factory constructs these) |
+| `providers:` | named connection profiles inherited by `models[].provider` |
+| `default_model` | the model a run uses when nothing selects one |
+| `model_routing` | intent category / cost tier -> ordered model names |
+| `model_catalog:` | bring-your-own-provider offers shown in Settings |
+| `free_gateways:` | keyless public gateways the free router may use |
+| `model_pricing:` | fallback per-1M prices for models that omit `models[].pricing` |
+
+The three entry schemas (`CatalogProviderEntry`, `FreeGatewayEntry`,
+`ModelPriceEntry`) live in `packages/harness/alpha/config/model_catalog_schema.py`,
+a dependency-light module so `AppConfig` can import them at module scope without
+cycling through the model factory. Tests: `tests/test_single_file_model_config.py`.
+
+- **There is no second model file, and the loader for one is deleted.** The keys
+  above are read straight off `AppConfig`: `free_router/providers.py` and
+  `models/provider_manager.py` and `models/discovery.py` each call
+  `get_app_config()` and nothing else. `models.example.yaml`,
+  `alpha.config.models_catalog`, `scripts/gen_models_example.py`, the
+  `$ALPHA_MODELS_CONFIG_PATH` env var, and `AppConfig._apply_models_catalog()`
+  are all removed. A leftover import is a runtime crash, so
+  `test_no_python_module_still_reads_a_second_model_file` greps the source tree
+  and fails on any.
+- **Why the split was removed rather than deprecated.** Those three sections were
+  read *exclusively* through `get_models_catalog()`, which returns an empty
+  catalog when the file is absent — and **no first-run step created one**
+  (`make setup` never did; `make config` did, so the two documented setup paths
+  disagreed). A fresh install following the documented path therefore had an empty
+  keyless gateway list: every `alpha-free` run failed with *"no free provider
+  candidates: discovery has not succeeded for any provider yet"* while
+  `GET /api/models` still advertised the model and `POST /api/models/free/probe`
+  answered HTTP 200 with `{"probes": {}}`. A deprecation window would have left
+  that failure reachable for anyone who deleted the wrong file, so the second
+  source of truth is gone rather than deprecated. Never reintroduce a hardcoded
+  provider list in Python to compensate.
+- **A duplicate id is now a config error, not a merge.** With one file there is no
+  second declaration to arbitrate between, so the readers keep the first
+  occurrence and log a warning naming the id.
+- **`$VAR` resolves on load and the resolved config is never written back.** There
+  is no catalog writer for the same reason `extensions_config.json` has none: a
+  round-trip would persist secrets in plaintext and erase the references.
+- **Hot reload** is `get_app_config()`'s content digest (not mtime, which is stale
+  on network/object-store mounts). Call `refresh_free_gateways()` and
+  `refresh_provider_specs()` in a long-lived process after editing the gateway or
+  catalog lists, so an edit applies to the next message without a restart.
+- **Load-time validation is fail-closed.** `AppConfig` is `extra="forbid"`, so a
+  misspelled key is an error rather than a half-read file.
+  `AppConfig._validate_model_routing` rejects any routing name absent from
+  `models[]`, and `_validate_default_model` rejects an unknown `default_model`.
+  An empty declared chain is rejected by `ModelRoutingConfig` so it cannot read as
+  "declared but unusable" and silently degrade.
 - **`default_model`** is the model a run uses when nothing selects one. Read it
   through `AppConfig.default_model_name`, never `config.models[0].name`, so an
   explicit key is honoured everywhere. With the key absent, the first entry in
   `models` is still used, so an unkeyed deployment is unchanged.
-- `models.example.yaml` is **generated**, not hand-edited, by
-  `backend/scripts/gen_models_example.py`. That script exists so the migration
-  out of the old in-code provider catalog is reproducible and auditable rather
-  than a one-off edit nobody can verify; edit the YAML, not the script.
+- `config.example.yaml` is hand-maintained and is the shipped template for every
+  one of these keys. There is no generated template and no generator script.
 
 Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** directory.
 

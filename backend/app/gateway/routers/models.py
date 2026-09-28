@@ -115,7 +115,7 @@ class DiscoveryProviderResponse(BaseModel):
 
 class DiscoveryListResponse(BaseModel):
     providers: list[DiscoveryProviderResponse]
-    #: Providers declared in models.yaml that support discovery.
+    #: Providers declared in config.yaml's `model_catalog:` that support discovery.
     supported: list[str] = Field(default_factory=list)
 
 
@@ -201,7 +201,7 @@ async def list_discovered_models(
     if provider and provider not in discovery.known_providers():
         raise HTTPException(
             status_code=400,
-            detail=f"Provider '{provider}' is not discoverable. It must declare a `base_url` under `catalog:` in models.yaml. Discoverable: {', '.join(discovery.known_providers()) or 'none'}",
+            detail=f"Provider '{provider}' is not discoverable. It must declare a `base_url` under `model_catalog:` in config.yaml. Discoverable: {', '.join(discovery.known_providers()) or 'none'}",
         )
 
     views: list[DiscoveryProviderResponse] = []
@@ -944,11 +944,18 @@ async def probe_free_models_endpoint() -> dict:
         from alpha.models.free_router import get_free_router
 
         router = get_free_router()
-        probes = router.probe()
+        # sync_daily_models() refreshes discovery *then* probes, so it is the only
+        # ordering that can produce a meaningful probe. This route used to call
+        # router.probe() first, which on a cold router could only ever return
+        # `{}` (a provider is probeable only once its model list is known), and
+        # then discarded the real probes that the following sync produced -
+        # reporting HTTP 200 with an empty probe map next to a synced count and
+        # an advertised `alpha-free` model. One call, one honest result.
         synced = router.sync_daily_models(force_probe=True)
         return {
-            "probes": probes,
-            "synced_models_count": len(synced),
+            "probes": synced.get("probes") or {},
+            "sync_ok": bool(synced.get("ok")),
+            "sync_error": synced.get("error"),
             "available_models": router.available_free_models(),
         }
 

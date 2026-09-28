@@ -110,27 +110,30 @@ class ProviderDescriptor:
 
 
 def _provider_specs_from_catalog() -> list[ProviderDescriptor]:
-    """Build the bring-your-own-provider catalog from ``models.yaml``.
+    """Build the bring-your-own-provider catalog from ``config.yaml``.
 
-    The catalog file is the single source of truth for every provider and model
-    name offered in Settings. This function is the only reader, so adding a
-    provider is a YAML edit rather than a code change, and the capability a
-    provider declares can no longer disagree with the one ``models[]`` declares
-    for the same name without :mod:`alpha.models.catalog_consistency` noticing.
+    ``config.yaml -> model_catalog:`` is the single source of truth for every
+    provider and model name offered in Settings. This function is the only reader,
+    so adding a provider is a YAML edit rather than a code change, and the
+    capability a provider declares can no longer disagree with the one ``models[]``
+    declares for the same name without
+    :mod:`alpha.models.catalog_consistency` noticing.
 
-    Returns ``[]`` when no catalog is configured. That is honest rather than a
-    regression: with no ``models.yaml`` there is no declared catalog, and
+    Returns ``[]`` when nothing is configured. That is honest rather than a
+    regression: with no ``model_catalog`` there is no declared catalog, and
     offering a stale in-code list would be the exact drift this replaced.
     """
-    try:
-        from alpha.config.models_catalog import get_models_catalog
+    from alpha.config.app_config import get_app_config
 
-        catalog = get_models_catalog()
-    except Exception:
-        logger.debug("models.yaml unavailable; provider catalog is empty", exc_info=True)
-        return []
+    seen: set[str] = set()
     specs: list[ProviderDescriptor] = []
-    for entry in catalog.catalog:
+    for entry in get_app_config().model_catalog:
+        if entry.id in seen:
+            # One file means a duplicate id is a config error, not something to
+            # arbitrate between layers. Keep the first and say so.
+            logger.warning("provider id '%s' is declared more than once under `model_catalog:`; using the first", entry.id)
+            continue
+        seen.add(entry.id)
         specs.append(
             ProviderDescriptor(
                 id=entry.id,
@@ -156,16 +159,16 @@ def _provider_specs_from_catalog() -> list[ProviderDescriptor]:
     return specs
 
 
-#: Lazily resolved from ``models.yaml`` on first use. Kept as a module-level
+#: Lazily resolved from ``config.yaml`` on first use. Kept as a module-level
 #: name so existing importers keep working; call :func:`refresh_provider_specs`
 #: after editing the catalog in a long-lived process.
 PROVIDER_SPECS: list[ProviderDescriptor] = _provider_specs_from_catalog()
 
 
 def refresh_provider_specs() -> list[ProviderDescriptor]:
-    """Re-read the provider catalog from ``models.yaml`` and rebind ``PROVIDER_SPECS``.
+    """Re-read the provider catalog from ``config.yaml`` and rebind ``PROVIDER_SPECS``.
 
-    ``models.yaml`` is hot-reloadable, so a Gateway serving a long-lived process
+    ``config.yaml`` is hot-reloadable, so a Gateway serving a long-lived process
     re-resolves the catalog on the next request through
     :func:`get_providers_catalog`. This explicit refresh exists for callers that
     captured the module-level list at import time.
@@ -175,10 +178,9 @@ def refresh_provider_specs() -> list[ProviderDescriptor]:
     return PROVIDER_SPECS
 
 
-# The provider/model catalog that used to live here as ~470 lines of literals
-# now comes from `models.yaml` via `_provider_specs_from_catalog`. Regenerate
-# `models.example.yaml` from a pre-catalog build with
-# `backend/scripts/gen_models_example.py` when upgrading.
+# The provider/model catalog that used to live here as ~470 lines of literals now
+# comes from `config.yaml -> model_catalog:` via `_provider_specs_from_catalog`.
+# Add a provider there, never here.
 
 
 def _credentials_path() -> Path:
@@ -617,7 +619,7 @@ def validate_endpoint_headers(headers: Any) -> dict[str, str]:
 def get_providers_catalog() -> list[dict[str, Any]]:
     """Build honest provider catalog with configuration status and masked keys.
 
-    Re-resolves ``models.yaml`` on every call rather than reading the
+    Re-resolves ``config.yaml`` on every call rather than reading the
     import-time ``PROVIDER_SPECS`` binding, so a catalog edit is visible to the
     next request without a restart — matching how ``config.yaml`` itself is
     hot-reloaded. Returns an empty list when no catalog is configured, which

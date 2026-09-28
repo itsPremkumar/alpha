@@ -28,12 +28,16 @@ def main() -> int:
     # command. copy_if_missing already skips an existing destination, so an
     # operator's edits are never overwritten.
     seeds: list[tuple[Path, Path]] = [
+        # config.yaml carries EVERY model setting (models[], providers:,
+        # model_routing, default_model, model_catalog:, free_gateways:,
+        # model_pricing:), so this is the only model file a new install needs.
+        # A separate second model file used to be seeded here, which is how the
+        # catalog ended up split in two — and why the interactive setup wizard,
+        # which never seeded it, produced an install whose keyless gateway list
+        # was empty and whose `alpha-free` runs all failed with "no free provider
+        # candidates: discovery has not succeeded for any provider yet". Both
+        # entry points now seed exactly this set.
         (project_root / "config.example.yaml", project_root / "config.yaml"),
-        # Dedicated model catalog. Separate from config.yaml for the same reason
-        # Aider/Goose/LiteLLM split theirs out: model names drift when they are
-        # hand-maintained in several places. config.yaml still overrides it, so
-        # an existing deployment is unaffected by this file existing.
-        (project_root / "models.example.yaml", project_root / "models.yaml"),
         (project_root / ".env.example", project_root / ".env"),
         (project_root / "frontend" / ".env.example", project_root / "frontend" / ".env"),
     ]

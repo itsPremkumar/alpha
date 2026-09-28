@@ -237,13 +237,28 @@ def test_unreadable_cache_file_is_discarded(monkeypatch: pytest.MonkeyPatch, tmp
 
 
 def test_shipped_example_catalog_declares_discoverable_providers() -> None:
-    """models.example.yaml must actually contain something to discover."""
-    from alpha.config.models_catalog import load_models_catalog
+    """config.example.yaml must actually contain something to discover.
 
-    catalog = load_models_catalog()
-    assert catalog.catalog, "the example catalog must declare providers"
-    assert any(entry.base_url for entry in catalog.catalog), "at least one provider needs a base_url"
-    assert any(provider.id in discovery.ADAPTERS for provider in catalog.catalog), "the example should include a provider with a dedicated discovery adapter"
+    This used to call ``load_models_catalog()`` with no argument and so asserted
+    against whatever second model file happened to be resolved on the machine
+    running the test -- the operator's own file, or nothing at all on a machine
+    that had none. It claimed to check the shipped example template while never
+    reading it, so it passed for an empty deployment and only became meaningful
+    by accident. ``config.example.yaml`` is the only shipped template now, and the
+    point of the test (the template must declare discoverable providers) is
+    unchanged.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    example = Path(__file__).resolve().parents[2] / "config.example.yaml"
+    doc = yaml.safe_load(example.read_text(encoding="utf-8")) or {}
+    entries = doc.get("model_catalog") or []
+
+    assert entries, "config.example.yaml must declare providers under `model_catalog:`"
+    assert any(entry.get("base_url") for entry in entries), "at least one provider needs a base_url"
+    assert any(entry["id"] in discovery.ADAPTERS for entry in entries), "the example should include a provider with a dedicated discovery adapter"
 
 
 def test_discovered_model_dict_exposes_derived_capabilities() -> None:
