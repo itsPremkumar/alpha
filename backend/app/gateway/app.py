@@ -386,6 +386,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
+
+        # Fail closed on an unusable subagent-batch configuration *here*, before
+        # anything has been started.
+        #
+        # This check used to sit further down, just above the batch service's own
+        # construction, in a stretch of the lifespan that is not inside any
+        # try/except. An operator who enabled `subagent_batches` against
+        # `database.backend: memory` therefore got a RuntimeError that propagated
+        # out of the lifespan *before* `yield` - so the teardown block below never
+        # ran. By that point the scheduler and the channel service had already
+        # been started, and the memory flush, browser session close and peer
+        # network stop that come after `yield` were all skipped. The process died
+        # half-taken-down, which is the least useful way to report a
+        # misconfiguration.
+        #
+        # Both inputs are available this early and nothing has been started: the
+        # config resolved before `langgraph_runtime` was entered, and
+        # `app.state.subagent_batch_repo` is set by the runtime's own setup. So
+        # the same refusal is now made at a point where unwinding is clean.
+        if subagent_batches_config.enabled and getattr(app.state, "subagent_batch_repo", None) is None:
+            raise RuntimeError("subagent_batches.enabled requires database.backend sqlite or postgres")
+
         try:
             from app.gateway.routers.workflows import hydrate_workflow_engine_from_store
 
@@ -558,8 +580,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         batch_repo = getattr(app.state, "subagent_batch_repo", None)
         app.state.subagent_batches_available = False
         set_subagent_batch_submitter(None)
-        if subagent_batches_config.enabled and batch_repo is None:
-            raise RuntimeError("subagent_batches.enabled requires database.backend sqlite or postgres")
         if batch_repo is not None:
             batch_service = SubagentBatchService(
                 repository=batch_repo,

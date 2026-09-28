@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 
+from alpha.config.subagent_batches_config import SubagentBatchesConfig
+
 
 @asynccontextmanager
 async def _noop_langgraph_runtime(_app, _startup_config):
@@ -239,14 +241,143 @@ def test_no_unbounded_service_stop_remains_in_the_shutdown_path():
         line_start = teardown.rfind("\n", 0, match.start()) + 1
         line_end = teardown.find("\n", match.start())
         line = teardown[line_start:line_end]
-        # Multi-line calls put `.stop()` on a line with no "wait_for" text; the
-        # bound is on an earlier line of the same statement, so look back to the
-        # start of that statement.
+        # A multi-line call puts `.stop()` on a line with no "wait_for" text, so
+        # also look back to the start of the enclosing statement.
         statement_start = teardown.rfind("await asyncio.wait_for(", line_start, match.start())
         preceding = teardown.rfind("\n            ", 0, line_start)
         if statement_start == -1 and "wait_for" not in teardown[max(0, preceding) : line_start]:
             line_number = source[: teardown_offset + line_start].count("\n") + 1
             raise AssertionError(f"Unbounded shutdown await at app.py:{line_number}: {line.strip()}")
+
+
+def test_a_startup_refusal_happens_before_anything_is_started():
+    """A misconfiguration must not leave a half-started stack behind.
+
+    `subagent_batches.enabled` with no batch repository (i.e.
+    `database.backend: memory`) is refused at startup. The refusal used to sit
+    below the scheduler and channel service, in a stretch of the lifespan with no
+    try/except around it, so the RuntimeError propagated out *before* `yield` and
+    the whole teardown block - memory flush, browser close, peer network stop -
+    was skipped while the scheduler and channels were already running.
+
+    The check is now made immediately after the runtime is entered, where both
+    the config and `app.state.subagent_batch_repo` are available and nothing has
+    been started. These tests pin the *consequence*: nothing is started, and the
+    teardown's own work is not left half-done.
+    """
+    from app.gateway.app import lifespan
+
+    started: list[str] = []
+
+    @asynccontextmanager
+    async def runtime_without_a_batch_repo(app, _startup_config):
+        # What langgraph_runtime does for `database.backend: memory`.
+        app.state.subagent_batch_repo = None
+        app.state.mcp_task_repo = None
+        app.state.scheduled_task_repo = None
+        yield
+
+    startup_config = MagicMock()
+    startup_config.log_level = "INFO"
+    startup_config.memory.enabled = False
+    startup_config.memory.shutdown_flush_timeout_seconds = 5.0
+    startup_config.autonomy.enabled = False
+    # A real model, not a MagicMock: the lifespan does
+    # `getattr(startup_config, "subagent_batches", None)` and then replaces
+    # anything that is not an actual SubagentBatchesConfig with a default. A
+    # MagicMock is therefore silently swapped for `enabled=False`, and the
+    # refusal this test is about never happens.
+    startup_config.subagent_batches = SubagentBatchesConfig(enabled=True)
+
+    async def fake_start(_startup_config, **_kwargs):
+        started.append("channels")
+        return MagicMock(get_status=MagicMock(return_value={}))
+
+    with (
+        patch("app.gateway.app.get_app_config", return_value=startup_config),
+        patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
+        patch("app.gateway.app.langgraph_runtime", runtime_without_a_batch_repo),
+        patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
+        patch("app.channels.service.start_channel_service", side_effect=fake_start),
+        patch("app.channels.service.stop_channel_service", AsyncMock()),
+    ):
+        with pytest.raises(RuntimeError, match="subagent_batches.enabled requires database.backend"):
+            asyncio.run(_enter_lifespan(lifespan, FastAPI()))
+
+    assert started == [], "a refused startup must not have started the channel service first"
+
+
+def test_the_batch_repository_refusal_still_fires_when_a_repository_exists():
+    """The hoist must not turn the check into a no-op.
+
+    With a real batch repository the same configuration has to boot, or the
+    refusal would have been "fixed" by deleting the guarantee.
+    """
+    from app.gateway.app import lifespan
+
+    @asynccontextmanager
+    async def runtime_with_a_batch_repo(app, _startup_config):
+        app.state.subagent_batch_repo = object()
+        app.state.mcp_task_repo = None
+        app.state.scheduled_task_repo = None
+        yield
+
+    startup_config = MagicMock()
+    startup_config.log_level = "INFO"
+    startup_config.memory.enabled = False
+    startup_config.memory.shutdown_flush_timeout_seconds = 5.0
+    startup_config.autonomy.enabled = False
+    startup_config.subagent_batches = SubagentBatchesConfig(enabled=True)
+    fake_service = MagicMock()
+    fake_service.get_status = MagicMock(return_value={})
+
+    async def fake_start(_startup_config, **_kwargs):
+        return fake_service
+
+    with (
+        patch("app.gateway.app.get_app_config", return_value=startup_config),
+        patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
+        patch("app.gateway.app.langgraph_runtime", runtime_with_a_batch_repo),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
+        patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
+        patch("app.channels.service.start_channel_service", side_effect=fake_start),
+        patch("app.channels.service.stop_channel_service", AsyncMock()),
+        patch("alpha.agents.memory.get_memory_manager", return_value=MagicMock()),
+        # A MagicMock's `start`/`stop` return MagicMocks, which cannot be awaited;
+        # the batch service is started and stopped for real in this path.
+        patch(
+            "app.subagent_batches.SubagentBatchService",
+            new=MagicMock(return_value=MagicMock(start=AsyncMock(), stop=AsyncMock())),
+        ),
+    ):
+        asyncio.run(_enter_lifespan(lifespan, FastAPI()))
+
+
+async def _enter_lifespan(lifespan, app):
+    async with lifespan(app):
+        pass
+
+
+def test_the_batch_repository_refusal_precedes_every_service_start():
+    """Structural pin for the hoist.
+
+    The behavioural test above proves nothing was started. This one fails if the
+    check is moved back down among the services, which is what reintroduces the
+    half-started stack without anyone noticing - the refusal still fires, so the
+    obvious test still passes.
+    """
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "app" / "gateway" / "app.py").read_text(encoding="utf-8")
+
+    body_start = source.index("async with langgraph_runtime(app, startup_config):")
+    refusal = source.index("subagent_batches.enabled requires database.backend", body_start)
+    for started in (
+        "await app.state.scheduled_task_service.start()",
+        "await start_channel_service(",
+        "await mcp_task_service.start()",
+    ):
+        assert source.find(started, body_start) == -1 or refusal < source.find(started, body_start), f"{started!r} runs before the batch-repository refusal; move the check above it"
 
 
 async def _run_lifespan_with_upload_staging_cleanup():
