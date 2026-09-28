@@ -550,13 +550,25 @@ export async function fetchAvailableModels(): Promise<AIModel[]> {
 }
 
 export async function fetchProvidersCatalog(): Promise<LLMProviderCatalogItem[]> {
-  try {
-    const res = await apiFetch(`/models/providers`);
-    if (!res.ok) throw new Error("Providers catalog error");
-    return await res.json();
-  } catch {
-    return [];
-  }
+  // Rejects on failure, with the server's own reason.
+  //
+  // This used to end in `catch { return [] }`, which made a broken gateway
+  // indistinguishable from a Gateway that genuinely has no bring-your-own
+  // providers. That matters because the only caller, SettingsSection, already
+  // does the honest thing: it pairs this read with `.catch(...)` and drives a
+  // `providersCatalogUnavailable` state off the rejection, with a comment
+  // stating that an empty list must mean "the call failed" rather than "no
+  // providers". The swallow made that branch unreachable - `ok` was always
+  // `true`, the unavailable state never rendered, and the settings page
+  // confidently listed zero providers.
+  //
+  // The catalog is the server's authority on which providers exist; a
+  // hand-copied browser fallback is exactly the second source of truth that
+  // drifts (it is how `union-alpha` came to advertise thinking support the
+  // backend rejects). So there is nothing to fall back *to* - only something
+  // to report.
+  const res = await apiFetch(`/models/providers`);
+  return await res.json();
 }
 
 export async function configureProviderCredentials(payload: {

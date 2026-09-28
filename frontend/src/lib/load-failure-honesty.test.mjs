@@ -69,7 +69,7 @@ export const AutonomousDetection = undefined;
 let apiCode = transpile(read("./api.ts"));
 apiCode = apiCode.replace(/from\s+"\.\/api-client"/, `from "${apiClientStubUrl}"`);
 apiCode = apiCode.replace(/from\s+"@\/types\/chat"/, `from "${typesStubUrl}"`);
-const { fetchThreads, fetchThreadsResult, fetchThreadHistory, fetchThreadHistoryResult } = await import(toDataUrl(apiCode));
+const { fetchThreads, fetchThreadsResult, fetchThreadHistory, fetchThreadHistoryResult, fetchProvidersCatalog } = await import(toDataUrl(apiCode));
 const { setResponse, setResponses } = await import(apiClientStubUrl);
 
 /* ── Stub 2: http for comm.ts / inbox.ts / teamops.ts ──────────────────── */
@@ -461,4 +461,48 @@ test("api.ts documents the [] wrappers as legacy-only compatibility", () => {
   // silently-swallowing implementation.
   assert.match(src, /const result = await fetchThreadsResult\(limit\);/);
   assert.match(src, /const result = await fetchThreadHistoryResult\(threadId\);/);
+});
+
+/* ── providers catalog: a dead gateway is not an empty catalog ──────────── */
+
+// fetchProvidersCatalog shipped `catch { return [] }`. Its only caller
+// (SettingsSection) already pairs the read with `.catch(...)` and drives
+// `providersCatalogUnavailable` off the rejection — but the swallow meant the
+// promise always resolved, so `ok` was always `true`, the unavailable state was
+// unreachable dead code, and Settings rendered "0 providers" with no error.
+test("fetchProvidersCatalog rejects on gateway failure instead of returning []", async () => {
+  setResponse({ error: new Error("The request could not be completed. Check your connection.") });
+  await assert.rejects(fetchProvidersCatalog(), /connection/);
+});
+
+test("a genuinely empty providers catalog is still an empty list, not a failure", async () => {
+  // The distinction the fix must preserve: [] from the server means the server
+  // said there are no bring-your-own providers, which is a real answer.
+  setResponse({ ok: true, status: 200, json: async () => [] });
+  assert.deepEqual(await fetchProvidersCatalog(), []);
+});
+
+test("fetchProvidersCatalog has no catch-to-empty anywhere in its body", () => {
+  const src = read("./api.ts");
+  const idx = src.indexOf("export async function fetchProvidersCatalog");
+  assert.ok(idx > 0, "missing fetchProvidersCatalog");
+  const body = src.slice(idx, src.indexOf("\n}", idx));
+  // Strip line comments first: the function documents the swallow it used to
+  // have, and the word "catch" in that prose is not a catch clause.
+  const code = body.replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /\bcatch\b/);
+  assert.doesNotMatch(code, /\btry\b/);
+  assert.doesNotMatch(code, /return \[\]/);
+  // It must still return the server's own payload rather than a hand-made list.
+  assert.match(code, /return await res\.json\(\)/);
+});
+
+test("SettingsSection's honest unavailable state is still wired, not deleted", () => {
+  // The client now rejects, so the caller's branch is finally reachable. Pin it
+  // in both directions: a future refactor must not quietly drop the state, and
+  // must not re-add a swallow at the call site either.
+  const src = read("../components/sections/SettingsSection.tsx");
+  assert.match(src, /fetchProvidersCatalog\(\)\s*\n?\s*\.then/);
+  assert.match(src, /setProvidersCatalogUnavailable\(!pCat\.ok\)/);
+  assert.doesNotMatch(src, /\.catch\(\(\) => setProvidersCatalog\(\[\]\)\)/);
 });
