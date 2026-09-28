@@ -779,8 +779,14 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
   });
   // Remove split-origin overrides if the user exported them globally: the
   // desktop app always talks to the Gateway through Next.js rewrites.
-  delete env.NEXT_PUBLIC_BACKEND_BASE_URL;
-  delete env.NEXT_PUBLIC_LANGGRAPH_BASE_URL;
+  //
+  // This must name the variable the client actually reads. `GATEWAY_BASE` is
+  // built from `NEXT_PUBLIC_GATEWAY_URL` (frontend/src/lib/api-client.ts), so
+  // the two names deleted here previously existed in no code path: a globally
+  // exported `NEXT_PUBLIC_GATEWAY_URL` survived the spawn and pointed the whole
+  // desktop UI - prompts, files, thread content - at that origin instead of the
+  // loopback Gateway. The comment's guarantee was not being enforced.
+  delete env.NEXT_PUBLIC_GATEWAY_URL;
 
   if (fs.existsSync(standaloneServer)) {
     patchStandaloneGatewayUrl(frontendStandaloneDir, gatewayBaseUrl);

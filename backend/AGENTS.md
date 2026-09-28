@@ -202,10 +202,17 @@ application available at `http://localhost:2026`. The full startup-mode matrix
 
 **Nginx routing**: `/api/langgraph/*` → Gateway embedded runtime (8001), rewritten
 to `/api/*`; all other `/api/*` → Gateway API (8001); `/` (non-API) → Frontend
-(3000). Direct Gateway access without nginx: `http://localhost:8001`. The frontend
-reaches the backend through `NEXT_PUBLIC_LANGGRAPH_BASE_URL` (default
-`/api/langgraph`) and `NEXT_PUBLIC_BACKEND_BASE_URL` (default empty string), so
-`make dev` from root connects through nginx automatically.
+(3000). Direct Gateway access without nginx: `http://localhost:8001`. The
+frontend reaches the backend through a single variable,
+`NEXT_PUBLIC_GATEWAY_URL`, which `src/lib/api-client.ts` normalizes into
+`GATEWAY_BASE`: unset (the default) or a bare path means the relative `/api`,
+and a full origin has `/api` appended to it. Left unset, `make dev` from the
+repo root therefore talks to nginx on 2026 with no extra configuration. (Older
+revisions of this guide named `NEXT_PUBLIC_LANGGRAPH_BASE_URL` and
+`NEXT_PUBLIC_BACKEND_BASE_URL`; no code has read either name since the client
+was consolidated onto `GATEWAY_BASE`, and the desktop shell's
+split-origin guard in `electron/main.js` was still deleting them instead of the
+variable that is real.)
 
 ## Key Features
 
