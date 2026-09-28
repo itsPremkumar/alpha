@@ -10,7 +10,20 @@ DEVICE ?= auto
 # Detect OS for Windows compatibility
 ifeq ($(OS),Windows_NT)
     SHELL := cmd.exe
-    PYTHON ?= python
+    # After install.bat, backend\.venv IS the project's interpreter, so prefer it
+    # over a bare `python`. Windows has no system-wide python by default, and the
+    # launcher scripts already resolve the venv first (scripts/serve.sh's
+    # _pick_python); without this, `make dev` died at its very first recipe with
+    # "process_begin: CreateProcess(NULL, python ./scripts/check.py, ...) failed"
+    # on exactly the machine install.bat had just succeeded on. `?=` throughout, so
+    # `make PYTHON=... dev` still overrides, and a checkout with no venv yet falls
+    # back to the PATH lookup.
+    ALPHA_VENV_PYTHON := $(wildcard backend\.venv\Scripts\python.exe)
+    ifneq ($(ALPHA_VENV_PYTHON),)
+        PYTHON ?= $(ALPHA_VENV_PYTHON)
+    else
+        PYTHON ?= python
+    endif
     # Run repo shell scripts through Git Bash when Make is launched from cmd.exe / PowerShell.
     RUN_SHELL_SCRIPT = call scripts\run-with-git-bash.cmd
 else
