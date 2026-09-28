@@ -15,10 +15,14 @@ from alpha.company.models import CompanyProject
 
 logger = logging.getLogger(__name__)
 
-# `ALPHA_KANBAN_HOME` is the supported knob. The legacy `HERMES_HOME` and
-# `~/.hermes` names are read only so an existing board keeps resolving; they are
-# deprecated and never documented as new configuration.
-DEFAULT_KANBAN_HOME = Path(os.environ.get("ALPHA_KANBAN_HOME", os.environ.get("HERMES_HOME", Path.home() / ".hermes")))
+# `ALPHA_KANBAN_HOME` is the supported knob. The fallback is a dedicated
+# `.alpha/kanban` directory beside the project's other runtime state, matching
+# the `ALPHA_HOME` convention.
+#
+# This must stay a *dedicated* directory: the board database lives beneath it.
+# Never fall back to `HOME` or `Path.home()` itself here, which would put a
+# database path directly in the user's home directory.
+DEFAULT_KANBAN_HOME = Path(os.environ.get("ALPHA_KANBAN_HOME", Path.home() / ".alpha" / "kanban"))
 DEFAULT_BOARD_DB = DEFAULT_KANBAN_HOME / "kanban" / "boards" / "it-company-ops" / "kanban.db"
 
 

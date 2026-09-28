@@ -7,15 +7,15 @@ import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers.company import router as company_router
 from alpha.company import (
     AutonomousCompanyEngine,
     EnterpriseKanbanAdapter,
-    SwarmLocalBridge,
     ProductionLineEngine,
     ProductionStage,
+    SwarmLocalBridge,
 )
 from alpha.tools.builtins.company_tool import company_tool
+from app.gateway.routers.company import router as company_router
 
 
 def test_local_bridge_bot_discovery():
@@ -108,11 +108,9 @@ def test_company_tool_swarm_and_production_actions():
 
     # 2. swarm_bots action
     res_bots = company_tool.invoke({"action": "swarm_bots", "org_id": org_id})
-    # ...and the pre-rename action name still resolves.
-    res_bots_legacy = company_tool.invoke({"action": "hermes_bots", "org_id": org_id})
-    assert res_bots_legacy == res_bots
     bots_data = json.loads(res_bots)
     assert "discovered_bots_count" in bots_data
+    assert "swarm_installed" in bots_data
 
     # 3. production_submit action
     res_submit = company_tool.invoke(
@@ -149,12 +147,14 @@ def test_gateway_rest_swarm_and_production_endpoints():
     app.include_router(company_router)
     client = TestClient(app)
 
-    # 1. GET /api/company/swarm/bots (and its deprecated alias)
+    # 1. GET /api/company/swarm/bots
     res_bots = client.get("/api/company/swarm/bots")
-    res_bots_legacy = client.get("/api/company/hermes/bots")
-    assert res_bots_legacy.status_code == res_bots.status_code
     assert res_bots.status_code == 200
     assert "discovered_bots_count" in res_bots.json()
+    # The pre-rename alias routes were removed in the rename, so they must be
+    # genuinely absent rather than silently answering.
+    assert client.get("/api/company/bots").status_code == 404
+    assert client.get("/api/company/hermes/bots").status_code == 404
 
     # 2. POST /api/company/production-line/submit
     res_sub = client.post(

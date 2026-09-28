@@ -37,11 +37,7 @@ class ContinuousSelfImprovementEngine:
 
         insights = [
             f"Cycle {cycle_num}: {activity}",
-            (
-                f"Autonomous failover kept organizational health at {state.overall_health_percent}%."
-                if state.overall_health_percent is not None
-                else "Organizational health has not been measured yet; no failover health figure available."
-            ),
+            (f"Autonomous failover kept organizational health at {state.overall_health_percent}%." if state.overall_health_percent is not None else "Organizational health has not been measured yet; no failover health figure available."),
             (
                 f"Zero-wasted-compute preserved operational stamina across {state.sleeping_bots_count} idle specialist bots."
                 if state.attendance_measured
@@ -71,9 +67,7 @@ class ContinuousSelfImprovementEngine:
             insights=insights,
             improved_playbooks=playbook_updates,
             calibrated_bots=calibrated_bots,
-            kpi_delta_summary=(
-                f"Health: {health_text} | Active Bots: {bots_text} | Running Tasks: {state.running_tasks_count}"
-            ),
+            kpi_delta_summary=(f"Health: {health_text} | Active Bots: {bots_text} | Running Tasks: {state.running_tasks_count}"),
         )
 
         state.evolution_journal.append(record)

@@ -11,13 +11,9 @@ from alpha.company.archetypes import (
 from alpha.company.attendance import AttendanceLedgerEngine, AttendanceStatus, BotHeartbeat
 from alpha.company.bot_medic import BotMedicEngine, HealingReport
 from alpha.company.discovery import ContinuousWorkDiscoveryEngine
+from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter
 from alpha.company.executive import ExecutiveDigest, ExecutiveIntelligenceLayer
 from alpha.company.group_chat import GroupChannel, GroupChatEngine, GroupMessage, GroupMessageType
-from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter
-from alpha.company.swarm_bridge import (
-    SwarmBotMetadata,
-    SwarmLocalBridge,
-)
 from alpha.company.kanban import (
     CompanyKanbanEngine,
     KanbanActivityLog,
@@ -55,6 +51,10 @@ from alpha.company.production_line import (
 from alpha.company.responsibility import ResponsibilityEngine
 from alpha.company.self_improvement import ContinuousSelfImprovementEngine
 from alpha.company.strategy import StrategicPlanningEngine, StrategyReplanReport
+from alpha.company.swarm_bridge import (
+    SwarmBotMetadata,
+    SwarmLocalBridge,
+)
 
 __all__ = [
     "OrgState",

@@ -99,9 +99,7 @@ class ExecutiveIntelligenceLayer:
         for k in kpi_summaries:
             if k["basis"] == "seed_demo_data":
                 # Seed reading: no healthy/unhealthy claim, disclose provenance.
-                md_lines.append(
-                    f"- ⚪ **{k['name']}**: {k['current']} (Target: {k['target']}) — `{k['trend']}` (seed example — not a live measurement)"
-                )
+                md_lines.append(f"- ⚪ **{k['name']}**: {k['current']} (Target: {k['target']}) — `{k['trend']}` (seed example — not a live measurement)")
             else:
                 status_icon = "🟢" if k["healthy"] else "🔴"
                 md_lines.append(f"- {status_icon} **{k['name']}**: {k['current']} (Target: {k['target']}) — `{k['trend']}`")

@@ -65,12 +65,6 @@ def company_tool(
     """
     engine = get_autonomous_company_engine()
 
-    # Deprecated alias: ``hermes_bots`` predates ``swarm_bots``. Normalizing
-    # here keeps a pre-rename caller working without the old name appearing
-    # anywhere in the dispatch chain or in the model-facing description.
-    if action == "hermes_bots":
-        action = "swarm_bots"
-
     try:
         if action == "archetypes":
             return json.dumps(engine.list_archetypes(), indent=2)
@@ -196,8 +190,6 @@ def company_tool(
                 return json.dumps(
                     {
                         "swarm_installed": bridge.is_swarm_installed,
-                        # Deprecated alias of ``swarm_installed``.
-                        "hermes_installed": bridge.is_swarm_installed,
                         "discovered_bots_count": len(local_bots),
                         "bot_names": local_bots,
                     },
@@ -353,7 +345,6 @@ def company_tool(
                 return "Error: Organization not found."
             digest = engine.get_roll_call_digest(target_org)
             return digest
-
 
         elif action == "pause":
             target_org = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else "")

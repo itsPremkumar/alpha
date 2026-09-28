@@ -497,9 +497,6 @@ class AutonomousCompanyEngine:
         return {
             "org_id": org_id,
             "swarm_installed": self._swarm_bridge.is_swarm_installed,
-            # Deprecated alias of ``swarm_installed``; kept so a pre-rename
-            # consumer of this response shape does not see a KeyError.
-            "hermes_installed": self._swarm_bridge.is_swarm_installed,
             "discovered_bots_count": len(local_bots),
             "bot_names": local_bots,
             "sample_profiles": {k: v.model_dump() for k, v in list(metadata_map.items())[:10]},

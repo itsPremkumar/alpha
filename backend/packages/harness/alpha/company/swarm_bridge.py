@@ -11,11 +11,16 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-# Default location for local agent installation on Windows/Posix.
-# `ALPHA_SWARM_HOME` is the supported knob. The two legacy names below are read
-# only so an installation that predates the rename keeps resolving its bots
-# directory; they are deprecated and never documented as new configuration.
-DEFAULT_SWARM_DIR = Path(os.environ.get("ALPHA_SWARM_HOME", os.environ.get("HERMES_HOME", Path.home() / ".hermes")))
+# Default location for the local specialist-bot profile directory.
+#
+# `ALPHA_SWARM_HOME` is the supported knob. The fallback is a dedicated
+# `.alpha/swarm` directory beside the project's other runtime state, matching
+# the `ALPHA_HOME` convention the rest of the codebase uses.
+#
+# This must stay a *dedicated* directory. It is walked to discover bot
+# profiles, so defaulting it to the user's home directory would read every file
+# the user owns. Never fall back to `HOME` or `Path.home()` itself here.
+DEFAULT_SWARM_DIR = Path(os.environ.get("ALPHA_SWARM_HOME", Path.home() / ".alpha" / "swarm"))
 
 
 class SwarmBotMetadata(BaseModel):

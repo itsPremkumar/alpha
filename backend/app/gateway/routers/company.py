@@ -115,11 +115,7 @@ async def discover_work(payload: WorkDiscoveryRequest):
         "discovered_items": [i.model_dump() for i in items],
         "workers_should_sleep": should_sleep,
         "signals_source": "caller" if payload.signals is not None else "none",
-        "disclosure": (
-            None
-            if payload.signals is not None
-            else "No discovery signals were supplied, so no work was discovered; this endpoint does not invent signals."
-        ),
+        "disclosure": (None if payload.signals is not None else "No discovery signals were supplied, so no work was discovered; this endpoint does not invent signals."),
     }
 
 
@@ -204,11 +200,7 @@ class KanbanSyncRequest(BaseModel):
     org_id: str | None = Field(default=None, description="Organization ID")
 
 
-# Canonical route.
 @router.get("/swarm/bots")
-# Deprecated alias of /swarm/bots. Kept so a pre-rename client keeps
-# answering; do not reference this path from new code or documentation.
-@router.get("/hermes/bots")
 async def get_swarm_bots(org_id: str | None = None):
     """Discovers and imports local specialist bot profiles."""
     engine = get_autonomous_company_engine()
@@ -220,8 +212,6 @@ async def get_swarm_bots(org_id: str | None = None):
     local_bots = bridge.discover_local_bots()
     return {
         "swarm_installed": bridge.is_swarm_installed,
-        # Deprecated alias of ``swarm_installed``; see organization.sync_swarm_bots.
-        "hermes_installed": bridge.is_swarm_installed,
         "discovered_bots_count": len(local_bots),
         "bot_names": local_bots,
     }
