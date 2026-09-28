@@ -49,6 +49,28 @@ work after enough tries, and for a *startup* failure there is nothing between
 mode entirely: the process never ran, so there is no reason to expect the next
 attempt to behave differently.
 
+## A requested stop is not a failure, and it is not free to fake one
+
+`stop()` and a supervised shutdown both end the child by terminating it, and the
+OS reports that as a nonzero exit — on Windows, reliably. Classifying by exit code
+alone therefore recorded every deliberate stop as `CRASHED`, which (a) told an
+on-call operator the backend had crashed when they had asked it to stop, and
+(b) charged the crash-loop restart budget. The budget exists to stop a backend
+that *cannot start*; a deploy, a config reload, or a supervisor restart spends
+nothing but would have consumed one, so after a handful of ordinary restarts the
+policy walked into `SAFE_MODE` and then `GIVE_UP` — a supervisor refusing to
+start the process it exists to keep up, triggered by nothing worse than being
+asked to restart.
+
+So `SupervisorReason.STOPPED` is a distinct reason. It is recorded in the history
+(how an attempt ended is exactly what that history is for), it does not count
+against the budget, and it ends the episode. It deliberately does not return
+`RESTART`, which would name a next step the supervisor is not going to take. A
+genuine `CRASHED` is untouched, and there is a test pinning that too. Tests:
+`tests/test_supervisor_stop_is_not_a_crash.py`, which proves the child was alive
+before the stop (a heartbeat file on disk, rather than an inference from a
+duration) and runs six clean cycles against a budget of three.
+
 ## Uptime ends the episode
 
 A child that stayed up at least `healthy_run_seconds` did not crash-loop, so the

@@ -84,18 +84,31 @@ class SupervisorReason(StrEnum):
     HEALTH_FAILED = "health_failed"
     #: The process could not be started at all (bad argv, missing binary).
     SPAWN_FAILED = "spawn_failed"
+    #: Ended because someone asked it to - `stop()`, or a supervised shutdown.
+    #:
+    #: Distinct from NORMAL because the *exit code* is not meaningful here: the
+    #: supervisor killed the child itself, and the OS reports that as a nonzero
+    #: status on Windows. Without a name for this case a deliberate stop was
+    #: indistinguishable from a crash, and `CRASHED.counts_against_budget` then
+    #: charged the crash-loop budget for an operator-requested stop.
+    STOPPED = "stopped"
 
     @property
     def counts_against_budget(self) -> bool:
         """Whether this ending consumes restart budget.
 
-        A normal exit never does — an operator stopping the service, or a
-        supervised shutdown, must not spend the crash budget. A spawn failure
-        always does and is treated as the *worst* case, because it means the
-        process never ran at all, so there is no reason to expect the next
-        attempt to behave differently.
+        A normal exit never does, and neither does an operator-requested stop -
+        an operator stopping the service, or a supervised shutdown, must not
+        spend the crash budget. The budget exists to stop a backend that
+        *cannot start*; a deploy or a reload that stops a healthy child would
+        otherwise walk the budget down until the supervisor entered SAFE_MODE and
+        then GIVE_UP, refusing to start the very process it exists to keep up.
+
+        A spawn failure always counts and is treated as the *worst* case, because
+        it means the process never ran at all, so there is no reason to expect
+        the next attempt to behave differently.
         """
-        return self is not SupervisorReason.NORMAL
+        return self not in {SupervisorReason.NORMAL, SupervisorReason.STOPPED}
 
 
 class RestartAction(StrEnum):
@@ -266,6 +279,17 @@ class RestartLedger:
         if not reason.counts_against_budget:
             # A clean stop spends nothing, but a long-enough clean run still
             # ends the episode (handled above).
+            #
+            # An operator-requested stop also ends the episode outright, rather
+            # than returning RESTART. RESTART means "wait the backoff and spawn
+            # again", and the caller has just been told to stop - returning
+            # RESTART here would only be undone by the caller noticing
+            # `_stopping`, and would report a next-step the supervisor is not
+            # going to take. GIVE_UP is the honest action: it means "not
+            # restarting", and the stop reason already says why.
+            if reason is SupervisorReason.STOPPED:
+                self._end_episode()
+                return self._decision(RestartAction.GIVE_UP, "stop requested by the operator", uptime_healthy=healthy)
             return self._decision(RestartAction.RESTART, f"child exited normally after {uptime:.1f}s", uptime_healthy=healthy)
 
         self._restarts.append(_Restart(at=moment, reason=reason, attempt=len(self._restarts) + 1))

@@ -374,6 +374,36 @@ class ProcessSupervisor:
         exit_code = await self._await_exit()
         uptime = self._clock.now() - started_at
 
+        # A stop requested while this attempt was running is a STOP, not a crash.
+        #
+        # `_await_exit` observes `_stopping`, calls `terminate()`, and returns
+        # whatever the OS reports for a process we killed ourselves. On Windows
+        # that is nonzero, so without this check a deliberate stop fell into the
+        # `exit_code != 0` branch below and was recorded as CRASHED. Measured on
+        # this checkout: with the child healthy and alive, `attempts=1` and
+        # `last_exit=None` before the stop, and `last_exit=crashed` with history
+        # `["attempt 2: crashed -> restart"]` after it.
+        #
+        # Two things were wrong with that, and only the first is cosmetic:
+        #   * `status()`/`diagnostics()` told an operator the backend had crashed
+        #     when they had asked it to stop;
+        #   * `ledger.record_end(CRASHED)` charged the crash-loop budget. The
+        #     budget exists to stop a backend that cannot start, and a
+        #     deploy/reload/restart cycle spends it, so repeated clean restarts
+        #     eventually trip the policy into SAFE_MODE and then GIVE_UP - a
+        #     supervisor that refuses to start the thing it exists to start.
+        #
+        # So the stop short-circuits the reason *and* ends the episode: an
+        # intentional shutdown is the healthiest possible end, and must return
+        # budget rather than consume it. A stop is still recorded, because
+        # "how did this attempt end" is exactly what the history is for.
+        if self._stopping.is_set():
+            self._process = None
+            decision = self._ledger.record_end(reason=SupervisorReason.STOPPED, started_at=started_at)
+            self._attempt += 1
+            self._record_attempt(decision, SupervisorReason.STOPPED)
+            return decision, SupervisorReason.STOPPED
+
         if not healthy and exit_code == 0:
             reason = SupervisorReason.HEALTH_FAILED
             self._log.warning("supervisor %s: child exited 0 but never passed its health check", self._name)
