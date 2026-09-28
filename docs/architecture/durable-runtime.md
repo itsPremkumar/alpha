@@ -349,6 +349,67 @@ Honesty about the boundary is part of the feature.
 Each subsystem's own `AGENTS.md` next to the code is the normative contract;
 this page is the map.
 
+## Verifying it actually works
+
+Unit tests prove the parts; they do not prove the wiring. Two things in this repo
+check the difference, and both were worth running.
+
+**`backend/scripts/realtime_gateway_check.py`** boots a real Gateway as a real OS
+process against a real `config.yaml` and a real SQLite database, serves real HTTP
+requests, then **`taskkill /F`**s it mid-flight and starts it again:
+
+```bash
+cd backend && uv run python scripts/realtime_gateway_check.py
+```
+
+It asserts `/health` and `/health/ready` return 200, that a parked session is
+written through the real repository, that 26 tables plus the parked row survive an
+abrupt kill, and that the process comes back healthy with the state intact.
+
+**`tests/test_durable_runtime_realtime.py`** (6 tests) uses real sockets rather
+than a scripted probe. The offline half connects to a black-holed address
+(`192.0.2.1`, RFC 5737 TEST-NET-1) and waits for a real connect timeout; the
+online half connects to a loopback listener the test itself opens. It also spawns
+a real child process, kills it from outside, and confirms the side-effect ledger
+converts the abandoned effect to `UNKNOWN`.
+
+Measured on this machine:
+
+| Measurement | Result |
+|---|---|
+| Real offline probe (TEST-NET-1) | 1005 ms, 989 ms → `offline` |
+| Real online probe (loopback) | 6.7 ms, 5.8 ms → `online` |
+| Real lifespan boot | monitor polled 3×, state `offline` |
+| Real child killed | effect `call_real` → `unknown` |
+| Real crash loop | 3 restarts in 5.0 s → `give_up` |
+| Real shutdown with a broken store | `queue_persisted: failed`, `scheduler_persisted: skipped` |
+
+The cost difference between the two probes is the evidence that the monitor
+measured something rather than being told an answer.
+
+### Two real bugs this found
+
+Both were found by the real-time run and neither was visible to a unit test,
+which is the argument for running it.
+
+**1. A host that booted offline would never have recovered.** The wiring read
+`if monitor.state is not NetworkState.OFFLINE: monitor.start()`, reasoning that a
+host which had just proved the link was down should not poll it. That is exactly
+backwards: the poll loop is the *only* thing that can ever notice the link coming
+back, so such a Gateway would have sat there forever and no parked session would
+ever have resumed. The loop now starts unconditionally; politeness about probing
+a dead link is the backoff ladder's job, and that ladder is already bounded.
+
+**2. Registering two `ADMISSION_CLOSED` shutdown steps silently dropped the first.**
+`PlannedShutdown.register` replaces an existing step for the same phase — a
+deliberate rule, since two writers to the same state is a race. But the Gateway
+has two components that both want admission closed (the safe-recovery service and
+the connectivity services), and registering them separately meant the network stop
+was replaced and **never ran**: the services stayed up and the harness accessor
+kept pointing at a dead one. Everything admission-close needs is now composed into
+a single step, and `tests/test_network_wiring.py` counts the registrations per
+phase so the mistake cannot recur.
+
 ## Not yet implemented
 
 Stated plainly so nobody reads a guarantee into this page that the code does not

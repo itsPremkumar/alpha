@@ -55,6 +55,26 @@ it is part of the trusted base. Preapproved digests must be code-reviewed in
 that first change; after the corresponding file revision lands, promote the
 consumed digest to `file_sha256` and remove it from the preapproval list.
 
+## Real-time durable-runtime check
+
+`backend/scripts/realtime_gateway_check.py` boots a real Gateway as a real OS
+process against a generated `config.yaml` and a real SQLite database, serves real
+HTTP requests, then `taskkill /F`s it mid-flight and starts it again. It asserts
+`/health` and `/health/ready` answer 200, that a parked session is written through
+the real `NetworkWaitRepository`, that the tables and the parked row survive an
+abrupt kill, and that the process returns healthy with the state intact. Run it
+with `cd backend && uv run python scripts/realtime_gateway_check.py`; it exits
+non-zero on any failed assertion and prints the gateway log tail when startup
+fails. State lands in `backend/.alpha/realtime_check/`, so it is disposable and
+never touches a real deployment's database.
+
+It exists because unit tests prove the parts, not the wiring, and because this
+check has already caught two real bugs the unit tests could not: a poll loop that
+never started on a host that booted offline (so it could never notice recovery),
+and two shutdown steps registered for one phase where `register()` replaces per
+phase (so the first was silently dropped). The companion suite
+`backend/tests/test_durable_runtime_realtime.py` uses real sockets and a real
+killed child process rather than doubles.
 ## Backend Static Analysis Commands
 
 The root `detect-thread-boundaries` target statically inventories execution

@@ -37,7 +37,6 @@ from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_E
 from alpha.runtime.events.store.base import RunEventStore
 from alpha.runtime.network import (
     NetworkMonitor,
-    NetworkState,
     NetworkWaitService,
     set_network_wait_service,
 )
@@ -683,8 +682,13 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # poll later. Deliberately awaited: a park decided before the first
             # reading would act on a guess.
             await monitor.check_once()
-            if monitor.state is not NetworkState.OFFLINE:
-                monitor.start()
+            # The loop starts unconditionally, *including* when the first
+            # reading is OFFLINE. Not polling while offline is exactly backwards:
+            # this loop is the only thing that can ever notice the link coming
+            # back, so a host that booted offline would sit there forever and no
+            # parked session would ever resume. Politeness about probing a dead
+            # link is the backoff ladder's job, and it is already bounded.
+            monitor.start()
 
         try:
             yield
@@ -706,13 +710,26 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
                 overall_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
                 per_step_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
             )
-            # Connectivity services stop before the run drain, not after: a probe
-            # in flight during shutdown would publish a transition into a
-            # tearing-down process.
             wait_service = getattr(app.state, "network_waits", None)
             network_monitor = getattr(app.state, "network_monitor", None)
 
-            async def stop_network_services() -> None:
+            # ONE step closes admission, and it does all three things. This is
+            # not tidiness: ``PlannedShutdown.register`` replaces an existing step
+            # for the same phase, so registering the network stop and the recovery
+            # stop as two ADMISSION_CLOSED steps silently dropped the first one --
+            # the network services were never stopped and the harness accessor
+            # kept pointing at a dead service. Compose instead.
+            async def close_admission() -> None:
+                # Recovery first: it is the component that launches new
+                # continuations, so nothing new may start while it drains.
+                if recovery_service is not None:
+                    try:
+                        await recovery_service.stop(timeout=1.0)
+                    finally:
+                        app.state.run_recovery_service = None
+                # Then connectivity. A probe in flight during shutdown would
+                # publish a transition into a tearing-down process, and a registry
+                # still claiming rows would act on services already going away.
                 if wait_service is not None:
                     try:
                         await wait_service.stop(timeout=1.0)
@@ -725,26 +742,12 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
                     finally:
                         app.state.network_monitor = None
 
-            drain.register(
-                ShutdownPhase.ADMISSION_CLOSED,
-                stop_network_services,
-                description="stop the connectivity monitor and the parked-session registry",
-            )
-
-            async def stop_recovery_service() -> None:
-                if recovery_service is None:
-                    return
-                try:
-                    await recovery_service.stop(timeout=1.0)
-                finally:
-                    app.state.run_recovery_service = None
-
             # Admission closes first, so no new recovery pass can launch a
             # continuation while the run manager is being drained.
             drain.register(
                 ShutdownPhase.ADMISSION_CLOSED,
-                stop_recovery_service,
-                description="stop the safe-recovery service so it admits no new continuations",
+                close_admission,
+                description="stop the safe-recovery service, the parked-session registry, and the connectivity monitor",
             )
             if run_manager is not None:
 

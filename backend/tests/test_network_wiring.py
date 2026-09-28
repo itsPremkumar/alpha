@@ -122,9 +122,25 @@ class TestLifespanWiring:
 
     def test_shutdown_stops_the_connectivity_services_first(self) -> None:
         source = _deps_source()
-        assert "stop_network_services" in source
         assert "set_network_wait_service(None)" in source, "shutdown must clear the accessor, or a later park targets a dead service"
-        assert "ShutdownPhase.ADMISSION_CLOSED,\n                stop_network_services" in source, "they stop at admission close, before the run drain"
+        assert "close_admission" in source
+        assert "ShutdownPhase.ADMISSION_CLOSED,\n                close_admission" in source, "they stop at admission close, before the run drain"
+
+    def test_admission_close_is_registered_exactly_once(self) -> None:
+        """Regression guard for a real bug this wiring caused in real time.
+
+        ``PlannedShutdown.register`` replaces an existing step for the same phase,
+        so registering the network stop and the recovery stop as two
+        ``ADMISSION_CLOSED`` steps silently dropped the first: the network
+        services were never stopped and the harness accessor kept pointing at a
+        dead service. Everything admission-close needs must be *composed* into one
+        step, so counting registrations for a phase is a meaningful check.
+        """
+        source = _deps_source()
+        registrations = source.count("ShutdownPhase.ADMISSION_CLOSED,")
+        assert registrations == 1, f"ADMISSION_CLOSED is registered {registrations} times; register() replaces per phase, so the earlier ones are dropped"
+        for phase in ("OPERATIONS_DRAINED", "WORKERS_STOPPED"):
+            assert source.count("ShutdownPhase." + phase + ",") <= 1, phase + " is registered more than once"
 
     def test_no_resume_launcher_is_installed(self) -> None:
         """The continuation path belongs to SafeRunRecoveryService alone.
@@ -137,9 +153,26 @@ class TestLifespanWiring:
         assert "launcher=" not in source, "the Gateway must not install a resume launcher"
         assert "NetworkWaitService(wait_store, network_state=" in source
 
-    def test_the_health_probe_is_not_started_while_offline(self) -> None:
-        """A boot on a dead network should not immediately poll a link it just proved is down."""
-        assert "if monitor.state is not NetworkState.OFFLINE:" in _deps_source()
+    def test_the_poll_loop_starts_even_when_the_host_boots_offline(self) -> None:
+        """Regression guard for a real bug this suite caught in real time.
+
+        The wiring once read ``if monitor.state is not NetworkState.OFFLINE:
+        monitor.start()`` -- reasoning that a host which had just proved the link
+        is down should not poll it. That is exactly backwards: the poll loop is
+        the only thing that can ever notice the link coming *back*, so a Gateway
+        that booted offline would have sat there forever and no parked session
+        would ever have resumed. Politeness about probing a dead link is the
+        backoff ladder's job, and that ladder is already bounded.
+        """
+        source = _deps_source()
+        assert "monitor.start()" in source
+        assert "if monitor.state is not NetworkState.OFFLINE:" not in source, "the loop must start unconditionally, or an offline host never recovers"
+        assert "backoff ladder" in source, "the reasoning must be recorded at the call site, not just in a test"
+
+    def test_the_first_probe_is_awaited_before_the_loop_starts(self) -> None:
+        """A park decided before the first reading would act on a guess."""
+        source = _deps_source()
+        assert source.index("await monitor.check_once()") < source.index("monitor.start()")
 
 
 class TestServiceWithoutALauncher:
