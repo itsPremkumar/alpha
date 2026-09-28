@@ -1124,6 +1124,11 @@ async def wait_run(
 
     # Idempotent reuse is not bound to a run-specific checkpoint id. The latest
     # thread head may be a later run, so do not claim it as this run's result.
+    if completed:
+        # Refresh before building either response shape, so a terminal status is
+        # not read off a record the worker has not finished updating.
+        record = await _refresh_store_backed_run(run_mgr, record)
+
     if completed and not reused:
         try:
             accessor, config = await abuild_checkpoint_state_accessor(
@@ -1134,12 +1139,22 @@ async def wait_run(
             snapshot = await accessor.aget(config)
             snapshot_config = snapshot.config or {}
             if snapshot_config.get("configurable", {}).get("checkpoint_id"):
-                return serialize_channel_values_for_api(snapshot.values)
+                payload = serialize_channel_values_for_api(snapshot.values)
+                # A checkpoint projection cannot express a failed run on its own.
+                # A run that dies before writing a usable checkpoint (recursion
+                # limit, provider auth, tool loop) still has a checkpoint row, so
+                # this branch returned `{}` with HTTP 200 and no status - which a
+                # client cannot distinguish from a successful empty conversation.
+                # Always carry the terminal status, and the error when there is
+                # one, so "the run failed" is never something the caller infers
+                # from an absent field.
+                payload.setdefault("status", record.status.value)
+                if record.error:
+                    payload.setdefault("error", record.error)
+                return payload
         except Exception:
             logger.exception("Failed to fetch final state for run %s", record.run_id)
 
-    if completed:
-        record = await _refresh_store_backed_run(run_mgr, record)
     return {"status": record.status.value, "error": record.error}
 
 

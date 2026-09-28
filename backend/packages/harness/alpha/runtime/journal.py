@@ -55,6 +55,7 @@ logger = logging.getLogger(__name__)
 _LEGACY_SUMMARY_MESSAGE_NAME = "summary"
 _PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES = frozenset({"ask_clarification", "sandbox_network"})
 
+
 # ---------------------------------------------------------------------------
 # Behaviour trace (alpha.observability.trace) — default-off, additive
 # ---------------------------------------------------------------------------
@@ -127,6 +128,44 @@ def _should_persist_human_input_message(message: BaseMessage) -> bool:
         return True
     response = read_human_input_response(message.additional_kwargs)
     return response is not None and response["source"] in _PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES
+
+
+#: Statuses that a stamped ``alpha_tool_meta`` may report. ``success`` is the
+#: only one that means "the tool did what it was asked to do"; the rest are
+#: failures or partials, and each is a real state rather than a flavour of one.
+_TOOL_META_FAILURE_STATUSES = frozenset({"error", "partial_success", "blocked", "denied", "not_found", "no_results"})
+
+
+def _with_honest_tool_status(payload: dict[str, Any]) -> dict[str, Any]:
+    """Correct a ``ToolMessage`` dump whose ``status`` claims success falsely.
+
+    ``ToolMessage.status`` is LangChain's own field and defaults to ``"success"``.
+    A tool that reports a failure by *returning* an error string instead of
+    raising - which is how most of Alpha's file/glob/permission tools behave, so
+    the run can continue - therefore lands in the event feed with
+    ``status: "success"`` beside content reading ``Error: File not found`` or
+    ``Error: Permission denied``. A client rendering tool receipts from this feed
+    showed a green success for a call that had failed, and the persisted record
+    disagreed with what the model was actually told.
+
+    ``ToolErrorHandlingMiddleware`` has already classified the same content and
+    stamped the verdict into ``additional_kwargs["alpha_tool_meta"]``, so the
+    answer is read from there rather than re-derived by sniffing text here -
+    one rule, and the one the rest of the run acted on.
+
+    Only ever *downgrades* a false success. A declared error is never rewritten
+    to success, and a message with no stamp is left exactly as the provider
+    described it.
+    """
+    meta = (payload.get("additional_kwargs") or {}).get("alpha_tool_meta")
+    if not isinstance(meta, dict):
+        return payload
+    stamped = meta.get("status")
+    if not isinstance(stamped, str) or stamped not in _TOOL_META_FAILURE_STATUSES:
+        return payload
+    if payload.get("status") in (None, "success"):
+        payload = {**payload, "status": stamped}
+    return payload
 
 
 def _coerce_seed_message(message: Any) -> Any:
@@ -212,7 +251,10 @@ def _build_history_seed_events(
             metadata = {"caller": "lead_agent", **seed_metadata}
         elif isinstance(message, ToolMessage):
             event_type = "llm.tool.result"
-            content = message.model_dump()
+            # Same status correction the live journal applies, so a seeded row is
+            # indistinguishable from a journaled one - including for a tool that
+            # reported failure by returning an error string.
+            content = _with_honest_tool_status(message.model_dump())
             metadata = dict(seed_metadata)
         else:
             # System / remove / summary artifacts never enter the thread feed.
@@ -857,16 +899,21 @@ class RunJournal(BaseCallbackHandler):
         counters for the same tokens is exactly the kind of thing that makes a
         dashboard disagree with the run it describes.
         """
-        self._model_event("cost.snapshot", payload={"totals": {
-            "input_tokens": self._total_input_tokens,
-            "output_tokens": self._total_output_tokens,
-            "total_tokens": self._total_tokens,
-            "llm_calls": self._llm_call_count,
-            "lead_agent_tokens": self._lead_agent_tokens,
-            "subagent_tokens": self._subagent_tokens,
-            "middleware_tokens": self._middleware_tokens,
-            "by_model": {name: dict(values) for name, values in self._tokens_by_model.items()},
-        }})
+        self._model_event(
+            "cost.snapshot",
+            payload={
+                "totals": {
+                    "input_tokens": self._total_input_tokens,
+                    "output_tokens": self._total_output_tokens,
+                    "total_tokens": self._total_tokens,
+                    "llm_calls": self._llm_call_count,
+                    "lead_agent_tokens": self._lead_agent_tokens,
+                    "subagent_tokens": self._subagent_tokens,
+                    "middleware_tokens": self._middleware_tokens,
+                    "by_model": {name: dict(values) for name, values in self._tokens_by_model.items()},
+                }
+            },
+        )
 
     def on_tool_start(self, serialized, input_str, *, run_id, parent_run_id=None, tags=None, metadata=None, inputs=None, **kwargs):
         """Cache the executing tool name for artifact attribution."""
@@ -948,10 +995,11 @@ class RunJournal(BaseCallbackHandler):
             self._current_run_tool_call_names[tool_call_id] = str(name or "")
 
     def _persist_tool_result_message(self, message: BaseMessage) -> None:
+        payload = message.model_dump()
         self._put(
             event_type=LLM_TOOL_RESULT_EVENT.event_type,
             category=LLM_TOOL_RESULT_EVENT.category,
-            content=message.model_dump(),
+            content=_with_honest_tool_status(payload),
         )
         identity = self._message_identity(message)
         if identity:
