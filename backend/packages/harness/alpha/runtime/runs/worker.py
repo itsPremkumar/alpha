@@ -733,6 +733,24 @@ def _agent_graph(agent_result: Any) -> Any:
     return unwrap_agent_graph(agent_result)
 
 
+def _resolved_model_name(assembly_result: Any) -> str | None:
+    """The model name a factory result actually resolved to, if it reports one.
+
+    Read duck-typed off the returned object rather than importing the assembly
+    type, because a third-party graph factory may return a bare graph, a
+    subclass, or something else entirely. Anything that is not a usable string
+    name yields ``None`` so the caller records nothing rather than persisting a
+    value no reader can display.
+    """
+    descriptor = getattr(assembly_result, "descriptor", None)
+    if descriptor is None:
+        return None
+    effective = getattr(descriptor, "effective_model", None)
+    if isinstance(effective, str) and effective:
+        return effective
+    return None
+
+
 class _SubagentEventBuffer:
     """Buffer subagent ``task_*`` step events and flush them in one locked batch (#3779).
 
@@ -1229,7 +1247,14 @@ async def run_agent(
             # get_available_tools(), which may block on MCP cache
             # initialization — it must not stall the calling event loop
             # (issue #5172).
-            agent = _agent_graph(await run_assembly(agent_factory, **agent_factory_kwargs))
+            #
+            # Keep the unwrapped assembly: it carries the descriptor, and the
+            # descriptor is the only record of which model was *resolved* (a
+            # requested name outside the allowlist falls back to the default).
+            # Unwrapping first threw that away, so the model-name sync below had
+            # nothing truthful to read and every run persisted `model: null`.
+            assembly_result = await run_assembly(agent_factory, **agent_factory_kwargs)
+            agent = _agent_graph(assembly_result)
 
         accessor = CheckpointStateAccessor.bind(
             agent,
@@ -1283,30 +1308,30 @@ async def run_agent(
         runtime_ctx[CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY] = frozenset(pre_existing_message_ids)
         _install_runtime_context(config, runtime_ctx)
 
-        # Capture the effective (resolved) model name from the agent's metadata.
-        # _resolve_model_name in agent.py may return the default model if the
-        # requested name is not in the allowlist — this update ensures the
-        # persisted model_name reflects the actual model used.
+        # Persist the model that actually served this run, so per-model token
+        # attribution and the console's per-model cost column can report it.
         #
-        # This runs even when the record has no model name yet. It used to be
-        # guarded on `record.model_name is not None`, which meant it could only
-        # *correct* a name that had already been recorded. A run that selected
-        # its model through the runtime config key (`config.configurable
-        # .model_name` — documented in the agents guide, and what the web client
-        # sends) rather than through `context.model_name` left the record null
-        # forever: the agent really did run on the requested model, but the row
-        # said `model: null`, per-model token attribution landed in a bucket
-        # literally named "unknown", and the console's per-model cost column
-        # could never be populated. The agent's own metadata is the authority
-        # here, so it is the source whenever it has an answer.
-        resolved = getattr(agent, "metadata", {}) or {}
-        if isinstance(resolved, dict):
-            effective = resolved.get("model_name")
-            # A string only: the model name is persisted as text and rendered as
-            # text, so a non-string here (an int, a list, a nested config dict
-            # from a custom factory) would write a value no reader can display.
-            if isinstance(effective, str) and effective and effective != record.model_name:
-                await run_manager.update_model_name(record.run_id, effective)
+        # The source is the assembly descriptor's `effective_model`, which is
+        # what the factory resolved: `_resolve_model_name` in
+        # agents/lead_agent/agent.py returns the default model when a requested
+        # name is not in the allowlist, so the requested name is not
+        # necessarily the one that ran.
+        #
+        # This previously read `getattr(agent, "metadata", {})` *after* the
+        # assembly had been unwrapped to a bare compiled graph, which has no
+        # `metadata` attribute at all — so it always read `{}` and the sync never
+        # fired. Guarded on `record.model_name is not None`, that also meant it
+        # could only correct a name that was already recorded. Net effect: a run
+        # that chose its model through the runtime config key
+        # (`config.configurable.model_name` — documented in the agents guide, and
+        # what the web client sends) persisted `model: null`, its tokens landed in
+        # a bucket literally named "unknown", and cost was never reportable.
+        effective = _resolved_model_name(assembly_result)
+        # A string only: the model name is persisted and rendered as text, so a
+        # non-string here (an int, a list, a nested config dict from a custom
+        # factory) would write a value no reader can display.
+        if effective and effective != record.model_name:
+            await run_manager.update_model_name(record.run_id, effective)
 
         # 4. Attach checkpointer and store
         if checkpointer is not None:
