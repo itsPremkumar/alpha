@@ -31,6 +31,10 @@ $TrayPidFile     = "$LogDir\tray.pid"
 $GatewayPort     = 8001
 $FrontendPort    = 3000
 $UiUrl           = "http://localhost:$FrontendPort"
+# How old alpha_health.json may be before it stops describing the present.
+# Matches scripts/watchdog.ps1's LauncherHeartbeatMaxAge, which allows for
+# start.ps1 legitimately pausing up to 300 s in backoff.
+$HealthFileMaxAgeSeconds = 360
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -106,6 +110,33 @@ function Get-AlphaState {
     if (Test-Path $HealthFile) {
         try { $health = Get-Content $HealthFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch {}
     }
+
+    # Is the health file still trustworthy?
+    #
+    # The file is written by start.ps1, so a stack started any other way (make
+    # dev, scripts/serve.sh, a leftover from an earlier run) has no writer, and the
+    # file on disk describes a launcher that is long gone. The status branches
+    # below are ordered "failed" -> "starting" -> ... -> "healthy", so a stale
+    # "starting" was matched BEFORE the live probes were ever consulted: the
+    # indicator sat on "booting services" indefinitely while both services
+    # answered HTTP 200. That is exactly the claim this tray exists not to make.
+    #
+    # So the file must earn the right to describe the current state: it has to be
+    # recent, and the PID it names has to still exist. 360 s matches
+    # scripts/watchdog.ps1's LauncherHeartbeatMaxAge, which allows for the
+    # launcher legitimately pausing in backoff.
+    $healthUsable = $false
+    $healthAge = -1
+    if ($health) {
+        try {
+            $healthAge = [int](([DateTime]::UtcNow - [DateTime]::Parse($health.timestamp_utc, $null,
+                [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()).TotalSeconds)
+        } catch {}
+        $healthPidAlive = $false
+        if ($health.pid) { $healthPidAlive = [bool](Get-Process -Id ([int]$health.pid) -ErrorAction SilentlyContinue) }
+        $healthUsable = ($healthAge -ge 0 -and $healthAge -le $HealthFileMaxAgeSeconds -and $healthPidAlive)
+    }
+
     $gw = Test-PortUp -Port $GatewayPort
     $fe = Test-PortUp -Port $FrontendPort
     $gwHttp = $false; $feHttp = $false
@@ -116,8 +147,13 @@ function Get-AlphaState {
         return @{ Key = "stopped"; ToolTip = "Alpha - Stopped"; Icon = $IconStopped }
     }
 
+    # A file that is too old, or that names a PID which no longer exists, is
+    # evidence about the past, not the present. Fall through to the live probes
+    # rather than reporting what it once said.
     $status = ""
-    try { $status = [string]$health.status } catch {}
+    if ($healthUsable) {
+        try { $status = [string]$health.status } catch {}
+    }
 
     if ($status -eq "failed") {
         $detail = ""
@@ -133,12 +169,13 @@ function Get-AlphaState {
         return @{ Key = "degraded"; ToolTip = "Alpha - Degraded (auto-recovery in progress)"; Icon = $IconWorking }
     }
     if ($gwHttp -and $feHttp -and ($status -in @("healthy", "running", ""))) {
-        $age = -1
-        try {
-            $age = [int](([DateTime]::UtcNow - [DateTime]::Parse($health.timestamp_utc, $null,
-                [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()).TotalSeconds)
-        } catch {}
-        return @{ Key = "healthy"; ToolTip = "Alpha - Running (healthy, checked ${age}s ago)"; Icon = $IconHealthy }
+        # Both services answered, so Alpha is genuinely up. The age is reported
+        # only when the health file is usable; otherwise the tooltip says the
+        # state came from a live probe, which is the honest description.
+        if ($healthUsable) {
+            return @{ Key = "healthy"; ToolTip = "Alpha - Running (healthy, checked ${healthAge}s ago)"; Icon = $IconHealthy }
+        }
+        return @{ Key = "healthy"; ToolTip = "Alpha - Running (healthy, live check)"; Icon = $IconHealthy }
     }
     if ($gw -or $fe) {
         return @{ Key = "partial"; ToolTip = "Alpha - Partially up (gateway=$(if ($gwHttp) { 'OK' } else { 'down' }), frontend=$(if ($feHttp) { 'OK' } else { 'down' })) - healing"; Icon = $IconWorking }
