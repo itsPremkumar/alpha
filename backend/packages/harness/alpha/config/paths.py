@@ -13,10 +13,48 @@ VIRTUAL_PATH_PREFIX = "/mnt/user-data"
 
 _SAFE_USER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 _SAFE_INTEGRATION_ID_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
+# Agent names are a narrower charset than user ids, and this mirrors
+# agents_config.AGENT_NAME_PATTERN (`^[A-Za-z0-9-]+$`) on purpose: no dots, no
+# underscores. It is restated here because this module builds the path, and a
+# caller that reached agent_dir()/user_agent_dir() without going through
+# agents_config first had no validation at all (see _validate_agent_name).
+_SAFE_AGENT_NAME_RE = re.compile(r"^[A-Za-z0-9\-]+$")
 _UNSAFE_USER_ID_CHAR_RE = re.compile(r"[^A-Za-z0-9_\-]")
 _SAFE_USER_ID_DIGEST_HEX_LEN = 16
 
+# Windows reserves these as device names in *every* directory, not only at the
+# drive root, and matches them case-insensitively. No directory can be created
+# with one, so accepting such an id only defers the failure to an opaque OSError
+# from a later mkdir. Rejected on every platform, not just Windows: an id that is
+# impossible on Windows is a latent portability bug, and an id must not mean
+# different things depending on which host booted.
+_WINDOWS_RESERVED_DEVICE_NAMES = frozenset({"con", "prn", "aux", "nul", "clock$"} | {f"com{index}" for index in range(1, 10)} | {f"lpt{index}" for index in range(1, 10)})
+
+# A segment long enough to overflow the 260-character MAX_PATH limit once the
+# base directory and the surrounding namespace are prepended. thread_id is
+# already bounded to 64 by alpha.utils.thread_id; user and integration ids had no
+# bound at all, so a 300-character id produced a path no Windows API could open -
+# and the failure surfaced as an unrelated OSError rather than a rejected id.
+_MAX_ID_LENGTH = 64
+
 logger = logging.getLogger(__name__)
+
+
+def _validate_path_segment_length(kind: str, value: str) -> None:
+    """Reject an identifier too long to be a usable path segment."""
+    if len(value) > _MAX_ID_LENGTH:
+        raise ValueError(f"Invalid {kind} {value[:32]!r}...: must be at most {_MAX_ID_LENGTH} characters, got {len(value)}.")
+
+
+def _reject_windows_reserved_name(kind: str, value: str) -> None:
+    """Reject an identifier that names a reserved Windows device.
+
+    See _WINDOWS_RESERVED_DEVICE_NAMES. A trailing dot or space is already
+    excluded by the charsets above, which is the other half of the Windows
+    name-normalization trap; only the bare device names need checking here.
+    """
+    if value.lower() in _WINDOWS_RESERVED_DEVICE_NAMES:
+        raise ValueError(f"Invalid {kind} {value!r}: {value!r} is a reserved Windows device name and cannot be used as a directory name.")
 
 
 def _default_local_base_dir() -> Path:
@@ -37,7 +75,33 @@ def _validate_user_id(user_id: str) -> str:
     # fullmatch for the same reason.
     if not _SAFE_USER_ID_RE.fullmatch(user_id):
         raise ValueError(f"Invalid user_id {user_id!r}: only alphanumeric characters, hyphens, and underscores are allowed.")
+    _validate_path_segment_length("user_id", user_id)
+    _reject_windows_reserved_name("user_id", user_id)
     return user_id
+
+
+def _validate_agent_name(name: str) -> str:
+    """Validate an agent name before using it in filesystem paths.
+
+    The path layer validates its own inputs rather than trusting that a caller
+    happened to route through ``agents_config.validate_agent_name`` first. Before
+    this, ``agent_dir`` interpolated the name straight into the path:
+
+        Paths(base).agent_dir("../../escape")
+        # -> {base}/agents/../../escape      (escapes the agents/ namespace)
+        Paths(base).agent_dir("a/b")
+        # -> {base}/agents/a/b                (creates a nested namespace)
+
+    Both were accepted, because the only validation lived in a different module
+    and every direct caller of agent_dir()/user_agent_dir()/managed_subagent_file()
+    bypassed it. The charset is the existing AGENT_NAME_PATTERN, so no valid
+    agent name changes behaviour.
+    """
+    if not isinstance(name, str) or not _SAFE_AGENT_NAME_RE.fullmatch(name):
+        raise ValueError(f"Invalid agent name {name!r}: must match {_SAFE_AGENT_NAME_RE.pattern}.")
+    _validate_path_segment_length("agent name", name)
+    _reject_windows_reserved_name("agent name", name)
+    return name
 
 
 def _validate_integration_id(integration_id: str) -> str:
@@ -51,6 +115,8 @@ def _validate_integration_id(integration_id: str) -> str:
     # per-integration namespace via ``_join_host_path(..., integration_id, ...)``.
     if integration_id in {".", ".."}:
         raise ValueError(f"Invalid integration_id {integration_id!r}: '.' and '..' are not allowed.")
+    _validate_path_segment_length("integration_id", integration_id)
+    _reject_windows_reserved_name("integration_id", integration_id)
     return integration_id
 
 
@@ -197,11 +263,11 @@ class Paths:
 
     def managed_subagent_file(self, name: str) -> Path:
         """Path to one managed subagent definition."""
-        return self.managed_subagents_dir / f"{name.lower()}.json"
+        return self.managed_subagents_dir / f"{_validate_agent_name(name).lower()}.json"
 
     def agent_dir(self, name: str) -> Path:
         """Legacy per-agent directory (no user isolation): `{base_dir}/agents/{name}/`."""
-        return self.agents_dir / name.lower()
+        return self.agents_dir / _validate_agent_name(name).lower()
 
     def agent_memory_file(self, name: str) -> Path:
         """Legacy per-agent memory file: `{base_dir}/agents/{name}/memory.json`."""
@@ -247,7 +313,7 @@ class Paths:
 
     def user_agent_dir(self, user_id: str, agent_name: str) -> Path:
         """Per-user per-agent directory: `{base_dir}/users/{user_id}/agents/{name}/`."""
-        return self.user_agents_dir(user_id) / agent_name.lower()
+        return self.user_agents_dir(user_id) / _validate_agent_name(agent_name).lower()
 
     def user_agent_memory_file(self, user_id: str, agent_name: str) -> Path:
         """Per-user per-agent memory: `{base_dir}/users/{user_id}/agents/{name}/memory.json`."""

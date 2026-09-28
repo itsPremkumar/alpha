@@ -364,3 +364,176 @@ class TestResolveVirtualPathWithUserId:
         result = paths.resolve_virtual_path("t1", "/mnt/user-data/workspace/file.txt")
         expected_base = paths.sandbox_user_data_dir("t1").resolve()
         assert str(result).startswith(str(expected_base))
+
+
+class TestAgentNameCannotEscapeTheAgentsNamespace:
+    """`agent_dir` used to interpolate the name straight into the path.
+
+    Validation existed, but it lived in `agents_config.validate_agent_name` — a
+    different module. Every direct caller of the three path builders here
+    bypassed it, so this was measured on the pre-fix code:
+
+        Paths(base).agent_dir("../../escape")  -> {base}/agents/../../escape
+        Paths(base).agent_dir("..")             -> {base}/agents/..
+        Paths(base).agent_dir("a/b")            -> {base}/agents/a/b
+
+    The first escapes the `agents/` namespace entirely; the third manufactures an
+    extra directory level inside it. The module whose stated job is "validate an
+    identifier before it becomes a filesystem path segment" had no agent-name
+    check at all, so the security property depended on which caller you reached
+    it through.
+    """
+
+    @pytest.mark.parametrize("name", ["researcher", "data-scientist", "a1", "A1", "x"])
+    def test_ordinary_agent_names_are_unaffected(self, paths: Paths, name: str):
+        assert paths.agent_dir(name) == paths.agents_dir / name.lower()
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "../../escape",
+            "..",
+            ".",
+            "a/b",
+            "a\\b",
+            "/abs",
+            "sub/../../out",
+            "..\\..\\out",
+            "na me",
+            "",
+        ],
+    )
+    def test_rejects_traversal_and_separators(self, paths: Paths, name: str):
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            paths.agent_dir(name)
+
+    def test_user_agent_dir_is_guarded_too(self, paths: Paths):
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            paths.user_agent_dir("u1", "../../escape")
+
+    def test_managed_subagent_file_is_guarded_too(self, paths: Paths):
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            paths.managed_subagent_file("../../escape")
+
+    def test_the_path_layer_is_never_more_permissive_than_the_config_layer(self, paths: Paths):
+        """`agents_config` is the API/config surface; `paths` builds directories.
+
+        They are allowed to disagree, but only in one direction. The path layer
+        adds bounds the config surface has no reason to know about — a 64-char
+        segment cap and the Windows reserved-device check — so a name the
+        config layer accepts can still be refused as a *directory*. The
+        unacceptable direction is the other one: the path layer accepting a name
+        the config layer rejects, which would let an unvalidated caller build a
+        path the validated caller cannot.
+
+        Compared behaviourally rather than by `.pattern` text, because the two
+        spell the same charset differently (`^[A-Za-z0-9-]+$` vs
+        `^[A-Za-z0-9\\-]+$`) and a string comparison would fail on that escaping
+        alone while proving nothing about the contract.
+        """
+        from alpha.config.agents_config import validate_agent_name
+
+        probes = [
+            "researcher",
+            "data-scientist",
+            "a1",
+            "A1",
+            "x",
+            "a_b",
+            "a.b",
+            "a b",
+            "a/b",
+            "../x",
+            "",
+            "CON",
+            "nul",
+            "x" * 65,
+            "x" * 300,
+        ]
+        for probe in probes:
+            try:
+                validate_agent_name(probe)
+                config_accepts = True
+            except ValueError:
+                config_accepts = False
+            try:
+                paths.agent_dir(probe)
+                paths_accepts = True
+            except ValueError:
+                paths_accepts = False
+            if paths_accepts and not config_accepts:
+                pytest.fail(f"paths accepts {probe[:20]!r} but agents_config.validate_agent_name rejects it")
+            if config_accepts and not paths_accepts:
+                # Expected and safe: a filesystem bound the config surface has no
+                # reason to enforce. Name the case so a new one is a deliberate
+                # decision rather than an accident.
+                assert len(probe) > 64 or probe.lower() in {"con", "nul"}, f"unexpected extra refusal for {probe[:20]!r}"
+
+
+class TestReservedWindowsDeviceNames:
+    """A reserved device name cannot be a directory on Windows.
+
+    `CON`, `NUL`, `PRN`, `AUX` and `COM1`-`COM9`/`LPT1`-`LPT9` are reserved in
+    *every* directory, not just at the drive root, and matched
+    case-insensitively. Accepting such an id only defers the failure to an opaque
+    `OSError` from a later `mkdir`, so the id is refused up front with a reason
+    that names the cause.
+
+    The check runs on every platform, not only Windows: an id that is impossible
+    on Windows is a latent portability bug, and an id must not mean different
+    things depending on which host booted.
+    """
+
+    @pytest.mark.parametrize("reserved", ["CON", "con", "NUL", "PrN", "AUX", "COM1", "com9", "LPT1", "lpt9"])
+    def test_reserved_user_ids_are_refused(self, paths: Paths, reserved: str):
+        with pytest.raises(ValueError, match="Invalid user_id"):
+            paths.user_dir(reserved)
+
+    @pytest.mark.parametrize("reserved", ["CON", "nul", "COM1"])
+    def test_reserved_integration_ids_are_refused(self, paths: Paths, reserved: str):
+        from alpha.config.paths import _validate_integration_id
+
+        with pytest.raises(ValueError, match="Invalid integration_id"):
+            _validate_integration_id(reserved)
+
+    @pytest.mark.parametrize("reserved", ["CON", "nul", "COM1"])
+    def test_reserved_agent_names_are_refused(self, paths: Paths, reserved: str):
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            paths.agent_dir(reserved)
+
+    @pytest.mark.parametrize("legit", ["console", "com10", "lpt", "nullable", "auxiliary", "conduit"])
+    def test_names_that_merely_start_with_a_reserved_word_are_allowed(self, paths: Paths, legit: str):
+        # Windows only reserves an exact match, so over-matching here would
+        # refuse ordinary ids.
+        assert paths.user_dir(legit).name == legit
+
+
+class TestIdLengthIsBounded:
+    """An unbounded id overflows MAX_PATH once the namespace is prepended.
+
+    `thread_id` was already capped at 64 by `alpha.utils.thread_id`;
+    `user_id` and `integration_id` had no cap at all. A 300-character id
+    produced a 357-character path that no Windows API could open, and the
+    failure surfaced as an unrelated `OSError` rather than a rejected id.
+    """
+
+    def test_user_dir_accepts_the_maximum_length(self, paths: Paths):
+        assert paths.user_dir("u" * 64).name == "u" * 64
+
+    def test_user_dir_refuses_beyond_the_maximum(self, paths: Paths):
+        with pytest.raises(ValueError, match="Invalid user_id"):
+            paths.user_dir("u" * 65)
+
+    def test_integration_id_refuses_beyond_the_maximum(self, paths: Paths):
+        from alpha.config.paths import _validate_integration_id
+
+        with pytest.raises(ValueError, match="Invalid integration_id"):
+            _validate_integration_id("i" * 65)
+
+    def test_agent_name_refuses_beyond_the_maximum(self, paths: Paths):
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            paths.agent_dir("a" * 65)
+
+    def test_the_error_names_the_limit_and_the_actual_length(self, paths: Paths):
+        with pytest.raises(ValueError, match="at most 64 characters, got 300"):
+            paths.user_dir("u" * 300)
