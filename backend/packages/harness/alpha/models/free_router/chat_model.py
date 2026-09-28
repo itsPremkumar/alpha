@@ -129,9 +129,7 @@ class ChatFreeLLM(BaseChatModel):
         """Convert tools to OpenAI schema and carry them on a copy."""
         del kwargs  # accepted for BaseChatModel parity; not forwarded upstream
         converted = [convert_to_openai_tool(tool) for tool in tools]
-        return self.model_copy(
-            update={"bound_tools": converted, "bound_tool_choice": tool_choice or None}
-        )
+        return self.model_copy(update={"bound_tools": converted, "bound_tool_choice": tool_choice or None})
 
     def _extra_body(self, stop: list[str] | None) -> dict[str, Any]:
         extra: dict[str, Any] = {}
@@ -145,12 +143,34 @@ class ChatFreeLLM(BaseChatModel):
 
     def _result_to_message(self, result: FreeChatResult) -> AIMessage:
         tool_calls, invalid = _normalize_tool_calls(result.tool_calls)
+        # ``model_name`` / ``model_provider`` are the keys every attribution
+        # consumer already reads: RunJournal buckets per-model token usage from
+        # them into ``runs.token_usage_by_model``, TokenUsageMiddleware feeds the
+        # process meter with them, and the console prices a run from them.
+        #
+        # This path set only ``free_llm_provider`` / ``free_llm_model``, so every
+        # run on a keyless model recorded its tokens into a bucket literally named
+        # "unknown" and the per-model cost column could never be populated - the
+        # same unattributable spend a missing run-row model name produced, reached
+        # through the router instead. Both vocabularies are now set: the
+        # free_llm_* pair stays because it names the *gateway* that served the
+        # call, which is not the same fact as the model id.
+        model_id = result.model_id or ""
+        provider = result.provider or ""
+        if provider and model_id:
+            model_name = f"{provider}:{model_id}"
+        else:
+            # Never a bare "provider:" - a trailing colon is not a model name, and
+            # it would create a bucket keyed on nothing.
+            model_name = provider or model_id
         message = AIMessage(
             content=result.text,
             tool_calls=tool_calls,
             invalid_tool_calls=invalid,
             usage_metadata=_usage_to_metadata(result.usage),
             response_metadata={
+                "model_name": model_name,
+                "model_provider": provider,
                 "free_llm_provider": result.provider,
                 "free_llm_model": result.model_id,
                 "latency_ms": round(result.latency_ms, 1),
