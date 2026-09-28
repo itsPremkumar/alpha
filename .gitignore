@@ -102,10 +102,16 @@ extensions_config.json
 mcp_config.json
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
+# Real environment files are never tracked; the *.example templates are.
+# Both patterns are unanchored, so they cover nested templates too, and the
+# negations are repeated per directory for the same reason: `!.env.example`
+# only un-ignores a root-level path once `.env.*` has matched a nested one.
 .env
 .env.*
 !.env.example
+!*/.env.example
 !.env.production.example
+!*/*.env.production.example
 *.pem
 *.key
 secrets/
