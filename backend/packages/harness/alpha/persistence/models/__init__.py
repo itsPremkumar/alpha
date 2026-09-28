@@ -25,6 +25,7 @@ from alpha.persistence.feedback.model import FeedbackRow
 from alpha.persistence.managed_subagents.model import ManagedSubagentRow
 from alpha.persistence.mcp_tasks.model import McpTaskRow
 from alpha.persistence.models.run_event import RunEventRow
+from alpha.persistence.network_waits.model import NetworkWaitRow
 from alpha.persistence.personal_access_tokens.model import PersonalAccessTokenRow
 from alpha.persistence.projects.model import ProjectRow
 from alpha.persistence.run.model import RunRow
@@ -44,6 +45,7 @@ __all__ = [
     "FeedbackRow",
     "McpTaskRow",
     "ManagedSubagentRow",
+    "NetworkWaitRow",
     "PersonalAccessTokenRow",
     "ProjectRow",
     "RunEventRow",

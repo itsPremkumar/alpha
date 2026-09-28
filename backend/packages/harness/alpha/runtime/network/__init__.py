@@ -18,6 +18,8 @@ What lives here
                           about the work.
 :mod:`.probe`             Bounded TCP reachability. No payload, no user data.
 :mod:`.monitor`           Poll, fold, apply hysteresis, back off, publish.
+:mod:`.wait_registry`     Durable parked sessions: park, bounded resume, and
+                          the join back to the recovery owner.
 =========================  =================================================
 
 The four rules that matter
@@ -72,6 +74,14 @@ from alpha.runtime.network.states import (
     is_connected,
     is_offline,
 )
+from alpha.runtime.network.wait_registry import (
+    NetworkWaitPolicy,
+    NetworkWaitService,
+    NetworkWaitStatus,
+    NetworkWaitStore,
+    ParkOutcome,
+    ResumeOutcome,
+)
 
 __all__ = [
     "CONNECTED_NETWORK_STATES",
@@ -89,9 +99,15 @@ __all__ = [
     "NetworkMonitorConfig",
     "NetworkObservation",
     "NetworkState",
+    "NetworkWaitPolicy",
+    "NetworkWaitService",
+    "NetworkWaitStatus",
+    "NetworkWaitStore",
     "NetworkWaitDecision",
+    "ParkOutcome",
     "ProbeOutcome",
     "ProbeTarget",
+    "ResumeOutcome",
     "ScriptedProbe",
     "TcpConnectivityProbe",
     "classify_network_error",
