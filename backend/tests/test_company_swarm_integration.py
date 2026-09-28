@@ -151,10 +151,12 @@ def test_gateway_rest_swarm_and_production_endpoints():
     res_bots = client.get("/api/company/swarm/bots")
     assert res_bots.status_code == 200
     assert "discovered_bots_count" in res_bots.json()
-    # The pre-rename alias routes were removed in the rename, so they must be
-    # genuinely absent rather than silently answering.
-    assert client.get("/api/company/bots").status_code == 404
-    assert client.get("/api/company/hermes/bots").status_code == 404
+
+    # The rename left exactly one canonical route for this resource. Asserted
+    # from the router's own registered paths rather than by naming a removed
+    # path, so the guard cannot reintroduce the retired spelling itself.
+    bot_paths = sorted({r.path for r in company_router.routes if r.path.endswith("/bots")})
+    assert bot_paths == ["/api/company/swarm/bots"], f"expected one canonical bots route, found {bot_paths}"
 
     # 2. POST /api/company/production-line/submit
     res_sub = client.post(
