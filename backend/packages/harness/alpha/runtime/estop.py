@@ -1,4 +1,4 @@
-"""Global Emergency Stop (ESTOP) System inspired by Hermes Agent."""
+"""Global Emergency Stop (ESTOP) System."""
 
 from __future__ import annotations
 

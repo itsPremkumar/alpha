@@ -166,7 +166,7 @@ recording:
 General-purpose inputs mean a training run cannot be distinguished from ordinary compute. Any monitoring
 scheme that assumes otherwise is broken by construction. This is a useful corrective to optimistic
 forecasting, and it also means on-device attestation and provenance recording are the only durable
-verification primitive — which is why `01` and the OpenClaw work in `03` both land on provenance.
+verification primitive — which is why `01` and the reference-implementation work in `03` both land on provenance.
 
 ## Sources
 

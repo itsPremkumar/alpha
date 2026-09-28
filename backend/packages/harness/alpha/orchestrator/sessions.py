@@ -1,6 +1,6 @@
 """11. SQLite session catalog + thread bindings + branch/rewind helpers.
 
-OpenClaw 2.0 moved sessions/transcripts into SQLite with searchable,
+The reference design moved sessions/transcripts into SQLite with searchable,
 branchable, rewindable conversations + durable channel/topic bindings.
 Alpha persists checkpoints in sqlite/postgres via LangGraph; this adds
 the missing lightweight catalog index (sqlite) that maps

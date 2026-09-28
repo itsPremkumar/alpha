@@ -1,6 +1,6 @@
 """Reflexion & Episodic Trajectory Memory Engine.
 
-Synthesizes the Reflexion (Shinn et al.), Hermes learning loop, and DGM patterns:
+Synthesizes the Reflexion (Shinn et al.) learning loop and DGM patterns:
 Converts failures, tool errors, and repair attempts into durable structured reflections
 stored in SQLite so future agent sessions never repeat identical mistakes.
 """

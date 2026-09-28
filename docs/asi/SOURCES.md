@@ -80,10 +80,10 @@ and Claude-Opus-4.8 at critical debugging points; the behavioural analogue of mo
 
 ## `03_agentic_architecture.md`
 
-**OpenClaw 2026.9.6**, MIT, OpenClaw Foundation. Released 2026-09-23.
+**Reference implementation 2026.9.6**, MIT. Released 2026-09-23.
 - https://github.com/openclaw/openclaw — 390,548 stars at retrieval
 - https://docs.openclaw.ai/start/why-openclaw — **the seven testable properties**, the single-trust-envelope
-  critique, the Hermes `SECURITY.md` quote, and the "What we do not claim" section
+  critique, the upstream `SECURITY.md` quote, and the "What we do not claim" section
 - https://docs.openclaw.ai/llms.txt — full documentation index
 - https://docs.openclaw.ai/channels/bot-loop-protection — bot-to-bot loop protection defaults
 - https://docs.openclaw.ai/channels/ambient-room-events — rooms listen but stay silent
@@ -94,7 +94,7 @@ and Claude-Opus-4.8 at critical debugging points; the behavioural analogue of mo
 - https://github.com/openclaw/openclaw/releases — release evidence bundles and the named operator lane
   waiver for 2026.9.6
 
-**Hermes Agent v0.21.5**, MIT, Nous Research. Released 2026-09-24. 249,100 stars.
+**Upstream agent v0.21.5**, MIT, Nous Research. Released 2026-09-24. 249,100 stars.
 - https://github.com/NousResearch/hermes-agent
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/goals — `/goal`, the auxiliary judge with
   strict JSON verdict, `wait` parking, subgoals, completion contracts
@@ -181,7 +181,7 @@ Retrieved 2026-09-26, after the first AVO pass. These carry the paper-level and 
   **FlashAttention-4** (arXiv:2603.05451)
 - **"Where Security Fits in an AI Agent Stack"** — https://developer.nvidia.com/blog/where-security-fits-in-an-ai-agent-stack/
   — Johnny Greco, Kirit Thadaka, Ali Golshan, Alex Watson; 21 August 2026. Supports: behavioral vs
-  infrastructure controls; the five-layer stack (NemoClaw / Omnigent / Claude Code-Codex-Hermes-Pi-DSH /
+  infrastructure controls; the five-layer stack (NemoClaw / Omnigent / Claude Code-Codex-Pi-DSH /
   OpenShell / Dynamo); the harness-programmability argument that "a layer designed to be modified cannot
   reliably enforce controls against its own modification"; boundary establishment at launch with delegated
   child runtimes for subagents; "a control that the agent can decline to invoke is not an effective
@@ -204,7 +204,7 @@ Retrieved 2026-09-26, after the first AVO pass. These carry the paper-level and 
 - **"Four Ways to Deploy More Secure AI Agents"** —
   https://developer.nvidia.com/blog/four-ways-to-deploy-more-secure-ai-agents/
 
-**NVIDIA NemoClaw**, confirmed and relevant: announced at GTC 2026, an open-source stack for the OpenClaw
+**NVIDIA NemoClaw**, confirmed and relevant: announced at GTC 2026, an open-source stack for the reference implementation
 community providing sandboxing (OpenShell kernel-level), fleet management and audit.
 - https://www.nvidia.com/en-us/ai/nemoclaw/
 - https://developer.nvidia.com/blog/building-a-memory-driven-agent-with-nvidia-nemoclaw/ — describes a
@@ -212,14 +212,14 @@ community providing sandboxing (OpenShell kernel-level), fleet management and au
 - https://www.nextplatform.com/code/2026/03/18/the-open-agentic-ai-world-according-to-nvidia/5209529 —
   Alpamayo, BioNeMo, Nemotron 3 in one framing
 
-Note: NVIDIA positions NemoClaw as enabling *"Nous Research Hermes… self-improving AI agents that share
-collective wisdom."* The two projects are integrated, so treat NemoClaw's sandbox claims and Hermes'
+Note: NVIDIA positions NemoClaw as enabling *"Nous Research… self-improving AI agents that share
+collective wisdom."* The two projects are integrated, so treat NemoClaw's sandbox claims and the upstream's
 capability claims as coming from the same commercial interest when assessing either.
 
 ### "ChatGPT Astra"
 
 No OpenAI model by that name was found in any primary source. Verified OpenAI models in this period are
-**GPT-5.5** and the **GPT-6 Sol / Terra / Luna** variants named in the Hermes v0.21.5 release notes.
+**GPT-5.5** and the **GPT-6 Sol / Terra / Luna** variants named in the upstream v0.21.5 release notes.
 
 Recorded as **UNCONFIRMED**. If "Astra" is a real model I failed to find, provide a source and I will
 research it properly.

@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Snapshot the working tree (Hermes-style checkpoint) and restore on demand.
+    Snapshot the working tree (checkpoint) and restore on demand.
 
 .DESCRIPTION
     Uses `git stash create`, which produces a dangling commit WITHOUT touching

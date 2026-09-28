@@ -13,10 +13,8 @@ from alpha.company.bot_medic import BotMedicEngine, HealingReport
 from alpha.company.discovery import ContinuousWorkDiscoveryEngine
 from alpha.company.executive import ExecutiveDigest, ExecutiveIntelligenceLayer
 from alpha.company.group_chat import GroupChannel, GroupChatEngine, GroupMessage, GroupMessageType
-from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter, HermesKanbanAdapter
+from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter
 from alpha.company.swarm_bridge import (
-    HermesBotMetadata,
-    HermesLocalBridge,
     SwarmBotMetadata,
     SwarmLocalBridge,
 )
@@ -91,14 +89,11 @@ __all__ = [
     "synthesize_custom_archetype",
     "SwarmBotMetadata",
     "SwarmLocalBridge",
-    "HermesBotMetadata",
-    "HermesLocalBridge",
     "ProductionStage",
     "StageArtifact",
     "ProductionLineRun",
     "ProductionLineEngine",
     "EnterpriseKanbanAdapter",
-    "HermesKanbanAdapter",
     "GroupChannel",
     "GroupMessage",
     "GroupMessageType",

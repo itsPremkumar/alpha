@@ -74,7 +74,6 @@ from alpha.swarm.watchdog import SwarmWatchdog
 from alpha.swarm.worker import (
     CodingWorktreeWorker,
     EphemeralSubagentWorker,
-    HermesBotWorker,
     SpecialistBotWorker,
     SwarmWorkerBackend,
 )
@@ -94,7 +93,6 @@ __all__ = [
     "DeliberationPolicy",
     "DeliberationReport",
     "EphemeralSubagentWorker",
-    "HermesBotWorker",
     "LeaderCandidate",
     "LeaderElection",
     "PlanCandidate",

@@ -1,4 +1,4 @@
-"""Core orchestrator additions (OpenClaw 2.0-inspired), additive-only.
+"""Core orchestrator additions (reference-inspired), additive-only.
 
 This package unifies 15 advanced orchestrator capabilities on top of the
 existing Alpha harness modules. It never replaces existing owners:

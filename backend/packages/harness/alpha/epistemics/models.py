@@ -10,7 +10,7 @@ from typing import Any
 
 
 class EpistemicStatus(str, Enum):
-    """Rigorous epistemic statuses from hermes-agi-asi-harness."""
+    """Rigorous epistemic statuses."""
     FACT = "fact"                    # Empirically verified via direct execution or code inspection
     OBSERVATION = "observation"      # Direct tool observation or command output
     INFERENCE = "inference"          # Deductive conclusion from verified facts

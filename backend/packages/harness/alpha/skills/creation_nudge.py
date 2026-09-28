@@ -1,9 +1,9 @@
 """Skill-creation nudge: cadence-gated cue to review the skill library.
 
-Port of Hermes ``turn_finalizer.py:675-682`` semantics (read-only reference):
+Port of the reference ``turn_finalizer.py:675-682`` semantics (read-only reference):
 the review cue fires only when ``interval > 0 AND iters_since_skill >=
 interval AND the skill tool is actually available``; firing resets the
-counter so the next cue needs a full cadence again. Resume mirrors Hermes
+counter so the next cue needs a full cadence again. Resume mirrors the
 ``turn_context.py:701-706``: a persisted user-turn count hydrates the
 counter by modulo (``prior % interval``), never inventing progress that the
 history does not contain.
@@ -33,7 +33,7 @@ __all__ = [
 
 
 def should_review_skills(interval: int, iters_since_skill: int, *, skill_tool_available: bool) -> bool:
-    """Hermes ``turn_finalizer.py:675-682`` gate: all three conditions required.
+    """``turn_finalizer.py:675-682`` gate: all three conditions required.
 
     Disabled cadence (``interval <= 0``) never fires, and a missing skill
     tool never fires (the agent could not act on the cue anyway).
@@ -50,9 +50,9 @@ class SkillNudgeState:
     """Tool-iteration counter for the skill-review cue (one per session).
 
     ``skill_tool_available`` is part of the state's environment (mirrors
-    Hermes reading ``valid_tool_names`` at finalizer time); it can be
+    the reference reading ``valid_tool_names`` at finalizer time); it can be
     re-evaluated between turns, and a count accumulated while the tool was
-    unavailable fires as soon as the tool returns — Hermes only resets the
+    unavailable fires as soon as the tool returns — the reference only resets the
     counter on fire, never on a suppressed check.
     """
 
@@ -63,7 +63,7 @@ class SkillNudgeState:
     def tick(self, tool_iterations: int) -> bool:
         """Advance by this turn's tool iterations; True when the cue fires.
 
-        The counter resets to 0 on fire (Hermes zeroes exactly when the cue
+        The counter resets to 0 on fire (the reference zeroes exactly when the cue
         fires; a surplus past the interval is not carried over). When the
         cue is disabled or the tool is unavailable the count is KEPT, never
         silently zeroed. Non-positive increments are ignored — tool
@@ -82,7 +82,7 @@ class SkillNudgeState:
 
 
 def hydrate(prior_user_turn_count: int, interval: int) -> SkillNudgeState:
-    """Resume a state from persisted history (Hermes ``turn_context.py:701-706``).
+    """Resume a state from persisted history (``turn_context.py:701-706``).
 
     ``prior % interval`` reconstructs the position inside the current
     cadence cycle (a fire is assumed at each multiple, matching the

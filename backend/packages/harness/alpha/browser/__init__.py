@@ -1,4 +1,4 @@
-"""Headless Browser Suite with CDP & Stealth automation inspired by Hermes Agent."""
+"""Headless Browser Suite with CDP & Stealth automation."""
 
 from alpha.browser.cdp_bridge import (
     BrowserMode,

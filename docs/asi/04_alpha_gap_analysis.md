@@ -43,7 +43,7 @@ fraction of the cost of the frontier work.
 
 ## Part 2 — Measured against the seven enterprise properties
 
-Using OpenClaw's rubric ([`03_agentic_architecture.md`](03_agentic_architecture.md) §1).
+Using the reference implementation's rubric ([`03_agentic_architecture.md`](03_agentic_architecture.md) §1).
 
 | # | Property | alpha | Evidence |
 |---|---|---|---|
@@ -75,9 +75,9 @@ envelope holding the credentials and the shell, it can.
 
 The correct immediate action is not to adopt a sandbox. It is to stop describing
 `bots/authority_ceiling.py` as a boundary anywhere — code comments, docs, or reports — and to record it as
-a **known, stated limitation**, the way OpenClaw records its own.
+a **known, stated limitation**, the way the reference implementation records its own.
 
-**Property 3's missing half is cheap and high value.** OpenClaw's most useful security contribution is
+**Property 3's missing half is cheap and high value.** The reference implementation's most useful security contribution is
 simply *stating which boundaries are security and which are convenience*. alpha has no such statement, so a
 reader cannot tell which controls to rely on.
 
@@ -178,12 +178,12 @@ Stated explicitly, because a gap analysis that only lists deficits produces bad 
 
 | Capability | alpha | Nearest comparator |
 |---|---|---|
-| Swarm DAG execution | `swarm/` with coordinator, worker, consensus, aggregator | Hermes delegates to child agents; no DAG |
-| Group deliberation | `groups/` (799-line runner) + `deliberation/` (debate, adversary, council, MoA, verifier) | Hermes has council/roles; no comparable debate stack |
-| **Authority ceiling** | `bots/authority_ceiling.py` (553 ln) + `autonomy_guard.py` + `kill_switch.py` | **Neither Hermes nor OpenClaw has an equivalent for self-created agents** |
-| Self-repair | `runtime/sentinel/` OBSERVE→DIAGNOSE→FIX→VERIFY→COMMIT | Hermes has `/refine`; not comparable |
-| Memory depth | ~20 subsystems: entities, fabric, social, affective, cognitive, consolidation, narrative, prospective, scenarios, utility, fusion, health, policy, codebase | Hermes: `MEMORY.md` + provider plugins. OpenClaw: tiers + dreaming |
-| Dreaming | `memory/dreaming/phases.py` — light/deep/REM | OpenClaw has the same phases. **Parity.** |
+| Swarm DAG execution | `swarm/` with coordinator, worker, consensus, aggregator | The comparator delegates to child agents; no DAG |
+| Group deliberation | `groups/` (799-line runner) + `deliberation/` (debate, adversary, council, MoA, verifier) | The comparator has council/roles; no comparable debate stack |
+| **Authority ceiling** | `bots/authority_ceiling.py` (553 ln) + `autonomy_guard.py` + `kill_switch.py` | **Neither the comparator nor the reference implementation has an equivalent for self-created agents** |
+| Self-repair | `runtime/sentinel/` OBSERVE→DIAGNOSE→FIX→VERIFY→COMMIT | The comparator has `/refine`; not comparable |
+| Memory depth | ~20 subsystems: entities, fabric, social, affective, cognitive, consolidation, narrative, prospective, scenarios, utility, fusion, health, policy, codebase | Comparator: `MEMORY.md` + provider plugins. Reference implementation: tiers + dreaming |
+| Dreaming | `memory/dreaming/phases.py` — light/deep/REM | The reference implementation has the same phases. **Parity.** |
 | Specialist subagents | 10 in `subagents/builtins/` | Fugu orchestrates a *model* pool, not persistent specialists |
 | Governance | `governance_ledger.py`, `quality_gate.py`, `governance/council/` | Comparable; receipts are the gap |
 | Multi-agent memory | `bots/teammate_mesh.py` | No equivalent found |
@@ -237,7 +237,7 @@ Port the anti-false-success machinery, in this order:
 ### Wave 3 — The trust boundary (requires a decision, not just code)
 
 Property 1 cannot be closed in-process. It needs a decision about separate OS identities or a sandbox, and
-it should be recorded as a **known, stated limitation** until then — which is what OpenClaw does. Do not
+it should be recorded as a **known, stated limitation** until then — which is what the reference implementation does. Do not
 describe `authority_ceiling.py` as a boundary in any doc, comment, or report. It is a policy control.
 
 ---

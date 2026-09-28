@@ -9,7 +9,7 @@ from typing import Any
 
 
 class RiskTier(str, Enum):
-    """Multi-tier risk classification inspired by hermes-agi-asi-harness."""
+    """Multi-tier risk classification."""
     R0 = "r0"  # Pure reasoning / analysis — auto-approve
     R1 = "r1"  # Read-only exploration (read file, search) — auto-approve
     R2 = "r2"  # Reversible local changes (source edits with git backup) — auto-approve with audit

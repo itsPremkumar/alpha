@@ -8,7 +8,7 @@ inherited platform secrets. This module scrubs secret-looking variables from the
 inherited environment before request-scoped secrets are layered on top.
 
 The pattern set mirrors codex's ``*KEY*/*SECRET*/*TOKEN*`` default excludes and
-hermes's fixed provider blocklist; unlike codex (which defaults the exclude
+the provider blocklist; unlike codex (which defaults the exclude
 *off*), Alpha scrubs by default — security first.
 """
 

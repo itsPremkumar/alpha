@@ -1,7 +1,7 @@
 """8. Unified automation scheduler (cron + heartbeat + event trigger).
 
 Alpha ships scheduler/schedules (cron parsing) + app/scheduler service.
-OpenClaw 2.0 unifies scheduled work under one name across agent/UI/CLI
+The reference design unifies scheduled work under one name across agent/UI/CLI
 with heartbeat monitoring + event (IMAP-style) triggers + non-interactive
 runs (clarification disabled). This module is the additive unification
 layer: one AutomationDefinition covers cron/interval/event kinds and

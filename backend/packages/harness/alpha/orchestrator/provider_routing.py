@@ -2,7 +2,7 @@
 
 Alpha already ships alpha.models.fallback.FallbackChatModel (per-call
 failover) and alpha.models.failover (multi-key rotation). This module
-adds the missing routing layer OpenClaw 2.0 has:
+adds the missing routing layer the reference design has:
 
 - build_fallback_chain(names): ordered chain from config model names
 - UtilityModelRouter: cheap model for title/memory/summarization, flagship

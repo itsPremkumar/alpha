@@ -1,4 +1,4 @@
-"""Built-in Deferred Tool Search, Describe, and Call suite inspired by OpenClaw."""
+"""Built-in Deferred Tool Search, Describe, and Call suite."""
 
 from __future__ import annotations
 

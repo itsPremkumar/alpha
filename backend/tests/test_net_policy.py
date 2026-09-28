@@ -47,6 +47,6 @@ def test_net_policy_blocks_disallowed_schemes():
 def test_net_policy_permits_public_urls():
     guard = NetworkPolicyGuard()
 
-    res_pub = guard.validate_url("https://api.github.com/repos/openclaw")
+    res_pub = guard.validate_url("https://api.github.com/repos/example/project")
     assert res_pub.allowed is True
     assert res_pub.reason == "URL egress permitted"

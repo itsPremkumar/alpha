@@ -1,6 +1,6 @@
 """Core Code Agentic Tools: Repo Map, Test-Driven Repair, and Code Checkpointing.
 
-Synthesized from frontier reference architectures (Aider, Claude Code, OpenClaw 2.0, NVIDIA AVO).
+Synthesized from frontier reference architectures (Aider, Claude Code, NVIDIA AVO).
 """
 
 from __future__ import annotations
@@ -282,7 +282,7 @@ def auto_test_and_repair(
 
 
 # ---------------------------------------------------------------------------
-# 3. Git-Native Micro-Checkpoint & Instant Rollback (OpenClaw style)
+# 3. Git-Native Micro-Checkpoint & Instant Rollback (reference style)
 # ---------------------------------------------------------------------------
 
 @dataclass

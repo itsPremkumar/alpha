@@ -69,7 +69,7 @@ class KnowledgeGraph:
             self.edges.append(edge)
 
     def density_stats(self) -> dict[str, Any]:
-        """Compute topological density statistics inspired by Hermes."""
+        """Compute topological density statistics."""
         linked_nodes = {x for edge in self.edges for x in edge}
         categories = Counter(node.category for node in self.nodes.values())
         n = len(self.nodes) or 1

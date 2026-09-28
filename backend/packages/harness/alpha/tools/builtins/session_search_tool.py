@@ -1,4 +1,4 @@
-"""Cross-thread message recall tool (Hermes session_search pattern).
+"""Cross-thread message recall tool (session_search pattern).
 
 Zero-embedding-cost recall over the displayable message feed
 (``category="message"`` run events): discovery across owned threads by

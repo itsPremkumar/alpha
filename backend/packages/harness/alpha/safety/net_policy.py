@@ -1,4 +1,4 @@
-"""Network Policy & SSRF Egress Filtering Guard inspired by OpenClaw.
+"""Network Policy & SSRF Egress Filtering Guard.
 
 Covers two egress surfaces:
 

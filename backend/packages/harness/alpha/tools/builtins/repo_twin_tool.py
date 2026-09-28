@@ -1,4 +1,4 @@
-"""Built-in repo_twin tool inspired by hermes-agi-asi-harness."""
+"""Built-in repo_twin tool."""
 
 from __future__ import annotations
 

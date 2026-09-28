@@ -157,10 +157,6 @@ class SpecialistBotWorker:
         }
 
 
-# Transparent alias for backward compatibility
-HermesBotWorker = SpecialistBotWorker
-
-
 class EphemeralSubagentWorker:
     """Lightweight, scoped subagent worker spun up for a single task."""
 

@@ -44,7 +44,7 @@ class SkillsConfig(BaseModel):
             "current behaviour of considering every enabled skill. When set, any "
             "skill not named here is never loaded, so an operator can run with a "
             "reviewed subset instead of whatever happens to be installed. This is "
-            "the OpenClaw-style bundled-skill allowlist: the risk being closed is "
+            "the bundled-skill allowlist: the risk being closed is "
             "that skills activate implicitly, before anyone has reviewed them."
         ),
     )

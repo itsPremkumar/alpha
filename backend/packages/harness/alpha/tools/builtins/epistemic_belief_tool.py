@@ -1,4 +1,4 @@
-"""Built-in evaluate_epistemic_claim tool inspired by hermes-agi-asi-harness."""
+"""Built-in evaluate_epistemic_claim tool."""
 
 from __future__ import annotations
 

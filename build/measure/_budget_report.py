@@ -14,7 +14,8 @@ src = mf.source_checkout_bytes(REPO)
 script = (REPO / "installer" / "bootstrap.ps1").stat().st_size
 node_dir = pathlib.Path("C:/nvm4w/nodejs")
 node = mf.walk_tree(node_dir)[0] if node_dir.is_dir() else 0
-uv = pathlib.Path("C:/Users/PREM KUMAR/AppData/Local/hermes/bin/uv.exe").stat().st_size
+uv_path = mf.uv_executable()
+uv = pathlib.Path(uv_path).stat().st_size if uv_path else 0
 python = mf.walk_tree(pathlib.Path("C:/Users/PREM KUMAR/AppData/Roaming/uv/python/cpython-3.12-windows-x86_64-none"))[0]
 
 rows = [

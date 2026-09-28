@@ -1,4 +1,4 @@
-"""8-Stage Production Line Pipeline inspired by Hermes production line architecture."""
+"""8-Stage Production Line Pipeline production line architecture."""
 
 from __future__ import annotations
 

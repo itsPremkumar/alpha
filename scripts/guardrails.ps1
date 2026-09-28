@@ -4,7 +4,7 @@
     Scan the staged diff for secrets and destructive patterns.
 
 .DESCRIPTION
-    An event-hook style guardrail (Hermes pattern). Read-only: it never modifies
+    An event-hook style guardrail. Read-only: it never modifies
     anything. By default it WARNS. With -Strict it exits non-zero so it can be
     wired into a hook once you trust it.
 

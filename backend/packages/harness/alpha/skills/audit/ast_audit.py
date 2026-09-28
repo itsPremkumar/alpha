@@ -1,4 +1,4 @@
-"""AST static security auditor for executable skills inspired by Hermes Agent."""
+"""AST static security auditor for executable skills."""
 
 import ast
 from dataclasses import dataclass, field

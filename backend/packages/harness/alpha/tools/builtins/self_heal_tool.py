@@ -1,4 +1,4 @@
-"""Built-in self_heal_diagnose tool inspired by hermes-agi-asi-harness."""
+"""Built-in self_heal_diagnose tool."""
 
 from __future__ import annotations
 

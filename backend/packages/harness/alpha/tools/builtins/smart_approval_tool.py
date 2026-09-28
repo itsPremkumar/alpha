@@ -1,4 +1,4 @@
-"""Built-in Smart Approvals Guardian tool inspired by Hermes Agent."""
+"""Built-in Smart Approvals Guardian tool."""
 
 from __future__ import annotations
 

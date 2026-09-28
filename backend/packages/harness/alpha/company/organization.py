@@ -17,7 +17,7 @@ from alpha.company.archetypes import (
 from alpha.company.attendance import AttendanceLedgerEngine, AttendanceStatus, BotHeartbeat
 from alpha.company.bot_medic import BotMedicEngine
 from alpha.company.discovery import ContinuousWorkDiscoveryEngine
-from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter, HermesKanbanAdapter
+from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter
 from alpha.company.executive import ExecutiveDigest, ExecutiveIntelligenceLayer
 from alpha.company.group_chat import GroupChannel, GroupChatEngine, GroupMessage
 from alpha.company.kanban import CompanyKanbanEngine
@@ -37,7 +37,7 @@ from alpha.company.production_line import ProductionLineEngine
 from alpha.company.responsibility import ResponsibilityEngine
 from alpha.company.self_improvement import ContinuousSelfImprovementEngine
 from alpha.company.strategy import StrategicPlanningEngine, StrategyReplanReport
-from alpha.company.swarm_bridge import HermesLocalBridge, SwarmLocalBridge
+from alpha.company.swarm_bridge import SwarmLocalBridge
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +58,8 @@ class AutonomousCompanyEngine:
         self._kanban_engines: dict[str, CompanyKanbanEngine] = {}
         # Local Swarm & Enterprise Kanban integrations
         self._swarm_bridge = SwarmLocalBridge()
-        self._hermes_bridge = self._swarm_bridge
         self._production_line = ProductionLineEngine()
         self._enterprise_kanban = EnterpriseKanbanAdapter()
-        self._hermes_kanban = self._enterprise_kanban
 
     def list_archetypes(self) -> list[dict[str, str]]:
         """Returns catalogue of supported organization archetypes."""
@@ -306,11 +304,11 @@ class AutonomousCompanyEngine:
         for d in departments:
             all_bots.update(d.member_bot_names)
 
-        # Ingest local Hermes bots if present into company workforce
-        local_hermes = self._hermes_bridge.discover_local_bots()
-        all_bots.update(local_hermes)
+        # Ingest local specialist bots if present into company workforce
+        local_bots = self._swarm_bridge.discover_local_bots()
+        all_bots.update(local_bots)
 
-        # 1. Create Default All-Hands Room (No 7-bot limit! Supports all company + Hermes bots)
+        # 1. Create Default All-Hands Room (No 7-bot limit! Supports the whole company roster)
         chat_engine.create_channel(
             channel_id="all-hands",
             name="#Company-All-Hands",
@@ -332,7 +330,7 @@ class AutonomousCompanyEngine:
                 created_by="system",
             )
 
-        # 3. Create Strategic Cognition Council Sub-Group (inspired by Hermes Bot Mode AGI)
+        # 3. Create Strategic Cognition Council Sub-Group
         executive_leads = [d.lead_bot_name for d in departments]
         chat_engine.create_channel(
             channel_id="cognition-council",
@@ -483,16 +481,10 @@ class AutonomousCompanyEngine:
     def get_swarm_bridge(self) -> SwarmLocalBridge:
         return self._swarm_bridge
 
-    def get_hermes_bridge(self) -> HermesLocalBridge:
-        return self._swarm_bridge
-
     def get_production_line(self) -> ProductionLineEngine:
         return self._production_line
 
     def get_enterprise_kanban(self) -> EnterpriseKanbanAdapter:
-        return self._enterprise_kanban
-
-    def get_hermes_kanban(self) -> HermesKanbanAdapter:
         return self._enterprise_kanban
 
     def sync_swarm_bots(self, org_id: str) -> dict[str, Any]:
@@ -505,14 +497,13 @@ class AutonomousCompanyEngine:
         return {
             "org_id": org_id,
             "swarm_installed": self._swarm_bridge.is_swarm_installed,
+            # Deprecated alias of ``swarm_installed``; kept so a pre-rename
+            # consumer of this response shape does not see a KeyError.
             "hermes_installed": self._swarm_bridge.is_swarm_installed,
             "discovered_bots_count": len(local_bots),
             "bot_names": local_bots,
             "sample_profiles": {k: v.model_dump() for k, v in list(metadata_map.items())[:10]},
         }
-
-    def sync_hermes_bots(self, org_id: str) -> dict[str, Any]:
-        return self.sync_swarm_bots(org_id)
 
     def sync_company_to_enterprise_kanban(self, org_id: str) -> dict[str, Any]:
         """Syncs company projects into local SQLite kanban board."""
@@ -520,9 +511,6 @@ class AutonomousCompanyEngine:
         if not state:
             raise KeyError(f"Organization '{org_id}' not found.")
         return self._enterprise_kanban.sync_projects_to_kanban(state.projects)
-
-    def sync_company_to_hermes_kanban(self, org_id: str) -> dict[str, Any]:
-        return self.sync_company_to_enterprise_kanban(org_id)
 
     def get_chat_engine(self, org_id: str) -> GroupChatEngine:
         if org_id not in self._chat_engines:

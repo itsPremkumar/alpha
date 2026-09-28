@@ -1,4 +1,4 @@
-"""M1 tests: session_search safety bounds (Hermes session_search_tool port).
+"""M1 tests: session_search safety bounds (ported session_search_tool behavior).
 
 Pins: module bound constants; hidden session sources (kanban/subagent/tool)
 never returned by discovery; exclude_session_ids clamped at 20; cron demoted

@@ -46,7 +46,7 @@ Policy can still be wrong, and external outcomes can remain uncertain."*
 |---|---|---|
 | **Distribution / product** | package installation, defaults, supported experience | NVIDIA NemoClaw |
 | **Orchestration (meta-harness)** | selects and coordinates different harnesses | Databricks' Omnigent |
-| **Agent harness** | turns a model into an agent: loop, context, tools, sessions | Claude Code, Codex, **Hermes**, Pi, DeepSeek Harness |
+| **Agent harness** | turns a model into an agent: loop, context, tools, sessions | Claude Code, Codex, **upstream agent**, Pi, DeepSeek Harness |
 | **Secure runtime** | isolation, identity, policy, credentials, audit | NVIDIA OpenShell |
 | **Inference data plane** | model serving, cache placement, routing, scheduling | NVIDIA Dynamo |
 
@@ -97,7 +97,7 @@ a single envelope holding the credentials, it can.
 **The honest, achievable action is not a sandbox.** It is:
 
 - stop describing `authority_ceiling.py` as a boundary — in code, comments, docs, or reports
-- record it as a **known limitation**, the way OpenClaw records its own
+- record it as a **known limitation**, the way the reference implementation records its own
 - if a real boundary is wanted, it requires a separate OS identity or a separate process with its own
   credentials — a platform decision with real cost, not a design detail
 
@@ -237,7 +237,7 @@ Ordered by ratio of value to effort. Items 1–3 are documentation and design ch
 
 | # | Action | Effort | Why |
 |---|---|---|---|
-| 1 | **Publish a security-vs-convenience boundary statement** for every control | low | Closes gap 1. Without it, no other fix can be verified. OpenClaw's is the model. |
+| 1 | **Publish a security-vs-convenience boundary statement** for every control | low | Closes gap 1. Without it, no other fix can be verified. The reference implementation's is the model. |
 | 2 | **Stop calling `authority_ceiling.py` a boundary** anywhere | trivial | It is a behavioural control. Saying otherwise is the misrepresentation this document exists to prevent. |
 | 3 | **Record the single-envelope limitation explicitly** | trivial | Rule 4: state exclusions. A known limitation is trustworthy; an unstated one is not. |
 | 4 | **Name the authoritative policy location**, even if it is currently the same process | low | Rule 2. Naming it exposes whether it is genuinely below the line. |

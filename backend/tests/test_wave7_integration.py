@@ -82,7 +82,7 @@ def test_run_task_evaluation_benchmark_tool():
     res_eval = run_task_evaluation_benchmark.invoke({
         "action": "evaluate_run",
         "task_id": "research_001",
-        "agent_response": "Synthesized architecture between OmO and Hermes with memory and orchestration differences.",
+        "agent_response": "Synthesized architecture between OmO and Alpha with memory and orchestration differences.",
         "tool_calls_json": json.dumps([{"tool_name": "search_web", "exit_code": 0}]),
         "elapsed_time_sec": 5.0,
         "cost_usd": 0.01,

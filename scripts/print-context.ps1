@@ -4,7 +4,7 @@
     Print project context files for pasting into an agent session.
 
 .DESCRIPTION
-    Hermes-style context files: AGENTS.md / CLAUDE.md are auto-discovered and
+    Context files: AGENTS.md / CLAUDE.md are auto-discovered and
     concatenated. Read-only. Optionally copies to the clipboard.
 
 .EXAMPLE

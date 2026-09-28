@@ -10,7 +10,7 @@ deliberately unforgiving:
    because an unreadable judge is a broken judge and a broken judge must
    neither fake completion nor wedge the loop.
 2. **The legacy ``{"done": <bool>}`` shape is NOT accepted**, even though
-   upstream Hermes still tolerates it.  Accepting it would mean a response
+   the upstream implementation still tolerates it.  Accepting it would mean a response
    that never mentioned the word ``done`` could still be read as ``done``,
    which is exactly the "looks done" failure this loop exists to stop.
 3. **An unknown verdict string is not ``continue`` either** - it is a parse

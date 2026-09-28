@@ -2,7 +2,7 @@
 
 A closed vocabulary of machine-readable reason codes carried ALONGSIDE the
 free-text error fields (additive — old consumers keep working). Mirrors the
-Hermes bot-failure taxonomy: platform-side codes come from the transport
+Bot-failure taxonomy: platform-side codes come from the transport
 layer, agent-side codes are derived from raw provider error text.
 
 The vocabulary is now SHARED, not bot-private. Swarm tasks, subagent batch

@@ -19,7 +19,7 @@ Non-negotiables encoded here:
 
 Verdicts: ``CLEAN`` (ship it) / ``WARN`` (review it) / ``BLOCK`` (refused).
 ``BLOCK`` is never bypassable by a model-supplied argument — it is an operator
-setting, exactly like Hermes' ``allow_secrets``.
+setting, exactly like ``allow_secrets``.
 """
 
 from __future__ import annotations

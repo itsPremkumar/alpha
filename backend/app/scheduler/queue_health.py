@@ -3,7 +3,7 @@
 Serves ``GET /api/scheduled-tasks/queue-health``. Deliberately payload-free —
 no task ids, titles, prompts, thread ids, run errors, or user ids leave this
 module; only counts, ages, configuration numbers, and status labels do. That
-matches the redaction rule OpenClaw's ingress-pressure snapshot applies.
+matches the redaction rule an ingress-pressure snapshot applies.
 
 Scope notes (honest limits, mirrored in the response):
 

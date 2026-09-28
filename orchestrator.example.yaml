@@ -1,4 +1,4 @@
-# Additive orchestrator config (OpenClaw 2.0-inspired). Copy needed blocks
+# Additive orchestrator config (reference-inspired). Copy needed blocks
 # into your local config.yaml. All blocks are optional; omission preserves
 # current Alpha behavior. Restart Gateway after changing automations or
 # approval mode.

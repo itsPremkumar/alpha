@@ -1,4 +1,4 @@
-"""Repetitive Tool-Loop Breaker and Guardrails inspired by OpenClaw."""
+"""Repetitive Tool-Loop Breaker and Guardrails."""
 
 from __future__ import annotations
 

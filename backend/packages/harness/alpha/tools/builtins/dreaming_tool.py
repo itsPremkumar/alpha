@@ -1,4 +1,4 @@
-"""Built-in Dreaming Memory Consolidation tool inspired by OpenClaw."""
+"""Built-in Dreaming Memory Consolidation tool."""
 
 from __future__ import annotations
 

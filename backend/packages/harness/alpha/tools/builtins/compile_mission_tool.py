@@ -1,4 +1,4 @@
-"""Built-in compile_mission tool inspired by hermes-agi-asi-harness."""
+"""Built-in compile_mission tool."""
 
 from __future__ import annotations
 

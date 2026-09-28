@@ -1,4 +1,4 @@
-"""Built-in simulate_consequences tool inspired by hermes-agi-asi-harness."""
+"""Built-in simulate_consequences tool."""
 
 from __future__ import annotations
 

@@ -7,7 +7,7 @@ probe gates, deadlines). This module is the *operator detail* surface behind
 matches this router's existing posture; the queue-health endpoint in
 ``scheduled_tasks.py`` does authenticate): it reuses the exact same
 persistence verdict and adds two more checks, each contributing an entry to
-``failing`` when degraded — the shape OpenClaw's ``/readyz`` detail uses
+``failing`` when degraded — the shape a ``/readyz`` detail uses
 (``failing: [...]`` naming each subsystem).
 
 Checks:

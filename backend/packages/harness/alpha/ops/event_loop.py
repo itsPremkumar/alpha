@@ -1,6 +1,6 @@
 """Event-loop liveness sampler for the Gateway process.
 
-Ports the observation model OpenClaw documents for its Gateway health sampler
+Ports the observation model a Gateway health sampler uses
 onto asyncio:
 
 * the ticker schedules itself with ``loop.call_at`` on absolute expected

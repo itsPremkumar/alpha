@@ -1,13 +1,13 @@
 """Bounded in-process metrics with Prometheus text exposition.
 
-Port of the OpenClaw ``diagnostics-prometheus`` store contract to the
+Port of the reference ``diagnostics-prometheus`` store contract to the
 Gateway:
 
 * every metric is declared once (name, type, help, label names). Undeclared
   names and undeclared label keys are refused, which keeps label
   cardinality an explicit decision instead of an accident;
 * the registry retains at most ``max_series`` (default 2048, matching
-  OpenClaw's cap) label combinations. New series past the cap are refused
+  the reference cap) label combinations. New series past the cap are refused
   and bump ``alpha_metrics_series_dropped_total`` — itself exempt from the
   cap and rendered only once non-zero, so **absence of the counter means
   zero drops**, exactly like the upstream exporter;

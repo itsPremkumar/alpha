@@ -1,4 +1,4 @@
-"""Cross-thread message content search (Hermes session_search pattern).
+"""Cross-thread message content search (session_search pattern).
 
 Zero-embedding-cost recall over ``category="message"`` run events — the same
 displayable feed ``list_messages`` serves. SQL backends use real full-text

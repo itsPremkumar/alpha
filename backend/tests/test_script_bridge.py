@@ -392,13 +392,13 @@ def test_no_credential_named_variable_reaches_the_child(monkeypatch):
 
 
 def test_prefixed_but_unlisted_variable_is_dropped(monkeypatch):
-    """A ``HERMES_``/``ALPHA_``-prefixed variable is NOT passed by prefix."""
+    """A foreign-prefix/``ALPHA_``-prefixed variable is NOT passed by prefix."""
     monkeypatch.setenv("ALPHA_SOMETHING_BENIGN", "harmless-but-not-allowlisted")
-    monkeypatch.setenv("HERMES_SOMETHING_BENIGN", "harmless-but-not-allowlisted")
+    monkeypatch.setenv("ACME_SOMETHING_BENIGN", "harmless-but-not-allowlisted")
     monkeypatch.setenv("ALPHA_WORKSPACE_HOME", "/should/not/leak")
     env = build_child_env()
     assert "ALPHA_SOMETHING_BENIGN" not in env
-    assert "HERMES_SOMETHING_BENIGN" not in env
+    assert "ACME_SOMETHING_BENIGN" not in env
     assert "ALPHA_WORKSPACE_HOME" not in env
     # Only the bridge's own namespace is ever present, and only when set.
     assert env.get("ALPHA_SCRIPT_BRIDGE_SOCKET") is None

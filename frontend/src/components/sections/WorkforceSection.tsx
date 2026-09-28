@@ -1433,7 +1433,7 @@ function WarRoomTab() {
           {/* 14. Deterministic Trajectory Replayer & Time-Travel Debugger */}
           <Panel
             title="Deterministic Trajectory Replayer & Time-Travel Debugger"
-            hint="SWE-agent & Hermes immutable SQLite execution traces with step scrubbing and historical replay"
+            hint="Immutable SQLite execution traces with step scrubbing and historical replay"
             actions={
               <Badge tone="gray">
                 {trajectories.length} Goal Trace(s)

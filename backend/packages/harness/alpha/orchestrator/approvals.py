@@ -1,6 +1,6 @@
 """4-5+9. Approval custody + policy-first auto-mode + approve-once store.
 
-OpenClaw 2.0 binds every exec approval to (request, command, session,
+The reference design binds every exec approval to (request, command, session,
 person) with an audit trail, plus opt-in auto-mode (policy first,
 low-risk auto-pass, human for high-risk) and approve-once for recurring
 tasks. Alpha has guardrails + ask_clarification; this adds the

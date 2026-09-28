@@ -1,4 +1,4 @@
-"""Built-in five_pass_search tool inspired by hermes-asi-master."""
+"""Built-in five_pass_search tool."""
 
 from __future__ import annotations
 

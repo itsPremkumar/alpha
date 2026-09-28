@@ -1,4 +1,4 @@
-"""Built-in run_rsi_cycle tool inspired by hermes-agi-asi-harness."""
+"""Built-in run_rsi_cycle tool."""
 
 from __future__ import annotations
 

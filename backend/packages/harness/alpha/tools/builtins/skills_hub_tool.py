@@ -1,4 +1,4 @@
-"""Built-in Skills Hub management tool inspired by Hermes Agent."""
+"""Built-in Skills Hub management tool."""
 
 from __future__ import annotations
 

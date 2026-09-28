@@ -1,4 +1,4 @@
-"""Context Engine with Prefix-Preserving Compaction inspired by OpenClaw."""
+"""Context Engine with Prefix-Preserving Compaction."""
 
 from alpha.context.engine import ContextEngine
 from alpha.context.projection import ContextProjection

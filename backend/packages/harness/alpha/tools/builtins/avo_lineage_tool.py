@@ -1,4 +1,4 @@
-"""Built-in avo_lineage tool inspired by hermes-agi-asi-harness."""
+"""Built-in avo_lineage tool."""
 
 from __future__ import annotations
 

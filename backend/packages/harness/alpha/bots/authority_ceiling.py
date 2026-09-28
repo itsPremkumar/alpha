@@ -51,7 +51,7 @@ security boundary and must never be described as one.  The agent loop, the
 channel connections, the credential handling and the shell all run under one
 OS user in one process; wrapping that in a container isolates it from the host
 but does not separate those components from each other, which is the exact
-limitation OpenClaw documents at
+limitation documented at
 https://docs.openclaw.ai/start/why-openclaw.  Everything below narrows
 authority that cooperating code in this process already holds; none of it
 isolates anything, and code inside the envelope can reach around it.

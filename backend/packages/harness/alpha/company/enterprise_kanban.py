@@ -1,4 +1,4 @@
-"""Hermes Kanban Adapter: Synchronizes tasks and activity audit logs with Hermes SQLite Kanban boards."""
+"""Enterprise Kanban Adapter: synchronizes tasks and activity audit logs with the local SQLite kanban board."""
 
 from __future__ import annotations
 
@@ -15,8 +15,11 @@ from alpha.company.models import CompanyProject
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_HERMES_DIR = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
-DEFAULT_BOARD_DB = DEFAULT_HERMES_DIR / "kanban" / "boards" / "it-company-ops" / "kanban.db"
+# `ALPHA_KANBAN_HOME` is the supported knob. The legacy `HERMES_HOME` and
+# `~/.hermes` names are read only so an existing board keeps resolving; they are
+# deprecated and never documented as new configuration.
+DEFAULT_KANBAN_HOME = Path(os.environ.get("ALPHA_KANBAN_HOME", os.environ.get("HERMES_HOME", Path.home() / ".hermes")))
+DEFAULT_BOARD_DB = DEFAULT_KANBAN_HOME / "kanban" / "boards" / "it-company-ops" / "kanban.db"
 
 
 class EnterpriseKanbanAdapter:
@@ -37,7 +40,7 @@ class EnterpriseKanbanAdapter:
         return self._db_path.exists()
 
     def list_tasks(self, limit: int = 50, status: str | None = None) -> list[dict[str, Any]]:
-        """Reads recent tasks from local Hermes SQLite kanban board."""
+        """Reads recent tasks from the local SQLite kanban board."""
         if not self.is_available:
             tasks = list(self._synthetic_tasks.values())
             if status:
@@ -62,7 +65,7 @@ class EnterpriseKanbanAdapter:
             conn.close()
             return tasks
         except Exception as exc:
-            logger.warning(f"Error reading Hermes kanban tasks: {exc}")
+            logger.warning(f"Error reading kanban tasks: {exc}")
             return list(self._synthetic_tasks.values())[:limit]
 
     def create_task(
@@ -73,7 +76,7 @@ class EnterpriseKanbanAdapter:
         priority: int | str = 0,
         status: str = "ready",
     ) -> str:
-        """Creates a card in the local Hermes SQLite kanban board."""
+        """Creates a card in the local SQLite kanban board."""
         task_id = f"t-{uuid.uuid4().hex[:6]}"
         now_ts = time.time()
         prio_val = int(priority) if isinstance(priority, int) or (isinstance(priority, str) and priority.isdigit()) else 1
@@ -102,10 +105,10 @@ class EnterpriseKanbanAdapter:
             )
             conn.commit()
             conn.close()
-            logger.info(f"Created task '{task_id}' in Hermes kanban for @{assignee}")
+            logger.info(f"Created task '{task_id}' in the kanban for @{assignee}")
             return task_id
         except Exception as exc:
-            logger.warning(f"Error writing to Hermes kanban.db: {exc}")
+            logger.warning(f"Error writing to kanban.db: {exc}")
             self._synthetic_tasks[task_id] = {
                 "id": task_id,
                 "title": title,
@@ -219,7 +222,7 @@ class EnterpriseKanbanAdapter:
             event_record["id"] = inserted_id
             return event_record
         except Exception as exc:
-            logger.warning(f"Error logging task event to Hermes kanban: {exc}")
+            logger.warning(f"Error logging task event to the kanban: {exc}")
             event_record["id"] = len(self._synthetic_events) + 1
             self._synthetic_events.append(event_record)
             return event_record
@@ -263,7 +266,7 @@ class EnterpriseKanbanAdapter:
             conn.close()
             return results
         except Exception as exc:
-            logger.warning(f"Error reading Hermes task_events: {exc}")
+            logger.warning(f"Error reading kanban task_events: {exc}")
             return []
 
     def get_agent_tasks(self, bot_name: str, status: str | None = None) -> list[dict[str, Any]]:
@@ -320,7 +323,7 @@ class EnterpriseKanbanAdapter:
         }
 
     def sync_projects_to_kanban(self, projects: list[CompanyProject]) -> dict[str, Any]:
-        """Ensures all active CompanyProjects have corresponding tasks in the Hermes kanban board."""
+        """Ensures all active CompanyProjects have corresponding tasks in the kanban board."""
         existing_tasks = {t["title"]: t for t in self.list_tasks(limit=100)}
         synced_count = 0
         new_count = 0
@@ -350,7 +353,3 @@ class EnterpriseKanbanAdapter:
             "total_company_projects": len(projects),
             "kanban_available": self.is_available,
         }
-
-
-# Transparent alias for backwards compatibility
-HermesKanbanAdapter = EnterpriseKanbanAdapter

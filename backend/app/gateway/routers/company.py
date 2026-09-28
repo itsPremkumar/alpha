@@ -50,7 +50,7 @@ async def list_archetypes():
 
 @router.post("/bootstrap")
 async def bootstrap_company(payload: CompanyBootstrapRequest):
-    """Instantiates a complete autonomous organization with departments, Hermes bots, and responsibilities."""
+    """Instantiates a complete autonomous organization with departments, specialist bots, and responsibilities."""
     engine = get_autonomous_company_engine()
     state = engine.bootstrap_company(
         prompt=payload.prompt,
@@ -204,19 +204,24 @@ class KanbanSyncRequest(BaseModel):
     org_id: str | None = Field(default=None, description="Organization ID")
 
 
+# Canonical route.
 @router.get("/swarm/bots")
+# Deprecated alias of /swarm/bots. Kept so a pre-rename client keeps
+# answering; do not reference this path from new code or documentation.
 @router.get("/hermes/bots")
-async def get_hermes_bots(org_id: str | None = None):
+async def get_swarm_bots(org_id: str | None = None):
     """Discovers and imports local specialist bot profiles."""
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if target_id:
-        return engine.sync_hermes_bots(target_id)
+        return engine.sync_swarm_bots(target_id)
 
-    bridge = engine.get_hermes_bridge()
+    bridge = engine.get_swarm_bridge()
     local_bots = bridge.discover_local_bots()
     return {
-        "hermes_installed": bridge.is_hermes_installed,
+        "swarm_installed": bridge.is_swarm_installed,
+        # Deprecated alias of ``swarm_installed``; see organization.sync_swarm_bots.
+        "hermes_installed": bridge.is_swarm_installed,
         "discovered_bots_count": len(local_bots),
         "bot_names": local_bots,
     }
@@ -251,7 +256,7 @@ async def sync_kanban(payload: KanbanSyncRequest):
     if not target_id:
         raise HTTPException(status_code=404, detail="No active organizations found.")
 
-    res = engine.sync_company_to_hermes_kanban(target_id)
+    res = engine.sync_company_to_enterprise_kanban(target_id)
     return res
 
 

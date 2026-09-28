@@ -38,7 +38,7 @@ def company_tool(
     Args:
         action: Management action ('bootstrap', 'archetypes', 'status', 'discover_work', 'evaluate_kpis',
             'replan_strategy', 'executive_digest', 'transfer_responsibility', 'retrospective',
-            'evolution_journal', 'swarm_bots', 'hermes_bots', 'production_submit', 'production_advance',
+            'evolution_journal', 'swarm_bots', 'production_submit', 'production_advance',
             'kanban_sync', 'kanban_tasks', 'kanban_update', 'kanban_log', 'kanban_events', 'kanban_check_in',
             'group_channels', 'group_post', 'group_create', 'group_history',
             'attendance_pulse', 'attendance_check', 'roll_call', 'pause', 'resume').
@@ -64,6 +64,12 @@ def company_tool(
         task_status: New status for Kanban task ('ready', 'in_progress', 'review', 'done').
     """
     engine = get_autonomous_company_engine()
+
+    # Deprecated alias: ``hermes_bots`` predates ``swarm_bots``. Normalizing
+    # here keeps a pre-rename caller working without the old name appearing
+    # anywhere in the dispatch chain or in the model-facing description.
+    if action == "hermes_bots":
+        action = "swarm_bots"
 
     try:
         if action == "archetypes":
@@ -181,21 +187,23 @@ def company_tool(
                 return f"Error: Organization '{target_org}' not found."
             return json.dumps([e.model_dump() for e in state.evolution_journal], indent=2)
 
-        elif action in ("swarm_bots", "specialist_bots", "hermes_bots"):
+        elif action in ("swarm_bots", "specialist_bots"):
             target_org = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else "")
             if not target_org:
                 # If no company, list raw local bots
-                bridge = engine.get_hermes_bridge()
+                bridge = engine.get_swarm_bridge()
                 local_bots = bridge.discover_local_bots()
                 return json.dumps(
                     {
-                        "hermes_installed": bridge.is_hermes_installed,
+                        "swarm_installed": bridge.is_swarm_installed,
+                        # Deprecated alias of ``swarm_installed``.
+                        "hermes_installed": bridge.is_swarm_installed,
                         "discovered_bots_count": len(local_bots),
                         "bot_names": local_bots,
                     },
                     indent=2,
                 )
-            sync_res = engine.sync_hermes_bots(target_org)
+            sync_res = engine.sync_swarm_bots(target_org)
             return json.dumps(sync_res, indent=2)
 
         elif action == "production_submit":
@@ -222,7 +230,7 @@ def company_tool(
             target_org = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else "")
             if not target_org:
                 return "Error: Organization not found."
-            sync_res = engine.sync_company_to_hermes_kanban(target_org)
+            sync_res = engine.sync_company_to_enterprise_kanban(target_org)
             return json.dumps(sync_res, indent=2)
 
         elif action == "kanban_tasks":

@@ -1,4 +1,4 @@
-"""Built-in metacognitive tool inspired by hermes-agi-asi-harness."""
+"""Built-in metacognitive tool."""
 
 from __future__ import annotations
 

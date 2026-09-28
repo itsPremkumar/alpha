@@ -18,7 +18,7 @@ security boundary is worse than having none, because it retires the question.
 alpha runs its agent loop, channel connections, credential handling and shell
 under one OS user.  Wrapping that in a container isolates it from the host but
 does not separate those components from each other -- which is the exact
-limitation OpenClaw documents at
+limitation documented at
 https://docs.openclaw.ai/start/why-openclaw.  Every control in this module is
 therefore classified explicitly, and the classification is part of the data, so
 a report cannot accidentally present one as the other.
@@ -328,7 +328,7 @@ INBOUND_ENTRY_POINTS: Final[tuple[InboundEntryPoint, ...]] = (
         kind=BoundaryKind.CONVENIENCE,
         exemption=(
             "Read-only capability advertisement with a well-known path, in the same shape as "
-            "OpenClaw's /.well-known/agent-card.json. It grants no authority and starts no work, "
+            "the /.well-known/agent-card.json convention. It grants no authority and starts no work, "
             "so an unauthenticated read discloses only what the operator chose to advertise."
         ),
         note=(

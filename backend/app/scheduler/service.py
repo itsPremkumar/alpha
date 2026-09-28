@@ -123,7 +123,7 @@ class ScheduledTaskService:
         # because the count answers "how bad is it" and this answers "when may
         # we look again".
         self._capacity_retry_at: dict[str, datetime] = {}
-        # Durable per-job memory (Hermes-style). None disables journaling and
+        # Durable per-job memory. None disables journaling and
         # leaves every prompt byte-identical to the pre-journal behavior.
         self._job_memory = job_memory
         # Process-local launch timestamps used to measure real durations; the
@@ -517,7 +517,7 @@ class ScheduledTaskService:
         launched_thread_id: str | None = None
         launch_succeeded = False
         try:
-            # Hermes-style durable memory: read prior context first (any read
+            # Durable per-job memory: read prior context first (any read
             # error fails closed), then journal the dispatch before a run
             # exists (any write error fails closed too). Both route to
             # fail_launching_run below with no run ever launched; once a run

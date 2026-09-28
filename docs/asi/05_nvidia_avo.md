@@ -163,7 +163,7 @@ assumes the component cannot be reached around, and in a single envelope with th
 
 **This does not mean alpha must adopt OpenShell.** It means the current design must stop describing
 `authority_ceiling.py` as a boundary, in code comments, in docs, and in reports, and must record it as a
-**known limitation** — which is exactly what OpenClaw does with its "what we do not claim" section.
+**known limitation** — which is exactly what the reference implementation does with its "what we do not claim" section.
 
 ---
 
@@ -187,7 +187,7 @@ and why* — which is what makes a self-modifying system auditable rather than m
 event ledger; it does not have a candidate tree.
 
 **2. An agent-decided variation step with a deterministic commit gate.** This is the synthesis of AVO and
-Hermes `/goal gate`, and it is the actual shape of safe self-improvement:
+the upstream `/goal gate`, and it is the actual shape of safe self-improvement:
 
 ```
 agent decides what to change   (AVO: the variation operator is the agent)
@@ -218,7 +218,7 @@ safe rather than merely powerful.
 | **Sakana Fugu** | A learned orchestrator beats every model in its own pool (73.7 vs 69.2 on SWE-Bench Pro). Orchestration is a scaling axis. |
 | **NVIDIA AVO** | One harness transfers from GPU kernels to interactive reasoning. *"Evaluating a model is not the same as evaluating an agent."* |
 | **Anthropic** | Execution is superhuman; choosing what to work on is not. That gap is the frontier. |
-| **OpenClaw** | A policy control inside one envelope is not a boundary. Harnesses are programmable, so harness-level security decays. |
+| **reference implementation** | A policy control inside one envelope is not a boundary. Harnesses are programmable, so harness-level security decays. |
 
 All four point the same way, and it is not the direction this project has been going.
 

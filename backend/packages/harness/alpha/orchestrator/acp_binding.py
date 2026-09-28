@@ -1,6 +1,6 @@
 """15. Thread-bound ACP agents as first-class runtimes.
 
-OpenClaw 2026.3.1 made ACP agents first-class for thread sessions with
+The reference implementation made ACP agents first-class for thread sessions with
 bindings CLI (bind/unbind). Alpha has acp_agents config + invoke_acp_agent
 tool with per-thread workspaces. This adds the missing thread->agent
 binding registry (in-memory; durable thread metadata stays the owner).

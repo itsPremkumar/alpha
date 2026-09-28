@@ -1,4 +1,4 @@
-"""Additive orchestrator tests (15 OpenClaw-inspired core features)."""
+"""Additive orchestrator tests (15 orchestrator core features)."""
 
 from alpha.orchestrator.acp_binding import AcpBindingRegistry
 from alpha.orchestrator.approvals import ApprovalCustodyStore

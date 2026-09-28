@@ -2,7 +2,7 @@
 
 The hole this closes
 --------------------
-OpenClaw states its own limitation plainly: "Turn taint covers network-sourced
+The reference implementation states its own limitation plainly: "Turn taint covers network-sourced
 tool output; text arriving through non-network tools does not taint the turn."
 (https://docs.openclaw.ai/start/why-openclaw, "What we do not claim".)  That
 is a real hole, and it is the shape of the three bugs already found and fixed

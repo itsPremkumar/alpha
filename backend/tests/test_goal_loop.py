@@ -127,7 +127,7 @@ class TestVerdictGrammar:
     def test_legacy_done_bool_shape_is_refused(self):
         """``{"done": true}`` must not be readable as ``done``.
 
-        Upstream Hermes still tolerates this shape. Accepting it would mean a
+        The upstream implementation still tolerates this shape. Accepting it would mean a
         response that never said the word "done" could complete a goal, which
         is exactly the "looks done" failure this loop exists to stop.
         """

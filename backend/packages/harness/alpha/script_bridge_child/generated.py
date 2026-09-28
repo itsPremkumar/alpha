@@ -16,7 +16,7 @@ from __future__ import annotations
 from .client import get_client, verify_stub_fingerprint
 
 #: Fingerprint of the tool registry this file was generated from.
-STUB_REGISTRY_SHA256 = "038cab38f50cd7889e05ca6eea9118e6bfe49725952c4d358e01b47a0a817303"
+STUB_REGISTRY_SHA256 = "8ef69f7f8aa76ae45a9aaf0f7524964d1c9e8c57c1761ab9080a8eb386183b21"
 
 #: Registry snapshot the generator saw: name -> {"description": str}
 STUB_TOOL_INDEX = {
@@ -207,7 +207,7 @@ STUB_TOOL_INDEX = {
         "description": "Audit plans and proposed subtasks for goal drift, scope creep, and overengineering."
     },
     "group_chat": {
-        "description": "Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on Hermes Bot Mode with 5 speaker selection strategies (mention,"
+        "description": "Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on bot mode with 5 speaker selection strategies (mention,"
     },
     "harness_refine": {
         "description": "Manage self-improving Continual Harness state and trigger online refinement. Inspired by Prime Agent's /refine and durable harness state. Entries record"
@@ -977,7 +977,7 @@ def goal_integrity(**kwargs) -> object:
 
 
 def group_chat(**kwargs) -> object:
-    """Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on Hermes Bot Mode with 5 speaker selection strategies (mention,
+    """Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on bot mode with 5 speaker selection strategies (mention,
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``group_chat`` tool
     through the script bridge; authorisation is evaluated parent-side.
