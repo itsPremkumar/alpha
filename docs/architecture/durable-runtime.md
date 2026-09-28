@@ -191,6 +191,59 @@ becomes healthy is recorded as `HEALTH_FAILED` and spends budget like a crash.
 
 → `backend/packages/harness/alpha/runtime/supervisor/AGENTS.md`
 
+## Making the parks durable
+
+Two tables turn the measurement layer into something that survives a restart.
+
+### Durable network waits
+
+The monitor knows the link is down and the session vocabulary can say "alive but
+parked", but between them a parked session was re-derived from live signals on
+every boot. That is fine while the process lives and useless across a restart: a
+task that parked on a dead network at 02:00 and whose machine rebooted at 02:01 had
+no record that it was ever waiting.
+
+`network_waits` is that record. A *network wait* is one parked session, and the
+row records **where the work got to** and nothing more — park and resume remain
+the decision of `SafeRunRecoveryService` through the normal `start_run` path.
+
+Four properties are load-bearing:
+
+- **The resume is refused while the link is still down.** A wait exists
+  *because* the link was gone, so attempting now would spend the attempt budget
+  on a certainty. `UNKNOWN` and `DEGRADED` still permit an attempt.
+- **The backoff is durable.** `next_attempt_at` is written when a resume
+  *fails*, so a reboot cannot turn a five-minute backoff into a hot retry loop.
+- **Attempts are bounded, and exhaustion is reported** as `gave_up` with a
+  reason. A session retried forever against a link that never returns is the
+  outage equivalent of the restart loop the supervisor refuses to write.
+- **A declined checkpoint is settled, not retried.** If the recovery owner
+  refuses — most likely a side-effect-unsafe checkpoint — that checkpoint's safety
+  will not change, so retrying is a loop with extra steps.
+
+One open wait per thread is enforced twice (a partial unique index plus a read of
+the existing row), `claim_due` is a conditional `UPDATE` so two gateway instances
+cannot both take a row, and `max_claims_per_pass` stops a backlog stampeding the
+provider the instant the link returns.
+
+→ `backend/packages/harness/alpha/persistence/network_waits/AGENTS.md`
+
+### The side-effect ledger in SQL
+
+`tool_side_effects` makes `UNKNOWN` durable and *enumerable*. Every state change
+is an `UPDATE ... WHERE <key> AND status = <expected>`, so the two properties that
+matter across processes hold:
+
+- A reaper that moved a row to `UNKNOWN` wins, and a late worker's `complete` is
+  refused with `SideEffectTransitionLost` rather than overwriting an unknown with
+  a guess.
+- Two reconcilers cannot both settle an entry.
+
+That is the whole point: **the process that would have known the answer is the one
+that died**, so a later worker has no standing to decide.
+
+→ `backend/packages/harness/alpha/persistence/side_effects/AGENTS.md`
+
 ## Planned shutdown
 
 Shutdown is where a durable runtime most easily lies: a sequence of best-effort
@@ -269,7 +322,9 @@ Honesty about the boundary is part of the feature.
 |---|---|---|
 | Session lifecycle vocabulary | `alpha.runtime.sessions` | `tests/test_durable_session_state_machine.py` |
 | Connectivity state, probe, monitor | `alpha.runtime.network` | `tests/test_network_resilience.py` |
-| Side-effect ledger and reconciliation | `alpha.runtime.side_effects` | `tests/test_side_effect_ledger.py` |
+| Durable parked sessions | `alpha.runtime.network.wait_registry`, `alpha.persistence.network_waits` | `tests/test_network_wait_registry.py` |
+| Side-effect ledger (semantics) | `alpha.runtime.side_effects` | `tests/test_side_effect_ledger.py` |
+| Side-effect ledger (durable) | `alpha.persistence.side_effects` | `tests/test_side_effect_ledger_sql.py` |
 | Process supervision and crash-loop policy | `alpha.runtime.supervisor` | `tests/test_process_supervisor.py` |
 | Ordered, honestly-reported shutdown | `alpha.runtime.shutdown` | `tests/test_planned_shutdown.py` |
 | Existing safe recovery contract | `app.gateway.run_recovery` | `tests/test_safe_run_recovery.py` |
@@ -284,18 +339,28 @@ this page is the map.
 Stated plainly so nobody reads a guarantee into this page that the code does not
 make:
 
-- **No durable `network_waits` table.** A session's parked state is currently
-  *derived* from live signals plus the existing run ledger; parking a session
-  across a restart reuses `SafeRunRecoveryService` rather than a new queue.
-  `alpha.runtime.sessions` supplies the vocabulary and the monitor supplies the
-  fact; the durable registry that would join them is future work.
-- **The side-effect ledger has no SQL repository yet.** The protocol and the
-  reference implementation are complete and tested, and the semantics (lease,
-  reclaim, reconciliation) are the contract a durable backend must satisfy — but
-  entries are process-local today.
 - **The supervisor is not wired into the Windows launcher.** It is a complete,
-  tested library with a production-referenced contract; `start.ps1` still owns
-  process startup.
+  tested library with a production-referenced contract, and the Gateway lifespan
+  drain runs through `alpha.runtime.shutdown` — but `start.ps1` still owns process
+  startup, so nothing yet restarts the backend automatically on Windows.
+- **`NetworkWaitService` has no Gateway wiring.** The repository, the service, the
+  bounded-resume contract and the `WAITING_NETWORK` session state all exist and
+  are tested, but the launcher callback is not yet injected in `deps.py` and the
+  monitor is not yet started by the lifespan. Until that happens, a park is
+  recorded by whatever calls `park()` and no pass runs automatically.
+- **No per-tool-call reconciliation API or UI.** The unknown set is queryable via
+  `list_unknown()` and durable in SQL, but there is no route or frontend surface
+  for a human to work the queue off.
+- **No `replay(session_id)` over the run-event log.** The workflow/DWE log is
+  replayable (`alpha.orchestrator.replay.replay_run`); the thread `run_events`
+  feed is a message feed and audit trace, and nothing folds it back into a
+  session state. `alpha.runtime.sessions` derives that state from live signals
+  instead.
 - **`AWAITING` subagent reconciliation** is served by the existing
   `recovery_confirmation_required` stop reason, not by a dedicated per-subagent
   ledger.
+- **Filesystem snapshots for undo/redo are not part of this layer.** Alpha has
+  `workspace_changes` recording and Git-native development; the
+  snapshot/undo/compare surface the contract describes does not exist, and a
+  filesystem snapshot could not undo a remote call in any case — that is what the
+  side-effect ledger's `UNKNOWN` state is for.
