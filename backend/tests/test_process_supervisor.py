@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 
 import pytest
 
@@ -363,6 +364,86 @@ class TestSupervisorLifecycle:
         finally:
             supervisor.stop()
             await supervisor.wait(timeout=15.0)
+
+
+class TestStopSemantics:
+    """Two real bugs this suite caught, both invisible to a happy-path test.
+
+    ``stop()`` documented itself as non-blocking while calling a blocking
+    ``Popen.wait(timeout=5)``, and ``run()`` re-created the stop event, so a
+    ``stop()`` issued between ``start()`` and the first iteration was silently
+    discarded and the loop went on to restart the child.
+    """
+
+    @pytest.mark.asyncio
+    async def test_stop_returns_promptly_even_while_a_child_is_running(self) -> None:
+        from alpha.runtime.supervisor.supervisor import ProcessSupervisor
+
+        supervisor = ProcessSupervisor(name="t", argv=(sys.executable, "-c", "import time; time.sleep(600)"), policy=make_policy())
+        task = asyncio.create_task(supervisor.run())
+        try:
+            assert await supervisor.wait_spawned(timeout=10.0) is True
+            started = time.perf_counter()
+            supervisor.stop()
+            elapsed = time.perf_counter() - started
+            # A blocking terminate would cost up to its 5s (or 10s with the kill
+            # ladder) here, and would stall the event loop while doing it.
+            assert elapsed < 0.5, f"stop() blocked for {elapsed:.2f}s; it claims not to block"
+            await asyncio.wait_for(task, timeout=15.0)
+        finally:
+            supervisor.stop()
+
+    @pytest.mark.asyncio
+    async def test_a_stop_issued_before_the_loop_starts_is_not_lost(self) -> None:
+        """The event must not be re-created by run(), or the stop evaporates."""
+        from alpha.runtime.supervisor.supervisor import ProcessSupervisor
+
+        supervisor = ProcessSupervisor(name="t", argv=(sys.executable, "-c", "import time; time.sleep(600)"), policy=make_policy())
+        # start() creates the event; stop() sets it; run() must not replace it.
+        supervisor.start()
+        supervisor.stop()
+        await supervisor.wait(timeout=15.0)
+        assert supervisor.running is False
+        assert supervisor.pid() is None, "a stop that was lost would have started a child"
+
+    def test_stopping_without_a_loop_still_reaps_the_child(self) -> None:
+        """A script that never called start() has no loop to notice the flag.
+
+        Synchronous on purpose: this is the no-running-loop fallback, so the
+        whole thing has to run outside a loop. The child is placed directly rather
+        than through ``_attempt_once``, which would block inside ``_await_exit``
+        waiting for a child that is never going to exit on its own.
+        """
+        from alpha.runtime.supervisor.supervisor import ProcessSupervisor
+
+        argv = [sys.executable, "-c", "import time; time.sleep(600)"]
+        supervisor = ProcessSupervisor(name="t", argv=tuple(argv), policy=make_policy())
+        supervisor._process = supervisor._spawn(argv, None, None)  # noqa: SLF001
+        try:
+            assert supervisor.running is True
+            started = time.perf_counter()
+            supervisor.stop()
+            elapsed = time.perf_counter() - started
+            assert supervisor.running is False, "stop() without a loop must still reap the child"
+            assert elapsed < 6.0, f"the synchronous fallback took {elapsed:.2f}s, which is longer than the terminate budget"
+        finally:
+            supervisor.terminate()
+
+    @pytest.mark.asyncio
+    async def test_a_second_run_after_a_stop_returns_immediately(self) -> None:
+        """A supervisor that cannot be re-armed is a one-way door, by design."""
+        from alpha.runtime.supervisor.supervisor import ProcessSupervisor
+
+        supervisor = ProcessSupervisor(name="t", argv=(sys.executable, "-c", "import time; time.sleep(600)"), policy=make_policy())
+        supervisor.start()
+        assert await supervisor.wait_spawned(timeout=10.0) is True
+        supervisor.stop()
+        await supervisor.wait(timeout=15.0)
+        first_pid = supervisor.pid()
+        # run() again: the event is still set, so nothing may be started.
+        await supervisor.run()
+        assert supervisor.pid() is None
+        assert first_pid is None or not supervisor.running
 
 
 class TestDiagnostics:

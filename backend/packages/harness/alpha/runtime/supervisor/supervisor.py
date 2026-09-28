@@ -312,8 +312,12 @@ class ProcessSupervisor:
         The wait between attempts is ``asyncio.sleep`` on the ledger's decision,
         and it is interruptible, so a shutdown during a long backoff does not
         have to sit it out.
+
+        The stop event is *not* re-created here. ``start()`` owns it, and a
+        ``stop()`` issued between ``start()`` and the first iteration must
+        survive: replacing the event with a fresh unset one silently discarded
+        the stop and the loop went on to restart the child.
         """
-        self._stopping = asyncio.Event()
         while not self._stopping.is_set():
             outcome = await self._attempt_once()
             if outcome is None:
@@ -459,7 +463,11 @@ class ProcessSupervisor:
             if code is not None:
                 return int(code)
             if self._stopping.is_set():
-                self.terminate()
+                # Off-loop: ``Popen.wait`` blocks, and blocking the event loop
+                # here would stall every agent stream in the process for as long
+                # as the child takes to notice the signal.
+                await asyncio.to_thread(self.terminate)
+                continue
             await asyncio.sleep(0.05)
 
     def start(self) -> asyncio.Task[None]:
@@ -472,11 +480,30 @@ class ProcessSupervisor:
         return self._task
 
     def stop(self, *, reason: str = "supervisor stop requested") -> None:
-        """Ask the supervisor to stop; does not block."""
+        """Ask the supervisor to stop. Returns immediately; it never blocks.
+
+        Setting the event is enough while the supervision loop is running: its
+        exit poll sees the flag and performs the terminate off-loop. Calling
+        :meth:`terminate` here directly would contradict this docstring and block
+        the caller -- ``Popen.wait(timeout=5)`` plus a kill-and-wait ladder is up
+        to ten seconds -- and it did so on the event loop.
+
+        The direct terminate remains for a caller with no running loop (a script
+        that never called :meth:`start`), where nothing else would ever reap the
+        child.
+        """
         self._stop_reason = reason
         if self._stopping is not None:
             self._stopping.set()
-        self.terminate()
+        if not self._has_running_loop():
+            self.terminate()
+
+    def _has_running_loop(self) -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
 
     async def wait(self, *, timeout: float | None = None) -> None:
         """Wait for the supervision loop to finish."""

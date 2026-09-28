@@ -36,6 +36,17 @@ wait as `gave_up` with a reason. A session retried forever against a link that
 never returns is the outage equivalent of the restart loop
 `alpha.runtime.supervisor` refuses to write.
 
+> **When no launcher is installed, none of this applies.** The attempt budget is
+> charged by `claim_due`, and `resume_due` returns early when `launcher is None`
+> so that a wait is never marked as attempted by a pass that cannot attempt it.
+> That is the correct fail-closed behaviour and it is pinned by
+> `tests/test_network_wiring.py::TestServiceWithoutALauncher` — but it means the
+> Gateway, which deliberately installs no launcher, uses this table as a *record*
+> (which sessions are parked, which were refused a resume by the recovery service)
+> and not as a bound. The bounding is `SafeRunRecoveryService`'s own
+> `max_resume_attempts`. A row can therefore sit in `waiting` indefinitely; that
+> is visible and enumerable, which is the intended outcome, not a silent cap.
+
 **4. A declined checkpoint is settled, not retried.** When the recovery owner
 refuses (most likely a side-effect-unsafe checkpoint) the wait becomes `gave_up`
 immediately: that checkpoint's safety will not change, so retrying is not

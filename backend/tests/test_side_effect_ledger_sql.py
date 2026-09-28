@@ -28,20 +28,29 @@ from alpha.runtime.side_effects.statuses import (
 
 
 @pytest.fixture
-def ledger(tmp_path: Any) -> Any:
+def ledger(tmp_path: Any, request: Any) -> Any:
+    """A real SQLite ledger, with both the engine and the event loop cleaned up.
+
+    ``asyncio.run`` owns and closes its own loop. Building one with
+    ``get_event_loop_policy().new_event_loop()`` and never closing it leaks the
+    loop *and* the aiosqlite connection worker thread, which then dies with
+    "Event loop is closed" and is reported as an unhandled thread exception --
+    noise that hides a real one. The engine is disposed on a live loop for the
+    same reason.
+    """
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from alpha.persistence.base import Base
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'effects.db'}")
-    factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async def _create() -> None:
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
 
-    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(_create())
-    return SqlSideEffectLedger(factory)
+    asyncio.run(_create())
+    request.addfinalizer(lambda: asyncio.run(engine.dispose()))
+    return SqlSideEffectLedger(async_sessionmaker(engine, expire_on_commit=False))
 
 
 class TestTheHappyPath:

@@ -440,20 +440,27 @@ class TestLoop:
 
 
 @pytest.fixture
-def sqlite_repository(tmp_path: Any) -> Any:
+def sqlite_repository(tmp_path: Any, request: Any) -> Any:
+    """A real SQLite wait repository, with the engine and loop cleaned up.
+
+    ``asyncio.run`` owns and closes its own loop; a loop built with
+    ``get_event_loop_policy().new_event_loop()`` and never closed leaks the loop
+    and its aiosqlite connection worker thread, which then dies with "Event loop
+    is closed" as an unhandled thread exception.
+    """
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from alpha.persistence.base import Base
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'waits.db'}")
-    factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async def _create() -> None:
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
 
-    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(_create())
-    return NetworkWaitRepository(factory)
+    asyncio.run(_create())
+    request.addfinalizer(lambda: asyncio.run(engine.dispose()))
+    return NetworkWaitRepository(async_sessionmaker(engine, expire_on_commit=False))
 
 
 class TestSqlRepository:

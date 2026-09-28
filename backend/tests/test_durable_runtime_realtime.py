@@ -256,9 +256,28 @@ def test_the_real_lifespan_brings_the_runtime_up_and_takes_it_down_cleanly(tmp_p
         assert app.state.network_waits is service
 
         # --- a park really persists ------------------------------------------
-        parked = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(service.park(thread_id="realtime-thread", run_id="realtime-run", user_id="realtime-user", reason=NETWORK_WAIT_RECOVERY_REASON))
-        assert parked.recorded is True
-        assert parked.state == "waiting"
+        # The Gateway's own engine, closed afterwards so the aiosqlite worker
+        # thread does not outlive the loop that is feeding it.
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+        from alpha.persistence.network_waits import NetworkWaitRepository
+
+        app_config = get_app_config()
+
+        async def _park() -> dict[str, object]:
+            await init_engine_from_config(app_config.database)
+            try:
+                store = NetworkWaitRepository(get_session_factory())
+                return await store.park(thread_id="realtime-thread", run_id="realtime-run", user_id="realtime-user", reason=NETWORK_WAIT_RECOVERY_REASON)
+            finally:
+                await close_engine()
+
+        parked = asyncio.run(_park())
+        # The repository returns a row mapping, not a ParkOutcome: this test is
+        # proving the *Gateway's own database* persisted the park, and the raw
+        # read-back below is the real evidence. The service-level ParkOutcome
+        # contract is covered in tests/test_network_wait_registry.py.
+        assert parked.get("state") == "waiting", f"the repository did not record a waiting park: {parked}"
+        assert parked.get("thread_id") == "realtime-thread"
 
         # Read it back with a **raw SQL query** against the real file, so this
         # proves durability rather than trusting the ORM round trip.

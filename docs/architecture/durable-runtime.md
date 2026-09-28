@@ -216,7 +216,13 @@ Four properties are load-bearing:
   *fails*, so a reboot cannot turn a five-minute backoff into a hot retry loop.
 - **Attempts are bounded, and exhaustion is reported** as `gave_up` with a
   reason. A session retried forever against a link that never returns is the
-  outage equivalent of the restart loop the supervisor refuses to write.
+  outage equivalent of the restart loop the supervisor refuses to write. *This
+  bound applies to the registry's own resume attempts* — and the Gateway installs
+  no launcher, so in the wired deployment the table is a **record** (which
+  sessions are parked, which were refused a resume) rather than a bound. The
+  bounding there is `SafeRunRecoveryService`'s own `max_resume_attempts`. A row
+  can sit in `waiting` indefinitely; that is visible and enumerable by design, not
+  a silent cap.
 - **A declined checkpoint is settled, not retried.** If the recovery owner
   refuses — most likely a side-effect-unsafe checkpoint — that checkpoint's safety
   will not change, so retrying is a loop with extra steps.
