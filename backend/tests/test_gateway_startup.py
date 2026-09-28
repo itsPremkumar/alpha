@@ -88,7 +88,15 @@ def test_deploy_waits_for_gateway_readiness_before_success(tmp_path: Path) -> No
         env=env,
         check=False,
         capture_output=True,
-        text=True,
+        # deploy.sh prints box-drawing and arrow characters. `text=True` alone
+        # decodes with the *locale* encoding, which is cp1252 on Windows, and
+        # cp1252 cannot decode them - the reader thread raised
+        # UnicodeDecodeError inside subprocess and the result came back with
+        # stdout=None, so the assertion below failed with a confusing
+        # "argument of type 'NoneType' is not iterable" rather than about
+        # readiness at all.
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 0, result.stderr
@@ -112,7 +120,9 @@ def test_deploy_failure_prints_gateway_diagnostics_and_never_claims_success(tmp_
         env=env,
         check=False,
         capture_output=True,
-        text=True,
+        # See the note above: UTF-8 explicitly, not the Windows locale default.
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
