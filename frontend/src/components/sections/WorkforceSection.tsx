@@ -272,7 +272,14 @@ function CuratorTab() {
           : report.error ? <ErrorBox message={report.error} />
           : (
             <div className="text-xs space-y-1.5">
-              <p className="text-muted-foreground">{states?.last_summary || "No run yet."} · runs: {states?.run_count ?? 0}</p>
+              {/* `?? 0` printed a measured-looking "runs: 0" for a build that did
+                  not report the counter. Only a real measurement is a number. */}
+              <p className="text-muted-foreground">
+                {states?.last_summary || "No run yet."} ·{" "}
+                {typeof states?.run_count === "number"
+                  ? `runs: ${states.run_count}`
+                  : "runs: not reported"}
+              </p>
               {result && <p>{result}</p>}
               <ul className="space-y-1">
                 {Object.entries(states?.states || {}).map(([name, st]) => (
@@ -1294,8 +1301,23 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
             hint="Candidate records and synthetic scores are not measured correctness or production evidence."
             actions={
               <div className="flex items-center gap-1.5">
-                <Badge tone="green">Frontier: {avoLineage?.pareto_frontier?.length || 0} versions</Badge>
-                <Badge tone="gray">Status: {avoLineage?.supervisor_status || "Active"}</Badge>
+                {/* Both badges used to invent a healthy state when the lineage had
+                    not loaded: `?.length || 0` printed a measured-looking "0
+                    versions" in green, and `?.supervisor_status || "Active"`
+                    asserted the supervisor was running. An unmeasured lineage now
+                    says so; only a value the server actually sent may read as a
+                    status. */}
+                <Badge tone={avoLineage ? "green" : "gray"} data-avo-frontier={avoLineage ? "measured" : "unmeasured"}>
+                  {avoLineage
+                    ? `Frontier: ${avoLineage.pareto_frontier.length} versions`
+                    : "Frontier: not reported"}
+                </Badge>
+                <Badge tone={avoLineage ? "gray" : "gray"} data-avo-status={avoLineage ? "reported" : "not-reported"}>
+                  Status:{" "}
+                  {avoLineage
+                    ? avoLineage.supervisor_status || "reported without a status"
+                    : "not reported"}
+                </Badge>
                 <Btn variant="ghost" disabled={avoBusy} onClick={handleTriggerAVO}>
                   <Dna className="size-3 mr-1" /> Mutate & Benchmark
                 </Btn>

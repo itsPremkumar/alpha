@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW, type Swarm, type SwarmAction, type SwarmMessage, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
 import { listKanbanTasks, moveKanbanTask, kanbanEvents, KANBAN_COLUMNS, KanbanTask, KanbanStatus } from "@/lib/kanban";
+import { swarmProgressView } from "@/lib/teamops-progress";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, setRosterStatus, RosterAgent, InboxMessage } from "@/lib/inbox";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -291,7 +292,9 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
           {swarms.length === 0 ? (
             <EmptyState title="No swarms" hint="Create a bounded plan above, then run it when ready." />
           ) : (
-            swarms.map((s) => (
+            swarms.map((s) => {
+              const progress = swarmProgressView(s.progress);
+              return (
               <div key={s.id} className="rounded-xl border border-border/60 bg-card px-4 py-2.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-xs font-mono flex-1 min-w-32 break-all">{s.id.slice(0, 24)}</p>
@@ -299,13 +302,22 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{s.objective}</p>
                 {s.progress && (
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-label={`${s.progress.completed ?? 0} of ${s.progress.total ?? 0} tasks complete`}>
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${Math.min(100, ((s.progress.completed ?? 0) / Math.max(1, s.progress.total ?? 1)) * 100)}%` }}
-                    />
+                  <div
+                    className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progress.fraction === null ? undefined : Math.round(progress.fraction)}
+                    aria-valuetext={progress.label}
+                    aria-label={progress.label}
+                    data-swarm-progress={progress.fraction === null ? "not-reported" : "measured"}
+                  >
+                    {progress.fraction !== null && (
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress.fraction}%` }} />
+                    )}
                   </div>
                 )}
+                {s.progress && <p className="mt-1 text-[10px] text-muted-foreground">{progress.label}</p>}
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <Btn
                     variant="ghost"
@@ -322,7 +334,8 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 </div>
                 {openSwarmBoard === s.id && <SwarmMessagesPanel swarmId={s.id} />}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       ) : tab === "jobs" ? (

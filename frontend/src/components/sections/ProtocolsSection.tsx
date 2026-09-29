@@ -562,6 +562,24 @@ function DeliveriesPanel(props: { refreshKey: number }) {
     void load();
   }, [load, props.refreshKey]);
 
+  // The ledger header must not print a bare "0" for a state that was never
+  // measured. `error` is checked first: a failed read outranks the last good
+  // value, because a stale count beside a visible error is the more misleading
+  // of the two.
+  const deliveryCountState = !taskId.trim()
+    ? "no task selected"
+    : error
+      ? "not read"
+      : deliveries
+        ? "measured"
+        : "loading";
+  const deliveryCountLabel =
+    deliveryCountState === "measured"
+      ? String(deliveries?.count ?? 0)
+      : deliveryCountState === "loading"
+        ? "loading…"
+        : deliveryCountState;
+
   const claim = async () => {
     setBusy(true);
     try {
@@ -640,7 +658,12 @@ function DeliveriesPanel(props: { refreshKey: number }) {
       </div>
 
       <div className="space-y-2 rounded-xl border border-border/60 p-3">
-        <div className="text-[11px] font-semibold text-muted-foreground">Delivery ledger ({deliveries?.count ?? 0})</div>
+        {/* Three different states used to render the same measured-looking "0":
+            no task id entered yet, a request that failed, and a server that really
+            said zero. Only the third is a measurement. */}
+        <div className="text-[11px] font-semibold text-muted-foreground" data-delivery-count-state={deliveryCountState}>
+          Delivery ledger ({deliveryCountLabel})
+        </div>
         {deliveries && deliveries.deliveries.length === 0 && (
           <EmptyState title="No delivery records for this task" hint="Claim an occurrence below to create the first record." />
         )}

@@ -565,9 +565,20 @@ const PROBE_DEPS_URL = dataUrl(`
   export const listSkills = async () => { throw new Error("stub: must not run"); };
   export const listScheduledTasks = async () => { throw new Error("stub: must not run"); };
   export const channelStatus = async () => { throw new Error("stub: must not run"); };
-  export const supervisionFleet = async () => { throw new Error("stub: must not run"); };
   export const companyStatus = async () => { throw new Error("stub: must not run"); };
   export const fetchMcpConfig = async () => { throw new Error("stub: must not run"); };
+  // The watchdog probe reads through the STRICT fleet reader and words its own
+  // detail, so the detail is a function of the fleet rather than the constant
+  // "watching" it used to be. Both names must exist for \`system.ts\` to link at
+  // all; neither is called by the VitalsStrip assertions, which drive the pure
+  // half of the component. \`watchdogDetail\` is stubbed with the real semantics
+  // so the file cannot drift into passing for the wrong reason.
+  export const fetchFleetWorkers = async () => { throw new Error("stub: must not run"); };
+  export function watchdogDetail(workers) {
+    const n = Array.isArray(workers) ? workers.length : 0;
+    if (n === 0) return "no workers reporting — no heartbeat received, nothing is being watched";
+    return n + (n === 1 ? " worker reporting" : " workers reporting");
+  }
 `);
 
 const systemCode = transpile(read("./system.ts")).replace(

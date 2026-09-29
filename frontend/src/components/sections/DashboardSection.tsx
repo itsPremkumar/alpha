@@ -216,13 +216,26 @@ function WatchdogBlock() {
     );
   }
 
+  // Liveness is not health, and an unobserved subsystem is not a passing one.
+  // `anomalies.length === 0` was painted green with a green shield whether or not
+  // any worker had ever reported in. With zero workers the watchdog has not
+  // observed anything, so "no anomalies" is the absence of a measurement: it
+  // gets a neutral badge and the shield loses its success colour. The body copy
+  // below already said this in words; the badge contradicted it.
+  const observed = workers.length > 0;
+  const issues = anomalies.length > 0;
+
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-2">
       <div className="flex items-center gap-2">
-        <ShieldCheck className="size-4 text-emerald-500" />
+        <ShieldCheck className={`size-4 ${observed && !issues ? "text-emerald-500" : "text-muted-foreground"}`} />
         <p className="text-xs font-semibold flex-1">Safety watchdog</p>
-        <Badge tone={anomalies.length > 0 ? undefined : "green"}>
-          {anomalies.length > 0 ? `${anomalies.length} issue${anomalies.length > 1 ? "s" : ""}` : "no anomalies"}
+        <Badge tone={issues ? "amber" : observed ? "green" : "gray"}>
+          {issues
+            ? `${anomalies.length} issue${anomalies.length > 1 ? "s" : ""}`
+            : observed
+              ? "no anomalies"
+              : "no workers reporting"}
         </Badge>
       </div>
       {msg && <p className="text-[11px] text-emerald-600">{msg}</p>}
