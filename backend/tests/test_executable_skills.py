@@ -45,9 +45,11 @@ async def test_executable_skill_runner_async():
     )
 
     res = await runner.execute(ref, {"name": "alpha"})
-    # The fixture uppercases the name it is handed, so "alpha" -> "ALPHA".
-    # Asserting the call's own contract rather than a literal borrowed from an
-    # unrelated fixture.
+    # The runner must return the callable's result verbatim. The fixture
+    # uppercases the name it is handed, so "alpha" -> "ALPHA"; the assertion is
+    # the call's own contract rather than a literal borrowed from an unrelated
+    # fixture. (Both branches reworded this same comment over an identical
+    # assertion, so the wording is merged and neither side is dropped.)
     assert res == {"validated": True, "target": "ALPHA"}
 
 
@@ -58,20 +60,24 @@ def test_executable_skill_reference_validation():
     with pytest.raises(ValueError, match="Skill reference requires 'callable'"):
         ExecutableSkillReference.from_dict({"type": "python", "import": "math"})
 
-    valid = ExecutableSkillReference.from_dict({
-        "type": "python",
-        "import": "math",
-        "callable": "sqrt",
-    })
+    valid = ExecutableSkillReference.from_dict(
+        {
+            "type": "python",
+            "import": "math",
+            "callable": "sqrt",
+        }
+    )
     assert valid.import_path == "math"
     assert valid.callable_name == "sqrt"
 
 
 @pytest.mark.asyncio
 async def test_invoke_python_skill_tool():
-    res = await invoke_python_skill_tool.ainvoke({
-        "import_path": "math",
-        "callable_name": "isqrt",
-        "arguments": '{"n": 144}',
-    })
+    res = await invoke_python_skill_tool.ainvoke(
+        {
+            "import_path": "math",
+            "callable_name": "isqrt",
+            "arguments": '{"n": 144}',
+        }
+    )
     assert "12" in res

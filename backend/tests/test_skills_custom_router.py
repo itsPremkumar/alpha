@@ -139,6 +139,7 @@ def test_install_skill_archive_runs_security_scan(monkeypatch, tmp_path):
 
 def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp_path):
     installed_paths: list[Path] = []
+    storage_user_ids: list[str] = []
     refresh_calls: list[str] = []
 
     class _Storage:
@@ -156,16 +157,27 @@ def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp
         refresh_calls.append(user_id)
 
     config = SimpleNamespace()
-    # `_install_skill_archive` resolves storage through `get_or_new_user_skill_storage`
-    # rather than `_get_user_skill_storage`, and that is deliberate: it takes an
-    # explicit `user_id` so `approve_skill_proposal` can install on behalf of the
-    # proposer, and `_get_user_skill_storage` hardcodes the ambient
-    # `get_effective_user_id()` and cannot express that. Patching the read-path
-    # helper here left the real storage constructor running against an empty
-    # config, which is where the AttributeError came from. The sibling
+    # `_install_skill_archive` resolves storage through
+    # `get_or_new_user_skill_storage` rather than `_get_user_skill_storage`, and
+    # that is deliberate: it takes an explicit `user_id` so
+    # `approve_skill_proposal` can install on behalf of the proposer, and
+    # `_get_user_skill_storage` hardcodes the ambient `get_effective_user_id()`
+    # and cannot express that. Patching the read-path helper here left the real
+    # storage constructor running against an empty config, which is where the
+    # AttributeError came from. The sibling
     # `test_install_skill_archive_static_scan_block_returns_findings` already
     # patches this seam.
-    monkeypatch.setattr(skills_router, "get_or_new_user_skill_storage", lambda user_id, **kwargs: _Storage())
+    #
+    # Resolution: main patched this with a bare lambda that ignored `user_id`;
+    # agent/skills replaced it with a recording stub. The recording is REQUIRED —
+    # this test asserts `storage_user_ids == ["default"]` below, which the lambda
+    # would leave empty and silently pass for the wrong reason. The branch's stub
+    # is taken; the comment is main's, which explains the seam in more detail.
+    def _storage(user_id: str, **kwargs):
+        storage_user_ids.append(user_id)
+        return _Storage()
+
+    monkeypatch.setattr(skills_router, "get_or_new_user_skill_storage", _storage)
     monkeypatch.setattr(skills_router, "refresh_user_skills_system_prompt_cache_async", _refresh)
     monkeypatch.setattr(skills_router, "get_effective_user_id", lambda: "default")
 
@@ -184,6 +196,7 @@ def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp
 
     assert response.status_code == 200
     assert response.json()["skill_name"] == "uploaded-skill"
+    assert storage_user_ids == ["default"]
     assert refresh_calls == ["default"]
     assert len(installed_paths) == 1
     assert not installed_paths[0].exists()
