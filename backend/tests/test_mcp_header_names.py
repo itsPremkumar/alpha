@@ -21,9 +21,19 @@ from alpha.mcp.headers import (
     illegal_header_value_reason,
 )
 from alpha.mcp.oauth import build_oauth_tool_interceptor
+from alpha.mcp.protocol_version import DECLARED_MCP_PROTOCOL_VERSION
 from alpha.mcp.user_scoped_auth import build_user_scoped_auth_interceptor
 
 DISCOVERY = "Bearer discovery-token"
+
+
+def _initialized() -> SimpleNamespace:
+    """A stand-in for the `InitializeResult` a real server returns.
+
+    The durable task path refuses a session whose `initialize` reported no
+    supported protocol revision (see `alpha.mcp.protocol_version`).
+    """
+    return SimpleNamespace(protocolVersion=DECLARED_MCP_PROTOCOL_VERSION)
 
 
 def _request(headers: dict | None = None, runtime: object | None = None, server_name: str = "shared-http") -> MCPToolCallRequest:
@@ -259,7 +269,7 @@ async def test_durable_task_call_sends_one_authorization_header():
             opened.update(connection.get("headers") or {})
 
         async def __aenter__(self):
-            return SimpleNamespace(initialize=AsyncMock(), call_tool=AsyncMock(return_value=result))
+            return SimpleNamespace(initialize=AsyncMock(return_value=_initialized()), call_tool=AsyncMock(return_value=result))
 
         async def __aexit__(self, *_exc):
             return False

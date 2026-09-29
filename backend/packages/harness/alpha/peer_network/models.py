@@ -4,6 +4,29 @@ The peer network deliberately keeps its wire format small and boring: JSON over
 HTTP or WebSocket, with an optional UDP discovery beacon.  The envelope is
 aligned with the A2A concepts (Agent Card, Message, Task-like request/result
 kinds) without pretending to implement every A2A SDK feature.
+
+Naming note, because "ACP" is ambiguous outside this repository and the peer
+network is the worst possible place for the ambiguity: elsewhere in Alpha, ACP
+means the **Agent Client Protocol** -- the JSON-RPC-over-stdio protocol
+authored at Zed Industries and now stewarded by the `agentclientprotocol`
+GitHub organisation, which Alpha consumes through the PyPI distribution
+`agent-client-protocol` (see `alpha/config/acp_config.py` and
+`alpha/tools/builtins/invoke_acp_agent_tool.py`). It is a *client-to-agent*
+protocol for driving a coding agent from an editor or host application; it is
+not an agent-to-agent interoperability protocol, and it is not what this module
+speaks. Some sources attribute ACP to Zed and others to other vendors, because
+Zed authored it and other vendors implement it -- that is one protocol with
+several implementations, not several protocols with one acronym.
+
+The three names that collide in this area, stated once:
+
+- **MCP** (Model Context Protocol) -- host/client to *tools and context*. Alpha
+  consumes it; see `alpha/mcp/`.
+- **A2A** (Agent2Agent) -- *agent* to *agent*. Alpha's peer network is
+  A2A-shaped but wire-incompatible with it; see `docs/ALPHA_PEER_NETWORK.md`
+  and `docs/PROTOCOLS.md`.
+- **ACP** (Agent Client Protocol) -- editor/host to a coding agent. Alpha is
+  a client of this one, and it has nothing to do with the peer network.
 """
 
 from __future__ import annotations

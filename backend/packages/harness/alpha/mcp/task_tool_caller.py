@@ -16,6 +16,7 @@ from alpha.mcp.context_headers import build_context_headers_interceptor
 from alpha.mcp.headers import apply_header_overrides
 from alpha.mcp.interceptors import build_mcp_tool_interceptors
 from alpha.mcp.oauth import OAuthTokenManager, build_oauth_tool_interceptor
+from alpha.mcp.protocol_version import verify_negotiated_protocol_version
 from alpha.mcp.session_pool import MCPSessionPool, call_pooled_session_tool, get_session_pool
 
 logger = logging.getLogger(__name__)
@@ -221,12 +222,21 @@ class McpTaskToolCaller:
             async with create_session(effective_connection) as remote_session:
                 initialize = remote_session.initialize()
                 if session_init_timeout_seconds is not None:
-                    await asyncio.wait_for(
+                    initialized = await asyncio.wait_for(
                         initialize,
                         timeout=session_init_timeout_seconds,
                     )
                 else:
-                    await initialize
+                    initialized = await initialize
+                # Same protocol-version gate the pooled path applies, before the
+                # tool call is issued. An ephemeral session is not a lesser
+                # privilege: it runs the same call_tool result parsing, so a
+                # server that negotiated a revision Alpha cannot read has to be
+                # refused here too rather than only on the pooled route.
+                verify_negotiated_protocol_version(
+                    server_name,
+                    getattr(initialized, "protocolVersion", None) or "",
+                )
                 try:
                     call = remote_session.call_tool(
                         request.name,

@@ -7,6 +7,7 @@ import stat
 import sys
 import threading
 import weakref
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
@@ -14,7 +15,29 @@ import pytest
 from mcp.shared.exceptions import McpError
 from mcp.types import CONNECTION_CLOSED, CallToolResult, ErrorData, TextContent
 
+from alpha.mcp import session_pool as session_pool_module
 from alpha.mcp.session_pool import MCPSessionPool, call_pooled_session_tool, get_session_pool, reset_session_pool
+
+
+@pytest.fixture
+def allow_any_protocol_version(monkeypatch):
+    """Neutralise the negotiated-protocol-version gate for lifecycle tests.
+
+    `_run_session` refuses a server whose negotiated revision Alpha does not
+    speak (see `alpha.mcp.protocol_version`). Almost every double in this file
+    is a bare `AsyncMock`, so `initialize()` returns a child Mock whose
+    `protocolVersion` is another Mock -- which is not a revision, and is refused.
+    That is the gate working: a real `ClientSession.initialize()` always returns
+    an `InitializeResult` carrying a required `protocolVersion`.
+
+    Rewriting ~39 doubles to each declare a version would add noise to tests that
+    are about promotion, eviction and teardown, and would assert the same thing
+    ~39 times. The gate's own behaviour is covered exhaustively in
+    `tests/test_mcp_protocol_version.py`, and `test_pool_calls_the_protocol_gate`
+    below pins that `_run_session` still consults it. So the fixture is opt-in:
+    only the tests that need it ask for it.
+    """
+    monkeypatch.setattr(session_pool_module, "verify_negotiated_protocol_version", lambda *_: None)
 
 
 @pytest.fixture(autouse=True)
@@ -24,9 +47,49 @@ def _reset_pool():
     reset_session_pool()
 
 
+@pytest.fixture(autouse=True)
+def _neutralise_protocol_gate(monkeypatch):
+    """Apply `allow_any_protocol_version` to every test in this module.
+
+    Every double in this file is a bare `AsyncMock`, so `initialize()` reports a
+    Mock rather than a protocol revision, and the real gate would refuse it. The
+    gate's behaviour is covered in `tests/test_mcp_protocol_version.py`;
+    `test_pool_calls_the_protocol_gate` below asserts that `_run_session` still
+    consults it, so a future removal of the gate fails here rather than silently.
+    """
+    monkeypatch.setattr(session_pool_module, "verify_negotiated_protocol_version", lambda *_: None)
+
+
 # ---------------------------------------------------------------------------
 # MCPSessionPool unit tests
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pool_calls_the_protocol_gate(allow_any_protocol_version):
+    """The pool must consult the protocol-version gate, not skip it.
+
+    This is the compensating test for the module-wide fixture above. The fixture
+    neutralises the gate so bare `AsyncMock` doubles keep working; this one
+    asserts the gate is still wired in, so neutralising it cannot turn into
+    removing it unnoticed.
+    """
+    called: list[tuple] = []
+    with patch.object(
+        session_pool_module,
+        "verify_negotiated_protocol_version",
+        side_effect=lambda label, negotiated: called.append((label, negotiated)),
+    ):
+        session = AsyncMock()
+        session.initialize = AsyncMock(return_value=SimpleNamespace(protocolVersion="2025-11-25"))
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=session)
+        cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("langchain_mcp_adapters.sessions.create_session", return_value=cm):
+            await MCPSessionPool().get_session("srv", "t", {"transport": "stdio", "command": "x", "args": []})
+
+    assert called == [("x", "2025-11-25")], f"_run_session must hand the negotiated revision to the protocol gate before promoting the session; it recorded {called!r} instead."
 
 
 @pytest.mark.asyncio
