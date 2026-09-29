@@ -157,6 +157,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec(
         "plans", "Unified local-only integration plan and sequencing for Alpha."
     ),
+    "FORMAT_DEBT.md": DocumentSpec(
+        "contributing",
+        "Tracked ruff-format debt: measured baseline, per-area breakdown, remaining batches.",
+    ),
     "API.md": DocumentSpec(
         "api", "API entry point and environment/base URL reference."
     ),
@@ -243,6 +247,31 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "README.md": DocumentSpec(
         "contributing", "Documentation library entry point and navigation overview."
+    ),
+    # Live-research dossiers on the external agent landscape, produced by agents
+    # working in isolated worktrees with live fetches and per-claim citations.
+    # Classified as plans for the same reason AGENT_LANDSCAPE_AND_ROADMAP.md is:
+    # they survey what exists elsewhere in order to drive what this project builds
+    # next, rather than describing Alpha's own reasoning plane.
+    "RESEARCH_AUTONOMOUS_AGENTS.md": DocumentSpec(
+        "plans",
+        "Live research: computer-use and browser agents, with a benchmark-trust audit.",
+    ),
+    "RESEARCH_CODING_AGENTS.md": DocumentSpec(
+        "plans",
+        "Live research: terminal- and IDE-first coding agents, mapped against Alpha.",
+    ),
+    "RESEARCH_NAMED_AGENTS.md": DocumentSpec(
+        "plans",
+        "Live research: the Muse/Hermes/OpenClaw/Grok family, with disambiguation.",
+    ),
+    "RESEARCH_ORCHESTRATION_MEMORY_EVAL.md": DocumentSpec(
+        "plans",
+        "Live research: orchestration frameworks, agent protocols, memory, and evaluation.",
+    ),
+    "SELF_AUDIT.md": DocumentSpec(
+        "plans",
+        "Measured audit of this repository's own source: inventory, inert surface, divergences.",
     ),
     "REASONING_PLAN.md": DocumentSpec(
         "reasoning",

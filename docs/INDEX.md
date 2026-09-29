@@ -61,6 +61,7 @@
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Development setup, conventions, testing, and contribution guidance.
 - [DISCOVERABILITY.md](DISCOVERABILITY.md) — SEO, GEO, and AEO strategy, surfaces, and maintenance checklist.
 - [FAQ.md](FAQ.md) — Frequently asked questions and agent-friendly documentation pointers.
+- [FORMAT_DEBT.md](FORMAT_DEBT.md) — Tracked ruff-format debt: measured baseline, per-area breakdown, remaining batches.
 - [GETTING_STARTED.md](GETTING_STARTED.md) — Installation and first-run guide for Alpha.
 - [GLOSSARY.md](GLOSSARY.md) — Every Alpha term defined in one place, with caveats marked.
 - [README.md](README.md) — Documentation library entry point and navigation overview.
@@ -72,6 +73,10 @@
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md) — Living implementation status matrix for production work.
 - [MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md) — Enhanced multi-agent project collaboration plan.
+- [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) — Live research: computer-use and browser agents, with a benchmark-trust audit.
+- [RESEARCH_CODING_AGENTS.md](RESEARCH_CODING_AGENTS.md) — Live research: terminal- and IDE-first coding agents, mapped against Alpha.
+- [RESEARCH_NAMED_AGENTS.md](RESEARCH_NAMED_AGENTS.md) — Live research: the Muse/Hermes/OpenClaw/Grok family, with disambiguation.
+- [RESEARCH_ORCHESTRATION_MEMORY_EVAL.md](RESEARCH_ORCHESTRATION_MEMORY_EVAL.md) — Live research: orchestration frameworks, agent protocols, memory, and evaluation.
 - [SENTINEL_AUTONOMOUS_AGENT_PLAN.md](SENTINEL_AUTONOMOUS_AGENT_PLAN.md) — Autonomous monitor, diagnose, fix, verify, and commit plan.
 - [SYSTEM_ONE_ALPHA_ROADMAP.md](SYSTEM_ONE_ALPHA_ROADMAP.md) — System One implementation roadmap for Alpha.
 - [TASK_LIST.md](TASK_LIST.md) — Living master task list for project delivery.
