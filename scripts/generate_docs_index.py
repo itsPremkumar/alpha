@@ -169,6 +169,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "contributing",
         "Which kind of isolation an agent gets, and how to choose between the strategies.",
     ),
+    "MULTI_WORKER.md": DocumentSpec(
+        "operations",
+        "What Alpha guarantees with one worker, with N workers, and with none of them.",
+    ),
     "API.md": DocumentSpec(
         "api", "API entry point and environment/base URL reference."
     ),
