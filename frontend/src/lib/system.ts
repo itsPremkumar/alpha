@@ -4,7 +4,7 @@ import { fetchMemory } from "./memory";
 import { listSkills } from "./skills";
 import { listScheduledTasks } from "./scheduled";
 import { channelStatus } from "./channels";
-import { supervisionFleet } from "./supervision";
+import { fetchFleetWorkers, watchdogDetail } from "./supervision";
 import { companyStatus } from "./teamops";
 import { fetchMcpConfig } from "./mcp";
 
@@ -94,11 +94,12 @@ export async function probeAll(): Promise<Probe[]> {
     runProbe("scheduled", "Scheduler", "Recurring background work", async () => listScheduledTasks(), (t) => `${t.length} ${t.length === 1 ? "schedule" : "schedules"}`),
     runProbe("channels", "Chat channels", "Telegram / Slack / Discord…", async () => channelStatus(), (c) => (c.length === 0 ? "none linked" : `${c.length} running`)),
     runProbe("mcp", "App connections (MCP)", "External tool servers", async () => fetchMcpConfig(), (s) => (s.length === 0 ? "none added" : `${s.length} ${s.length === 1 ? "server" : "servers"}`)),
-    runProbe("watchdog", "Safety watchdog", "Worker health + self-heal", async () => {
-      const f = await supervisionFleet();
-      if (!f) throw new Error("The Gateway returned no watchdog data.");
-      return f;
-    }, () => "watching"),
+    // `fetchFleetWorkers` (the strict reader) rather than `supervisionFleet`, so
+    // a failed read rejects with the Gateway's own reason instead of arriving as
+    // a `null` the probe then has to describe in words of its own. The detail is
+    // derived from the fleet instead of being the constant "watching", which said
+    // nothing about whether any worker is actually reporting.
+    runProbe("watchdog", "Safety watchdog", "Worker health + self-heal", () => fetchFleetWorkers(), watchdogDetail),
     // No `catch` here, and no invented fallback wording. `companyStatus()` now
     // propagates the Gateway's own 404 detail, so both the workspace header and
     // the System control centre read exactly what the server said:

@@ -1,12 +1,16 @@
 import { get, send, asList } from "./http";
 
-/** Watchdog fleet state (workers, leases, liveness). Null when unavailable. */
-export async function supervisionFleet(): Promise<Record<string, unknown> | null> {
-  try {
-    return await get<Record<string, unknown>>("/supervision/fleet");
-  } catch {
-    return null;
-  }
+/**
+ * Watchdog fleet state (workers, leases, liveness).
+ *
+ * This used to `catch { return null }`, which is a lie in the same shape as the
+ * `"Company engine idle"` string the workspace header was fixed for: the caller
+ * gets a `null`, has no server reason, and has to invent a sentence for it. The
+ * read now propagates, so a failed read and a legitimately empty fleet stay two
+ * distinct claims and only the server gets to word the failure.
+ */
+export async function supervisionFleet(): Promise<Record<string, unknown>> {
+  return get<Record<string, unknown>>("/supervision/fleet");
 }
 
 export async function supervisionAnomalies(): Promise<Array<Record<string, unknown>>> {
@@ -96,6 +100,27 @@ export function parseFleetWorkers(body: unknown): FleetWorker[] {
 /** Strict variant: a failed request throws instead of being reported as an empty fleet. */
 export async function fetchFleetWorkers(): Promise<FleetWorker[]> {
   return parseFleetWorkers(await get<unknown>("/supervision/fleet"));
+}
+
+/**
+ * What the workspace header says about the safety watchdog.
+ *
+ * The probe used to pass a constant `() => "watching"`, which discarded the
+ * value it was summarizing: a fleet of zero workers and a fleet of two hundred
+ * both rendered the same reassuring word. The measured deployment answers HTTP
+ * 200 with `{}` — no worker has ever posted a heartbeat — so the header was
+ * asserting liveness supervision over a subsystem that had never observed
+ * anything.
+ *
+ * Zero workers is a real answer and is now stated as one, with the reason
+ * attached. It is emphatically not a pass: nothing is being watched.
+ */
+export function watchdogDetail(workers: FleetWorker[]): string {
+  const n = workers.length;
+  if (n === 0) return "no workers reporting — no heartbeat received, nothing is being watched";
+  const anomalies = workers.filter((w) => w.unresolved_anomalies_count !== null && w.unresolved_anomalies_count > 0).length;
+  const base = `${n} ${n === 1 ? "worker" : "workers"} reporting`;
+  return anomalies > 0 ? `${base} · ${anomalies} with unresolved anomalies` : base;
 }
 
 /** Strict variant of the anomaly list: throws instead of pretending there are no anomalies. */
