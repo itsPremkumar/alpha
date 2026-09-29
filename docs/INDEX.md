@@ -64,6 +64,7 @@
 - [FORMAT_DEBT.md](FORMAT_DEBT.md) — Tracked ruff-format debt: measured baseline, per-area breakdown, remaining batches.
 - [GETTING_STARTED.md](GETTING_STARTED.md) — Installation and first-run guide for Alpha.
 - [GLOSSARY.md](GLOSSARY.md) — Every Alpha term defined in one place, with caveats marked.
+- [HONESTY_SUITE.md](HONESTY_SUITE.md) — Offline regression suite pinning durable records against the answers the product gives.
 - [README.md](README.md) — Documentation library entry point and navigation overview.
 - [USE_CASES.md](USE_CASES.md) — End-to-end jobs mapped to the subsystem that delivers each one.
 
