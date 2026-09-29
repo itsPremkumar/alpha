@@ -236,7 +236,13 @@ class RsiWorkspaceManager:
     # ── destruction ─────────────────────────────────────────────────────────
 
     def destroy(self, ws: CandidateWorkspace) -> bool:
-        """Remove a workspace; only ``rsi/*`` branches (or managed copy dirs) are ever touched."""
+        """Remove a workspace; only ``rsi/*`` branches (or managed copy dirs) are ever touched.
+
+        This is the explicit teardown API, so it discards whatever the candidate
+        left behind. ``WorktreeManager.remove_worktree`` refuses to destroy
+        uncommitted work by default; an explicit ``destroy()`` is the deliberate
+        opt-in, and the copy-workspace path below has always been unconditional.
+        """
         if ws.kind == "copy":
             root = self.copy_ws_root.resolve()
             resolved = ws.path.resolve()
@@ -251,7 +257,7 @@ class RsiWorkspaceManager:
         branch = _validate_branch_name(ws.branch)  # mechanical never-touch-main, checked again here
         if not Path(ws.path).resolve().is_relative_to(self.base_worktree_dir):
             raise ValueError(f"refusing to destroy a worktree outside the managed directory: {ws.path}")
-        removed = self._wt.remove_worktree(branch, force=True, delete_branch=True)
+        removed = self._wt.remove_worktree(branch, force=True, delete_branch=True, discard_uncommitted=True)
         self._forget(ws.workspace_id)
         return removed
 
@@ -268,7 +274,7 @@ class RsiWorkspaceManager:
         ws = self.create(candidate_id, base_ref=base_ref)
         try:
             if ws.kind == "worktree":
-                with self._wt.worktree_context(ws.branch, base_ref=base_ref, delete_on_exit=True):
+                with self._wt.worktree_context(ws.branch, base_ref=base_ref, delete_on_exit=True, discard_uncommitted=True):
                     yield ws
             else:
                 yield ws

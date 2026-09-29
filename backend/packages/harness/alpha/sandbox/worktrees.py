@@ -29,6 +29,40 @@ class WorktreeManager:
         self.repo_root = Path(repo_root).resolve()
         self.worktrees_dir = Path(base_worktree_dir).resolve() if base_worktree_dir else self.repo_root / ".worktrees"
         self._active_worktrees: dict[str, WorktreeInstance] = {}
+        # `_active_worktrees` is a *cache*, not the record of truth. Git's own
+        # administrative files under .git/worktrees are what actually own a
+        # worktree, and they outlive this process. A manager built after a
+        # Gateway restart must adopt the worktrees git still tracks, or
+        # `remove_worktree` cannot find them, reports `False`, and the worktree
+        # leaks with its branch still checked out.
+        self._adopt_existing_worktrees()
+
+    def _adopt_existing_worktrees(self) -> None:
+        """Rehydrate the cache from git for worktrees inside our managed directory."""
+        try:
+            records = self.list_worktrees()
+        except (subprocess.CalledProcessError, OSError, FileNotFoundError):
+            # A repository that cannot be interrogated yet (not initialised, git
+            # absent) simply has nothing to adopt. This is an absence, not a
+            # failure, and must not be reported as a populated inventory.
+            return
+        for record in records:
+            path = record.get("path")
+            branch_ref = record.get("branch")
+            if not path or not branch_ref:
+                # A worktree with no branch is a detached or locked-out record;
+                # it is not a managed, branch-owned worktree we may adopt.
+                continue
+            branch_name = branch_ref.removeprefix("refs/heads/")
+            try:
+                target = Path(path).resolve()
+            except OSError:
+                continue
+            if target == self.repo_root or not target.is_relative_to(self.worktrees_dir):
+                # Only adopt what lives under the directory this manager owns.
+                # The main worktree and any operator-created worktree are not ours.
+                continue
+            self._active_worktrees.setdefault(branch_name, WorktreeInstance(target, branch_name))
 
     def _target_path(self, branch_name: str) -> Path:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", branch_name) or ".." in branch_name:
@@ -96,7 +130,30 @@ class WorktreeManager:
             self._active_worktrees[branch_name] = wt
             return wt
 
-    def remove_worktree(self, branch_name: str, force: bool = True, delete_branch: bool = False) -> bool:
+    def has_uncommitted_work(self, branch_name: str) -> bool:
+        """True when the managed worktree holds work git does not already track.
+
+        Untracked files count. A crash mid-task leaves exactly this state, and
+        it is the only thing `worktree remove --force` will destroy silently.
+        """
+        target = self._target_path(branch_name)
+        if not target.is_dir():
+            return False
+        try:
+            status = self._run_git(["-C", str(target), "status", "--porcelain"]).stdout
+        except (subprocess.CalledProcessError, OSError, FileNotFoundError):
+            # An unreadable status is not evidence of a clean tree.
+            return True
+        return bool(status.strip())
+
+    def remove_worktree(
+        self,
+        branch_name: str,
+        force: bool = True,
+        delete_branch: bool = False,
+        *,
+        discard_uncommitted: bool = False,
+    ) -> bool:
         target = self._target_path(branch_name)
         with _WORKTREE_LOCK:
             if not target.exists():
@@ -105,6 +162,16 @@ class WorktreeManager:
                 self._verify_worktree(target, branch_name)
             except RuntimeError:
                 return False
+            if not discard_uncommitted and self.has_uncommitted_work(branch_name):
+                # `force` means "override git's refusal because the worktree is
+                # busy or dirty". It is a convenience for a worktree this
+                # manager owns, not permission to delete an agent's unsaved
+                # work. Refusing here is what makes a crash resumable; a caller
+                # that genuinely means to discard must say so.
+                raise RuntimeError(
+                    f"Refusing to remove worktree {branch_name!r}: it holds uncommitted or untracked work. "
+                    "Commit or stash it first, or pass discard_uncommitted=True to destroy it deliberately."
+                )
             args = ["worktree", "remove"]
             if force:
                 args.append("--force")
@@ -136,10 +203,30 @@ class WorktreeManager:
         return results
 
     @contextlib.contextmanager
-    def worktree_context(self, branch_name: str, base_ref: str = "HEAD", delete_on_exit: bool = True) -> Generator[WorktreeInstance, None, None]:
+    def worktree_context(
+        self,
+        branch_name: str,
+        base_ref: str = "HEAD",
+        delete_on_exit: bool = True,
+        *,
+        discard_uncommitted: bool = False,
+    ) -> Generator[WorktreeInstance, None, None]:
+        """Create a worktree for the duration of the block, then clean it up.
+
+        ``delete_on_exit`` is a *request* to remove the worktree, not a licence
+        to destroy work in it. A block that ends with uncommitted or untracked
+        changes leaves the worktree in place and says so, so a crashed or
+        interrupted task stays recoverable instead of being silently deleted on
+        the way out. Pass ``discard_uncommitted=True`` only for a scratch
+        worktree whose contents are known to be disposable.
+        """
         wt = self.create_worktree(branch_name, base_ref=base_ref)
         try:
             yield wt
         finally:
-            if delete_on_exit and not self.remove_worktree(branch_name, force=True):
+            if delete_on_exit and not self.remove_worktree(
+                branch_name,
+                force=True,
+                discard_uncommitted=discard_uncommitted,
+            ):
                 raise RuntimeError("Managed worktree cleanup could not be verified")
