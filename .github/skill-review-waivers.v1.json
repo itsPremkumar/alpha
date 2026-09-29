@@ -10,7 +10,8 @@
       "evidence": "subprocess.run",
       "file_sha256": "sha256:87d864570220b699fac52da309d2d6efdb060647bfebc74f768128e646accf80",
       "preapproved_file_sha256s": [
-        "sha256:2877bde08bf3f437b9dae3d57585a0840b9b1024736d2e5c6c657b71899269d0"
+        "sha256:2877bde08bf3f437b9dae3d57585a0840b9b1024736d2e5c6c657b71899269d0",
+        "sha256:8903171e790c8b8ff8c888ad6eef6568bfc78789ed44f70f5f65aaf24c91970e"
       ],
       "reason": "Required Claude CLI invocation uses a fixed executable, an argv list, prompt input over stdin, and shell=False.",
       "expires_on": "2027-02-28"
@@ -20,11 +21,12 @@
       "source": "skillscan",
       "rule_id": "python-subprocess",
       "path": "scripts/run_eval.py",
-      "line": 85,
+      "line": 80,
       "evidence": "subprocess.Popen",
       "file_sha256": "sha256:43e3b8f80dbf69c343967ba77e268fae991d9fa3ed68b32a0ff02532cd48657f",
       "preapproved_file_sha256s": [
-        "sha256:ea2521ba41c8fd16b2900758c890bb6c6d2b4b01da10b4a860facb8587ed0bde"
+        "sha256:ea2521ba41c8fd16b2900758c890bb6c6d2b4b01da10b4a860facb8587ed0bde",
+        "sha256:79a5f43632d9d58964d94f9d8ee0d34f7d12cefcfd5f4ddf28f7a6e74fb37536"
       ],
       "reason": "Required Claude CLI invocation uses a fixed executable, an argv list, captured output streams, and shell=False.",
       "expires_on": "2027-02-28"
