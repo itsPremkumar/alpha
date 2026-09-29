@@ -1096,9 +1096,19 @@ test("a missing model reads as not reported, not as a default model", () => {
   const markup = renderToStaticMarkup(
     createElement(RunStatusPanel, { record: inspector.toRunRecord({ run_id: "r-1", status: "success" }), error: null })
   );
-  assert.match(markup, /model that served the run/);
+  // TWO model tiles, because `run.model` and the model that actually served the
+  // run are different facts. This test used to pin the single misleading label
+  // "model that served the run", which printed the configured alias while
+  // claiming to name the provider's model; that label is deliberately gone.
+  assert.match(markup, /model the run was configured with/);
+  assert.match(markup, /model that actually served this run/);
   assert.match(markup, /not reported/);
   assert.doesNotMatch(markup, /alpha-free|union-alpha/, "no model may be invented for a run that reported none");
+  assert.doesNotMatch(
+    markup,
+    /model that served the run/,
+    "the alias must not be labelled as the model that served the run"
+  );
 });
 
 test("an unreported token total renders as unknown, never as 0", () => {

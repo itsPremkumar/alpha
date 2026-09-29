@@ -23,6 +23,7 @@ import { absoluteStamp, clockTime } from "@/lib/time";
 import {
   UNKNOWN_VALUE,
   artifactsFrom,
+  delegationsForRun,
   deliveryFrom,
   fetchArtifactArchiveManifest,
   fetchRecentRuns,
@@ -30,20 +31,27 @@ import {
   fetchRunRecord,
   fetchRunTimeline,
   fetchRunTranscript,
+  fetchThreadDelegations,
   fetchThreadTokenUsage,
   fetchWorkspaceChangesForRun,
   finalAnswer,
   formatCount,
   formatPercentage,
   isActive,
+  isTerminalDelegation,
   isTerminalSuccess,
+  runFailureFrom,
+  servingModelsFrom,
   terminalStatusLabel,
   toolCallsFrom,
   transcriptPrompts,
   type ArtifactArchiveManifest,
   type DeliveryReceipt,
   type RunArtifact,
+  type RunDelegation,
+  type RunFailureReport,
   type RunRecord,
+  type ServingModelReport,
   type ThreadTokenUsage,
   type Timeline,
   type ToolCallRecord,
@@ -83,6 +91,18 @@ function shortTime(value: string | null): string {
   return clockTime(value) ?? "--:--";
 }
 
+/**
+ * A measured number as a `Measured` value, or `null` for the honest unknown.
+ *
+ * `formatCount` returns the `—` glyph for `null`, and a `Measured` tile that
+ * receives a string cannot tell that glyph from a real value — which is how a
+ * summary the Gateway declined to send once rendered as six bare dashes under
+ * six confident labels. `null` is what makes the tile say "not reported".
+ */
+function measured(value: number | null): string | null {
+  return value === null ? null : String(value);
+}
+
 function Panel(props: { title: string; icon: React.ReactNode; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
@@ -98,10 +118,52 @@ function Panel(props: { title: string; icon: React.ReactNode; children: React.Re
   );
 }
 
-function Measured(props: { label: string; value: string | null; render?: (value: string) => React.ReactNode }) {
+/**
+ * One measured stat, self-describing on its own.
+ *
+ * Three rules, each from a way this read was previously misread:
+ *
+ *  - **A value is never a bare number.** `title` and `aria-label` name the unit
+ *    and the surface the number came from, so `52.9k` is legible on its own and
+ *    a screen reader announces "52.9k, total tokens, from this run's record"
+ *    rather than just the digits.
+ *  - **`null` says which of the three unknowns it is.** "not reported" (the
+ *    Gateway sent no value) is distinct from a measured `0` and from a value
+ *    that does not apply to this run. A bare em dash claimed all three at once.
+ *  - **The dash is never printed on its own.** `UNKNOWN_VALUE` is a glyph for
+ *    use inside prose; alone in a stat tile it is the ambiguity this component
+ *    exists to remove.
+ */
+function Measured(props: {
+  label: string;
+  value: string | null;
+  /** Names the unit and the source, for the tooltip and the a11y name. */
+  title?: string;
+  render?: (value: string) => React.ReactNode;
+}) {
+  const unknown = props.value === null;
+  // The label already names the scope, so the unknown sentence does not repeat
+  // it — "the Gateway sent no total tokens this run for this run" reads like a
+  // bug in the copy even when the underlying claim is right.
+  const described = unknown
+    ? `not reported — the Gateway sent no value for ${props.label}`
+    : `${props.value}${props.title ? `, ${props.title}` : `, ${props.label}`}`;
   return (
-    <div className="rounded-xl bg-muted/40 px-2.5 py-2">
-      <div className="text-[11px] font-mono break-all">{props.value === null ? <span className="italic text-muted-foreground">{UNKNOWN_VALUE} not reported</span> : props.render ? props.render(props.value) : props.value}</div>
+    <div
+      className="rounded-xl bg-muted/40 px-2.5 py-2"
+      title={described}
+      aria-label={`${props.label}: ${described}`}
+      role="group"
+    >
+      <div className="text-[11px] font-mono break-all">
+        {props.value === null ? (
+          <span className="italic text-muted-foreground">not reported</span>
+        ) : props.render ? (
+          props.render(props.value)
+        ) : (
+          props.value
+        )}
+      </div>
       <div className="text-[10px] text-muted-foreground mt-0.5">{props.label}</div>
     </div>
   );
@@ -132,16 +194,43 @@ function Json(props: { value: unknown; label: string; maxChars?: number }) {
 /* ── terminal status ──────────────────────────────────────────────────────── */
 
 /**
- * The run's terminal state, from the run record only.
+ * The run's terminal state, from the run record plus the two facts the record
+ * cannot carry on its own.
  *
  * A run that is still active is stated as active and nothing below is allowed
  * to imply it finished. A completed run is labelled `completed` in words and is
  * never called verified: this panel reports what the Gateway recorded, and the
  * Gateway records no verification verdict for a chat run.
+ *
+ * Two fields here used to be collapsed into one each, and each collapse cost
+ * the operator a fact:
+ *
+ *  - `run.model` is the **configured** Alpha model name (`alpha-free`). The
+ *    model that actually answered is `response_metadata.model_name` on the
+ *    run's own model responses (`opencode-zen:space-bunny-free`). One tile
+ *    labelled "model that served the run" printed the alias, so nobody could
+ *    tell which model was really on the other end. They are two tiles now.
+ *  - The run's `error` string and the error **code** are different claims.
+ *    `RUN_QUOTA_EXCEEDED` also claims `RecursionLimit`, so its message can
+ *    describe a budget that was never exhausted; the real `error_type` is
+ *    shown beside it.
+ *
+ * `serving` and `failure` are optional so a caller holding a partial read — or
+ * an integration that has not adopted them — degrades to the honest unknown
+ * instead of throwing and blanking the panel.
  */
-export function RunStatusPanel(props: { record: RunRecord; error: string | null }) {
+export function RunStatusPanel(props: {
+  record: RunRecord;
+  error: string | null;
+  /** Derived from the run's own `response_metadata.model_name` rows. */
+  serving?: ServingModelReport;
+  /** The coded failure from the run's own `run.error` event, or `null`. */
+  failure?: RunFailureReport | null;
+}) {
   const { record } = props;
   const active = isActive(record.status);
+  const serving: ServingModelReport = props.serving ?? { models: null, differsFromRecord: false };
+  const servingLabel = serving.models === null ? null : serving.models.map((entry) => entry.model).join(", ");
   return (
     <Panel
       title="Terminal status"
@@ -163,15 +252,41 @@ export function RunStatusPanel(props: { record: RunRecord; error: string | null 
               : `The Gateway recorded this run as ${record.status}.`}
       </p>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <Measured label="run id" value={record.run_id} />
-        <Measured label="model that served the run" value={record.model} />
-        <Measured label="assistant" value={record.assistant_id} />
-        <Measured label="trace id" value={record.trace_id} />
-        <Measured label="created" value={record.created_at} render={(v) => stamp(v)} />
-        <Measured label="last updated" value={record.updated_at} render={(v) => stamp(v)} />
-        <Measured label="stop reason" value={record.stop_reason} />
-        <Measured label="multitask strategy" value={record.multitask_strategy} />
+        <Measured label="run id" value={record.run_id} title="from the run record" />
+        <Measured
+          label="model the run was configured with"
+          value={record.model}
+          title="the Alpha model name this run resolved to — not the provider that answered"
+        />
+        <Measured
+          label="model that actually served this run"
+          value={servingLabel}
+          title="response_metadata.model_name, as the provider reported it on this run's own model responses"
+        />
+        <Measured label="assistant" value={record.assistant_id} title="from the run record" />
+        <Measured label="trace id" value={record.trace_id} title="metadata.alpha_trace_id on the run record" />
+        <Measured label="created" value={record.created_at} render={(v) => stamp(v)} title="run record created_at" />
+        <Measured
+          label="last updated"
+          value={record.updated_at}
+          render={(v) => stamp(v)}
+          title="run record updated_at"
+        />
+        <Measured label="stop reason" value={record.stop_reason} title="run record stop_reason" />
+        <Measured
+          label="multitask strategy"
+          value={record.multitask_strategy}
+          title="run record multitask_strategy"
+        />
       </div>
+      {serving.differsFromRecord && serving.models !== null ? (
+        <p className="text-[11px] text-muted-foreground">
+          Those are two different names for two different things.{" "}
+          <span className="font-mono">{record.model}</span> is the configured Alpha model this run asked for; the
+          model that produced its answers reported itself as{" "}
+          {serving.models.map((entry) => entry.model).join(", ")}.
+        </p>
+      ) : null}
       {record.error ? (
         <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 space-y-1">
           <p className="text-[11px] font-semibold text-destructive flex items-center gap-1.5">
@@ -182,6 +297,48 @@ export function RunStatusPanel(props: { record: RunRecord; error: string | null 
       ) : (
         <p className="text-[11px] text-muted-foreground">No error was recorded for this run.</p>
       )}
+      {props.failure ? (
+        <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 space-y-1.5">
+          <p className="text-[11px] font-semibold flex items-center gap-1.5">
+            <Terminal className="size-3.5" /> The Gateway&apos;s own code for this failure
+          </p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <Measured
+              label="error code"
+              value={props.failure.code}
+              title="metadata.error_code on this run's own run.error event"
+            />
+            <Measured
+              label="real error type"
+              value={props.failure.errorType}
+              title="metadata.error_type — the exception class, which is what actually stopped the run"
+            />
+            <Measured label="severity" value={props.failure.severity} title="metadata.severity" />
+            <Measured label="suggested recovery" value={props.failure.recovery} title="metadata.recovery" />
+          </div>
+          {props.failure.message ? (
+            <p className="text-[11px] text-muted-foreground">
+              The wording attached to that code, verbatim:{" "}
+              <span className="font-mono text-foreground">&ldquo;{props.failure.message}&rdquo;</span>
+            </p>
+          ) : null}
+          {props.failure.code && props.failure.errorType && props.failure.code !== props.failure.errorType ? (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              One code covers several causes, so its wording is not a statement about this run. The exception that
+              actually stopped it was <span className="font-mono">{props.failure.errorType}</span> — read the type,
+              not the code&apos;s message, to know what happened. For example{" "}
+              <span className="font-mono">RUN_QUOTA_EXCEEDED</span> also claims{" "}
+              <span className="font-mono">RecursionLimit</span>, so a run that hit LangGraph&apos;s step limit is
+              reported as &ldquo;a run or token budget for this thread is exhausted&rdquo; when no budget was touched.
+            </p>
+          ) : null}
+          {props.failure.detail ? (
+            <p className="text-[11px] font-mono whitespace-pre-wrap break-words text-muted-foreground">
+              {props.failure.detail}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </Panel>
   );
 }
@@ -391,8 +548,15 @@ function ToolCallRow(props: { call: ToolCallRecord }) {
       {conflicted && (
         <p className="text-[11px] text-amber-700 dark:text-amber-400">
           The run journalled this result as status &ldquo;{call.statusVerbatim ?? "not reported"}&rdquo;, but the output
-          it recorded reads as an error. Both facts are shown; the run journal carries no failure verdict for this call,
-          so none is claimed here.
+          it recorded reads as an error
+          {call.shellExitCode !== null ? (
+            <>
+              {" "}
+              — it ends with <span className="font-mono">Exit Code: {call.shellExitCode}</span>, the shell&apos;s own
+              failure marker, which every sandbox appends to otherwise ordinary output
+            </>
+          ) : null}
+          . Both facts are shown; the run journal carries no failure verdict for this call, so none is claimed here.
         </p>
       )}
       {call.artifact !== null && <Json value={call.artifact} label="artifact recorded on this result" maxChars={1500} />}
@@ -430,6 +594,151 @@ export function ToolCallsPanel(props: { calls: ToolCallRecord[]; unattributedCou
   );
 }
 
+/* ── subagent delegation ───────────────────────────────────────────────────── */
+
+/**
+ * The work this run delegated, from the thread's own delegation ledger.
+ *
+ * The reason this panel exists rather than reading the `subagent.*` events off
+ * the run's stream: those events ride `stream_mode: custom` custom chunks, so
+ * they are persisted only for a run that streamed that mode. A genuinely
+ * successful delegation can therefore record **zero** `subagent.start` /
+ * `subagent.step` / `subagent.end` rows on its parent, and a panel that read
+ * them would show an empty delegation for a run that really delegated.
+ * `ThreadState.delegations` is captured by `DurableContextMiddleware` on every
+ * run and tagged with the `run_id` that made it, so it is the ledger that
+ * answers the question.
+ *
+ * The `subagent.*` count is still shown, as a **cross-check**: when the ledger
+ * says this run delegated and the event stream says it delegated nothing, that
+ * is a fact about the two read paths, and both are printed rather than one
+ * quietly standing in for the other.
+ */
+export function DelegationPanel(props: {
+  delegations: RunDelegation[];
+  /** Ledger entries with no `run_id`, so not attributable to any run. */
+  unattributed: number;
+  /** `null` when the thread state carried no `delegations` channel at all. */
+  ledger: RunDelegation[] | null;
+  /** `subagent.*` rows this run's own event stream carried. */
+  streamEventCount: number | null;
+  error: string | null;
+  loading: boolean;
+}) {
+  const count = props.delegations.length;
+  return (
+    <Panel
+      title={props.error || props.ledger === null ? "Subagent delegation" : `Subagent delegation (${count})`}
+      icon={<Boxes className="size-4 text-primary" />}
+      aside={
+        props.error || props.ledger === null ? null : count === 0 ? (
+          <Badge tone="gray">none recorded for this run</Badge>
+        ) : (
+          <Badge tone={props.delegations.every((entry) => isTerminalDelegation(entry.status)) ? "gray" : "blue"}>
+            {count} delegated
+          </Badge>
+        )
+      }
+    >
+      {props.error ? (
+        <ErrorBox
+          message={`The thread's delegation ledger could not be read, so this run's delegations are unknown rather than none. (${props.error})`}
+        />
+      ) : props.loading ? (
+        <p className="text-[11px] text-muted-foreground">Reading the thread&rsquo;s delegation ledger&hellip;</p>
+      ) : props.ledger === null ? (
+        <p className="text-[11px] text-muted-foreground">
+          The thread state carried no <span className="font-mono">delegations</span> channel, so this run&rsquo;s
+          delegations are unknown. That is not the same as a run that delegated nothing.
+        </p>
+      ) : count === 0 ? (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground">
+            The thread&rsquo;s delegation ledger records no delegation tagged with this run&rsquo;s id. That is the
+            server&rsquo;s answer, not a failed read.
+          </p>
+          {props.streamEventCount !== null && props.streamEventCount > 0 ? (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              This run&rsquo;s own event stream does carry {props.streamEventCount} subagent event
+              {props.streamEventCount === 1 ? "" : "s"}, none of which the ledger attributes to this run. Both
+              records are shown; neither is treated as the other.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            Recorded in the thread&apos;s delegation ledger and tagged with this run&rsquo;s id. Delegating work is
+            not the same as that work succeeding — read each row&apos;s own status.
+          </p>
+          <ul className="space-y-1.5">
+            {props.delegations.map((entry, i) => (
+              <li key={`${entry.id ?? "?"}-${i}`} className="rounded-lg bg-muted/30 px-2.5 py-1.5 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                  <Badge
+                    tone={
+                      entry.status === "completed"
+                        ? "green"
+                        : entry.status === null
+                          ? "gray"
+                          : isTerminalDelegation(entry.status)
+                            ? "red"
+                            : "blue"
+                    }
+                  >
+                    {entry.status ?? "status not reported"}
+                  </Badge>
+                  {entry.subagentType ? (
+                    <span className="font-mono text-muted-foreground">via {entry.subagentType}</span>
+                  ) : (
+                    <span className="italic text-muted-foreground">subagent type not reported</span>
+                  )}
+                  {entry.stopReason && (
+                    <span className="font-mono text-amber-600 dark:text-amber-400">stopped: {entry.stopReason}</span>
+                  )}
+                  {entry.id && <span className="font-mono text-muted-foreground ml-auto">{entry.id}</span>}
+                </div>
+                <p className="text-[12px]">
+                  {entry.description ?? "The ledger recorded no description for this delegation."}
+                </p>
+                {entry.resultBrief ? (
+                  <p className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words">{entry.resultBrief}</p>
+                ) : (
+                  <p className="text-[11px] italic text-muted-foreground">
+                    The ledger recorded no result brief — that is not a statement that the work succeeded.
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          {props.streamEventCount === 0 ? (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              This run&rsquo;s own event stream recorded <span className="font-mono">0</span> subagent events even
+              though the ledger records {count} delegation{count === 1 ? "" : "s"} for it. That is expected when the
+              run was not streamed with the{" "}
+              <span className="font-mono">custom</span> mode those events ride on — the ledger is the record of the
+              delegation; the event stream is only a step feed.
+            </p>
+          ) : null}
+          {props.streamEventCount !== null && props.streamEventCount > 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              This run&apos;s event stream also carried {props.streamEventCount} subagent event
+              {props.streamEventCount === 1 ? "" : "s"}; they are listed under the event timeline below.
+            </p>
+          ) : null}
+        </div>
+      )}
+      {props.unattributed > 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          {props.unattributed} ledger entr{props.unattributed === 1 ? "y carries" : "ies carry"} no{" "}
+          <span className="font-mono">run_id</span> (history written before the tag existed) and{" "}
+          {props.unattributed === 1 ? "is" : "are"} therefore not attributed to this run.
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
 /* ── workspace + delivery ─────────────────────────────────────────────────── */
 
 export function WorkspacePanel(props: { changes: WorkspaceChanges | null; error: string | null }) {
@@ -462,12 +771,36 @@ export function WorkspacePanel(props: { changes: WorkspaceChanges | null; error:
       ) : (
         <>
           <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
-            <Measured label="created" value={String(changes.summary.created ?? UNKNOWN_VALUE)} />
-            <Measured label="modified" value={String(changes.summary.modified ?? UNKNOWN_VALUE)} />
-            <Measured label="deleted" value={String(changes.summary.deleted ?? UNKNOWN_VALUE)} />
-            <Measured label="symlinks created" value={String(changes.summary.symlinkCreated ?? UNKNOWN_VALUE)} />
-            <Measured label="lines added" value={String(changes.summary.additions ?? UNKNOWN_VALUE)} />
-            <Measured label="lines removed" value={String(changes.summary.deletions ?? UNKNOWN_VALUE)} />
+            <Measured
+              label="files created"
+              value={measured(changes.summary.created)}
+              title="files the Gateway's before/after comparison reported as created"
+            />
+            <Measured
+              label="files modified"
+              value={measured(changes.summary.modified)}
+              title="files the Gateway's before/after comparison reported as modified"
+            />
+            <Measured
+              label="files deleted"
+              value={measured(changes.summary.deleted)}
+              title="files the Gateway's before/after comparison reported as deleted"
+            />
+            <Measured
+              label="symlinks created"
+              value={measured(changes.summary.symlinkCreated)}
+              title="symlinks the Gateway's before/after comparison reported as created"
+            />
+            <Measured
+              label="lines added"
+              value={measured(changes.summary.additions)}
+              title="diff lines added across this run's changed files"
+            />
+            <Measured
+              label="lines removed"
+              value={measured(changes.summary.deletions)}
+              title="diff lines removed across this run's changed files"
+            />
           </div>
           {changes.summary.truncated === true && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400">The Gateway truncated this summary.</p>
@@ -530,17 +863,26 @@ export function DeliveryPanel(props: {
           ) : (
             <div className="space-y-2">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                <Measured label="files presented" value={receipt.presented === null ? null : String(receipt.presented)} />
-                <Measured label="stage" value={receipt.stage} />
+                <Measured
+                  label="files presented"
+                  value={measured(receipt.presented)}
+                  title="paths this run's own delivery receipt listed as presented"
+                />
+                <Measured label="delivery stage" value={receipt.stage} title="run.delivery content.stage, verbatim" />
                 <Measured
                   label="delivery requirement satisfied"
                   value={receipt.satisfied === null ? null : receipt.satisfied ? "yes" : "no"}
+                  title="whether the presented paths covered the produced paths — not whether the answer was right"
                 />
-                <Measured label="verified against" value={receipt.verificationSource} />
+                <Measured
+                  label="how that check was made"
+                  value={receipt.verificationSource}
+                  title="run.delivery verification.source, verbatim — the method, not a verdict on the run"
+                />
               </div>
               <p className="text-[11px] text-muted-foreground">
-                This is a delivery receipt, not a verdict on the answer. The Gateway compared the presented files
-                against {receipt.requirement ?? "an unreported requirement"}.
+                This is a delivery receipt, not a verdict on the answer and not a verification of the run. The Gateway
+                compared the presented files against {receipt.requirement ?? "an unreported requirement"}.
               </p>
               {receipt.paths.length > 0 ? (
                 <ul className="space-y-1">
@@ -598,39 +940,87 @@ export function DeliveryPanel(props: {
 export function TokenPanel(props: { record: RunRecord; usage: ThreadTokenUsage | null; error: string | null }) {
   const { record } = props;
   const usage = props.usage;
+  // `formatTokenCount` abbreviates ("52.9k"), so every tile names the exact
+  // figure in its tooltip: an abbreviated number with no unit beside it is the
+  // one header stat an operator cannot check against a bill.
+  const tokens = (value: number | null, what: string) =>
+    value === null ? null : formatTokenCount(value);
   return (
     <Panel title="Tokens and model" icon={<Coins className="size-4 text-primary" />}>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <Measured label="total tokens" value={record.total_tokens === null ? null : formatTokenCount(record.total_tokens)} />
         <Measured
-          label="input"
-          value={record.total_input_tokens === null ? null : formatTokenCount(record.total_input_tokens)}
+          label="total tokens this run"
+          value={tokens(record.total_tokens, "total")}
+          title={
+            record.total_tokens === null
+              ? "the Gateway reported no total for this run"
+              : `${record.total_tokens} tokens, as reported on this run's record`
+          }
         />
         <Measured
-          label="output"
-          value={record.total_output_tokens === null ? null : formatTokenCount(record.total_output_tokens)}
+          label="input tokens"
+          value={tokens(record.total_input_tokens, "input")}
+          title={
+            record.total_input_tokens === null
+              ? "the Gateway reported no input count for this run"
+              : `${record.total_input_tokens} tokens read across this run`
+          }
         />
         <Measured
-          label="LLM calls"
-          value={record.llm_call_count === null ? null : formatTokenCount(record.llm_call_count)}
+          label="output tokens"
+          value={tokens(record.total_output_tokens, "output")}
+          title={
+            record.total_output_tokens === null
+              ? "the Gateway reported no output count for this run"
+              : `${record.total_output_tokens} tokens written across this run`
+          }
+        />
+        <Measured
+          label="model calls made"
+          value={record.llm_call_count === null ? null : String(record.llm_call_count)}
+          title="llm_call_count — how many model responses this run recorded, not a token figure"
         />
         <Measured
           label="lead agent tokens"
-          value={record.lead_agent_tokens === null ? null : formatTokenCount(record.lead_agent_tokens)}
+          value={tokens(record.lead_agent_tokens, "lead")}
+          title={
+            record.lead_agent_tokens === null
+              ? "the Gateway attributed no tokens to the lead agent"
+              : `${record.lead_agent_tokens} tokens attributed to the lead agent`
+          }
         />
         <Measured
           label="subagent tokens"
-          value={record.subagent_tokens === null ? null : formatTokenCount(record.subagent_tokens)}
+          value={tokens(record.subagent_tokens, "subagent")}
+          title={
+            record.subagent_tokens === null
+              ? "the Gateway attributed no tokens to subagents"
+              : `${record.subagent_tokens} tokens attributed to delegated subagents — zero here does not mean the run delegated nothing`
+          }
         />
         <Measured
           label="middleware tokens"
-          value={record.middleware_tokens === null ? null : formatTokenCount(record.middleware_tokens)}
+          value={tokens(record.middleware_tokens, "middleware")}
+          title={
+            record.middleware_tokens === null
+              ? "the Gateway attributed no tokens to middleware"
+              : `${record.middleware_tokens} tokens spent on middleware model calls`
+          }
         />
-        <Measured label="messages recorded" value={formatCount(record.message_count)} />
+        <Measured
+          label="messages recorded"
+          value={measured(record.message_count)}
+          title="message_count on the run record — the Gateway's own count, not this client's"
+        />
       </div>
 
       <div className="space-y-1">
         <p className="text-[11px] font-semibold">Per-model split</p>
+        <p className="text-[10px] text-muted-foreground">
+          These keys are the names the <span className="font-mono">provider</span> reported for each model call
+          ({record.model ? `a run configured with ${record.model} may still have been served by these` : "not the configured alias"}),
+          so this is where a run's spend is actually attributable.
+        </p>
         {record.token_usage_by_model === null ? (
           <p className="text-[11px] text-muted-foreground">
             This run reported no per-model token split. That is not zero tokens.
@@ -638,11 +1028,23 @@ export function TokenPanel(props: { record: RunRecord; usage: ThreadTokenUsage |
         ) : (
           <ul className="space-y-1">
             {record.token_usage_by_model.map((row) => (
-              <li key={row.model} className="rounded-lg bg-muted/30 px-2 py-1.5 text-[11px] font-mono flex items-center gap-2 flex-wrap">
+              <li
+                key={row.model}
+                className="rounded-lg bg-muted/30 px-2 py-1.5 text-[11px] font-mono flex items-center gap-2 flex-wrap"
+                title={`${row.model}: ${row.input ?? "not reported"} in, ${row.output ?? "not reported"} out, ${
+                  row.total ?? "not reported"
+                } total — the provider-reported model name and its token counts`}
+              >
                 <span className="font-semibold break-all">{row.model}</span>
                 <span className="text-muted-foreground">
-                  {row.input === null ? UNKNOWN_VALUE : formatTokenCount(row.input)} in /{" "}
-                  {row.output === null ? UNKNOWN_VALUE : formatTokenCount(row.output)} out
+                  {/*
+                    A bare `—` here claimed all three unknowns at once: the
+                    Gateway sent no input count, sent no output count, or this
+                    model bucket has no usage. The words are longer and say
+                    which one it is.
+                  */}
+                  {row.input === null ? "input not reported" : `${formatTokenCount(row.input)} in`} /{" "}
+                  {row.output === null ? "output not reported" : `${formatTokenCount(row.output)} out`}
                 </span>
                 {row.total !== null && <span className="text-muted-foreground">· {formatTokenCount(row.total)} total</span>}
               </li>
@@ -656,18 +1058,44 @@ export function TokenPanel(props: { record: RunRecord; usage: ThreadTokenUsage |
         {props.error ? (
           <p className="text-[11px] text-destructive">The thread&rsquo;s token usage could not be read: {props.error}</p>
         ) : usage === null ? (
-          <p className="text-[11px] text-muted-foreground">Reading the thread&rsquo;s token usage…</p>
+          <p className="text-[11px] text-muted-foreground">Reading the thread&rsquo;s token usage&hellip;</p>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-            <Measured label="thread tokens" value={usage.totalTokens === null ? null : formatTokenCount(usage.totalTokens)} />
-            <Measured label="runs counted" value={formatCount(usage.totalRuns)} />
+            <Measured
+              label="thread tokens (all runs)"
+              value={tokens(usage.totalTokens, "thread")}
+              title={
+                usage.totalTokens === null
+                  ? "the Gateway reported no thread total"
+                  : `${usage.totalTokens} tokens across every run in this conversation, not this run alone`
+              }
+            />
+            <Measured
+              label="runs counted"
+              value={measured(usage.totalRuns)}
+              title="runs the Gateway included in the thread total above"
+            />
             <Measured
               label="context tokens in use"
               value={usage.contextUsage === null ? null : formatTokenCount(usage.contextUsage.tokenCount)}
+              title={
+                usage.contextUsage?.tokenCount === null || usage.contextUsage === null
+                  ? "the Gateway reported no context measurement"
+                  : `${usage.contextUsage.tokenCount} tokens currently in the model's context`
+              }
             />
             <Measured
               label="of the context window"
-              value={usage.contextUsage === null ? null : formatPercentage(usage.contextUsage.percentage)}
+              value={
+                usage.contextUsage === null || usage.contextUsage.percentage === null
+                  ? null
+                  : formatPercentage(usage.contextUsage.percentage)
+              }
+              title={
+                usage.contextUsage === null || usage.contextUsage.percentage === null
+                  ? "the Gateway reported no occupancy percentage"
+                  : `${usage.contextUsage.percentage}% of the window, computed by the Gateway`
+              }
             />
           </div>
         )}
@@ -848,8 +1276,17 @@ export interface RunInspectorState {
   workspace: WorkspaceChanges | null;
   usage: ThreadTokenUsage | null;
   manifest: ArtifactArchiveManifest | null;
+  /**
+   * The thread's whole `delegations` ledger, or `null` when the thread state
+   * carried no such channel. Filtered to this run by `delegationsForRun`.
+   */
+  delegations: RunDelegation[] | null;
+  /** True while the delegation ledger read is in flight. */
+  loadingDelegations: boolean;
   /** Per-read failures, so one failed panel never blanks the rest. */
-  errors: Partial<Record<"record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest", string>>;
+  errors: Partial<
+    Record<"record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest" | "delegations", string>
+  >;
   loadingRun: boolean;
   showPicker: boolean;
   /** The picker's filter box. Purely local, over the runs already loaded. */
@@ -889,6 +1326,27 @@ export function RunInspectorView(props: {
   );
   const delivery = useMemo(() => (state.timeline ? deliveryFrom(state.timeline) : null), [state.timeline]);
   const artifacts = useMemo(() => artifactsFrom(calls.calls), [calls.calls]);
+  // The serving model is a property of the run's *responses*, not of the run
+  // record, so it is derived here where the transcript is in hand.
+  const serving = useMemo(
+    () => servingModelsFrom(state.transcript, state.record?.model ?? null),
+    [state.transcript, state.record?.model]
+  );
+  // The coded failure lives on the run's own `run.error` event.
+  const failure = useMemo(() => runFailureFrom(state.timeline), [state.timeline]);
+  // The delegation ledger is thread-wide; the `run_id` tag is what makes a row
+  // this run's. Untagged rows are counted, never folded in.
+  const { delegations, unattributed } = useMemo(
+    () => delegationsForRun(state.delegations, state.selectedRunId),
+    [state.delegations, state.selectedRunId]
+  );
+  // The subagent events this run's own stream carried, as a cross-check on the
+  // ledger. `null` while the stream is unread, so "0" never stands for "not
+  // looked at".
+  const subagentStreamCount = useMemo(
+    () => (state.timeline ? state.timeline.events.filter((event) => event.eventType.startsWith("subagent.")).length : null),
+    [state.timeline]
+  );
   // A permalink may name a run outside the page we loaded. That is disclosed
   // rather than hidden, and the panels still read that run directly.
   const outsideLoadedPage =
@@ -960,9 +1418,22 @@ export function RunInspectorView(props: {
             {state.selectionNote ? (
               <p className="text-[11px] text-amber-700 dark:text-amber-400">{state.selectionNote}</p>
             ) : null}
-            <RunStatusPanel record={state.record} error={state.errors.record ?? null} />
+            <RunStatusPanel
+              record={state.record}
+              error={state.errors.record ?? null}
+              serving={serving}
+              failure={failure}
+            />
             <ConversationPanel record={state.record} transcript={state.transcript} error={state.errors.transcript ?? null} />
             <ToolCallsPanel calls={calls.calls} unattributedCount={calls.unattributedCount} error={state.errors.transcript ?? null} />
+            <DelegationPanel
+              delegations={delegations}
+              unattributed={unattributed}
+              ledger={state.delegations}
+              streamEventCount={subagentStreamCount}
+              error={state.errors.delegations ?? null}
+              loading={state.loadingDelegations}
+            />
             <RunInspectorTimeline timeline={state.timeline} error={state.errors.timeline ?? null} />
             <WorkspacePanel changes={state.workspace} error={state.errors.workspace ?? null} />
             <DeliveryPanel
@@ -994,6 +1465,8 @@ const EMPTY_STATE: RunInspectorState = {
   workspace: null,
   usage: null,
   manifest: null,
+  delegations: null,
+  loadingDelegations: false,
   errors: {},
   loadingRun: false,
   showPicker: true,
@@ -1091,13 +1564,9 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
     if (!props.threadId || !runId) return;
     const token = ++generation.current;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loadingRun: true, errors: {} }));
-    const settle = (patch: Partial<RunInspectorState>) => {
-      if (cancelled || generation.current !== token) return;
-      setState((prev) => ({ ...prev, ...patch }));
-    };
+    setState((prev) => ({ ...prev, loadingRun: true, loadingDelegations: true, errors: {} }));
     const read = async <T,>(
-      key: "record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest",
+      key: "record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest" | "delegations",
       call: () => Promise<T>
     ): Promise<[typeof key, T | null, string | null]> => {
       try {
@@ -1114,10 +1583,15 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
         read("workspace", () => fetchWorkspaceChangesForRun(props.threadId!, runId)),
         read("usage", () => fetchThreadTokenUsage(props.threadId!)),
         read("manifest", () => fetchArtifactArchiveManifest(props.threadId!, runId)),
+        // The ledger is thread-wide, so it is re-read with the rest of the run
+        // rather than cached across selections: a later run in the same
+        // conversation delegates into the same channel, and a stale ledger would
+        // report "no delegations" for a run that made one.
+        read("delegations", () => fetchThreadDelegations(props.threadId!)),
       ]);
       if (cancelled || generation.current !== token) return;
       const errors: RunInspectorState["errors"] = {};
-      const patch: Partial<RunInspectorState> = { loadingRun: false };
+      const patch: Partial<RunInspectorState> = { loadingRun: false, loadingDelegations: false };
       for (const [key, value, error] of results) {
         if (error !== null) {
           errors[key] = error;
@@ -1129,6 +1603,7 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
         if (key === "workspace") patch.workspace = value as WorkspaceChanges | null;
         if (key === "usage") patch.usage = value as ThreadTokenUsage | null;
         if (key === "manifest") patch.manifest = value as ArtifactArchiveManifest | null;
+        if (key === "delegations") patch.delegations = value as RunDelegation[] | null;
       }
       setState((prev) => ({ ...prev, ...patch, errors }));
     })();

@@ -24,6 +24,37 @@
  * Substituting one for the other erases exactly the failure a user opens an
  * inspector to find, so the inspector shows the record's status as the terminal
  * status and renders the event's own metadata as itself.
+ *
+ * Four further facts the Gateway reports that a run record alone cannot answer,
+ * each read from the surface that actually carries it and each kept apart from
+ * the field it is easy to confuse it with:
+ *
+ *  - **The serving model is not `run.model`.** `RunResponse.model` is
+ *    `RunRecord.model_name`, which `runtime/runs/worker.py` writes from
+ *    `LeadAgentAssembly.effective_model` — the *configured* Alpha model name
+ *    (`alpha-free`). The model that actually answered is
+ *    `response_metadata.model_name` on the run's own `llm.ai.response` rows
+ *    (`opencode-zen:space-bunny-free`). `servingModelsFrom` reads that, and the
+ *    two are rendered as two separate facts.
+ *  - **A tool's `status` is not a verdict.** LangChain defaults
+ *    `ToolMessage.status` to `"success"`; on the persisted event feed
+ *    `additional_kwargs.alpha_tool_meta` is frequently `{}`, so the only
+ *    evidence left for a failed call is the recorded output. The shell's own
+ *    trailing exit marker is the evidence the backend itself preserves for
+ *    this (`sandbox/tools.py::_BASH_EXIT_MARKER_TAIL_RE`), so it is read here
+ *    too — and it is reported as a *conflict with the run's own status*, never
+ *    as a verdict the inspector invented.
+ *  - **An error code's message describes a family, not this run.** A
+ *    `RecursionLimit` is folded into `RUN_QUOTA_EXCEEDED`, whose message is
+ *    "A run or token budget for this thread is exhausted" — a claim that did
+ *    not happen. `runFailureFrom` therefore reports the code, the registry
+ *    message, and the run's own `error_type` side by side.
+ *  - **A delegation is recorded on the thread, not on the run.** The
+ *    `subagent.*` events ride the parent's stream and are only persisted for a
+ *    run whose `stream_mode` includes `custom`, so a real delegation can record
+ *    zero of them. `ThreadState.delegations` (read through
+ *    `GET /threads/{id}/state`) is where the delegation actually is, and it
+ *    carries the `run_id` that made it.
  */
 
 import { get } from "./http";
@@ -447,6 +478,61 @@ export function finalAnswer(transcript: Transcript): TranscriptEntry | null {
   return null;
 }
 
+/* ── the model that actually answered ─────────────────────────────────────── */
+
+export interface ServingModel {
+  /** `response_metadata.model_name`, verbatim, as the provider reported it. */
+  model: string;
+  /** How many of the run's model responses named it. */
+  responses: number;
+}
+
+export interface ServingModelReport {
+  /**
+   * The models the provider named for this run, in the order first seen.
+   *
+   * `null` — not `[]` — when no response row carried a `model_name`: that is
+   * "the Gateway reported none", which is not the same claim as "this run used
+   * no model".
+   */
+  models: ServingModel[] | null;
+  /**
+   * True when at least one response named a model **other than** the run
+   * record's `model`.
+   *
+   * This is the routine case, not an anomaly: `run.model` is the configured
+   * Alpha name and the serving name is the provider's slug, so they differ on
+   * almost every run. It is surfaced so the two facts are never read as one.
+   */
+  differsFromRecord: boolean;
+}
+
+/**
+ * Which models actually served this run, from `response_metadata.model_name`.
+ *
+ * `RunResponse.model` is **not** this. It is `RunRecord.model_name`, which
+ * `runtime/runs/worker.py` persists from `LeadAgentAssembly.effective_model` —
+ * the configured Alpha model name (`alpha-free`). The model that produced the
+ * tokens is the provider's own name on each `llm.ai.response`
+ * (`opencode-zen:space-bunny-free`). Showing only the first tells an operator
+ * which model was *requested* and leaves them unable to say which one answered.
+ *
+ * Rows are counted rather than deduplicated silently: a run that fell back
+ * across two providers names both, and "one model" must never be printed for it.
+ */
+export function servingModelsFrom(transcript: Transcript | null, recordModel: string | null): ServingModelReport {
+  const byModel = new Map<string, number>();
+  for (const entry of transcript?.entries ?? []) {
+    if (entry.kind !== "answer") continue;
+    if (entry.model === null) continue;
+    byModel.set(entry.model, (byModel.get(entry.model) ?? 0) + 1);
+  }
+  const models = byModel.size === 0 ? null : [...byModel.entries()].map(([model, responses]) => ({ model, responses }));
+  const differs =
+    models !== null && recordModel !== null && models.some((entry) => entry.model !== recordModel);
+  return { models, differsFromRecord: differs };
+}
+
 export interface RunMessageCount {
   /** How many message rows this read actually saw. */
   count: number;
@@ -509,6 +595,34 @@ export async function fetchRunMessageCount(threadId: string, runId: string): Pro
  */
 const ERROR_TEXT = /^\s*(error\b|traceback\b|exception\b|fatal\b|command not found\b)/i;
 
+/**
+ * The shell's own trailing exit marker — the second kind of output that reads
+ * as an error while the run's status says `success`.
+ *
+ * A nonzero shell exit does not raise: every sandbox provider *appends* the
+ * marker to otherwise ordinary output (`local_sandbox.py`,
+ * `e2b_sandbox.py`, `opensandbox`, `tenki`, `boxlite`) and `alpha_tool_meta`
+ * still reports `success`, which is exactly the trap `subagents/executor.py::
+ * _bash_evidence_status` documents ("a nonzero bash exit returns ordinary text
+ * that `alpha_tool_meta` still reports as success"). Without this, a failed
+ * `bash` call is the one failure the inspector's own detector cannot see: the
+ * body starts with the command's stdout, not with `Error:`.
+ *
+ * Both marker spellings are accepted, and the shapes are the backend's:
+ * ``Exit Code: -?\d+`` at the tail, and the whole-trimmed
+ * `Command exited with code -?\d+` a remote provider emits for a silent
+ * command. A zero exit is a success and is never flagged.
+ */
+const SHELL_EXIT_MARKER = /(?:^|\n)Exit Code: (-?\d+)\s*$|^Command exited with code (-?\d+)\s*$/;
+
+function nonzeroShellExit(resultText: string | null): number | null {
+  if (resultText === null) return null;
+  const match = SHELL_EXIT_MARKER.exec(resultText);
+  if (!match) return null;
+  const code = Number(match[1] ?? match[2]);
+  return Number.isFinite(code) && code !== 0 ? code : null;
+}
+
 export interface ToolCallRecord {
   /** The provider's `tool_call_id`; `null` when the server sent none. */
   id: string | null;
@@ -538,6 +652,15 @@ export interface ToolCallRecord {
   unattributed: boolean;
   /** True when the journalled status claims success but the output reads as an error. */
   statusConflictsOutput: boolean;
+  /**
+   * The nonzero shell exit the recorded output ends with, or `null`.
+   *
+   * This is the run's own evidence, not a verdict this client derived: the
+   * sandbox appended `Exit Code: 1` to the output it persisted. It is kept
+   * separate from `status` so the caller can show the run's status and the
+   * exit code side by side instead of resolving them into one claim.
+   */
+  shellExitCode: number | null;
   /** `content.artifact` on the result row, when the run recorded one. */
   artifact: unknown;
 }
@@ -574,6 +697,7 @@ function baseCall(id: string | null, name: string | null): ToolCallRecord {
     resultAt: null,
     unattributed: false,
     statusConflictsOutput: false,
+    shellExitCode: null,
     artifact: null,
   };
 }
@@ -620,6 +744,15 @@ export function toolCallsFrom(transcript: Transcript): ToolCallList {
     const resultText = text(entry.message.content);
     const status = honestToolStatus(entry.message);
     const artifact = entry.message.artifact ?? null;
+    // Two independent ways a persisted result can say "this failed" while the
+    // run's own status field says `success`: a body that opens with an error
+    // word, and a nonzero shell exit the sandbox appended to ordinary output.
+    // Neither is turned into a verdict — both only raise the conflict flag, and
+    // the exit code is carried so the panel can show the run's own evidence.
+    const shellExitCode = nonzeroShellExit(resultText);
+    const conflicts =
+      status === "completed" &&
+      ((resultText !== null && ERROR_TEXT.test(resultText)) || shellExitCode !== null);
     const target = id ? byId.get(id) : undefined;
     if (!target) {
       // Keep the result: dropping it would make a recorded result look absent.
@@ -633,7 +766,8 @@ export function toolCallsFrom(transcript: Transcript): ToolCallList {
       orphan.resultAt = entry.createdAt;
       orphan.caller = entry.caller;
       orphan.artifact = artifact;
-      orphan.statusConflictsOutput = status === "completed" && resultText !== null && ERROR_TEXT.test(resultText);
+      orphan.statusConflictsOutput = conflicts;
+      orphan.shellExitCode = shellExitCode;
       calls.push(orphan);
       continue;
     }
@@ -644,7 +778,8 @@ export function toolCallsFrom(transcript: Transcript): ToolCallList {
     target.resultAt = entry.createdAt;
     if (target.name === null) target.name = str(entry.message.name);
     if (target.artifact === null) target.artifact = artifact;
-    target.statusConflictsOutput = status === "completed" && resultText !== null && ERROR_TEXT.test(resultText);
+    target.statusConflictsOutput = conflicts;
+    target.shellExitCode = shellExitCode;
   }
 
   return { calls, unattributedCount };
@@ -697,6 +832,73 @@ function toTimelineEvent(event: RunEvent): TimelineEvent {
 export async function fetchRunTimeline(threadId: string, runId: string): Promise<Timeline> {
   const page = await fetchRunEventsPage(threadId, runId);
   return { events: page.events.map(toTimelineEvent), complete: page.complete };
+}
+
+/* ── the failure the run actually recorded ────────────────────────────────── */
+
+export interface RunFailureReport {
+  /** `metadata.error_code` from the run's own `run.error` / `llm.error`. */
+  code: string | null;
+  /**
+   * `metadata.error_type` — the real exception class, when the Gateway recorded
+   * one. This is what distinguishes the causes a code folds together.
+   */
+  errorType: string | null;
+  /**
+   * The registry's message for the code, verbatim.
+   *
+   * It describes the whole family the code covers, so it is never rendered
+   * alone: an operator reading "A run or token budget for this thread is
+   * exhausted" beside a `GraphRecursionError` has been told something that did
+   * not happen to them.
+   */
+  message: string | null;
+  /** `metadata.severity` — `info` / `warning` / `error` / `critical`. */
+  severity: string | null;
+  /** `metadata.retryable`, or `null` when the Gateway reported no boolean. */
+  retryable: boolean | null;
+  /** `metadata.recovery` — the registry's suggested action, verbatim. */
+  recovery: string | null;
+  /** `metadata.error_correlation_id` — the stable family key for log queries. */
+  correlationId: string | null;
+  /** The event's own `content`, which is the exception's own text. */
+  detail: string | null;
+  seq: number | null;
+  createdAt: string | null;
+}
+
+/**
+ * The run's terminal failure, read from its own `run.error` event.
+ *
+ * The point of this derivation is the pairing. `RunRecord.error` is the string
+ * the worker persisted, and the SSE `error` frame carries `code` + `message`
+ * straight from `errors/registry.py`. `RUN_QUOTA_EXCEEDED` claims the exception
+ * types `BudgetExceeded`, `TokenBudgetExceeded` **and `RecursionLimit`**, under
+ * the single message "A run or token budget for this thread is exhausted" — so
+ * a run that died of LangGraph's step limit is told a budget ran out. The code
+ * is reported with the real `error_type` beside it so that claim can be checked
+ * instead of believed.
+ *
+ * A run with no `run.error` event yields `null`: that is the server's answer,
+ * not a failure to read one. The first error event in store order wins, which is
+ * the same "first code wins" rule the worker applies to its own publication.
+ */
+export function runFailureFrom(timeline: Timeline | null): RunFailureReport | null {
+  const event = timeline?.events.find((item) => item.eventType === "run.error" || item.eventType === "llm.error");
+  if (!event) return null;
+  const meta = event.metadata;
+  return {
+    code: str(meta.error_code),
+    errorType: str(meta.error_type),
+    message: str(meta.error_message),
+    severity: str(meta.severity),
+    retryable: typeof meta.retryable === "boolean" ? meta.retryable : null,
+    recovery: str(meta.recovery),
+    correlationId: str(meta.error_correlation_id),
+    detail: text(event.content),
+    seq: event.seq,
+    createdAt: event.createdAt,
+  };
 }
 
 /* ── workspace changes ────────────────────────────────────────────────────── */
@@ -956,6 +1158,101 @@ export async function fetchThreadTokenUsage(threadId: string): Promise<ThreadTok
         }
       : null,
   };
+}
+
+/* ── subagent delegation (recorded on the thread, not the run) ────────────── */
+
+/** One `ThreadState.delegations` entry, mapped from the thread's own state. */
+export interface RunDelegation {
+  /** The `task` tool call's id — the same id the ToolMessage carries. */
+  id: string | null;
+  /**
+   * `run_id`, as tagged by `durable_context_middleware._with_run_id`.
+   *
+   * `null` on legacy history written before the tag existed. Such an entry is
+   * **not** attributed to the run being inspected: the whole point of the field
+   * is to keep a run's delegations separate from its neighbours'.
+   */
+  runId: string | null;
+  description: string | null;
+  subagentType: string | null;
+  /** `in_progress` / `completed` / `failed` / `cancelled` / `timed_out` / … */
+  status: string | null;
+  /** `token_capped` / `turn_capped` / `loop_capped` when a guardrail stopped it. */
+  stopReason: string | null;
+  resultBrief: string | null;
+  createdAt: string | null;
+}
+
+function toDelegation(raw: unknown): RunDelegation {
+  const d = rec(raw) ?? {};
+  return {
+    id: str(d.id),
+    runId: str(d.run_id),
+    description: str(d.description),
+    subagentType: str(d.subagent_type),
+    status: str(d.status),
+    stopReason: str(d.stop_reason),
+    resultBrief: str(d.result_brief),
+    createdAt: str(d.created_at),
+  };
+}
+
+/**
+ * `GET /threads/{id}/state` → `values.delegations`, newest last.
+ *
+ * This is the thread's whole ledger, so the read is honest about that: an
+ * absent channel is `null` (unknown), an empty list is the server's own answer,
+ * and neither is "this run delegated nothing".
+ */
+export async function fetchThreadDelegations(threadId: string): Promise<RunDelegation[] | null> {
+  const body = rec(await get<unknown>(`/threads/${encodeURIComponent(threadId)}/state`));
+  if (!body) throw new Error("The server returned an unreadable thread state.");
+  const values = rec(body.values);
+  if (!values) throw new Error("The server returned a thread state with no channel values.");
+  const raw = values.delegations;
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) throw new Error("The server returned a delegation ledger that is not a list.");
+  return raw.map(toDelegation);
+}
+
+/**
+ * The delegations this run made, in ledger order.
+ *
+ * An entry with no `run_id` is **excluded** and counted, not folded in: legacy
+ * history predates the tag, and attributing an untagged delegation to whichever
+ * run happens to be open is the exact misreading this panel exists to prevent.
+ *
+ * An absent ledger — `null` for "the Gateway sent no channel", `undefined` for
+ * "this read never ran" — yields no delegations rather than throwing, so a
+ * caller holding a partial read degrades its own panel instead of blanking the
+ * whole inspector.
+ */
+export function delegationsForRun(
+  ledger: RunDelegation[] | null | undefined,
+  runId: string | null | undefined
+): { delegations: RunDelegation[]; unattributed: number } {
+  if (!Array.isArray(ledger) || typeof runId !== "string") return { delegations: [], unattributed: 0 };
+  const delegations: RunDelegation[] = [];
+  let unattributed = 0;
+  for (const entry of ledger) {
+    if (entry.runId === null) unattributed += 1;
+    else if (entry.runId === runId) delegations.push(entry);
+  }
+  return { delegations, unattributed };
+}
+
+/** True for a delegation status the backend treats as a terminal outcome. */
+const TERMINAL_DELEGATION_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out",
+  "polling_timed_out",
+]);
+
+export function isTerminalDelegation(status: string | null): boolean {
+  return status !== null && TERMINAL_DELEGATION_STATUSES.has(status);
 }
 
 /* ── display helpers ──────────────────────────────────────────────────────── */
