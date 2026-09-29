@@ -4,18 +4,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
   Boxes,
+  Check,
   Coins,
   FileDiff,
   Gauge,
   History,
+  Link2,
   MessagesSquare,
   Package,
   RefreshCw,
+  Search,
   Terminal,
-  Waypoints,
 } from "lucide-react";
-import { Section, EmptyState, ErrorBox, Badge, Btn, SkeletonList } from "@/components/ui";
+import { Section, EmptyState, ErrorBox, Badge, Btn, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
+import { applyRunFilter, parseRunInspectorHash, runInspectorHash, runPermalink } from "@/lib/runs-inspector-picker";
 import { absoluteStamp, clockTime } from "@/lib/time";
 import {
   UNKNOWN_VALUE,
@@ -23,6 +26,7 @@ import {
   deliveryFrom,
   fetchArtifactArchiveManifest,
   fetchRecentRuns,
+  fetchOlderRuns,
   fetchRunRecord,
   fetchRunTimeline,
   fetchRunTranscript,
@@ -48,6 +52,7 @@ import {
 } from "@/lib/runs-inspector";
 import { formatTokenCount } from "@/lib/runs";
 import { toolStatusView } from "@/components/ToolPill";
+import { RunInspectorTimeline } from "./RunInspectorTimeline";
 import type { ToolCall } from "@/types/chat";
 
 /* ── presentation helpers ─────────────────────────────────────────────────── */
@@ -66,12 +71,6 @@ function statusTone(status: string | null): Tone {
   if (status === "success" || status === "completed") return "green";
   if (status === "running" || status === "pending" || status === "queued" || status === "in_progress") return "blue";
   if (status === "error" || status === "failed" || status === "timed_out" || status === "interrupted") return "red";
-  return "gray";
-}
-
-function severityTone(severity: string): Tone {
-  if (severity === "error") return "red";
-  if (severity === "warn") return "amber";
   return "gray";
 }
 
@@ -431,65 +430,6 @@ export function ToolCallsPanel(props: { calls: ToolCallRecord[]; unattributedCou
   );
 }
 
-/* ── the event timeline ───────────────────────────────────────────────────── */
-
-export function TimelinePanel(props: { timeline: Timeline | null; error: string | null }) {
-  return (
-    <Panel
-      title={`Event timeline${props.error || !props.timeline ? "" : ` (${props.timeline.events.length})`}`}
-      icon={<Waypoints className="size-4 text-primary" />}
-      aside={
-        props.timeline && !props.timeline.complete ? <Badge tone="amber">partial read</Badge> : props.timeline ? <Badge tone="gray">complete</Badge> : null
-      }
-    >
-      {props.error ? (
-        <ErrorBox message={`This run's event stream could not be read, so the timeline is unavailable. (${props.error})`} />
-      ) : props.timeline === null ? (
-        <p className="text-[11px] text-muted-foreground">Reading the run&rsquo;s event stream…</p>
-      ) : props.timeline.events.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">
-          The Gateway reported no persisted events for this run.
-        </p>
-      ) : (
-        <>
-          <p className="text-[11px] text-muted-foreground">
-            Every category the run journalled, in store order. The type and category are the server&rsquo;s own strings.
-          </p>
-          <ol className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
-            {props.timeline.events.map((event, i) => (
-              <li key={`${event.seq ?? "?"}-${i}`} className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                <div className="flex items-center gap-2 flex-wrap text-[10px]">
-                  <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
-                  <span className="font-mono font-semibold">{event.eventType}</span>
-                  <span className="font-mono text-muted-foreground">{event.category}</span>
-                  {event.seq !== null && <span className="font-mono text-muted-foreground">seq {event.seq}</span>}
-                  {event.taskId && <span className="font-mono text-muted-foreground">task {event.taskId}</span>}
-                  <span className="ml-auto font-mono text-muted-foreground" title={stamp(event.createdAt)}>
-                    {shortTime(event.createdAt)}
-                  </span>
-                </div>
-                <details className="mt-1">
-                  <summary className="text-[10px] text-muted-foreground cursor-pointer select-none">payload</summary>
-                  <div className="mt-1 space-y-1">
-                    <Json value={event.content} label="content" maxChars={1800} />
-                    {Object.keys(event.metadata).length > 0 && <Json value={event.metadata} label="metadata" maxChars={1200} />}
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ol>
-          {!props.timeline.complete && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400">
-              Partial: the bounded read stopped before the end of this run&rsquo;s event stream, so later events are not
-              shown.
-            </p>
-          )}
-        </>
-      )}
-    </Panel>
-  );
-}
-
 /* ── workspace + delivery ─────────────────────────────────────────────────── */
 
 export function WorkspacePanel(props: { changes: WorkspaceChanges | null; error: string | null }) {
@@ -743,12 +683,27 @@ export function TokenPanel(props: { record: RunRecord; usage: ThreadTokenUsage |
 
 /* ── the run picker ───────────────────────────────────────────────────────── */
 
+/**
+ * The loaded runs, narrowed by the filter box.
+ *
+ * The filter is a view over the rows already in state — it issues no request —
+ * so the header still describes the *list* (the newest page only, or a complete
+ * walk) and never implies the filtered view is a new answer from the Gateway.
+ */
 function RunPicker(props: {
   runs: RunRecord[];
   complete: boolean;
   selectedRunId: string | null;
   onSelect: (runId: string) => void;
+  query: string;
+  onQueryChange: (query: string) => void;
+  /** Older runs are reachable only where the read's cap left a cursor behind. */
+  onLoadOlder?: () => void;
+  loadingOlder?: boolean;
+  loadOlderError?: string | null;
+  canLoadOlder?: boolean;
 }) {
+  const filter = applyRunFilter(props.runs, props.query);
   return (
     <div className="space-y-1.5">
       <p className="text-[11px] font-semibold flex items-center gap-1.5">
@@ -757,39 +712,124 @@ function RunPicker(props: {
           ({props.complete ? "the Gateway reported no further pages" : "the newest page only"})
         </span>
       </p>
-      <ul className="space-y-1.5 max-h-[32rem] overflow-y-auto pr-1">
-        {props.runs.map((run) => {
-          const selected = run.run_id !== null && run.run_id === props.selectedRunId;
-          return (
-            <li key={run.run_id ?? `${run.created_at ?? "?"}-${Math.random()}`}>
-              <button
-                type="button"
-                onClick={() => run.run_id && props.onSelect(run.run_id)}
-                disabled={run.run_id === null}
-                className={`w-full text-left rounded-xl border px-2.5 py-2 transition-colors ${
-                  selected ? "border-primary ring-1 ring-primary/30 bg-card" : "border-border/60 hover:border-primary/40 bg-card"
-                } ${run.run_id === null ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge tone={statusTone(run.status)}>{run.status ?? "status not reported"}</Badge>
-                  <span className="text-[10px] font-mono text-muted-foreground break-all">
-                    {run.run_id ?? "run id not reported"}
-                  </span>
-                  {isActive(run.status) && <Badge tone="blue">still active</Badge>}
-                  <span className="ml-auto text-[10px] text-muted-foreground" title={stamp(run.created_at)}>
-                    {shortTime(run.created_at)}
-                  </span>
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1 font-mono truncate">
-                  {run.model ?? "model not reported"} ·{" "}
-                  {run.total_tokens === null ? "tokens not reported" : `${formatTokenCount(run.total_tokens)} tokens`}
-                </div>
-                {run.error && <div className="text-[10px] text-destructive mt-0.5 line-clamp-2">{run.error}</div>}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="relative">
+        <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={props.query}
+          onChange={(event) => props.onQueryChange(event.target.value)}
+          placeholder="Filter these runs"
+          aria-label="Filter the loaded runs"
+          title="Narrows the runs already loaded, with no new request. Matches a run's id, status, model or recorded error."
+          className={`${inputCls} pl-8`}
+        />
+      </div>
+      {filter.filtered ? (
+        <p className="text-[10px] text-muted-foreground">
+          {filter.runs.length} of {props.runs.length} loaded run{props.runs.length === 1 ? "" : "s"} match the filter.
+        </p>
+      ) : null}
+      {filter.filtered && filter.runs.length === 0 ? (
+        // The two empty states are different sentences. This one is about the
+        // query; the "the Gateway reported no runs" line above the picker is
+        // about the server, and the filter must never borrow its wording.
+        <p className="text-[11px] text-muted-foreground">
+          {props.runs.length === 0
+            ? "The filter returned no run."
+            : `No loaded run matches this filter. The Gateway reported ${props.runs.length} run${props.runs.length === 1 ? "" : "s"} for this conversation, so the conversation is not empty.`}
+        </p>
+      ) : (
+        <ul className="space-y-1.5 max-h-[32rem] overflow-y-auto pr-1">
+          {filter.runs.map((run) => {
+            const selected = run.run_id !== null && run.run_id === props.selectedRunId;
+            return (
+              <li key={run.run_id ?? `${run.created_at ?? "?"}-${Math.random()}`}>
+                <button
+                  type="button"
+                  onClick={() => run.run_id && props.onSelect(run.run_id)}
+                  disabled={run.run_id === null}
+                  className={`w-full text-left rounded-xl border px-2.5 py-2 transition-colors ${
+                    selected ? "border-primary ring-1 ring-primary/30 bg-card" : "border-border/60 hover:border-primary/40 bg-card"
+                  } ${run.run_id === null ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge tone={statusTone(run.status)}>{run.status ?? "status not reported"}</Badge>
+                    <span className="text-[10px] font-mono text-muted-foreground break-all">
+                      {run.run_id ?? "run id not reported"}
+                    </span>
+                    {isActive(run.status) && <Badge tone="blue">still active</Badge>}
+                    <span className="ml-auto text-[10px] text-muted-foreground" title={stamp(run.created_at)}>
+                      {shortTime(run.created_at)}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1 font-mono truncate">
+                    {run.model ?? "model not reported"} ·{" "}
+                    {run.total_tokens === null ? "tokens not reported" : `${formatTokenCount(run.total_tokens)} tokens`}
+                  </div>
+                  {run.error && <div className="text-[10px] text-destructive mt-0.5 line-clamp-2">{run.error}</div>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {props.onLoadOlder ? (
+        <div className="pt-1">
+          <Btn variant="ghost" onClick={props.onLoadOlder} disabled={props.loadingOlder || !props.canLoadOlder}>
+            <RefreshCw className={`size-3.5 ${props.loadingOlder ? "animate-spin" : ""}`} />
+            {props.loadingOlder ? "Loading older runs…" : "Load older runs"}
+          </Btn>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {props.complete
+              ? "The Gateway reported no earlier run for this conversation."
+              : props.canLoadOlder
+                ? "This list stopped at the read's own cap. Loading more asks the Gateway for the next keyset page."
+                : "The oldest loaded run has no cursor to page from, so an earlier page cannot be requested."}
+          </p>
+          {props.loadOlderError ? (
+            <p className="text-[10px] text-destructive mt-1">Could not load older runs: {props.loadOlderError}</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── the permalink ─────────────────────────────────────────────────────────── */
+
+/**
+ * The control that copies a link to the selected run.
+ *
+ * The link is a *view* of one run's recorded state, not a claim about it: the
+ * label and the title say "this run" and never "verified", because the Gateway
+ * records no verification verdict for a chat run. The copy reports what
+ * happened — a write that never landed is stated in words, and the button is
+ * disabled for the duration so a double-click cannot start a second write.
+ */
+function RunLinkControl(props: {
+  runId: string;
+  copying: boolean;
+  notice: { message: string; copied: boolean } | null;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Btn
+        variant="ghost"
+        onClick={props.onCopy}
+        disabled={props.copying}
+        title={`Copies a link that reopens the run inspector on run ${props.runId} in this conversation, showing what the Gateway recorded for it.`}
+      >
+        <Link2 className="size-3.5" /> {props.copying ? "Copying…" : "Copy link to this run"}
+      </Btn>
+      {props.notice ? (
+        <p
+          className={`text-[11px] flex items-center gap-1.5 ${props.notice.copied ? "text-emerald-700 dark:text-emerald-400" : "text-destructive"}`}
+        >
+          {props.notice.copied ? <Check className="size-3" /> : <AlertTriangle className="size-3" />}
+          {props.notice.message}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -812,6 +852,18 @@ export interface RunInspectorState {
   errors: Partial<Record<"record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest", string>>;
   loadingRun: boolean;
   showPicker: boolean;
+  /** The picker's filter box. Purely local, over the runs already loaded. */
+  runFilter: string;
+  /** True while a clipboard write is in flight; the control is disabled then. */
+  copyingLink: boolean;
+  /** The copy outcome in words. `copied: false` means nothing was copied. */
+  linkNotice: { message: string; copied: boolean } | null;
+  /** Why a permalink in the address bar was not applied, when it was not. */
+  selectionNote: string | null;
+  /** True while an older keyset page is in flight; the control is disabled then. */
+  loadingOlderRuns: boolean;
+  /** The older-page read's own reason, so a failure is never an empty list. */
+  olderRunsError: string | null;
 }
 
 /**
@@ -824,6 +876,11 @@ export function RunInspectorView(props: {
   state: RunInspectorState;
   onSelect: (runId: string) => void;
   onReload: () => void;
+  onQueryChange: (query: string) => void;
+  onCopyLink: () => void;
+  onLoadOlder: () => void;
+  /** False when the oldest loaded run carries no cursor to page from. */
+  canLoadOlder: boolean;
 }) {
   const { state } = props;
   const calls = useMemo(
@@ -832,6 +889,12 @@ export function RunInspectorView(props: {
   );
   const delivery = useMemo(() => (state.timeline ? deliveryFrom(state.timeline) : null), [state.timeline]);
   const artifacts = useMemo(() => artifactsFrom(calls.calls), [calls.calls]);
+  // A permalink may name a run outside the page we loaded. That is disclosed
+  // rather than hidden, and the panels still read that run directly.
+  const outsideLoadedPage =
+    state.selectedRunId !== null &&
+    state.runs.length > 0 &&
+    !state.runs.some((run) => run.run_id === state.selectedRunId);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] gap-4">
@@ -847,7 +910,18 @@ export function RunInspectorView(props: {
               The Gateway reported no runs for this conversation. That is its answer, not a failed read.
             </p>
           ) : (
-            <RunPicker runs={state.runs} complete={state.runsComplete} selectedRunId={state.selectedRunId} onSelect={props.onSelect} />
+            <RunPicker
+              runs={state.runs}
+              complete={state.runsComplete}
+              selectedRunId={state.selectedRunId}
+              onSelect={props.onSelect}
+              query={state.runFilter}
+              onQueryChange={props.onQueryChange}
+              onLoadOlder={props.onLoadOlder}
+              loadingOlder={state.loadingOlderRuns}
+              loadOlderError={state.olderRunsError}
+              canLoadOlder={props.canLoadOlder}
+            />
           )}
         </div>
       )}
@@ -871,10 +945,25 @@ export function RunInspectorView(props: {
                 </span>
               )}
             </div>
+            <RunLinkControl
+              runId={state.selectedRunId}
+              copying={state.copyingLink}
+              notice={state.linkNotice}
+              onCopy={props.onCopyLink}
+            />
+            {outsideLoadedPage && (
+              <p className="text-[11px] text-muted-foreground">
+                This run is not in the page of runs loaded above, so the panels read it from the Gateway directly. Each
+                one reports its own answer, including if that answer is a refusal.
+              </p>
+            )}
+            {state.selectionNote ? (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">{state.selectionNote}</p>
+            ) : null}
             <RunStatusPanel record={state.record} error={state.errors.record ?? null} />
             <ConversationPanel record={state.record} transcript={state.transcript} error={state.errors.transcript ?? null} />
             <ToolCallsPanel calls={calls.calls} unattributedCount={calls.unattributedCount} error={state.errors.transcript ?? null} />
-            <TimelinePanel timeline={state.timeline} error={state.errors.timeline ?? null} />
+            <RunInspectorTimeline timeline={state.timeline} error={state.errors.timeline ?? null} />
             <WorkspacePanel changes={state.workspace} error={state.errors.workspace ?? null} />
             <DeliveryPanel
               receipt={delivery}
@@ -908,7 +997,32 @@ const EMPTY_STATE: RunInspectorState = {
   errors: {},
   loadingRun: false,
   showPicker: true,
+  runFilter: "",
+  copyingLink: false,
+  linkNotice: null,
+  selectionNote: null,
+  loadingOlderRuns: false,
+  olderRunsError: null,
 };
+
+/** The run a permalink in the address bar names, or `null` if it names none. */
+function linkedRun(): { threadId: string; runId: string } | null {
+  if (typeof window === "undefined") return null;
+  return parseRunInspectorHash(window.location.hash);
+}
+
+/**
+ * Put the open run in the address bar, so the URL and the view agree.
+ *
+ * `replaceState`, never `pushState`: a selection is not a navigation, and it
+ * must not put a back-button entry behind every run the operator looks at.
+ */
+function writeLinkedRun(threadId: string, runId: string): void {
+  if (typeof window === "undefined") return;
+  const hash = runInspectorHash(threadId, runId);
+  if (window.location.hash === hash) return;
+  window.history.replaceState(null, "", hash);
+}
 
 /**
  * One run's full story, read from the Gateway.
@@ -925,6 +1039,11 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
   const [reloadKey, setReloadKey] = useState(0);
   // A slow read for a run the user already left must not repaint the new one.
   const generation = useRef(0);
+  // A synchronous lock for the copy: the control only disables on the next
+  // render, and a second click before that render must not start a second write.
+  const copying = useRef(false);
+  /** Synchronous lock so a double-click cannot start a second page read. */
+  const loadingOlder = useRef(false);
 
   useEffect(() => {
     setState((prev) => ({ ...EMPTY_STATE, showPicker, threadId: props.threadId ?? "" }));
@@ -935,9 +1054,27 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
       try {
         const list = await fetchRecentRuns(props.threadId!);
         if (cancelled || generation.current !== token) return;
-        const wanted = props.runId ?? null;
-        const first = list.runs.find((run) => run.run_id === wanted)?.run_id ?? list.runs[0]?.run_id ?? null;
-        setState((prev) => ({ ...prev, runs: list.runs, runsComplete: list.complete, selectedRunId: first }));
+        // A permalink survives a reload, so the run it names is opened here
+        // instead of the newest one. A link for a *different* conversation
+        // names no run in this one, so it is not opened and not hidden either.
+        const link = linkedRun();
+        const note =
+          link && link.threadId !== props.threadId
+            ? `The link in the address bar names conversation ${link.threadId}, not the one open here, so its run was not opened.`
+            : null;
+        const host = props.runId ?? null;
+        const fromLink = link && link.threadId === props.threadId ? link.runId : null;
+        const hostRun = host !== null && list.runs.some((run) => run.run_id === host) ? host : null;
+        // Honoured as written: a linked run outside the loaded page is still
+        // selected, and the panels below read it from the Gateway directly.
+        const first = hostRun ?? fromLink ?? list.runs[0]?.run_id ?? null;
+        setState((prev) => ({
+          ...prev,
+          runs: list.runs,
+          runsComplete: list.complete,
+          selectedRunId: first,
+          selectionNote: note,
+        }));
       } catch (e) {
         if (cancelled || generation.current !== token) return;
         setState((prev) => ({ ...prev, runs: [], runsError: errMsg(e) }));
@@ -1001,11 +1138,124 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.threadId, runId, reloadKey]);
 
-  const onSelect = useCallback((next: string) => {
-    setState((prev) => ({ ...prev, selectedRunId: next, record: null, transcript: null, timeline: null, workspace: null, manifest: null, errors: {} }));
+  const onSelect = useCallback(
+    (next: string) => {
+      if (props.threadId) writeLinkedRun(props.threadId, next);
+      setState((prev) => ({
+        ...prev,
+        selectedRunId: next,
+        record: null,
+        transcript: null,
+        timeline: null,
+        workspace: null,
+        manifest: null,
+        errors: {},
+        selectionNote: null,
+        linkNotice: null,
+      }));
+    },
+    [props.threadId]
+  );
+
+  /** The picker's filter box: local, over the runs already loaded, no request. */
+  const onQueryChange = useCallback((runFilter: string) => {
+    setState((prev) => ({ ...prev, runFilter }));
   }, []);
 
+  /**
+   * Copy a link that reopens the inspector on exactly this run.
+   *
+   * The clipboard write is the only thing that produces a "Link copied", and
+   * it is only said once the write has actually resolved. A browser with no
+   * clipboard, or one that refuses the write, is told in words that nothing
+   * was copied — and the address bar is left holding the link, so the copy is
+   * still reachable by hand.
+   */
+  const onCopyLink = useCallback(() => {
+    const threadId = props.threadId;
+    const runId = state.selectedRunId;
+    if (!threadId || !runId || copying.current) return;
+    copying.current = true;
+    setState((prev) => ({ ...prev, copyingLink: true, linkNotice: null }));
+    const giveUp = (message: string) => {
+      copying.current = false;
+      setState((prev) => ({ ...prev, copyingLink: false, linkNotice: { message, copied: false } }));
+    };
+    void (async () => {
+      const base =
+        typeof window === "undefined"
+          ? ""
+          : `${window.location.origin}${window.location.pathname}${window.location.search}`;
+      const link = runPermalink(base, threadId, runId);
+      writeLinkedRun(threadId, runId);
+      const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        giveUp("This browser gave the page no clipboard to write to, so nothing was copied. The link is in the address bar.");
+        return;
+      }
+      try {
+        await clipboard.writeText(link);
+        copying.current = false;
+        setState((prev) => ({
+          ...prev,
+          copyingLink: false,
+          linkNotice: { message: "Link copied. Opening it reopens the run inspector on this run.", copied: true },
+        }));
+      } catch (e) {
+        giveUp(`The browser refused the clipboard write, so nothing was copied. The link is in the address bar. (${errMsg(e)})`);
+      }
+    })();
+  }, [props.threadId, state.selectedRunId]);
+
   const onReload = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  /**
+   * The keyset cursor for the next, older page.
+   *
+   * It is the OLDEST row already loaded: `created_at` plus `run_id` is exactly
+   * the pair the Gateway hands back as `next_before_*`, so the cursor is the
+   * server's own and is not reconstructed from anything the server did not say.
+   * Without both fields there is nowhere to page from, and the control says so
+   * instead of re-reading the newest page.
+   */
+  const olderCursor = useMemo(() => {
+    let oldest: RunRecord | null = null;
+    for (const run of state.runs) {
+      if (run.run_id === null || run.created_at === null) continue;
+      if (oldest === null || (run.created_at < oldest.created_at!)) oldest = run;
+    }
+    return oldest ? { createdAt: oldest.created_at as string, runId: oldest.run_id as string } : null;
+  }, [state.runs]);
+
+  /**
+   * Append the next older page of runs.
+   *
+   * A failed page appends nothing and shows the server's reason: the list the
+   * user already has stays exactly as it was, and a failed read is never
+   * rendered as "there are no older runs".
+   */
+  const onLoadOlder = useCallback(() => {
+    const threadId = props.threadId;
+    if (!threadId || !olderCursor || loadingOlder.current) return;
+    loadingOlder.current = true;
+    setState((prev) => ({ ...prev, loadingOlderRuns: true, olderRunsError: null }));
+    void (async () => {
+      try {
+        const page = await fetchOlderRuns(threadId, olderCursor.createdAt, olderCursor.runId);
+        loadingOlder.current = false;
+        setState((prev) => ({
+          ...prev,
+          loadingOlderRuns: false,
+          runs: [...prev.runs, ...page.runs],
+          // The server's own `has_more` is the whole story about what follows.
+          runsComplete: page.hasMore === false,
+        }));
+      } catch (e) {
+        loadingOlder.current = false;
+        setState((prev) => ({ ...prev, loadingOlderRuns: false, olderRunsError: errMsg(e) }));
+      }
+    })();
+  }, [props.threadId, olderCursor]);
 
   if (!props.threadId) {
     return (
@@ -1039,7 +1289,11 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
         state={{ ...state, showPicker, threadId: props.threadId }}
         onSelect={onSelect}
         onReload={onReload}
-      />
+        onQueryChange={onQueryChange}
+        onCopyLink={onCopyLink}
+      onLoadOlder={onLoadOlder}
+      canLoadOlder={olderCursor !== null}
+    />
     </Section>
   );
 }

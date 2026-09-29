@@ -111,6 +111,32 @@ const toolPillRef = emit(
   "ToolPill",
   compile("../components/ToolPill.tsx", { jsx: true, specifiers: { ...jsxRuntime, "lucide-react": lucide } })
 );
+// The picker filter and the timeline filter each own a pure client module, and
+// the timeline also moved into its own component so it can own its controls.
+const pickerRef = emit(
+  "runs-inspector-picker",
+  compile("./runs-inspector-picker.ts", { specifiers: { "./runs-inspector": inspectorRef, "./runs": runsRef } })
+);
+const timelineModuleRef = emit(
+  "runs-inspector-timeline",
+  compile("./runs-inspector-timeline.ts", { specifiers: { "./runs-inspector": inspectorRef, "./runs": runsRef } })
+);
+const timelineRef = emit(
+  "RunInspectorTimeline",
+  compile("../components/sections/RunInspectorTimeline.tsx", {
+    jsx: true,
+    specifiers: {
+      ...jsxRuntime,
+      "lucide-react": lucide,
+      "@/lib/http": httpRef,
+      "@/lib/time": timeRef,
+      "@/lib/runs": runsRef,
+      "@/lib/runs-inspector": inspectorRef,
+      "@/lib/runs-inspector-timeline": timelineModuleRef,
+      "@/components/ui": uiRef,
+    },
+  })
+);
 const componentRef = emit(
   "RunInspectorSection",
   compile("../components/sections/RunInspectorSection.tsx", {
@@ -122,13 +148,16 @@ const componentRef = emit(
       "@/lib/time": timeRef,
       "@/lib/runs": runsRef,
       "@/lib/runs-inspector": inspectorRef,
+      "@/lib/runs-inspector-picker": pickerRef,
       "@/components/ui": uiRef,
       "@/components/ToolPill": toolPillRef,
+      "./RunInspectorTimeline": timelineRef,
     },
   })
 );
-const { RunInspectorView, RunStatusPanel, ToolCallsPanel, WorkspacePanel, DeliveryPanel, TimelinePanel } =
+const { RunInspectorView, RunStatusPanel, ToolCallsPanel, WorkspacePanel, DeliveryPanel } =
   await loadFile("RunInspectorSection");
+const { RunInspectorTimeline } = await loadFile("RunInspectorTimeline");
 const { createElement } = await import(jsxRuntime.react);
 const { renderToStaticMarkup } = await import(resolveUrl("react-dom/server"));
 
@@ -554,6 +583,46 @@ test("a hidden row is counted, never rendered", async () => {
   assert.equal(inspector.transcriptPrompts(transcript).length, 0);
 });
 
+test("the message count follows has_more, and reports a bounded read as partial", async () => {
+  // One page, and the server says there is nothing after it: a real total.
+  route({ "/messages?limit=200": { data: TOOL_MESSAGES, has_more: false } });
+  assert.deepEqual(await inspector.fetchRunMessageCount("t-1", "r-1"), { count: 4, partial: false });
+
+  // Two pages: the walk must follow the cursor rather than reporting 200.
+  const page = (from, n) => Array.from({ length: n }, (_, i) => ({ ...TOOL_MESSAGES[0], seq: from + i }));
+  const calls = [];
+  setHttpHandler((path) => {
+    calls.push(path);
+    if (calls.length === 1) return { data: page(1, 200), has_more: true };
+    return { data: page(201, 3), has_more: false };
+  });
+  assert.deepEqual(calls, []);
+  const both = await inspector.fetchRunMessageCount("t-1", "r-1");
+  assert.deepEqual(calls, [
+    "/threads/t-1/runs/r-1/messages?limit=200",
+    "/threads/t-1/runs/r-1/messages?limit=200&after_seq=200",
+  ]);
+  assert.deepEqual(both, { count: 203, partial: false });
+
+  // A page the server says has more behind it, but whose last row carries no
+  // usable seq: the count is a floor, never a total.
+  let stops = 0;
+  setHttpHandler(() => {
+    stops += 1;
+    return { data: [{ ...TOOL_MESSAGES[0], seq: null }], has_more: true };
+  });
+  assert.deepEqual(await inspector.fetchRunMessageCount("t-1", "r-1"), { count: 1, partial: true });
+  assert.equal(stops, 1, "a row without seq cannot drive the cursor");
+
+  // A malformed envelope is a failure, not a count of zero.
+  route({ "/messages?limit=200": { data: "nope", has_more: false } });
+  await assert.rejects(() => inspector.fetchRunMessageCount("t-1", "r-1"), /unreadable message page/);
+
+  // No rows at all is the server's real answer, and it is complete.
+  route({ "/messages?limit=200": { data: [], has_more: false } });
+  assert.deepEqual(await inspector.fetchRunMessageCount("t-1", "r-1"), { count: 0, partial: false });
+});
+
 /* ══ 4. Tool calls: name, args, result, resolved status ═════════════════════ */
 
 test("a tool call carries its name, arguments, result and resolved status", async () => {
@@ -684,7 +753,7 @@ test("an unreported event timestamp stays null and renders as unknown", async ()
   const timeline = await inspector.fetchRunTimeline("t-1", "r-1");
   assert.equal(timeline.events[0].seq, null);
   assert.equal(timeline.events[0].createdAt, null);
-  const markup = renderToStaticMarkup(createElement(TimelinePanel, { timeline, error: null }));
+  const markup = renderToStaticMarkup(createElement(RunInspectorTimeline, { timeline, error: null }));
   assert.match(markup, /time not reported|--:--/);
   assert.doesNotMatch(markup, /1970/, "a missing time must not be painted as the epoch");
 });
@@ -695,7 +764,7 @@ test("an event type this client has never seen is rendered verbatim", async () =
   });
   const timeline = await inspector.fetchRunTimeline("t-1", "r-1");
   assert.equal(timeline.events[0].eventType, "middleware:quantum_annealer");
-  const markup = renderToStaticMarkup(createElement(TimelinePanel, { timeline, error: null }));
+  const markup = renderToStaticMarkup(createElement(RunInspectorTimeline, { timeline, error: null }));
   assert.match(markup, /middleware:quantum_annealer/);
 });
 
@@ -743,6 +812,41 @@ test("a comparison with no summary object reports unknown totals, not zeros", as
   assert.equal(changes.summary, null);
   const markup = renderToStaticMarkup(createElement(WorkspacePanel, { changes, error: null }));
   assert.match(markup, /no summary object/);
+});
+
+test("workspaceChangeCount is a measurement only when the comparison was available", async () => {
+  // The real payload this Gateway returns for a run it could not compare:
+  // available:false, a zeroed summary, and an empty file list.
+  route({ "/workspace-changes": WORKSPACE_UNAVAILABLE });
+  const unavailable = await inspector.fetchWorkspaceChangesForRun("t-1", "r-1");
+  assert.equal(unavailable.available, false);
+  assert.equal(unavailable.files.length, 0);
+  assert.equal(
+    inspector.workspaceChangeCount(unavailable),
+    null,
+    "an unavailable comparison must not become a count of 0 files changed"
+  );
+
+  // A real measured zero - available, compared, nothing changed - stays 0.
+  route({
+    "/workspace-changes": {
+      ...WORKSPACE_AVAILABLE,
+      files: [],
+      summary: { created: 0, modified: 0, deleted: 0, symlink_created: 0, additions: 0, deletions: 0, truncated: false },
+    },
+  });
+  const compared = await inspector.fetchWorkspaceChangesForRun("t-1", "r-1");
+  assert.equal(compared.available, true);
+  assert.equal(inspector.workspaceChangeCount(compared), 0);
+
+  route({ "/workspace-changes": WORKSPACE_AVAILABLE });
+  assert.equal(inspector.workspaceChangeCount(await inspector.fetchWorkspaceChangesForRun("t-1", "r-1")), 1);
+
+  // No `available` field at all: unknown, not zero.
+  route({ "/workspace-changes": { version: 1, files: [] } });
+  const unreported = await inspector.fetchWorkspaceChangesForRun("t-1", "r-1");
+  assert.equal(unreported.available, null);
+  assert.equal(inspector.workspaceChangeCount(unreported), null);
 });
 
 /* ══ 7. The delivery receipt ═══════════════════════════════════════════════ */
@@ -837,6 +941,57 @@ test("an empty run list from a healthy server is reported as the server's answer
   const markup = renderView({ ...BASE_STATE, selectedRunId: null, showPicker: true, runs: [], runsError: null, runsComplete: true });
   assert.match(markup, /reported no runs for this conversation/);
   assert.match(markup, /not a failed read/);
+});
+
+test("fetchOlderRuns follows the server's own cursor, and refuses a partial one", async () => {
+  let served = 0;
+  const handler = () => {
+    served += 1;
+    // The first page says another page follows and hands back its cursor; the
+    // second says this was the last one.
+    if (served === 1) {
+      return {
+        data: [inspector.toRunRecord({ run_id: "r-old-1", status: "success" })],
+        has_more: true,
+        next_before_created_at: "2026-01-03T00:00:00+00:00",
+        next_before_run_id: "r-old-1",
+      };
+    }
+    return {
+      data: [inspector.toRunRecord({ run_id: "r-old-3", status: "success" })],
+      has_more: false,
+      next_before_created_at: null,
+      next_before_run_id: null,
+    };
+  };
+  // `route` matches on a path suffix, so the full URLs are the keys here.
+  const firstUrl = "/threads/t-1/runs/page?limit=50&before_created_at=2026-01-02T00%3A00%3A00%2B00%3A00&before_run_id=r-old-2";
+  const secondUrl = "/threads/t-1/runs/page?limit=50&before_created_at=2026-01-03T00%3A00%3A00%2B00%3A00&before_run_id=r-old-1";
+  const calls = route({ [firstUrl]: handler, [secondUrl]: handler });
+
+  const page = await inspector.fetchOlderRuns("t-1", "2026-01-02T00:00:00+00:00", "r-old-2");
+  assert.equal(calls[0], `GET ${firstUrl}`);
+  assert.equal(page.runs.length, 1);
+  assert.equal(page.runs[0].run_id, "r-old-1");
+  assert.equal(page.hasMore, true);
+  assert.equal(page.nextBeforeCreatedAt, "2026-01-03T00:00:00+00:00");
+  assert.equal(page.nextBeforeRunId, "r-old-1");
+
+  const end = await inspector.fetchOlderRuns("t-1", page.nextBeforeCreatedAt, page.nextBeforeRunId);
+  assert.equal(calls[1], `GET ${secondUrl}`);
+  assert.equal(end.runs[0].run_id, "r-old-3");
+  assert.equal(end.hasMore, false, "the server said this was the last page");
+  assert.equal(end.nextBeforeCreatedAt, null);
+
+  // A half cursor is refused locally rather than sent: the route 422s on one
+  // cursor field alone, and silently re-reading the newest page would show the
+  // user the wrong runs.
+  const before = calls.length;
+  const empty = { runs: [], hasMore: false, nextBeforeCreatedAt: null, nextBeforeRunId: null };
+  assert.deepEqual(await inspector.fetchOlderRuns("t-1", null, "r-old-2"), empty);
+  assert.deepEqual(await inspector.fetchOlderRuns("t-1", "2026-01-02T00:00:00+00:00", null), empty);
+  assert.deepEqual(await inspector.fetchOlderRuns("t-1", null, null), empty);
+  assert.equal(calls.length, before, "a partial cursor must not issue a request");
 });
 
 test("one failed panel degrades only itself and shows the server's reason", async () => {

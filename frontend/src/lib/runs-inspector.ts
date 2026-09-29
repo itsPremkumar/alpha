@@ -243,6 +243,44 @@ export interface RunListResult {
   complete: boolean;
 }
 
+export interface OlderRunsPage {
+  runs: RunRecord[];
+  /** False when the server reported another page after this one. */
+  hasMore: boolean;
+  /** The server's own next cursor; `null` when there is no further page. */
+  nextBeforeCreatedAt: string | null;
+  nextBeforeRunId: string | null;
+}
+
+/**
+ * One keyset page of runs OLDER than a cursor.
+ *
+ * This is how a run the newest page does not contain is reached at all: the
+ * cursor is the server's own `next_before_*` pair, and an incomplete pair is
+ * refused rather than sent, because the route 422s on one cursor field alone.
+ */
+export async function fetchOlderRuns(
+  threadId: string,
+  beforeCreatedAt: string | null,
+  beforeRunId: string | null,
+  limit: number = RUN_PAGE_LIMIT
+): Promise<OlderRunsPage> {
+  const created = str(beforeCreatedAt);
+  const runId = str(beforeRunId);
+  if (!created || !runId) {
+    // No complete cursor is not a reason to re-read the newest page: the caller
+    // asked for older runs and there is nowhere to start from.
+    return { runs: [], hasMore: false, nextBeforeCreatedAt: null, nextBeforeRunId: null };
+  }
+  const page = await fetchRunPage(threadId, { limit, beforeCreatedAt: created, beforeRunId: runId });
+  return {
+    runs: page.runs,
+    hasMore: page.hasMore,
+    nextBeforeCreatedAt: page.nextBeforeCreatedAt,
+    nextBeforeRunId: page.nextBeforeRunId,
+  };
+}
+
 /** Page cap for one bounded history walk. */
 export const RUN_LIST_MAX_PAGES = 4;
 
@@ -407,6 +445,54 @@ export function finalAnswer(transcript: Transcript): TranscriptEntry | null {
     if (entry.text !== null && entry.text.trim() !== "") return entry;
   }
   return null;
+}
+
+export interface RunMessageCount {
+  /** How many message rows this read actually saw. */
+  count: number;
+  /**
+   * True when the server said more rows exist than this read returned.
+   *
+   * This is the difference between "this run has 14 messages" and "the first
+   * 50 rows are all we were sent". The endpoint's own default page size is 50,
+   * so a bare single read silently truncates a long run's message count.
+   */
+  partial: boolean;
+}
+
+const MESSAGE_COUNT_PAGE = 200;
+const MESSAGE_COUNT_MAX_ROWS = 4000;
+const MESSAGE_COUNT_MAX_PAGES = 20;
+
+/**
+ * How many messages one run recorded, following `has_more` until the server
+ * says there are no more or the bounded walk stops.
+ *
+ * `partial: true` is a real answer about the read, not about the run: the
+ * caller must then present the count as a floor ("N+"), never as the total.
+ */
+export async function fetchRunMessageCount(threadId: string, runId: string): Promise<RunMessageCount> {
+  const base = `/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/messages`;
+  // Named `seen`, not `count`: a local `count` would shadow the `count()` reader
+  // this module uses everywhere else, and the shadowed call is a tsc error.
+  let seen = 0;
+  let afterSeq: number | null = null;
+
+  for (let page = 0; page < MESSAGE_COUNT_MAX_PAGES; page++) {
+    const params = new URLSearchParams({ limit: String(MESSAGE_COUNT_PAGE) });
+    if (afterSeq !== null) params.set("after_seq", String(afterSeq));
+    const body = rec(await get<unknown>(`${base}?${params.toString()}`));
+    const data = body && Array.isArray(body.data) ? body.data : null;
+    if (!data) throw new Error("The server returned an unreadable message page.");
+    seen += data.length;
+    if (body!.has_more !== true) return { count: seen, partial: false };
+    const lastSeq = count(rec(data[data.length - 1])?.seq);
+    if (lastSeq === null || lastSeq < 1) return { count: seen, partial: true };
+    if (afterSeq !== null && lastSeq <= afterSeq) return { count: seen, partial: true };
+    if (seen >= MESSAGE_COUNT_MAX_ROWS) return { count: seen, partial: true };
+    afterSeq = lastSeq;
+  }
+  return { count: seen, partial: true };
 }
 
 /* ── tool calls ───────────────────────────────────────────────────────────── */
@@ -705,6 +791,20 @@ export async function fetchWorkspaceChangesForRun(threadId: string, runId: strin
     summary: toSummary(body.summary),
     files,
   };
+}
+
+/**
+ * How many files a run changed — or `null` when the Gateway could not say.
+ *
+ * `available: false` means the server could not compare this run's workspace
+ * snapshots at all. The counts it sends alongside that answer are not a
+ * measurement, so this returns the honest unknown rather than `0`: a summary
+ * tile that reads "0 file changes" claims the run touched nothing, which is a
+ * different claim from "the comparison is unavailable".
+ */
+export function workspaceChangeCount(changes: WorkspaceChanges): number | null {
+  if (changes.available !== true) return null;
+  return changes.files.length;
 }
 
 /* ── delivered artifacts ──────────────────────────────────────────────────── */

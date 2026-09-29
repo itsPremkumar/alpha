@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { listThreadRuns, fetchRunMessages, fetchWorkspaceChanges, cancelRun, formatTokenCount, RunInfo, WorkspaceChange } from "@/lib/runs";
+import { listThreadRuns, cancelRun, formatTokenCount, RunInfo } from "@/lib/runs";
+import {
+  fetchRunMessageCount,
+  fetchWorkspaceChangesForRun,
+  workspaceChangeCount,
+  type RunMessageCount,
+  type WorkspaceChanges,
+} from "@/lib/runs-inspector";
 import { Section, EmptyState, ErrorBox, Badge, Btn, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { Ban, RefreshCw, FileDiff, MessagesSquare, Cpu } from "lucide-react";
@@ -16,8 +23,9 @@ export function RunsSection(props: { threadId: string | null }) {
   const [selected, setSelected] = useState<RunInfo | null>(null);
   // The list's own glance summary for the selected run. This is NOT the run's
   // story — that is <RunInspectorSection>'s job — but a failed read here must
-  // still never render as "0 messages / 0 file changes".
-  const [detail, setDetail] = useState<{ messages: number; changes: WorkspaceChange[] } | null>(null);
+  // still never render as "0 messages / 0 file changes", and neither must an
+  // *unavailable* comparison.
+  const [detail, setDetail] = useState<{ messages: RunMessageCount; workspace: WorkspaceChanges } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -48,11 +56,11 @@ export function RunsSection(props: { threadId: string | null }) {
     setDetailLoading(true);
     setDetailError(null);
     try {
-      const [msgs, changes] = await Promise.all([
-        fetchRunMessages(props.threadId, run.run_id),
-        fetchWorkspaceChanges(props.threadId, run.run_id),
+      const [messages, workspace] = await Promise.all([
+        fetchRunMessageCount(props.threadId, run.run_id),
+        fetchWorkspaceChangesForRun(props.threadId, run.run_id),
       ]);
-      setDetail({ messages: msgs.length, changes });
+      setDetail({ messages, workspace });
     } catch (e) {
       // A failed detail fetch must never render as real 0/0/empty counts —
       // clear the detail and surface an explicit "failed to load" state.
@@ -75,6 +83,9 @@ export function RunsSection(props: { threadId: string | null }) {
   };
 
   const statusTone = (s: string) => (s === "success" || s === "completed" ? "green" : s === "running" || s === "pending" ? "blue" : s === "error" || s === "failed" ? undefined : "gray") as "green" | "blue" | "gray" | undefined;
+
+  /** The honest file-change count, or `null` when the Gateway could not say. */
+  const changeCount = detail ? workspaceChangeCount(detail.workspace) : null;
 
   return (
     <Section
@@ -162,13 +173,49 @@ export function RunsSection(props: { threadId: string | null }) {
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-xl bg-muted/40 p-2.5 text-center">
                         <MessagesSquare className="size-4 mx-auto text-primary" />
-                        <div className="text-sm font-bold mt-1">{detail.messages}</div>
+                        {/*
+                          A partial read is a floor, not a total: this endpoint
+                          pages at 50 by default, so a bare read used to render
+                          "50 messages" for a run that recorded far more. The
+                          full, ordered transcript is in the inspector below.
+                        */}
+                        <div
+                          className="text-sm font-bold mt-1"
+                          title={
+                            detail.messages.partial
+                              ? `At least ${detail.messages.count} messages — this read stopped at its own cap, and the ordered transcript is in the run inspector below.`
+                              : undefined
+                          }
+                        >
+                          {detail.messages.partial ? `${detail.messages.count}+` : detail.messages.count}
+                        </div>
                         <div className="text-[10px] text-muted-foreground">messages</div>
                       </div>
                       <div className="rounded-xl bg-muted/40 p-2.5 text-center">
                         <FileDiff className="size-4 mx-auto text-primary" />
-                        <div className="text-sm font-bold mt-1">{detail.changes.length}</div>
-                        <div className="text-[10px] text-muted-foreground">file changes</div>
+                        {/*
+                          The Gateway answers a workspace comparison with
+                          `available: false` when it could not make the
+                          comparison at all, and that is NOT a measurement of
+                          zero changes — this tile used to read "0 file changes"
+                          in that case. `workspaceChangeCount` keeps the honest
+                          unknown out of the number slot.
+                        */}
+                        {changeCount === null ? (
+                          <>
+                            <div className="text-sm font-bold mt-1 text-amber-600 dark:text-amber-400">—</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {detail.workspace.available === false
+                                ? "change comparison not available for this run"
+                                : "file changes not reported"}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-sm font-bold mt-1">{changeCount}</div>
+                            <div className="text-[10px] text-muted-foreground">file changes</div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
