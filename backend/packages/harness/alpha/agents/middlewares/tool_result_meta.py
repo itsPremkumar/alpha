@@ -59,6 +59,7 @@ def split_error_prefix(content: str) -> str | None:
     body = match.group("body") or ""
     return f"{name}: {body}" if name else body
 
+
 _PARTIAL_MARKERS = (
     "partial results",
     "limited results",
@@ -133,6 +134,20 @@ _UNKNOWN_ERROR: dict[str, object] = {
 # a title rule cannot apply. A dead-target capture still yields the artifact plus a
 # model-visible warning; stamping it belongs to the provider boundary (#4239).
 _PAGE_CONTENT_TOOL_NAMES: frozenset[str] = frozenset({"web_fetch"})
+
+# Bash-family tool names whose calls carry exit-code markers in their output.
+# Mirrors _BASH_EVIDENCE_TOOL_NAMES in subagents/executor.py — keep in sync.
+_BASH_TOOL_NAMES: frozenset[str] = frozenset({"bash", "bash_tool"})
+
+# Exit-status markers in bash *output text*: a nonzero exit does not raise —
+# local sandboxes append ``Exit Code: N``; e2b/opensandbox emit
+# ``Command exited with code N`` when the command produced no output.
+_BASH_EXIT_CODE_MARKER_RE = re.compile(r"Exit Code: (-?\d+)\s*$")
+# Remote providers emit ``Command exited with code N`` ONLY as the complete
+# output of a silent command — anchor it to the whole (trimmed) content so
+# a successful command that merely prints the phrase while exercising an
+# error path is not misrecorded as failed.
+_BASH_EXITED_WITH_CODE_RE = re.compile(r"Command exited with code (-?\d+)")
 
 # Category attributes reused by the error-shell path, indexed by the error_type
 # _ERROR_RULES already declares. Derived rather than duplicated so a shell can
@@ -246,6 +261,31 @@ def _classify_error_shell(msg: ToolMessage, content: str) -> dict[str, object] |
     return {**_ATTRS_BY_ERROR_TYPE[error_type]} if error_type else None
 
 
+def _classify_bash_exit_code(msg: ToolMessage, content: str) -> dict[str, object] | None:
+    """Classify bash tool result by its exit code marker.
+
+    Bash-family tools (bash, bash_tool) append exit code markers to their output:
+    - Local sandboxes: ``Exit Code: N`` at the end of output
+    - Remote providers (e2b/opensandbox): ``Command exited with code N`` as complete output
+
+    Only an exact zero exit code is success; any nonzero (including negative for signals)
+    is an error. This is the authoritative signal for bash tools — the generic
+    ToolMessage.status stays ``success`` even for failed commands.
+    """
+    if msg.name not in _BASH_TOOL_NAMES:
+        return None
+    match = _BASH_EXIT_CODE_MARKER_RE.search(content) or _BASH_EXITED_WITH_CODE_RE.fullmatch(content.strip())
+    if match is None:
+        return None
+    # Signal-killed local subprocesses report signed codes (Exit Code: -9);
+    # only an exact zero is a success.
+    exit_code = int(match.group(1))
+    status = "success" if exit_code == 0 else "error"
+    # Use the same error_type classification as other errors for consistency
+    attrs = _classify_error_text(f"Exit code {exit_code}") if exit_code != 0 else {}
+    return {"status": status, **attrs}
+
+
 def _as_status_line(title: str) -> str | None:
     """Reduce a page title to its bare reason phrase, or None if it carries content.
 
@@ -348,6 +388,8 @@ def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
         meta = _make_meta(status="error", source="tool_return", **attrs)
     elif (shell_attrs := _classify_error_shell(msg, content)) is not None:
         meta = _make_meta(status="error", source="content_analysis", **shell_attrs)
+    elif (bash_attrs := _classify_bash_exit_code(msg, content)) is not None:
+        meta = _make_meta(status=bash_attrs["status"], source="content_analysis", **{k: v for k, v in bash_attrs.items() if k != "status"})
     elif any(m in content_lower for m in _PARTIAL_MARKERS):
         meta = _make_meta(
             status="partial_success",
