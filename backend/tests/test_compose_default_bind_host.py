@@ -23,6 +23,31 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+#: Every compose file in the repository, discovered rather than listed.
+#:
+#: This was a hand-maintained dict of four paths, which is the same asymmetry
+#: that let the Helm ConfigMap ship without its peer-network locations: a guard
+#: that enumerates *some* of the surfaces reads as coverage. A fifth compose
+#: file added later would publish on 0.0.0.0 with a green suite, so the
+#: enumeration is now derived from the tree and
+#: `test_compose_enumeration_covers_every_compose_file` fails when one is added
+#: that the table below does not name.
+def _discover_compose_files() -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    for pattern in ("docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml"):
+        for path in REPO_ROOT.rglob(pattern):
+            if any(part in {".git", "node_modules", ".venv", "site-packages"} for part in path.parts):
+                continue
+            found[str(path.relative_to(REPO_ROOT)).replace("\\", "/")] = path
+    return found
+
+
+#: Short aliases for the files that need per-file expectations. A file absent
+#: from this table is still covered by the all-interfaces rule, so a new compose
+#: file cannot publish wide silently; the test below just makes the omission
+#: visible rather than letting it pass unnoticed.
 COMPOSE_PATHS = {
     "prod": REPO_ROOT / "docker" / "docker-compose.yaml",
     "dev": REPO_ROOT / "docker" / "docker-compose-dev.yaml",
@@ -36,6 +61,12 @@ COMPOSE_PATHS = {
     # bare "${OPENVIKING_PORT:-1933}:1933", which binds 0.0.0.0 and exposed the
     # backend's HTTP surface on every interface.
     "openviking": REPO_ROOT / "docker" / "docker-compose.openviking.yaml",
+    # The two opt-in overlays publish no ports (a Docker socket mount and
+    # read-only host credential mounts respectively), so they are loopback-safe
+    # by having no published surface. They are listed so the enumeration check
+    # below covers the whole tree rather than skipping them.
+    "cli-auth": REPO_ROOT / "docker" / "docker-compose.cli-auth.yaml",
+    "dood": REPO_ROOT / "docker" / "docker-compose.dood.yaml",
 }
 
 EXPECTED_NGINX_PORT_MAPPING = "${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"
@@ -51,6 +82,43 @@ def _published_ports(compose_path: Path) -> dict[str, list[str]]:
             continue
         published[service_name] = [str(entry) for entry in ports]
     return published
+
+
+def test_compose_enumeration_covers_every_compose_file():
+    """Every compose file in the tree must be named in ``COMPOSE_PATHS``.
+
+    Without this, a new compose file is covered by nothing: the nginx-entry
+    rule and the all-interfaces rule both parametrise over the table, so a file
+    that is not in it is not tested at all. That is the failure mode this
+    repository already paid for on the nginx side.
+    """
+    discovered = {str(path.resolve()) for path in _discover_compose_files().values()}
+    declared = {str(path.resolve()) for path in COMPOSE_PATHS.values() if path.exists()}
+
+    missing = discovered - declared
+    # A file listed in the table but no longer on disk is the mirror problem.
+    vanished = declared - discovered
+
+    assert not missing, f"compose file(s) not covered by the loopback rules: {sorted(missing)}; add them to COMPOSE_PATHS"
+    assert not vanished, f"COMPOSE_PATHS names file(s) that no longer exist: {sorted(vanished)}; remove them"
+
+
+def test_every_compose_file_publishes_nothing_unbound():
+    """The all-interfaces rule, run over discovery rather than the table.
+
+    A compose file that is not in ``COMPOSE_PATHS`` still must not publish a
+    port without an explicit bind address, so this assertion is deliberately
+    independent of the enumeration above: the table provides per-file
+    expectations, this provides the floor.
+    """
+    offenders: list[str] = []
+    for relative, path in sorted(_discover_compose_files().items()):
+        for service_name, mappings in _published_ports(path).items():
+            for mapping in mappings:
+                if _bind_address(mapping) is None:
+                    offenders.append(f"{relative}: {service_name}: {mapping}")
+
+    assert not offenders, f"compose files publishing on all interfaces (add a bind address): {offenders}"
 
 
 @pytest.mark.parametrize("variant", sorted(COMPOSE_PATHS))
