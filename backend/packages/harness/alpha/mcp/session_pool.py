@@ -51,6 +51,28 @@ from mcp import ClientSession
 from mcp.shared.exceptions import McpError
 from mcp.types import CONNECTION_CLOSED
 
+from alpha.mcp.protocol_version import verify_negotiated_protocol_version
+
+
+def _connection_label(connection: dict[str, Any]) -> str:
+    """A human-readable label for an adapter connection dict, for error messages.
+
+    Never returns a value from an untrusted field: this string reaches an
+    exception message that is logged, and the connection dict is built from
+    operator config, not from a peer.
+    """
+    name = connection.get("server_name") or connection.get("name")
+    if isinstance(name, str) and name:
+        return name
+    url = connection.get("url")
+    if isinstance(url, str) and url:
+        return url
+    command = connection.get("command")
+    if isinstance(command, str) and command:
+        return command
+    return "<unnamed MCP server>"
+
+
 logger = logging.getLogger(__name__)
 
 _MCP_CLOSED_STREAM_ERRORS = (
@@ -198,7 +220,19 @@ class MCPSessionPool:
         # to satisfy anyio's same-task cancel-scope requirement and to avoid
         # leaking the session/subprocess.
         try:
-            await session.initialize()
+            initialized = await session.initialize()
+            # Protocol-version gate, before the commit point below. A server that
+            # negotiates a revision outside alpha.mcp.protocol_version's supported
+            # set is refused here rather than tolerated: everything downstream
+            # parses tool results under assumptions that only hold for those
+            # revisions, and a mismatch surfaces to the user as corrupted tool
+            # output rather than as an error. Failing before promotion also means
+            # the session never enters ``_entries``, so no caller can ever be
+            # handed one that speaks a language this release cannot read.
+            verify_negotiated_protocol_version(
+                _connection_label(connection),
+                getattr(initialized, "protocolVersion", None) or "",
+            )
             # Commit point. ``ready`` resolves with a *result* only inside the
             # critical section that also registers the session in ``_entries``:
             # a resolved-with-result future therefore means the session is

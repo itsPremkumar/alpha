@@ -20,8 +20,19 @@ from alpha.config.extensions_config import (
 )
 from alpha.mcp.context_headers import build_context_headers_interceptor
 from alpha.mcp.interceptors import build_mcp_tool_interceptors
+from alpha.mcp.protocol_version import DECLARED_MCP_PROTOCOL_VERSION
 
 TENANT_TOKEN = "Bearer tenant-scoped-token"
+
+
+def _initialized() -> SimpleNamespace:
+    """A stand-in for the `InitializeResult` a real server returns.
+
+    The durable HTTP/SSE task path refuses a session whose `initialize` reported
+    no supported protocol revision (see `alpha.mcp.protocol_version`), so a
+    double standing in for a server has to name one.
+    """
+    return SimpleNamespace(protocolVersion=DECLARED_MCP_PROTOCOL_VERSION)
 
 
 def _config(**context_headers_kwargs) -> ExtensionsConfig:
@@ -631,7 +642,7 @@ def _task_caller(config: ExtensionsConfig) -> tuple[Any, dict[str, str], Any]:
             opened.update(connection.get("headers") or {})
 
         async def __aenter__(self):
-            return SimpleNamespace(initialize=AsyncMock(), call_tool=AsyncMock(return_value=result))
+            return SimpleNamespace(initialize=AsyncMock(return_value=_initialized()), call_tool=AsyncMock(return_value=result))
 
         async def __aexit__(self, *_exc):
             return False
@@ -752,7 +763,7 @@ async def test_durable_task_calls_are_not_denied_for_a_missing_run_context():
         }
     )
     result = SimpleNamespace(structuredContent={"task_id": "remote-1", "status": "running"}, isError=False)
-    session = SimpleNamespace(initialize=AsyncMock(), call_tool=AsyncMock(return_value=result))
+    session = SimpleNamespace(initialize=AsyncMock(return_value=_initialized()), call_tool=AsyncMock(return_value=result))
 
     class _SessionContext:
         async def __aenter__(self):

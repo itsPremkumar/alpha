@@ -14,8 +14,20 @@ from mcp.types import CONNECTION_CLOSED, ErrorData
 
 from alpha.config.extensions_config import ExtensionsConfig
 from alpha.config.paths import Paths
+from alpha.mcp.protocol_version import DECLARED_MCP_PROTOCOL_VERSION
 from alpha.mcp.session_pool import MCPSessionPool
 from alpha.mcp.task_tool_caller import McpTaskToolCaller, mcp_task_session_scope_key
+
+
+def _initialized() -> SimpleNamespace:
+    """A stand-in for the ``InitializeResult`` a real server returns.
+
+    A real server always answers ``initialize`` with a protocolVersion, and
+    McpTaskToolCaller refuses the session when it does not (see
+    ``alpha.mcp.protocol_version``). Session doubles therefore have to name a
+    supported revision or they are not standing in for anything.
+    """
+    return SimpleNamespace(protocolVersion=DECLARED_MCP_PROTOCOL_VERSION)
 
 
 def _config() -> ExtensionsConfig:
@@ -346,7 +358,7 @@ async def test_stdio_task_session_initialization_respects_configured_timeout() -
 async def test_http_task_call_authenticates_session_initialization() -> None:
     result = SimpleNamespace(structuredContent={"task_id": "remote-1", "status": "running"}, isError=False)
     session = SimpleNamespace(
-        initialize=AsyncMock(),
+        initialize=AsyncMock(return_value=_initialized()),
         call_tool=AsyncMock(return_value=result),
     )
     create_session = MagicMock(return_value=_SessionContext(session))
@@ -436,7 +448,7 @@ async def test_remote_task_call_respects_configured_timeout(transport: str) -> N
         await asyncio.sleep(60)
 
     session = SimpleNamespace(
-        initialize=AsyncMock(),
+        initialize=AsyncMock(return_value=_initialized()),
         call_tool=AsyncMock(side_effect=slow_call),
     )
     caller = McpTaskToolCaller(
