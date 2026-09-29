@@ -103,10 +103,58 @@ the default model went broken in the first place.
 
 | Task shape | Model | Effort | Why |
 | --- | --- | --- | --- |
-| Root-cause analysis, contract auditing, anything needing a defensible conclusion | `opencode/space-bunny-free` | `high` or `xhigh` | Verified reasoning; `xhigh` for a genuine design decision. |
-| Broad mechanical sweeps with many files to read (the ISO audit, an orphan-module scan) | `opencode/nemotron-3-ultra-free` | — | High recall across a wide surface. |
-| Test-writing, fixture repair, small isolated fixes | `opencode/muse-spark-1.3-contributor-free` | `low` or `minimal` | Cheapest rung; adequate for mechanical work. |
-| Simple config/docs edits, link and count verification | `opencode/mimo-v2.6-flash-free` | — | Fast, and the work is checkable rather than judgement-heavy. |
+| **Everything, currently** | `opencode/space-bunny-free` | `low` … `max` | **The only model in the pool that answers.** See the measurement below. |
+
+### Measured 2026-09-29: three of the four models in this table do not work
+
+The table above used to recommend four different models by task shape. That was
+wrong, and it was wrong in the exact way this document warns about two
+paragraphs further down.
+
+I assigned `nemotron-3-ultra-free`, `muse-spark-1.3-contributor-free` and
+`mimo-v2.6-flash-free` to five agents. A research agent independently reported
+that the alternatives were failing, and I then measured it directly against the
+provider, alternating the order to separate a per-model fault from rate
+limiting:
+
+```
+  OK    space-bunny-free                      200   3550ms  reply="391"
+  FAIL  nemotron-3-ultra-free                 500    345ms  Internal server error
+  FAIL  muse-spark-1.3-contributor-free       500    865ms  Internal server error
+  FAIL  mimo-v2.6-flash-free                  500    331ms  Internal server error
+  FAIL  mimo-v2.6-flash-free                  500    355ms  Internal server error
+  FAIL  muse-spark-1.3-contributor-free       500    337ms  Internal server error
+  FAIL  nemotron-3-ultra-free                 500    317ms  Internal server error
+  OK    space-bunny-free                      200   5220ms  reply="391"
+```
+
+The same model succeeded at positions 1 and 8, between failures, so this is not
+throttling. `space-bunny-free` returns 200, the correct arithmetic answer
+(`17*23 = 391`), working `tool_calls`, and all five declared effort rungs — a
+deliberately bogus rung correctly returns 400.
+
+The cost was real: one agent dispatched on `nemotron-3-ultra-free` died with an
+upstream 504 and produced nothing, and two more were re-dispatched.
+
+**So the model axis is not available for variation right now.** The only axis
+left is the effort rung, which `space-bunny-free` declares as
+`low, medium, high, xhigh, max`. Use that to separate a mechanical sweep from a
+design decision.
+
+Two consequences worth stating:
+
+- The `effort` field is now the whole of the differentiation, so it has to carry
+  real weight. Do not assign `max` reflexively; it is slower for a reason.
+- This pool is a single point of failure and it is not Alpha's. The pin
+  `free:opencode-zen:space-bunny-free` in `config.example.yaml` is likewise a
+  single anonymous model of unknown provenance that can be withdrawn without
+  notice. The strongest argument for turning on the already-built, fail-closed
+  `model_routing:` machinery is that it is the only thing standing between a
+  provider-side withdrawal and a dead default.
+
+**Re-probe before you dispatch, every time.** The catalogue listing a model is
+not evidence that it works, and this document's own rule — "verify a model
+before assigning ten tasks to it" — is the rule I broke.
 
 Effort rungs are only offered by models that declare them — `space-bunny-free`
 exposes `low, medium, high, xhigh, max`; `muse-spark-1.3-contributor-free`
