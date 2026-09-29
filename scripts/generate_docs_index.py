@@ -161,6 +161,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "contributing",
         "Tracked ruff-format debt: measured baseline, per-area breakdown, remaining batches.",
     ),
+    "GIT_INTEGRATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.",
+    ),
+    "WORKTREE_STRATEGIES.md": DocumentSpec(
+        "contributing",
+        "Which kind of isolation an agent gets, and how to choose between the strategies.",
+    ),
     "API.md": DocumentSpec(
         "api", "API entry point and environment/base URL reference."
     ),
