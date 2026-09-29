@@ -208,7 +208,13 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.timeout",
         recovery=RecoveryAction.RETRY,
         http_status=504,
-        exception_types=("TimeoutError", "asyncio.TimeoutError", "ReadTimeout", "ConnectTimeout", "TimeoutException", "APITimeoutError"),
+        # ``APITimeoutError`` was claimed here and by
+        # MODEL_PROVIDER_UNAVAILABLE. Both claim it at MRO rank 0, so the
+        # higher-severity provider code always won and this entry could never
+        # fire -- a claim that cannot happen is worse than no claim, because it
+        # reads like coverage. The provider keeps it: a provider that did not
+        # answer in time genuinely was not reached.
+        exception_types=("TimeoutError", "asyncio.TimeoutError", "ReadTimeout", "ConnectTimeout", "TimeoutException"),
         message_hints=("timed out", "timeout", "deadline exceeded"),
     ),
     _d(
@@ -302,7 +308,13 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.auth",
         recovery=RecoveryAction.NONE,
         http_status=401,
-        exception_types=("NotAuthenticated", "AuthenticationError"),
+        exception_types=("NotAuthenticated",),
+        notes=(
+            "Deliberately does NOT claim the bare name ``AuthenticationError``. That name is an openai/anthropic SDK class and is claimed by "
+            "MODEL_PROVIDER_AUTH, which grades CRITICAL and recovery=RESTART. Both claimed it at MRO rank 0, so the provider code always won and this entry was "
+            "dead -- and a local sign-in failure would have been published as 'the model provider rejected the configured credentials' with an instruction to "
+            "restart the process. Alpha's own auth failures raise the specific names claimed here and by AUTH_INVALID_CREDENTIALS."
+        ),
     ),
     _d(
         "AUTH_INVALID_CREDENTIALS",
@@ -322,7 +334,13 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.authz",
         recovery=RecoveryAction.NONE,
         http_status=403,
-        exception_types=("PermissionDeniedError", "AuthorizationError", "ForbiddenError"),
+        exception_types=("AuthorizationError", "ForbiddenError"),
+        notes=(
+            "Deliberately does NOT claim the bare names ``PermissionDeniedError`` or ``PermissionDenied``. They are openai/anthropic SDK classes owned by "
+            "MODEL_PROVIDER_AUTH (CRITICAL, recovery=RESTART) and SECURITY_POLICY_VIOLATION respectively; at an equal MRO rank the higher severity always won, "
+            "so these entries were dead. ``PermissionError`` -- the builtin a real local authorization failure raises -- is no longer claimed by "
+            "STORAGE_READ_FAILED either, because that code's retry policy does not fit a permission denial; see that code."
+        ),
     ),
     _d(
         "AUTH_QUOTA_EXCEEDED",
@@ -342,7 +360,12 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.auth",
         recovery=RecoveryAction.RETRY,
         http_status=502,
-        message_hints=("sso", "oidc", "oauth"),
+        # Phrases, never the bare token. "sso" is a substring of "assorted" and
+        # "asserts", so the bare form classified "assorted results returned" as
+        # a sign-on failure with retryable=True -- the same hijack that made
+        # "lease" claim every message containing "please". The compound
+        # spellings are the only ones a real SSO failure actually uses.
+        message_hints=("sso ", "sso:", "sso/", "sso callback", "sso redirect", "sso provider", "oidc", "oauth"),
     ),
     # -- model providers ---------------------------------------------------
     _d(
@@ -353,12 +376,20 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.model_provider",
         recovery=RecoveryAction.RETRY,
         http_status=503,
+        # ``RateLimitError`` and ``APITimeoutError`` were claimed here *and* by
+        # MODEL_PROVIDER_RATE_LIMITED and TIMEOUT. This code grades ERROR and
+        # those grade WARNING, and classification prefers the higher severity
+        # at an equal MRO rank, so both names always landed here: a 429 was
+        # published as 503 "could not be reached" and MODEL_PROVIDER_RATE_LIMITED
+        # could never fire for its own exception type. A throttle is not an
+        # outage, so the throttle keeps the name. APITimeoutError stays here --
+        # a provider that did not answer in time genuinely was not reached -- and
+        # the dead duplicate was dropped from TIMEOUT instead.
         exception_types=(
             "APIConnectionError",
             "APITimeoutError",
             "ServiceUnavailableError",
             "InternalServerError",
-            "RateLimitError",
         ),
         status_codes=frozenset({500, 502, 503, 504}),
         message_hints=("overloaded", "service unavailable", "bad gateway", "upstream", "connection reset", "server disconnected"),
@@ -375,6 +406,23 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         status_codes=frozenset({401, 403}),
         message_hints=("invalid api key", "unauthorized", "invalid_api_key", "permission denied"),
     ),
+    # 402 only. This code and MODEL_PROVIDER_RATE_LIMITED both claimed 429, and
+    # because classification takes the first matching definition and this one is
+    # defined first, *every* 429 that carried no recognised exception type was
+    # published as "The model provider reports the quota for this account is
+    # exhausted" with retryable=False and recovery=INVESTIGATE. That is the
+    # deterministic/transient inversion the registry exists to prevent: a
+    # per-minute throttle, which clears on its own in seconds, was filed as a
+    # billing outage and marked not-retryable, so a supervisor's correct action
+    # -- retry shortly -- was published as the wrong one. 402 is unambiguously
+    # billing and stays here; 429 is the throttle's.
+    #
+    # The hints follow the same rule alpha.models.fallback.is_credit_exhausted_
+    # error already applies at the model boundary: rate-limit phrasing must not
+    # be read as credit exhaustion, because "quota" alone is a *rate* limit at
+    # several providers. The bare words "quota" and "exhausted" are therefore
+    # gone -- they claimed "Disk quota exceeded on /var" and "connection pool
+    # exhausted" as provider billing failures.
     _d(
         "MODEL_PROVIDER_QUOTA",
         ErrorSeverity.ERROR,
@@ -383,8 +431,25 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.model_provider",
         recovery=RecoveryAction.INVESTIGATE,
         http_status=429,
-        status_codes=frozenset({402, 429}),
-        message_hints=("quota", "insufficient_quota", "billing", "exhausted", "payment required"),
+        status_codes=frozenset({402}),
+        message_hints=(
+            "insufficient_quota",
+            "insufficient credit",
+            "insufficient balance",
+            "insufficient_credits",
+            "insufficient credit",
+            "balance is not enough",
+            "balance not enough",
+            "exceeded your current quota",
+            "quota is exhausted",
+            "quota exhausted",
+            "billing",
+            "billing hard limit",
+            "payment required",
+            "please add credits",
+            "add credits",
+            "top up your balance",
+        ),
     ),
     _d(
         "MODEL_PROVIDER_RATE_LIMITED",
@@ -396,7 +461,13 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         http_status=429,
         exception_types=("RateLimitError",),
         status_codes=frozenset({429}),
-        message_hints=("rate limit", "too many requests", "slow down", "overloaded_error"),
+        # "requests per" and "per minute" are what a provider's own throttle
+        # message looks like ("quota exceeded for quota metric
+        # RequestsPerMinute"). Without them that message matches no hint here
+        # and, now that MODEL_PROVIDER_QUOTA no longer claims the bare word
+        # "quota", it would fall through to INTERNAL_ERROR. The same fragments
+        # alpha.models.fallback uses to suppress billing detection.
+        message_hints=("rate limit", "too many requests", "slow down", "overloaded_error", "requests per", "per minute", "requestsperminute"),
     ),
     _d(
         "MODEL_RESPONSE_INVALID",
@@ -448,8 +519,16 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.run",
         recovery=RecoveryAction.RETRY,
         http_status=409,
+        # Owns the bare ``ConflictError`` name because alpha.runtime.runs.manager
+        # raises it most often for exactly this ("Thread X already has an
+        # active run"). The same class is also raised there for a lost
+        # reservation lease and for an active checkpoint write, which are not
+        # admission problems -- see the PERSISTENCE_CONFLICT note. The hints
+        # below route the ambiguous cases away from the admission wording
+        # where the message makes the real cause visible.
         exception_types=("ActiveRunConflict", "ConflictError", "ActiveScheduledRunConflict"),
-        message_hints=("already running", "already in progress", "concurrent run"),
+        message_hints=("already running", "already in progress", "concurrent run", "active run"),
+        notes="A ConflictError raised for a lost reservation lease or an active checkpoint write is a different failure; manager.py should raise a distinct type for those. Until it does, the type-level claim resolves them here.",
     ),
     _d(
         "RUN_OWNERSHIP_LOST",
@@ -460,9 +539,34 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         recovery=RecoveryAction.RETRY,
         http_status=409,
         exception_types=("RunOwnershipLost", "LeaseLost"),
-        message_hints=("lease", "ownership", "fenced"),
+        # Deliberately phrases, never the bare word "lease". Hints are matched
+        # as raw substrings of str(exc), and "lease" is a substring of
+        # "please", "release" and "unleased", so the bare form claimed every
+        # message containing "please" -- including "please retry" and "please
+        # add credits" -- and reported it as a lost run lease with
+        # retryable=True. The type claims above are the real path; these hints
+        # only have to catch a lease failure that arrives untyped.
+        message_hints=("lease lost", "lost the lease", "lease expired", "lease was lost", "ownership", "fenced"),
         notes="Retryable because the *new* lease holder continues the run; this worker must not.",
     ),
+    # SPLIT, not reworded. This code used to also claim ``RecursionLimit`` and
+    # the ``"recursion limit"`` message hint, so a LangGraph
+    # ``GraphRecursionError`` -- the graph being too deep, no budget consumed --
+    # was reported here as "A run or token budget for this thread is
+    # exhausted", sending the operator to token settings instead of at the
+    # agent chain. The two causes have different owners and different
+    # remediations, so they are two codes. See ``RUN_RECURSION_LIMIT`` below.
+    #
+    # No ``exception_types`` claim survives. ``RecursionLimit`` was never a
+    # class name in any dependency (LangGraph raises ``GraphRecursionError``),
+    # and ``TokenBudgetExceeded`` is not a class anywhere: the token budget is
+    # enforced by ``TokenBudgetMiddleware``, which sets a stop reason and
+    # injects a final-answer instruction rather than raising. The code stays
+    # for the explicit path -- ``report_error("RUN_QUOTA_EXCEEDED")`` and
+    # ``CodedError("RUN_QUOTA_EXCEEDED")`` at the budget boundary -- which is
+    # the only way a *thread* run/token budget is honestly knowable. Every
+    # field below is byte-identical to what it was before the split, so a
+    # persisted ``RUN_QUOTA_EXCEEDED`` record still reads the same way.
     _d(
         "RUN_QUOTA_EXCEEDED",
         ErrorSeverity.WARNING,
@@ -471,8 +575,55 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.run",
         recovery=RecoveryAction.NONE,
         http_status=429,
-        exception_types=("BudgetExceeded", "TokenBudgetExceeded", "RecursionLimit"),
-        message_hints=("budget exceeded", "recursion limit", "token budget"),
+        message_hints=("budget exceeded", "token budget"),
+        notes="Thread run/token budget only. A graph that ran out of depth is RUN_RECURSION_LIMIT and a per-cycle resource budget is RSI_BUDGET_EXCEEDED; neither is a token budget and neither can be relieved by buying tokens.",
+    ),
+    # The graph being too deep. Not a resource condition: no budget was
+    # consumed, none is exhausted, and retrying the identical graph against the
+    # identical limit hits the identical wall. What the operator does about it
+    # is raise ``recursion_limit`` or shorten the agent chain, which is why this
+    # is its own code rather than a rewording of the budget message -- a
+    # combined "a budget or the depth was exhausted" sentence would still send
+    # the reader to token settings.
+    #
+    # Severity is ERROR, not the WARNING the shared code carried: the run
+    # produced no answer at all, which is what ``RUN_EXECUTION_FAILED`` also
+    # grades ERROR. The HTTP status is 500, not 429, because nothing about the
+    # caller is rate-limited and a 429 invites a client to back off and retry a
+    # request that will fail identically.
+    _d(
+        "RUN_RECURSION_LIMIT",
+        ErrorSeverity.ERROR,
+        False,
+        "The agent graph reached its recursion limit and stopped before it could finish. Raise recursion_limit or shorten the agent chain. This is a depth limit, not a spend limit.",
+        "alpha.errors.run",
+        recovery=RecoveryAction.INVESTIGATE,
+        http_status=500,
+        exception_types=("GraphRecursionError",),
+        message_hints=("recursion limit", "recursion_limit", "graph recursion"),
+        notes="LangGraph super-step ceiling, not a budget. The remediation is recursion_limit (configurable; the Gateway clamps it to max_recursion_limit) or a shorter agent chain, never more tokens.",
+    ),
+    # The RSI per-cycle hard budget in ``alpha.rsi.budgets``. It was reachable
+    # only through ``BudgetExceeded``, which this registry also handed to the
+    # thread token-budget code, so aborting an improvement cycle for exceeding
+    # a diff-line or workspace-MB limit was reported to the user as "A run or
+    # token budget for this thread is exhausted" -- a different system, a
+    # different resource, and a different remedy (the operator's per-cycle
+    # limits in config), all three of which the shared message denied.
+    #
+    # Warning and not retryable, matching the refusal it describes: the cycle
+    # aborts on purpose and nothing retries it until the next scheduled cycle.
+    _d(
+        "RSI_BUDGET_EXCEEDED",
+        ErrorSeverity.WARNING,
+        False,
+        "The self-improvement cycle stopped because it reached a hard per-cycle resource limit.",
+        "alpha.errors.rsi",
+        recovery=RecoveryAction.NONE,
+        http_status=500,
+        exception_types=("BudgetExceeded",),
+        message_hints=("budget_exhausted", "budget exhausted"),
+        notes="alpha.rsi.budgets.BudgetExceeded, one of wall_time_s / candidate / changed_file / diff_line / workspace_mb. The true figures are in the detail; the limits are operator config, not a token budget.",
     ),
     _d(
         "RUN_DELIVERY_UNVERIFIED",
@@ -502,7 +653,16 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.checkpoint",
         recovery=RecoveryAction.RESTART,
         http_status=500,
-        exception_types=("CheckpointWriteError", "StoreCorruptionError"),
+        # ``StoreCorruptionError`` was claimed here as well as by
+        # PERSISTENCE_CORRUPT. Both grade CRITICAL, so the earlier definition won
+        # the tie and the corruption code was unreachable for its own type --
+        # which meant ``alpha.goals.store.StoreCorruptionError`` ("Invalid goal
+        # store snapshot") was published as 'Conversation state could not be
+        # saved' with retryable=True and recovery=restart. That is the worst
+        # shape of this defect class: a deterministic, unrecoverable corruption
+        # inheriting a transient flag and a restart loop, so a supervisor was
+        # told to bounce the process over data that will still be corrupt.
+        exception_types=("CheckpointWriteError",),
     ),
     _d(
         "STATE_ACCESS_FAILED",
@@ -584,7 +744,16 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.persistence",
         recovery=RecoveryAction.RESTART,
         http_status=500,
-        exception_types=("WriteError", "PersistenceError", "DiskFullError"),
+        # ``WriteError``/``DiskFullError`` were claimed here and by
+        # STORAGE_WRITE_FAILED. This code grades CRITICAL, so it always won and
+        # STORAGE_WRITE_FAILED was unreachable for them. Worse, the real class
+        # behind the name is ``httpx.WriteError`` -- a socket write failure,
+        # i.e. a transport problem -- and reporting it as "Data could not be
+        # written to storage" with recovery=RESTART tells an operator to bounce
+        # the process over a network blip. The filesystem-specific names belong
+        # to the filesystem code, which is also the one whose message hints
+        # already name "disk full" and "no space left".
+        exception_types=("PersistenceError",),
     ),
     _d(
         "PERSISTENCE_CONFLICT",
@@ -594,7 +763,18 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.persistence",
         recovery=RecoveryAction.RETRY,
         http_status=409,
-        exception_types=("ConflictError", "VersionConflictError", "StaleWriteError"),
+        # ``ConflictError`` was claimed here and by RUN_ADMISSION_CONFLICT, and
+        # the admission code is defined first, so *every* ConflictError in the
+        # system was published as "Another run is already in progress for this
+        # thread" -- including the one alpha.runtime.runs.manager raises for a
+        # lost reservation lease and the one it raises for an active checkpoint
+        # write. Neither is an admission problem, and the remediation text
+        # ("try again shortly") is wrong for a lost lease. A generic
+        # ConflictError is genuinely ambiguous at the type level, so the
+        # claim stays on the code that owns the dominant raise site and the
+        # ambiguous cases are routed by hint instead. The fix belongs upstream,
+        # in manager.py, which is outside this package: see the report.
+        exception_types=("VersionConflictError", "StaleWriteError"),
     ),
     _d(
         "PERSISTENCE_UNAVAILABLE",
@@ -682,12 +862,17 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.storage",
         recovery=RecoveryAction.RETRY,
         http_status=500,
-        exception_types=(
-            "ReadError",
-            "IsADirectoryError",
-            "PermissionError",
-        ),
-        message_hints=("read error", "could not read", "is a directory"),
+        # ``PermissionError`` and ``IsADirectoryError`` are deterministic:
+        # neither the process nor a retry changes the mode bits or turns a
+        # directory into a file, so ``retryable=True`` here hands a supervisor a
+        # hot loop over a permanent condition. ``ReadError`` (httpx) is
+        # genuinely transient and keeps the code's policy, so the honest fix is
+        # to stop claiming the two permanent builtins here. They fall to
+        # STORAGE_NOT_FOUND / INTERNAL_ERROR rather than to a code that says
+        # "try again"; inventing a permission code is left to the storage
+        # owner, who knows whether a denied read is a policy or a bug.
+        exception_types=("ReadError",),
+        message_hints=("read error", "could not read"),
     ),
     _d(
         "STORAGE_WRITE_FAILED",
