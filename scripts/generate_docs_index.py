@@ -173,6 +173,18 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "What Alpha guarantees with one worker, with N workers, and with none of them.",
     ),
+    "ALPHA_COLLABORATION_AUDIT.md": DocumentSpec(
+        "plans",
+        "Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.",
+    ),
+    "TEAM_WIRING_AUDIT.md": DocumentSpec(
+        "plans",
+        "Which team and coordination mechanisms are live, partial, or inert, with caller counts.",
+    ),
+    "RESEARCH_OCTOP.md": DocumentSpec(
+        "plans",
+        "Live research: TencentCloud/Octop, verified against its tree rather than its README.",
+    ),
     "PROTOCOLS.md": DocumentSpec(
         "operations",
         "Interop protocols: the MCP wire version Alpha speaks, A2A scope, and ACP naming.",

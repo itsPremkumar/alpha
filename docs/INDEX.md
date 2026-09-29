@@ -69,11 +69,11 @@
 - [HONESTY_SUITE.md](HONESTY_SUITE.md) — Offline regression suite pinning durable records against the answers the product gives.
 - [README.md](README.md) — Documentation library entry point and navigation overview.
 - [USE_CASES.md](USE_CASES.md) — End-to-end jobs mapped to the subsystem that delivers each one.
-- [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which kind of isolation an agent gets, and how to choose between the strategies.
 
 ## Plans & Roadmaps
 
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
+- [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.
 - [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md) — Living implementation status matrix for production work.
@@ -81,11 +81,14 @@
 - [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) — Live research: computer-use and browser agents, with a benchmark-trust audit.
 - [RESEARCH_CODING_AGENTS.md](RESEARCH_CODING_AGENTS.md) — Live research: terminal- and IDE-first coding agents, mapped against Alpha.
 - [RESEARCH_NAMED_AGENTS.md](RESEARCH_NAMED_AGENTS.md) — Live research: the Muse/Hermes/OpenClaw/Grok family, with disambiguation.
+- [RESEARCH_OCTOP.md](RESEARCH_OCTOP.md) — Live research: TencentCloud/Octop, verified against its tree rather than its README.
 - [RESEARCH_ORCHESTRATION_MEMORY_EVAL.md](RESEARCH_ORCHESTRATION_MEMORY_EVAL.md) — Live research: orchestration frameworks, agent protocols, memory, and evaluation.
 - [SELF_AUDIT.md](SELF_AUDIT.md) — Measured audit of this repository's own source: inventory, inert surface, divergences.
 - [SENTINEL_AUTONOMOUS_AGENT_PLAN.md](SENTINEL_AUTONOMOUS_AGENT_PLAN.md) — Autonomous monitor, diagnose, fix, verify, and commit plan.
 - [SYSTEM_ONE_ALPHA_ROADMAP.md](SYSTEM_ONE_ALPHA_ROADMAP.md) — System One implementation roadmap for Alpha.
 - [TASK_LIST.md](TASK_LIST.md) — Living master task list for project delivery.
+- [TEAM_WIRING_AUDIT.md](TEAM_WIRING_AUDIT.md) — Which team and coordination mechanisms are live, partial, or inert, with caller counts.
+- [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.
 - [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
 - [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
 - [asi/03_agentic_architecture.md](asi/03_agentic_architecture.md) — Roadmaps, plans, and implementation tracking.
