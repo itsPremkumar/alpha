@@ -67,7 +67,7 @@
     "error": "Callback-observed run or chain failure evidence.",
     "middleware": "Middleware state-change audit evidence.",
     "context": "Identity-only evidence about effective hidden context.",
-    "subagent": "Subagent lifecycle and persisted step evidence.",
+    "subagent": "Per-step trace of a delegation on a run that subscribed to stream_mode=custom. Not the delegation record: see delegation_evidence for the surfaces that are authoritative and unconditional.",
     "workspace": "Run-scoped workspace and output file-change evidence."
   },
   "events": [
@@ -207,7 +207,12 @@
     {
       "event_type": "subagent.start",
       "category": "subagent",
-      "producer": "subagent_run_event(task_started)",
+      "producer": "subagent_run_event(task_started) via runtime/runs/worker.py::_SubagentEventBuffer",
+      "emission_precondition": {
+        "requires_stream_mode": "custom",
+        "notes": "The only production emitter is the parent's custom-stream consumer. runtime/runs/worker.py builds its LangGraph stream modes from the run request (normalize_stream_modes(None) is [\"values\"]), and a root custom frame is what feeds subagent_run_event. A run that did not request stream_mode=custom records the delegation durably and writes none of subagent.start/step/end. Do not infer from the absence of these rows that no delegation occurred; see delegation_evidence. Pinned by backend/tests/test_subagent_events_e2e.py, which drives the real SubagentExecutor through the real run_agent with and without custom."
+      },
+      "correlation_key": "task_id is the provider tool_call_id, not a server run id. Subagent executors are not RunManager runs, so there is no child run id to read here.",
       "content_schema": {
         "type": "object",
         "required": ["task_id", "description"],
@@ -217,6 +222,10 @@
         },
         "additionalProperties": true
       },
+      "content_absent_by_design": [
+        "The delegated subagent's name (general-purpose, bash, or a custom agent) is not carried on subagent.start. Only the terminal ToolMessage and the thread state record it.",
+        "No wall-clock duration field. A consumer that needs one must subtract subagent.start.created_at from subagent.end.created_at, which requires both rows to exist."
+      ],
       "metadata_schema": {
         "type": "object",
         "required": ["task_id"],
@@ -227,7 +236,11 @@
     {
       "event_type": "subagent.step",
       "category": "subagent",
-      "producer": "subagent_run_event(task_running)",
+      "producer": "subagent_run_event(task_running) via runtime/runs/worker.py::_SubagentEventBuffer",
+      "emission_precondition": {
+        "requires_stream_mode": "custom",
+        "notes": "Same gate as subagent.start, and stated here in full so this event is readable on its own: the emitter is the parent's stream_mode=custom consumer, and normalize_stream_modes(None) is [\"values\"]. A deep subagent (max_turns=150) emits hundreds of task_running frames; the buffer writes them with put_batch in groups of 25 and flushes eagerly on a terminal subagent.end, so a reload can legitimately show fewer steps than the subagent actually took if the process died mid-run."
+      },
       "content_schema": {
         "type": "object",
         "required": ["task_id", "message_index", "kind", "text", "truncated"],
@@ -277,7 +290,11 @@
     {
       "event_type": "subagent.end",
       "category": "subagent",
-      "producer": "subagent_run_event(task_completed|task_failed|task_cancelled|task_timed_out)",
+      "producer": "subagent_run_event(task_completed|task_failed|task_cancelled|task_timed_out) via runtime/runs/worker.py::_SubagentEventBuffer",
+      "emission_precondition": {
+        "requires_stream_mode": "custom",
+        "notes": "Same gate as subagent.start, and stated here in full so this event is readable on its own: the emitter is the parent's stream_mode=custom consumer, and normalize_stream_modes(None) is [\"values\"]. This is the row the run-usage accounting reads (app/gateway/routers/thread_runs.py USAGE_EVENT_TYPES), so a run streamed without custom also reports no subagent token usage from this surface; the same usage is attributed from the terminal ToolMessage instead."
+      },
       "content_schema": {
         "type": "object",
         "required": ["task_id", "status"],
@@ -419,7 +436,42 @@
       "metadata_schema": {"type": "object", "additionalProperties": true}
     }
   ],
+  "delegation_evidence": {
+    "why_this_section_exists": "subagent.* is not the record of a delegation. It is the per-step trace of a delegation on a run that happened to subscribe to stream_mode=custom. A reader who treats the absence of these rows as evidence that no delegation happened is reading this contract wrong, which is why the precondition is stated on every subagent event rather than only here.",
+    "authoritative_and_unconditional": [
+      {
+        "surface": "ThreadState.delegations",
+        "read_via": "GET /api/threads/{thread_id}/state -> values.delegations",
+        "notes": "The durable per-run delegation ledger, and the one surface that is written on every delegation regardless of stream mode. It is what the run's max_total_per_run budget is enforced against (subagents/SubagentLimitMiddleware), so it cannot be behind the events."
+      },
+      {
+        "surface": "the terminal ToolMessage of the task tool call",
+        "read_via": "thread message history / the run event feed (llm.tool.result)",
+        "notes": "Carries the terminal delegation status plus subagent_model_name and subagent_token_usage in additional_kwargs, and survives reload without the custom stream mode."
+      }
+    ],
+    "conditional": [
+      {
+        "surface": "subagent.start / subagent.step / subagent.end",
+        "requires_stream_mode": "custom",
+        "notes": "Rich per-step history (kind, text, tool calls, truncation flags) with no other surface. Necessary but not sufficient as evidence: its absence proves nothing on its own."
+      }
+    ]
+  },
   "known_gaps": [
+    {
+      "id": "subagent-event-stream-mode-precondition",
+      "status": "partial",
+      "affected_event_types": ["subagent.start", "subagent.step", "subagent.end"],
+      "notes": "The three subagent events have exactly one production emitter, and it is reachable only through the parent's stream_mode=custom consumer. Runs started without that mode record a genuine delegation and write none of them. Measured, not theoretical: backend/tests/test_subagent_events_e2e.py drives the real SubagentExecutor through the real worker.run_agent and asserts five contract-valid rows with custom and zero without it. Affected callers today are the Gateway default (normalize_stream_modes(None) is [\"values\"]) and the IM channel manager (app/channels/manager.py STREAM_MODES is [\"messages-tuple\", \"values\"]); the web frontend requests custom explicitly (frontend/src/components/ChatView.tsx) and is unaffected. The fix is in runtime/runs/worker.py, not here: either always add custom to the LangGraph stream modes, or subscribe to custom for persistence independently of what is forwarded to SSE. Until then a reader must consult ThreadState.delegations for the authoritative answer.",
+      "not_a_second_lifecycle_owner": "subagents/executor.py remains the only delegation lifecycle owner. The event stream is downstream evidence of it, never an input to its status, and RunManager remains the only run lifecycle owner."
+    },
+    {
+      "id": "subagent-event-payload-gaps",
+      "status": "not first-class",
+      "affected_event_types": ["subagent.start", "subagent.end"],
+      "notes": "The payload does not carry the delegated agent's name on start, and no event carries an explicit duration or a child run id (subagent executors are not RunManager runs; the server-minted execution_id is never persisted to the event stream). Both are deliberate, not oversights, and are stated on the events so a consumer does not go looking for fields that were never contracted."
+    },
     {
       "id": "mixed-event-name-separators",
       "status": "frozen for compatibility",

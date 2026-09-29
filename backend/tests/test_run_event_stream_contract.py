@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import json
+import re
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -557,3 +562,350 @@ def test_known_gaps_do_not_reclassify_current_events_as_missing():
 
     assert {"tool-call-intent", "terminal-run-status"}.issubset(gap_ids)
     assert all(gap.get("event_type") not in current_types for gap in contract["known_gaps"])
+
+
+# ---------------------------------------------------------------------------
+# Declared-type -> live-emitter guard.
+#
+# The contract is the document a reader trusts to say which events exist. The
+# failure this section exists to prevent is a contract declaring an event type
+# that no production code ever writes: a reader looks for the events, finds
+# none, and concludes the thing they are debugging never happened. Parity
+# against `runtime/events/catalog.py` alone cannot catch that, because the
+# catalog is a list of *names* and would happily gain a name nothing emits.
+#
+# Two independent checks:
+#   1. every declared type has a proof here that drives the REAL production
+#      producer and returns a persisted, contract-valid record;
+#   2. every declared ``producer`` symbol still resolves in production code, so
+#      a retracted or renamed emitter cannot leave the contract naming a ghost.
+# ---------------------------------------------------------------------------
+
+_PRODUCTION_PACKAGE_ROOTS = (
+    (REPO_ROOT / "backend" / "packages" / "harness", "alpha"),
+    (REPO_ROOT / "backend", "app"),
+)
+
+_PRODUCER_SYMBOL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)")
+
+
+@lru_cache(maxsize=1)
+def _production_definition_index() -> dict[str, tuple[str, ...]]:
+    """Map a top-level ``def``/``class`` name to the production modules defining it.
+
+    AST-only: this indexes the repository and imports nothing, so a guard
+    assertion can never be satisfied by a module that merely happens to be
+    importable.
+    """
+    index: dict[str, list[str]] = {}
+    for root, package_name in _PRODUCTION_PACKAGE_ROOTS:
+        for path in sorted(root.rglob("*.py")):
+            try:
+                relative = path.relative_to(root)
+            except ValueError:  # pragma: no cover - roots are disjoint
+                continue
+            if relative.parts[0] not in {package_name, f"{package_name}.py"}:
+                continue
+            parts = list(relative.with_suffix("").parts)
+            if parts[-1] == "__init__":
+                parts.pop()
+            if not parts:
+                continue
+            module_name = ".".join(parts)
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:  # pragma: no cover - all production code parses
+                continue
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    index.setdefault(node.name, []).append(module_name)
+    return {name: tuple(sorted(set(modules))) for name, modules in index.items()}
+
+
+def _producer_symbol(producer: str) -> str:
+    """The dotted symbol a contract ``producer`` field names.
+
+    Producers carry a call hint after the symbol (``RunJournal.on_llm_end()``,
+    ``subagent_run_event(task_started)``, ``RunJournal.record_memory_context()
+    from DynamicContextMiddleware``); only the leading dotted path is the
+    symbol, and taking it mechanically is the point — the hint prose is
+    documentation, not something to keep in sync.
+    """
+    match = _PRODUCER_SYMBOL_RE.match(producer.strip())
+    assert match is not None, f"producer does not start with a dotted symbol: {producer!r}"
+    return match.group(1)
+
+
+def _resolve_producer_symbol(symbol: str) -> Any:
+    """Resolve a contract producer symbol against production code, or ``None``."""
+    parts = symbol.split(".")
+    index = _production_definition_index()
+    # Longest head first: ``RunJournal.on_chain_start`` -> class RunJournal,
+    # ``subagent_run_event`` -> the whole symbol is the head.
+    splits = [split for split in range(len(parts) - 1, 0, -1)] + [len(parts)]
+    for split in splits:
+        head, tail = ".".join(parts[:split]), parts[split:]
+        for module_name in index.get(head, ()):
+            obj: Any = getattr(importlib.import_module(module_name), head, None)
+            if obj is None:
+                continue
+            for attribute in tail:
+                obj = getattr(obj, attribute, None)
+                if obj is None:
+                    break
+            if obj is not None:
+                return obj
+    # Otherwise the first segment is a package: ``workspace_changes.foo`` is
+    # ``alpha.workspace_changes.foo`` re-exported from the package __init__.
+    for package_root in ("alpha", "app"):
+        try:
+            module = importlib.import_module(f"{package_root}.{'.'.join(parts[:-1])}")
+        except ImportError:
+            continue
+        found = getattr(module, parts[-1], None)
+        if found is not None:
+            return found
+    return None
+
+
+def _new_journal() -> tuple[RunJournal, MemoryRunEventStore]:
+    store = MemoryRunEventStore()
+    return RunJournal("run-1", "thread-1", store, flush_threshold=100), store
+
+
+async def _only_event(store: MemoryRunEventStore, event_type: str) -> dict:
+    events = await store.list_events("thread-1", "run-1", event_types=[event_type])
+    assert len(events) == 1, f"expected exactly one {event_type}, got {[e['event_type'] for e in events]}"
+    return events[0]
+
+
+async def _persist_subagent_chunk(chunk: dict) -> dict:
+    record = subagent_run_event(chunk)
+    assert record is not None, f"production producer rejected its own lifecycle chunk: {chunk!r}"
+    store = MemoryRunEventStore()
+    await store.put(thread_id="thread-1", run_id="run-1", **record)
+    return (await store.list_events("thread-1", "run-1"))[0]
+
+
+async def _emit_journal(callback) -> dict:
+    journal, store = _new_journal()
+    callback(journal)
+    await journal.flush()
+    return store
+
+
+async def _proof_run_start(_tmp_path: Path) -> dict:
+    return await _only_event(await _emit_journal(lambda j: j.on_chain_start({"name": "root"}, {}, run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])), "run.start")
+
+
+async def _proof_run_end(_tmp_path: Path) -> dict:
+    journal, store = _new_journal()
+    journal.on_chain_end({"messages": [AIMessage(content="done", id="final")]}, run_id=uuid4(), parent_run_id=None)
+    await journal.flush()
+    return await _only_event(store, "run.end")
+
+
+async def _proof_run_error(_tmp_path: Path) -> dict:
+    return await _only_event(await _emit_journal(lambda j: j.on_chain_error(ValueError("boom"), run_id=uuid4())), "run.error")
+
+
+async def _proof_llm_human_input(_tmp_path: Path) -> dict:
+    journal, store = _new_journal()
+    journal.on_chat_model_start({}, [[HumanMessage(content="question", id="human-1")]], run_id=uuid4(), tags=["lead_agent"])
+    await journal.flush()
+    return await _only_event(store, "llm.human.input")
+
+
+async def _proof_llm_ai_response(_tmp_path: Path) -> dict:
+    journal, store = _new_journal()
+    journal.on_llm_end(
+        _make_llm_response("answer", usage={"input_tokens": 3, "output_tokens": 4, "total_tokens": 7}),
+        run_id=uuid4(),
+        parent_run_id=None,
+        tags=["lead_agent"],
+    )
+    await journal.flush()
+    return await _only_event(store, "llm.ai.response")
+
+
+async def _proof_llm_tool_result(_tmp_path: Path) -> dict:
+    journal, store = _new_journal()
+    journal.on_tool_end(ToolMessage(content="result", tool_call_id="call-1", name="web_search", id="tool-1"), run_id=uuid4())
+    await journal.flush()
+    return await _only_event(store, "llm.tool.result")
+
+
+async def _proof_llm_error(_tmp_path: Path) -> dict:
+    return await _only_event(await _emit_journal(lambda j: j.on_llm_error(RuntimeError("model failed"), run_id=uuid4())), "llm.error")
+
+
+async def _proof_context_memory(_tmp_path: Path) -> dict:
+    return await _only_event(await _emit_journal(lambda j: j.record_memory_context(content_sha256="a" * 64)), "context:memory")
+
+
+async def _proof_subagent_start(_tmp_path: Path) -> dict:
+    return await _persist_subagent_chunk({"type": "task_started", "task_id": "call-1", "description": "research"})
+
+
+async def _proof_subagent_step(_tmp_path: Path) -> dict:
+    return await _persist_subagent_chunk(
+        {
+            "type": "task_running",
+            "task_id": "call-1",
+            "message": {"type": "ai", "content": "searching", "tool_calls": [{"name": "web_search", "args": {"query": "alpha"}}]},
+            "message_index": 1,
+        }
+    )
+
+
+async def _proof_subagent_end(_tmp_path: Path) -> dict:
+    return await _persist_subagent_chunk({"type": "task_completed", "task_id": "call-1", "result": "done", "model_name": "test-model", "usage": {"input_tokens": 3, "output_tokens": 4, "total_tokens": 7}})
+
+
+async def _proof_workspace_changes(tmp_path: Path) -> dict:
+    from alpha.workspace_changes import WorkspaceRoot, scan_workspace_roots
+    from alpha.workspace_changes import recorder as recorder_module
+
+    workspace = tmp_path / "workspace"
+    outputs = tmp_path / "outputs"
+    workspace.mkdir()
+    outputs.mkdir()
+    roots = [
+        WorkspaceRoot("workspace", workspace, "/mnt/user-data/workspace"),
+        WorkspaceRoot("outputs", outputs, "/mnt/user-data/outputs"),
+    ]
+    before = scan_workspace_roots(roots)
+    (workspace / "report.md").write_text("# Report\n", encoding="utf-8")
+
+    store = MemoryRunEventStore()
+    with patch.object(recorder_module, "build_thread_workspace_roots", lambda *_a, **_k: roots):
+        record = await recorder_module.record_workspace_changes(store, "thread-1", "run-1", before)
+
+    assert record is not None, "production recorder reported no change for a file that was written"
+    return record
+
+
+#: One entry per event type the contract declares. A key can only be added once a
+#: real production producer demonstrably writes that record, which is what makes
+#: the completeness assertion below a guard rather than a restatement of the
+#: contract.
+_EMITTER_PROOFS: dict[str, Any] = {
+    "run.start": _proof_run_start,
+    "run.end": _proof_run_end,
+    "run.error": _proof_run_error,
+    "llm.human.input": _proof_llm_human_input,
+    "llm.ai.response": _proof_llm_ai_response,
+    "llm.tool.result": _proof_llm_tool_result,
+    "llm.error": _proof_llm_error,
+    "context:memory": _proof_context_memory,
+    "subagent.start": _proof_subagent_start,
+    "subagent.step": _proof_subagent_step,
+    "subagent.end": _proof_subagent_end,
+    "workspace_changes": _proof_workspace_changes,
+}
+
+
+@pytest.mark.anyio
+async def test_every_declared_event_type_has_a_live_production_emitter(tmp_path):
+    """A declared event type with no emitter is a contract that lies by omission.
+
+    A reader who trusts the contract looks for the events, finds none, and
+    concludes the thing being debugged never happened. Catalog parity cannot
+    catch that, because the catalog is a list of names.
+    """
+    contract = _load_contract()
+    declared = [event["event_type"] for event in contract["events"]]
+
+    assert len(set(declared)) == len(declared), "contract declares a duplicate event_type"
+    assert set(_EMITTER_PROOFS) == set(declared), (
+        "contract declares event types with no live production emitter, or a proof exists for a type the contract does not declare. "
+        f"declared-but-unproven: {sorted(set(declared) - set(_EMITTER_PROOFS))}; "
+        f"proven-but-undeclared: {sorted(set(_EMITTER_PROOFS) - set(declared))}"
+    )
+
+    for event_type in declared:
+        record = await _EMITTER_PROOFS[event_type](tmp_path)
+        assert record["event_type"] == event_type
+        _assert_fixed_event_valid(record, persisted=True)
+
+
+def test_every_declared_producer_symbol_resolves_in_production_code():
+    """A retracted or renamed emitter must not leave the contract naming a ghost."""
+    unresolved: dict[str, str] = {}
+    for event_type, event in _contract_events().items():
+        symbol = _producer_symbol(event["producer"])
+        if _resolve_producer_symbol(symbol) is None:
+            unresolved[event_type] = symbol
+    for pattern in _load_contract()["dynamic_event_patterns"]:
+        symbol = _producer_symbol(pattern["producer"])
+        if _resolve_producer_symbol(symbol) is None:
+            unresolved[pattern["pattern"]] = symbol
+
+    assert not unresolved, f"contract names producers no production module defines: {unresolved}"
+
+
+def test_emitter_proofs_are_keyed_by_the_contract_not_by_the_catalog():
+    """The proof table must be the contract's own list, restated in code.
+
+    Deriving the expected set from the catalog would make the guard circular:
+    adding a name to the catalog would satisfy the guard without any emitter.
+    """
+    contract_types = {event["event_type"] for event in _load_contract()["events"]}
+    assert set(_EMITTER_PROOFS) == contract_types
+    assert set(_EMITTER_PROOFS) == {definition.event_type for definition in FIXED_RUN_EVENT_DEFINITIONS}
+
+
+def test_subagent_events_declare_the_stream_mode_they_actually_require():
+    """A declared event type must not over-promise.
+
+    The three subagent events have exactly one production emitter, reachable
+    only through the parent's ``stream_mode=custom`` consumer. The contract said
+    nothing about that, so a reader who trusted it would look for the events,
+    find none on a run that genuinely delegated, and conclude no delegation
+    happened. The precondition is now stated per event, and this test keeps it
+    there.
+    """
+    events = _contract_events()
+    for event_type in ("subagent.start", "subagent.step", "subagent.end"):
+        precondition = events[event_type]["emission_precondition"]
+        assert precondition["requires_stream_mode"] == "custom", event_type
+        assert "normalize_stream_modes" in precondition["notes"], event_type
+
+    # The stated precondition must be the real one, not a convenient claim.
+    from alpha.runtime.stream_modes import normalize_stream_modes, to_langgraph_stream_modes
+
+    assert normalize_stream_modes(None) == ["values"]
+    assert "custom" not in to_langgraph_stream_modes(None)
+    assert "custom" in to_langgraph_stream_modes(["values", "custom"])
+
+
+def test_contract_names_the_surfaces_that_are_authoritative_for_delegation():
+    """An operator must be told where to look instead of the missing events.
+
+    ``subagent.*`` is conditional evidence. The unconditional record of a
+    delegation is the thread-state ledger plus the terminal ``task`` ToolMessage,
+    and the contract has to say so in the same document that declares the
+    conditional events, or a reader has no way to tell which one to trust.
+    """
+    contract = _load_contract()
+    evidence = contract["delegation_evidence"]
+
+    authoritative = {entry["surface"] for entry in evidence["authoritative_and_unconditional"]}
+    assert "ThreadState.delegations" in authoritative
+    assert "values.delegations" in evidence["authoritative_and_unconditional"][0]["read_via"]
+
+    conditional = {entry["surface"] for entry in evidence["conditional"]}
+    assert conditional == {"subagent.start / subagent.step / subagent.end"}
+    assert all(entry["requires_stream_mode"] == "custom" for entry in evidence["conditional"])
+
+    # The gap is recorded rather than buried: it names the affected types, the
+    # measured proof, and where the fix belongs (not in this document).
+    gap = next(gap for gap in contract["known_gaps"] if gap["id"] == "subagent-event-stream-mode-precondition")
+    assert gap["affected_event_types"] == ["subagent.start", "subagent.step", "subagent.end"]
+    assert gap["status"] == "partial"
+    assert "test_subagent_events_e2e.py" in gap["notes"]
+    assert "runtime/runs/worker.py" in gap["notes"]
+    # Delegation keeps exactly one lifecycle owner; the event stream is
+    # downstream evidence and must never be described as a second one.
+    assert "not_a_second_lifecycle_owner" in gap
+    assert "subagents/executor.py" in gap["not_a_second_lifecycle_owner"]
