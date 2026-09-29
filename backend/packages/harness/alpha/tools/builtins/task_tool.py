@@ -432,7 +432,22 @@ def _trace_subagent_spawned(
     trace_id: str | None,
     agent_name: str | None = None,
 ) -> None:
-    """Record a subagent spawn (layer 6). Never raises."""
+    """Record a subagent spawn (layer 6). Never raises.
+
+    ``agent_name`` is the *delegating* agent — the only caller passes the lead
+    agent, which is the party doing the delegating. It is recorded twice on
+    purpose, because :meth:`emit_subagent_spawned` declares two different fields
+    and they are not the same question:
+
+    * ``agent_name`` answers "which agent emitted this event", and
+    * ``parent_agent`` -> ``parent_agent_name`` answers "which agent delegated
+      the child", which is what lets a reader rebuild the delegation tree
+      without inferring it from the emitting agent.
+
+    Passing only ``agent_name`` left ``parent_agent_name`` ``None`` on every real
+    spawn, so the field that exists for nesting was always empty — the one part of
+    the subtree a reader needs was the part the delegate could not supply.
+    """
     try:
         from alpha.observability.trace.instrumentation import emit_subagent_spawned
 
@@ -442,6 +457,7 @@ def _trace_subagent_spawned(
             subagent_id=subagent_id,
             assigned_model=assigned_model,
             prompt_sha256=_sha256(prompt or ""),
+            parent_agent=agent_name,
             run_id=run_id,
             thread_id=thread_id,
             trace_id=trace_id,

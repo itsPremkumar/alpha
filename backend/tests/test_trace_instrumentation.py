@@ -18,13 +18,18 @@ the kind of thing a unit test on the emitter cannot see.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import re
+import traceback
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from alpha.observability.context import RunContext, run_scope
+from alpha.observability.redaction import redact_text
 from alpha.observability.trace.config import TraceConfig
 from alpha.observability.trace.contract import TraceEnvelope
 from alpha.observability.trace.writer import TraceWriter, install_writer, reset_writer
@@ -74,6 +79,25 @@ async def _drain(writer: TraceWriter, store: MemoryRunEventStore) -> list[dict]:
 
 def _trace_rows(rows: list[dict]) -> list[TraceEnvelope]:
     return [TraceEnvelope.from_run_event(row) for row in rows]
+
+
+def _bound_run(run_id: str | None = None, thread_id: str = "t-1") -> Any:
+    """Bind the trace substrate's ambient :class:`RunContext` for the block.
+
+    ``TraceEnvelope`` addresses every row as ``"<run_id>:<seq>"`` and the writer
+    **drops** an event that has no run identity rather than inventing one, so a
+    call site with no run of its own has to be *inside* one. This is the seam the
+    substrate documents for exactly that case
+    (:func:`alpha.observability.context.run_scope`), and it is what the production
+    selection path resolves through
+    :func:`alpha.tools.selection._ambient_run_identity`.
+
+    The ids match :func:`_writer` so a trace row and a journal row for the same run
+    land in the same ``(thread_id, run_id)`` bucket of the one store. ``run_id`` is
+    a 32-character hex id because :class:`RunContext` requires one -- the shape
+    ``alpha.observability.ids`` mints and validates for a real run.
+    """
+    return run_scope(RunContext(trace_id="trace-1", run_id=run_id or _TRACE_RUN_ID, thread_id=thread_id, agent_name="lead-agent"))
 
 
 # ---------------------------------------------------------------------------
@@ -162,20 +186,93 @@ def test_the_journal_emits_a_swallowed_model_failure_with_the_registry_code():
     assert raised[0].correlation_id
 
 
+_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+
+#: ``RunContext`` requires a 32-character lowercase-hex run id, so the ambient-run
+#: tests cannot use the readable ``"r-1"`` the direct-``run_id`` call sites pass.
+_TRACE_RUN_ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
+
 def test_the_journal_emits_a_terminal_run_error_with_a_stack_hash():
+    """The terminal error carries a *fingerprint* of the stack, and a fingerprint
+    of the real stack.
+
+    Two things this asserts that a shape-only test cannot:
+
+    * the value is the actual SHA-256 of the actual ``format_exception`` bytes, not
+      a constant, a placeholder, or a per-process salt. Recomputing it here from an
+      independently-constructed exception is what makes that checkable; and
+    * it lives in :attr:`TraceEnvelope.digests`, **not** in ``payload``, because the
+      strict redaction policy replaces a bare 64-character lowercase-hex string in a
+      payload with ``[REDACTED:high_entropy_blob]``. See
+      ``test_the_stack_fingerprint_is_not_in_the_payload_because_it_would_be_redacted``
+      for the proof that the payload could not hold it.
+    """
     store = MemoryRunEventStore()
     writer = _writer(store)
     install_writer(writer)
     journal = RunJournal("r-1", "t-1", store, flush_threshold=10_000)
-    journal.on_chain_error(RuntimeError("graph blew up"), run_id=uuid4())
+    failure = RuntimeError("graph blew up")
+    journal.on_chain_error(failure, run_id=uuid4())
 
     envelopes = _trace_rows(_drain_now(writer, store))
     raised = [envelope for envelope in envelopes if envelope.event_type == "err.raised"]
     assert len(raised) == 1
     assert raised[0].error_code == "RUN_EXECUTION_FAILED"
     assert raised[0].severity.value == "error"
-    assert len(raised[0].payload["stack_sha256"]) == 64, "a stack *fingerprint*, never the traceback"
-    assert "Traceback" not in json.dumps(raised[0].to_record())
+
+    fingerprint = raised[0].digests["stack_sha256"]
+    assert _DIGEST_RE.match(fingerprint), "a real SHA-256 hex digest, not a constant or a random value"
+    expected = hashlib.sha256("".join(traceback.format_exception(RuntimeError, failure, None)).encode("utf-8", errors="replace")).hexdigest()
+    assert fingerprint == expected, "the digest must be of the real formatted stack, recomputed independently here"
+
+    record = json.dumps(raised[0].to_record())
+    assert "Traceback" not in record, "a stack *fingerprint*, never the traceback"
+    assert "graph blew up" not in raised[0].digests["stack_sha256"]
+
+
+def test_the_stack_fingerprint_is_not_in_the_payload_because_it_would_be_redacted():
+    """Why this file reads ``digests`` and not ``payload``.
+
+    This is the proof behind correcting the original assertion. The strict
+    redaction policy treats a long, spaceless, high-entropy string as a bare
+    credential blob — and a SHA-256 hex digest is exactly that shape, which is
+    also the shape of some credentials. A hex digest measures ~3.76 bits of entropy
+    per character against a 3.5 threshold, so it fires.
+
+    So the question "why is the hash not in the payload?" has a mechanical answer
+    rather than a stylistic one, and this test states it: the payload *cannot* hold
+    the value, so an assertion reading ``payload["stack_sha256"]`` could never be
+    satisfied no matter what the producer wrote. Pinned because the tempting "fix"
+    for a missing key is to move it into the payload, which would destroy it.
+    """
+    digest = hashlib.sha256(b"RuntimeError: graph blew up").hexdigest()
+    redacted = redact_text(digest)
+    assert redacted.value != digest, "the premise: a hex digest is redacted under STRICT"
+    assert redacted.reason == "high_entropy"
+    assert _DIGEST_RE.match(redacted.value) is None
+
+    envelope = TraceEnvelope.build(
+        event_type="err.raised",
+        run_id="r-1",
+        trace_id="t-1",
+        seq=1,
+        payload={"error_code": "RUN_EXECUTION_FAILED", "message": "x", "retried": False, "stack_sha256": digest},
+    )
+    assert envelope.payload["stack_sha256"] == "[REDACTED:high_entropy_blob]", "the value is destroyed in a payload"
+    assert "stack_sha256" not in envelope.digests
+
+    # The digest route keeps the value intact, which is why the emitters use it.
+    kept = TraceEnvelope.build(
+        event_type="err.raised",
+        run_id="r-1",
+        trace_id="t-1",
+        seq=1,
+        payload={"error_code": "RUN_EXECUTION_FAILED", "message": "x", "retried": False},
+        digests={"stack_sha256": digest},
+    )
+    assert kept.digests["stack_sha256"] == digest
+    assert "stack_sha256" not in kept.payload, "a digest never leaks into a scrubbed payload"
 
 
 def test_the_journal_writes_nothing_to_the_trace_when_no_writer_is_installed():
@@ -255,7 +352,8 @@ async def test_tool_selection_records_the_candidate_set_the_choice_and_a_reason(
     from alpha.tools.selection import Candidate
 
     candidates = [Candidate(id="bash", title="bash", summary="run a shell command"), Candidate(id="read_file", title="read_file", summary="read a file"), Candidate(id="write_file", title="write_file", summary="write a file")]
-    ranking = await selection.rank_candidates("delete the build output", candidates, top_n=2, site="tool_select")
+    with _bound_run():
+        ranking = await selection.rank_candidates("delete the build output", candidates, top_n=2, site="tool_select")
     assert ranking is not None
 
     envelopes = _trace_rows(await _drain(writer, store))
@@ -279,7 +377,8 @@ async def test_skill_selection_records_the_registry_version(monkeypatch: pytest.
     from alpha.tools.selection import Candidate
 
     candidates = [Candidate(id="alpha-wiki", title="alpha-wiki", summary="search the wiki"), Candidate(id="pdf-tools", title="pdf-tools", summary="extract from a PDF")]
-    ranking = await selection.rank_candidates("summarise this PDF", candidates, top_n=1, site="skill_select")
+    with _bound_run():
+        ranking = await selection.rank_candidates("summarise this PDF", candidates, top_n=1, site="skill_select")
     assert ranking is not None
     assert ranking.refined is True
 
@@ -290,6 +389,87 @@ async def test_skill_selection_records_the_registry_version(monkeypatch: pytest.
     assert set(decided[0].payload["candidates"]) == {"alpha-wiki", "pdf-tools"}
     assert "refined=True" in decided[0].payload["reason"]
     assert decided[0].skill == decided[0].payload["chosen"]
+
+
+@pytest.mark.anyio
+async def test_an_async_selection_is_recorded_under_the_run_it_happened_in(monkeypatch: pytest.MonkeyPatch):
+    """Regression for the failure that dropped layers 3 and 4 in **production**.
+
+    The original bug was not test-only. ``_emit_selection`` passed no ``run_id``,
+    and the writer's no-identity branch discards the event. Nothing in the codebase
+    bound a :class:`RunContext` outside this package, so the ambient fallback was
+    never available either — meaning *every* tool and skill selection decision was
+    silently dropped, in every run, and the only symptom was one log line saying
+    "no run context is bound and no run_id was passed".
+
+    So this asserts the two properties that were missing, on the async path where
+    the decision is actually taken:
+
+    * the decision is recorded, and
+    * it is recorded **under the identity of the surrounding run**, not a fabricated
+      one — a row addressed to some other run would be worse than a missing row.
+    """
+    store = MemoryRunEventStore()
+    writer = _writer(store)
+    install_writer(writer)
+    _fake_ranking(monkeypatch, refined=False)
+
+    from alpha.tools.selection import Candidate
+
+    candidates = [Candidate(id="bash", title="bash", summary="run a shell command"), Candidate(id="read_file", title="read_file", summary="read a file")]
+    with _bound_run(thread_id="t-async"):
+        ranking = await selection_rank(candidates, "delete the build output")
+    assert ranking is not None
+
+    envelopes = _trace_rows(await _drain(writer, store))
+    decided = [envelope for envelope in envelopes if envelope.event_type == "tool.select.decided"]
+    assert len(decided) == 1, "an async selection that happened must be recorded, not dropped for want of an id"
+    assert decided[0].run_id == _TRACE_RUN_ID
+    assert decided[0].thread_id == "t-async"
+    assert decided[0].trace_id == "trace-1"
+    assert decided[0].agent_name == "lead-agent", "inherited from the bound run, not restated per call site"
+
+    # The row is durable under (thread_id, run_id) -- the same bucket a journal row
+    # for this run uses, which is the whole "one feed, not two" claim.
+    rows = await store.list_events("t-async", _TRACE_RUN_ID)
+    assert [row["event_type"] for row in rows] == ["tool.select.decided"]
+
+
+@pytest.mark.anyio
+async def test_a_selection_off_graph_stays_silent_instead_of_inventing_an_identity(monkeypatch: pytest.MonkeyPatch):
+    """The counterpart, and the reason the fix belongs in the caller.
+
+    With nothing bound and no LangGraph runtime, there is no honest run to file the
+    decision under. The writer drops it and counts it — a *disclosed* absence. What
+    it must never do is mint a placeholder id, because a decision attributed to a
+    run that does not exist is an orphan a reader cannot diagnose. Asserted through
+    the writer's own disclosure counters, because "nothing was written" and
+    "something was written under a fake id" are otherwise the same empty list.
+    """
+    store = MemoryRunEventStore()
+    writer = _writer(store)
+    install_writer(writer)
+    _fake_ranking(monkeypatch, refined=False)
+
+    from alpha.tools.selection import Candidate
+
+    candidates = [Candidate(id="bash", title="bash", summary="run a shell command"), Candidate(id="read_file", title="read_file", summary="read a file")]
+    ranking = await selection_rank(candidates, "delete the build output")
+    assert ranking is not None, "the ranking itself is unaffected by tracing"
+
+    assert _trace_rows(await _drain(writer, store)) == []
+    disclosure = writer.disclosure()
+    # ``rank_candidates`` emits exactly one decision (the coarse and refine paths are
+    # mutually exclusive), so one attempt, one counted refusal.
+    assert disclosure["rejected_events"] == 1, "the drop is counted, not silent"
+    assert disclosure["recorded_events"] == 0
+
+
+async def selection_rank(candidates: list[Any], task: str) -> Any:
+    """Rank through the real async entry point both selection call sites use."""
+    from alpha.tools.selection import rank_candidates
+
+    return await rank_candidates(task, candidates, top_n=1, site="tool_select")
 
 
 @pytest.mark.anyio
@@ -357,7 +537,12 @@ def test_the_task_tool_emitter_records_a_spawn_and_a_completion_by_hash():
     assert spawned[0].agent_depth == 1
     assert spawned[0].subagent_id == "task-1"
     assert spawned[0].parent_agent_name == "lead-agent"
-    assert spawned[0].payload["prompt_sha256"] == _sha256(prompt)
+    # ``prompt_sha256`` is read from ``digests`` for the same proven reason as
+    # ``stack_sha256``: a bare 64-hex string in a payload is redacted to
+    # ``[REDACTED:high_entropy_blob]``, so the payload is the one place the hash
+    # cannot live. See test_the_stack_fingerprint_is_not_in_the_payload...
+    assert spawned[0].digests["prompt_sha256"] == _sha256(prompt)
+    assert "prompt_sha256" not in spawned[0].payload
     assert prompt not in json.dumps(spawned[0].to_record()), "the prompt is recorded by hash, never verbatim"
 
     assert len(completed) == 1

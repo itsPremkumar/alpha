@@ -148,8 +148,43 @@ category `workspace` when a run changed files. Its string content is a summary;
 the structured versioned summary, file list, and limits live in
 `metadata.workspace_changes`.
 
+### Behaviour-Trace Rows Are a Second, Nested Contract
+
+Rows written by the behaviour-trace substrate
+(`alpha.observability.trace`, the `model.call.*` / `err.*` / `tool.select.*`
+families) are stored in the same `RunEventStore` as the fixed events above, so they
+are the same rows `GET /runs/{id}/events` serves — but their `event_type` is drawn
+from the closed registry in `alpha.observability.trace.codes` rather than from
+`FIXED_RUN_EVENT_DEFINITIONS`, and the JSON contract above is not their field-level
+reference. Each such row carries `category` = `trace`, the envelope's redacted and
+truncation-disclosed `payload` in `content`, and the rest of the envelope — including
+`metadata.digests` — in `metadata`, so a reader holding only a database row can
+rebuild the envelope.
+
+**A SHA-256 digest belongs in `metadata.digests`, never in `content`.** The strict
+redaction policy treats a long, spaceless, high-entropy string as a bare credential
+blob, and a 64-character lowercase-hex digest is exactly that shape (and also the
+shape of some credentials), so a digest placed in a payload is replaced with
+`[REDACTED:high_entropy_blob]` and the value is destroyed. `digests` sits outside the
+scrubbed payload and is gated to values that are provably 64 lowercase hex
+characters, which keeps it from becoming a side channel for caller-supplied text.
+`err.raised.stack_sha256` and `sub.spawned.prompt_sha256` are the two live
+instances; both digest content that must not be stored verbatim (a stack frame can
+interpolate a secret; a delegation prompt is the highest-risk payload in the system).
+
+The `err.raised` fingerprint is `sha256` of the concatenated
+`traceback.format_exception()` output for the exception, with no run id, thread id,
+timestamp or per-process salt mixed in, so the same failure digests identically in
+separate processes. A consumer asking "have I already seen this failure?" compares
+`metadata.digests.stack_sha256` and groups by `error_code` as well: the digest
+covers the exception message, so two crashes differing only in an interpolated value
+are two fingerprints. A trace event is dropped rather than recorded when the emitting
+call site supplies no run identity, and the writer's `disclosure()` counters report
+the drop; a decision filed under a fabricated run id would be an orphan, not a
+trace.
+
 The JSON contract defines required and optional payload fields using JSON
-Schema. It is the authoritative field-level reference.
+Schema. It is the authoritative field-level reference for the fixed events above.
 
 ## Consumers
 

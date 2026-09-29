@@ -83,6 +83,83 @@ def _slug(candidate: Candidate, index: int) -> str:
     return ident or f"cand_{index}"
 
 
+def _ambient_run_identity() -> dict[str, Any]:
+    """Return the run identity of whatever run this selection is happening inside.
+
+    A selection decision has no run of its own — ``rank_candidates`` is a ranking
+    helper called from the skill catalog and the tool-search catalog, neither of
+    which is handed a run id — but the trace row it writes *is* addressed by one.
+    :class:`~alpha.observability.trace.contract.TraceEnvelope` keys every row as
+    ``"<run_id>:<seq>"`` and :meth:`TraceWriter._record_locked` **drops** an event
+    with no run identity rather than minting a placeholder. So an emitter that
+    supplies no identity is not a warning in tests: with nothing bound anywhere, the
+    decision that actually happened is silently discarded, and layers 3 and 4 record
+    nothing in production either. The writer's own message says it — ``"trace event
+    'tool.select.decided' was dropped: no run context is bound and no run_id was
+    passed"`` — and the fix belongs here rather than in the writer, because the
+    writer is right: a fabricated id would attribute the decision to a run that does
+    not exist.
+
+    Two existing seams are consulted, in this order, and both are read-only:
+
+    1. The ambient :class:`~alpha.observability.context.RunContext`, the trace
+       substrate's own binding for a call site that cannot receive a context.
+    2. The LangGraph runtime context, which
+       :mod:`alpha.runtime.runs.worker` populates with ``{"thread_id": ..., "run_id":
+       ...}`` precisely "so tools can consume it without ambient global lookups".
+       Same access pattern as
+       :func:`alpha.tools.tool_discovery_metrics.current_run_context`, and a
+       telemetry concern that must never break a tool call degrades to no identity
+       rather than raising, so this does too.
+
+    Returns ``{}`` off-graph (a CLI, a unit test, a scheduled tick), which leaves
+    the writer to drop the event and count it — a disclosed absence, exactly what
+    the no-identity branch above is for.
+    """
+    identity: dict[str, Any] = {}
+
+    try:
+        from alpha.observability.context import current as current_run_context
+
+        bound = current_run_context()
+    except Exception:  # noqa: BLE001 - telemetry must never break a selection
+        bound = None
+    if bound is not None:
+        identity["run_id"] = bound.run_id
+        if bound.thread_id:
+            identity["thread_id"] = bound.thread_id
+        if bound.trace_id:
+            identity["trace_id"] = bound.trace_id
+
+    if not identity.get("run_id"):
+        try:
+            from langgraph.runtime import get_runtime
+
+            runtime = get_runtime()
+        except Exception:  # noqa: BLE001 - off-graph has no runtime; that is a fact
+            return {}
+        context = getattr(runtime, "context", None)
+        if not isinstance(context, dict):
+            return {}
+        run_id = context.get("run_id")
+        if run_id:
+            identity["run_id"] = str(run_id)
+        thread_id = context.get("thread_id")
+        if thread_id:
+            identity["thread_id"] = str(thread_id)
+
+    if not identity.get("trace_id"):
+        try:
+            from alpha.trace_context import get_current_trace_id
+
+            trace_id = get_current_trace_id()
+        except Exception:  # noqa: BLE001
+            trace_id = None
+        if trace_id:
+            identity["trace_id"] = str(trace_id)
+    return identity
+
+
 def _emit_selection(site: str, task: str, pool: list[Candidate], ranking: Ranking, chosen: str | None) -> None:
     """Record the selection decision for the behaviour trace. Never raises.
 
@@ -95,6 +172,11 @@ def _emit_selection(site: str, task: str, pool: list[Candidate], ranking: Rankin
 
     ``site`` decides the layer, so a new caller gets a correctly-typed event by
     naming itself rather than by being patched later.
+
+    ``identity`` is resolved by :func:`_ambient_run_identity` rather than taken as
+    a parameter, because adding a required run id to this helper would change all
+    three of its callers to fix a telemetry gap, which is the reason the ambient
+    seams exist in the first place.
     """
     try:
         from alpha.observability.trace.instrumentation import emit_skill_selection, emit_tool_selection
@@ -102,6 +184,7 @@ def _emit_selection(site: str, task: str, pool: list[Candidate], ranking: Rankin
         candidates = [candidate.id or candidate.title for candidate in pool]
         scores = dict(ranking.scores)
         reason = f"system_one_ranking refined={ranking.refined} jev={ranking.jev_used} top_n={len(ranking.ids)}"
+        identity = _ambient_run_identity()
         if site.startswith("skill"):
             emit_skill_selection(
                 candidates=candidates,
@@ -110,6 +193,7 @@ def _emit_selection(site: str, task: str, pool: list[Candidate], ranking: Rankin
                 registry_version=f"selection:{SITE}",
                 scores=scores,
                 extra_payload={"query": task, "site": site},
+                **identity,
             )
         else:
             emit_tool_selection(
@@ -118,6 +202,7 @@ def _emit_selection(site: str, task: str, pool: list[Candidate], ranking: Rankin
                 reason=reason,
                 scores=scores,
                 extra_payload={"query": task, "site": site},
+                **identity,
             )
     except Exception:  # noqa: BLE001 - a trace must never break the selection it describes
         return
