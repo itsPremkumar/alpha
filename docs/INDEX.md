@@ -86,6 +86,7 @@
 - [SENTINEL_AUTONOMOUS_AGENT_PLAN.md](SENTINEL_AUTONOMOUS_AGENT_PLAN.md) — Autonomous monitor, diagnose, fix, verify, and commit plan.
 - [SYSTEM_ONE_ALPHA_ROADMAP.md](SYSTEM_ONE_ALPHA_ROADMAP.md) — System One implementation roadmap for Alpha.
 - [TASK_LIST.md](TASK_LIST.md) — Living master task list for project delivery.
+- [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.
 - [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
 - [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
 - [asi/03_agentic_architecture.md](asi/03_agentic_architecture.md) — Roadmaps, plans, and implementation tracking.

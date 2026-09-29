@@ -157,6 +157,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec(
         "plans", "Unified local-only integration plan and sequencing for Alpha."
     ),
+    "GIT_INTEGRATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.",
+    ),
+    "WORKTREE_STRATEGIES.md": DocumentSpec(
+        "plans",
+        "Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.",
+    ),
     "FORMAT_DEBT.md": DocumentSpec(
         "contributing",
         "Tracked ruff-format debt: measured baseline, per-area breakdown, remaining batches.",
