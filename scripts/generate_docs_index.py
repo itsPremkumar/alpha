@@ -173,6 +173,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "What Alpha guarantees with one worker, with N workers, and with none of them.",
     ),
+    "PROTOCOLS.md": DocumentSpec(
+        "operations",
+        "Interop protocols: the MCP wire version Alpha speaks, A2A scope, and ACP naming.",
+    ),
     "API.md": DocumentSpec(
         "api", "API entry point and environment/base URL reference."
     ),
