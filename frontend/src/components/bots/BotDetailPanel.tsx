@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
 import { X, MessageSquare, Star, Cpu, Wrench, Layers, ListChecks, ShieldCheck, GitBranch, Building2 } from "lucide-react";
 import { createProject } from "@/lib/projects";
+import { completedRuns, failedRuns, totalRuns } from "@/lib/bots";
 import { errMsg } from "@/lib/http";
 
 interface BotDetailPanelProps {
@@ -28,9 +29,12 @@ export function BotDetailPanel({ bot, onClose, onChat, onProjectCreated }: BotDe
   }, [bot?.name]);
 
   if (!bot) return null;
-  const total = Number(bot.task_stats?.total) || 0;
-  const succeeded = Number(bot.task_stats?.succeeded) || 0;
-  const failed = Number(bot.task_stats?.failed) || 0;
+  // Measured counters only (`total_runs`/`completed`/`failed` are the fields
+  // the Gateway actually sends). An unreported counter renders as unreported —
+  // the old `|| 0` made "Total tasks 0" and "Succeeded 0/0" unconditional.
+  const total = totalRuns(bot);
+  const succeeded = completedRuns(bot);
+  const failed = failedRuns(bot);
 
   const submitProject = async () => {
     if (!projectName.trim() || projectBusy) return;
@@ -89,12 +93,19 @@ export function BotDetailPanel({ bot, onClose, onChat, onProjectCreated }: BotDe
               <div className="text-[10px] text-muted-foreground mt-0.5">Reputation</div>
             </div>
             <div className="rounded-xl bg-muted/40 p-2.5 text-center">
-              <div className="text-sm font-bold">{total}</div>
-              <div className="text-[10px] text-muted-foreground mt-0.5">Total tasks</div>
+              <div className="text-sm font-bold">{total ?? "—"}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {total !== null ? "Total tasks" : "Total tasks — not measured"}
+              </div>
             </div>
             <div className="rounded-xl bg-muted/40 p-2.5 text-center">
-              <div className="text-sm font-bold text-emerald-600">{succeeded}/{total || "—"}</div>
-              <div className="text-[10px] text-muted-foreground mt-0.5">Succeeded{failed ? ` • ${failed} failed` : ""}</div>
+              <div className="text-sm font-bold text-emerald-600">
+                {succeeded ?? "—"}/{total ?? "—"}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {succeeded !== null ? "Succeeded" : "Succeeded — not measured"}
+                {failed ? ` • ${failed} failed` : ""}
+              </div>
             </div>
           </div>
 

@@ -52,8 +52,12 @@ export function FleetHealthBar({ health }: { health: FleetHealth }) {
           <ListChecks className="size-4" />
         </div>
         <div>
-          <div className="text-sm font-bold leading-none">{health.total_tasks}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">Tasks done</div>
+          <div className="text-sm font-bold leading-none">
+            {health.total_tasks != null ? health.total_tasks : "not measured"}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            {health.total_tasks != null ? "Tasks done" : "Tasks done — no counter reported"}
+          </div>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import React from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
 import { absoluteStamp, isRecent, PRESENCE_WINDOW_SECONDS, relTime } from "@/lib/time";
+import { completedRuns, totalRuns } from "@/lib/bots";
 import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2, Mail } from "lucide-react";
 
 /**
@@ -41,9 +42,15 @@ function statusBadge(status: string) {
 }
 
 export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCardProps) {
-  const total = Number(bot.task_stats?.total) || 0;
-  const succeeded = Number(bot.task_stats?.succeeded) || 0;
-  const successRate = total > 0 ? Math.round((succeeded / total) * 100) : null;
+  // Measured counters only. `total`/`succeeded` were never fields the Gateway
+  // sends (it sends `total_runs`/`completed`), so this pair was permanently
+  // `0`/`0` and the card claimed "0 tasks" for every bot on every render. An
+  // unreported counter now reads as unreported rather than as zero work.
+  const total = totalRuns(bot);
+  const succeeded = completedRuns(bot);
+  const successRate = total !== null && total > 0 && succeeded !== null
+    ? Math.round((succeeded / total) * 100)
+    : null;
   const working = isRecent(bot.last_active, ACTIVE_WINDOW_SECONDS);
   const lastSeen = relTime(bot.last_active);
   const lastSeenFull = absoluteStamp(bot.last_active);
@@ -156,7 +163,7 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
           {bot.reputation_score != null ? bot.reputation_score.toFixed(2) : "unverified"}
           {successRate !== null && <span className="ml-1">• {successRate}% ok</span>}
         </span>
-        <span>{total} tasks</span>
+        <span>{total !== null ? `${total} tasks` : "tasks not measured"}</span>
         <div className="flex items-center gap-1.5">
           <button
             type="button"

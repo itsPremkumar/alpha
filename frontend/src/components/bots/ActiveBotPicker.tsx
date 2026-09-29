@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
-import { uniqueDepartments } from "@/lib/bots";
+import { totalRuns, uniqueDepartments } from "@/lib/bots";
 import { ChevronDown, Bot, Search, Check, Sparkles } from "lucide-react";
 
 interface ActiveBotPickerProps {
@@ -122,7 +122,10 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
                   .filter((b) => (b.department || "general") === dept)
                   .map((b) => {
                     const selected = activeBot?.name === b.name;
-                    const total = Number(b.task_stats?.total) || 0;
+                    // Measured `total_runs`; the tooltip must not claim "0 tasks"
+                    // when the Gateway reported no counter at all.
+                    const total = totalRuns(b);
+                    const totalLabel = total !== null ? `${total} tasks` : "tasks not measured";
                     return (
                       <button
                         key={b.name}
@@ -134,7 +137,7 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
                           setOpen(false);
                         }}
                         className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-muted/60 ${selected ? "bg-primary/10" : ""}`}
-                        title={`${b.role} • reputation ${b.reputation_score != null ? b.reputation_score.toFixed(2) : "unverified"} • ${total} tasks`}
+                        title={`${b.role} • reputation ${b.reputation_score != null ? b.reputation_score.toFixed(2) : "unverified"} • ${totalLabel}`}
                       >
                         <span className="relative size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
                           {b.avatar ? <span>{b.avatar}</span> : <span className="text-[10px]">{botInitials(b)}</span>}
@@ -144,7 +147,7 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
                           <span className="block text-xs font-semibold truncate">{botDisplayName(b)}</span>
                           <span className="block text-[11px] text-muted-foreground truncate">{b.role}</span>
                         </span>
-                        {total > 0 && <span className="text-[10px] font-mono text-muted-foreground shrink-0">{total}</span>}
+                        {total !== null && total > 0 && <span className="text-[10px] font-mono text-muted-foreground shrink-0">{total}</span>}
                         {selected && <Check className="size-4 text-primary shrink-0" />}
                       </button>
                     );

@@ -33,13 +33,14 @@ export async function postGroupMessage(name: string, message: string): Promise<v
   await send(`/groups/${encodeURIComponent(name)}/messages`, "POST", { message });
 }
 
+// Rejects on failure. This used to `catch { return [] }`, so a 404/500 (a
+// missing or broken room) rendered as "No messages yet — say hello below" —
+// the UI asserting the room was quiet when in fact nothing had been read. The
+// honest treatment for this same route already exists in comm.ts `getRoom`,
+// which does not catch.
 export async function groupMessages(name: string): Promise<Array<Record<string, unknown>>> {
-  try {
-    const d = await get<Record<string, unknown>>(`/groups/${encodeURIComponent(name)}`);
-    return asList(d.messages ?? d, ["messages", "recent_messages", "data"]);
-  } catch {
-    return [];
-  }
+  const d = await get<Record<string, unknown>>(`/groups/${encodeURIComponent(name)}`);
+  return asList(d.messages ?? d, ["messages", "recent_messages", "data"]);
 }
 
 export async function startGroupRun(name: string, objective: string): Promise<void> {
@@ -264,13 +265,40 @@ export async function fleetHealth(): Promise<Record<string, unknown> | null> {
   }
 }
 
-export async function killSwitchState(): Promise<{ active: boolean; detail: string }> {
-  try {
-    const d = await get<Record<string, unknown>>("/bots/kill-switch");
-    return { active: Boolean(pick(d, ["active", "engaged"], false)), detail: JSON.stringify(d).slice(0, 300) };
-  } catch {
-    return { active: false, detail: "Kill-switch status unavailable." };
-  }
+/**
+ * Emergency-stop state, tri-state on purpose.
+ *
+ * The Gateway answers `KillSwitchState` with `global_kill_switch_active` (a live
+ * response: `{"global_kill_switch_active":false,"reason":"","engaged_at":null,
+ * "paused_bots":{},"paused_count":0}`). This reader looked for `active`/
+ * `engaged`, neither of which exists, so `pick` returned its hardcoded `false`
+ * and the section painted a GREEN "running" badge and "team working normally"
+ * from a constant — it could not have shown an engaged stop under any
+ * circumstances, and a 500 painted the same green badge because the `catch`
+ * returned the same `false`.
+ *
+ * `active: null` is the honest answer when the state is unknown, and it is a
+ * different claim from `false` ("off"). The section renders null as an explicit
+ * "state unknown" rather than as a healthy badge.
+ */
+export interface KillSwitchState {
+  active: boolean | null;
+  /** The server's own reason/payload, shown when the read fails or is unknown. */
+  detail: string;
+  reason: string | null;
+  paused_count: number | null;
+}
+
+export async function killSwitchState(): Promise<KillSwitchState> {
+  // No try/catch: a failed read must reject so the caller renders the server's
+  // reason. Resolving `active: false` here would re-create the false all-clear.
+  const d = await get<Record<string, unknown>>("/bots/kill-switch");
+  return {
+    active: typeof d.global_kill_switch_active === "boolean" ? d.global_kill_switch_active : null,
+    detail: JSON.stringify(d).slice(0, 300),
+    reason: typeof d.reason === "string" && d.reason !== "" ? d.reason : null,
+    paused_count: typeof d.paused_count === "number" ? d.paused_count : null,
+  };
 }
 
 export async function setKillSwitch(active: boolean, reason: string): Promise<void> {

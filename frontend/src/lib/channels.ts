@@ -48,17 +48,39 @@ export interface ChannelProvider {
   configured: boolean;
 }
 
-export async function listProviders(): Promise<ChannelProvider[]> {
+/**
+ * The provider catalog plus the subsystem's own master switch.
+ *
+ * `GET /api/channels/providers` answers `{enabled, providers}`, and
+ * `enabled: false` is the *cause* of an empty `providers` array
+ * (backend/app/gateway/routers/channel_connections.py:647 filters the catalog
+ * down to the providers the config has enabled). Collapsing that to `[]` made a
+ * subsystem that is switched off by configuration render exactly like a
+ * subsystem with nothing to connect — the reader is sent to debug the wrong
+ * thing. `enabled` is therefore carried through as a nullable flag: null only
+ * when the Gateway did not report it.
+ */
+export interface ChannelProviderCatalog {
+  /** The channel-connections master switch; null when the Gateway omitted it. */
+  enabled: boolean | null;
+  providers: ChannelProvider[];
+}
+
+export async function listProviders(): Promise<ChannelProviderCatalog> {
   // Backend: GET /api/channels/providers -> {enabled, providers}
-  // Rejects on failure: `[]` must mean the server listed no providers, not
-  // that the call failed (frontend/src/AGENTS.md → Client honesty rules).
-  const d = await get<unknown>("/channels/providers");
-  return asList(d, ["providers", "data"]).map((p) => ({
-    id: String(pick(p, ["id", "provider"], "")),
-    name: String(pick(p, ["name", "display_name"], "")),
-    description: String(pick(p, ["description"], "")),
-    configured: Boolean(pick(p, ["configured", "connected"], false)),
-  }));
+  // Rejects on failure: an empty catalog must mean the server listed no
+  // providers, not that the call failed (frontend/src/AGENTS.md → Client
+  // honesty rules).
+  const d = await get<Record<string, unknown>>("/channels/providers");
+  return {
+    enabled: typeof d.enabled === "boolean" ? d.enabled : null,
+    providers: asList(d, ["providers", "data"]).map((p) => ({
+      id: String(pick(p, ["id", "provider"], "")),
+      name: String(pick(p, ["name", "display_name"], "")),
+      description: String(pick(p, ["description"], "")),
+      configured: Boolean(pick(p, ["configured", "connected"], false)),
+    })),
+  };
 }
 
 export interface ChannelConnection {
