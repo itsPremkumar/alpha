@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -30,12 +30,13 @@ import {
   LionPetState,
   LionSkinId,
   getLionSkin,
-  findLionPetKeepOut,
+  findLionPetKeepOuts,
   isLionPetAction,
   lionPetActionLabel,
   lionPetActionMessage,
   lionPetMessage,
   readLionPetSettings,
+  resolveLionPetPlacement,
   resolveLionPetSafeRight,
   sanitizeLionPetMessage,
   writeLionPetSettings,
@@ -111,7 +112,7 @@ function desktopBridge(): DesktopBridge | null {
   // (electron/preload.js). The previous `agentWorkspace` fallback could never
   // resolve: no shipped shell exposes that key, so it was a comment claiming
   // old-shell support that the code did not provide. Reading only `alpha` says
-  // what is actually true — no bridge in a browser, one bridge in the shell.
+  // what is actually true â€” no bridge in a browser, one bridge in the shell.
   const candidate = (window as Window & { alpha?: DesktopBridge }).alpha;
   return candidate || null;
 }
@@ -139,11 +140,11 @@ function stateLabel(state: LionPetState): string {
 
 function stateEmoji(state: LionPetState): string {
   return {
-    idle: "✦",
-    thinking: "？",
-    working: "⚡",
+    idle: "âœ¦",
+    thinking: "ï¼Ÿ",
+    working: "âš¡",
     waiting: "!",
-    success: "✓",
+    success: "âœ“",
     error: "!",
     sleeping: "z",
   }[state];
@@ -151,19 +152,19 @@ function stateEmoji(state: LionPetState): string {
 
 function actionEmoji(action: LionPetAction): string {
   return {
-    idle: "✦",
-    walk: "↔",
-    run: "»",
-    jump: "↑",
+    idle: "âœ¦",
+    walk: "â†”",
+    run: "Â»",
+    jump: "â†‘",
     roar: " roar ",
-    pounce: "◆",
-    play: "✧",
+    pounce: "â—†",
+    play: "âœ§",
     sleep: "z",
-    stretch: "—",
-    prowl: "⌁",
-    hunt: "⌕",
-    shake: "≈",
-    spin: "↻",
+    stretch: "â€”",
+    prowl: "âŒ",
+    hunt: "âŒ•",
+    shake: "â‰ˆ",
+    spin: "â†»",
   }[action];
 }
 
@@ -223,8 +224,8 @@ function LionIllustration({
       )}
       {action === "play" && (
         <g className="lion-sparkles" fill={skin.accent}>
-          <text x="34" y="72" fontSize="18">✦</text>
-          <text x="177" y="92" fontSize="14">✧</text>
+          <text x="34" y="72" fontSize="18">âœ¦</text>
+          <text x="177" y="92" fontSize="14">âœ§</text>
         </g>
       )}
       {action === "roar" && (
@@ -344,6 +345,15 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
   const [bubble, setBubble] = useState(() => lionPetMessage(state));
   const [petCount, setPetCount] = useState(0);
   const [dragging, setDragging] = useState(false);
+  /**
+   * Nowhere on screen is clear of the keep-out regions right now.
+   *
+   * A layout fact, not a preference: it is recomputed whenever the regions
+   * change. While it holds, the pet renders nothing — it is decorative, but its
+   * hit area is `pointer-events: auto`, so a pet parked on a control swallows
+   * clicks meant for that control.
+   */
+  const [blocked, setBlocked] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [lastClickAt, setLastClickAt] = useState(0);
   const dragRef = useRef<{
@@ -428,7 +438,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       viewportWidth,
       viewportHeight: window.innerHeight,
       petBottom: (settingsRef.current.position.bottom / 100) * window.innerHeight,
-      keepOut: findLionPetKeepOut(document),
+      keepOut: findLionPetKeepOuts(document),
     });
     const clamped = Math.min(Math.max(0, viewportWidth - width), nextRightPx);
     setSettings((current) => ({
@@ -499,28 +509,44 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     const shell = shellRef.current;
     if (!shell || !settings.visible || settings.desktopOverlay) return;
 
+    // Resolved from the mount correction below, not from settings: it means
+    // "there is nowhere clear for this pet right now", which is a layout fact
+    // and not a user preference.
     const nudgeClear = () => {
       const rect = shell.getBoundingClientRect();
       if (!rect.width && !rect.height) return;
       const viewportWidth = window.innerWidth;
-      if (viewportWidth <= 0) return;
+      const viewportHeight = window.innerHeight;
+      if (viewportWidth <= 0 || viewportHeight <= 0) return;
       const currentRightPx = (settingsRef.current.position.right / 100) * viewportWidth;
-      const safeRight = resolveLionPetSafeRight({
+      const currentBottomPx = (settingsRef.current.position.bottom / 100) * viewportHeight;
+      // Both axes, because the horizontal sweep alone cannot solve the real
+      // layout: the sidebar footer and the composer together leave no
+      // horizontal slot for a 190px pet at that height (measured). The only
+      // clear positions are above the topmost keep-out.
+      const placement = resolveLionPetPlacement({
         desiredRight: currentRightPx,
+        desiredBottom: currentBottomPx,
         petWidth: rect.width,
         petHeight: rect.height,
         viewportWidth,
-        viewportHeight: window.innerHeight,
-        petBottom: (settingsRef.current.position.bottom / 100) * window.innerHeight,
-        keepOut: findLionPetKeepOut(document),
+        viewportHeight,
+        keepOut: findLionPetKeepOuts(document),
       });
+      // Nothing on screen is clear. The pet is decorative but its hit area is
+      // not, so it is hidden rather than left covering a control. This is a
+      // `visible` override, not a settings write: the user's own preference is
+      // untouched and the pet comes back when the layout allows.
+      setBlocked(placement === null);
+      if (!placement) return;
       // Only rewrite on a real move, so this never fights the drag handler.
-      if (Math.abs(safeRight - currentRightPx) < 1) return;
+      if (Math.abs(placement.right - currentRightPx) < 1 && Math.abs(placement.bottom - currentBottomPx) < 1) return;
       setSettings((current) => ({
         ...current,
         position: {
           ...current.position,
-          right: (safeRight / viewportWidth) * 100,
+          right: (placement.right / viewportWidth) * 100,
+          bottom: (placement.bottom / viewportHeight) * 100,
         },
       }));
     };
@@ -687,7 +713,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       petBottom: bottom,
-      keepOut: findLionPetKeepOut(document),
+      keepOut: findLionPetKeepOuts(document),
     });
     updateSettings({
       position: {
@@ -750,13 +776,18 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
         onClick={toggleDesktopOverlay}
         aria-label="Return Alpha lion companion to the application window"
       >
-        <span className="text-base">🦁</span>
+        <span className="text-base">ðŸ¦</span>
         <span>Milo is on your desktop</span>
       </button>
     );
   }
 
   if (!settings.visible) {
+    // The "Show lion" button is itself a `z-[90]` fixed overlay in the corner,
+    // so it inherits the same hazard the guard exists for. When there is nowhere
+    // clear, render nothing at all: the pet returns as soon as the layout
+    // leaves room, and neither the companion nor its button covers a control.
+    if (blocked) return null;
     return (
       <button
         type="button"
@@ -764,7 +795,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
         onClick={toggleVisible}
         aria-label="Show Alpha lion companion"
       >
-        <span className="text-base">🦁</span>
+        <span className="text-base">ðŸ¦</span>
         <span>Show lion</span>
       </button>
     );
@@ -772,6 +803,8 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
 
   const skin = getLionSkin(settings.skin);
   const displayLabel = action === "idle" ? stateLabel(state) : lionPetActionLabel(action);
+
+  if (blocked) return null;
 
   return (
     <div
@@ -814,7 +847,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
         <LionIllustration state={state} action={action} skinId={settings.skin} />
         <span className="lion-pet-nameplate">
           <span className="font-semibold">Milo</span>
-          <span className="text-muted-foreground">· {displayLabel}</span>
+          <span className="text-muted-foreground">Â· {displayLabel}</span>
         </span>
         <span className="lion-pet-settings-hint" aria-hidden="true"><Settings2 className="size-3.5" /></span>
       </button>
@@ -824,7 +857,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold text-foreground">Milo the lion</p>
-              <p className="text-[10px] text-muted-foreground">{skin.label} · local companion · no prompt data stored</p>
+              <p className="text-[10px] text-muted-foreground">{skin.label} Â· local companion Â· no prompt data stored</p>
             </div>
             <button type="button" className="icon-button" onClick={() => setMenuOpen(false)} aria-label="Close lion settings"><X className="size-3.5" /></button>
           </div>

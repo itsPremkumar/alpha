@@ -484,8 +484,11 @@ export function ThreadSidebar({
         )}
       </div>
 
-      {/* History storage footer */}
-      <div className="p-3 border-t border-border/60 space-y-2">
+      {/* History storage footer. Marked as a keep-out region: the lion companion's
+          hit area is `pointer-events: auto`, and a live hit-test found it sitting
+          on top of both Backup and Restore — the two controls that move the user's
+          whole conversation archive in or out. */}
+      <div data-lion-pet-keepout="" className="p-3 border-t border-border/60 space-y-2">
         <p
           className={`text-[10px] ${storageError ? "text-destructive" : "text-muted-foreground"}`}
           title={
