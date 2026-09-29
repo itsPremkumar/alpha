@@ -316,7 +316,12 @@ def test_extra_metadata_key_pricing_is_stripped():
     separately because the derived half of the strip set cannot cover it.
     """
     assert "pricing" in _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS
-    instance = _build(_model_config(pricing={"input": 1.0}))
+    # ``input_per_million``, not ``input``: the inline per-model block and the
+    # ``model_pricing:`` fallback table have deliberately disjoint key sets,
+    # because the fallback is keyed by bare model name and so cannot carry a
+    # currency. ``input`` is a ``ModelPriceEntry`` key, and using it inline is
+    # now a load-time error rather than a silently unpriced run.
+    instance = _build(_model_config(pricing={"input_per_million": 1.0}))
     request_kwargs = dict(getattr(instance, "model_kwargs", None) or {})
     assert "pricing" not in request_kwargs
 

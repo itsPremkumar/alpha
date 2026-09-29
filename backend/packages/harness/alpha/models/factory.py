@@ -225,9 +225,20 @@ _MODEL_CONFIG_PROVIDER_PASSTHROUGH = frozenset(
 # deny-by-default. They must be listed here explicitly, and the same
 # divert-and-crash applies: an unrecognised extra is forwarded as-is and fails
 # at request time, not construction time.
+#
+# Being listed here says *where the key goes*, not whether its value is
+# trusted. ``pricing`` is the one extra that is a known Alpha value rather than
+# an opaque provider kwarg, so it also carries a declared schema
+# (``config.model_catalog_schema.ModelPricing``, ``extra="forbid"``, applied by
+# ``ModelConfig._validate_inline_pricing``) and a typo'd price key fails at
+# config load instead of yielding ``total_cost: null``. The two concerns are
+# orthogonal and neither implies the other: a schema for the value cannot
+# decide that its key must not be splatted into a provider client, and
+# stripping the key cannot validate the value.
 _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS = frozenset(
     {
         # Presentation-only metadata consumed by the console's cost display.
+        # Value shape: ModelPricing (validated at load, see the note above).
         "pricing",
     }
 )

@@ -17,13 +17,14 @@ from datetime import UTC, datetime, time, timedelta
 from typing import NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_current_user
 from alpha.config import get_app_config
 from alpha.config.agents_config import list_custom_agents
+from alpha.config.model_catalog_schema import ModelPricing
 from alpha.persistence.engine import get_session_factory
 from alpha.persistence.run.model import RunRow
 from alpha.persistence.thread_meta.model import ThreadMetaRow
@@ -153,12 +154,22 @@ class _ModelPricing(NamedTuple):
 def _build_pricing_map() -> dict[str, _ModelPricing]:
     """Collect per-model prices from ``models[*].pricing``, then ``model_pricing:``.
 
-    ``ModelConfig`` allows extra fields, so operators can annotate each model
-    with e.g. ``pricing: {currency: CNY, input_per_million: 8,
-    output_per_million: 32, input_cache_hit_per_million: 0.8}`` without any
-    schema change. Entries are keyed by both the config ``name`` and the
-    provider ``model`` id (plus lowercase variants), because
-    ``token_usage_by_model`` buckets carry the provider-reported model name.
+    The inline block is read through its declared schema (``ModelPricing``)
+    rather than by poking at raw keys. That is deliberate and is the fix for the
+    bug this function used to have: a typo'd inline key (``inpt_per_million``)
+    parsed cleanly, reached here, matched nothing, and produced
+    ``total_cost: null`` from every console route with no error anywhere. Reading
+    a *schema* means the consumer and the validator cannot name the same field
+    differently, which is the failure a hand-written schema would reintroduce.
+
+    A model whose block fails validation is logged and skipped rather than
+    raised on: the schema already made the mistake loud at config load, and a
+    reporting route must not take down the page for a cosmetic field. This is
+    defence in depth, not the first line of defence.
+
+    Entries are keyed by both the config ``name`` and the provider ``model`` id
+    (plus lowercase variants), because ``token_usage_by_model`` buckets carry
+    the provider-reported model name.
 
     ``model_pricing:`` is consulted afterwards as the documented fallback for a
     model that declares no ``pricing``. It is applied with ``setdefault`` so a
@@ -176,19 +187,25 @@ def _build_pricing_map() -> dict[str, _ModelPricing]:
     pricing_currency_model: str | None = None
     for model_cfg in models or []:
         raw = getattr(model_cfg, "pricing", None)
-        if not isinstance(raw, dict):
+        if raw is None:
             continue
         try:
-            input_price = float(raw.get("input_per_million") or 0)
-            output_price = float(raw.get("output_per_million") or 0)
-            raw_hit_price = raw.get("input_cache_hit_per_million")
-            cache_hit_price = float(raw_hit_price) if raw_hit_price is not None else None
-        except (TypeError, ValueError):
-            logger.warning("console: ignoring malformed pricing on model %s", model_cfg.name)
+            declared = ModelPricing.model_validate(raw)
+        except ValidationError:
+            # Unreachable for a config that went through `AppConfig` — the load
+            # already refused it. Reachable only for a hand-built config object
+            # (several tests do exactly that), so the cost display degrades to
+            # "unpriced" instead of raising.
+            logger.warning("console: ignoring invalid pricing on model %s: %s", model_cfg.name, raw, exc_info=True)
             continue
-        if input_price <= 0 and output_price <= 0:
+        input_price = declared.input_per_million
+        output_price = declared.output_per_million
+        if declared.is_declaration_only:
+            # A block that names no price is a stub, not a free model. Skipping
+            # it matches the fallback table's rule below and keeps a placeholder
+            # from reporting a cost of zero.
             continue
-        model_currency = str(raw.get("currency") or "USD").strip().upper() or "USD"
+        model_currency = declared.currency
         if pricing_currency is None:
             pricing_currency = model_currency
             pricing_currency_model = model_cfg.name
@@ -201,7 +218,7 @@ def _build_pricing_map() -> dict[str, _ModelPricing]:
                 model_cfg.name,
             )
             return {}
-        entry = _ModelPricing(input_price, output_price, model_currency, cache_hit_price)
+        entry = _ModelPricing(input_price, output_price, model_currency, declared.input_cache_hit_per_million)
         for key in (model_cfg.name, getattr(model_cfg, "model", None)):
             if key:
                 pricing.setdefault(key, entry)
@@ -218,6 +235,12 @@ def _build_pricing_map() -> dict[str, _ModelPricing]:
     # schema claims. `ModelPriceEntry` is `{input, output}` per 1M with no
     # currency, so it adopts the currency already established by a per-model
     # entry, and USD when there is none.
+    #
+    # This table is NOT re-validated here. `AppConfig.model_pricing` is declared
+    # `dict[str, ModelPriceEntry]`, so it is already a typed, `extra="forbid"`-
+    # checked value by the time it reaches this function — a typo'd key is a load
+    # error, not a `None` cost. Re-validating an already-typed value would only
+    # add a second failure mode for anything that is not literally a dict.
     fallback_currency = pricing_currency or "USD"
     for model_name, table in (getattr(config, "model_pricing", None) or {}).items():
         if not isinstance(model_name, str):

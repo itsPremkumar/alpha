@@ -134,12 +134,24 @@ max_recursion_limit: 1000
 # all models. Mixed currencies disable cost reporting to prevent invalid sums.
 # Prices are per one million tokens.
 #
+# This is a schema, not a free-form annotation: the keys below are the ONLY
+# ones accepted, and a typo fails at config load naming the model and the key.
+# Before it was declared, `pricing: {inpt_per_million: 1.0}` loaded cleanly and
+# simply reported no cost for anything - a configured price that silently did
+# nothing. Genuine provider kwargs (api_key, base_url, max_tokens, ...) written
+# as siblings of `pricing` are unaffected and still pass through untouched.
+#
 #   pricing:
-#     currency: CNY                    # ISO code shown in the console (CNY, USD, ...)
+#     currency: CNY                    # ISO code shown in the console (CNY, USD, ...); defaults to USD
 #     input_per_million: 8.0           # price per 1M input tokens (cache miss)
 #     output_per_million: 32.0         # price per 1M output tokens
 #     input_cache_hit_per_million: 0.8 # price per 1M cache-hit input tokens
 #                                      # (optional; omit → hits billed at miss price)
+#
+# The `model_pricing:` fallback table further down is a different key set on
+# purpose: it is keyed by bare model name and carries no currency, so it uses
+# `input`/`output`. That is a scope difference, not a typo - do not copy one
+# shape into the other.
 #
 # Provider profiles (optional): named connection defaults shared by model
 # entries. A model sets `provider:` to inherit every key it does not define
@@ -1415,6 +1427,12 @@ free_gateways:
   auth_header: []
   documented_models: []
   openai_compat: false
+# Fallback per-model prices, per 1M tokens. Consulted only for a model that
+# omits an inline `models[].pricing`; an inline block always wins. This table is
+# keyed by bare model name and carries no currency, so it uses `input`/`output`
+# (NOT the `*_per_million` keys an inline block uses - different scope, not a
+# typo) and adopts whatever currency the priced models established, USD if
+# none. `input`/`output` are both required and an unknown key is a load error.
 model_pricing:
   claude-3-7-sonnet:
     input: 3.0
