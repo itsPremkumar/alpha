@@ -37,21 +37,27 @@ def manage_context_data(
     """
     if action == "load":
         handle = _RLM_ENGINE.load_variable(content=content, label=label)
-        return json.dumps({
-            "action": "load",
-            "handle": handle.to_dict(),
-        }, indent=2)
+        return json.dumps(
+            {
+                "action": "load",
+                "handle": handle.to_dict(),
+            },
+            indent=2,
+        )
 
     elif action == "grep":
         sub_handle = _RLM_ENGINE.grep_variable(handle_id=handle_id, query=query)
         if not sub_handle:
             return json.dumps({"error": f"Failed to grep on handle '{handle_id}'."}, indent=2)
         peek_res = _RLM_ENGINE.peek(sub_handle.handle_id, max_lines=25)
-        return json.dumps({
-            "action": "grep",
-            "derived_handle": sub_handle.to_dict(),
-            "matches_preview": peek_res.get("preview_lines", []),
-        }, indent=2)
+        return json.dumps(
+            {
+                "action": "grep",
+                "derived_handle": sub_handle.to_dict(),
+                "matches_preview": peek_res.get("preview_lines", []),
+            },
+            indent=2,
+        )
 
     elif action == "slice":
         sub_handle = _RLM_ENGINE.slice_variable(
@@ -62,11 +68,14 @@ def manage_context_data(
         if not sub_handle:
             return json.dumps({"error": f"Failed to slice handle '{handle_id}'."}, indent=2)
         text = _RLM_ENGINE.fetch_text(sub_handle.handle_id)
-        return json.dumps({
-            "action": "slice",
-            "derived_handle": sub_handle.to_dict(),
-            "sliced_content": text,
-        }, indent=2)
+        return json.dumps(
+            {
+                "action": "slice",
+                "derived_handle": sub_handle.to_dict(),
+                "sliced_content": text,
+            },
+            indent=2,
+        )
 
     elif action == "peek":
         res = _RLM_ENGINE.peek(handle_id=handle_id)
@@ -76,6 +85,4 @@ def manage_context_data(
         return json.dumps(_RLM_ENGINE.stats(), indent=2)
 
     else:
-        return json.dumps({
-            "error": f"Unknown action '{action}'. Supported: 'load', 'grep', 'slice', 'peek', 'stats'."
-        }, indent=2)
+        return json.dumps({"error": f"Unknown action '{action}'. Supported: 'load', 'grep', 'slice', 'peek', 'stats'."}, indent=2)

@@ -50,11 +50,4 @@ def await_task_event(
         timeout_seconds=timeout_seconds,
     )
 
-    return (
-        f"[WAKE_GATE_REGISTERED]\n"
-        f"Gate ID: {gate.gate_id}\n"
-        f"Monitored Tasks: {list(gate.target_task_ids)}\n"
-        f"Condition: {gate.condition}\n"
-        f"Timeout: {gate.timeout_seconds}s\n"
-        f"Status: Waiting for event triggers (notify_on_exit)."
-    )
+    return f"[WAKE_GATE_REGISTERED]\nGate ID: {gate.gate_id}\nMonitored Tasks: {list(gate.target_task_ids)}\nCondition: {gate.condition}\nTimeout: {gate.timeout_seconds}s\nStatus: Waiting for event triggers (notify_on_exit)."

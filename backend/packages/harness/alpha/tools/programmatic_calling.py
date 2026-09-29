@@ -115,6 +115,7 @@ class ProgrammaticCallingEngine:
             pass
 
         tools = ToolsProxy()
+
         def _make_caller(tn: str):
             return lambda *args, **kw: self.bridge.call_tool(tn, *args, **kw)
 
@@ -165,10 +166,7 @@ class ProgrammaticCallingEngine:
             spill_file.write_text(raw_stdout, encoding="utf-8")
             spill_path = str(spill_file)
 
-            final_stdout = (
-                f"{head}\n\n[... {total_bytes - MAX_STDOUT_BYTES:,} bytes truncated. "
-                f"Full output saved to {spill_path} ...]\n\n{tail}"
-            )
+            final_stdout = f"{head}\n\n[... {total_bytes - MAX_STDOUT_BYTES:,} bytes truncated. Full output saved to {spill_path} ...]\n\n{tail}"
             warning = f"Output truncated; page full results using read_file('{spill_path}')"
 
         return ProgrammaticExecutionResult(

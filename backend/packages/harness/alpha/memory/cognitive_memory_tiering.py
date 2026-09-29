@@ -48,10 +48,43 @@ _TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{1,}")
 
 _STOPWORDS: frozenset[str] = frozenset(
     {
-        "the", "a", "an", "and", "or", "but", "if", "then", "else", "for",
-        "to", "of", "in", "on", "at", "by", "with", "from", "is", "was",
-        "are", "were", "be", "been", "this", "that", "these", "those",
-        "it", "its", "as", "into", "not", "no", "do", "does", "did",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "else",
+        "for",
+        "to",
+        "of",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
+        "from",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "as",
+        "into",
+        "not",
+        "no",
+        "do",
+        "does",
+        "did",
     }
 )
 
@@ -77,11 +110,7 @@ def tokenize(text: str) -> list[str]:
     """Tokenize ``text`` into lowercase content terms."""
     if not text:
         return []
-    return [
-        token.lower()
-        for token in _TOKEN_PATTERN.findall(text)
-        if token.lower() not in _STOPWORDS and len(token) > 1
-    ]
+    return [token.lower() for token in _TOKEN_PATTERN.findall(text) if token.lower() not in _STOPWORDS and len(token) > 1]
 
 
 def relevance_decay(age_sec: float, half_life_sec: float = DEFAULT_RELEVANCE_HALF_LIFE_SEC) -> float:
@@ -406,9 +435,7 @@ class HybridRetriever:
                     continue
                 df = document_frequency.get(token, 0)
                 idf = math.log(1.0 + (total_documents - df + 0.5) / (df + 0.5))
-                denominator = frequency + BM25_K1 * (
-                    1.0 - BM25_B + BM25_B * (lengths[index] / average_length)
-                )
+                denominator = frequency + BM25_K1 * (1.0 - BM25_B + BM25_B * (lengths[index] / average_length))
                 score += idf * (frequency * (BM25_K1 + 1.0)) / denominator
             scores.append(score)
         return scores
@@ -447,9 +474,7 @@ class HybridRetriever:
             semantic = cosine_similarity(query_vector, item.tokens)
             decay = relevance_decay(current - item.created_at, self.half_life_sec)
             recency_boost = 1.0 + math.log1p(item.access_count) * 0.1
-            score = (
-                self.bm25_weight * normalized_lexical + self.cosine_weight * semantic
-            ) * decay * recency_boost * (0.5 + item.importance * 0.5)
+            score = (self.bm25_weight * normalized_lexical + self.cosine_weight * semantic) * decay * recency_boost * (0.5 + item.importance * 0.5)
 
             if score < min_score:
                 continue
@@ -581,11 +606,7 @@ class CognitiveMemoryConsolidator:
             for episode in episodes:
                 calls = episode.metadata.get("tool_calls") or []
                 outcome = str(episode.metadata.get("outcome", EpisodeOutcome.UNKNOWN.value))
-                names = [
-                    str(call.get("tool", call.get("name", "")))
-                    for call in calls
-                    if isinstance(call, dict)
-                ]
+                names = [str(call.get("tool", call.get("name", ""))) for call in calls if isinstance(call, dict)]
                 names = [name for name in names if name]
                 for name in names:
                     tool_totals[name] += 1
@@ -605,36 +626,18 @@ class CognitiveMemoryConsolidator:
                 successes = tool_success.get(tool_name, 0)
                 rate = successes / total
                 if rate >= 0.8:
-                    statement = (
-                        f"Tool '{tool_name}' is reliable: {successes}/{total} "
-                        f"episodes succeeded ({rate:.0%})."
-                    )
+                    statement = f"Tool '{tool_name}' is reliable: {successes}/{total} episodes succeeded ({rate:.0%})."
                     category = "tool_reliability"
                     confidence = rate
                 elif rate <= 0.2:
-                    statement = (
-                        f"Tool '{tool_name}' is unreliable: only {successes}/{total} "
-                        f"episodes succeeded ({rate:.0%}); add guards or prefer an alternative."
-                    )
+                    statement = f"Tool '{tool_name}' is unreliable: only {successes}/{total} episodes succeeded ({rate:.0%}); add guards or prefer an alternative."
                     category = "failure_mode"
                     confidence = 1.0 - rate
                 else:
-                    statement = (
-                        f"Tool '{tool_name}' has mixed outcomes: {successes}/{total} "
-                        f"episodes succeeded ({rate:.0%}); validate results before relying on them."
-                    )
+                    statement = f"Tool '{tool_name}' has mixed outcomes: {successes}/{total} episodes succeeded ({rate:.0%}); validate results before relying on them."
                     category = "tool_variance"
                     confidence = 0.5
-                evidence = [
-                    episode.memory_id
-                    for episode in episodes
-                    if tool_name
-                    in {
-                        str(call.get("tool", call.get("name", "")))
-                        for call in (episode.metadata.get("tool_calls") or [])
-                        if isinstance(call, dict)
-                    }
-                ][:8]
+                evidence = [episode.memory_id for episode in episodes if tool_name in {str(call.get("tool", call.get("name", ""))) for call in (episode.metadata.get("tool_calls") or []) if isinstance(call, dict)}][:8]
                 self.semantic.upsert(
                     statement=statement,
                     category=category,
@@ -650,10 +653,7 @@ class CognitiveMemoryConsolidator:
             for (left, right), count in transitions.items():
                 if count < self.min_support:
                     continue
-                statement = (
-                    f"Trajectory pattern: '{left}' is commonly followed by "
-                    f"'{right}' (observed {count} times)."
-                )
+                statement = f"Trajectory pattern: '{left}' is commonly followed by '{right}' (observed {count} times)."
                 self.semantic.upsert(
                     statement=statement,
                     category="trajectory_pattern",
@@ -706,9 +706,7 @@ class CognitiveMemorySystem:
 
     # -- writing -----------------------------------------------------------
 
-    def remember_working(
-        self, content: str, metadata: Optional[dict[str, Any]] = None, importance: float = 0.5
-    ) -> MemoryItem:
+    def remember_working(self, content: str, metadata: Optional[dict[str, Any]] = None, importance: float = 0.5) -> MemoryItem:
         """Store an intermediate plan step in working memory."""
         with self._lock:
             return self.working.put(content, metadata, importance)
@@ -742,17 +740,13 @@ class CognitiveMemorySystem:
     ) -> SemanticRule:
         """Directly inject a distilled rule into semantic memory."""
         with self._lock:
-            return self.semantic.upsert(
-                statement=statement, category=category, confidence=confidence, support=support
-            )
+            return self.semantic.upsert(statement=statement, category=category, confidence=confidence, support=support)
 
     # -- reading -----------------------------------------------------------
 
     def _corpus(self, tiers: Optional[list[str]]) -> list[MemoryItem]:
         """Assemble the retrieval corpus for the requested tiers."""
-        requested = {str(tier).strip().lower() for tier in tiers} if tiers else {
-            tier.value for tier in MemoryTier
-        }
+        requested = {str(tier).strip().lower() for tier in tiers} if tiers else {tier.value for tier in MemoryTier}
         corpus: list[MemoryItem] = []
         if MemoryTier.WORKING.value in requested:
             corpus.extend(self.working.items())

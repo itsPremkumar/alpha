@@ -91,9 +91,7 @@ def _parse_rule(rule_id: str, raw: Any) -> AdmissionRule:
         raise PolicyValidationError(f"policy.{rule_id} must be a mapping")
     action = raw.get("action")
     if action != RULE_ACTIONS[rule_id]:
-        raise PolicyValidationError(
-            f"policy.{rule_id}.action must be {RULE_ACTIONS[rule_id]!r}, got {action!r}"
-        )
+        raise PolicyValidationError(f"policy.{rule_id}.action must be {RULE_ACTIONS[rule_id]!r}, got {action!r}")
     allowed = {"action"}
     kwargs: dict[str, Any] = {}
     if rule_id == "project_decision":
@@ -168,9 +166,7 @@ def parse_policy_document(
     min_score = payload.get("min_score_to_admit", 0.60)
     if not _is_number(min_score) or not 0.0 <= float(min_score) <= 1.0:
         raise PolicyValidationError("min_score_to_admit must be a number in [0, 1]")
-    return PolicySet(rules=rules, score_weights=weights).with_overrides(
-        min_score_to_admit=float(min_score)
-    )
+    return PolicySet(rules=rules, score_weights=weights).with_overrides(min_score_to_admit=float(min_score))
 
 
 def load_policy_document(

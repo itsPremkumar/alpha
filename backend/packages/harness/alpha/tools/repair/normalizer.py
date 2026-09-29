@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 _MARKDOWN_CODEBLOCK_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 _TRAILING_COMMA_PATTERN = re.compile(r",\s*([}\]])")
-_UNQUOTED_KEY_PATTERN = re.compile(r'([{\s,])([a-zA-Z_][a-zA-Z0-9_-]*)\s*:')
+_UNQUOTED_KEY_PATTERN = re.compile(r"([{\s,])([a-zA-Z_][a-zA-Z0-9_-]*)\s*:")
 _PYTHON_LITERALS = [
     (re.compile(r"\bTrue\b"), "true"),
     (re.compile(r"\bFalse\b"), "false"),

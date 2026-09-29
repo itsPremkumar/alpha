@@ -42,14 +42,17 @@ def reproduce_and_verify(
             test_body=test_body,
             workspace_dir=ws_dir,
         )
-        return json.dumps({
-            "status": report.status.value,
-            "reproduction_script": report.reproduction_script_path,
-            "bug_reproduced": report.pre_fix_result.passed if report.pre_fix_result else False,
-            "exit_code": report.pre_fix_result.exit_code if report.pre_fix_result else None,
-            "diagnostics": report.diagnostics,
-            "pre_fix_output": report.pre_fix_result.stderr or report.pre_fix_result.stdout if report.pre_fix_result else "",
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": report.status.value,
+                "reproduction_script": report.reproduction_script_path,
+                "bug_reproduced": report.pre_fix_result.passed if report.pre_fix_result else False,
+                "exit_code": report.pre_fix_result.exit_code if report.pre_fix_result else None,
+                "diagnostics": report.diagnostics,
+                "pre_fix_output": report.pre_fix_result.stderr or report.pre_fix_result.stdout if report.pre_fix_result else "",
+            },
+            indent=2,
+        )
 
     elif phase.lower() == "verify":
         if not script_path:
@@ -60,12 +63,15 @@ def reproduce_and_verify(
             workspace_dir=ws_dir,
             regression_command=regression_command,
         )
-        return json.dumps({
-            "status": report.status.value,
-            "is_verified": report.is_verified,
-            "reproduction_passed": report.post_fix_result.passed if report.post_fix_result else False,
-            "regression_passed": report.regression_result.passed if report.regression_result else True,
-            "diagnostics": report.diagnostics,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": report.status.value,
+                "is_verified": report.is_verified,
+                "reproduction_passed": report.post_fix_result.passed if report.post_fix_result else False,
+                "regression_passed": report.regression_result.passed if report.regression_result else True,
+                "diagnostics": report.diagnostics,
+            },
+            indent=2,
+        )
 
     return json.dumps({"error": f"Invalid phase '{phase}'. Must be 'prepare' or 'verify'."})

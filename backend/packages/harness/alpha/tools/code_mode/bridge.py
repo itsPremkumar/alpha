@@ -96,6 +96,7 @@ class ToolBridge:
                     loop = asyncio.get_running_loop()
                     # In an active loop, schedule or create task
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                         res = pool.submit(asyncio.run, fn(**kwargs)).result()
                 except RuntimeError:

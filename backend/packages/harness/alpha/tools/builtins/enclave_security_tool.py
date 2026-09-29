@@ -36,6 +36,8 @@ def _crypto() -> CheckpointCrypto:
     if _CRYPTO is None:
         _CRYPTO = CheckpointCrypto()
     return _CRYPTO
+
+
 _FLIGHT_RECORDER = TrajectoryFlightRecorder()
 _CREDENTIAL_VAULT = ScopedCredentialVault()
 _REDACTOR = CredentialRedactor()
@@ -127,11 +129,14 @@ def enterprise_security_manage(
 
     elif action == "verify_telemetry":
         valid, bad_idx = _FLIGHT_RECORDER.verify_integrity()
-        return json.dumps({
-            "chain_valid": valid,
-            "corrupted_step": bad_idx,
-            "total_steps": len(_FLIGHT_RECORDER.entries),
-        }, indent=2)
+        return json.dumps(
+            {
+                "chain_valid": valid,
+                "corrupted_step": bad_idx,
+                "total_steps": len(_FLIGHT_RECORDER.entries),
+            },
+            indent=2,
+        )
 
     elif action == "issue_credential":
         scopes = [s.strip() for s in scopes_csv.split(",") if s.strip()]
@@ -149,10 +154,13 @@ def enterprise_security_manage(
             tool_output=tool_output,
             exit_code=exit_code,
         )
-        return json.dumps({
-            "is_deceptive": deceptive,
-            "diagnostic": msg,
-        }, indent=2)
+        return json.dumps(
+            {
+                "is_deceptive": deceptive,
+                "diagnostic": msg,
+            },
+            indent=2,
+        )
 
     elif action == "ingest_frame":
         objects: list[SpatialObject] = []
@@ -181,12 +189,15 @@ def enterprise_security_manage(
     elif action == "query_spatial_memory":
         matches = _SPATIAL_CACHE.find_object_history(object_label)
         latest = _SPATIAL_CACHE.get_most_recent_location(object_label)
-        return json.dumps({
-            "query_label": object_label,
-            "match_count": len(matches),
-            "most_recent_location": latest,
-            "history": matches,
-        }, indent=2)
+        return json.dumps(
+            {
+                "query_label": object_label,
+                "match_count": len(matches),
+                "most_recent_location": latest,
+                "history": matches,
+            },
+            indent=2,
+        )
 
     elif action == "init_goal_pursuit":
         _ACTIVE_GOAL_HARNESS = EnclaveGoalHarness(
@@ -199,10 +210,13 @@ def enterprise_security_manage(
                 if m_str:
                     _ACTIVE_GOAL_HARNESS.add_milestone(title=m_str, description=m_str)
 
-        return json.dumps({
-            "status": "goal_initialized",
-            "goal": _ACTIVE_GOAL_HARNESS.to_dict(),
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "goal_initialized",
+                "goal": _ACTIVE_GOAL_HARNESS.to_dict(),
+            },
+            indent=2,
+        )
 
     elif action == "pursue_goal_step":
         if _ACTIVE_GOAL_HARNESS is None:
@@ -243,9 +257,7 @@ def enterprise_security_manage(
         return json.dumps(_ACTIVE_GOAL_HARNESS.to_dict(), indent=2)
 
     else:
-        return json.dumps({
-            "error": f"Unknown action '{action}'."
-        }, indent=2)
+        return json.dumps({"error": f"Unknown action '{action}'."}, indent=2)
 
 
 # Transparent alias for backwards compatibility

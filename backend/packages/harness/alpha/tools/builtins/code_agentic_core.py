@@ -124,14 +124,11 @@ def generate_repo_map(
             return
 
         # Filter excluded
-        filtered = [
-            e for e in entries
-            if e.name not in EXCLUDE_DIRS and e.suffix not in EXCLUDE_EXTENSIONS and not e.name.startswith(".")
-        ]
+        filtered = [e for e in entries if e.name not in EXCLUDE_DIRS and e.suffix not in EXCLUDE_EXTENSIONS and not e.name.startswith(".")]
 
         count = len(filtered)
         for i, entry in enumerate(filtered):
-            is_last = (i == count - 1)
+            is_last = i == count - 1
             connector = "\\-- " if is_last else "|-- "
             child_prefix = "    " if is_last else "|   "
 
@@ -154,6 +151,7 @@ def generate_repo_map(
 # ---------------------------------------------------------------------------
 # 2. Automated Test-Driven Self-Repair Loop (Devin / AVO style)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class TestFailureDetail:
@@ -214,10 +212,13 @@ def auto_test_and_repair(
     cmd = test_command.strip() or _detect_test_command(root)
 
     if not cmd:
-        return json.dumps({
-            "status": "skipped",
-            "message": "No test harness automatically detected (e.g. pytest, npm test, cargo test). Please specify 'test_command'.",
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "skipped",
+                "message": "No test harness automatically detected (e.g. pytest, npm test, cargo test). Please specify 'test_command'.",
+            },
+            indent=2,
+        )
 
     start_time = time.time()
     try:
@@ -235,7 +236,7 @@ def auto_test_and_repair(
         stderr = res.stderr or ""
         exit_code = res.returncode
 
-        passed = (exit_code == 0)
+        passed = exit_code == 0
 
         failures: list[dict[str, Any]] = []
         if not passed:
@@ -251,39 +252,46 @@ def auto_test_and_repair(
             latest_cp.test_passed = passed
             latest_cp.failure_count = len(failures)
 
-        return json.dumps({
-            "status": "passed" if passed else "failed",
-            "command": cmd,
-            "exit_code": exit_code,
-            "duration_seconds": elapsed,
-            "failure_count": len(failures),
-            "failures": failures,
-            "stdout_tail": stdout[-1500:] if stdout else "",
-            "stderr_tail": stderr[-1500:] if stderr else "",
-            "repair_instructions": (
-                "All tests passed!" if passed else
-                "Review the failing assertions above, inspect the affected files, apply fixes, and re-run this tool to verify."
-            ),
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "passed" if passed else "failed",
+                "command": cmd,
+                "exit_code": exit_code,
+                "duration_seconds": elapsed,
+                "failure_count": len(failures),
+                "failures": failures,
+                "stdout_tail": stdout[-1500:] if stdout else "",
+                "stderr_tail": stderr[-1500:] if stderr else "",
+                "repair_instructions": ("All tests passed!" if passed else "Review the failing assertions above, inspect the affected files, apply fixes, and re-run this tool to verify."),
+            },
+            indent=2,
+        )
 
     except subprocess.TimeoutExpired:
-        return json.dumps({
-            "status": "timeout",
-            "command": cmd,
-            "timeout_seconds": timeout_seconds,
-            "error": "Test command timed out. Consider narrowing the test target or fixing deadlocks.",
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "timeout",
+                "command": cmd,
+                "timeout_seconds": timeout_seconds,
+                "error": "Test command timed out. Consider narrowing the test target or fixing deadlocks.",
+            },
+            indent=2,
+        )
     except Exception as e:
-        return json.dumps({
-            "status": "error",
-            "command": cmd,
-            "error": str(e),
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "error",
+                "command": cmd,
+                "error": str(e),
+            },
+            indent=2,
+        )
 
 
 # ---------------------------------------------------------------------------
 # 3. Git-Native Micro-Checkpoint & Instant Rollback (reference style)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CodeCheckpoint:
@@ -419,6 +427,7 @@ def rollback_to_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict:
 def get_checkpoint_diff(checkpoint_id: str, root_path: str = ".") -> dict:
     """Generate unified diff between checkpoint and current workspace files."""
     import difflib
+
     root = Path(root_path).resolve()
     cp = _ACTIVE_CHECKPOINTS.get(checkpoint_id)
     if not cp:
@@ -428,12 +437,14 @@ def get_checkpoint_diff(checkpoint_id: str, root_path: str = ".") -> dict:
     for rel_path, old_content in cp.files_snapshot.items():
         target = root / rel_path
         current_content = target.read_text(encoding="utf-8", errors="ignore") if target.exists() else ""
-        file_diff = list(difflib.unified_diff(
-            old_content.splitlines(keepends=True),
-            current_content.splitlines(keepends=True),
-            fromfile=f"checkpoint/{rel_path}",
-            tofile=f"workspace/{rel_path}",
-        ))
+        file_diff = list(
+            difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                current_content.splitlines(keepends=True),
+                fromfile=f"checkpoint/{rel_path}",
+                tofile=f"workspace/{rel_path}",
+            )
+        )
         if file_diff:
             diffs[rel_path] = "".join(file_diff)
 
@@ -506,13 +517,16 @@ def manage_code_checkpoint(
         )
         _ACTIVE_CHECKPOINTS[cid] = cp
 
-        return json.dumps({
-            "status": "created",
-            "checkpoint_id": cid,
-            "label": cp.label,
-            "captured_files_count": len(snap),
-            "captured_files": list(snap.keys()),
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "created",
+                "checkpoint_id": cid,
+                "label": cp.label,
+                "captured_files_count": len(snap),
+                "captured_files": list(snap.keys()),
+            },
+            indent=2,
+        )
 
     elif act == "rollback":
         root_str = str(root)
@@ -527,10 +541,12 @@ def manage_code_checkpoint(
 
         cp = _ACTIVE_CHECKPOINTS.get(checkpoint_id)
         if not cp:
-            return json.dumps({
-                "status": "error",
-                "error": f"Checkpoint '{checkpoint_id}' not found. Available: {list(_ACTIVE_CHECKPOINTS.keys())}",
-            })
+            return json.dumps(
+                {
+                    "status": "error",
+                    "error": f"Checkpoint '{checkpoint_id}' not found. Available: {list(_ACTIVE_CHECKPOINTS.keys())}",
+                }
+            )
 
         restored_files: list[str] = []
         for rel_path, content in cp.files_snapshot.items():
@@ -539,13 +555,16 @@ def manage_code_checkpoint(
             target.write_text(content, encoding="utf-8")
             restored_files.append(rel_path)
 
-        return json.dumps({
-            "status": "rolled_back",
-            "checkpoint_id": checkpoint_id,
-            "label": cp.label,
-            "restored_files_count": len(restored_files),
-            "restored_files": restored_files,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "rolled_back",
+                "checkpoint_id": checkpoint_id,
+                "label": cp.label,
+                "restored_files_count": len(restored_files),
+                "restored_files": restored_files,
+            },
+            indent=2,
+        )
 
     elif act == "auto_rollback_on_failure":
         root_str = str(root)
@@ -568,13 +587,16 @@ def manage_code_checkpoint(
             target.write_text(content, encoding="utf-8")
             restored_files.append(rel_path)
 
-        return json.dumps({
-            "status": "rolled_back_to_passing",
-            "checkpoint_id": target_cp.checkpoint_id,
-            "label": target_cp.label,
-            "restored_files_count": len(restored_files),
-            "restored_files": restored_files,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "rolled_back_to_passing",
+                "checkpoint_id": target_cp.checkpoint_id,
+                "label": target_cp.label,
+                "restored_files_count": len(restored_files),
+                "restored_files": restored_files,
+            },
+            indent=2,
+        )
 
     elif act == "diff":
         if not checkpoint_id:
@@ -595,6 +617,7 @@ def manage_code_checkpoint(
 # ---------------------------------------------------------------------------
 # 4. Tier 2 & Tier 4 Advanced Code Intelligence & Self-Healing Tools
 # ---------------------------------------------------------------------------
+
 
 @tool("generate_personalized_repo_map", parse_docstring=True)
 def generate_personalized_repo_map(
@@ -662,6 +685,7 @@ def run_surgical_program_repair(
 # 5. Programmatic Tool Calling & Long-Term Memory Recall Tools
 # ---------------------------------------------------------------------------
 
+
 @tool("execute_code_programmatic", parse_docstring=True)
 def execute_code_programmatic(
     script_code: str,
@@ -717,6 +741,7 @@ def search_session_memory(
 # ---------------------------------------------------------------------------
 # 6. Frontier Autonomous Software Engineering & Verification Engines
 # ---------------------------------------------------------------------------
+
 
 @tool("run_interactive_debug_session", parse_docstring=True)
 def run_interactive_debug_session(
@@ -787,4 +812,3 @@ def query_codebase_knowledge_lake(
     lake.ingest_code(repo_name, str(core_path.name), core_path.read_text(encoding="utf-8"))
     results = lake.search_knowledge(query, top_k=top_k)
     return json.dumps(results, indent=2)
-

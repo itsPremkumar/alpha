@@ -22,8 +22,11 @@ def verify_command_approval(
         command: The shell command line to evaluate for safety.
     """
     res = evaluate_command_safety(command)
-    return json.dumps({
-        "verdict": res.verdict,
-        "reason": res.reason,
-        "sanitized_command": res.sanitized_command,
-    }, indent=2)
+    return json.dumps(
+        {
+            "verdict": res.verdict,
+            "reason": res.reason,
+            "sanitized_command": res.sanitized_command,
+        },
+        indent=2,
+    )

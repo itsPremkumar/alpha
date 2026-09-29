@@ -97,11 +97,7 @@ def _merge_duplicate_groups(candidates: Sequence[Candidate]) -> tuple[list[Candi
             merged_data = merged.model_dump()
             merged_data["metadata"] = {**merged.metadata, "merged_duplicate_ids": loser_ids}
             merged = Candidate(**merged_data)
-            dropped.extend(
-                _drop(candidate, "duplicate_merged", merged_into=merged.id)
-                for candidate in group
-                if candidate.id != merged.id
-            )
+            dropped.extend(_drop(candidate, "duplicate_merged", merged_into=merged.id) for candidate in group if candidate.id != merged.id)
         content_merged.append(merged)
     return content_merged, dropped
 

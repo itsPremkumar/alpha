@@ -58,12 +58,7 @@ def canvas_widget_tool(
             data=payload,
             widget_id=widget_id or None,
         )
-        return (
-            f"Canvas Widget rendered: {widget.widget_id}\n"
-            f"- Title: {widget.title}\n"
-            f"- Kind: {widget.kind}\n"
-            f"- Standalone HTML length: {len(widget.render_standalone_html())} bytes"
-        )
+        return f"Canvas Widget rendered: {widget.widget_id}\n- Title: {widget.title}\n- Kind: {widget.kind}\n- Standalone HTML length: {len(widget.render_standalone_html())} bytes"
 
     elif action == "update":
         if not widget_id:
@@ -86,12 +81,6 @@ def canvas_widget_tool(
         w = manager.get_widget(widget_id)
         if not w:
             return f"Error: Widget '{widget_id}' not found."
-        return (
-            f"=== Canvas Widget: {w.widget_id} ===\n"
-            f"Title: {w.title} ({w.kind})\n"
-            f"Updated: {w.updated_at}\n"
-            f"Data: {json.dumps(w.data, indent=2)}\n"
-            f"HTML: {w.html_content}"
-        )
+        return f"=== Canvas Widget: {w.widget_id} ===\nTitle: {w.title} ({w.kind})\nUpdated: {w.updated_at}\nData: {json.dumps(w.data, indent=2)}\nHTML: {w.html_content}"
 
     return f"Error: Unknown action '{action}'."

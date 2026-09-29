@@ -44,12 +44,7 @@ def goal_engine_tool(
             return "Error: 'title' is required for 'start'."
         try:
             goal = runner.start_goal(title=title, description=description, max_iterations=max_iterations)
-            return (
-                f"Continuous Autonomous Goal initialized: {goal.goal_id}\n"
-                f"- Title: {goal.title}\n"
-                f"- Status: {goal.status}\n"
-                f"- Milestones provisioned: {len(goal.milestones)}"
-            )
+            return f"Continuous Autonomous Goal initialized: {goal.goal_id}\n- Title: {goal.title}\n- Status: {goal.status}\n- Milestones provisioned: {len(goal.milestones)}"
         except Exception as e:
             return f"Error starting goal: {e}"
 

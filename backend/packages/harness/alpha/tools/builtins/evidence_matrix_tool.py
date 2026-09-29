@@ -57,10 +57,13 @@ def audit_finish_first_evidence(
             statement=claim_statement,
             target_path=target_path,
         )
-        return json.dumps({
-            "action": "record_claim",
-            "claim": claim.to_dict(),
-        }, indent=2)
+        return json.dumps(
+            {
+                "action": "record_claim",
+                "claim": claim.to_dict(),
+            },
+            indent=2,
+        )
 
     elif action == "attach_proof":
         pt = proof_map.get(proof_type.lower(), ProofType.TEST_EXECUTION)
@@ -75,25 +78,29 @@ def audit_finish_first_evidence(
         if not entry:
             return json.dumps({"error": f"Claim ID '{claim_id}' not found."}, indent=2)
 
-        return json.dumps({
-            "action": "attach_proof",
-            "entry": entry.to_dict(),
-        }, indent=2)
+        return json.dumps(
+            {
+                "action": "attach_proof",
+                "entry": entry.to_dict(),
+            },
+            indent=2,
+        )
 
     elif action == "audit_finalization":
         can_finalize, msg, issues = _AUDITOR.audit_finalization()
-        return json.dumps({
-            "action": "audit_finalization",
-            "can_finalize": can_finalize,
-            "status_message": msg,
-            "blocking_issues": issues,
-            "summary": _MATRIX.summary(),
-        }, indent=2)
+        return json.dumps(
+            {
+                "action": "audit_finalization",
+                "can_finalize": can_finalize,
+                "status_message": msg,
+                "blocking_issues": issues,
+                "summary": _MATRIX.summary(),
+            },
+            indent=2,
+        )
 
     elif action == "summary":
         return json.dumps(_MATRIX.summary(), indent=2)
 
     else:
-        return json.dumps({
-            "error": f"Unknown action '{action}'. Supported: 'record_claim', 'attach_proof', 'audit_finalization', 'summary'."
-        }, indent=2)
+        return json.dumps({"error": f"Unknown action '{action}'. Supported: 'record_claim', 'attach_proof', 'audit_finalization', 'summary'."}, indent=2)

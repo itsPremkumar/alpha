@@ -61,18 +61,8 @@ class AssociativeNetwork:
 
         # Check existing link
         for link in self._links.values():
-            match_forward = (
-                link.source_tier == s_tier
-                and link.source_id == source_id
-                and link.target_tier == t_tier
-                and link.target_id == target_id
-            )
-            match_reverse = (
-                link.source_tier == t_tier
-                and link.source_id == target_id
-                and link.target_tier == s_tier
-                and link.target_id == source_id
-            )
+            match_forward = link.source_tier == s_tier and link.source_id == source_id and link.target_tier == t_tier and link.target_id == target_id
+            match_reverse = link.source_tier == t_tier and link.source_id == target_id and link.target_tier == s_tier and link.target_id == source_id
             if match_forward or match_reverse:
                 # Hebbian reinforcement
                 link.co_occurrences += max(1, co_occurrences)

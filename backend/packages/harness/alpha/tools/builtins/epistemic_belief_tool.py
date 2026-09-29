@@ -45,14 +45,17 @@ def evaluate_epistemic_claim(
             prior_confidence=0.5,
             falsification_test=falsification_test,
         )
-        return json.dumps({
-            "status": "registered",
-            "claim_id": claim.claim_id,
-            "claim": claim.text,
-            "epistemic_status": claim.status.value,
-            "confidence": claim.confidence,
-            "falsification_test": claim.falsification_test,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "registered",
+                "claim_id": claim.claim_id,
+                "claim": claim.text,
+                "epistemic_status": claim.status.value,
+                "confidence": claim.confidence,
+                "falsification_test": claim.falsification_test,
+            },
+            indent=2,
+        )
 
     elif action.lower() == "update":
         if not claim_id:
@@ -63,21 +66,27 @@ def evaluate_epistemic_claim(
                 evidence=evidence,
                 is_supporting=is_supporting,
             )
-            return json.dumps({
-                "status": "updated",
-                "claim_id": claim.claim_id,
-                "epistemic_status": claim.status.value,
-                "posterior_confidence": claim.bayesian_posterior,
-                "is_verified": claim.is_verified,
-            }, indent=2)
+            return json.dumps(
+                {
+                    "status": "updated",
+                    "claim_id": claim.claim_id,
+                    "epistemic_status": claim.status.value,
+                    "posterior_confidence": claim.bayesian_posterior,
+                    "is_verified": claim.is_verified,
+                },
+                indent=2,
+            )
         except KeyError as e:
             return json.dumps({"error": str(e)})
 
     elif action.lower() == "summary":
-        return json.dumps({
-            "active_claims_count": len(engine.list_all()),
-            "unverified_assumptions": [c.to_dict() for c in engine.get_unverified_assumptions()],
-            "markdown_summary": engine.render_belief_summary(),
-        }, indent=2)
+        return json.dumps(
+            {
+                "active_claims_count": len(engine.list_all()),
+                "unverified_assumptions": [c.to_dict() for c in engine.get_unverified_assumptions()],
+                "markdown_summary": engine.render_belief_summary(),
+            },
+            indent=2,
+        )
 
     return json.dumps({"error": f"Unknown action '{action}'. Must be 'register', 'update', or 'summary'."})

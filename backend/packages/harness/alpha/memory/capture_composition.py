@@ -245,13 +245,9 @@ def compose_capture(
             kept: list[dict[str, Any]] = []
             for payload in payloads:
                 try:
-                    ok, _detail = _admit(
-                        policy_engine, payload, user_id=user_id, agent_name=agent_name
-                    )
+                    ok, _detail = _admit(policy_engine, payload, user_id=user_id, agent_name=agent_name)
                 except Exception as exc:  # noqa: BLE001 - a policy failure must not silently admit
-                    logger.debug(
-                        "admission evaluation failed for %s: %s", name, type(exc).__name__, exc_info=True
-                    )
+                    logger.debug("admission evaluation failed for %s: %s", name, type(exc).__name__, exc_info=True)
                     rejected += 1
                     continue
                 if ok:
@@ -272,9 +268,7 @@ def compose_capture(
             continue
 
         try:
-            written, detail = _WRITERS[name](
-                config, admitted, user_id=user_id, agent_name=agent_name, now=now
-            )
+            written, detail = _WRITERS[name](config, admitted, user_id=user_id, agent_name=agent_name, now=now)
         except Exception as exc:  # noqa: BLE001 - one type must not fail the turn
             logger.debug("capture surface %s failed: %s", name, type(exc).__name__, exc_info=True)
             statuses.append(

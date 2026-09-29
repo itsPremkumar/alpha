@@ -61,12 +61,7 @@ class SemanticBeliefGraph:
         # Check if identical belief exists (exact subject, predicate, object) unless explicit node_id is provided
         if not node_id:
             for existing in self._nodes.values():
-                if (
-                    existing.subject.lower() == subject.strip().lower()
-                    and existing.predicate.lower() == predicate.strip().lower()
-                    and existing.object_val.lower() == object_val.strip().lower()
-                    and existing.status == BeliefStatus.ACTIVE
-                ):
+                if existing.subject.lower() == subject.strip().lower() and existing.predicate.lower() == predicate.strip().lower() and existing.object_val.lower() == object_val.strip().lower() and existing.status == BeliefStatus.ACTIVE:
                     # Reinforce existing belief
                     existing.confidence = min(1.0, existing.confidence + 0.05)
                     existing.revision += 1
@@ -116,11 +111,7 @@ class SemanticBeliefGraph:
 
         # Check existing edge
         for edge in self._edges.values():
-            if (
-                edge.source_id == source_id
-                and edge.target_id == target_id
-                and edge.relation.lower() == relation.lower()
-            ):
+            if edge.source_id == source_id and edge.target_id == target_id and edge.relation.lower() == relation.lower():
                 edge.weight = max(edge.weight, weight)
                 return edge
 
@@ -170,10 +161,7 @@ class SemanticBeliefGraph:
                 n1, n2 = active_nodes[i], active_nodes[j]
                 if n1.subject.lower() == n2.subject.lower():
                     # Same predicate but different object
-                    if (
-                        n1.predicate.lower() == n2.predicate.lower()
-                        and n1.object_val.lower() != n2.object_val.lower()
-                    ):
+                    if n1.predicate.lower() == n2.predicate.lower() and n1.object_val.lower() != n2.object_val.lower():
                         reason = f"Direct value contradiction: '{n1.object_val}' vs '{n2.object_val}' for predicate '{n1.predicate}'"
                         conflicts.append((n1, n2, reason))
 
@@ -271,10 +259,7 @@ class SemanticBeliefGraph:
             return False
         del self._nodes[node_id]
         # Clean edges
-        edges_to_remove = [
-            eid for eid, e in self._edges.items()
-            if e.source_id == node_id or e.target_id == node_id
-        ]
+        edges_to_remove = [eid for eid, e in self._edges.items() if e.source_id == node_id or e.target_id == node_id]
         for eid in edges_to_remove:
             del self._edges[eid]
         self._adj.pop(node_id, None)

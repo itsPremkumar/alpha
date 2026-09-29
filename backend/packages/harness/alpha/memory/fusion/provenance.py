@@ -74,11 +74,7 @@ def write_recall_provenance(
         "tokens_spent": context.total_tokens,
         "token_budget": context.budget,
         "per_type_token_spend": dict(context.per_type_token_spend),
-        "dropped_items": [
-            {"phase": "fusion", **item.model_dump(mode="json")}
-            for item in fusion.dropped_with_reason
-        ]
-        + [{"phase": "composition", **item.model_dump(mode="json")} for item in context.dropped_with_reason],
+        "dropped_items": [{"phase": "fusion", **item.model_dump(mode="json")} for item in fusion.dropped_with_reason] + [{"phase": "composition", **item.model_dump(mode="json")} for item in context.dropped_with_reason],
         "fusion_latency_ms": fusion.total_latency_ms,
         "latency_budget_ms": fusion.latency_budget_ms,
         "latency_budget_exceeded": fusion.latency_budget_exceeded,

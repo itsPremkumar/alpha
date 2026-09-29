@@ -69,29 +69,33 @@ class CognitiveConsolidationEngine:
             norm = re.sub(r"\s+", " ", wm_item.content.lower().strip())
             if norm and norm not in seen_texts:
                 seen_texts.add(norm)
-                clean_signals.append({
-                    "content": wm_item.content,
-                    "tag": wm_item.context_tag,
-                    "salience": wm_item.salience,
-                    "source": "working_memory",
-                    "id": wm_item.item_id,
-                })
+                clean_signals.append(
+                    {
+                        "content": wm_item.content,
+                        "tag": wm_item.context_tag,
+                        "salience": wm_item.salience,
+                        "source": "working_memory",
+                        "id": wm_item.item_id,
+                    }
+                )
 
         for trace in recent_traces:
             combined = f"{trace.action} -> {trace.observation}"
             norm = re.sub(r"\s+", " ", combined.lower().strip())
             if norm and norm not in seen_texts:
                 seen_texts.add(norm)
-                clean_signals.append({
-                    "content": combined,
-                    "action": trace.action,
-                    "observation": trace.observation,
-                    "outcome": trace.outcome,
-                    "error": trace.error_context,
-                    "salience": trace.salience,
-                    "source": "episodic_trace",
-                    "id": trace.trace_id,
-                })
+                clean_signals.append(
+                    {
+                        "content": combined,
+                        "action": trace.action,
+                        "observation": trace.observation,
+                        "outcome": trace.outcome,
+                        "error": trace.error_context,
+                        "salience": trace.salience,
+                        "source": "episodic_trace",
+                        "id": trace.trace_id,
+                    }
+                )
 
         # =========================================================================
         # Phase 2: REM Sleep — Associative Clustering & Pattern Synthesis
@@ -175,11 +179,7 @@ class CognitiveConsolidationEngine:
                 deep_sleep_crystallized += 1
 
                 # Link new semantic belief to source
-                s_tier = (
-                    CognitiveTier.EPISODIC_FLAT
-                    if signal["source"] == "episodic_trace"
-                    else CognitiveTier.WORKING
-                )
+                s_tier = CognitiveTier.EPISODIC_FLAT if signal["source"] == "episodic_trace" else CognitiveTier.WORKING
                 assoc_net.link_memories(
                     source_tier=s_tier,
                     source_id=signal["id"],

@@ -125,7 +125,7 @@ class SessionSearchEngine:
         clean_q = query.replace('"', '""').replace("'", "''")
         excluded: set[str] = set()
         if exclude_session_ids:
-            excluded = set(list(exclude_session_ids)[: _EXCLUDE_SESSION_IDS_CAP])
+            excluded = set(list(exclude_session_ids)[:_EXCLUDE_SESSION_IDS_CAP])
         cursor = self.conn.cursor()
         # Query FTS5 with bm25 score
         cursor.execute(

@@ -61,9 +61,7 @@ class PolicySet:
     """
 
     rules: tuple[AdmissionRule, ...] = DEFAULT_RULES
-    score_weights: Mapping[str, float] = field(
-        default_factory=lambda: dict(DEFAULT_SCORE_WEIGHTS)
-    )
+    score_weights: Mapping[str, float] = field(default_factory=lambda: dict(DEFAULT_SCORE_WEIGHTS))
     thresholds: PolicyThresholds = field(default_factory=PolicyThresholds)
     fail_closed_reason: str = ""
 
@@ -257,16 +255,10 @@ class AdmissionEngine:
         threshold = policy.thresholds.min_score_to_admit
         if result.score >= threshold:
             action = "episodic_archive"
-            reason = (
-                f"no durable hard rule matched; score {result.score:.12g} meets "
-                f"min_score_to_admit={threshold:.12g}, so the candidate is episodic only"
-            )
+            reason = f"no durable hard rule matched; score {result.score:.12g} meets min_score_to_admit={threshold:.12g}, so the candidate is episodic only"
         else:
             action = "reject"
-            reason = (
-                f"no hard rule matched and score {result.score:.12g} is below "
-                f"min_score_to_admit={threshold:.12g}"
-            )
+            reason = f"no hard rule matched and score {result.score:.12g} is below min_score_to_admit={threshold:.12g}"
         if near_misses:
             reason += "; near misses: " + "; ".join(near_misses)
         tier, ttl_seconds = _lifecycle(action, policy.thresholds.session_ttl_seconds)

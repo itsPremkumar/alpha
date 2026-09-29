@@ -39,26 +39,15 @@ def visual_verify_artifact(
         target_file = base_dir / target_file
 
     if not target_file.exists():
-        return json.dumps({
-            "passed": False,
-            "error": f"Artifact file not found: {artifact_path}",
-            "score": 0,
-            "checks": {},
-            "warnings": ["File does not exist on disk."],
-            "recommendations": ["Ensure artifact is generated and saved before verifying."]
-        }, indent=2)
+        return json.dumps(
+            {"passed": False, "error": f"Artifact file not found: {artifact_path}", "score": 0, "checks": {}, "warnings": ["File does not exist on disk."], "recommendations": ["Ensure artifact is generated and saved before verifying."]},
+            indent=2,
+        )
 
     try:
         content = target_file.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
-        return json.dumps({
-            "passed": False,
-            "error": f"Failed to read artifact: {e}",
-            "score": 0,
-            "checks": {},
-            "warnings": [str(e)],
-            "recommendations": ["Check file permissions and encoding."]
-        }, indent=2)
+        return json.dumps({"passed": False, "error": f"Failed to read artifact: {e}", "score": 0, "checks": {}, "warnings": [str(e)], "recommendations": ["Check file permissions and encoding."]}, indent=2)
 
     ext = target_file.suffix.lower()
     checks: dict[str, bool] = {}
@@ -87,7 +76,7 @@ def visual_verify_artifact(
         checks["viewport_configured"] = has_viewport
         if not has_viewport:
             score -= 10
-            warnings.append("Missing responsive <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"> tag.")
+            warnings.append('Missing responsive <meta name="viewport" content="width=device-width, initial-scale=1.0"> tag.')
             recommendations.append("Add viewport meta tag in <head> to ensure mobile/responsive rendering.")
 
         # 3. Check for external resource references
@@ -150,19 +139,20 @@ def visual_verify_artifact(
         warnings.append(not_applicable)
         if not checks["content_non_empty"]:
             warnings.append("Artifact file is completely empty.")
-        recommendations.append(
-            "Verify this artifact with a format-appropriate checker, or provide an HTML/SVG artifact."
+        recommendations.append("Verify this artifact with a format-appropriate checker, or provide an HTML/SVG artifact.")
+        return json.dumps(
+            {
+                "passed": False,
+                "score": None,
+                "artifact_path": str(target_file),
+                "file_size_bytes": len(content),
+                "checks": checks,
+                "warnings": warnings,
+                "recommendations": recommendations,
+                "status": "NOT_APPLICABLE",
+            },
+            indent=2,
         )
-        return json.dumps({
-            "passed": False,
-            "score": None,
-            "artifact_path": str(target_file),
-            "file_size_bytes": len(content),
-            "checks": checks,
-            "warnings": warnings,
-            "recommendations": recommendations,
-            "status": "NOT_APPLICABLE",
-        }, indent=2)
 
     # 6. Verify user-requested expected elements (visual formats only; the
     # unsupported-format branch above returned before reaching this point)
@@ -192,14 +182,17 @@ def visual_verify_artifact(
     score = max(0, min(100, score if score is not None else 0))
     passed = score >= 70 and not blocking_failures
 
-    return json.dumps({
-        "passed": passed,
-        "score": score,
-        "artifact_path": str(target_file),
-        "file_size_bytes": len(content),
-        "checks": checks,
-        "warnings": warnings,
-        "recommendations": recommendations,
-        "blocking_failures": blocking_failures,
-        "status": "PASS" if passed else "REQUIRES_ATTENTION"
-    }, indent=2)
+    return json.dumps(
+        {
+            "passed": passed,
+            "score": score,
+            "artifact_path": str(target_file),
+            "file_size_bytes": len(content),
+            "checks": checks,
+            "warnings": warnings,
+            "recommendations": recommendations,
+            "blocking_failures": blocking_failures,
+            "status": "PASS" if passed else "REQUIRES_ATTENTION",
+        },
+        indent=2,
+    )

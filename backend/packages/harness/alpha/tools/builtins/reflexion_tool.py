@@ -52,23 +52,29 @@ def manage_reflexion_memory(
             confidence=confidence,
             workspace=workspace,
         )
-        return json.dumps({
-            "status": "RECORDED",
-            "entry_id": entry.id,
-            "problem_signature": entry.problem_signature,
-            "lesson": entry.lesson,
-            "created_at": entry.created_at,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "RECORDED",
+                "entry_id": entry.id,
+                "problem_signature": entry.problem_signature,
+                "lesson": entry.lesson,
+                "created_at": entry.created_at,
+            },
+            indent=2,
+        )
 
     elif action == "query":
         q = query or problem_signature or ""
         if not q.strip():
             return "Error: query text required."
         results = engine.query_reflections(q)
-        return json.dumps({
-            "query": q,
-            "matches_found": len(results),
-            "reflections": [r.to_dict() for r in results],
-        }, indent=2)
+        return json.dumps(
+            {
+                "query": q,
+                "matches_found": len(results),
+                "reflections": [r.to_dict() for r in results],
+            },
+            indent=2,
+        )
 
     return f"Error: unknown action '{action}'. Use 'record' or 'query'."
