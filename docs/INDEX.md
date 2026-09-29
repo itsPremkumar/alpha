@@ -47,6 +47,7 @@
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference for files, settings, and environment.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment models and deployment procedures.
 - [INSTALLER.md](INSTALLER.md) — Windows installer: unattended bootstrap, measured footprint, uninstall and troubleshooting.
+- [MULTI_WORKER.md](MULTI_WORKER.md) — What Alpha guarantees with one worker, with N workers, and with none of them.
 - [PRODUCTION.md](PRODUCTION.md) — Production runbook for monitoring, incidents, and maintenance.
 - [PRODUCTION_READINESS_INVENTORY.md](PRODUCTION_READINESS_INVENTORY.md) — Production-readiness status, owners, and test evidence.
 - [PRODUCTION_READINESS_TRANSFER_GUIDE.md](PRODUCTION_READINESS_TRANSFER_GUIDE.md) — Production foundations and readiness transfer guidance.
@@ -67,6 +68,7 @@
 - [HONESTY_SUITE.md](HONESTY_SUITE.md) — Offline regression suite pinning durable records against the answers the product gives.
 - [README.md](README.md) — Documentation library entry point and navigation overview.
 - [USE_CASES.md](USE_CASES.md) — End-to-end jobs mapped to the subsystem that delivers each one.
+- [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which kind of isolation an agent gets, and how to choose between the strategies.
 
 ## Plans & Roadmaps
 
