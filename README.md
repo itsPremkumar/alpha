@@ -58,7 +58,7 @@ proprietary backend.
 - [What can you build with Alpha?](#what-can-you-build-with-alpha)
 - [60-second quickstart](#60-second-quickstart)
 - [Feature catalog](#feature-catalog)
-- [System architecture](#system-architecture)
+- [Architecture in one diagram](#architecture-in-one-diagram)
 - [Deployment options](#deployment-options)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
@@ -632,9 +632,10 @@ Every directory under `backend/packages/harness/alpha/` (102 packages, counted b
 `observability` `ops` `orchestration` `orchestrator` `peer_network` `perpetual`
 `persistence` `planning` `policy` `projects` `protocols` `reasoning` `recovery`
 `reflection` `reproduction` `research` `rsi` `rules` `runtime` `safety` `sandbox`
-`scheduler` `security` `selfrepair` `skills` `state` `subagents` `supervision`
-`swarm` `synthesis` `system1` `testing` `tools` `tracing` `trajectory` `tui`
-`uploads` `utils` `verification` `workflow` `workspace_changes`
+`scheduler` `script_bridge_child` `security` `selfrepair` `skills` `state`
+`streamjson` `subagents` `supervision` `swarm` `synthesis` `system1` `testing`
+`tools` `tracing` `trajectory` `tui` `uploads` `utils` `verification`
+`wire_contracts` `workflow` `workspace_changes`
 
 Verify the list against the tree at any time:
 

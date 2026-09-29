@@ -248,4 +248,4 @@ Every proposal in the gap map is, in the end, an instance of one of five verbs:
 | **Present** | Communicate the result so it stands alone | E1, F3, F4 |
 
 None of these add a new engine. All of them raise the ceiling on what Alpha's
-existing 89 engines are actually worth to a human.
+existing 102 engines are actually worth to a human.

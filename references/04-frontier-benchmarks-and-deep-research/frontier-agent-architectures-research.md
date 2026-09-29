@@ -1663,7 +1663,7 @@ That is the architecture I would choose if the objective is to build something i
 
 I also created the consolidated architecture document from the research:
 
-[Download the ASI Frontier Agent Harness Architecture](sandbox:/mnt/data/ASI_Frontier_Agent_Harness_Architecture_2026.md)
+[Read the ASI Frontier Agent Harness Architecture](../01-architectures/ASI_Frontier_Agent_Harness_Architecture_2026.md)
 
 ### Most important sources
 

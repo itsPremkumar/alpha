@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-27T16:51:36Z",
+ "generated_at": "2026-09-29T01:00:16Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2338,11 +2338,13 @@
     "mcp_tasks",
     "migrations",
     "models",
+    "network_waits",
     "personal_access_tokens",
     "projects",
     "run",
     "scheduled_task_runs",
     "scheduled_tasks",
+    "side_effects",
     "storekit",
     "subagent_batches",
     "thread_meta",
@@ -2419,13 +2421,17 @@
     "checkpoint_cache",
     "checkpointer",
     "events",
+    "network",
     "resilience",
     "rlm",
     "runs",
     "selfheal",
     "sentinel",
+    "sessions",
+    "side_effects",
     "store",
-    "stream_bridge"
+    "stream_bridge",
+    "supervisor"
    ]
   },
   {
