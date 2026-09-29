@@ -304,9 +304,28 @@ def test_the_surface_list_covers_every_nginx_config_in_the_repository() -> None:
     # hard-coded list, so a new surface cannot be added without a decision.
     # The roots are the directories that ship deployment config; the harness
     # and frontend are not deployment surfaces.
+    #
+    # ``.tools`` is a vendored nginx *binary distribution* — a stock
+    # ``conf/nginx.conf`` plus ``fastcgi.conf`` shipped with the download. It is
+    # gitignored (``.gitignore:143``) and git tracks zero files beneath it, so
+    # it is not a surface this repository owns and cannot drift. Pruning it is
+    # the honest fix; listing it in NON_ROUTING_SURFACES would enshrine a path
+    # that must never be committed as a routing surface.
     import os  # noqa: PLC0415
 
-    prune = {".git", "node_modules", ".venv", "__pycache__", ".next", "site-packages", "alembic", "tests", "backend", "frontend"}
+    prune = {
+        ".git",
+        ".tools",
+        "node_modules",
+        ".venv",
+        "__pycache__",
+        ".next",
+        "site-packages",
+        "alembic",
+        "tests",
+        "backend",
+        "frontend",
+    }
     tracked: list[Path] = []
     for root in ("docker", "deploy", "build", "scripts", "."):
         base = REPO_ROOT / root
