@@ -42,6 +42,11 @@ from alpha.runtime.network import (
 )
 from alpha.runtime.runs.store.base import RunStore
 from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
+from alpha.runtime.side_effects import (
+    SideEffectReclaimer,
+    SideEffectRecorder,
+    set_side_effect_recorder,
+)
 from app.gateway.run_recovery import SafeRunRecoveryService
 
 logger = logging.getLogger(__name__)
@@ -497,6 +502,26 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             from app.gateway.auth.pat import PAT_LAST_USED_WRITE_INTERVAL_SECONDS
 
             app.state.pat_repo = PersonalAccessTokenRepository(sf, last_used_write_interval_seconds=PAT_LAST_USED_WRITE_INTERVAL_SECONDS)
+
+            # The side-effect ledger. Registered here, and only here, because this
+            # is the one point in the process that owns a durable session
+            # factory, and the ledger is a repository like every other one. The
+            # recorder is process-wide because the harness cannot import ``app.*``
+            # (``tests/test_harness_boundary.py``), so an effect site inside the
+            # harness resolves it through ``alpha.runtime.side_effects`` rather
+            # than receiving it -- the same shape as ``set_network_wait_service``.
+            #
+            # It is registered *together with* the reclaimer on purpose. A ledger
+            # that is written but never reclaimed leaves an entry ``in_flight``
+            # with a dead lease forever, which is exactly the silent gap this
+            # subsystem exists to close; the loop is what makes ``UNKNOWN``
+            # reachable rather than theoretical.
+            from alpha.persistence.side_effects import SqlSideEffectLedger
+
+            app.state.side_effect_recorder = SideEffectRecorder(SqlSideEffectLedger(sf))
+            set_side_effect_recorder(app.state.side_effect_recorder)
+            app.state.side_effect_reclaimer = SideEffectReclaimer(app.state.side_effect_recorder.ledger)  # type: ignore[arg-type]
+            app.state.side_effect_reclaimer.start()
         else:
             from alpha.runtime.runs.store.memory import MemoryRunStore
 
@@ -505,6 +530,14 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # Memory backend has no durable PAT store, so Bearer credentials
             # cannot be validated there and are rejected by the middleware.
             app.state.pat_repo = None
+
+            # No durable session factory means no durable ledger. Install the
+            # disabled recorder anyway: an effect site must not have to know
+            # which backend it is running under, and the disabled recorder counts
+            # what it could not record instead of vanishing.
+            app.state.side_effect_recorder = None
+            app.state.side_effect_reclaimer = None
+            set_side_effect_recorder(None)
 
         # Services are app-scoped. Capture this app's immutable extension set
         # once and close over the same object for teardown; the process-wide
@@ -741,13 +774,27 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
                         await network_monitor.stop(timeout=1.0)
                     finally:
                         app.state.network_monitor = None
+                # The reclaim loop is stopped with the rest of admission, not
+                # later: a reclaim pass that fires while the engine is being torn
+                # down would log a spurious failure on every shutdown, and the
+                # loop owns nothing but a timer so nothing is lost by stopping it
+                # first. ``set_side_effect_recorder(None)`` is what makes the
+                # accessor honest again for any teardown-path caller.
+                reclaimer = getattr(app.state, "side_effect_reclaimer", None)
+                if reclaimer is not None:
+                    try:
+                        await reclaimer.stop(timeout=1.0)
+                    finally:
+                        app.state.side_effect_reclaimer = None
+                        app.state.side_effect_recorder = None
+                        set_side_effect_recorder(None)
 
             # Admission closes first, so no new recovery pass can launch a
             # continuation while the run manager is being drained.
             drain.register(
                 ShutdownPhase.ADMISSION_CLOSED,
                 close_admission,
-                description="stop the safe-recovery service, the parked-session registry, and the connectivity monitor",
+                description="stop the safe-recovery service, the parked-session registry, the connectivity monitor, and the side-effect reclaimer",
             )
             if run_manager is not None:
 

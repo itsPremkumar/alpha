@@ -33,6 +33,7 @@ from alpha.runtime.lane_scheduler import (
 )
 from alpha.runtime.runs.manager import ConflictError
 from alpha.runtime.runs.schemas import RunStatus
+from alpha.runtime.side_effects import SideEffectLevel, announce_effect
 from app.mcp_tasks.errors import PermanentNotificationError
 
 logger = logging.getLogger(__name__)
@@ -172,64 +173,105 @@ class McpTaskService:
         submitted_at = now or datetime.now(UTC)
         local_task_id = request.local_task_id or f"mcp-task-{uuid.uuid4().hex}"
         driver_request = replace(request, local_task_id=local_task_id)
-        submission = await driver.submit(driver_request)
-        driver_data = {**request.driver_data, **submission.driver_data}
-        task_reference = TaskReference(
-            local_task_id=local_task_id,
-            user_id=request.user_id,
+
+        # A durable task submit is an irreversible external effect: it starts
+        # remote work on somebody else's server, and the local row that tracks it
+        # is written *after* the remote call returns. A crash in that window
+        # leaves remote work running with nothing here that knows about it, which
+        # is exactly the gap `alpha.runtime.side_effects` exists to make visible.
+        #
+        # The bracket is deliberately the whole submit, not just the driver call,
+        # because the span that can lose the effect is the *pair*: a remote
+        # handle whose local row never landed.
+        #
+        # `tool_call_id` is the ledger's correlation key, so when the runtime did
+        # not supply one the deterministic `local_task_id` is used instead --
+        # still correlatable, and still stable across a retry of the same submit.
+        async with announce_effect(
+            tool_call_id=request.tool_call_id or f"mcp-task-submit:{local_task_id}",
+            tool_name=f"mcp_task_submit:{request.server_name}/{request.task_name}",
             thread_id=request.thread_id,
-            server_name=request.server_name,
-            remote_task_id=submission.remote_task_id,
-            driver_data=driver_data,
-        )
-        try:
-            if len(submission.remote_task_id) > MCP_TASK_REMOTE_ID_MAX_LENGTH:
-                raise McpTaskProtocolError(f"MCP task remote_task_id must not exceed {MCP_TASK_REMOTE_ID_MAX_LENGTH} characters")
-            snapshot = self._normalize_snapshot(submission.snapshot)
-            next_poll_at = self._next_poll_at(snapshot, now=submitted_at)
-            return await self._repository.create(
-                task_id=local_task_id,
+            run_id=request.run_id or "",
+            user_id=request.user_id,
+            arguments={"server_name": request.server_name, "task_name": request.task_name, "arguments": request.arguments},
+            level=SideEffectLevel.HIGH_RISK,
+        ) as effect:
+            submission = await driver.submit(driver_request)
+            driver_data = {**request.driver_data, **submission.driver_data}
+            task_reference = TaskReference(
+                local_task_id=local_task_id,
                 user_id=request.user_id,
                 thread_id=request.thread_id,
-                run_id=request.run_id,
-                tool_call_id=request.tool_call_id,
                 server_name=request.server_name,
-                driver_name=driver_name,
                 remote_task_id=submission.remote_task_id,
-                task_name=request.task_name,
-                status=snapshot.status.value,
-                result=snapshot.result,
-                result_preview=snapshot.result_preview,
-                result_truncated=snapshot.result_truncated,
-                result_artifact=snapshot.result_artifact,
-                error=snapshot.error,
-                input_required=snapshot.input_required,
-                next_poll_at=next_poll_at,
                 driver_data=driver_data,
             )
-        except DuplicateMcpRemoteTaskError:
-            # This handle already has a durable owner. Cancelling it as
-            # compensation would terminate the pre-existing tracked task.
-            raise
-        except asyncio.CancelledError:
-            # Cancellation can race with a successful database commit. If it
-            # did, the durable row will converge to cancelled on its next poll;
-            # compensating is safer than leaving a live remote task untracked.
-            await self._cancel_untracked_task(
-                driver=driver,
-                task_reference=task_reference,
-                driver_name=driver_name,
-                reason="caller cancellation during local persistence",
-            )
-            raise
-        except Exception:
-            await self._cancel_untracked_task(
-                driver=driver,
-                task_reference=task_reference,
-                driver_name=driver_name,
-                reason="local submission finalization failure",
-            )
-            raise
+            try:
+                if len(submission.remote_task_id) > MCP_TASK_REMOTE_ID_MAX_LENGTH:
+                    raise McpTaskProtocolError(f"MCP task remote_task_id must not exceed {MCP_TASK_REMOTE_ID_MAX_LENGTH} characters")
+                snapshot = self._normalize_snapshot(submission.snapshot)
+                next_poll_at = self._next_poll_at(snapshot, now=submitted_at)
+                created = await self._repository.create(
+                    task_id=local_task_id,
+                    user_id=request.user_id,
+                    thread_id=request.thread_id,
+                    run_id=request.run_id,
+                    tool_call_id=request.tool_call_id,
+                    server_name=request.server_name,
+                    driver_name=driver_name,
+                    remote_task_id=submission.remote_task_id,
+                    task_name=request.task_name,
+                    status=snapshot.status.value,
+                    result=snapshot.result,
+                    result_preview=snapshot.result_preview,
+                    result_truncated=snapshot.result_truncated,
+                    result_artifact=snapshot.result_artifact,
+                    error=snapshot.error,
+                    input_required=snapshot.input_required,
+                    next_poll_at=next_poll_at,
+                    driver_data=driver_data,
+                )
+            except DuplicateMcpRemoteTaskError:
+                # This handle already has a durable owner. Cancelling it as
+                # compensation would terminate the pre-existing tracked task.
+                # The remote work demonstrably exists and is tracked, so the
+                # effect settled -- settled *before* re-raising, because the
+                # bracket above would otherwise leave it unaccountable and it
+                # would surface as UNKNOWN to a human who does not need to look.
+                await effect.completed(result=submission.remote_task_id)
+                raise
+            except asyncio.CancelledError:
+                # Cancellation can race with a successful database commit. If it
+                # did, the durable row will converge to cancelled on its next poll;
+                # compensating is safer than leaving a live remote task untracked.
+                #
+                # Whether the compensation lands is not established here, so the
+                # effect is deliberately left unsettled: the bracket's exception
+                # path leaves it in flight, and the lease turns it into UNKNOWN
+                # rather than asserting an outcome nobody observed.
+                await self._cancel_untracked_task(
+                    driver=driver,
+                    task_reference=task_reference,
+                    driver_name=driver_name,
+                    reason="caller cancellation during local persistence",
+                )
+                raise
+            except Exception:
+                # Same reasoning as the cancellation path: the remote submit
+                # already returned a handle, so the effect *happened*; whether
+                # the compensation undid it is exactly what is unknown.
+                await self._cancel_untracked_task(
+                    driver=driver,
+                    task_reference=task_reference,
+                    driver_name=driver_name,
+                    reason="local submission finalization failure",
+                )
+                raise
+            # The durable row exists, so the remote work is tracked and the
+            # effect is fully accounted for. Settled explicitly rather than
+            # left to the bracket's normal exit so the intent is visible here.
+            await effect.completed(result=submission.remote_task_id)
+            return created
 
     async def _cancel_untracked_task(
         self,

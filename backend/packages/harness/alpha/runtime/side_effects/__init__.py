@@ -20,6 +20,10 @@ ledger that owns it.
 :mod:`.ledger`             ``SideEffectLedger`` and its reference
                            implementation, with lease-based crash detection and
                            the reclaimer loop.
+:mod:`.recorder`           ``SideEffectRecorder`` and ``announce_effect``: the
+                           fail-open bracket an effect site wraps its call in,
+                           plus the process-wide accessor the Gateway installs
+                           the durable ledger through.
 =========================  ===================================================
 
 The three rules that matter
@@ -66,6 +70,17 @@ from alpha.runtime.side_effects.ledger import (
     normalize_level,
     result_digest,
 )
+from alpha.runtime.side_effects.recorder import (
+    DEFAULT_SIDE_EFFECT_LEASE_SECONDS,
+    EffectHandle,
+    SideEffectRecorder,
+    SideEffectRecorderStats,
+    UnaccountedEffect,
+    announce_effect,
+    get_side_effect_recorder,
+    set_side_effect_recorder,
+    side_effect_recorder_stats,
+)
 from alpha.runtime.side_effects.statuses import (
     OPEN_SIDE_EFFECT_STATUSES,
     RECONCILING_SIDE_EFFECT_STATUSES,
@@ -84,11 +99,13 @@ from alpha.runtime.side_effects.statuses import (
 )
 
 __all__ = [
+    "DEFAULT_SIDE_EFFECT_LEASE_SECONDS",
     "OPEN_SIDE_EFFECT_STATUSES",
     "RECONCILING_SIDE_EFFECT_STATUSES",
     "SIDE_EFFECT_LEVELS",
     "SIDE_EFFECT_STATUS_TRANSITIONS",
     "TERMINAL_SIDE_EFFECT_STATUSES",
+    "EffectHandle",
     "IllegalSideEffectTransition",
     "InMemorySideEffectLedger",
     "ReconciliationResult",
@@ -97,12 +114,19 @@ __all__ = [
     "SideEffectLedger",
     "SideEffectLevel",
     "SideEffectReclaimer",
+    "SideEffectRecorder",
+    "SideEffectRecorderStats",
     "SideEffectStatus",
+    "UnaccountedEffect",
+    "announce_effect",
     "arguments_digest",
     "can_transition",
+    "get_side_effect_recorder",
     "new_tool_call_id",
     "normalize_level",
     "result_digest",
+    "set_side_effect_recorder",
+    "side_effect_recorder_stats",
     "status_for_verdict",
     "validate_transition",
     "verdict_is_settled",
