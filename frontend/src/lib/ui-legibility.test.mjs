@@ -691,16 +691,36 @@ test("no surface renders a dash with nothing saying what it means", () => {
   }
 });
 
-test("the run inspector's file-changes dash keeps its disclosure attached", () => {
+test("the run inspector's file-changes tile marks an unknown as a word, not a glyph", () => {
   // The specific site that made the rule above necessary. `GET` returns
   // `available: false` when a workspace comparison could not be made, which is
   // not a measurement of zero changes; the tile's job is to say so.
+  //
+  // This used to assert the value slot still held an em-dash. The dash is gone
+  // on purpose: the rule this whole file exists to enforce is that one bare
+  // glyph conflates a measured zero with an unknown, so the value slot now
+  // reads "unknown" in words and the tile carries a title and an aria-label
+  // naming the cause. A dash here would have re-introduced the exact defect
+  // this tile was fixed for.
+  //
+  // So the assertion follows the INTENT, not the old mechanism: the value is
+  // still marked absent, both unavailability disclosures stay attached, and the
+  // measured branch is still a real number rather than a word.
   const code = stripComments(read(DASH_SURFACES.runs));
   const branch = code.slice(code.indexOf("changeCount === null ?"));
   assert.ok(branch, "expected the unknown branch of the file-changes tile");
   const tile = branch.slice(0, branch.indexOf(") : ("));
-  assert.match(tile, /—/, "the unknown branch must still mark the value as absent");
-  assert.match(tile, /change comparison not available for this run/);
+  assert.match(
+    tile,
+    />unknown</,
+    "the unknown branch must name the value as unknown rather than render a bare glyph or a number",
+  );
+  assert.doesNotMatch(
+    tile,
+    /—/,
+    "a bare dash in the value slot conflates a measured zero with an unknown, which is the defect this tile was fixed for",
+  );
+  assert.match(tile, /comparison not available for this run/);
   assert.match(tile, /file changes not reported/);
   // The measured branch is a real number, not a dash.
   assert.match(code, /<div className="text-sm font-bold mt-1">\{changeCount\}<\/div>/);
