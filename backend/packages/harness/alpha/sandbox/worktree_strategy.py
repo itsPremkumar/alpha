@@ -59,6 +59,8 @@ __all__ = [
     "TaskSignals",
     "WorktreeMode",
     "WorktreeSelection",
+    "available_modes",
+    "resolve_integration_mode",
     "select_strategy",
     "upgrade_or_report",
 ]
@@ -424,6 +426,46 @@ def upgrade_or_report(
         survives_crash=selection.survives_crash,
         mergeable=selection.mergeable,
     )
+
+
+def available_modes(*, git_available: bool = True) -> set[WorktreeMode]:
+    """The modes this process can actually deliver right now.
+
+    The set is derived from capability rather than declared as a constant,
+    because a static list would keep advertising ``SANDBOX`` on a deployment
+    with no provider and ``INTEGRATION`` where git cannot create a worktree —
+    and ``upgrade_or_report`` would then report a capability that does not
+    exist. ``COPY`` is always available: it is pure ``shutil`` and needs
+    nothing from the environment, which is why it is the only honest fallback.
+    """
+    modes = {WorktreeMode.COPY}
+    if git_available:
+        # The four git-backed worktree modes all resolve through
+        # `WorktreeManager`, and `INTEGRATION` is provided by
+        # `alpha.sandbox.merge_simulation.simulate_merge`, which is built on
+        # that same manager's detached worktree support and is reachable as
+        # `WorktreeManager.simulate_merge`.
+        modes |= {
+            WorktreeMode.WORKTREE,
+            WorktreeMode.EPHEMERAL,
+            WorktreeMode.LONG_LIVED,
+            WorktreeMode.INTEGRATION,
+        }
+    return modes
+
+
+def resolve_integration_mode(selection: WorktreeSelection) -> WorktreeSelection:
+    """Confirm an ``INTEGRATION`` selection against what is actually available.
+
+    A caller that selected merge-verification isolation gets its capability
+    checked here rather than assuming the selection was satisfiable. Returning
+    the record instead of a bool keeps the reason attached, so a caller that
+    cannot proceed can say *why* rather than falling through to a direct merge
+    against the branch it was trying to protect.
+    """
+    if selection.mode is not WorktreeMode.INTEGRATION:
+        return selection
+    return upgrade_or_report(selection, available_modes())
 
 
 #: Branch names an implementation workspace may never be created on.

@@ -9,9 +9,14 @@ import time
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alpha.sandbox.env_policy import build_sandbox_env
+
+if TYPE_CHECKING:
+    # Type-only: `merge_simulation` is built on this class, so a runtime import
+    # here would be circular. The delegation below imports it lazily.
+    from alpha.sandbox.merge_simulation import MergeSimulation
 
 _WORKTREE_LOCK = threading.RLock()
 
@@ -72,6 +77,21 @@ class WorktreeManager:
         target = self.worktrees_dir / ("wt-" + hashlib.sha256(branch_name.encode()).hexdigest())
         if self.worktrees_dir.resolve() != self.worktrees_dir or target.resolve() != target or not target.resolve().is_relative_to(self.worktrees_dir):
             raise ValueError("Worktree path escapes managed directory")
+        return target
+
+    def _simulation_path(self, name: str) -> Path:
+        """Path for a detached simulation worktree, validated like any other.
+
+        Kept in the same managed directory as branch worktrees so the escape
+        check is identical; only the on-disk name differs, so a simulation
+        tree is never mistaken for an implementation workspace when the
+        directory is listed.
+        """
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", name) or ".." in name:
+            raise ValueError("Invalid simulation worktree name")
+        target = self.worktrees_dir / "sim" / ("sim-" + hashlib.sha256(name.encode()).hexdigest()[:16])
+        if not target.resolve().is_relative_to(self.worktrees_dir):
+            raise ValueError("Simulation worktree path escapes managed directory")
         return target
 
     def _run_git(self, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -145,6 +165,92 @@ class WorktreeManager:
             # An unreadable status is not evidence of a clean tree.
             return True
         return bool(status.strip())
+
+    # ── detached simulation worktrees ────────────────────────────────────────
+    #
+    # A merge simulation needs a tree checked out at a commit with no branch
+    # behind it, so that "merge candidate into base" can be attempted without
+    # either ref moving. `create_worktree` cannot express that — it always
+    # creates or reuses a branch — so these two methods exist separately rather
+    # than overloading it with a flag that would make the branch cases harder
+    # to read.
+
+    def create_detached_worktree(self, name: str, base_ref: str) -> Path:
+        """Create (or reuse) a detached worktree at ``base_ref``.
+
+        Detached is the point: the tree has no branch, so nothing in the
+        simulation can be pushed, and a stray commit made inside it belongs to
+        no ref. ``base_ref`` is resolved to a commit first so a moving branch
+        cannot change the base halfway through a simulation.
+        """
+        target = self._simulation_path(name)
+        with _WORKTREE_LOCK:
+            if not base_ref or base_ref.startswith("-"):
+                raise ValueError("Invalid simulation base reference")
+            # `--end-of-options` and the `^{commit}` peel keep a ref name from
+            # being read as an option or accepted when it is not a commit.
+            base = self._run_git(["rev-parse", "--verify", "--end-of-options", f"{base_ref}^{{commit}}"]).stdout.strip()
+            if target.exists():
+                recorded = [item for item in self.list_worktrees() if Path(item["path"]).resolve() == target]
+                if len(recorded) != 1:
+                    raise RuntimeError("Existing simulation path is not a registered worktree")
+                if recorded[0].get("head") != base:
+                    raise RuntimeError("Existing simulation worktree does not match the requested base")
+                return target
+            target.parent.mkdir(parents=True, exist_ok=True)
+            self._run_git(["worktree", "add", "--detach", "--", str(target), base])
+            if not target.is_dir():
+                raise RuntimeError("Git did not create the simulation worktree")
+            return target
+
+    def remove_detached_worktree(self, name: str) -> bool:
+        """Remove a simulation worktree. It holds no agent work by contract."""
+        target = self._simulation_path(name)
+        with _WORKTREE_LOCK:
+            if not target.exists():
+                return False
+            self._run_git(["worktree", "remove", "--force", "--", str(target)])
+            if target.exists():
+                raise RuntimeError("Git did not remove the simulation worktree")
+            return True
+
+    def simulate_merge(self, *, base_ref: str, head_ref: str, name: str) -> MergeSimulation:
+        """Judge whether ``head_ref`` can be joined into ``base_ref``.
+
+        A thin convenience so a caller holding a manager does not also have to
+        know which sibling module owns the simulation. The dependency is
+        deliberately local and one-way: ``merge_simulation`` is built on this
+        class, so importing it at module scope here would be circular, and
+        keeping the edge `worktrees -> merge_simulation` (rather than the
+        reverse) is what stops this low-level git primitive from growing a
+        dependency on the policy layer that sits above it.
+        """
+        from alpha.sandbox.merge_simulation import simulate_merge as _simulate
+
+        return _simulate(self, base_ref=base_ref, head_ref=head_ref, name=name)
+
+    def run_in_worktree(self, path: Path, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+        """Run a git command inside a specific worktree.
+
+        Exists because ``_run_git`` is rooted at ``repo_root``; a simulation has
+        to run its merge *inside the simulation tree* or it would merge into
+        the main worktree, which is the one thing this whole path exists to
+        avoid. ``check=False`` is required for merge simulation, whose conflicts
+        are a normal outcome that must be inspected rather than raised.
+        """
+        env = {key: value for key, value in build_sandbox_env().items() if not key.upper().startswith("GIT_")}
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        return subprocess.run(
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=check,
+            timeout=120,
+            env=env,
+        )
 
     def remove_worktree(
         self,

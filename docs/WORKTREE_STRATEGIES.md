@@ -6,11 +6,11 @@ because "give it a worktree" is a family of choices with very different cost and
 guarantee, and picking the wrong one is how a fleet of agents ends up fighting over
 one checkout.
 
-**Status:** the **vocabulary and selection are implemented** in
-`packages/harness/alpha/sandbox/worktree_strategy.py` (tests:
-`tests/test_worktree_strategy.py`). The modes that need machinery — the
-`INTEGRATION` simulation worktree and the `LONG_LIVED` aging policy — are still
-design. Verified against `main` = `ee0ef86`.
+**Status:** the **vocabulary, selection, and merge simulation are implemented**:
+`packages/harness/alpha/sandbox/worktree_strategy.py`,
+`sandbox/merge_simulation.py`, and detached-worktree support on
+`WorktreeManager`. The `LONG_LIVED` aging policy is still design. Verified
+against `main` = `ee0ef86`.
 
 ## 0. What is already code
 
@@ -33,6 +33,41 @@ real bug first:
 - **A degraded copy names the mode it replaced.** "A copy was used" is not
   actionable; the reason now reads "worktree was requested but is unavailable,
   so a copy snapshot was used instead. Cause: <verbatim>".
+
+## 0b. The `INTEGRATION` mode is now a real capability
+
+`alpha.sandbox.merge_simulation.simulate_merge` attempts a merge in a
+**detached throwaway worktree** and leaves the base ref untouched, reachable as
+`WorktreeManager.simulate_merge(...)`. Detached is the point: the tree has no
+branch, so nothing in a simulation can be pushed and a stray commit inside it
+belongs to no ref.
+
+Three outcomes are kept distinct, and the middle distinction matters most:
+
+| outcome | meaning |
+| --- | --- |
+| `CLEAN` | git applied the merge with no textual conflict |
+| `CONFLICTED` | git stopped with unmerged paths, named verbatim from `git diff --diff-filter=U` |
+| `FAILED` | the merge could not be attempted, or failed for a non-conflict reason |
+
+`FAILED` is not a flavour of `CONFLICTED`. An unknown ref, a missing object, or
+a non-zero exit with no unmerged paths has **no resolution to apply**; reporting
+it as a conflict sends an operator hunting for merge markers that were never
+written. The tests build real conflicting branches rather than stubbing git,
+because that distinction is one git makes.
+
+**A clean merge is explicitly not a safety verdict.** `disclosure()` says so in
+those words and a test asserts the sentence is present:
+
+> git applied the merge with no textual conflict. This says the trees could be
+> joined — NOT that the result is correct, tested, or safe to ship.
+
+That is why the simulation is a separate module from the release gate: the gate
+answers "should this ship?", this answers "can these two trees be joined, and
+if not, where?".
+
+The simulation worktree is removed on every path, including failures, and tests
+assert `main` neither moves nor ends up holding conflict markers afterwards.
 
 ---
 
@@ -192,9 +227,10 @@ vocabulary and `WorktreeManager`; do not parallel them.**
 | 1 | Mode vocabulary + `reason` enforcement | **done** |
 | 2 | Classification table as code, with a test per row | **done** |
 | 3 | Disclosure block (§4) + honesty tests | **done** |
-| 4 | Carry `mode`/`assurance`/`reason` onto the persisted `TaskRecord` | S |
-| 5 | `E integration` worktree + release-gate wiring (plan Phase 4) | M |
-| 6 | `F` aging policy with grace period | S |
+| 4 | `E integration` simulation worktree, three honest outcomes | **done** |
+| 5 | Carry `mode`/`assurance`/`reason` onto the persisted `TaskRecord` | S |
+| 6 | Feed simulation results into `evaluate_release_gate` (plan Phase 4) | M — **blocked on a decision** |
+| 7 | `F` aging policy with grace period | S |
 | — | `B sandbox` | **already exists** — reuse, don't rebuild |
 | — | `A`, `C`, `D` | **already exist** — label and select, don't rebuild |
 
