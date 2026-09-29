@@ -190,20 +190,54 @@ function EventRow(props: { event: TimelineEvent }) {
   return (
     <li className="rounded-lg bg-muted/30 px-2.5 py-1.5">
       <div className="flex items-center gap-2 flex-wrap text-[10px]">
-        <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
+        {/*
+          The severity badge names its own source. `runEventSeverity` is a
+          client-side classification over the event type — it is not a severity
+          the Gateway published, and an operator reading a red "error" badge
+          deserves to know which of the two it is looking at. The shared
+          `Badge` primitive takes no `title`, so the tooltip lives on a wrapper
+          rather than being silently dropped.
+        */}
+        <span
+          title={`severity "${event.severity}", classified by this client from the event type — not a severity the Gateway published`}
+        >
+          <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
+        </span>
         <span className="font-mono font-semibold">{event.eventType}</span>
-        <span className="font-mono text-muted-foreground">{event.category}</span>
-        {event.seq !== null && <span className="font-mono text-muted-foreground">seq {event.seq}</span>}
-        {event.taskId !== null && <span className="font-mono text-muted-foreground">task {event.taskId}</span>}
-        <span className="ml-auto font-mono text-muted-foreground" title={stamp(event.createdAt)}>
+        <span className="font-mono text-muted-foreground" title="the Gateway's own category for this event">
+          {event.category}
+        </span>
+        {event.seq !== null && (
+          <span className="font-mono text-muted-foreground" title="the thread-global sequence the store assigned">
+            seq {event.seq}
+          </span>
+        )}
+        {event.taskId !== null && (
+          <span className="font-mono text-muted-foreground" title="metadata.task_id — the delegated subagent this event belongs to">
+            task {event.taskId}
+          </span>
+        )}
+        <span
+          className="ml-auto font-mono text-muted-foreground"
+          title={event.createdAt === null ? "the Gateway reported no time for this event" : stamp(event.createdAt)}
+        >
           {shortTime(event.createdAt)}
         </span>
       </div>
       <details className="mt-1">
-        <summary className="text-[10px] text-muted-foreground cursor-pointer select-none">payload</summary>
+        <summary
+          className="text-[10px] text-muted-foreground cursor-pointer select-none"
+          title="Expand the raw payload and metadata exactly as the Gateway persisted them"
+        >
+          payload &amp; metadata
+        </summary>
         <div className="mt-1 space-y-1">
           <Payload value={event.content} label="content" maxChars={1800} />
-          {Object.keys(event.metadata).length > 0 && <Payload value={event.metadata} label="metadata" maxChars={1200} />}
+          {Object.keys(event.metadata).length > 0 ? (
+            <Payload value={event.metadata} label="metadata" maxChars={1200} />
+          ) : (
+            <p className="text-[11px] italic text-muted-foreground">This event carries no metadata.</p>
+          )}
         </div>
       </details>
     </li>
