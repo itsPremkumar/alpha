@@ -28,6 +28,20 @@ data:
             "~*^https" https;
         }
 
+        # Only mark frontend requests as connection upgrades when the browser
+        # actually requested one, and never force "Connection: upgrade" on an
+        # ordinary request: nginx then treats the upstream response as an
+        # invalid upgrade handshake. This map is what both docker/nginx configs
+        # use; it used to be missing here, so `location /` hardcoded
+        # "Connection: upgrade" and every non-WebSocket frontend request (HTML,
+        # JS, CSS, SSE) was proxied as a bogus upgrade. Keep the three surfaces
+        # identical — tests/test_deploy_surface_parity.py fails if the hardcoded
+        # form comes back.
+        map $http_upgrade $connection_upgrade {
+            default upgrade;
+            ''      '';
+        }
+
         # K8s Services resolve at config-parse time (no resolver directive needed).
         upstream gateway_upstream {
             server gateway:8001;
@@ -158,7 +172,10 @@ data:
 
             # Voice and Live Browser are long-lived WebSocket upgrades. They
             # must precede the generic thread/API locations so nginx forwards
-            # Upgrade and Connection instead of downgrading to plain HTTP.
+            # Upgrade and Connection instead of downgrading to plain HTTP. This
+            # used to read "Voice and Live Browser" while carrying only the
+            # voice location; the Live Browser location was appended after the
+            # peer-network block instead of beside its sibling.
             location = /api/multimodal/voice {
                 proxy_pass http://gateway_upstream;
                 proxy_http_version 1.1;
@@ -321,7 +338,7 @@ data:
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $forwarded_proto;
                 proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
+                proxy_set_header Connection $connection_upgrade;
                 proxy_cache_bypass $http_upgrade;
                 proxy_connect_timeout 600s;
                 proxy_send_timeout 600s;

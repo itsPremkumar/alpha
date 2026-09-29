@@ -171,7 +171,15 @@ services:
     volumes:
       - ../frontend/src:/app/frontend/src
       - ../frontend/public:/app/frontend/public
-      - ../frontend/next.config.js:/app/frontend/next.config.js:ro
+      # next.config.mjs, NOT next.config.js. The file was renamed to .mjs and
+      # this mount kept the old name, so it bound a *directory* at
+      # /app/frontend/next.config.js (Docker creates a directory when the host
+      # source does not exist) and hot-reloaded nothing: editing
+      # next.config.mjs on the host did not reach the dev container, so a
+      # rewrite or webpack change needed a container restart to take effect.
+      # The stale directory also shadowed nothing but left a confusing entry in
+      # the container tree next to the real config.
+      - ../frontend/next.config.mjs:/app/frontend/next.config.mjs:ro
       - ../logs:/app/logs
       # Mount pnpm store for caching
       - ${PNPM_STORE_PATH:-~/.local/share/pnpm/store}:/root/.local/share/pnpm/store

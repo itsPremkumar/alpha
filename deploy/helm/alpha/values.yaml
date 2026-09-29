@@ -249,7 +249,12 @@ ingress:
 # -- Alpha config.yaml content. Secrets MUST stay as $VAR references — never
 #    inline literal secret values here. The default enables provisioner sandbox.
 config: |
-  config_version: 54
+  # Must equal config.example.yaml's config_version. AppConfig._check_config_version
+  # compares the loaded config against the example and logs "your config.yaml is
+  # outdated" on every Gateway start when this lags, so a stale number here is a
+  # permanent warning in every pod log of every Helm install.
+  # tests/test_deploy_surface_parity.py fails when the two diverge.
+  config_version: 55
   log_level: info
 
   models: []
