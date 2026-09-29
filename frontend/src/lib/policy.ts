@@ -12,7 +12,8 @@ export interface PolicyRule {
   /** "allow" | "deny" | "approval" (label comes from the API, never hardcoded here). */
   auto: string;
   note: string;
-  created_at: number;
+  /** ISO 8601, or `null` when the Gateway did not report one. Never an epoch number. */
+  created_at: string | null;
   [key: string]: unknown;
 }
 
@@ -34,8 +35,30 @@ export interface ApprovalRequest {
   /** "pending" | "approved" | "rejected". */
   status: string;
   decided_by: string | null;
-  created_at: number;
+  /** ISO 8601, or `null` when the Gateway did not report one. Never an epoch number. */
+  created_at: string | null;
   [key: string]: unknown;
+}
+
+/**
+ * Normalise a policy/approval `created_at` to an ISO string, or `null`.
+ *
+ * The Gateway used to put a raw float epoch on this wire and now sends ISO
+ * 8601 (`alpha.utils.time.coerce_iso` is the repository-wide convention). Both
+ * shapes are accepted so a mixed-version deployment degrades to a correct date
+ * rather than to `1970` — but an absent or unrecognised value is `null`, never
+ * `0`. Coercing "not a number" to `0` is the exact defect this function exists
+ * to stop: `0` is a valid epoch, so it renders as 1 January 1970 and reads as a
+ * measurement the server never made.
+ */
+function toIsoOrNull(raw: unknown): string | null {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw > 1e11 ? raw : raw * 1000; // seconds vs milliseconds
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
 }
 
 function toPolicyRule(raw: Record<string, unknown>): PolicyRule {
@@ -47,7 +70,7 @@ function toPolicyRule(raw: Record<string, unknown>): PolicyRule {
     project_id: String(pick(raw, ["project_id"], "*")),
     auto: String(pick(raw, ["auto", "verdict"], "allow")),
     note: String(pick(raw, ["note"], "")),
-    created_at: typeof raw.created_at === "number" ? raw.created_at : 0,
+    created_at: toIsoOrNull(raw.created_at),
   };
 }
 
@@ -61,7 +84,7 @@ function toApproval(raw: Record<string, unknown>): ApprovalRequest {
     reason: String(pick(raw, ["reason"], "")),
     status: String(pick(raw, ["status"], "pending")),
     decided_by: typeof raw.decided_by === "string" ? raw.decided_by : null,
-    created_at: typeof raw.created_at === "number" ? raw.created_at : 0,
+    created_at: toIsoOrNull(raw.created_at),
   };
 }
 

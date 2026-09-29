@@ -79,7 +79,34 @@ test("listPolicies reads GET /api/policy/policies and maps the policies envelope
   // The engine's own verdict label is never rewritten in the client.
   assert.equal(rows[0].auto, "approval");
   assert.equal(rows[0].note, "shell needs eyes");
-  assert.equal(rows[0].created_at, 1700000000.5);
+  // The Gateway now sends ISO 8601 for `created_at` (`alpha.utils.time.coerce_iso`
+  // is the repo-wide convention); the float is what an older Gateway sent, and
+  // both normalise to one ISO string so a mixed-version deployment still renders
+  // a real date rather than 1970.
+  assert.equal(rows[0].created_at, "2023-11-14T22:13:20.500Z");
+});
+
+test("an absent created_at is null, never the epoch", async () => {
+  // `0` is a valid epoch, so coercing "not a number" to `0` renders
+  // 1 January 1970 and reads as a measurement the server never made. The
+  // frontend guide is explicit: map absent optional values to `null`.
+  const f = fixture(() =>
+    Response.json({
+      policies: [{ policy_id: "pol-1", action_pattern: "shell.*", actor: "*", auto: "allow" }],
+    }),
+  );
+  const rows = await f.policy.listPolicies();
+  assert.equal(rows[0].created_at, null);
+});
+
+test("an epoch-seconds value from an older Gateway still renders as a date", async () => {
+  const f = fixture(() =>
+    Response.json({
+      policies: [{ policy_id: "pol-1", action_pattern: "shell.*", actor: "*", auto: "allow", created_at: 1700000000 }],
+    }),
+  );
+  const rows = await f.policy.listPolicies();
+  assert.equal(rows[0].created_at, "2023-11-14T22:13:20.000Z");
 });
 
 test("evaluateAction POSTs /api/policy/evaluate with the documented body and keeps the verdict verbatim", async () => {

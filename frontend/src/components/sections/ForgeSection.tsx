@@ -813,6 +813,18 @@ function fmtEpochSafe(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+/**
+ * For a `created_at`. Deliberately NOT `fmtEpochSafe`: that renders an absent
+ * value as "never", which is right for a last-checked time and wrong here — a
+ * policy that exists was certainly created, so an absent timestamp means the
+ * Gateway did not report *when*, not that it never happened.
+ */
+function fmtCreatedAt(iso: string | null | undefined): string {
+  if (!iso) return "time not reported";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
+}
+
 /* ───────────────────────────────── Policy ───────────────────────────────── */
 
 function PolicyPanel(props: { refreshKey: number; onNotice: (m: string) => void }) {
@@ -975,7 +987,7 @@ function PolicyPanel(props: { refreshKey: number; onNotice: (m: string) => void 
                     </Btn>
                   </div>
                   {p.note && <p className="text-muted-foreground">{p.note}</p>}
-                  <p className="text-[10px] text-muted-foreground">added {fmtEpoch(p.created_at)}</p>
+                  <p className="text-[10px] text-muted-foreground">added {fmtCreatedAt(p.created_at)}</p>
                 </div>
               ))}
             </div>
@@ -1020,7 +1032,7 @@ function PolicyPanel(props: { refreshKey: number; onNotice: (m: string) => void 
                 </span>
                 <BasisChips record={r} />
                 {r.reason && <span className="w-full text-muted-foreground">{r.reason}</span>}
-                <span className="text-[10px] text-muted-foreground">{fmtEpoch(r.created_at)}</span>
+                <span className="text-[10px] text-muted-foreground">{fmtCreatedAt(r.created_at)}</span>
                 {r.decided_by && <span className="text-[10px] text-muted-foreground">decided by {r.decided_by}</span>}
                 {r.status === "pending" && (
                   <span className="ml-auto flex gap-1.5">
