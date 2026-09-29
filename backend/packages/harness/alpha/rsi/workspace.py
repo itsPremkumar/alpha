@@ -59,6 +59,7 @@ from alpha.config.runtime_paths import project_root, runtime_home
 from alpha.evolution.identity import atomic_write_json
 from alpha.safety.guard import get_safety_guard
 from alpha.safety.self_repo_guard import get_self_repo_guard
+from alpha.sandbox.worktree_strategy import TaskSignals, WorktreeMode, select_strategy
 from alpha.sandbox.worktrees import WorktreeManager
 
 logger = logging.getLogger(__name__)
@@ -195,11 +196,25 @@ class RsiWorkspaceManager:
     # ── creation ────────────────────────────────────────────────────────────
 
     def create(self, candidate_id: str, base_ref: str = "HEAD") -> CandidateWorkspace:
-        """Create a ``rsi/<candidate_id>`` worktree; copy fallback only when git is unavailable."""
+        """Create a ``rsi/<candidate_id>`` worktree; copy fallback only when git is unavailable.
+
+        The choice between a worktree and a degraded copy is delegated to
+        ``alpha.sandbox.worktree_strategy.select_strategy`` rather than
+        re-derived here, so an RSI candidate and any future task-driven caller
+        resolve their isolation through one rule. A candidate is code-touching
+        and mergeable, which is the selector's default; the copy path is
+        reached only through the selector's degraded branch, which carries the
+        verbatim reason.
+        """
         branch = _validate_branch_name(f"rsi/{_validate_candidate_id(candidate_id)}")
         unavailable = self._git_unavailable_reason()
-        if unavailable:
-            return self.create_copy(candidate_id, reason=unavailable)
+        selection = select_strategy(
+            TaskSignals(produces_mergeable_diff=True),
+            git_available=not unavailable,
+            git_error=unavailable,
+        )
+        if selection.mode is WorktreeMode.COPY:
+            return self.create_copy(candidate_id, reason=selection.reason)
         try:
             wt = self._wt.create_worktree(branch, base_ref=base_ref)
         except OSError as exc:

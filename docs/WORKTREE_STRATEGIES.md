@@ -6,7 +6,33 @@ because "give it a worktree" is a family of choices with very different cost and
 guarantee, and picking the wrong one is how a fleet of agents ends up fighting over
 one checkout.
 
-**Status:** design. Nothing here is built. Verified against `main` = `866460a`.
+**Status:** the **vocabulary and selection are implemented** in
+`packages/harness/alpha/sandbox/worktree_strategy.py` (tests:
+`tests/test_worktree_strategy.py`). The modes that need machinery — the
+`INTEGRATION` simulation worktree and the `LONG_LIVED` aging policy — are still
+design. Verified against `main` = `ee0ef86`.
+
+## 0. What is already code
+
+`WorktreeMode` / `Assurance` / `TaskSignals` / `WorktreeSelection` exist, with
+`select_strategy()` implementing the §3 table and `disclosure()` implementing
+the §4 text. `alpha.rsi.workspace.create()` now routes its worktree-vs-copy
+choice through `select_strategy` instead of re-deriving it, so an RSI candidate
+and any future task-driven caller resolve isolation through one rule.
+
+Three properties are enforced in code rather than documented, because each was a
+real bug first:
+
+- **A selection cannot be created without a reason.** `WorktreeSelection.__post_init__`
+  rejects a blank one; an unexplained mode is an arbitrary mode.
+- **The git-availability check covers every git-backed outcome, not just the
+  default.** It was originally applied only to the default branch, so a task
+  declaring `produces_mergeable_diff` still received `WORKTREE` on a deployment
+  that could not create one — a record promising an isolation the caller never
+  got. `_guard_git` now applies it uniformly, and `COPY`/`SANDBOX` pass through.
+- **A degraded copy names the mode it replaced.** "A copy was used" is not
+  actionable; the reason now reads "worktree was requested but is unavailable,
+  so a copy snapshot was used instead. Cause: <verbatim>".
 
 ---
 
@@ -163,11 +189,12 @@ vocabulary and `WorktreeManager`; do not parallel them.**
 
 | Step | What | Effort |
 |---|---|---|
-| 1 | Name the modes in `TaskRecord` (`mode`, `assurance`, `mode_reason`) | S |
-| 2 | Classification table above, as code with tests per row | M |
-| 3 | Model-facing disclosure block (§4) + honesty tests | S |
-| 4 | `E integration` worktree + release-gate wiring (plan Phase 4) | M |
-| 5 | `F` aging policy with grace period | S |
+| 1 | Mode vocabulary + `reason` enforcement | **done** |
+| 2 | Classification table as code, with a test per row | **done** |
+| 3 | Disclosure block (§4) + honesty tests | **done** |
+| 4 | Carry `mode`/`assurance`/`reason` onto the persisted `TaskRecord` | S |
+| 5 | `E integration` worktree + release-gate wiring (plan Phase 4) | M |
+| 6 | `F` aging policy with grace period | S |
 | — | `B sandbox` | **already exists** — reuse, don't rebuild |
 | — | `A`, `C`, `D` | **already exist** — label and select, don't rebuild |
 
