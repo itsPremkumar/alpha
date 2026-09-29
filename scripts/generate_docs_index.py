@@ -173,6 +173,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "What Alpha guarantees with one worker, with N workers, and with none of them.",
     ),
+    "CHAT_SHELL_DESIGN.md": DocumentSpec(
+        "architecture",
+        "Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.",
+    ),
     "ALPHA_COLLABORATION_AUDIT.md": DocumentSpec(
         "plans",
         "Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.",

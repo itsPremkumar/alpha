@@ -8,6 +8,7 @@
 ## Architecture
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and major runtime components.
+- [CHAT_SHELL_DESIGN.md](CHAT_SHELL_DESIGN.md) — Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.
 - [DYNAMIC_WORKFLOWS.md](DYNAMIC_WORKFLOWS.md) — Typed, evidence-gated dynamic workflow runtime.
 - [EXTENSIONS.md](EXTENSIONS.md) — Extension packages, hooks, services, and routers.
 - [LION_COMPANION.md](LION_COMPANION.md) — Local-first lion companion behavior and presentation contract.
