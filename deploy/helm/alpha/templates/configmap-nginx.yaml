@@ -175,6 +175,58 @@ data:
                 proxy_read_timeout 600s;
             }
 
+            # Alpha-to-Alpha Agent Cards and WebSocket transport must reach the
+            # Gateway rather than the frontend / generic /api/ proxy. These three
+            # locations exist in docker/nginx/nginx.conf and nginx.local.conf but
+            # were MISSING here, so a Helm install silently lost the whole
+            # peer-network surface: /.well-known/agent-card.json fell through to
+            # `location /` (served by Next.js, so an installing peer could not
+            # discover this node), and /api/peer-network/ws fell into the generic
+            # /api/ block, which does not forward Upgrade/Connection, so the
+            # WebSocket was downgraded to plain HTTP. Alpha-to-Alpha was dead in
+            # that deployment mode with a green build.
+            #
+            # The guard was asymmetric: tests/test_nginx_peer_network.py
+            # parametrised over the two docker files only, while
+            # tests/test_nginx_voice_websocket.py DID include this configmap.
+            # The config is now aligned and the peer test covers all three.
+            location = /.well-known/agent-card.json {
+                proxy_pass http://gateway_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            }
+
+            location = /.well-known/agent.json {
+                proxy_pass http://gateway_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            }
+
+            # MUST precede the generic /api/ location so nginx forwards Upgrade
+            # and Connection instead of downgrading the socket.
+            location = /api/peer-network/ws {
+                proxy_pass http://gateway_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $forwarded_proto;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_cache_bypass $http_upgrade;
+                proxy_buffering off;
+                proxy_cache off;
+                proxy_connect_timeout 600s;
+                proxy_send_timeout 600s;
+                proxy_read_timeout 600s;
+            }
+
             location ~ ^/api/threads/[^/]+/browser/stream {
                 proxy_pass http://gateway_upstream;
                 proxy_http_version 1.1;

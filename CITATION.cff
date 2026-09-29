@@ -6,7 +6,7 @@ abstract: >-
   Alpha is a self-hosted, local-first platform where LLM agents plan, execute, and
   verify long-horizon tasks against real tools, files, and the web. It combines an
   asynchronous LangGraph agent runtime behind a FastAPI Gateway, a Next.js 15 web
-  workspace, and an Electron Windows desktop application, with 130 native tools, 42
+  workspace, and an Electron Windows desktop application, with 134 native tools, 42
   middleware layers, 8 background supervisor loops, 24 public skills, Model Context
   Protocol support, sandboxed code execution across three tiers, a layered memory
   plane, and nine messaging channels behind a single Nginx entry point.

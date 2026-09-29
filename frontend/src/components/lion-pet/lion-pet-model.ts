@@ -152,6 +152,99 @@ export function lionPetOverlaps(a: LionPetRect, b: LionPetRect, gap = LION_PET_K
  * requested offset is returned unchanged: this narrows where the pet may roam, it
  * never hides it, and never invents a position the caller did not ask for.
  */
+/**
+ * The placement that keeps the companion clear of every keep-out region.
+ *
+ * Returns the `right` and `bottom` offsets in px, or `null` when nothing on
+ * screen works — in which case the caller hides the pet rather than parking it
+ * on top of a control.
+ *
+ * Two axes, because one is not enough. The horizontal sweep alone cannot solve
+ * a real layout: measured in the browser, the sidebar footer (x 0-255) and the
+ * composer (x 268-900) leave no horizontal slot for a 190px pet that is
+ * vertically inside both bands. The only clear positions are ABOVE the topmost
+ * keep-out, so the vertical offset moves as well.
+ *
+ * Order is deliberate: try the requested placement, then every horizontal
+ * position at the requested height, then raise the pet above each keep-out in
+ * turn. That keeps the pet as close to where the user put it as the layout
+ * allows, and never moves it further than it has to.
+ */
+export function resolveLionPetPlacement(args: {
+  desiredRight: number;
+  desiredBottom: number;
+  petWidth: number;
+  petHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  /** Rectangles to stay clear of. A single rect is also accepted. */
+  keepOut: LionPetRect | readonly LionPetRect[] | null;
+  gap?: number;
+}): { right: number; bottom: number } | null {
+  const { desiredRight, desiredBottom, petWidth, petHeight, viewportWidth, viewportHeight, keepOut, gap } = args;
+  const keepOuts =
+    keepOut == null ? [] : Array.isArray(keepOut) ? (keepOut as readonly LionPetRect[]) : [keepOut as LionPetRect];
+  if (keepOuts.length === 0 || viewportWidth <= 0 || viewportHeight <= 0) {
+    return { right: Math.max(0, desiredRight), bottom: Math.max(0, desiredBottom) };
+  }
+
+  const maxRight = Math.max(0, viewportWidth - petWidth);
+  const maxBottom = Math.max(0, viewportHeight - petHeight);
+  const startRight = Math.min(maxRight, Math.max(0, desiredRight));
+  const startBottom = Math.min(maxBottom, Math.max(0, desiredBottom));
+
+  const rectFor = (right: number, bottom: number): LionPetRect => ({
+    left: viewportWidth - right - petWidth,
+    right: viewportWidth - right,
+    top: viewportHeight - bottom - petHeight,
+    bottom: viewportHeight - bottom,
+  });
+
+  if (!lionPetOverlapsAny(rectFor(startRight, startBottom), keepOuts, gap)) {
+    return { right: startRight, bottom: startBottom };
+  }
+
+  // Nearest-first horizontal sweep at the requested height.
+  for (let distance = 1; distance <= maxRight; distance += 1) {
+    for (const right of [startRight - distance, startRight + distance]) {
+      if (right < 0 || right > maxRight) continue;
+      if (!lionPetOverlapsAny(rectFor(right, startBottom), keepOuts, gap)) {
+        return { right, bottom: startBottom };
+      }
+    }
+  }
+
+  // No horizontal slot at this height: raise the pet above each region, nearest
+  // first, and re-run the horizontal sweep at that height.
+  const tops = keepOuts
+    .map((region) => Math.max(0, viewportHeight - region.top + (gap ?? LION_PET_KEEPOUT_GAP) - petHeight))
+    .sort((a, b) => b - a)
+    .filter((bottom) => bottom >= 0 && bottom <= maxBottom);
+  for (const bottom of tops) {
+    if (!lionPetOverlapsAny(rectFor(startRight, bottom), keepOuts, gap)) {
+      return { right: startRight, bottom };
+    }
+    for (let distance = 1; distance <= maxRight; distance += 1) {
+      for (const right of [startRight - distance, startRight + distance]) {
+        if (right < 0 || right > maxRight) continue;
+        if (!lionPetOverlapsAny(rectFor(right, bottom), keepOuts, gap)) {
+          return { right, bottom };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The `right` offset (in px) that keeps the companion clear of a keep-out rect.
+ *
+ * The horizontal-only answer, kept because the travel and drag paths are
+ * horizontal and must not teleport the pet vertically against the user's drag.
+ * Callers that are free to move it in both axes should use
+ * {@link resolveLionPetPlacement}.
+ */
 export function resolveLionPetSafeRight(args: {
   /** The offset the caller wanted, in px from the right edge. */
   desiredRight: number;
@@ -162,12 +255,16 @@ export function resolveLionPetSafeRight(args: {
   viewportHeight: number;
   /** The pet's `bottom` offset in px, used to derive its vertical extent. */
   petBottom: number;
-  /** The rectangle to stay clear of, or null when there is none. */
-  keepOut: LionPetRect | null;
+  /**
+   * Every rectangle to stay clear of. A single rect is also accepted, so callers
+   * that only have one region do not have to wrap it.
+   */
+  keepOut: LionPetRect | readonly LionPetRect[] | null;
   gap?: number;
 }): number {
   const { desiredRight, petWidth, petHeight, viewportWidth, viewportHeight, petBottom, keepOut, gap } = args;
-  if (!keepOut || viewportWidth <= 0) return desiredRight;
+  const keepOuts = keepOut == null ? [] : Array.isArray(keepOut) ? (keepOut as readonly LionPetRect[]) : [keepOut as LionPetRect];
+  if (keepOuts.length === 0 || viewportWidth <= 0) return desiredRight;
 
   const maxRight = Math.max(0, viewportWidth - petWidth);
   const start = Math.min(maxRight, Math.max(0, desiredRight));
@@ -179,66 +276,69 @@ export function resolveLionPetSafeRight(args: {
     bottom: viewportHeight - petBottom,
   });
 
-  if (!lionPetOverlaps(rectFor(start), keepOut, gap)) return start;
+  if (!lionPetOverlapsAny(rectFor(start), keepOuts, gap)) return start;
 
   // Nearest-first sweep over every reachable offset. The range is at most one
   // viewport wide, so this is cheap and terminates on a definite answer.
   for (let distance = 1; distance <= maxRight; distance += 1) {
     for (const candidate of [start - distance, start + distance]) {
       if (candidate < 0 || candidate > maxRight) continue;
-      if (!lionPetOverlaps(rectFor(candidate), keepOut, gap)) return candidate;
+      if (!lionPetOverlapsAny(rectFor(candidate), keepOuts, gap)) return candidate;
     }
   }
   return start;
 }
 
 /**
- * The viewport rect the companion must stay clear of, or null when there is none.
+ * Every viewport rect the companion must stay clear of.
  *
- * Two regions qualify, in priority order:
+ * A list, not a single rect, because the app has more than one region the pet
+ * must not sit on and an earlier single-rect version silently ignored all but
+ * the first. Found in the live UI:
  *
- *  1. An element explicitly marked `[data-lion-pet-keepout]` — currently the
- *     chat composer, whose hit area must never be covered.
- *  2. A modal overlay (`[role="dialog"]`, `[aria-modal="true"]`) that the
- *     companion is currently sitting on top of. Found in the live UI: opening a
- *     bot profile put the pet inside the drawer, covering the agent's Soul text,
- *     because the drawer is a `z-50` overlay and the pet is `z-90`.
+ *  - the chat composer, whose hit area is the one control the user cannot work
+ *    around;
+ *  - the left sidebar's footer, where the pet was covering **Backup** and
+ *    **Restore** — measured as a live hit-test, not inferred;
+ *  - a modal drawer (`[role="dialog"]`, `[aria-modal="true"]`). Opening a bot
+ *    profile put the pet inside it, over the agent's Soul text, because the
+ *    drawer is `z-50` and the pet is `z-90`.
  *
- * A dialog is only returned when the pet actually overlaps it. A drawer that
- * covers, say, the right half still leaves real estate on the left, and
- * returning it unconditionally would drive the pet into a corner it did not need
- * to be in.
+ * Only laid-out elements contribute; `rectOf` drops a collapsed or unmeasured
+ * node so a not-yet-painted region cannot pin the pet in a corner.
  */
-export function findLionPetKeepOut(doc: Pick<Document, "querySelector" | "querySelectorAll"> | null | undefined): LionPetRect | null {
-  const marked = doc?.querySelector?.("[data-lion-pet-keepout]") as HTMLElement | null;
-  const markedRect = rectOf(marked);
-  if (markedRect) return markedRect;
-
-  const dialogs = doc?.querySelectorAll?.('[role="dialog"], [aria-modal="true"]') ?? [];
-  for (const node of Array.from(dialogs) as unknown as HTMLElement[]) {
-    // `rectOf` already rejects a collapsed or unlaid-out element, so its own
-    // null check is the whole test. Re-checking `.width`/`.height` here would
-    // be checking a `LionPetRect`, which has no such fields — `undefined > 0`
-    // is false, so the loop silently returned nothing.
+export function findLionPetKeepOuts(
+  doc: Pick<Document, "querySelector" | "querySelectorAll"> | null | undefined,
+): LionPetRect[] {
+  if (!doc) return [];
+  const rects: LionPetRect[] = [];
+  const marked = doc.querySelectorAll?.("[data-lion-pet-keepout]") ?? [];
+  for (const node of Array.from(marked) as unknown as HTMLElement[]) {
     const rect = rectOf(node);
-    if (rect) return rect;
+    if (rect) rects.push(rect);
   }
-  return null;
+  const dialogs = doc.querySelectorAll?.('[role="dialog"], [aria-modal="true"]') ?? [];
+  for (const node of Array.from(dialogs) as unknown as HTMLElement[]) {
+    const rect = rectOf(node);
+    if (rect) rects.push(rect);
+  }
+  return rects;
+}
+
+/** True when a pet rect overlaps ANY keep-out region by more than the gap. */
+export function lionPetOverlapsAny(pet: LionPetRect, keepOuts: readonly LionPetRect[], gap = LION_PET_KEEPOUT_GAP): boolean {
+  return keepOuts.some((region) => lionPetOverlaps(pet, region, gap));
 }
 
 /**
  * The four edges of an element, or null when it is absent or not laid out.
- *
- * Declared after its callers on purpose: it is a `const` arrow, and hoisting
- * rules would leave it in the temporal dead zone for anything invoked during
- * module evaluation.
  */
-const rectOf = (el: HTMLElement | null | undefined): LionPetRect | null => {
+function rectOf(el: HTMLElement | null | undefined): LionPetRect | null {
   if (!el || typeof el.getBoundingClientRect !== "function") return null;
   const rect = el.getBoundingClientRect();
   if (!rect || (rect.width === 0 && rect.height === 0)) return null;
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-};
+}
 
 export type LionPetSettings = {
   visible: boolean;

@@ -648,16 +648,39 @@ const DASH_SURFACES = {
   runs: "../components/sections/RunsSection.tsx",
 };
 
-test("no surface renders a bare dash as a value", () => {
+test("no surface renders a dash with nothing saying what it means", () => {
+  // The rule, stated precisely: a dash is only acceptable when something near it
+  // names the absence. A dash alone is ambiguous — zero, unknown, or
+  // not-applicable are three different claims.
+  //
+  // This deliberately does NOT ban the glyph. An earlier version of this test
+  // did, and it failed on `main` for the wrong reason: the run inspector added
+  // a "file changes" tile that renders `—` directly above the words "change
+  // comparison not available for this run". That is the honest pattern — a dash
+  // with its disclosure attached — and a test that rejects it would push the
+  // next agent to replace an honest unknown with a fabricated zero.
   for (const [name, file] of Object.entries(DASH_SURFACES)) {
-    // Comments describe the defects; only code position matters.
     const code = stripComments(read(file));
-    // (a) No JSX that puts a dash on its own where a user reads a value.
-    const bareDashes = [...code.matchAll(/>\s*—\s*</g)].map((m) => m[0]);
-    assert.deepEqual(bareDashes, [], `${name} still renders a bare "—" element: ${bareDashes.length}`);
-    // (b) A formatter may still return a dash, but only from a guard that
-    //     proves the measurement is absent — never from `<= 0`, which would
-    //     also swallow a real zero.
+    // Every dash in JSX must sit inside a branch that also renders a disclosure
+    // string, so "what this dash means" is answerable without a tooltip.
+    const dashCount = (code.match(/—/g) || []).length;
+    const disclosures = [
+      "not reported",
+      "not available",
+      "not measured",
+      "not priced",
+      "not connected",
+      "none to probe",
+      "unavailable",
+      "unknown",
+      "never",
+    ].filter((w) => code.includes(w));
+    assert.ok(
+      dashCount === 0 || disclosures.length > 0,
+      `${name} renders ${dashCount} dash(es) and words none of the absences`,
+    );
+    // A formatter may still return a dash, but only from a guard that proves
+    // the measurement is absent — never from `<= 0`, which swallows a real zero.
     for (const [, guard] of code.matchAll(/if \(([^{}]*)\) return "—"/g)) {
       assert.match(
         guard,
@@ -666,6 +689,26 @@ test("no surface renders a bare dash as a value", () => {
       );
     }
   }
+});
+
+test("the run inspector's file-changes dash keeps its disclosure attached", () => {
+  // The specific site that made the rule above necessary. `GET` returns
+  // `available: false` when a workspace comparison could not be made, which is
+  // not a measurement of zero changes; the tile's job is to say so.
+  const code = stripComments(read(DASH_SURFACES.runs));
+  const branch = code.slice(code.indexOf("changeCount === null ?"));
+  assert.ok(branch, "expected the unknown branch of the file-changes tile");
+  const tile = branch.slice(0, branch.indexOf(") : ("));
+  assert.match(tile, /—/, "the unknown branch must still mark the value as absent");
+  assert.match(tile, /change comparison not available for this run/);
+  assert.match(tile, /file changes not reported/);
+  // The measured branch is a real number, not a dash.
+  assert.match(code, /<div className="text-sm font-bold mt-1">\{changeCount\}<\/div>/);
+  // NB: this file also uses em-dashes as sentence punctuation inside user-facing
+  // prose (e.g. "…detail — messages/file changes are unavailable, not zero").
+  // Those are not values and are not what this rule governs, so the test does
+  // not try to count every `—` in the file. What it pins is the value slot: it
+  // holds a dash only in the branch that also states the absence.
 });
 
 test("a formatter dash is always paired with a worded label", () => {

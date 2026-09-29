@@ -3,7 +3,7 @@
 **Alpha** is an open-source autonomous multi-agent AI operating system: a LangGraph
 agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
 Electron Windows desktop app. It executes long-horizon work — deep research, planning,
-multi-agent delegation, sandboxed code, persistent memory — with 130 native tools,
+multi-agent delegation, sandboxed code, persistent memory — with 134 native tools,
 MCP extensions, and 24 public skills, behind a single Nginx entry point, with no
 proprietary backend.
 
@@ -37,7 +37,7 @@ For machine-readable context, see [`/llms.txt`](llms.txt) (this directory),
 ## Core architecture and strategy
 
 - **[Architecture](ARCHITECTURE.md)** — the runtime planes, the middleware chain,
-  sandbox tiers, and the 99 harness engine packages under
+  sandbox tiers, and the 102 harness engine packages under
   `backend/packages/harness/alpha/`.
 - **[Deep research](DEEP_RESEARCH.md)** — the five-pass search pipeline, bounded
   knowledge-gap filling, adversarial source juxtaposition, and the explicit citation
@@ -65,7 +65,7 @@ For machine-readable context, see [`/llms.txt`](llms.txt) (this directory),
 
 ## API and integration
 
-- **[API reference](API_REFERENCE.md)** — all 60 Gateway routers, authentication,
+- **[API reference](API_REFERENCE.md)** — all 61 Gateway routers, authentication,
   and SSE event streaming.
 - **[API overview](API.md)** — entry points, base URLs, routing, and versioning.
 - **[Extensions & MCP](EXTENSIONS.md)** — MCP over stdio, HTTP, and SSE, plus the

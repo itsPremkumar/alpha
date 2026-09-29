@@ -151,7 +151,7 @@ class _ModelPricing(NamedTuple):
 
 
 def _build_pricing_map() -> dict[str, _ModelPricing]:
-    """Collect per-model prices from ``models[*].pricing`` in config.yaml.
+    """Collect per-model prices from ``models[*].pricing``, then ``model_pricing:``.
 
     ``ModelConfig`` allows extra fields, so operators can annotate each model
     with e.g. ``pricing: {currency: CNY, input_per_million: 8,
@@ -159,9 +159,14 @@ def _build_pricing_map() -> dict[str, _ModelPricing]:
     schema change. Entries are keyed by both the config ``name`` and the
     provider ``model`` id (plus lowercase variants), because
     ``token_usage_by_model`` buckets carry the provider-reported model name.
+
+    ``model_pricing:`` is consulted afterwards as the documented fallback for a
+    model that declares no ``pricing``. It is applied with ``setdefault`` so a
+    per-model entry always wins, which is what both schema descriptions promise.
     """
     try:
-        models = get_app_config().models
+        config = get_app_config()
+        models = config.models
     except Exception:  # pragma: no cover - defensive: cost display must not break the console
         logger.warning("console: failed to load model pricing from config", exc_info=True)
         return {}
@@ -201,6 +206,33 @@ def _build_pricing_map() -> dict[str, _ModelPricing]:
             if key:
                 pricing.setdefault(key, entry)
                 pricing.setdefault(key.lower(), entry)
+
+    # `model_pricing:` is the documented FALLBACK for a model that omits
+    # `models[].pricing`. It shipped in the template with eight entries and was
+    # read by nobody: this function only ever consulted `models[*].pricing`, so an
+    # operator who configured the documented key got `total_cost: null` from every
+    # console route with no error and no warning. A shipped key that silently does
+    # nothing is worse than no key, because it looks authoritative.
+    #
+    # `setdefault`, so `models[].pricing` stays authoritative exactly as the
+    # schema claims. `ModelPriceEntry` is `{input, output}` per 1M with no
+    # currency, so it adopts the currency already established by a per-model
+    # entry, and USD when there is none.
+    fallback_currency = pricing_currency or "USD"
+    for model_name, table in (getattr(config, "model_pricing", None) or {}).items():
+        if not isinstance(model_name, str):
+            continue
+        input_price = float(getattr(table, "input", 0) or 0)
+        output_price = float(getattr(table, "output", 0) or 0)
+        if input_price <= 0 and output_price <= 0:
+            continue
+        # No cache-hit price in this table, so a hit bills at the miss price
+        # rather than being treated as free.
+        entry = _ModelPricing(input_price, output_price, fallback_currency, None)
+        if model_name not in pricing:
+            pricing[model_name] = entry
+        if model_name.lower() not in pricing:
+            pricing[model_name.lower()] = entry
     return pricing
 
 

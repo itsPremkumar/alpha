@@ -26,6 +26,16 @@ export function ScheduledSection(props: { bots: Array<{ name: string; display_na
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [preview, setPreview] = useState<string[]>([]);
+  /**
+   * The create request is a durable POST that inserts a schedule row, so a
+   * double-click used to insert TWO schedules — and both would then run the
+   * prompt on their own timer. `saving` is the in-flight lock; it is checked
+   * synchronously at the top of the handler and the button is disabled from
+   * the same state, so a second click cannot pass the guard.
+   */
+  const [saving, setSaving] = useState(false);
+  /** Task id currently being mutated, so one row's buttons disable alone. */
+  const [actingOn, setActingOn] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -64,11 +74,16 @@ export function ScheduledSection(props: { bots: Array<{ name: string; display_na
     }
   };
 
+  // A scheduled task is a durable record AND an autonomous future action: every
+  // row also owns a recurring agent run. The lock is keyed by id so one row's
+  // request never freezes the rest of the list.
   const onCreate = async () => {
+    if (saving) return;
     if (!draft.title.trim() || !draft.prompt.trim()) {
       setError("Give the task a title and tell the agent what to do.");
       return;
     }
+    setSaving(true);
     try {
       await createScheduledTask({
         title: draft.title.trim(),
@@ -85,16 +100,25 @@ export function ScheduledSection(props: { bots: Array<{ name: string; display_na
       await load();
     } catch (e) {
       setError(errMsg(e));
+    } finally {
+      setSaving(false);
     }
   };
 
-  const act = async (fn: () => Promise<void>, ok: string) => {
+  // `triggerTask` starts a real agent run and `deleteTask` removes a record, so
+  // the same double-click hazard applies per row. `actingOn` disables only the
+  // row being mutated, leaving the rest of the list usable.
+  const act = async (id: string, fn: () => Promise<void>, ok: string) => {
+    if (actingOn) return;
+    setActingOn(id);
     try {
       await fn();
       flash(ok);
       await load();
     } catch (e) {
       setError(errMsg(e));
+    } finally {
+      setActingOn(null);
     }
   };
 
@@ -161,8 +185,8 @@ export function ScheduledSection(props: { bots: Array<{ name: string; display_na
             </div>
           )}
           <div className="flex gap-2">
-            <Btn onClick={onCreate}>Save schedule</Btn>
-            <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancel</Btn>
+            <Btn onClick={onCreate} disabled={saving}>{saving ? "Saving…" : "Save schedule"}</Btn>
+            <Btn variant="ghost" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Btn>
           </div>
         </div>
       )}
@@ -184,21 +208,34 @@ export function ScheduledSection(props: { bots: Array<{ name: string; display_na
                 {describeSchedule(t)}{t.timezone ? ` • ${t.timezone}` : ""}{t.next_run ? ` • next: ${new Date(t.next_run).toLocaleString()}` : ""}
               </p>
               <div className="flex gap-2 mt-2.5 flex-wrap">
-                <Btn variant="ghost" onClick={() => act(() => triggerTask(t.id), "Triggered — running now.")}>
-                  <Zap className="size-3.5" /> Run now
+                <Btn
+                  variant="ghost"
+                  disabled={actingOn === t.id}
+                  onClick={() => act(t.id, () => triggerTask(t.id), "Triggered — running now.")}
+                >
+                  <Zap className="size-3.5" /> {actingOn === t.id ? "Working…" : "Run now"}
                 </Btn>
                 {t.status === "paused" ? (
-                  <Btn variant="ghost" onClick={() => act(() => resumeTask(t.id), "Resumed.")}>
+                  <Btn
+                    variant="ghost"
+                    disabled={actingOn === t.id}
+                    onClick={() => act(t.id, () => resumeTask(t.id), "Resumed.")}
+                  >
                     <Play className="size-3.5" /> Resume
                   </Btn>
                 ) : (
-                  <Btn variant="ghost" onClick={() => act(() => pauseTask(t.id), "Paused.")}>
+                  <Btn
+                    variant="ghost"
+                    disabled={actingOn === t.id}
+                    onClick={() => act(t.id, () => pauseTask(t.id), "Paused.")}
+                  >
                     <Pause className="size-3.5" /> Pause
                   </Btn>
                 )}
                 <Btn
                   variant="danger"
-                  onClick={() => window.confirm(`Delete "${t.title}"?`) && act(() => deleteTask(t.id), "Deleted.")}
+                  disabled={actingOn === t.id}
+                  onClick={() => window.confirm(`Delete "${t.title}"?`) && act(t.id, () => deleteTask(t.id), "Deleted.")}
                 >
                   <Trash2 className="size-3.5" /> Delete
                 </Btn>

@@ -28,6 +28,7 @@ import {
   Hammer,
   Radar,
   Scale,
+  Search,
 } from "lucide-react";
 
 export type WorkspaceView =
@@ -39,6 +40,7 @@ export type WorkspaceView =
   | "peers"
   | "kanban"
   | "runs"
+  | "run-inspector"
   | "files"
   | "scheduled"
   | "subagents"
@@ -88,6 +90,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
 
   // Operations & Execution
   { id: "runs", label: "Runs", icon: <History className="size-3.5" />, blurb: "Run history per conversation", category: "operations" },
+  { id: "run-inspector", label: "Run inspector", icon: <Search className="size-3.5" />, blurb: "One run in full: prompt, tools, events, files, tokens", category: "operations" },
   { id: "files", label: "Files", icon: <FolderOpen className="size-3.5" />, blurb: "Uploads & generated files", category: "operations" },
   { id: "scheduled", label: "Scheduled", icon: <CalendarClock className="size-3.5" />, blurb: "Recurring background work", category: "operations" },
   { id: "subagents", label: "Subagents", icon: <Network className="size-3.5" />, blurb: "Helpers the agent spawns", category: "operations" },

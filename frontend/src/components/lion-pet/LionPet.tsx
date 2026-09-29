@@ -30,12 +30,13 @@ import {
   LionPetState,
   LionSkinId,
   getLionSkin,
-  findLionPetKeepOut,
+  findLionPetKeepOuts,
   isLionPetAction,
   lionPetActionLabel,
   lionPetActionMessage,
   lionPetMessage,
   readLionPetSettings,
+  resolveLionPetPlacement,
   resolveLionPetSafeRight,
   sanitizeLionPetMessage,
   writeLionPetSettings,
@@ -344,6 +345,16 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
   const [bubble, setBubble] = useState(() => lionPetMessage(state));
   const [petCount, setPetCount] = useState(0);
   const [dragging, setDragging] = useState(false);
+  /**
+   * Nowhere on screen is clear of the keep-out regions right now.
+   *
+   * A layout fact, not a preference: it is recomputed whenever the regions
+   * change. While it holds the pet renders nothing — it is decorative, but its
+   * hit area is `pointer-events: auto`, so a pet parked on a control swallows
+   * clicks meant for that control. Measured in the browser: it was sitting on
+   * the sidebar's Backup and Restore buttons, and inside an open bot drawer.
+   */
+  const [blocked, setBlocked] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [lastClickAt, setLastClickAt] = useState(0);
   const dragRef = useRef<{
@@ -428,7 +439,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       viewportWidth,
       viewportHeight: window.innerHeight,
       petBottom: (settingsRef.current.position.bottom / 100) * window.innerHeight,
-      keepOut: findLionPetKeepOut(document),
+      keepOut: findLionPetKeepOuts(document),
     });
     const clamped = Math.min(Math.max(0, viewportWidth - width), nextRightPx);
     setSettings((current) => ({
@@ -503,24 +514,33 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       const rect = shell.getBoundingClientRect();
       if (!rect.width && !rect.height) return;
       const viewportWidth = window.innerWidth;
-      if (viewportWidth <= 0) return;
+      const viewportHeight = window.innerHeight;
+      if (viewportWidth <= 0 || viewportHeight <= 0) return;
       const currentRightPx = (settingsRef.current.position.right / 100) * viewportWidth;
-      const safeRight = resolveLionPetSafeRight({
+      const currentBottomPx = (settingsRef.current.position.bottom / 100) * viewportHeight;
+      // Both axes, because the horizontal sweep alone cannot solve the real
+      // layout: the sidebar footer (x 0-255) and the composer (x 268-900) leave
+      // no horizontal slot for a 190px pet at that height. The only clear
+      // positions sit above the topmost keep-out.
+      const placement = resolveLionPetPlacement({
         desiredRight: currentRightPx,
+        desiredBottom: currentBottomPx,
         petWidth: rect.width,
         petHeight: rect.height,
         viewportWidth,
-        viewportHeight: window.innerHeight,
-        petBottom: (settingsRef.current.position.bottom / 100) * window.innerHeight,
-        keepOut: findLionPetKeepOut(document),
+        viewportHeight,
+        keepOut: findLionPetKeepOuts(document),
       });
+      setBlocked(placement === null);
+      if (!placement) return;
       // Only rewrite on a real move, so this never fights the drag handler.
-      if (Math.abs(safeRight - currentRightPx) < 1) return;
+      if (Math.abs(placement.right - currentRightPx) < 1 && Math.abs(placement.bottom - currentBottomPx) < 1) return;
       setSettings((current) => ({
         ...current,
         position: {
           ...current.position,
-          right: (safeRight / viewportWidth) * 100,
+          right: (placement.right / viewportWidth) * 100,
+          bottom: (placement.bottom / viewportHeight) * 100,
         },
       }));
     };
@@ -546,7 +566,8 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     // sitting inside the drawer, on top of the agent's Soul text. A
     // MutationObserver on the document catches both the drawer being added and
     // it being closed, which is when the pet should be allowed back.
-    const mutations = typeof MutationObserver === "function" ? new MutationObserver(() => nudgeClear()) : null;
+    const mutations =
+      typeof MutationObserver === "function" ? new MutationObserver(() => nudgeClear()) : null;
     if (mutations && document.body) {
       mutations.observe(document.body, { childList: true, subtree: true, attributes: true });
     }
@@ -687,7 +708,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       petBottom: bottom,
-      keepOut: findLionPetKeepOut(document),
+      keepOut: findLionPetKeepOuts(document),
     });
     updateSettings({
       position: {
@@ -757,6 +778,11 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
   }
 
   if (!settings.visible) {
+    // The "Show lion" button is itself a `z-[90]` fixed overlay in the corner, so
+    // it inherits the same hazard the guard exists for. When there is nowhere
+    // clear, render nothing at all: the pet returns as soon as the layout leaves
+    // room, and neither the companion nor its button covers a control.
+    if (blocked) return null;
     return (
       <button
         type="button"
@@ -772,6 +798,8 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
 
   const skin = getLionSkin(settings.skin);
   const displayLabel = action === "idle" ? stateLabel(state) : lionPetActionLabel(action);
+
+  if (blocked) return null;
 
   return (
     <div

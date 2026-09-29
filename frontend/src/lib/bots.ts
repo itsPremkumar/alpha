@@ -1,7 +1,8 @@
 import { BotProfile, BotTemplate, FleetHealth } from "@/types/bots";
 import { apiFetch } from "./api-client";
 
-function normalizeBot(raw: Record<string, unknown>): BotProfile {
+/** Map one raw `GET /api/bots` row onto a BotProfile (exported for tests). */
+export function normalizeBot(raw: Record<string, unknown>): BotProfile {
   const taskStats = (raw.task_stats as BotProfile["task_stats"]) || {};
   return {
     name: String(raw.name || "unknown"),
@@ -97,6 +98,33 @@ export async function fetchDepartments(): Promise<string[]> {
   }
 }
 
+/**
+ * One measured counter, or null when the server did not report it.
+ *
+ * The `|| 0` this replaces was the bug: it could not distinguish "the server
+ * measured zero" from "the server sent no such field" (and, because the field
+ * name was wrong, the second case was the only one that ever occurred). A
+ * non-finite value is also treated as unmeasured rather than summed in as NaN.
+ */
+function measuredCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Measured runs for one bot, or null when the Gateway reported no counter. */
+export function totalRuns(bot: Pick<BotProfile, "task_stats">): number | null {
+  return measuredCount(bot.task_stats?.total_runs);
+}
+
+/** Measured successful runs for one bot, or null when unreported. */
+export function completedRuns(bot: Pick<BotProfile, "task_stats">): number | null {
+  return measuredCount(bot.task_stats?.completed);
+}
+
+/** Measured failed runs for one bot, or null when unreported. */
+export function failedRuns(bot: Pick<BotProfile, "task_stats">): number | null {
+  return measuredCount(bot.task_stats?.failed);
+}
+
 export function computeFleetHealth(bots: BotProfile[]): FleetHealth {
   const total = bots.length;
   const active = bots.filter((b) => b.status === "active").length;
@@ -110,7 +138,17 @@ export function computeFleetHealth(bots: BotProfile[]): FleetHealth {
     .filter((s): s is number => typeof s === "number");
   const avg_reputation =
     measured.length === 0 ? null : measured.reduce((sum, s) => sum + s, 0) / measured.length;
-  const total_tasks = bots.reduce((sum, b) => sum + (Number(b.task_stats?.total) || 0), 0);
+  // Every bot must have reported a counter for the sum to mean anything.
+  // Averaging `avg_reputation` above may safely exclude unmeasured bots (each
+  // one is a disclosed exclusion), but a SUM cannot: dropping a bot that did
+  // not answer lowers the total without saying so, so a fleet that ran 3 of 5
+  // bots' work would read as "3 tasks done". A partial sum is worse than no
+  // number, because it looks complete. null = the fleet total is not measurable.
+  const runCounts = bots.map(totalRuns);
+  const total_tasks =
+    runCounts.length > 0 && runCounts.every((n): n is number => n !== null)
+      ? runCounts.reduce((sum, n) => sum + n, 0)
+      : null;
   return { total, active, paused, disabled, avg_reputation, total_tasks };
 }
 

@@ -147,11 +147,35 @@ test("listProviders and listConnections read their envelope arrays", async () =>
     { body: { enabled: true, providers: [{ id: "slack", name: "Slack", configured: true }] } },
     { body: { connections: [{ id: "c1", provider: "slack", label: "team" }] } },
   ]);
-  const providers = await listProviders();
+  const { providers, enabled } = await listProviders();
   const connections = await listConnections();
   assert.deepEqual(providers.map((p) => p.id), ["slack"]);
   assert.equal(providers[0].configured, true);
+  assert.equal(enabled, true);
   assert.deepEqual(connections.map((c) => c.id), ["c1"]);
+});
+
+/* — the channel-connections master switch must survive the read ————————
+ *
+ * `GET /api/channels/providers` answers `{enabled, providers}` and the backend
+ * builds `providers` by filtering the catalog down to the providers the config
+ * has enabled (backend/app/gateway/routers/channel_connections.py:647). So an
+ * empty `providers` array is *caused by* `enabled: false` — the exact live
+ * response on a default install. Returning a bare `[]` made "switched off by
+ * configuration" indistinguishable from "no providers exist", which is the
+ * F-defaults-must-look-off rule in frontend/AGENTS.md.
+ */
+test("listProviders carries the subsystem's own enabled switch instead of collapsing it away", async () => {
+  setResponses([{ body: { enabled: false, providers: [] } }]);
+  const catalog = await listProviders();
+  assert.equal(catalog.enabled, false, "a disabled-by-config subsystem must report disabled");
+  assert.deepEqual(catalog.providers, []);
+});
+
+test("an absent enabled field is unknown, not a guess of true or false", async () => {
+  setResponses([{ body: { providers: [] } }]);
+  const catalog = await listProviders();
+  assert.equal(catalog.enabled, null, "the Gateway said nothing, so the client must not invent a switch state");
 });
 
 /* ── F11: a FAILED request must reject, never resolve as an empty list ────
@@ -201,7 +225,7 @@ test("a genuinely empty list is still [] — empty means the server said empty, 
     { body: { enabled: true, providers: [] } },
     { body: { connections: [] } },
   ]);
-  assert.deepEqual(await listProviders(), []);
+  assert.deepEqual((await listProviders()).providers, []);
   assert.deepEqual(await listConnections(), []);
 });
 

@@ -204,9 +204,14 @@ test("the keep-out element is the composer, and every path that moves the pet go
   assert.match(composerSource, /data-lion-pet-keepout/, "the composer must be marked as a keep-out region");
 
   // Travel commit, drag, and mount/resize must each be corrected - a single
-  // guarded path still lets the other two park the pet on the input.
-  assert.equal((componentSource.match(/resolveLionPetSafeRight\(/g) || []).length, 3, "expected travel, drag and mount correction");
-  assert.match(componentSource, /findLionPetKeepOut\(document\)/);
+  // guarded path still lets the other two park the pet on the input. The mount
+  // path uses the two-axis resolver because the horizontal sweep alone cannot
+  // clear the real layout; the other two stay horizontal so a drag or a wander
+  // never teleports the pet vertically.
+  const guarded = (componentSource.match(/resolveLionPetSafeRight\(/g) || []).length
+    + (componentSource.match(/resolveLionPetPlacement\(/g) || []).length;
+  assert.equal(guarded, 3, `expected travel, drag and mount correction, found ${guarded}`);
+  assert.match(componentSource, /findLionPetKeepOuts\(document\)/);
   assert.match(componentSource, /addEventListener\("resize"/);
 });
 
@@ -222,13 +227,13 @@ test("the keep-out element is the composer, and every path that moves the pet go
 test("an open dialog is a keep-out region", () => {
   const dialog = { getBoundingClientRect: () => ({ left: 464, right: 912, top: 0, bottom: 670, width: 448, height: 670 }) };
   const doc = {
-    // No marked element: this is the drawer case, not the composer case.
+    // No marked element: this is the drawer case, not the composer/sidebar case.
     querySelector: () => null,
-    querySelectorAll: () => [dialog],
+    querySelectorAll: (sel) => (String(sel).includes("role") ? [dialog] : []),
   };
-  const rect = pet.findLionPetKeepOut(doc);
-  assert.ok(rect, "an open dialog must be treated as a keep-out");
-  assert.deepEqual(rect, { left: 464, right: 912, top: 0, bottom: 670 });
+  const rects = pet.findLionPetKeepOuts(doc);
+  assert.equal(rects.length, 1, "an open dialog must be treated as a keep-out");
+  assert.deepEqual(rects[0], { left: 464, right: 912, top: 0, bottom: 670 });
 
   // And the pet is moved clear of it, using real measured geometry.
   const safe = pet.resolveLionPetSafeRight({
@@ -238,7 +243,7 @@ test("an open dialog is a keep-out region", () => {
     viewportWidth: 912,
     viewportHeight: 670,
     petBottom: 227,
-    keepOut: rect,
+    keepOut: rects,
   });
   const petRect = (right) => ({
     left: 912 - right - 190,
@@ -246,25 +251,58 @@ test("an open dialog is a keep-out region", () => {
     top: 670 - 227 - 193,
     bottom: 670 - 227,
   });
-  assert.equal(pet.lionPetOverlaps(petRect(safe), rect), false, `still inside the drawer at right=${safe}`);
+  assert.equal(pet.lionPetOverlaps(petRect(safe), rects[0]), false, `still inside the drawer at right=${safe}`);
 });
 
-test("a marked keep-out still wins over a dialog, and no dialog means null", () => {
-  const marked = { getBoundingClientRect: () => ({ left: 279, right: 889, top: 494, bottom: 530, width: 610, height: 36 }) };
-  const dialog = { getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 100, width: 100, height: 100 }) };
-  const rect = pet.findLionPetKeepOut({ querySelector: () => marked, querySelectorAll: () => [dialog] });
-  assert.deepEqual(rect, { left: 279, right: 889, top: 494, bottom: 530 }, "the explicit marker is the stronger signal");
+test("every keep-out counts, not just the first", () => {
+  // The composer and the sidebar footer are two separate regions and the pet
+  // must clear BOTH. A single-rect keep-out silently ignored the second, which
+  // is how the pet ended up on top of Backup and Restore.
+  const composer = { getBoundingClientRect: () => ({ left: 268, right: 988, top: 483, bottom: 651, width: 720, height: 168 }) };
+  const sidebar = { getBoundingClientRect: () => ({ left: 0, right: 307, top: 560, bottom: 670, width: 307, height: 110 }) };
+  const doc = {
+    querySelector: () => null,
+    querySelectorAll: (sel) => (String(sel).includes("role") ? [] : [composer, sidebar]),
+  };
+  const rects = pet.findLionPetKeepOuts(doc);
+  assert.equal(rects.length, 2, `expected both regions, got ${rects.length}`);
 
-  assert.equal(pet.findLionPetKeepOut({ querySelector: () => null, querySelectorAll: () => [] }), null);
-  assert.equal(pet.findLionPetKeepOut(null), null);
-  // A collapsed element is not a region.
-  assert.equal(
-    pet.findLionPetKeepOut({
-      querySelector: () => null,
-      querySelectorAll: () => [{ getBoundingClientRect: () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 }) }],
-    }),
-    null,
-  );
+  // Sweep every reachable offset and require a position clear of both.
+  let cleared = 0;
+  for (let right = 0; right <= 912 - 190; right += 1) {
+    const rect = { left: 912 - right - 190, right: 912 - right, top: 670 - 227 - 193, bottom: 670 - 227 };
+    if (!pet.lionPetOverlapsAny(rect, rects)) cleared += 1;
+  }
+  assert.ok(cleared > 0, "there is no position clear of both regions, so the guard cannot help");
+
+  // The helper the guard uses must agree with that count.
+  const bad = { left: 10, right: 200, top: 580, bottom: 700 };
+  assert.equal(pet.lionPetOverlapsAny(bad, rects), true, "the sidebar region alone must be enough to disqualify");
+});
+
+test("an absent or unlaid-out region contributes nothing", () => {
+  assert.deepEqual(pet.findLionPetKeepOuts(null), []);
+  assert.deepEqual(pet.findLionPetKeepOuts({ querySelectorAll: () => [] }), []);
+  // A collapsed element is not a region, and must not pin the pet in a corner.
+  const collapsed = pet.findLionPetKeepOuts({
+    querySelectorAll: () => [{ getBoundingClientRect: () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 }) }],
+  });
+  assert.deepEqual(collapsed, []);
+});
+
+test("a single rect is still accepted, and a null keep-out changes nothing", () => {
+  const base = {
+    desiredRight: 400,
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 1125,
+    viewportHeight: 797,
+    petBottom: 187,
+  };
+  const one = { left: 279, right: 889, top: 494, bottom: 530 };
+  assert.equal(pet.resolveLionPetSafeRight({ ...base, keepOut: one }), pet.resolveLionPetSafeRight({ ...base, keepOut: [one] }));
+  assert.equal(pet.resolveLionPetSafeRight({ ...base, keepOut: null }), 400);
+  assert.equal(pet.resolveLionPetSafeRight({ ...base, keepOut: [] }), 400, "an empty list is no region at all");
 });
 
 test("the component notices a drawer opening, and a drawer has dialog semantics", () => {
@@ -280,4 +318,13 @@ test("the component notices a drawer opening, and a drawer has dialog semantics"
   const panel = readFileSync(new URL("../components/bots/BotDetailPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /role="dialog"/, "the bot detail drawer is a dialog");
   assert.match(panel, /aria-modal="true"/);
+});
+
+test("the sidebar footer is a keep-out, so Backup and Restore stay clickable", () => {
+  // Live hit-test: the pet's rect intersected both buttons. They move the whole
+  // conversation archive, so being unclickable is not cosmetic.
+  const sidebar = readFileSync(new URL("../components/ThreadSidebar.tsx", import.meta.url), "utf8");
+  assert.match(sidebar, /data-lion-pet-keepout/, "the sidebar footer must be marked as a keep-out region");
+  assert.match(sidebar, /Backup/, "the marked footer is the one holding Backup");
+  assert.match(sidebar, /Restore/, "and Restore");
 });

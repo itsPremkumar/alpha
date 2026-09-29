@@ -18,6 +18,47 @@ from langgraph.types import Command
 TOOL_META_KEY = "alpha_tool_meta"
 
 _ERROR_PREFIX = "Error:"
+# The sandbox REPL does NOT use `_ERROR_PREFIX`. `sandbox/repl/protocol.py` builds
+# `f"Error ({self.error_name}): {self.error_value}"` — a space and a parenthesised
+# exception class before the colon. Matching only the literal `"Error:"` meant
+# `"Error (ModuleNotFoundError): ...".startswith("Error:")` was False, so the
+# classifier fell through every branch to the success default and stamped
+# `alpha_tool_meta = {"status": "success", "recoverable_by_model": True,
+# "recommended_next_action": "continue"}` beside a body that said
+# `ModuleNotFoundError`.
+#
+# That is worse than a cosmetic label: `ToolProgressMiddleware` reads
+# `alpha_tool_meta` rather than the text, so the anti-thrash stagnation guard
+# was blind to the entire `python_repl` tool family. A REPL that kept failing
+# looked like a REPL that kept succeeding.
+#
+# Both shapes are recognised. Do not "fix" this by changing the REPL's format:
+# its `Error (Name): value` body is what the model reads, and other consumers
+# may match on it.
+_ERROR_BODY_RE = re.compile(r"^Error(?:\s*\((?P<name>[^)]*)\))?\s*:\s*(?P<body>.*)", re.DOTALL)
+
+
+def split_error_prefix(content: str) -> str | None:
+    """Return the error body when `content` starts with a recognised error marker.
+
+    Recognises both conventions in use:
+
+      ``Error: File not found``            - the framework ``_ERROR_PREFIX``
+      ``Error (ModuleNotFoundError): ...`` - the sandbox REPL's shape
+
+    Returns ``None`` for anything else, which means "not an error marker" — the
+    caller must then fall through to the other classification branches rather
+    than assume success.
+    """
+    match = _ERROR_BODY_RE.match(content)
+    if not match:
+        return None
+    # An empty exception name (`Error (): x`) carries no information; fall back
+    # to the plain shape rather than emitting a leading ": ".
+    name = (match.group("name") or "").strip()
+    body = match.group("body") or ""
+    return f"{name}: {body}" if name else body
+
 _PARTIAL_MARKERS = (
     "partial results",
     "limited results",
@@ -271,6 +312,10 @@ def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
         return msg
 
     content = msg.content if isinstance(msg.content, str) else ""
+    # Recognise BOTH error-marker conventions (framework `Error:` and the
+    # sandbox REPL's `Error (Name): value`) in one place, so no branch below
+    # re-derives the prefix and re-creates the mismatch.
+    error_body = split_error_prefix(content)
     # Pre-compute once; reused by the partial-success marker check below to avoid calling
     # content.lower() once per _PARTIAL_MARKERS entry inside the generator.
     content_lower = content.lower()
@@ -280,7 +325,7 @@ def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
     # and exit early above — they never reach this branch.)
     # Try JSON extraction first so classification uses only the "error" field value, not
     # keywords that appear incidentally in other JSON fields (e.g. "query").
-    if msg.status == "error" and not content.startswith(_ERROR_PREFIX):
+    if msg.status == "error" and error_body is None:
         json_error = _extract_json_error_text(content)
         if json_error is not None:
             attrs = _classify_error_text(json_error)
@@ -295,8 +340,8 @@ def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
                 is_json_dict = False
             attrs = {**_UNKNOWN_ERROR} if is_json_dict else _classify_error_text(content)
         meta = _make_meta(status="error", source="tool_return", **attrs)
-    elif content.startswith(_ERROR_PREFIX):
-        attrs = _classify_error_text(content[len(_ERROR_PREFIX) :])
+    elif error_body is not None:
+        attrs = _classify_error_text(error_body)
         meta = _make_meta(status="error", source="tool_return", **attrs)
     elif (json_error := _extract_json_error_text(content)) is not None:
         attrs = _classify_error_text(json_error)

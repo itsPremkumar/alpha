@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { channelStatus, restartChannel, listProviders, listConnections, connectProvider, disconnectConnection, larkStatus } from "@/lib/channels";
+import { channelStatus, restartChannel, listProviders, listConnections, connectProvider, disconnectConnection, larkStatus, type ChannelProviderCatalog } from "@/lib/channels";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { RefreshCw, Plug, PlugZap, Unplug } from "lucide-react";
 
 export function ChannelsSection() {
   const [channels, setChannels] = useState<Array<{ name: string; enabled: boolean; connected: boolean; status: string }>>([]);
-  const [providers, setProviders] = useState<Array<{ id: string; name: string; description: string; configured: boolean }>>([]);
+  const [providerCatalog, setProviderCatalog] = useState<ChannelProviderCatalog>({ enabled: null, providers: [] });
+  const providers = providerCatalog.providers;
   const [connections, setConnections] = useState<Array<{ id: string; provider: string; label: string; status: string }>>([]);
   const [lark, setLark] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,7 @@ export function ChannelsSection() {
     try {
       const [c, p, con, l] = await Promise.all([channelStatus(), listProviders(), listConnections(), larkStatus()]);
       setChannels(c);
-      setProviders(p);
+      setProviderCatalog(p);
       setConnections(con);
       setLark(l);
     } catch (e) {
@@ -41,7 +42,17 @@ export function ChannelsSection() {
     window.setTimeout(() => setNotice(null), 4000);
   };
 
+  // Every mutating control in this section is disabled while its own request is
+  // in flight, keyed by action so one control's request never freezes the rest
+  // of the page. The connect POST is the sharp one — it mints a pairing code
+  // server-side, so an unguarded double-click left two connect attempts behind.
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const isBusy = (key: string) => busyAction !== null;
+  const busyKey = (action: string, id: string) => `${action}:${id}`;
+
   const onConnect = async (providerId: string) => {
+    if (busyAction) return;
+    setBusyAction(busyKey("connect", providerId));
     try {
       const res = await connectProvider(providerId);
       const url = typeof res.url === "string" ? res.url : typeof res.auth_url === "string" ? res.auth_url : null;
@@ -50,8 +61,41 @@ export function ChannelsSection() {
       await load();
     } catch (e) {
       setError(errMsg(e));
+    } finally {
+      setBusyAction(null);
     }
   };
+
+  const onRestart = async (name: string) => {
+    if (busyAction) return;
+    setBusyAction(busyKey("restart", name));
+    try {
+      const message = await restartChannel(name);
+      flash(message);
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const onDisconnect = async (connectionId: string) => {
+    if (busyAction) return;
+    setBusyAction(busyKey("unplug", connectionId));
+    try {
+      // Success is confirmed by the re-read, not painted optimistically: a 2xx
+      // on the DELETE is followed by load() so the list reflects the server.
+      await disconnectConnection(connectionId);
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const runningChannels = channels.filter((c) => c.connected).length;
 
   return (
     <Section
@@ -72,10 +116,24 @@ export function ChannelsSection() {
       ) : (
         <>
           <div className="rounded-2xl border border-border/60 bg-card p-4">
-            <p className="text-xs font-semibold mb-2">Running channels ({channels.length})</p>
+            {/* The heading counted EVERY channel the Gateway knows about, so a
+                default install — 10 channels, all `enabled:false, running:false`
+                — read "Running channels (10)". The count and the claim are now
+                separate, and a zero-running roster says so. */}
+            <p className="text-xs font-semibold mb-2">
+              Channels ({channels.length}) — {runningChannels} running
+            </p>
             {channels.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">No channels running. Connect a provider below.</p>
-            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                The Gateway reports no channels at all. Connect a provider below.
+              </p>
+            ) : runningChannels === 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                None of these {channels.length} channels is running. Enable one in{" "}
+                <code>config.yaml</code> to receive messages there.
+              </p>
+            ) : null}
+            {channels.length > 0 && (
               <div className="space-y-1.5">
                 {channels.map((c) => (
                   <div key={c.name} className="flex items-center gap-2 rounded-xl bg-muted/40 px-3 py-2">
@@ -84,8 +142,12 @@ export function ChannelsSection() {
                     <Badge tone={c.connected ? "green" : c.enabled ? "amber" : "gray"}>
                       {c.connected ? "connected" : c.enabled ? c.status || "enabled" : "off"}
                     </Badge>
-                    <Btn variant="ghost" onClick={() => restartChannel(c.name).then((m) => flash(m)).catch((e) => setError(errMsg(e)))}>
-                      Restart
+                    <Btn
+                      variant="ghost"
+                      disabled={isBusy(busyKey("restart", c.name))}
+                      onClick={() => onRestart(c.name)}
+                    >
+                      {busyAction === busyKey("restart", c.name) ? "Restarting…" : "Restart"}
                     </Btn>
                   </div>
                 ))}
@@ -95,8 +157,24 @@ export function ChannelsSection() {
 
           <div className="rounded-2xl border border-border/60 bg-card p-4">
             <p className="text-xs font-semibold mb-2">Connect a chat app ({providers.length})</p>
-            {providers.length === 0 ? (
-              <EmptyState title="No providers listed" hint="The server did not return connectable chat apps." />
+            {/* `enabled: false` from GET /channels/providers is the reason the
+                provider list is empty (the backend filters the catalog to the
+                enabled ones), so an empty list while the switch is off means
+                "switched off", not "nothing to connect". */}
+            {providers.length === 0 && providerCatalog.enabled === false ? (
+              <EmptyState
+                title="Channel connections are switched off"
+                hint="The Gateway reports channel_connections as disabled, which is why no chat apps are listed. Turn the subsystem on in config.yaml to connect one."
+              />
+            ) : providers.length === 0 ? (
+              <EmptyState
+                title="No providers listed"
+                hint={
+                  providerCatalog.enabled === null
+                    ? "The Gateway did not report whether channel connections are enabled, and listed no connectable chat apps."
+                    : "The server did not return connectable chat apps."
+                }
+              />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {providers.map((p) => (
@@ -107,8 +185,9 @@ export function ChannelsSection() {
                     </div>
                     {p.description && <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{p.description}</p>}
                     <div className="mt-2">
-                      <Btn variant="ghost" onClick={() => onConnect(p.id)}>
-                        <PlugZap className="size-3.5" /> {p.configured ? "Reconnect" : "Connect"}
+                      <Btn variant="ghost" onClick={() => onConnect(p.id)} disabled={isBusy(busyKey("connect", p.id))}>
+                        <PlugZap className="size-3.5" />{" "}
+                        {busyAction === busyKey("connect", p.id) ? "Connecting…" : p.configured ? "Reconnect" : "Connect"}
                       </Btn>
                     </div>
                   </div>
@@ -127,8 +206,11 @@ export function ChannelsSection() {
                     <Badge tone="blue">{c.status || c.provider}</Badge>
                     <button
                       type="button"
-                      onClick={() => window.confirm("Remove this link?") && disconnectConnection(c.id).then(load).catch((e) => setError(errMsg(e)))}
-                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-destructive"
+                      // A second DELETE for a link the server already removed 404s,
+                      // so the unlink is guarded like the other mutations.
+                      disabled={isBusy(busyKey("unplug", c.id))}
+                      onClick={() => window.confirm("Remove this link?") && onDisconnect(c.id)}
+                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-destructive disabled:opacity-40"
                       title="Remove link"
                     >
                       <Unplug className="size-3.5" />

@@ -57,7 +57,6 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState("");
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const [groupMsgs, setGroupMsgs] = useState<Record<string, Array<Record<string, unknown>>>>({});
   const [groupDraft, setGroupDraft] = useState("");
   const [groupObjective, setGroupObjective] = useState("");
 
@@ -110,15 +109,46 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
     }
   };
 
+  /**
+   * Per-room message-load state. `null` means "not loaded yet", which is a
+   * different claim from `[]` ("the room is quiet"). The client used to swallow
+   * a failed read into `[]`, so a 404/500 rendered "No messages yet — say hello
+   * below" and this catch could never fire.
+   */
+  const [groupMsgs, setGroupMsgs] = useState<Record<string, Array<Record<string, unknown>> | null>>({});
+  const [groupMsgError, setGroupMsgError] = useState<Record<string, string | null>>({});
+  /** Room whose autonomous run is in flight; blocks a duplicate start. */
+  const [runningGroup, setRunningGroup] = useState<string | null>(null);
+
+  const autoRun = async (name: string) => {
+    if (runningGroup) return;
+    const objective = groupObjective.trim();
+    if (!objective) return;
+    setRunningGroup(name);
+    try {
+      await startGroupRun(name, objective);
+      // Only clear the draft once the server has accepted the run.
+      setGroupObjective("");
+      flash(`Autonomous run started for ${name}.`);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setRunningGroup(null);
+    }
+  };
+
   const openMessages = async (name: string) => {
     const isOpen = openGroup === name;
     setOpenGroup(isOpen ? null : name);
-    if (!isOpen && !groupMsgs[name]) {
+    if (!isOpen && groupMsgs[name] === undefined) {
       try {
         const ms = await groupMessages(name);
         setGroupMsgs((prev) => ({ ...prev, [name]: ms }));
+        setGroupMsgError((prev) => ({ ...prev, [name]: null }));
       } catch (e) {
-        setError(errMsg(e));
+        // A failed read is NOT an empty room: say so, with the server's reason.
+        setGroupMsgError((prev) => ({ ...prev, [name]: errMsg(e) }));
+        setGroupMsgs((prev) => ({ ...prev, [name]: null }));
       }
     }
   };
@@ -175,7 +205,11 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
           {groups.length === 0 ? (
             <EmptyState title="No group rooms" hint="Create one above to let several bots discuss with turn-taking." />
           ) : (
-            groups.map((g) => (
+            groups.map((g) => {
+              // Read once per render so the message list's three states
+              // (undefined / null / []) are distinguishable below.
+              const loaded = groupMsgs[g.name];
+              return (
               <div key={g.name} className="rounded-xl border border-border/60 bg-card">
                 <div className="flex items-center gap-2 px-4 py-3 cursor-pointer" onClick={() => openMessages(g.name)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openMessages(g.name)}>
                   <p className="text-sm font-semibold flex-1">{g.name}</p>
@@ -185,10 +219,24 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 {openGroup === g.name && (
                   <div className="px-4 pb-4 border-t border-border/50 pt-3 space-y-2">
                     <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                      {(groupMsgs[g.name] || []).length === 0 ? (
+                      {/* Three states, only one of which is an empty room.
+                          `loaded` is read into a local so the narrowing is
+                          explicit: undefined = not read yet, null = the read
+                          produced no list, [] = the room is genuinely quiet. */}
+                      {groupMsgError[g.name] ? (
+                        <p className="text-[11px] text-destructive">
+                          Could not read this room&apos;s messages — {groupMsgError[g.name]}
+                        </p>
+                      ) : loaded == null ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          {loaded === undefined
+                            ? "Loading messages…"
+                            : "Messages unavailable — the Gateway did not return this room's history."}
+                        </p>
+                      ) : loaded.length === 0 ? (
                         <p className="text-[11px] text-muted-foreground">No messages yet — say hello below.</p>
                       ) : (
-                        (groupMsgs[g.name] || []).slice(-20).map((m, i) => (
+                        loaded.slice(-20).map((m, i) => (
                           <div key={i} className="text-[11px] rounded-lg bg-muted/40 px-2.5 py-1.5">
                             <span className="font-semibold">{String(m.author ?? m.bot ?? m.role ?? "bot")}: </span>
                             {String(m.content ?? m.text ?? JSON.stringify(m)).slice(0, 500)}
@@ -205,14 +253,27 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                     </div>
                     <div className="flex gap-2">
                       <input value={groupObjective} onChange={(e) => setGroupObjective(e.target.value)} placeholder="Autonomous goal, e.g. Draft the launch plan…" className={inputCls} aria-label="Autonomous run objective" />
-                      <Btn variant="ghost" onClick={() => groupObjective.trim() && act(() => startGroupRun(g.name, groupObjective.trim()).then(() => setGroupObjective("")), "Autonomous run started.")} disabled={!groupObjective.trim()}>
-                        <Play className="size-3.5" /> Auto-run
+                      {/* Shape 5: POST /groups/{name}/runs mints a NEW run id per
+                          request (backend/app/gateway/routers/groups.py:227) and
+                          each run fans out to a subagent per member plus a
+                          moderator pass. The objective used to be cleared only in
+                          the `.then`, so a second click inside the request window
+                          started a SECOND autonomous run — duplicate token spend
+                          and a second record — while the button only disabled on
+                          an EMPTY input. */}
+                      <Btn
+                        variant="ghost"
+                        onClick={() => groupObjective.trim() && autoRun(g.name)}
+                        disabled={!groupObjective.trim() || runningGroup === g.name}
+                      >
+                        <Play className="size-3.5" /> {runningGroup === g.name ? "Starting…" : "Auto-run"}
                       </Btn>
                     </div>
                   </div>
                 )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       ) : tab === "swarms" ? (

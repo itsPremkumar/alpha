@@ -113,13 +113,37 @@ export interface UsageBreakdown {
   cost: number | null;
 }
 
+/**
+ * The daily series and per-model breakdown.
+ *
+ * The envelope is `ConsoleUsageResponse` (backend/app/gateway/routers/console.py:105):
+ * `days` is a LIST, and `by_model` is a DICT keyed by model id — not a list of
+ * objects. This reader looked for `daily`/`series` (never sent) and fed
+ * `by_model` to `asList`, which only accepts an array, so both fell through to
+ * `[]`. A 200 carrying 14 days of real usage rendered as "No daily data yet."
+ * and "No per-model data yet." with no error anywhere: the one surface whose
+ * whole job is reporting measurement claimed there was none.
+ */
 export async function fetchConsoleUsage(): Promise<{ series: UsagePoint[]; byModel: UsageBreakdown[] }> {
   const d = await get<Record<string, unknown>>("/console/usage");
-  const series = asList(d.daily ?? d.series, []).map((p) => ({
+  // `days` first (the real field); the older names stay as fallbacks.
+  const series = asList(d.days ?? d.daily ?? d.series, []).map((p) => ({
     day: String(pick(p, ["day", "date"], "")),
     tokens: Number(pick(p, ["tokens", "total_tokens"], 0)),
   }));
-  const byModel = asList(d.by_model ?? d.models ?? d.breakdown, []).map((m) => ({
+  // `by_model` is keyed by model id, so the map's KEY is the model name — a
+  // plain `asList` here dropped every row. Accept either shape, and keep the
+  // server's `cost: null` (unpriced) as null rather than 0.
+  const byModelRaw = d.by_model ?? d.models ?? d.breakdown;
+  const byModelRows: Array<Record<string, unknown>> = Array.isArray(byModelRaw)
+    ? (byModelRaw as Array<Record<string, unknown>>)
+    : byModelRaw && typeof byModelRaw === "object"
+      ? Object.entries(byModelRaw as Record<string, unknown>).map(([model, value]) => ({
+          model,
+          ...(value && typeof value === "object" ? (value as Record<string, unknown>) : {}),
+        }))
+      : [];
+  const byModel = byModelRows.map((m) => ({
     model: String(pick(m, ["model", "model_name"], "unknown")),
     tokens: Number(pick(m, ["tokens", "total_tokens"], 0)),
     cost: (m.cost as number | null) ?? null,
