@@ -703,6 +703,7 @@ def delete_episodic_trace(trace_id: str, http_request: Request) -> dict[str, Any
 )
 def list_semantic_graph(http_request: Request, status: str | None = None, subject: str | None = None, limit: int = 100) -> dict[str, Any]:
     from alpha.memory.cognitive import BeliefStatus
+    from alpha.utils.time import coerce_iso
 
     with _cognitive_system_for_request(http_request) as system:
         st_enum = None
@@ -712,9 +713,29 @@ def list_semantic_graph(http_request: Request, status: str | None = None, subjec
             except ValueError:
                 pass
         nodes = system.semantic_graph.list_nodes(status=st_enum, subject=subject, limit=limit)
+        # `SemanticFactNode.to_dict()` is `asdict` over four epoch floats
+        # (`valid_from`, `valid_to`, `last_accessed_at`, `created_at` at
+        # alpha/memory/cognitive/models.py:116-122), so this route put a raw
+        # float on the wire while its sibling `GET /api/memory` in this same
+        # file returns ISO `lastUpdated` / `facts[].createdAt`. Coerced here at
+        # the API boundary only; the owner snapshot on disk keeps the float and
+        # `SemanticFactNode` still loads every existing record.
+        #
+        # No epoch-zero sentinel: every one of the four is either
+        # `default_factory=time.time` or an explicit `None` for "no end", and
+        # `None` already means absent here, so it is preserved as `None`.
         return {
             "metrics": system.semantic_graph.density_metrics(),
-            "nodes": [n.to_dict() for n in nodes],
+            "nodes": [
+                {
+                    **node.to_dict(),
+                    "valid_from": coerce_iso(node.valid_from),
+                    "valid_to": coerce_iso(node.valid_to),
+                    "last_accessed_at": coerce_iso(node.last_accessed_at),
+                    "created_at": coerce_iso(node.created_at),
+                }
+                for node in nodes
+            ],
             "edges": [e.to_dict() for e in list(system.semantic_graph._edges.values())[:limit]],
         }
 
@@ -748,9 +769,34 @@ def delete_semantic_belief(node_id: str, http_request: Request) -> dict[str, Any
     summary="List Procedural Skills",
 )
 def list_procedural_skills(http_request: Request, limit: int = 50) -> list[dict[str, Any]]:
+    from alpha.utils.time import coerce_iso
+
     with _cognitive_system_for_request(http_request) as system:
         skills = system.procedural_mem.list_skills(limit=limit)
-        return [s.to_dict() for s in skills]
+        # `ProceduralSkill.to_dict()` is `asdict` over two epoch floats
+        # (`last_executed_at`, `created_at` at
+        # alpha/memory/cognitive/models.py:170-172). Coerced here at the API
+        # boundary only; the owner snapshot on disk keeps the float.
+        #
+        # `last_executed_at` is this plane's ONE epoch-zero sentinel: it is
+        # declared `float = 0.0`, and `0.0` is what a skill that has never run
+        # carries (confirmed by tests/test_cognitive_bootstrap_honesty.py, which
+        # pins the bare default). `coerce_iso(0.0)` would render that as
+        # `1970-01-01T00:00:00+00:00`, i.e. "this skill last ran at the Unix
+        # epoch", which is the specific lie this projection exists to stop. It
+        # is emitted as JSON `null` instead - "never ran", no invented sentinel
+        # number, and the same shape this repo's own `fmtEpochSafe(iso: string |
+        # null)` already renders as the literal word "never". `created_at` has
+        # no such state (`default_factory=time.time`), so it is a plain ISO
+        # string.
+        return [
+            {
+                **skill.to_dict(),
+                "last_executed_at": None if skill.last_executed_at <= 0 else coerce_iso(skill.last_executed_at),
+                "created_at": coerce_iso(skill.created_at),
+            }
+            for skill in skills
+        ]
 
 
 @router.post(
