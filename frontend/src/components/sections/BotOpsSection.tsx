@@ -1,20 +1,69 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { orgChart, fleetHealth, killSwitchState, setKillSwitch, pauseBot, resumeBot, handoffTask, matchBots, orgEvents } from "@/lib/teamops";
+import { orgChart, fleetHealth, killSwitchState, setKillSwitch, pauseBot, resumeBot, handoffTask, matchBots, orgEvents, type KillSwitchState } from "@/lib/teamops";
 import { BotProfile } from "@/types/bots";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { OctagonAlert, Play, Pause, ArrowRightLeft, Search, RefreshCw } from "lucide-react";
 
+/**
+ * The emergency-stop card's wording and colour, as a pure function.
+ *
+ * Three states, because "off" and "unknown" are different facts and only one of
+ * them may wear a green badge. The old ternary could only ever produce the
+ * second branch: `killSwitchState` looked for fields the Gateway does not send
+ * and returned a hardcoded `false`, so a green "running" badge was painted from
+ * a constant and an engaged stop was unreachable in the UI.
+ */
+export function killSwitchView(kill: KillSwitchState): {
+  heading: string;
+  badge: string;
+  tone: "green" | "gray" | undefined;
+  engaged: boolean;
+  note: string | null;
+} {
+  if (kill.active === null) {
+    return {
+      heading: "Emergency stop state unknown",
+      badge: "state unknown",
+      tone: "gray",
+      engaged: false,
+      note: "The Gateway did not report its emergency-stop state, so this panel cannot say whether the team is halted. Retry to resolve it.",
+    };
+  }
+  if (kill.active) {
+    return {
+      heading: "is ENGAGED - all bots halted",
+      badge: "stopped",
+      tone: undefined,
+      engaged: true,
+      note: kill.reason ? `Reason: ${kill.reason}` : null,
+    };
+  }
+  return {
+    heading: "is off - team working normally",
+    badge: "running",
+    tone: "green",
+    engaged: false,
+    note: null,
+  };
+}
+
 export function BotOpsSection(props: { bots: BotProfile[]; onRefreshBots: () => void }) {
   const [chart, setChart] = useState<Record<string, unknown> | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
-  const [kill, setKill] = useState<{ active: boolean; detail: string }>({ active: false, detail: "" });
+  // `active: null` = the Gateway's stop state is UNKNOWN, which is a different
+  // claim from `false` ("off"). The seed used to be `{active:false}`, so a
+  // green "running" badge was on screen before the first read resolved — and
+  // the read could only ever produce `false` anyway.
+  const [kill, setKill] = useState<KillSwitchState>({ active: null, detail: "", reason: null, paused_count: null });
+
   const [events, setEvents] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const killView = killSwitchView(kill);
   const [handoff, setHandoff] = useState({ task_id: "", from_bot: "", to_bot: "", objective: "" });
   const [matchQuery, setMatchQuery] = useState("");
   const [matches, setMatches] = useState<Array<Record<string, unknown>>>([]);
@@ -85,14 +134,19 @@ export function BotOpsSection(props: { bots: BotProfile[]; onRefreshBots: () => 
         {notice && <Notice message={notice} />}
 
         {/* Safety controls */}
-        <div className={`rounded-2xl border p-4 ${kill.active ? "border-destructive bg-destructive/5" : "border-border/60 bg-card"}`}>
+        <div className={`rounded-2xl border p-4 ${killView.engaged ? "border-destructive bg-destructive/5" : "border-border/60 bg-card"}`}>
           <div className="flex items-center gap-2 flex-wrap">
-            <OctagonAlert className={`size-4 ${kill.active ? "text-destructive" : "text-muted-foreground"}`} />
+            <OctagonAlert className={`size-4 ${killView.engaged ? "text-destructive" : "text-muted-foreground"}`} />
             <p className="text-xs font-semibold flex-1 min-w-40">
-              Emergency stop {kill.active ? "is ENGAGED — all bots halted" : "is off — team working normally"}
+              {killView.heading}
             </p>
-            <Badge tone={kill.active ? undefined : "green"}>{kill.active ? "stopped" : "running"}</Badge>
-            {kill.active ? (
+            <Badge tone={killView.tone}>{killView.badge}</Badge>
+            {killView.note && (
+              <p className={`text-[11px] w-full ${killView.engaged ? "text-destructive" : "text-muted-foreground"}`}>
+                {killView.note}
+              </p>
+            )}
+            {killView.engaged ? (
               <Btn onClick={() => act(() => setKillSwitch(false, "Released from UI"), "Team resumed.")}>
                 <Play className="size-3.5" /> Release stop
               </Btn>

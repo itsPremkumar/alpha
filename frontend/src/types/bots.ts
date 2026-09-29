@@ -1,8 +1,22 @@
+/**
+ * Per-bot run counters, exactly as `GET /api/bots` reports them.
+ *
+ * The Gateway sends `total_runs` / `completed` / `failed` / `avg_duration_sec`
+ * (verified against a live response). This type once declared `total` and
+ * `succeeded`, which the server never sends, so every read of those names was
+ * `undefined` and every `Number(undefined) || 0` fabricated a zero: the fleet
+ * bar read "0 Tasks done" and every card read "0 tasks" no matter how much work
+ * had actually run.
+ *
+ * Every field is optional and measured-on-demand: an absent counter is "the
+ * server did not report it", never zero. Use the `totalRuns` / `completedRuns`
+ * / `failedRuns` helpers in `lib/bots.ts` rather than indexing this directly.
+ */
 export interface BotTaskStats {
-  total?: number;
-  succeeded?: number;
-  failed?: number;
-  avg_duration_sec?: number;
+  total_runs?: number | null;
+  completed?: number | null;
+  failed?: number | null;
+  avg_duration_sec?: number | null;
   [key: string]: unknown;
 }
 
@@ -72,7 +86,13 @@ export interface FleetHealth {
    * when no bot has a measured score — never a fabricated fleet number.
    */
   avg_reputation: number | null;
-  total_tasks: number;
+  /**
+   * Sum of the bots' MEASURED `task_stats.total_runs`, or null when no bot
+   * reported a counter at all. Never a fabricated 0: "0 tasks done" claims the
+   * server measured no work, which is a different fact from "no counter was
+   * reported".
+   */
+  total_tasks: number | null;
 }
 
 export function botDisplayName(bot: BotProfile): string {
