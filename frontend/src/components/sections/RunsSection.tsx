@@ -5,6 +5,7 @@ import { listThreadRuns, fetchRunMessages, fetchWorkspaceChanges, cancelRun, for
 import { Section, EmptyState, ErrorBox, Badge, Btn, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { Ban, RefreshCw, FileDiff, MessagesSquare, Cpu } from "lucide-react";
+import { RunInspectorSection } from "./RunInspectorSection";
 import { RunReplayControls } from "./RunReplayControls";
 import { RunUsagePanel } from "./RunUsagePanel";
 
@@ -13,6 +14,9 @@ export function RunsSection(props: { threadId: string | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<RunInfo | null>(null);
+  // The list's own glance summary for the selected run. This is NOT the run's
+  // story — that is <RunInspectorSection>'s job — but a failed read here must
+  // still never render as "0 messages / 0 file changes".
   const [detail, setDetail] = useState<{ messages: number; changes: WorkspaceChange[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -44,8 +48,6 @@ export function RunsSection(props: { threadId: string | null }) {
     setDetailLoading(true);
     setDetailError(null);
     try {
-      // The run's event stream is owned by <RunReplayControls>, which reads it
-      // with the REST cursor; this panel only needs the message/file summaries.
       const [msgs, changes] = await Promise.all([
         fetchRunMessages(props.threadId, run.run_id),
         fetchWorkspaceChanges(props.threadId, run.run_id),
@@ -150,8 +152,8 @@ export function RunsSection(props: { threadId: string | null }) {
                 ) : detailLoading || !detail ? (
                   <SkeletonList rows={2} />
                 ) : (
-                  <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
-                    <h3 className="text-sm font-semibold font-mono break-all">{selected.run_id}</h3>
+                  <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-2">
+                    <p className="text-[11px] font-semibold text-muted-foreground">At a glance — the full story is below</p>
                     {selected.stop_reason && (
                       <p className="text-[11px] text-muted-foreground">
                         Stop reason: <span className="font-mono">{selected.stop_reason}</span>
@@ -169,19 +171,12 @@ export function RunsSection(props: { threadId: string | null }) {
                         <div className="text-[10px] text-muted-foreground">file changes</div>
                       </div>
                     </div>
-                    {detail.changes.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-semibold">Changed files</p>
-                        {detail.changes.slice(0, 20).map((c) => (
-                          <div key={c.path} className="text-[11px] font-mono rounded-lg bg-muted/40 px-2 py-1.5 break-all">
-                            <span className="text-primary font-sans font-semibold">[{c.kind}]</span> {c.path}
-                            {c.diff && <pre className="mt-1 whitespace-pre-wrap text-[10px] max-h-40 overflow-y-auto">{c.diff.slice(0, 2000)}</pre>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
+                {/* The run's full story: the prompt, every tool call with its
+                    resolved status, the event timeline, the delivery receipt,
+                    and the tokens. */}
+                <RunInspectorSection threadId={props.threadId} runId={selected.run_id} showPicker={false} />
                 <RunUsagePanel threadId={props.threadId} runId={selected.run_id} run={selected} />
                 <RunReplayControls threadId={props.threadId} runId={selected.run_id} />
               </>
