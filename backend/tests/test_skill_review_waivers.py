@@ -306,14 +306,31 @@ def test_workflow_triggers_on_waiver_implementation_and_manifest() -> None:
     assert workflow.count('".github/skill-review-waivers.v1.json"') == 2
 
 
+def _complete_facts(findings: list[dict[str, object]]) -> dict[str, object]:
+    """A facts payload carrying a complete-review record, as the analyzer emits.
+
+    ``run_review`` fails closed when the completeness record is absent, so waiver
+    tests that exercise the waiver path have to present a genuinely complete
+    review rather than a bare ``{"not_assessed": []}``.
+    """
+    return {
+        "summary": {"blockers": 0, "errors": len(findings), "warnings": 0, "infos": 0},
+        "completeness": {
+            "package_enumerated": True,
+            "text_content_complete": True,
+            "truncated": False,
+            "not_assessed": [],
+        },
+        "findings": findings,
+        "reader_errors": [],
+        "analyzer_errors": [],
+    }
+
+
 def test_run_review_keeps_waived_error_visible_and_passes(tmp_path: Path, monkeypatch, capsys) -> None:
     package = tmp_path / "skills/public/demo"
     _, digest = _write_target(tmp_path)
-    facts = {
-        "summary": {"blockers": 0, "errors": 1, "warnings": 0, "infos": 0},
-        "completeness": {"not_assessed": []},
-        "findings": [_finding()],
-    }
+    facts = _complete_facts([_finding()])
     monkeypatch.setattr(runner, "collect_review_facts", lambda *args: facts)
 
     exit_code = runner.run_review(package, tmp_path, "python", WaiverManifest((_waiver(digest=digest),)))
@@ -328,11 +345,7 @@ def test_run_review_keeps_waived_error_visible_and_passes(tmp_path: Path, monkey
 def test_run_review_still_fails_for_unwaived_error(tmp_path: Path, monkeypatch) -> None:
     package = tmp_path / "skills/public/demo"
     _write_target(tmp_path)
-    facts = {
-        "summary": {"blockers": 0, "errors": 1, "warnings": 0, "infos": 0},
-        "completeness": {"not_assessed": []},
-        "findings": [_finding()],
-    }
+    facts = _complete_facts([_finding()])
     monkeypatch.setattr(runner, "collect_review_facts", lambda *args: facts)
 
     assert runner.run_review(package, tmp_path, "python", EMPTY_MANIFEST) == 1

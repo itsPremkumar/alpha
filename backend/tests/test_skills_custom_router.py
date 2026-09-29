@@ -139,6 +139,7 @@ def test_install_skill_archive_runs_security_scan(monkeypatch, tmp_path):
 
 def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp_path):
     installed_paths: list[Path] = []
+    storage_user_ids: list[str] = []
     refresh_calls: list[str] = []
 
     class _Storage:
@@ -156,7 +157,16 @@ def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp
         refresh_calls.append(user_id)
 
     config = SimpleNamespace()
-    monkeypatch.setattr(skills_router, "_get_user_skill_storage", lambda cfg: _Storage())
+
+    def _storage(user_id: str, **kwargs):
+        # _install_skill_archive resolves storage itself (it takes an explicit
+        # user_id so proposal approval can install for the proposer), so it goes
+        # through get_or_new_user_skill_storage, never through the
+        # _get_user_skill_storage() helper.
+        storage_user_ids.append(user_id)
+        return _Storage()
+
+    monkeypatch.setattr(skills_router, "get_or_new_user_skill_storage", _storage)
     monkeypatch.setattr(skills_router, "refresh_user_skills_system_prompt_cache_async", _refresh)
     monkeypatch.setattr(skills_router, "get_effective_user_id", lambda: "default")
 
@@ -175,6 +185,7 @@ def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp
 
     assert response.status_code == 200
     assert response.json()["skill_name"] == "uploaded-skill"
+    assert storage_user_ids == ["default"]
     assert refresh_calls == ["default"]
     assert len(installed_paths) == 1
     assert not installed_paths[0].exists()

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import io
+import os
 import subprocess
+from contextlib import redirect_stdout
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -210,6 +213,51 @@ def test_main_reviews_package_when_skill_md_deleted_but_sibling_file_remains(
     assert "One or more skill reviews failed." in output
 
 
+def test_main_reviews_package_when_only_deleted_skill_md_left_package_unloadable(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    # A deleted root SKILL.md is normally retired only when the whole package is
+    # gone. Here the package directory survives with sibling files, so it is a
+    # package with no manifest -- it can never load. Deleting SKILL.md is the
+    # *only* reported change, so skipping the deleted path outright would queue
+    # nothing at all and the run would pass unreviewed.
+    skill_dir = tmp_path / "skills" / "public" / "orphaned"
+    (skill_dir / "scripts").mkdir(parents=True, exist_ok=True)
+    (skill_dir / "scripts" / "helper.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    diff_output = b"D\0skills/public/orphaned/SKILL.md\0"
+    reviewed: list[str] = []
+
+    def fake_git_diff(command, **kwargs):
+        return _completed(command, stdout=diff_output)
+
+    def fake_review(package: Path, repo_root: Path, python_executable: str, manifest: WaiverManifest) -> int:
+        reviewed.append(package.relative_to(repo_root).as_posix())
+        return 0
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_git_diff)
+    monkeypatch.setattr(runner, "run_review", fake_review)
+
+    exit_code = runner.main(
+        [
+            "--before",
+            "before",
+            "--after",
+            "after",
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert reviewed == ["skills/public/orphaned"]
+    assert "Package left without SKILL.md; queued for review: skills/public/orphaned/SKILL.md" in output
+    assert "Queued package: skills/public/orphaned" in output
+    # The reviewer still reports the real blocker; the gate's job is to run it.
+    assert exit_code == 0
+
+
 def test_main_reviews_package_when_only_support_file_changed(
     tmp_path: Path,
     monkeypatch,
@@ -302,7 +350,11 @@ def test_main_exits_nonzero_when_review_cli_reports_error(tmp_path: Path, monkey
             "never",
         ]
         assert kwargs["cwd"] == tmp_path
-        assert "backend/packages/harness" in kwargs["env"]["PYTHONPATH"]
+        # The harness root must be its own PYTHONPATH entry, written in the
+        # native form the child interpreter will split on (os.pathsep: ";" on
+        # Windows, ":" on POSIX). Comparing against a hardcoded "/" separator
+        # only holds on POSIX; PYTHONPATH entries are OS paths, not git paths.
+        assert str(tmp_path / "backend" / "packages" / "harness") in kwargs["env"]["PYTHONPATH"].split(os.pathsep)
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
         assert kwargs["check"] is False
@@ -389,3 +441,98 @@ def test_is_zero_sha_requires_full_sha_length() -> None:
     assert runner.is_zero_sha("0" * 64) is True
     assert runner.is_zero_sha("0") is False
     assert runner.is_zero_sha("f" * 64) is False
+
+
+def _review_package(tmp_path: Path) -> Path:
+    package = tmp_path / "skills" / "public" / "demo"
+    package.mkdir(parents=True)
+    (package / "SKILL.md").write_text("---\nname: demo\ndescription: Demo.\n---\n\n# demo\n", encoding="utf-8")
+    return package
+
+
+def _run_review_with_facts(monkeypatch, package: Path, repo_root: Path, facts) -> tuple[int, str]:
+    monkeypatch.setattr(runner, "collect_review_facts", lambda *args: facts)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        exit_code = runner.run_review(package, repo_root, "python", EMPTY_MANIFEST)
+    return exit_code, out.getvalue()
+
+
+def _clean_facts(**overrides) -> dict:
+    facts = {
+        "summary": {"blockers": 0, "errors": 0, "warnings": 0, "infos": 0},
+        "completeness": {
+            "package_enumerated": True,
+            "text_content_complete": True,
+            "truncated": False,
+            "not_assessed": [],
+        },
+        "findings": [],
+        "reader_errors": [],
+        "analyzer_errors": [],
+    }
+    facts.update(overrides)
+    return facts
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [
+        pytest.param({}, id="empty-payload"),
+        pytest.param({"findings": [], "summary": {}}, id="completeness-missing"),
+        pytest.param({"completeness": {"not_assessed": []}, "summary": {}}, id="findings-missing"),
+        pytest.param({"completeness": {"not_assessed": []}, "summary": {}, "findings": None}, id="findings-not-a-list"),
+        pytest.param(_clean_facts(completeness={"package_enumerated": False, "not_assessed": []}), id="package-not-enumerated"),
+        pytest.param(_clean_facts(completeness={"text_content_complete": False, "not_assessed": []}), id="text-content-incomplete"),
+        pytest.param(_clean_facts(completeness={"not_assessed": ["skillscan"]}), id="not-assessed-entry"),
+        pytest.param(_clean_facts(findings=["not-a-dict"]), id="malformed-finding"),
+        pytest.param(_clean_facts(findings=[{"rule_id": "r", "path": "p", "line": 1, "message": "m"}]), id="finding-without-severity"),
+        pytest.param(
+            _clean_facts(findings=[{"severity": "critical", "rule_id": "r", "path": "p", "line": 1, "message": "m"}]),
+            id="finding-with-unknown-severity",
+        ),
+    ],
+)
+def test_run_review_fails_closed_on_unreviewable_payloads(tmp_path: Path, monkeypatch, facts) -> None:
+    """A review that could not assess the package must never read as a pass.
+
+    Each payload here is a shape the analyzer subprocess can return in which the
+    package's content escaped review, or in which a finding's severity is
+    unrankable. Silence is not evidence of a clean review, so the gate fails.
+    """
+    package = _review_package(tmp_path)
+
+    exit_code, output = _run_review_with_facts(monkeypatch, package, tmp_path, facts)
+
+    assert exit_code == 1
+    assert "Failed: skills/public/demo" in output
+
+
+def test_run_review_passes_a_complete_clean_review(tmp_path: Path, monkeypatch) -> None:
+    """The fail-closed rules above must not turn a genuinely clean review into a failure."""
+    package = _review_package(tmp_path)
+
+    exit_code, output = _run_review_with_facts(monkeypatch, package, tmp_path, _clean_facts())
+
+    assert exit_code == 0
+    assert "Passed: skills/public/demo (0 waived finding(s))" in output
+    assert "Incomplete review" not in output
+
+
+def test_run_review_still_fails_on_unrankable_severity_that_a_waiver_cannot_match(tmp_path: Path, monkeypatch) -> None:
+    """An unrankable severity must not become waivable.
+
+    ``matching_waiver`` only ever waives a severity of exactly ``error``, so an
+    unknown severity can never be cleared by a manifest entry -- the gate has to
+    fail on the finding itself.
+    """
+    package = _review_package(tmp_path)
+    facts = _clean_facts(
+        findings=[{"severity": "critical", "rule_id": "python-subprocess", "path": "scripts/run.py", "line": 3, "message": "Subprocess usage."}],
+    )
+
+    exit_code, output = _run_review_with_facts(monkeypatch, package, tmp_path, facts)
+
+    assert exit_code == 1
+    assert "WAIVED" not in output
+    assert "Failed: skills/public/demo" in output

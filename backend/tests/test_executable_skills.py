@@ -45,7 +45,9 @@ async def test_executable_skill_runner_async():
     )
 
     res = await runner.execute(ref, {"name": "alpha"})
-    assert res == {"validated": True, "target": "AGENT_WORKSPACE"}
+    # The runner must return the callable's result verbatim: sample_async_validator
+    # upper-cases its input, so the expected target is the uppercased argument.
+    assert res == {"validated": True, "target": "ALPHA"}
 
 
 def test_executable_skill_reference_validation():
@@ -55,20 +57,24 @@ def test_executable_skill_reference_validation():
     with pytest.raises(ValueError, match="Skill reference requires 'callable'"):
         ExecutableSkillReference.from_dict({"type": "python", "import": "math"})
 
-    valid = ExecutableSkillReference.from_dict({
-        "type": "python",
-        "import": "math",
-        "callable": "sqrt",
-    })
+    valid = ExecutableSkillReference.from_dict(
+        {
+            "type": "python",
+            "import": "math",
+            "callable": "sqrt",
+        }
+    )
     assert valid.import_path == "math"
     assert valid.callable_name == "sqrt"
 
 
 @pytest.mark.asyncio
 async def test_invoke_python_skill_tool():
-    res = await invoke_python_skill_tool.ainvoke({
-        "import_path": "math",
-        "callable_name": "isqrt",
-        "arguments": '{"n": 144}',
-    })
+    res = await invoke_python_skill_tool.ainvoke(
+        {
+            "import_path": "math",
+            "callable_name": "isqrt",
+            "arguments": '{"n": 144}',
+        }
+    )
     assert "12" in res
