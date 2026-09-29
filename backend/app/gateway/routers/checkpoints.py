@@ -35,12 +35,26 @@ from alpha.tools.builtins.code_agentic_core import (
     get_checkpoint_diff,
     rollback_to_checkpoint,
 )
+from alpha.utils.time import coerce_iso
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/checkpoints", tags=["checkpoints"])
 
 _OUTSIDE_AREA_DETAIL = "Checkpoints are limited to the authenticated user's own data directory"
+
+
+def _wire_ts(value: object) -> str:
+    """A stored epoch float as ISO 8601.
+
+    ``CodeCheckpoint.created_at`` is ``time.time()`` written at creation by
+    ``create_shadow_checkpoint`` (code_agentic_core.py:366), so it has no
+    "never" state and no epoch-zero sentinel. The registry is process-global
+    and in-memory only, so nothing on disk changes either way - the coercion
+    exists purely so a client can parse the field as a date, like every other
+    Gateway route.
+    """
+    return coerce_iso(value)
 
 
 class CheckpointCreateRequest(BaseModel):
@@ -52,9 +66,21 @@ class CheckpointCreateRequest(BaseModel):
 
 
 class CheckpointResponse(BaseModel):
+    """The checkpoint shape this plane publishes.
+
+    ``created_at`` is a ``str`` because that is what the routes emit: ISO 8601
+    via ``coerce_iso``. It was declared ``float``, which made this the only
+    Gateway plane with a *declared* exception to the ISO convention and no
+    record of the exception anywhere - the declaration read like an intentional
+    contract when it was really the raw ``CodeCheckpoint.created_at`` epoch
+    leaking through a schema nobody enforced. ``WorkflowCheckpoint.created_at``
+    (runtime/checkpoint/engine.py) has the same float shape but no Gateway
+    route reaches it; it is harness API, not this wire.
+    """
+
     checkpoint_id: str
     label: str
-    created_at: float
+    created_at: str
     files_count: int
     test_passed: bool | None = None
     failure_count: int = 0
@@ -122,7 +148,7 @@ def list_checkpoints() -> list[dict[str, Any]]:
     # authenticated user, so a checkpoint rooted in another area must not be
     # listed here: its label and absolute host root are not this caller's data.
     area = _caller_area()
-    return [row for row in get_all_checkpoints() if _is_inside_area(row.get("root_path") or "", area)]
+    return [{**row, "created_at": _wire_ts(row.get("created_at"))} for row in get_all_checkpoints() if _is_inside_area(row.get("root_path") or "", area)]
 
 
 @router.post("", response_model=dict)
@@ -140,7 +166,7 @@ def create_checkpoint(req: CheckpointCreateRequest) -> dict[str, Any]:
             "status": "created",
             "checkpoint_id": cp.checkpoint_id,
             "label": cp.label,
-            "created_at": cp.created_at,
+            "created_at": _wire_ts(cp.created_at),
             "files_count": len(cp.files_snapshot),
             "git_ref": cp.git_ref,
         }

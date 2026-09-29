@@ -14,11 +14,126 @@ from pydantic import BaseModel, Field, model_validator
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.models import SwarmBudget, SwarmMode, is_terminal_swarm_status
+from alpha.utils.time import coerce_iso
 from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/swarms", tags=["swarms"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage swarms."
+
+# ---------------------------------------------------------------------------
+# Wire projection (ISO 8601 at the API boundary only).
+#
+# `SwarmPlan.created_at` / `completed_at` are already strings
+# (`%Y-%m-%dT%H:%M:%SZ`), but `SwarmTaskNode.lease_expires_at` /
+# `started_at` / `completed_at` / `next_attempt_at`, `SwarmTaskLease.expires_at`,
+# `SwarmBudget.started_at`, `SwarmMessage.created_at` and the blackboard's
+# `timestamp` are `time.time()` floats emitted raw by `to_dict()`.  One JSON
+# document therefore carried `created_at='2026-09-29T01:21:02Z'` next to
+# `tasks.task-map-1.started_at=1790644866.30809` - same field name, two types.
+#
+# Coerced on the way out only.  The plan JSON on disk and the message journal
+# keep the float, so `SwarmPlan.from_dict` / `SwarmTaskNode.from_dict` /
+# `SwarmMessage.from_dict` still load every existing record and nothing is
+# rewritten.
+# ---------------------------------------------------------------------------
+
+
+def _wire_ts(value: object) -> str | None:
+    """One timestamp on the wire: ISO 8601 when real, ``null`` when absent.
+
+    ``None`` stays ``None``.  These fields are already optional in the models
+    (a task with no lease has ``lease_expires_at=None``, and the route already
+    emitted ``null`` for it), so collapsing absence to ``""`` would be a second,
+    unrelated wire change.  Nothing in this plane uses epoch ``0.0`` to mean
+    "never" - the sentinel fields live in the cognitive/company planes - so
+    there is no zero case to translate here and a stored ``0.0`` is coerced as
+    the real epoch it claims to be.
+    """
+    if value is None:
+        return None
+    return coerce_iso(value)
+
+
+_TASK_TS_FIELDS = ("lease_expires_at", "started_at", "completed_at", "next_attempt_at")
+
+
+def _task_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Project one ``SwarmTaskNode.to_dict()`` shape to the ISO dialect."""
+    out = dict(row)
+    for field in _TASK_TS_FIELDS:
+        out[field] = _wire_ts(out.get(field))
+    return out
+
+
+def _budget_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Project a ``SwarmBudget.to_dict()`` snapshot (it carries ``started_at``)."""
+    out = dict(row)
+    out["started_at"] = _wire_ts(out.get("started_at"))
+    return out
+
+
+def _plan_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Project one ``SwarmPlan.to_dict()`` shape, tasks and budget included."""
+    out = dict(row)
+    tasks = out.get("tasks")
+    if isinstance(tasks, dict):
+        out["tasks"] = {tid: _task_to_wire(node) if isinstance(node, dict) else node for tid, node in tasks.items()}
+    budget = out.get("budget")
+    if isinstance(budget, dict):
+        out["budget"] = _budget_to_wire(budget)
+    # `created_at` / `completed_at` are already ISO strings; running them
+    # through the same coercion is a no-op today and repairs a legacy plan whose
+    # `from_dict` stringified an epoch float (`str(1790644866.3)` matches
+    # `coerce_iso`'s legacy unix-timestamp string shape).
+    out["created_at"] = _wire_ts(out.get("created_at"))
+    out["completed_at"] = _wire_ts(out.get("completed_at"))
+    return out
+
+
+def _lease_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Project a ``SwarmTaskLease`` row (``expires_at`` is a float)."""
+    out = dict(row)
+    out["expires_at"] = _wire_ts(out.get("expires_at"))
+    return out
+
+
+def _message_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Project a ``SwarmMessage.to_dict()`` row (``created_at`` is a float)."""
+    out = dict(row)
+    out["created_at"] = _wire_ts(out.get("created_at"))
+    return out
+
+
+def _with_budget_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Coerce the embedded ``SwarmBudget`` snapshot on a coordinator result.
+
+    ``SwarmCoordinator.step`` and ``.metrics`` both inline
+    ``SwarmBudget.check()`` - which is ``to_dict()`` - under a ``budget`` key,
+    and that snapshot carries the same float ``started_at``.
+    """
+    budget = row.get("budget")
+    if isinstance(budget, dict):
+        return {**row, "budget": _budget_to_wire(budget)}
+    return row
+
+
+def _step_result_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    return _with_budget_to_wire(row)
+
+
+def _stamped_rows(rows: Any) -> Any:
+    """Coerce ``timestamp`` on blackboard rows without inventing the key.
+
+    The swarm blackboard stores ``{"uri", "description", "timestamp"}`` /
+    ``{"task_id", "summary", ..., "timestamp"}`` rows, but the degradation path
+    replaces a whole section with ``{"error": "..."}``, and a test double may
+    return rows with no timestamp at all.  Only a key that is actually present
+    is rewritten.
+    """
+    if not isinstance(rows, list):
+        return rows
+    return [{**row, "timestamp": _wire_ts(row["timestamp"])} if isinstance(row, dict) and "timestamp" in row else row for row in rows]
 
 
 class SwarmEvaluateRequest(BaseModel):
@@ -175,7 +290,7 @@ async def create_and_spawn_swarm(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return plan.to_dict()
+    return _plan_to_wire(plan.to_dict())
 
 
 @router.get("")
@@ -184,7 +299,7 @@ async def list_swarms(limit: int = 20, *, request: Request = None):
 
     coordinator = get_swarm_coordinator()
     plans = await asyncio.to_thread(coordinator.list_swarms, max(1, min(int(limit), 100)), owner_id=_owner_scope(request))
-    return [plan.to_dict() for plan in plans]
+    return [_plan_to_wire(plan.to_dict()) for plan in plans]
 
 
 @router.get("/{swarm_id}")
@@ -192,7 +307,7 @@ async def get_swarm_details(swarm_id: str, request: Request = None):
     """Retrieve the full plan, task DAG, budget, and blackboard summary."""
 
     coordinator, plan = _ensure_visible(swarm_id, request)
-    return plan.to_dict()
+    return _plan_to_wire(plan.to_dict())
 
 
 @router.post("/{swarm_id}/step")
@@ -202,7 +317,7 @@ async def step_swarm(swarm_id: str, request: Request = None):
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
-    return await asyncio.to_thread(coordinator.step, swarm_id)
+    return _step_result_to_wire(await asyncio.to_thread(coordinator.step, swarm_id))
 
 
 @router.post("/{swarm_id}/pause")
@@ -297,7 +412,7 @@ async def complete_swarm_task(swarm_id: str, task_id: str, payload: SwarmTaskCom
         raise HTTPException(status_code=409, detail="Task completion was fenced by a newer lease, revision, or terminal state.")
     if updated.state.value != "completed":
         raise HTTPException(status_code=409, detail="Task completion was fenced by a newer lease or terminal state.")
-    return updated.to_dict()
+    return _task_to_wire(updated.to_dict())
 
 
 @router.get("/{swarm_id}/tasks/{task_id}")
@@ -308,8 +423,12 @@ async def get_swarm_task(swarm_id: str, task_id: str, request: Request = None):
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found in swarm '{swarm_id}'.")
     return {
         "swarm_id": swarm_id,
-        "task": task.to_dict(),
-        "lease": {"lease_id": task.lease_id, "owner": task.lease_owner, "expires_at": task.lease_expires_at},
+        "task": _task_to_wire(task.to_dict()),
+        "lease": {
+            "lease_id": task.lease_id,
+            "owner": task.lease_owner,
+            "expires_at": _wire_ts(task.lease_expires_at),
+        },
     }
 
 
@@ -330,7 +449,7 @@ async def claim_swarm_task(swarm_id: str, task_id: str, payload: SwarmClaimReque
     )
     if lease is None:
         raise HTTPException(status_code=409, detail="Task is not ready, already claimed, or the swarm is not running.")
-    return lease.to_dict()
+    return _lease_to_wire(lease.to_dict())
 
 
 @router.post("/{swarm_id}/expand")
@@ -429,6 +548,10 @@ async def get_swarm_memory(swarm_id: str, request: Request = None):
                 exc_info=True,
             )
             payload[section] = {"error": type(outcome).__name__}
+        elif section in ("artifacts", "task_results"):
+            # Blackboard rows carry a raw `time.time()` float under
+            # `timestamp`; coerce it so the whole swarm plane speaks ISO.
+            payload[section] = _stamped_rows(outcome)
         else:
             payload[section] = outcome
 
@@ -456,7 +579,7 @@ async def get_swarm_messages(
         since_sequence=max(0, int(since_sequence)),
         limit=max(1, min(int(limit), 256)),
     )
-    return [message.to_dict() for message in messages]
+    return [_message_to_wire(message.to_dict()) for message in messages]
 
 
 @router.post("/{swarm_id}/messages")
@@ -479,14 +602,14 @@ async def publish_swarm_message(swarm_id: str, payload: SwarmMessageRequest, req
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return message.to_dict()
+    return _message_to_wire(message.to_dict())
 
 
 @router.get("/{swarm_id}/metrics")
 async def get_swarm_metrics(swarm_id: str, request: Request = None):
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
-    return await asyncio.to_thread(coordinator.metrics, swarm_id)
+    return _with_budget_to_wire(await asyncio.to_thread(coordinator.metrics, swarm_id))
 
 
 @router.get("/{swarm_id}/leader")
