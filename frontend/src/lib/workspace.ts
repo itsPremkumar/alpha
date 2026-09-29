@@ -33,25 +33,53 @@ export interface ConsoleStats {
   raw: Record<string, unknown>;
 }
 
+/**
+ * A count the server may simply not have sent.
+ *
+ * The Gateway's `/console/stats` answers real numbers for runs, threads, agents
+ * and tokens, so `?? 0` is defensible there. The cost fields are different: the
+ * live response is `{"total_cost": null, "currency": null}` whenever no
+ * `model_pricing` is configured, and `?? 0` would turn "the server priced
+ * nothing" into a confident `$0.00`.
+ */
+function count(d: Record<string, unknown>, keys: string[]): number | null {
+  const raw = pick(d, keys, null);
+  const n = Number(raw);
+  return raw === null || !Number.isFinite(n) ? null : n;
+}
+
 export async function fetchConsoleStats(): Promise<ConsoleStats> {
   const d = await get<Record<string, unknown>>("/console/stats");
   return {
-    runs: Number(pick(d, ["runs", "total_runs"], 0)),
-    threads: Number(pick(d, ["threads", "total_threads"], 0)),
-    agents: Number(pick(d, ["agents", "total_agents"], 0)),
-    tokens: Number(pick(d, ["tokens", "total_tokens"], 0)),
+    runs: count(d, ["runs", "total_runs"]) ?? 0,
+    threads: count(d, ["threads", "total_threads"]) ?? 0,
+    agents: count(d, ["agents", "total_agents"]) ?? 0,
+    tokens: count(d, ["tokens", "total_tokens"]) ?? 0,
+    // `null` here means the server reported no total. It is NOT a zero, and it
+    // is the only honest reading of an unpriced workspace.
     cost: (d.cost as number | null) ?? (d.total_cost as number | null) ?? null,
     currency: (d.currency as string | null) ?? null,
     raw: d,
   };
 }
 
+/**
+ * One row of `GET /console/runs`.
+ *
+ * `model` and `tokens` used to fall back to `"—"` and `0`, which put the same
+ * dash in the model column that an absent cost produced elsewhere in the UI: a
+ * real zero, a name the server omitted, and a value that was never sent all
+ * rendered the same. `model` is now `null` when the server named no model, so
+ * the caller can say "not reported" instead of printing a glyph that means
+ * three things.
+ */
 export interface ConsoleRun {
   run_id: string;
   thread_id: string;
   thread_title: string;
   status: string;
-  model: string;
+  /** null = the server named no model for this run. Never `"—"`. */
+  model: string | null;
   tokens: number;
   cost: number | null;
   created_at: string;
@@ -64,8 +92,11 @@ export async function fetchConsoleRuns(limit = 30): Promise<ConsoleRun[]> {
     thread_id: String(pick(r, ["thread_id"], "")),
     thread_title: String(pick(r, ["thread_title", "title"], "Untitled")),
     status: String(pick(r, ["status"], "unknown")),
-    model: String(pick(r, ["model", "model_name"], "—")),
-    tokens: Number(pick(r, ["tokens", "total_tokens"], 0)),
+    model: (() => {
+      const m = pick(r, ["model", "model_name"], null);
+      return m === null || m === "" ? null : String(m);
+    })(),
+    tokens: count(r as Record<string, unknown>, ["tokens", "total_tokens"]) ?? 0,
     cost: (r.cost as number | null) ?? null,
     created_at: String(pick(r, ["created_at"], "")),
   }));

@@ -27,6 +27,14 @@ HARNESS_PATH = REPO_ROOT / "backend" / "packages" / "harness"
 if HARNESS_PATH.is_dir():
     sys.path.insert(0, str(HARNESS_PATH))
 
+try:
+    from alpha.skills.review.models import SEVERITY_RANK
+except ImportError:  # pragma: no cover - only when the harness is unavailable
+    # The review gate must still be able to rank severities without the harness
+    # package importable; mirroring the analyzer's closed set keeps the two in
+    # step rather than silently degrading to "unknown severity is fine".
+    SEVERITY_RANK = {"blocker": 0, "error": 1, "warning": 2, "info": 3}
+
 PUBLIC_SKILL_PACKAGE_PATHSPEC = ":(glob)skills/public/**"
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
@@ -217,14 +225,11 @@ def parse_name_status(output: bytes) -> list[ChangedPath]:
 
 def select_skill_packages(changes: Sequence[ChangedPath], repo_root: Path) -> list[Path]:
     package_statuses: dict[PurePosixPath, list[str]] = {}
-    resolutions: list[tuple[ChangedPath, PurePosixPath]] = []
+    deleted_skill_md: dict[PurePosixPath, list[PurePosixPath]] = {}
+    resolutions: list[PurePosixPath] = []
 
     for change in changes:
         if not is_public_skill_package_path(change.path):
-            continue
-
-        if change.status.startswith("D") and is_public_skill_md(change.path):
-            print(f"[skill-review] Skipping deleted SKILL.md: {change.path}")
             continue
 
         package_rel = find_public_skill_package(change.path, repo_root)
@@ -233,21 +238,31 @@ def select_skill_packages(changes: Sequence[ChangedPath], repo_root: Path) -> li
             continue
 
         package_statuses.setdefault(package_rel, []).append(change.status)
-        resolutions.append((change, package_rel))
+        if change.status.startswith("D") and is_public_skill_md(change.path):
+            # Record the deletion but still resolve the owning package: a deleted
+            # root SKILL.md does not by itself retire a package whose directory
+            # still holds sibling files, and such a package can never load.
+            # is_fully_removed_package below decides which of the two this is.
+            deleted_skill_md.setdefault(package_rel, []).append(change.path)
+        resolutions.append(package_rel)
 
     packages: list[Path] = []
     seen: set[PurePosixPath] = set()
 
-    for _, package_rel in resolutions:
+    for package_rel in resolutions:
         if package_rel in seen:
             print(f"[skill-review] Already queued package: {package_rel}")
             continue
         seen.add(package_rel)
 
         if is_fully_removed_package(package_rel, package_statuses[package_rel], repo_root):
+            for path in deleted_skill_md.get(package_rel, []):
+                print(f"[skill-review] Skipping deleted SKILL.md: {path}")
             print(f"[skill-review] Skipping fully removed package: {package_rel}")
             continue
 
+        for path in deleted_skill_md.get(package_rel, []):
+            print(f"[skill-review] Package left without SKILL.md; queued for review: {path}")
         packages.append(repo_root / package_rel)
         print(f"[skill-review] Queued package: {package_rel}")
 
@@ -335,6 +350,45 @@ def collect_review_facts(package: Path, repo_root: Path, python_executable: str)
     return facts
 
 
+def report_incomplete_review(completeness: dict[str, Any]) -> bool:
+    """Print why a review was not a complete assessment, and whether it must fail.
+
+    The analyzer reports what it could not read. Every one of those reasons means
+    a skill's content escaped review, so each one fails the gate; treating a
+    partial review as a pass would let an unreviewable skill merge silently.
+    """
+    reasons: list[str] = []
+    if not completeness:
+        # No completeness record at all is the least trustworthy case: an absent
+        # key is indistinguishable from one that was never computed, and a gate
+        # that treats that as a complete review is the fail-open this guards.
+        print("[skill-review] Incomplete review: analyzer returned no completeness record")
+        return True
+    if completeness.get("package_enumerated") is not True:
+        reasons.append("package was not enumerated")
+    if completeness.get("text_content_complete") is not True:
+        reasons.append("text content was incomplete")
+    for item in completeness.get("not_assessed") or []:
+        reasons.append(str(item))
+
+    if reasons:
+        print(f"[skill-review] Incomplete review: {', '.join(reasons)}")
+        return True
+    return False
+
+
+def review_failed_for_unwaived_severity(finding: dict[str, Any]) -> bool:
+    """Whether a finding blocks on its own severity, with no waiver available.
+
+    An unrecognized or absent severity is treated as a blocker rather than
+    skipped: a finding the gate cannot rank is a finding the gate cannot clear.
+    """
+    severity = finding.get("severity")
+    if not isinstance(severity, str) or severity not in SEVERITY_RANK:
+        return True
+    return SEVERITY_RANK[severity] <= SEVERITY_RANK["error"]
+
+
 def run_review(package: Path, repo_root: Path, python_executable: str, manifest: WaiverManifest = EMPTY_MANIFEST) -> int:
     package_rel = package.relative_to(repo_root).as_posix()
     print(f"[skill-review] Reviewing package: {package_rel}")
@@ -344,17 +398,24 @@ def run_review(package: Path, repo_root: Path, python_executable: str, manifest:
         print(f"[skill-review] Failed: {package_rel}")
         return 1
 
-    summary = facts.get("summary", {})
-    completeness = facts.get("completeness", {})
+    summary = facts.get("summary") if isinstance(facts.get("summary"), dict) else {}
+    completeness = facts.get("completeness") if isinstance(facts.get("completeness"), dict) else {}
     print(f"[skill-review] Summary: {summary.get('blockers')} blocker(s), {summary.get('errors')} error(s), {summary.get('warnings')} warning(s), {summary.get('infos')} info(s)")
-    not_assessed = completeness.get("not_assessed") or []
-    failed = bool(not_assessed)
-    if not_assessed:
-        print(f"[skill-review] Incomplete review: {', '.join(str(item) for item in not_assessed)}")
+
+    # Fail closed on a review that could not assess the whole package. A
+    # missing, mistyped, or contradicting completeness record carries no
+    # evidence of a clean review, so it must not read as one.
+    failed = report_incomplete_review(completeness)
 
     waived_count = 0
-    for finding in facts.get("findings", []):
+    findings = facts.get("findings")
+    if not isinstance(findings, list):
+        print("[skill-review] Incomplete review: analyzer returned no usable findings list")
+        failed = True
+        findings = []
+    for finding in findings:
         if not isinstance(finding, dict):
+            print(f"[skill-review] Incomplete review: malformed finding entry {finding!r}")
             failed = True
             continue
         location = finding.get("path") or "<package>"
@@ -365,7 +426,7 @@ def run_review(package: Path, repo_root: Path, python_executable: str, manifest:
         if waiver is not None:
             waived_count += 1
             waiver_suffix = f" [WAIVED until {waiver.expires_on.isoformat()}: {waiver.reason}]"
-        elif finding.get("severity") in {"blocker", "error"}:
+        elif review_failed_for_unwaived_severity(finding):
             failed = True
         print(f"- {finding.get('severity')} {finding.get('rule_id')} at {location}: {finding.get('message')}{waiver_suffix}")
 

@@ -221,12 +221,27 @@ export async function cancelJob(id: string): Promise<void> {
 
 /* ---------- Autonomous company ---------- */
 
+/**
+ * `GET /api/company/status` for the first organization the engine knows about.
+ *
+ * The route exists and answers 404 in one specific, ordinary case: the server
+ * has no organization yet. `backend/app/gateway/routers/company.py` raises
+ * `HTTPException(404, "No active organizations found. Bootstrap a company
+ * first.")` when `engine.list_companies()` is empty.
+ *
+ * This used to `catch { return null }`, which destroyed that reason. The caller
+ * in `lib/system.ts` then substituted its own wording — "Company engine idle" —
+ * and the workspace header rendered that as the state of a subsystem that had
+ * in fact never been set up. "Idle" claims an engine exists with nothing to do;
+ * the server said no engine has been given anything to run.
+ *
+ * A failure therefore propagates with the server's `detail` intact, exactly as
+ * `listGroups` / `listSwarms` / `listJobs` / `companyKpis` already do in this
+ * file. Resolving `null` here is only correct for a genuine 2xx-with-no-body,
+ * and callers must not read `null` as "idle".
+ */
 export async function companyStatus(): Promise<Record<string, unknown> | null> {
-  try {
-    return await get<Record<string, unknown>>("/company/status");
-  } catch {
-    return null;
-  }
+  return get<Record<string, unknown>>("/company/status");
 }
 
 export async function executiveDigest(): Promise<string> {

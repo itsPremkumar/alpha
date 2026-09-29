@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from datetime import date
@@ -98,8 +99,17 @@ def test_committed_manifest_matches_schema_and_strict_parser() -> None:
     parsed = parse_manifest(manifest_path.read_bytes(), source=str(manifest_path))
 
     assert len(parsed.waivers) == 2
-    assert parsed.waivers[0].preapproved_file_sha256s == ("sha256:2877bde08bf3f437b9dae3d57585a0840b9b1024736d2e5c6c657b71899269d0",)
-    assert parsed.waivers[1].preapproved_file_sha256s == ("sha256:ea2521ba41c8fd16b2900758c890bb6c6d2b4b01da10b4a860facb8587ed0bde",)
+    # Each waiver records the revision it was granted against plus every
+    # authorised reformat since, so the audit trail is additive: a reformat adds
+    # a digest, it never overwrites the one that was actually reviewed.
+    assert parsed.waivers[0].preapproved_file_sha256s == (
+        "sha256:2877bde08bf3f437b9dae3d57585a0840b9b1024736d2e5c6c657b71899269d0",
+        "sha256:8903171e790c8b8ff8c888ad6eef6568bfc78789ed44f70f5f65aaf24c91970e",
+    )
+    assert parsed.waivers[1].preapproved_file_sha256s == (
+        "sha256:ea2521ba41c8fd16b2900758c890bb6c6d2b4b01da10b4a860facb8587ed0bde",
+        "sha256:79a5f43632d9d58964d94f9d8ee0d34f7d12cefcfd5f4ddf28f7a6e74fb37536",
+    )
 
 
 def test_skill_creator_waivers_match_current_error_findings() -> None:
@@ -114,6 +124,89 @@ def test_skill_creator_waivers_match_current_error_findings() -> None:
         today=date(2026, 8, 31),
     )
     assert validation_errors == []
+
+
+def test_every_waived_subprocess_call_still_matches_its_stated_reason() -> None:
+    """The waiver's `reason` is a security claim, so it is asserted, not trusted.
+
+    A waiver says a subprocess call is safe because it uses "a fixed
+    executable, an argv list ... and shell=False". A SHA-256 pin proves the file
+    has not changed; it cannot prove the call still has that shape once someone
+    re-pins it. This reads each waived file and checks the claim directly, so
+    editing `shell=True` into a waived call fails here even if the digest is
+    updated in the same commit.
+
+    Both skills files were reformatted at least once (c4c1a71, "quarantine:
+    preserve 426 files of unattributed agent work"), which is what stranded
+    their digests. A reformat must not be able to smuggle in a weaker call.
+    """
+    manifest = parse_manifest((REPO_ROOT / ".github/skill-review-waivers.v1.json").read_bytes(), source="committed manifest")
+
+    assert manifest.waivers, "the manifest is the subject of this test"
+    for waiver in manifest.waivers:
+        source = (REPO_ROOT / waiver.package / waiver.path).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        # `evidence` is the dotted call as the analyzer reports it
+        # ("subprocess.run"); the AST exposes only the attribute ("run").
+        expected_attr = waiver.evidence.rsplit(".", 1)[-1]
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}
+        ]
+        covered = [c for c in calls if c.func.attr == expected_attr]
+        assert covered, f"{waiver.path}: no {waiver.evidence} call found to match the waiver"
+
+        # Every binding of the command variable, so a later reassignment to a
+        # string is caught even if the reviewed call still passes a list.
+        def bindings(name: str) -> list[ast.expr]:
+            found: list[ast.expr] = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    if any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+                        found.append(node.value)
+                elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+                    found.append(node.value)
+            return found
+
+        for call in covered:
+            keywords = {k.arg: k.value for k in call.keywords}
+
+            # 1. shell must be absent or literally False. A variable could be
+            #    True at runtime, and the waiver's reason claims it is not.
+            if "shell" in keywords:
+                assert isinstance(keywords["shell"], ast.Constant), (
+                    f"{waiver.path}:{call.lineno} shell= is not a literal; the waiver's reason "
+                    "claims shell=False, which cannot be checked statically"
+                )
+                assert keywords["shell"].value is False, f"{waiver.path}:{call.lineno} shell=True"
+
+            # 2. The command must be an argv list, never a shell string. It is
+            #    passed as a variable (`cmd`) built by a list literal and grown
+            #    with .extend(), so both the argument and every binding of that
+            #    variable are checked. A bare string command is precisely what
+            #    "an argv list" in the waiver's reason rules out.
+            assert call.args, f"{waiver.path}:{call.lineno} no command argument"
+            command = call.args[0]
+            if isinstance(command, ast.Constant):
+                assert not isinstance(command.value, str), (
+                    f"{waiver.path}:{call.lineno} command is a bare string; the waiver's reason "
+                    "claims an argv list, and a string command is a shell invocation"
+                )
+            elif isinstance(command, ast.Name):
+                assigned = bindings(command.id)
+                assert assigned, f"{waiver.path}:{call.lineno} command variable {command.id!r} is never assigned"
+                for value in assigned:
+                    assert isinstance(value, (ast.List, ast.Call)), (
+                        f"{waiver.path}:{call.lineno} command variable {command.id!r} is bound to "
+                        f"{type(value).__name__}, not an argv list"
+                    )
+            else:
+                raise AssertionError(
+                    f"{waiver.path}:{call.lineno} unrecognised command expression {type(command).__name__}"
+                )
 
 
 @pytest.mark.parametrize("path", ["../run.py", "/tmp/run.py", "scripts\\run.py", "scripts/../run.py"])
@@ -306,14 +399,31 @@ def test_workflow_triggers_on_waiver_implementation_and_manifest() -> None:
     assert workflow.count('".github/skill-review-waivers.v1.json"') == 2
 
 
+def _complete_facts(findings: list[dict[str, object]]) -> dict[str, object]:
+    """A facts payload carrying a complete-review record, as the analyzer emits.
+
+    ``run_review`` fails closed when the completeness record is absent, so waiver
+    tests that exercise the waiver path have to present a genuinely complete
+    review rather than a bare ``{"not_assessed": []}``.
+    """
+    return {
+        "summary": {"blockers": 0, "errors": len(findings), "warnings": 0, "infos": 0},
+        "completeness": {
+            "package_enumerated": True,
+            "text_content_complete": True,
+            "truncated": False,
+            "not_assessed": [],
+        },
+        "findings": findings,
+        "reader_errors": [],
+        "analyzer_errors": [],
+    }
+
+
 def test_run_review_keeps_waived_error_visible_and_passes(tmp_path: Path, monkeypatch, capsys) -> None:
     package = tmp_path / "skills/public/demo"
     _, digest = _write_target(tmp_path)
-    facts = {
-        "summary": {"blockers": 0, "errors": 1, "warnings": 0, "infos": 0},
-        "completeness": {"not_assessed": []},
-        "findings": [_finding()],
-    }
+    facts = _complete_facts([_finding()])
     monkeypatch.setattr(runner, "collect_review_facts", lambda *args: facts)
 
     exit_code = runner.run_review(package, tmp_path, "python", WaiverManifest((_waiver(digest=digest),)))
@@ -328,11 +438,7 @@ def test_run_review_keeps_waived_error_visible_and_passes(tmp_path: Path, monkey
 def test_run_review_still_fails_for_unwaived_error(tmp_path: Path, monkeypatch) -> None:
     package = tmp_path / "skills/public/demo"
     _write_target(tmp_path)
-    facts = {
-        "summary": {"blockers": 0, "errors": 1, "warnings": 0, "infos": 0},
-        "completeness": {"not_assessed": []},
-        "findings": [_finding()],
-    }
+    facts = _complete_facts([_finding()])
     monkeypatch.setattr(runner, "collect_review_facts", lambda *args: facts)
 
     assert runner.run_review(package, tmp_path, "python", EMPTY_MANIFEST) == 1

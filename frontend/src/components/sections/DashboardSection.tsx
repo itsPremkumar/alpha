@@ -115,7 +115,17 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
                     <div key={m.model} className="flex items-center gap-2 text-[11px]">
                       <span className="font-mono flex-1 truncate">{m.model}</span>
                       <span className="font-mono text-muted-foreground">{m.tokens.toLocaleString()} tok</span>
-                      {m.cost !== null && <span className="font-mono">{m.cost.toFixed(3)}</span>}
+                      {/*
+                        This used to be `{m.cost !== null && <span>…</span>}`,
+                        which rendered *nothing* for an unpriced model. A missing
+                        cell beside a tokens number reads as "zero cost" and
+                        leaves the row unexplained, so the absence is now named.
+                      */}
+                      <span className="font-mono text-muted-foreground/80">
+                        {m.cost !== null
+                          ? `${m.cost.toFixed(3)}`
+                          : "cost not priced"}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -136,8 +146,18 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
                     <button type="button" onClick={() => r.thread_id && props.onOpenThread(r.thread_id)} className="font-medium flex-1 min-w-32 text-left truncate hover:text-primary" title={r.thread_id}>
                       {r.thread_title}
                     </button>
-                    <span className="font-mono text-muted-foreground">{r.model}</span>
-                    <span className="font-mono text-muted-foreground">{r.tokens > 0 ? `${r.tokens.toLocaleString()} tok` : ""}</span>
+                    {/* The server named no model for this run. "not reported" is
+                        the honest cell; the old `"—"` fallback meant the same
+                        glyph as an absent cost and an unknown status. */}
+                    <span className="font-mono text-muted-foreground">{r.model ?? "not reported"}</span>
+                    {/*
+                      `r.tokens > 0 ? … : ""` left an empty cell for a run the
+                      server reported as 0 tokens. An empty cell next to a model
+                      name reads as "not measured" to one reader and as "zero"
+                      to the next; the server's own number is a real answer, so
+                      it is rendered either way.
+                    */}
+                    <span className="font-mono text-muted-foreground">{`${r.tokens.toLocaleString()} tok`}</span>
                   </div>
                 ))}
               </div>

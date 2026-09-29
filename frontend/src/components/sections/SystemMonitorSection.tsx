@@ -25,8 +25,17 @@ async function attempt<T>(fn: () => Promise<T>): Promise<FetchOutcome<T>> {
   }
 }
 
+/**
+ * GiB from a megabyte reading.
+ *
+ * The old guard was `mb <= 0`, which collapsed three different answers into one
+ * dash: a host that genuinely has 0 MB free, a host that reported a negative or
+ * non-finite value, and a measurement that never arrived. Only the last of those
+ * is unknown; the first is a real zero and renders as one.
+ */
 function formatGiB(mb: number): string {
-  if (!Number.isFinite(mb) || mb <= 0) return "—";
+  if (!Number.isFinite(mb) || mb < 0) return "—";
+  if (mb === 0) return "0 GiB";
   return `${(mb / 1024).toFixed(1)} GiB`;
 }
 
@@ -42,8 +51,17 @@ function formatBytes(n: number): string {
   return `${v.toFixed(1)} ${units[u]}`;
 }
 
+/**
+ * Human uptime.
+ *
+ * `totalSeconds <= 0` used to render a bare `—` after the word "up", so
+ * `up —` claimed nothing about the duration while looking like a value. The
+ * caller labels this with "up", so a zero has to be spelled: a host that has
+ * been up for no measurable time is "0m", and only an absent measurement is a
+ * dash — which is now worded rather than bare.
+ */
 function formatUptime(totalSeconds: number): string {
-  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "—";
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "unknown";
   const d = Math.floor(totalSeconds / 86400);
   const h = Math.floor((totalSeconds % 86400) / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);

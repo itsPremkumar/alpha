@@ -642,3 +642,42 @@ never waive blocker findings. An entry may also preapprove future full-file
 SHA-256 values, effective only once the manifest change lands in the trusted base
 — so relying on a waiver takes two merges: the manifest first, the skill change
 after, then promote the consumed hash to `file_sha256` in a follow-up cleanup.
+
+Because an entry pins a line number, a digest, and one exact finding, it goes
+stale the moment the waived file is edited. A stale entry is not a warning: the
+gate reports `no exact current finding matches this waiver` or `file digest
+changed` and **fails**, which is the intended behaviour. Re-baselining a waiver
+means reviewing the new content and re-approving it deliberately — never editing
+the manifest so a red test turns green.
+
+### The review gate fails closed
+
+`scripts/review_changed_public_skills.py` is the CI entry point, and it treats
+absence of evidence as failure rather than as a pass. A package is only reported
+as passed when the analyzer returned a review that provably covered it:
+
+- **A deleted root `SKILL.md` does not retire a package by itself.** The package
+  is resolved to its owner and queued whenever its directory still exists, so a
+  package left with no manifest — which can never load — is reviewed and fails on
+  its real blocker. Only a package whose every reported change was a deletion
+  *and* whose directory is gone is skipped as fully removed.
+- **A review that did not assess the package is a failure.** An absent, empty, or
+  contradicting `completeness` record (`package_enumerated`,
+  `text_content_complete`, or a non-empty `not_assessed`) fails the gate, as does
+  a `findings` value that is missing or is not a list. A malformed finding entry
+  fails too.
+- **A severity the gate cannot rank blocks.** A finding whose `severity` is
+  missing or outside the closed set is treated as blocking rather than skipped.
+  This cannot be waived away: `matching_waiver` only ever clears a severity of
+  exactly `error`.
+
+Verify the exit code from a shell, not only from a unit test — a genuinely clean
+package must still exit `0`, or the fail-closed rules are simply "fail
+everything":
+
+```bash
+cd backend
+python ../scripts/review_changed_public_skills.py \
+  --before <base-sha> --after <head-sha> --repo-root <path-to-repo>
+echo $?   # 0 = reviewed and clean, 1 = failed closed
+```
