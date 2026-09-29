@@ -279,10 +279,10 @@ backend/tests/
 cd backend && make test
 
 # Specific test file
-cd backend && python -m pytest tests/test_api_threads.py -v
+cd backend && python -m pytest tests/test_threads_router.py -v
 
 # Specific test function
-cd backend && python -m pytest tests/test_api_threads.py::test_create_thread -v
+cd backend && python -m pytest tests/test_threads_router.py::test_create_thread_returns_iso_timestamps -v
 
 # With coverage
 cd backend && python -m pytest --cov=app --cov=packages/harness
@@ -291,12 +291,12 @@ cd backend && python -m pytest --cov=app --cov=packages/harness
 cd backend && make test-blocking-io
 
 # Live tests (require API keys)
-cd backend && python -m pytest tests/live/ -v
+cd backend && make test-live
 ```
 
 #### Writing Tests
 ```python
-# tests/test_api_threads.py
+# tests/test_threads_router.py
 import pytest
 from httpx import AsyncClient
 
@@ -450,7 +450,7 @@ cd frontend && pnpm check && pnpm test
       "type": "debugpy",
       "request": "launch",
       "module": "pytest",
-      "args": ["tests/test_api_threads.py", "-v"],
+      "args": ["tests/test_threads_router.py", "-v"],
       "cwd": "${workspaceFolder}/backend"
     }
   ]
@@ -460,7 +460,7 @@ cd frontend && pnpm check && pnpm test
 #### Debug Commands
 ```bash
 # Debug specific test
-cd backend && python -m pytest tests/test_api_threads.py::test_create_thread -v -s --pdb
+cd backend && python -m pytest tests/test_threads_router.py::test_create_thread_returns_iso_timestamps -v -s --pdb
 
 # Debug with print statements
 cd backend && python -c "
@@ -564,9 +564,10 @@ Unmounted routers are not served, and the wiring is pinned:
 `tests/test_feature_manifest_wiring.py` asserts the manifest entry's module is
 imported and that `include_router` mounts it.
 
-3. **Write tests** in `backend/tests/`
+3. **Write tests** in `backend/tests/`. Existing routing tests live in
+   `backend/tests/test_threads_router.py`; add branching cases there.
 ```python
-# tests/test_api_thread_branching.py
+# appended to backend/tests/test_threads_router.py
 @pytest.mark.asyncio
 async def test_branch_thread(client: AsyncClient):
     # Test implementation
@@ -628,7 +629,7 @@ class MySkill(Skill):
         return f"Result: {param}"
 ```
 
-4. **Test** (tests/test_my_skill.py)
+4. **Test** (in your skill's own `tests/test_my_skill.py`)
 ```python
 def test_my_skill():
     skill = MySkill()
@@ -663,15 +664,22 @@ make extension-install SOURCE=git+https://github.com/user/mcp-server.git
 
 ### Backend
 ```bash
-# Profile memory
-cd backend && python scripts/sandbox_memory_profile.py
+# CPU-profile the test suite (pick the module you care about)
+cd backend && python -m cProfile -o profile.stats -m pytest tests/test_threads_router.py
+python -c "import pstats; pstats.Stats('profile.stats').sort_stats('cumulative').print_stats(30)"
 
-# Profile blocking I/O
-cd backend && python scripts/detect_blocking_io_static.py
+# Sandbox provider benchmark
+cd backend && uv run python scripts/benchmark/sandbox/bench_provider.py
 
-# CPU profiling
-cd backend && python -m cProfile -o profile.stats -m pytest tests/test_perf.py
+# Checkpoint channel benchmark (full vs delta; summary in the same dir)
+cd backend && uv run python scripts/benchmark/checkpoint/bench_channels.py --backends sqlite --updates 100 --repetitions 3 --output /tmp/checkpoint-bench.jsonl
 ```
+
+The concurrency and context-snapshot harnesses are described in
+`backend/scripts/benchmark/concurrency/` and
+`backend/scripts/benchmark/context_snapshot/README.md`. There is no
+`tests/test_perf.py`: no performance baseline is asserted by the test suite, by
+design — see the note above `make test` in `backend/Makefile`.
 
 ### Frontend
 ```bash

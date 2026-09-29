@@ -317,7 +317,7 @@ class MySkill(Skill):
 
 #### 4. Add Tests
 ```python
-# tests/test_my_skill.py
+# your skill's own tests/test_my_skill.py
 import pytest
 from skills.public.my_skill.main import MySkill
 

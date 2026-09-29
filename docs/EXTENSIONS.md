@@ -451,7 +451,7 @@ make dev
 
 ### Testing Extensions
 ```python
-# tests/test_extension.py
+# your extension's own tests/test_extension.py
 import pytest
 from fastapi.testclient import TestClient
 from my_extension.manifest import ExtensionManifest
