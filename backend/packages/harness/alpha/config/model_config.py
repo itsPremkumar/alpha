@@ -1,5 +1,8 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from alpha.config.model_catalog_schema import ModelPricing, format_pricing_error
 from alpha.config.reasoning_effort import EFFORT_LABELS, EFFORT_STYLES, canonical_order, is_effort, normalize_effort
 from alpha.multimodal.capabilities import MODEL_CAPABILITIES
 
@@ -103,6 +106,50 @@ class ModelConfig(BaseModel):
             "must never silently disable a capability. Vision-capable models may also rely on supports_vision."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_inline_pricing(cls, data: Any) -> Any:
+        """Give the one *known* extra a real schema, leaving the rest open.
+
+        ``ModelConfig`` is ``extra="allow"`` and must stay that way: operators
+        legitimately pass provider kwargs (``api_key``, ``base_url``,
+        ``max_tokens``, ``temperature``, ``max_retries``, and every knob a
+        provider adds later) that Alpha cannot enumerate, and deny-by-default
+        would break every working install. ``pricing`` is the exception that
+        makes the rule safe to have: it is *Alpha* metadata, not a provider
+        kwarg, so Alpha owns its shape and must own its validation.
+
+        Without this, ``pricing: {inpt_per_million: 1.0}`` parsed cleanly,
+        survived the load, reached the console's cost display, matched nothing,
+        and produced ``total_cost: null`` — the same class of bug as the
+        ``model_pricing:`` table that shipped with eight entries and was read by
+        nobody, one level down. A declared-and-validated value inside a
+        free-form map is the standard way to keep both properties: strict where
+        the key is known, open where it genuinely is not.
+
+        Runs as ``mode="before"`` on the raw mapping because the value is an
+        *extra*: pydantic would never hand an extra to a field validator, and a
+        declared field would stop the operator's provider kwargs from being able
+        to be keys of the same mapping. The validated, normalized result is
+        written back as the plain dict the console's reader already expects, so
+        no consumer has to learn about a new type.
+
+        The message names the model and the offending key. A load error that
+        says only "extra inputs are not permitted" cannot be acted on by
+        someone who has a dozen model entries.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "pricing" not in data or data["pricing"] is None:
+            return data
+        model_name = str(data.get("name") or "<unnamed>")
+        try:
+            parsed = ModelPricing.model_validate(data["pricing"])
+        except ValidationError as exc:
+            raise ValueError(format_pricing_error(exc, model_name=model_name)) from None
+        data["pricing"] = parsed.model_dump()
+        return data
 
     @field_validator("capabilities")
     @classmethod
