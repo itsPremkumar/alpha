@@ -51,6 +51,18 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<Selection | null>(null);
+  /**
+   * The open room's read state, and the reason a read failed.
+   *
+   * `roomMsgs[name]` is only written on a SUCCESSFUL read, so a failed
+   * `getRoom` left the key absent and `activeMsgs` fell back to `[]` — the
+   * transcript then rendered `EmptyState` "No messages yet — Say hello below".
+   * A 404, a 500 and a genuinely quiet room were the same screen, and the
+   * error box sat at the very bottom of the page, below the composer. This is
+   * the same three-state model `TeamOpsSection.openMessages` already uses.
+   */
+  const [roomRead, setRoomRead] = useState<{ name: string; state: "ok" | "failed" | "loading" } | null>(null);
+  const [roomReadError, setRoomReadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [kind, setKind] = useState<string>("discussion");
   const [sending, setSending] = useState(false);
@@ -59,6 +71,8 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   const [newGroup, setNewGroup] = useState({ name: "", members: "" });
   const [newDm, setNewDm] = useState("");
   const [live, setLive] = useState(false);
+  /** "Post as group decision" is in flight, so a double-click cannot double-post. */
+  const [postingVerdict, setPostingVerdict] = useState(false);
   const [council, setCouncil] = useState<{ topic: string; strategy: CouncilStrategy; busy: boolean; result: string | null }>({ topic: "", strategy: "debate", busy: false, result: null });
   const bottomRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
@@ -125,6 +139,8 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   useEffect(() => {
     setSel(null);
     setRoomMsgs({});
+    setRoomRead(null);
+    setRoomReadError(null);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.threadId]);
@@ -139,11 +155,17 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
   const openRoom = async (name: string) => {
     setSel({ kind: "group", name });
+    setRoomRead({ name, state: "loading" });
+    setRoomReadError(null);
     try {
       const room = await getRoom(name);
       setRoomMsgs((prev) => ({ ...prev, [name]: room.messages }));
+      setRoomRead({ name, state: "ok" });
       markSeen(`group:${name}`, room.messages);
     } catch (e) {
+      // A failed read is NOT an empty room, and it is not a quiet one either.
+      setRoomRead({ name, state: "failed" });
+      setRoomReadError(errMsg(e));
       setError(errMsg(e));
     }
   };
@@ -159,16 +181,26 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
   const convs: Conv[] = useMemo(() => {
     const list: Conv[] = rooms.map((r) => {
-      const msgs = roomMsgs[r.name] || [];
-      const last = msgs[msgs.length - 1];
+      // `roomMsgs` is only filled for rooms the operator has OPENED, so an
+      // unopened room's history has never been read. The row used to say "No
+      // messages yet" for it — a claim about the room — and carry no time, so
+      // the whole list was blank and unsortable. It now says the history has
+      // not been read yet, which is what is actually true.
+      const read = Object.prototype.hasOwnProperty.call(roomMsgs, r.name);
+      const msgs = read ? roomMsgs[r.name] : null;
+      const last = msgs && msgs.length > 0 ? msgs[msgs.length - 1] : null;
       return {
         id: `group:${r.name}`,
         kind: "group" as const,
         title: `# ${r.name}`,
         subtitle: `${r.members.length} members${r.status ? ` • ${r.status}` : ""}`,
-        lastText: last ? `${last.sender}: ${last.content.slice(0, 80)}` : "No messages yet",
+        lastText: !read
+          ? "History not read yet — open the room"
+          : last
+            ? `${last.sender}: ${last.content.slice(0, 80)}`
+            : "No messages yet",
         lastAt: last?.at ?? null,
-        unread: unreadCount(`group:${r.name}`, msgs),
+        unread: read ? unreadCount(`group:${r.name}`, msgs!) : 0,
         members: r.members,
       };
     });
@@ -192,7 +224,15 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
         if (filter === "direct" && c.kind !== "dm") return false;
         if (filter === "unread" && c.unread === 0) return false;
         if (filter === "decisions" || filter === "blockers") {
-          const msgs = c.kind === "group" ? roomMsgs[c.title.slice(2)] || [] : dms.find((d) => d.id === c.id)?.messages || [];
+          // Only rooms whose history has actually been READ can be searched
+          // for a decision or a blocker. Filtering on `roomMsgs[...] || []`
+          // silently dropped every unopened room, so the filter answered "no
+          // decisions" for a workspace full of them. The unsearchable rooms are
+          // named instead of being treated as clean.
+          const msgs = c.kind === "group"
+            ? roomMsgs[c.title.slice(2)]
+            : dms.find((d) => d.id === c.id)?.messages;
+          if (!msgs) return false;
           const want = filter === "decisions" ? ["decision"] : ["blocker", "warning", "escalation"];
           if (!msgs.some((m) => want.includes(m.kind))) return false;
         }
@@ -258,12 +298,16 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
   const postVerdict = async () => {
     if (sel?.kind !== "group" || !council.result) return;
+    if (postingVerdict) return;
+    setPostingVerdict(true);
     try {
       await postToRoom(sel.name, OPERATOR, `Council verdict (${council.strategy}):\n${council.result.slice(0, 1500)}`, "decision");
       setCouncil({ topic: "", strategy: "debate", busy: false, result: null });
       await openRoom(sel.name);
     } catch (e) {
       setError(errMsg(e));
+    } finally {
+      setPostingVerdict(false);
     }
   };
 
@@ -277,7 +321,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div className="max-w-none w-full flex-1 flex min-h-0">
+      <div className="max-w-none w-full flex-1 flex min-h-0 relative">
         {/* ── Conversation list ── */}
         <aside className={`w-full md:w-80 shrink-0 border-r border-border bg-card/40 flex-col min-h-0 ${sel ? "hidden md:flex" : "flex"}`} aria-label="Conversations">
           <div className="p-3 space-y-2 border-b border-border/60">
@@ -286,10 +330,16 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                 Messages {totalUnread > 0 && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground font-bold">{totalUnread}</span>}
               </h2>
               <Btn variant="ghost" onClick={() => setLive((v) => !v)} title="Auto-refresh every 10 seconds">
-                {live ? <Pause className="size-3.5" /> : <Play className="size-3.5" />} {live ? "Live" : "Poll"}
+                {live ? <Pause className="size-3.5" aria-hidden="true" /> : <Play className="size-3.5" aria-hidden="true" />} {live ? "Live" : "Poll"}
               </Btn>
-              <button type="button" onClick={() => load()} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Refresh">
-                <RefreshCw className="size-4" />
+              <button
+                type="button"
+                onClick={() => load()}
+                className="p-2 rounded-lg hover:bg-muted text-muted-foreground"
+                title="Refresh"
+                aria-label="Refresh conversations"
+              >
+                <RefreshCw className="size-4" aria-hidden="true" />
               </button>
             </div>
             <div className="relative">
@@ -424,7 +474,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
             <>
               <header className="shrink-0 px-4 py-2.5 border-b border-border/60 bg-card/40 flex items-center gap-2.5">
                 <button type="button" onClick={() => setSel(null)} className="md:hidden p-1.5 rounded-lg hover:bg-muted" aria-label="Back to chats">
-                  <ArrowLeft className="size-4" />
+                  <ArrowLeft className="size-4" aria-hidden="true" />
                 </button>
                 <span className="size-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0" style={{ backgroundColor: sel.kind === "group" ? "#5566ff" : senderColor(activeTitle) }}>
                   {sel.kind === "group" ? <Users className="size-4" /> : activeTitle.slice(0, 2).toUpperCase()}
@@ -435,13 +485,37 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                     {sel.kind === "group" ? `${activeMembers.length} participants • tap ⓘ for presence & decisions` : "direct thread — private between you two"}
                   </p>
                 </div>
-                <button type="button" onClick={() => setShowDetails((v) => !v)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Details" aria-label="Toggle details">
-                  <Info className="size-4" />
+                <button
+                  type="button"
+                  onClick={() => setShowDetails((v) => !v)}
+                  className="p-2 rounded-lg hover:bg-muted text-muted-foreground"
+                  title="Details"
+                  aria-label="Toggle details"
+                  aria-expanded={showDetails}
+                >
+                  <Info className="size-4" aria-hidden="true" />
                 </button>
               </header>
 
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-1.5">
-                {activeMsgs.length === 0 ? (
+                {/* Three states. `activeMsgs` is `[]` for a FAILED read and
+                    for a genuinely quiet room, so the empty state is gated on
+                    the read having succeeded — otherwise a down Gateway or a
+                    renamed route showed "No messages yet" for a room full of
+                    history the client simply never fetched. */}
+                {sel.kind === "group" && roomRead?.state === "failed" ? (
+                  <div className="h-full flex items-center justify-center">
+                    <EmptyState
+                      title="Could not read this room"
+                      hint={`This is a fetch failure, not an empty room. The server said: ${roomReadError ?? "no reason given"}`}
+                      action={<Btn onClick={() => sel.kind === "group" && openRoom(sel.name)}>Try again</Btn>}
+                    />
+                  </div>
+                ) : sel.kind === "group" && roomRead?.state === "loading" ? (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-[11px] text-muted-foreground">Reading {sel.name}…</p>
+                  </div>
+                ) : activeMsgs.length === 0 ? (
                   <div className="h-full flex items-center justify-center">
                     <EmptyState title="No messages yet" hint="Say hello below — agents reply here and the run history stays attached." />
                   </div>
@@ -576,6 +650,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
             setCouncil={setCouncil}
             onCouncil={onCouncil}
             onPostVerdict={postVerdict}
+            postingVerdict={postingVerdict}
           />
         )}
       </div>
@@ -607,11 +682,54 @@ function DetailsPane(props: {
   setCouncil: React.Dispatch<React.SetStateAction<{ topic: string; strategy: CouncilStrategy; busy: boolean; result: string | null }>>;
   onCouncil: () => void;
   onPostVerdict: () => void;
+  /** True while the verdict is being written to the room, so it cannot double-post. */
+  postingVerdict: boolean;
 }) {
   const [objective, setObjective] = useState("");
   const [runs, setRuns] = useState<Array<Record<string, unknown>>>([]);
   const [runsError, setRunsError] = useState<string | null>(null);
+  /**
+   * Run lifecycle locks.
+   *
+   * `POST /api/groups/{name}/runs` mints a NEW run id per request and fans the
+   * objective out to one subagent per member plus a moderator pass
+   * (backend/app/gateway/routers/groups.py:197). The Play control was
+   * `disabled={!objective.trim()}` only, and the objective was cleared in the
+   * success path — so a double-click inside the request window started a SECOND
+   * autonomous run: duplicate token spend, and two competing runs writing into
+   * the same room log. `TeamOpsSection.autoRun` already guards this exact route
+   * with `runningGroup`; this control is its twin and had no such lock.
+   */
+  const [startingRun, setStartingRun] = useState(false);
+  const [cancellingRun, setCancellingRun] = useState(false);
   const isGroup = props.sel.kind === "group";
+
+  const startRun = async () => {
+    const text = objective.trim();
+    if (!text || startingRun) return;
+    setStartingRun(true);
+    try {
+      await props.onAutoRun(text);
+      // Only clear the draft once the server has accepted the run.
+      setObjective("");
+    } catch (e) {
+      props.onError(errMsg(e));
+    } finally {
+      setStartingRun(false);
+    }
+  };
+
+  const cancelRun = async (runId: string) => {
+    if (cancellingRun) return;
+    setCancellingRun(true);
+    try {
+      await props.onCancelRun(runId);
+    } catch (e) {
+      props.onError(errMsg(e));
+    } finally {
+      setCancellingRun(false);
+    }
+  };
 
   const loadRuns = () => {
     if (props.sel.kind !== "group") {
@@ -636,15 +754,49 @@ function DetailsPane(props: {
     props.roster.find((r) => r.name === name)?.status ||
     props.presence.find((p) => p.name === name)?.status ||
     "unknown";
-  const dot = (s: string) =>
-    /active|working|online|idle/i.test(s) ? "bg-emerald-500" : /busy|testing|running/i.test(s) ? "bg-amber-500" : /off|unknown|idle/i.test(s) ? "bg-muted-foreground" : "bg-primary";
+  /**
+   * The presence dot's colour, from the server's own status word.
+   *
+   * This was one chained regex, evaluated in order:
+   *   /active|working|online|idle/i → emerald, else /busy|testing|running/i →
+   *   amber, else /off|unknown|idle/i → grey.
+   * Two measured problems, both from matching a SUBSTRING:
+   *
+   *  * `idle` is listed in the FIRST branch, so an idle agent drew a GREEN
+   *    "working" dot. The third branch names `idle` too and is unreachable for
+   *    it — the author's own intent contradicted by evaluation order.
+   *  * `inactive` contains `active`, so an INACTIVE agent drew a green dot.
+   *    The exact opposite of the truth, from a status the server can send.
+   *
+   * Now each status is matched whole, and an unrecognised one is neutral
+   * rather than green.
+   */
+  const dot = (s: string) => {
+    const v = s.toLowerCase();
+    if (["active", "working", "online", "available", "present"].includes(v)) return "bg-emerald-500";
+    if (["busy", "testing", "running", "in_progress"].includes(v)) return "bg-amber-500";
+    if (["idle", "off", "offline", "unknown", "absent", "inactive", "stale"].includes(v)) {
+      return "bg-muted-foreground";
+    }
+    return "bg-primary";
+  };
 
   return (
-    <aside className="hidden lg:flex w-72 shrink-0 border-l border-border bg-card/40 flex-col min-h-0" aria-label="Conversation details">
+    /* The pane was `hidden lg:flex`, so on a viewport narrower than 1024px the
+       header's ⓘ button toggled `showDetails` and NOTHING changed on screen —
+       the control was inert at exactly the widths a phone or a split window
+       uses, while the header still said "tap ⓘ for presence & decisions".
+       It is now an overlay drawer below `lg` (so the toggle always does
+       something) and a normal column at `lg` and up (so the layout is
+       unchanged where it worked). */
+    <aside
+      className="w-72 shrink-0 border-l border-border bg-card/40 flex-col min-h-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl"
+      aria-label="Conversation details"
+    >
       <div className="p-3 border-b border-border/60 flex items-center gap-2">
         <p className="text-xs font-bold flex-1">Details</p>
         <button type="button" onClick={props.onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Close details">
-          <X className="size-4" />
+          <X className="size-4" aria-hidden="true" />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
@@ -701,10 +853,12 @@ function DetailsPane(props: {
                 <input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Goal for an autonomous run…" aria-label="Autonomous run goal" className={inputCls} />
                 <Btn
                   variant="ghost"
-                  onClick={() => objective.trim() && props.onAutoRun(objective.trim()).then(() => setObjective("")).catch((e) => props.onError(errMsg(e)))}
-                  disabled={!objective.trim()}
+                  onClick={() => startRun()}
+                  disabled={!objective.trim() || !!startingRun}
+                  title={startingRun ? "A run is still starting" : "Start one autonomous run for this room"}
+                  aria-label="Start an autonomous run for this room"
                 >
-                  <Play className="size-3.5" />
+                  <Play className="size-3.5" aria-hidden="true" />
                 </Btn>
               </div>
               {runsError ? (
@@ -714,17 +868,28 @@ function DetailsPane(props: {
                 />
               ) : runs.length > 0 && (
                 <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground">
+                    {runs.length} run{runs.length === 1 ? "" : "s"} recorded
+                    {runs.length > 5 ? ` — showing the 5 most recent` : ""}
+                  </p>
                   {runs.slice(0, 5).map((r, i) => {
-                    const rid = String(r.run_id ?? r.id ?? i);
-                    const st = String(r.status ?? r.state ?? "unknown");
+                    const rid = String(r.run_id ?? r.id ?? `run-${i}`);
+                    const st = String(r.status ?? r.state ?? "");
                     const live = st === "running" || st === "pending";
                     return (
                       <div key={rid} className="flex items-center gap-2 text-[11px] rounded-lg bg-muted/40 px-2 py-1.5">
-                        <Badge tone={live ? "blue" : "gray"}>{st}</Badge>
-                        <span className="font-mono flex-1 truncate">{rid.slice(0, 16)}</span>
+                        <Badge tone={live ? "blue" : "gray"}>{st || "status not reported"}</Badge>
+                        <span className="font-mono flex-1 truncate" title={rid}>{rid.slice(0, 16)}</span>
                         {live && (
-                          <button type="button" onClick={() => props.onCancelRun(rid).catch((e) => props.onError(errMsg(e)))} className="p-1 rounded hover:bg-muted" title="Stop run">
-                            <Ban className="size-3.5" />
+                          <button
+                            type="button"
+                            onClick={() => cancelRun(rid)}
+                            disabled={!!cancellingRun}
+                            className="p-1 rounded hover:bg-muted disabled:opacity-30"
+                            title={cancellingRun ? "A cancel is still in flight" : `Stop run ${rid}`}
+                            aria-label={`Stop run ${rid}`}
+                          >
+                            <Ban className="size-3.5" aria-hidden="true" />
                           </button>
                         )}
                       </div>
@@ -733,7 +898,7 @@ function DetailsPane(props: {
                 </div>
               )}
               <Btn variant="danger" onClick={props.onDeleteRoom}>
-                <Trash2 className="size-3.5" /> Delete group
+                <Trash2 className="size-3.5" aria-hidden="true" /> Delete group
               </Btn>
             </section>
 
@@ -758,7 +923,9 @@ function DetailsPane(props: {
               {props.council.result && (
                 <div className="space-y-1.5">
                   <pre className="text-[11px] whitespace-pre-wrap rounded-lg bg-muted/40 p-2 max-h-48 overflow-y-auto">{props.council.result.slice(0, 2000)}</pre>
-                  <Btn onClick={props.onPostVerdict}>Post as group decision</Btn>
+                  <Btn onClick={props.onPostVerdict} disabled={props.postingVerdict}>
+                    {props.postingVerdict ? "Posting…" : "Post as group decision"}
+                  </Btn>
                 </div>
               )}
             </section>
