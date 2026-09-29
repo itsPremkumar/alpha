@@ -63,6 +63,42 @@ import { ErrorBox, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
 
+/**
+ * Health of the keyless free-model catalog, as the header should draw it.
+ *
+ * `unknown` is a real state, not a default to be optimised away: the server
+ * reports `healthy: null` for a provider it has not probed, and a failed catalog
+ * read leaves every provider unmeasured. Painting either of those green is an
+ * optimistic success for something the server did not confirm.
+ */
+export type FreeCatalogTone = "good" | "partial" | "bad" | "unknown";
+
+/** Dot colour per tone. Muted for `unknown` so it never reads as healthy. */
+export const FREE_TONE_DOT: Record<FreeCatalogTone, string> = {
+  good: "bg-emerald-500",
+  partial: "bg-amber-500",
+  bad: "bg-red-500",
+  unknown: "bg-muted-foreground/40",
+};
+
+/**
+ * Derive the header tone from the server's per-provider `healthy` flags.
+ *
+ * Exported and pure so the honesty test can drive it with the exact payload the
+ * Gateway returns — including the "1/10 healthy" and "all null" cases that the
+ * old hardcoded green dot could not represent.
+ */
+export function freeCatalogTone(
+  providers: Array<{ healthy: boolean | null }>,
+): FreeCatalogTone {
+  const measured = providers.filter((p) => p.healthy !== null);
+  // Nobody was measured: unknown, which must not wear a success colour.
+  if (measured.length === 0) return "unknown";
+  const healthy = measured.filter((p) => p.healthy === true).length;
+  if (healthy === 0) return "bad";
+  return healthy === measured.length ? "good" : "partial";
+}
+
 // Sections load on demand so the first paint stays light.
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
 const MessagesSection = lazy(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })));
@@ -388,6 +424,14 @@ export default function ChatView() {
   // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
   const [freeNote, setFreeNote] = useState<string | null>(null);
   const [freeRefreshing, setFreeRefreshing] = useState(false);
+  /**
+   * Health of the keyless catalog, derived from the server's own per-provider
+   * `healthy` flags. `unknown` is a first-class state: the server has not
+   * measured any provider, which is neither healthy nor sick. This exists
+   * because the header dot used to be a hardcoded `bg-emerald-500` that stayed
+   * green through `0/10 healthy` and through a failed read.
+   */
+  const [freeTone, setFreeTone] = useState<FreeCatalogTone>("unknown");
   const { state: lionState, message: lionMessage, update: updateLion } = useLionPetActivity({
     isLoading,
     hasApproval: messages.some((message) => Boolean(message.approvalRequest)),
@@ -486,9 +530,12 @@ export default function ChatView() {
           ? "Free catalog empty — the keyless router has no providers right now."
           : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
       );
+      // Same rule as the mount read: the dot follows the server's count.
+      setFreeTone(freeCatalogTone(providers));
       flash(providers.length === 0 ? "Free catalog refreshed: no providers." : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`);
     } catch {
       setFreeNote("Free catalog refresh failed — keyless router may be down.");
+      setFreeTone("unknown");
       flash("Free catalog refresh failed.");
     } finally {
       setFreeRefreshing(false);
@@ -607,6 +654,13 @@ export default function ChatView() {
         flash(`Projects are unavailable. ${errMsg(error)}`);
       });
       // Free-model catalog: dynamic server view, never fabricated client-side.
+      //
+      // The status dot is derived from the server's own health count, not
+      // hardcoded. It used to be an unconditional `bg-emerald-500`, so a
+      // catalog the server had just reported as `0/10 healthy` still wore a
+      // solid green dot — an optimistic success for something nobody confirmed.
+      // `null` health (the server did not measure a provider) is its own state
+      // and gets the muted dot, because "unmeasured" is neither healthy nor sick.
       const renderFree = (providers: { name: string; healthy: boolean | null; eligible: boolean }[], updatedAt?: string | null) => {
         const healthy = providers.filter((p) => p.healthy === true).length;
         const eligible = providers.filter((p) => p.eligible).length;
@@ -615,8 +669,18 @@ export default function ChatView() {
             ? "Free catalog empty — the keyless router has no providers right now."
             : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
         );
+        // No measured provider means the server has not answered for any of
+        // them: that is unknown, so the dot stays neutral rather than green.
+        setFreeTone(freeCatalogTone(providers));
       };
-      fetchFreeCatalog().then(({ providers, updatedAt }) => renderFree(providers, updatedAt)).catch(() => setFreeNote("Free catalog unreachable — keyless router may be down."));
+      fetchFreeCatalog()
+        .then(({ providers, updatedAt }) => renderFree(providers, updatedAt))
+        .catch(() => {
+          setFreeNote("Free catalog unreachable — keyless router may be down.");
+          // A failed read is not a healthy catalog. The old code left the
+          // previous green dot in place through this catch.
+          setFreeTone("unknown");
+        });
       // Lightweight liveness probe for the header status pill.
       fetchOpsStatus().then(() => setGatewayOk(true)).catch(() => setGatewayOk(false));
       // Shortcut commands for the "/" palette (quiet if unavailable).
@@ -1555,6 +1619,7 @@ export default function ChatView() {
   };
 
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
+  const selectedModelName = models.find((m) => m.id === selectedModel)?.name || null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
@@ -1656,8 +1721,9 @@ export default function ChatView() {
                 disabled={freeRefreshing}
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors disabled:opacity-40"
                 title={freeNote || "Free keyless models — click to refresh live catalog"}
+                aria-label={freeNote || "Free keyless models — not read yet. Click to refresh the live catalog."}
               >
-                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span className={`size-1.5 rounded-full ${FREE_TONE_DOT[freeTone]}`} aria-hidden="true" />
                 <span className="hidden lg:inline">{freeRefreshing ? "Refreshing free…" : freeNote ? freeNote.split(".")[0] : "Free models"}</span>
                 <span className="lg:hidden">Free</span>
               </button>
@@ -1666,9 +1732,24 @@ export default function ChatView() {
                 onClick={() => setView("settings")}
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors"
                 title="Open Settings"
+                aria-label="Open Settings — model selection, theme and API diagnostics"
               >
                 <Settings className="size-3.5" />
-                <span className="hidden lg:inline">{models.find((m) => m.id === selectedModel)?.name || "Settings"}</span>
+                {/*
+                  This control used to collapse to a bare 30px gear below the
+                  `lg` breakpoint, because its only label was behind
+                  `hidden lg:inline` and it carried no `aria-label`. A gear
+                  glyph next to a model name is guesswork, so the word "Settings"
+                  now stays at every width and the selected model is a separate,
+                  explicitly-labelled line underneath.
+                */}
+                <span className="whitespace-nowrap">Settings</span>
+                <span className="sr-only">
+                  {selectedModelName ? ` — selected model: ${selectedModelName}` : " — no model selected"}
+                </span>
+                {selectedModelName ? (
+                  <span className="hidden lg:inline text-muted-foreground/80 font-normal">· {selectedModelName}</span>
+                ) : null}
               </button>
             </div>
           )}
@@ -1955,101 +2036,118 @@ export default function ChatView() {
               </div>
             </div>
 
-            {/* Messages Viewport */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-              {messages.length === 0 ? (
-                <div
-                  className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3"
-                  aria-label={branding.name}
-                >
-                  <h2 className="text-lg font-semibold text-foreground tracking-tight">
-                    <BrandLogo logoSize={44} textClassName="text-lg text-foreground" priority />
-                  </h2>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {activeBot
-                      ? `Talking to ${activeBot.display_name || activeBot.name} (${activeBot.role}). Switch specialists anytime from the Bots tab.`
-                      : branding.intro}
-                  </p>
-                  {bots.length > 0 && (
-                    <div className="flex flex-wrap justify-center gap-1.5 pt-1">
-                      {bots.slice(0, 5).map((b) => (
-                        <button
-                          key={b.name}
-                          type="button"
-                          onClick={() => rememberBot(b)}
-                          className={`text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
-                            activeBot?.name === b.name
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {b.avatar ? `${b.avatar} ` : ""}{b.display_name || b.name}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setView("bots")}
-                        className="text-[11px] px-2.5 py-1.5 rounded-lg border border-dashed border-border/70 text-muted-foreground hover:text-foreground font-medium"
-                      >
-                        View all {bots.length} →
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                messages.map((msg) => (
-                  <MessageItem
-                    key={msg.id}
-                    message={msg}
-                    onRate={handleRate}
-                    onRegenerate={handleRegenerate}
-                    showRegenerate={msg.id === lastAssistantId && msg.role === "assistant"}
-                    regenerating={isLoading}
-                    onEdit={handleEditResend}
-                    streaming={isLoading && msg.role === "assistant" && msg.id === lastAssistantId}
-                  />
-                ))
-              )}
+            {/* Messages Viewport.
 
-              {requestError && requestError.threadId === activeThreadId && (
-                <div className="max-w-4xl mx-auto space-y-2">
-                  <div role="alert">
-                    <ErrorBox
-                      message={requestError.message}
-                      onRetry={!isLoading ? () => sendMessage(input.trim() ? input : requestError.draft) : undefined}
+                The scroller is `flex-1`, so it always fills the space between
+                the header and the composer. Its children were laid out from the
+                top, which meant a two-line answer left a screenful of blank
+                between the last message and the composer — measured at 235px of
+                scroller holding 251px of content at a 700px viewport, i.e. the
+                region grows with the window rather than with the conversation.
+
+                The fix is to bottom-anchor the content instead of deleting the
+                space: an inner `min-h-full flex flex-col justify-end` grows with
+                the conversation, and `justify-end` has no effect once the
+                content is taller than the scroller, so scrolling a long
+                transcript is unchanged. `space-y-4` became the inner wrapper's
+                `gap-4` because `space-y` on a flex column adds top margins that
+                a bottom-anchored layout would render as leading blank. */}
+            <div className="flex-1 overflow-y-auto px-4 py-6">
+              <div className="min-h-full flex flex-col justify-end gap-4">
+                {messages.length === 0 ? (
+                  <div
+                    className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3"
+                    aria-label={branding.name}
+                  >
+                    <h2 className="text-lg font-semibold text-foreground tracking-tight">
+                      <BrandLogo logoSize={44} textClassName="text-lg text-foreground" priority />
+                    </h2>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {activeBot
+                        ? `Talking to ${activeBot.display_name || activeBot.name} (${activeBot.role}). Switch specialists anytime from the Bots tab.`
+                        : branding.intro}
+                    </p>
+                    {bots.length > 0 && (
+                      <div className="flex flex-wrap justify-center gap-1.5 pt-1">
+                        {bots.slice(0, 5).map((b) => (
+                          <button
+                            key={b.name}
+                            type="button"
+                            onClick={() => rememberBot(b)}
+                            className={`text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
+                              activeBot?.name === b.name
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {b.avatar ? `${b.avatar} ` : ""}{b.display_name || b.name}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setView("bots")}
+                          className="text-[11px] px-2.5 py-1.5 rounded-lg border border-dashed border-border/70 text-muted-foreground hover:text-foreground font-medium"
+                        >
+                          View all {bots.length} →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  messages.map((msg) => (
+                    <MessageItem
+                      key={msg.id}
+                      message={msg}
+                      onRate={handleRate}
+                      onRegenerate={handleRegenerate}
+                      showRegenerate={msg.id === lastAssistantId && msg.role === "assistant"}
+                      regenerating={isLoading}
+                      onEdit={handleEditResend}
+                      streaming={isLoading && msg.role === "assistant" && msg.id === lastAssistantId}
+                    />
+                  ))
+                )}
+
+                {requestError && requestError.threadId === activeThreadId && (
+                  <div className="max-w-4xl mx-auto space-y-2">
+                    <div role="alert">
+                      <ErrorBox
+                        message={requestError.message}
+                        onRetry={!isLoading ? () => sendMessage(input.trim() ? input : requestError.draft) : undefined}
+                      />
+                    </div>
+                    {requestError.partial && (
+                      <div className="rounded-xl border border-destructive/40 p-3 text-xs">
+                        <p className="font-semibold mb-2">
+                          Incomplete response — {requestError.partialArchived ? "kept in local history" : "local archive write failed"}
+                        </p>
+                        <pre className="whitespace-pre-wrap break-words font-sans">{requestError.partial}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isLoading && activity && (
+                  <div className="max-w-4xl mx-auto">
+                    <ActivityStatus
+                      state={activity}
+                      elapsedMs={elapsedMs}
+                      silence={silence}
+                      actor={activeBot ? activeBot.display_name || activeBot.name : branding.assistantLabel}
                     />
                   </div>
-                  {requestError.partial && (
-                    <div className="rounded-xl border border-destructive/40 p-3 text-xs">
-                      <p className="font-semibold mb-2">
-                        Incomplete response — {requestError.partialArchived ? "kept in local history" : "local archive write failed"}
-                      </p>
-                      <pre className="whitespace-pre-wrap break-words font-sans">{requestError.partial}</pre>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
 
-              {isLoading && activity && (
-                <div className="max-w-4xl mx-auto">
-                  <ActivityStatus
-                    state={activity}
-                    elapsedMs={elapsedMs}
-                    silence={silence}
-                    actor={activeBot ? activeBot.display_name || activeBot.name : branding.assistantLabel}
-                  />
-                </div>
-              )}
-
-              {/* Subagent progress survives the run that produced it, so the
-                  answer lands next to the receipt of the work behind it, and
-                  only the next prompt clears it. */}
-              {subagentTasks.length > 0 && (
-                <div className="max-w-4xl mx-auto">
-                  <SubagentList tasks={subagentTasks} />
-                </div>
-              )}
-              <div ref={messagesEndRef} />
+                {/* Subagent progress survives the run that produced it, so the
+                    answer lands next to the receipt of the work behind it, and
+                    only the next prompt clears it. */}
+                {subagentTasks.length > 0 && (
+                  <div className="max-w-4xl mx-auto">
+                    <SubagentList tasks={subagentTasks} />
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
             </div>
 
             {/* Follow-up suggestions */}

@@ -5,3 +5,5 @@ build/
 .env*.local
 next-env.d.ts
 tsconfig.tsbuildinfo
+# Output of `node src/lib/ui-legibility-shots.mjs` (header screenshot harness).
+.ui-legibility/

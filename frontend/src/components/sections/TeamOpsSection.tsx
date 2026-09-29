@@ -430,11 +430,49 @@ function CompanyDigest(props: { digest: string }) {
   );
 }
 
+/**
+ * The company's own status document, or the reason the server gave for not
+ * having one.
+ *
+ * This used to be `companyStatus().then(setStatus).catch(() => setStatus(null))`
+ * with `if (!status) return null`. That is the catch-and-empty the honesty rules
+ * forbid: `GET /api/company/status` answers **404 "No active organizations
+ * found. Bootstrap a company first."** whenever no company has been
+ * bootstrapped, so the single most common real answer made this box vanish
+ * without a trace — a user had no way to learn the feature existed, let alone
+ * that it needed setting up.
+ *
+ * A failure now renders as a visible notice carrying the server's own `detail`.
+ */
 function CompanyStatusBox() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    companyStatus().then(setStatus).catch(() => setStatus(null));
+    companyStatus().then(
+      (s) => {
+        setStatus(s);
+        setError(null);
+      },
+      (e) => {
+        setStatus(null);
+        setError(errMsg(e));
+      },
+    );
   }, []);
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <p className="text-xs font-semibold mb-1">Company status</p>
+        <p className="text-[11px] text-muted-foreground">
+          The Gateway did not report a company. It said: {error}
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          This is a server answer, not a failure to read: nothing here is a
+          measurement of a running company, and no company has been set up.
+        </p>
+      </div>
+    );
+  }
   if (!status) return null;
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4">

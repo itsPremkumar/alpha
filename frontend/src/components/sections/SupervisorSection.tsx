@@ -52,8 +52,17 @@ function fmtEpoch(sec: number | null): string {
   return new Date(sec * 1000).toLocaleString();
 }
 
+/**
+ * A loop's last-pass duration.
+ *
+ * `null` means the server sent no `last_duration`, which is not a pass that
+ * took zero seconds. The old `—` sat in a `Duration` column and read as both
+ * at once. "not measured" is the honest cell, and it pairs with the
+ * `never` / `no passes recorded yet` wording in the same row, so the three
+ * readings stay distinguishable.
+ */
 function fmtDuration(sec: number | null): string {
-  if (sec === null) return "—";
+  if (sec === null) return "not measured";
   if (sec < 1) return `${Math.round(sec * 1000)} ms`;
   return `${sec.toFixed(2)} s`;
 }
@@ -354,7 +363,10 @@ function SentinelPanel(props: { refreshKey: number; onNotice: (m: string) => voi
                     <tr key={entry.recorded_at} className="border-t border-border/60 align-top">
                       <td className="py-1.5 pr-3">{entry.recorded_at}</td>
                       <td className="py-1.5 pr-3">
-                        {entry.trigger ?? "—"}
+                        {/* The server omitted the trigger. "not reported" says
+                            that; a bare dash claimed nothing and looked like a
+                            value the operator could sort on. */}
+                        {entry.trigger ?? "not reported"}
                         {entry.auto_heal !== null && (
                           <Badge tone={entry.auto_heal ? "amber" : "gray"}>
                             {entry.auto_heal ? "repair" : "observe"}

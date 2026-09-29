@@ -3,15 +3,21 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Activity,
-  Brain,
   Blocks,
+  Brain,
   CalendarClock,
-  Coins,
+  CircleDollarSign,
+  CircleHelp,
   Cpu,
   Database,
+  Gauge,
+  Landmark,
+  Layers,
+  MessageSquare,
   Plug,
-  Radio,
   Server,
+  ShieldCheck,
+  Sigma,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui";
@@ -26,9 +32,49 @@ import { SystemVitals, fetchSystemVitals } from "@/lib/systemMonitor";
  * actually there, so this strip consolidates the highest-signal numbers
  * (connectivity, version, usage, and subsystem readiness) in one place instead
  * of scattering them across settings pages.
+ *
+ * ## The legibility contract this file is built around
+ *
+ * Found by measuring the real DOM of the running app, not by reading this JSX.
+ * At a 1000px viewport the whole row rendered as:
+ *
+ *     Gateway online  v2.1.0  ● 5.3G/5.9G 90%  ⚡7  ▤8  ⬚0  ⬦1.3M  ⬦—  ⚡6/7
+ *     ●  ●  ●  ●  ●  ●  ●
+ *
+ * and the audit found, in the emitted markup:
+ *
+ * - **Fourteen labels were `display: none`.** Every noun — `runs`, `chats`,
+ *   `agents`, `tokens`, `cost`, `RAM`, `subsystems ready`, and all seven
+ *   subsystem names — sat behind `hidden lg:inline` / `hidden xl:inline`. A
+ *   number with no noun is not information, and a `title` is not a substitute
+ *   for a label a sighted user can read.
+ * - **The `6/7` readiness ratio carried no `title` at all** (`title: null` in
+ *   the live DOM) — not even a hover answer.
+ * - **The watchdog and company entries were 6px wide.** No glyph, no text; the
+ *   `p.key === "watchdog"` / `"company"` branches in the old JSX simply had no
+ *   icon. Five green dots and one grey dot were the entire subsystem story.
+ * - **Tokens and cost shared one `Coins` glyph** — two different units drawn
+ *   identically, so neither was identifiable.
+ * - **The row had no grouping.** One flat `gap-x-3` flex run mixed a boxed
+ *   `Badge` with bare numbers and anonymous dots at the same weight.
+ * - **`cost: —` was ambiguous.** `GET /api/console/stats` answers
+ *   `total_cost: null, currency: null`. The dash meant "not reported", but the
+ *   tooltip said `cost: —`, which reads as a measured `$0.00`.
+ *
+ * Three rules hold here, and `ui-legibility.test.mjs` asserts them against the
+ * rendered markup rather than against this comment:
+ *
+ * 1. **Every value carries its label, at every width.** No `hidden lg:inline`
+ *    on a noun.
+ * 2. **Every entry has a `title` naming the unit and the route it came from**,
+ *    so the hover answers "what is this, and who measured it".
+ * 3. **A dash is never a value on its own.** Where a measurement can be
+ *    absent, the adjacent words say which of *zero* / *not reported* /
+ *    *not applicable* it is — `absent` is not `0`.
  */
 
-interface Vitals {
+/** Every workspace measurement. `null` always means "the server did not say". */
+export interface Vitals {
   /** true = online, false = offline, null = probe failed so status is unknown. */
   online: boolean | null;
   version: string;
@@ -39,6 +85,40 @@ interface Vitals {
   host: SystemVitals | null;
 }
 
+/**
+ * The subsurfaces summarised by the readiness ratio, in display order.
+ *
+ * Exported so the test can pin the exact set. A subsystem that quietly dropped
+ * out of this list would also drop out of the denominator, turning a red row
+ * green without anything changing on the server.
+ */
+export const VITALS_SUBSYSTEM_KEYS = [
+  "memory",
+  "skills",
+  "scheduled",
+  "channels",
+  "mcp",
+  "watchdog",
+  "company",
+] as const;
+
+/**
+ * One glyph per subsystem. The old JSX mapped only five of the seven keys, so
+ * `watchdog` and `company` rendered as a bare 6px status dot with nothing else
+ * in the box. A missing key now falls back to `CircleHelp` rather than to
+ * nothing, so an unmapped subsystem is visibly "unidentified" instead of
+ * silently anonymous.
+ */
+const SUBSYSTEM_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  memory: Brain,
+  skills: Blocks,
+  scheduled: CalendarClock,
+  channels: MessageSquare,
+  mcp: Plug,
+  watchdog: ShieldCheck,
+  company: Landmark,
+};
+
 function compactNumber(n: number): string {
   if (!Number.isFinite(n)) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -46,10 +126,36 @@ function compactNumber(n: number): string {
   return String(n);
 }
 
-function formatCost(cost: number | null, currency: string | null): string {
-  if (cost === null || !Number.isFinite(cost)) return "—";
+/**
+ * Cost is the one header number the server can legitimately leave empty, and
+ * the possible readings are opposite claims, so they never share a rendering:
+ *
+ * - a number — the server measured it, including a real `$0.0000`
+ * - `null` — the server reported no total at all. The label says **not
+ *   reported** in words, because a bare dash next to the word "cost" reads as
+ *   a measured zero.
+ */
+export function costView(cost: number | null, currency: string | null): {
+  value: string;
+  label: string;
+  title: string;
+} {
+  if (cost === null || !Number.isFinite(cost)) {
+    return {
+      value: "—",
+      label: "cost not reported",
+      title:
+        "Cost: NOT REPORTED. GET /api/console/stats returned total_cost: null, so the Gateway has no priced " +
+        "total for these runs — normally because no model_pricing is configured for the models that served " +
+        "them. This dash is NOT a measured $0.00 and NOT a claim that the cost is zero.",
+    };
+  }
   const symbol = currency ? ` ${currency}` : "";
-  return `$${cost.toFixed(cost < 1 ? 4 : 2)}${symbol}`;
+  return {
+    value: `$${cost.toFixed(cost < 1 ? 4 : 2)}${symbol}`,
+    label: currency ? `cost in ${currency}` : "cost, no currency reported",
+    title: `Cost: ${cost}${currency ? ` ${currency}` : " with no currency reported by the server"}, from GET /api/console/stats (total_cost).`,
+  };
 }
 
 async function load(): Promise<Vitals> {
@@ -76,30 +182,68 @@ async function load(): Promise<Vitals> {
 }
 
 function formatGiB(mb: number): string {
-  if (!Number.isFinite(mb) || mb <= 0) return "—";
+  if (!Number.isFinite(mb) || mb < 0) return "—";
+  // A measured zero is a real answer and gets rendered as one; only a
+  // non-finite or negative reading falls back to the dash.
+  if (mb === 0) return "0G";
   return `${(mb / 1024).toFixed(1)}G`;
 }
 
+/**
+ * One measurement: glyph, value, and the noun that says what the number is —
+ * **always visible, at every width**. The `title` supplements the label with
+ * the unit and the route, so the hover answers the second question.
+ */
 function Metric({
   icon,
-  label,
   value,
+  label,
   title,
+  emphasis = false,
 }: {
   icon: React.ReactNode;
-  label: string;
   value: string;
-  title?: string;
+  label: string;
+  title: string;
+  emphasis?: boolean;
 }) {
   return (
     <span
-      title={title ?? `${label}: ${value}`}
-      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground whitespace-nowrap"
+      title={title}
+      data-vital={label}
+      className="inline-flex items-center gap-1 whitespace-nowrap px-2 py-1 first:pl-2.5 last:pr-2.5"
     >
-      <span className="text-muted-foreground/70">{icon}</span>
-      <span className="font-semibold text-foreground tabular-nums">{value}</span>
-      <span className="hidden lg:inline">{label}</span>
+      <span className="text-muted-foreground/70" aria-hidden="true">
+        {icon}
+      </span>
+      <span
+        className={`tabular-nums ${emphasis ? "font-semibold text-foreground" : "font-medium text-foreground/90"}`}
+      >
+        {value}
+      </span>
+      <span className="text-muted-foreground">{label}</span>
     </span>
+  );
+}
+
+/**
+ * A bordered group of related measurements.
+ *
+ * Three clusters are what give the row its hierarchy: *is the backend up and
+ * how loaded is the box*, *how much work has this workspace done*, *which
+ * subsystems are answering right now*. One border style and one separator style
+ * across all three, so the row scans as three things rather than sixteen.
+ */
+function Cluster({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      title={title}
+      className="inline-flex items-stretch divide-x divide-border/60 rounded-xl border border-border/60 bg-card/40"
+    >
+      {children}
+    </div>
   );
 }
 
@@ -136,90 +280,177 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
 
   if (!vitals) return null;
 
+  return <VitalsStrip vitals={vitals} className={className} />;
+}
+
+/**
+ * The pure, data-in half of the strip.
+ *
+ * Split out so the rendered markup can be asserted without a Gateway, a DOM,
+ * or the fetching wrapper. Every number it shows arrived in `vitals`; nothing
+ * here invents, defaults, or re-derives a fact.
+ */
+export function VitalsStrip({ vitals, className = "" }: { vitals: Vitals; className?: string }) {
   const s = vitals.stats;
-  const subsystems = vitals.probes.filter((p) =>
-    ["memory", "skills", "scheduled", "channels", "mcp", "watchdog", "company"].includes(p.key),
-  );
+  const host = vitals.host;
+  const subsystems = vitals.probes.filter((p) => (VITALS_SUBSYSTEM_KEYS as readonly string[]).includes(p.key));
   const readyCount = subsystems.filter((p) => p.ok).length;
+  const cost = costView(s ? s.cost : null, s ? s.currency : null);
 
   return (
-    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] ${className}`}>
-      <Badge tone={vitals.probesFailed ? "gray" : vitals.online ? "green" : "red"}>
-        <Server className="size-3" />
-        {vitals.probesFailed ? "Gateway status unavailable" : vitals.online ? "Gateway online" : "Gateway offline"}
-      </Badge>
+    <div className={`flex flex-wrap items-center gap-1.5 text-[11px] ${className}`}>
+      {/* ── Cluster 1 · is the backend there, and how loaded is the box ─────── */}
+      <Cluster
+        label="Backend connection"
+        title="Measured live: GET /api/features (reachability), GET /api/ops/version, GET /api/system/vitals (host load)."
+      >
+        <span className="inline-flex items-center px-2.5">
+          <Badge tone={vitals.probesFailed ? "gray" : vitals.online ? "green" : "red"}>
+            <Server className="size-3" />
+            {vitals.probesFailed
+              ? "Gateway status unavailable"
+              : vitals.online
+                ? "Gateway online"
+                : "Gateway offline"}
+          </Badge>
+        </span>
 
-      <span title={`Alpha version ${vitals.version}`} className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
-        <Cpu className="size-3" />
-        <span className="font-medium tabular-nums">v{vitals.version}</span>
-      </span>
+        <Metric
+          icon={<Cpu className="size-3" />}
+          value={`v${vitals.version}`}
+          label="Alpha"
+          title={`Alpha version ${vitals.version}, reported by GET /api/ops/version. This is the installed build, not the newest published release — the update control beside this strip owns that question.`}
+        />
 
-      {vitals.host && (
-        <span
-          title={`Host RAM: ${formatGiB(vitals.host.ram.used_mb)} of ${formatGiB(vitals.host.ram.total_mb)} (${vitals.host.ram.percent.toFixed(1)}%) — CPU ${vitals.host.cpu.percent.toFixed(0)}%`}
-          className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap"
-        >
-          <span
-            className={`size-1.5 rounded-full ${vitals.host.ram.percent >= 90 ? "bg-red-500" : vitals.host.ram.percent >= 70 ? "bg-amber-500" : "bg-emerald-500"}`}
-            aria-hidden="true"
+        {host ? (
+          <>
+            <Metric
+              icon={
+                <span
+                  className={`size-1.5 rounded-full ${host.ram.percent >= 90 ? "bg-red-500" : host.ram.percent >= 70 ? "bg-amber-500" : "bg-emerald-500"}`}
+                />
+              }
+              value={`${formatGiB(host.ram.used_mb)}/${formatGiB(host.ram.total_mb)}`}
+              label={`RAM ${host.ram.percent.toFixed(0)}%`}
+              emphasis
+              title={`Host RAM: ${formatGiB(host.ram.used_mb)} used of ${formatGiB(host.ram.total_mb)} installed (${host.ram.percent.toFixed(1)}%), from GET /api/system/vitals (memory.ram). Units are GiB, converted from the server's MB.`}
+            />
+            <Metric
+              icon={<Gauge className="size-3" />}
+              value={`${host.cpu.percent.toFixed(0)}%`}
+              label="CPU"
+              title={`Host CPU: ${host.cpu.percent.toFixed(1)}% across ${host.cpu.cores} cores, from GET /api/system/vitals (cpu.percent).`}
+            />
+          </>
+        ) : (
+          <Metric
+            icon={<CircleHelp className="size-3" />}
+            value="—"
+            label="host load not reported"
+            title="Host RAM and CPU: NOT REPORTED. GET /api/system/vitals did not answer, so how loaded the machine running this UI is unknown. This dash is NOT a measured 0%."
           />
-          <span className="font-semibold text-foreground tabular-nums">
-            {formatGiB(vitals.host.ram.used_mb)}/{formatGiB(vitals.host.ram.total_mb)}
-          </span>
-          <span className="hidden lg:inline">RAM</span>
-          <span className="font-medium tabular-nums">{vitals.host.ram.percent.toFixed(0)}%</span>
-        </span>
-      )}
+        )}
+      </Cluster>
 
-      {s && (
-        <>
-          <Metric icon={<Activity className="size-3" />} label="runs" value={compactNumber(s.runs)} />
-          <Metric icon={<Database className="size-3" />} label="chats" value={compactNumber(s.threads)} />
-          <Metric icon={<Blocks className="size-3" />} label="agents" value={compactNumber(s.agents)} />
-          <Metric icon={<Coins className="size-3" />} label="tokens" value={compactNumber(s.tokens)} />
-          <Metric icon={<Coins className="size-3" />} label="cost" value={formatCost(s.cost, s.currency)} />
-        </>
-      )}
-
-      {vitals.probesFailed ? (
-        <span
-          title="The subsystem probe request failed — status is unknown, not zero."
-          className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap"
-        >
-          <Radio className="size-3" />
-          <span className="font-semibold text-foreground">Subsystem status unavailable</span>
-        </span>
-      ) : subsystems.length > 0 && (
-        <span className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
-          <Radio className="size-3" />
-          <span className="font-semibold text-foreground tabular-nums">
-            {readyCount}/{subsystems.length}
-          </span>
-          <span className="hidden lg:inline">subsystems ready</span>
-        </span>
-      )}
-
-      {subsystems.map((p) => (
-        <span
-          key={p.key}
-          title={`${p.label} — ${p.detail}`}
-          className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap"
-        >
-          <span
-            className={`size-1.5 rounded-full ${p.ok ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
-            aria-hidden="true"
+      {/* ── Cluster 2 · how much work this workspace has done ───────────────── */}
+      <Cluster
+        label="Workspace totals"
+        title={
+          s
+            ? "Lifetime totals from GET /api/console/stats. These are the server's own counts, not this UI's, and cost is shown only when the server priced it."
+            : "Lifetime totals: NOT REPORTED. GET /api/console/stats did not answer, so every count here is unknown rather than zero."
+        }
+      >
+        {s ? (
+          <>
+            <Metric icon={<Activity className="size-3" />} value={compactNumber(s.runs)} label="runs" title={`${s.runs} runs recorded on this Gateway, from GET /api/console/stats (total_runs).`} />
+            <Metric icon={<Database className="size-3" />} value={compactNumber(s.threads)} label="chats" title={`${s.threads} conversations stored on this Gateway, from GET /api/console/stats (total_threads).`} />
+            <Metric icon={<Blocks className="size-3" />} value={compactNumber(s.agents)} label="agents" title={`${s.agents} custom agent profiles, from GET /api/console/stats (total_agents). Zero means none are defined; a failure to read it would render as "not reported" instead.`} />
+            <Metric icon={<Sigma className="size-3" />} value={compactNumber(s.tokens)} label="tokens" title={`${s.tokens} model tokens billed to this workspace, from GET /api/console/stats (total_tokens).`} />
+            <Metric icon={<CircleDollarSign className="size-3" />} value={cost.value} label={cost.label} title={cost.title} />
+          </>
+        ) : (
+          // One entry, but the tooltip enumerates each stat individually: a
+          // user hovering "not reported" needs to know that *runs*, *chats*,
+          // *agents*, *tokens* and *Cost* are all unknown rather than 0, and
+          // which route would have supplied them.
+          <Metric
+            icon={<CircleHelp className="size-3" />}
+            value="—"
+            label="totals not reported"
+            title={
+              "NOT REPORTED — GET /api/console/stats did not answer. Runs, chats, agents, tokens and Cost are " +
+              "all unknown, NOT zero. This is a failed read, not a workspace with no history: an empty list must " +
+              "mean the server said there is nothing, and the server said nothing at all."
+            }
           />
-          {p.key === "memory" && <Brain className="size-3" />}
-          {p.key === "skills" && <Blocks className="size-3" />}
-          {p.key === "scheduled" && <CalendarClock className="size-3" />}
-          {p.key === "channels" && <Radio className="size-3" />}
-          {p.key === "mcp" && <Plug className="size-3" />}
-          <span className="hidden xl:inline">{p.label}</span>
-          <span className="sr-only">
-            {p.label}: {p.detail}
-          </span>
-        </span>
-      ))}
+        )}
+      </Cluster>
+
+      {/* ── Cluster 3 · which subsystems are answering right now ───────────── */}
+      <Cluster
+        label="Subsystem readiness"
+        title={
+          vitals.probesFailed
+            ? "Subsystem status: UNAVAILABLE. The probe request itself failed, so readiness is unknown — this is neither 0 of 7 nor 7 of 7, because nobody measured it."
+            : subsystems.length === 0
+              ? // The probe request SUCCEEDED and reported no subsurfaces. That is
+                // a real answer — "the server has no subsystems to check" — and
+                // rendering it as `0/0` would look like a measured zero of a
+                // non-zero denominator. Say what it is.
+                "Subsystem readiness: the Gateway reported no subsurfaces to probe. 0 of 0 is what it answered, not a missing measurement and not a failure."
+              : `${readyCount} of ${subsystems.length} probed subsystems answered successfully. A subsystem counts as ready only when its own request succeeded.`
+        }
+      >
+        {vitals.probesFailed ? (
+          // The wording `load-failure-honesty.test.mjs` pins. It is kept
+          // verbatim, and it is also the honest one: the probe request itself
+          // failed, so no subsystem was measured and this is not `0/7`.
+          <Metric
+            icon={<CircleHelp className="size-3" />}
+            value=""
+            label="Subsystem status unavailable"
+            title="Subsystem readiness: UNKNOWN. The probe request failed, so no subsystem was measured. This is NOT 0 of 7, and not a healthy 7 of 7 either — nobody measured anything."
+          />
+        ) : (
+          <>
+            <Metric
+              icon={<Layers className="size-3" />}
+              value={subsystems.length === 0 ? "—" : `${readyCount}/${subsystems.length}`}
+              label={subsystems.length === 0 ? "ready, none to probe" : "ready"}
+              emphasis={subsystems.length > 0 && readyCount < subsystems.length}
+              title={
+                subsystems.length === 0
+                  ? "Subsystem readiness: the Gateway reported no subsurfaces to probe, so nothing was measured. This is the server's answer, not a missing reading and not a failing one."
+                  : `${readyCount} of ${subsystems.length} probed subsystems answered successfully. Counted ready only on a successful response — hover a failing entry for the reason the server gave.`
+              }
+            />
+            {subsystems.map((p) => {
+              const Icon = SUBSYSTEM_ICON[p.key] ?? CircleHelp;
+              return (
+                <span
+                  key={p.key}
+                  title={`${p.label} — ${p.detail} (${p.blurb}). Probed live by lib/system.ts against the Gateway.`}
+                  data-subsystem={p.key}
+                  data-ready={p.ok ? "true" : "false"}
+                  className={`inline-flex items-center gap-1 whitespace-nowrap px-2 py-1 ${p.ok ? "" : "text-amber-600 dark:text-amber-400"}`}
+                >
+                  <span
+                    className={`size-1.5 rounded-full shrink-0 ${p.ok ? "bg-emerald-500" : "bg-amber-500"}`}
+                    aria-hidden="true"
+                  />
+                  <Icon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  {/* The name is always visible; the reason appears only when
+                      there is something wrong to explain, so a healthy row stays
+                      quiet and a broken row cannot hide. */}
+                  <span className="text-muted-foreground">{p.label}</span>
+                  {p.ok ? null : <span className="font-medium">— {p.detail}</span>}
+                </span>
+              );
+            })}
+          </>
+        )}
+      </Cluster>
     </div>
   );
 }
