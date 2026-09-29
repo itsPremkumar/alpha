@@ -411,8 +411,8 @@ Pass-1 baseline for reference (superseded):
  M backend/packages/harness/alpha/tools/builtins/python_repl_tool.py
  M backend/packages/harness/alpha/tools/builtins/skill_workshop_tool.py
  M backend/packages/harness/alpha/agents/middlewares/__init__.py   (if ruff reorder ran)
- M backend/packages/harness/alpha/tests/test_learning_fork.py
- M backend/packages/harness/alpha/tests/test_user_model.py
+ M backend/packages/harness/tests/test_learning_fork.py
+ M backend/packages/harness/tests/test_user_model.py
  M backend/tests/test_feature_manifest_wiring.py
  M backend/tests/test_no_orphan_modules.py
  M backend/tests/test_gateway_services_resolution.py

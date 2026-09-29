@@ -456,18 +456,21 @@ docker compose logs -f gateway | jq 'select(.level=="ERROR" or .level=="WARN")'
 
 ### Backend Profiling
 ```bash
-# CPU profile
-cd backend && python -m cProfile -o profile.stats -m pytest tests/test_perf.py
+# CPU profile — pass the module you are investigating
+cd backend && python -m cProfile -o profile.stats -m pytest tests/test_threads_router.py
 
 # Analyze
 python -c "import pstats; p = pstats.Stats('profile.stats'); p.sort_stats('cumulative').print_stats(30)"
 
-# Memory profile
-cd backend && python scripts/sandbox_memory_profile.py
-
-# Blocking I/O detection
-cd backend && python scripts/detect_blocking_io_static.py
+# Sandbox provider benchmark
+cd backend && uv run python scripts/benchmark/sandbox/bench_provider.py
 ```
+
+There is no `tests/test_perf.py` and no `backend/scripts/sandbox_memory_profile.py`
+or `backend/scripts/detect_blocking_io_static.py` in this tree — no performance
+baseline is asserted by the suite, so a missing baseline never decides whether
+tests run (see `backend/Makefile`). Blocking-I/O detection instead runs as its
+own gate: `make test-blocking-io`, backed by `backend/tests/blocking_io/`.
 
 ### Frontend Profiling
 ```bash

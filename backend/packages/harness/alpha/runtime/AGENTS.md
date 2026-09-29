@@ -54,11 +54,45 @@ each module's own `AGENTS.md` is the normative contract.
   drain is logged instead of looking clean. Tests: `tests/test_planned_shutdown.py`.
 
 **Honesty boundary, stated so nobody reads a claim into these modules that the
-code does not make:** there is no cross-process exactly-once here; the
-side-effect ledger has no SQL repository yet; the supervisor is not yet wired
-into the Windows launcher; and a session's parked-across-restart state is
-re-derived rather than kept in a dedicated durable registry. Each module's
-`AGENTS.md` repeats the gaps it owns.
+code does not make.** Three of these are gaps; the fourth is the shape of the
+first one, and the distinction matters because "the storage does not exist" and
+"nothing writes to the storage" call for different work.
+
+- **There is no cross-process exactly-once here.** True, and it stays true for a
+  specific reason: the `UNKNOWN` ledger and the parked-session registry are the
+  machinery that *would* provide it, and the Gateway wires the registry but
+  **never writes a side-effect ledger row** — so in a running deployment the
+  ledger table is empty and no second gateway instance could collide over
+  nothing. This is the honest statement; "no exactly-once" alone would read as
+  "there is no storage", which is false.
+- **The side-effect ledger's SQL repository exists and is tested; it has no
+  production writer.** `alpha.persistence.side_effects.SqlSideEffectLedger`
+  (migration `0027_side_effect_ledger`) implements the `SideEffectLedger`
+  protocol with the cross-process conditional transitions
+  (`tests/test_side_effect_ledger_sql.py`), and nothing under `backend/app/` or
+  the harness constructs it — only tests do. So `UNKNOWN` is *durable and
+  enumerable in the schema* and *absent from a real run*. Recording an effect is
+  a caller decision, and no caller makes it.
+- **The supervisor is not yet wired into the Windows launcher.** `start.ps1`
+  still owns process startup, so nothing restarts the backend automatically on
+  Windows. True.
+- **A parked session's state is kept in a durable registry, and that registry has
+  no resume launcher.** `wait_registry.py`'s `NetworkWaitService` over
+  `NetworkWaitRepository` (migration `0026_network_waits`) is wired at
+  `app/gateway/deps.py`, so a park survives a process restart rather than being
+  re-derived. The gap is *continuation*: the Gateway installs no launcher, and
+  `SafeRunRecoveryService` owns resumption instead.
+
+Each module's `AGENTS.md` repeats the gaps it owns.
+
+<!-- honesty-claims
+side_effect_ledger_sql_repository: exists
+side_effect_ledger_production_writer: absent
+parked_session_durable_registry: exists
+parked_session_resume_launcher: absent
+cross_process_exactly_once: absent
+supervisor_in_windows_launcher: absent
+-->
 
 ### Workspace Snapshot Cancellation
 

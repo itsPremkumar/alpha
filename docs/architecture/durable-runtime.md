@@ -263,6 +263,12 @@ matter across processes hold:
 That is the whole point: **the process that would have known the answer is the one
 that died**, so a later worker has no standing to decide.
 
+**All of the above describes what the schema makes possible, not what a running
+Gateway does.** No production module constructs `SqlSideEffectLedger`, so in a
+real deployment no effect is ever announced, the table is empty, and the
+properties this section describes are exercised only by tests. See *Not yet
+implemented* below.
+
 → `backend/packages/harness/alpha/persistence/side_effects/AGENTS.md`
 
 ## Planned shutdown
@@ -425,6 +431,19 @@ make:
   tested library with a production-referenced contract, and the Gateway lifespan
   drain runs through `alpha.runtime.shutdown` — but `start.ps1` still owns process
   startup, so nothing yet restarts the backend automatically on Windows.
+- **Nothing in production writes the side-effect ledger.** This is the honest
+  version of a gap that is easy to state wrongly. `SqlSideEffectLedger` exists,
+  is migration-backed (`0027_side_effect_ledger`), and satisfies the
+  `SideEffectLedger` protocol with conditional cross-process transitions — but no
+  module under `backend/app/` or the harness constructs it. Only
+  `tests/test_side_effect_ledger_sql.py` and
+  `tests/test_durable_runtime_realtime.py` do. So the table is empty in a real
+  deployment, `list_unknown()` always returns `()`, and **there is no
+  cross-process exactly-once for side effects**, because the ledger that would
+  provide it is never fed. Announcing an effect is a caller decision in the tool
+  path, and no caller makes it. Everything the ledger documents about leases,
+  reclaim, and reconciliation is therefore a *proven contract*, not an observed
+  behaviour.
 - **No per-tool-call reconciliation API or UI.** The unknown set is queryable via
   `list_unknown()` and durable in SQL, but there is no route or frontend surface
   for a human to work the queue off.
