@@ -315,6 +315,66 @@ class ProgramSlicingEngine:
         compute_data_flow(tree.body, defaultdict(set))
         return pdg
 
+    def _resolve_target_line(
+        self,
+        pdg: ProgramDependenceGraph,
+        target_line: int,
+        target_variable: str | None,
+        direction: str,
+    ) -> int | None:
+        """Locate the statement a slice should actually start from.
+
+        ``target_line`` alone is not a target: it is a *hint*, and a caller who
+        only knows a variable's name has no line to offer. The previous
+        implementation resolved the start line purely from ``target_line``
+        (closest statement ``<= target_line``) and then used ``target_variable``
+        only to seed the traversal queue. With the default ``target_line=1``
+        that silently anchored every slice to the first statement in the file,
+        so a request for ``target_variable="main"`` returned the slice of
+        whatever happened to be defined first, and still reported
+        ``success: True``. A wrong slice that claims success is worse than no
+        slice, because the caller has no way to tell the two apart.
+
+        The rule here is that ``target_line`` is honoured only when it is
+        *consistent* with ``target_variable`` — that is, when the statement it
+        selects actually involves that variable. Otherwise the line is resolved
+        from the variable itself, and if the variable cannot be found at all the
+        caller is told so rather than handed a substitute.
+        """
+        statements = pdg.statements
+        if not statements:
+            return None
+
+        def _involves(line: int) -> bool:
+            stmt = statements.get(line)
+            if stmt is None:
+                return False
+            return target_variable in stmt.defined_vars or target_variable in stmt.used_vars
+
+        if target_variable:
+            # Honour an explicit line only when it really points at the variable.
+            if target_line in statements and _involves(target_line):
+                return target_line
+
+            # Otherwise find the variable itself. ``backward`` wants the
+            # definition that the slice walks back from; ``forward`` wants the
+            # earliest statement that reads it, since that is where downstream
+            # influence starts.
+            defined = sorted(line for line, stmt in statements.items() if target_variable in stmt.defined_vars)
+            if defined:
+                return defined[-1] if direction == "backward" else defined[0]
+            used = sorted(line for line, stmt in statements.items() if target_variable in stmt.used_vars)
+            if used:
+                return used[0] if direction == "backward" else used[-1]
+            # The variable genuinely does not exist in this source. Returning a
+            # line here would be a guess dressed up as a measurement.
+            return None
+
+        candidate_lines = [line for line in statements if line <= target_line] if direction == "backward" else [line for line in statements if line >= target_line]
+        if candidate_lines:
+            return max(candidate_lines) if direction == "backward" else min(candidate_lines)
+        return min(statements.keys()) if direction == "backward" else max(statements.keys())
+
     def backward_slice(
         self,
         source_code: str,
@@ -336,9 +396,24 @@ class ProgramSlicingEngine:
                 "summary": "Empty or unparseable source code; returned fallback target line.",
             }
 
-        # Resolve closest available statement line <= target_line
-        candidate_lines = [l for l in pdg.statements if l <= target_line]
-        resolved_line = max(candidate_lines) if candidate_lines else min(pdg.statements.keys())
+        # Resolve the statement this slice actually starts from. When the caller
+        # named a variable we resolve from the variable, so a request without a
+        # usable line still slices the right function.
+        resolved_line = self._resolve_target_line(pdg, target_line, target_variable, "backward")
+        if resolved_line is None:
+            return {
+                "slicing_mode": "backward",
+                "target_line": target_line,
+                "target_variable": target_variable,
+                "slice_lines": [],
+                "slice_code": "",
+                "causal_statements": [],
+                "summary": (
+                    f"Target variable {target_variable!r} was not found in this source, so no backward slice "
+                    f"could be computed. No substitute line was sliced, because a slice of an unrelated "
+                    f"statement reported as this variable's slice would be wrong rather than empty."
+                ),
+            }
 
         visited_lines: Set[int] = set()
         queue: deque[Tuple[int, Optional[str]]] = deque()
@@ -422,8 +497,24 @@ class ProgramSlicingEngine:
                 "summary": "Empty or unparseable source code; returned fallback target line.",
             }
 
-        candidate_lines = [l for l in pdg.statements if l >= target_line]
-        resolved_line = min(candidate_lines) if candidate_lines else max(pdg.statements.keys())
+        # Same resolution rule as the backward slice: a named variable locates
+        # its own statement, and an unresolvable name is disclosed rather than
+        # silently replaced by the nearest line.
+        resolved_line = self._resolve_target_line(pdg, target_line, target_variable, "forward")
+        if resolved_line is None:
+            return {
+                "slicing_mode": "forward",
+                "target_line": target_line,
+                "target_variable": target_variable,
+                "impacted_lines": [],
+                "impacted_code": "",
+                "blast_radius_risk": "Unknown",
+                "summary": (
+                    f"Target variable {target_variable!r} was not found in this source, so no blast radius "
+                    f"could be computed. No substitute line was analysed, because a blast radius for an "
+                    f"unrelated statement reported as this variable's would be wrong rather than empty."
+                ),
+            }
 
         visited_lines: Set[int] = set()
         queue: deque[Tuple[int, Optional[str]]] = deque()
@@ -546,6 +637,16 @@ def compute_program_slice(
             result = engine.forward_slice(code, target_line, target_variable)
         else:
             result = engine.backward_slice(code, target_line, target_variable)
+
+        # An empty slice for a named variable means the variable was not found.
+        # Reporting that as success would hand the caller a confident "yes" over
+        # a slice that does not exist, which is the one failure mode a debugging
+        # aid cannot afford.
+        if not result.get("slice_lines") and not result.get("impacted_lines"):
+            return {
+                "success": False,
+                "data": result,
+            }
 
         return {
             "success": True,

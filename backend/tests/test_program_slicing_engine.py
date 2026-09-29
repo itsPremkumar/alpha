@@ -123,3 +123,105 @@ def test_compute_program_slice_tool(tmp_path):
     assert res_f["success"] is True
     assert "impacted_lines" in res_f["data"]
     assert "blast_radius_risk" in res_f["data"]
+
+
+# --- target_variable must locate its own statement -------------------------
+#
+# Found by running the tool, not by reading it. Asked to slice
+# ``target_variable="main"`` with no usable ``target_line`` (the default is 1),
+# the engine resolved the start line from ``target_line`` alone, so it sliced
+# the *first* function in the file and still reported ``success: True``. The
+# only three existing tests that pass ``target_variable`` all pass a matching
+# ``target_line`` alongside it, so the by-name path was never exercised.
+
+
+TWO_FUNCTION_CODE = """def helper():
+    return 1
+
+
+def main():
+    return helper()
+"""
+
+# Line map for the fixture above, asserted so a reformat cannot silently move
+# the target and make this file test the wrong thing:
+#   1 `def helper():`   2 `    return 1`   3 (blank)   4 (blank)
+#   5 `def main():`     6 `    return helper()`
+HELPER_DEF_LINE = 1
+MAIN_DEF_LINE = 5
+MAIN_CALL_LINE = 6
+
+
+def test_two_function_fixture_line_map_is_what_the_tests_assume():
+    """Guard the line numbers the resolution assertions below depend on."""
+    lines = TWO_FUNCTION_CODE.splitlines()
+    assert lines[HELPER_DEF_LINE - 1] == "def helper():"
+    assert lines[MAIN_DEF_LINE - 1] == "def main():"
+    assert lines[MAIN_CALL_LINE - 1] == "    return helper()"
+
+
+def test_backward_slice_by_variable_name_slices_that_variable():
+    """A named variable with no line must resolve to its own definition."""
+    engine = ProgramSlicingEngine()
+
+    res = engine.backward_slice(TWO_FUNCTION_CODE, target_line=1, target_variable="main")
+
+    # `main` is defined on line 5. The old code anchored to line 1 (`helper`).
+    assert res["resolved_line"] == MAIN_DEF_LINE
+    assert MAIN_DEF_LINE in res["slice_lines"]
+
+
+def test_backward_slice_by_variable_name_does_not_slice_the_wrong_function():
+    """The regression itself: the old code answered about `helper`."""
+    engine = ProgramSlicingEngine()
+
+    res = engine.backward_slice(TWO_FUNCTION_CODE, target_line=1, target_variable="main")
+
+    assert res["resolved_line"] != HELPER_DEF_LINE
+    assert "def helper():" not in res["slice_code"]
+
+
+def test_compute_program_slice_does_not_report_success_for_a_wrong_slice():
+    """The tool must not answer for `helper` when asked about `main`."""
+    res = compute_program_slice.invoke({
+        "source_code": TWO_FUNCTION_CODE,
+        "slicing_mode": "backward",
+        "target_variable": "main",
+    })
+
+    assert res["success"] is True
+    assert "def helper():" not in res["data"]["slice_code"].split("def main():")[0]
+
+
+def test_unknown_variable_is_refused_rather_than_substituted():
+    """An absent name is disclosed; it is never answered with a nearby line."""
+    engine = ProgramSlicingEngine()
+
+    res = engine.backward_slice(TWO_FUNCTION_CODE, target_line=1, target_variable="does_not_exist")
+
+    assert res["slice_lines"] == []
+    assert "was not found" in res["summary"]
+
+
+def test_unknown_variable_is_not_reported_as_success():
+    """The caller must be able to distinguish 'no slice' from 'wrong slice'."""
+    res = compute_program_slice.invoke({
+        "source_code": TWO_FUNCTION_CODE,
+        "slicing_mode": "backward",
+        "target_variable": "does_not_exist",
+    })
+
+    assert res["success"] is False
+
+
+def test_forward_slice_by_variable_name_resolves_the_variable():
+    """Blast radius obeys the same resolution rule as the backward slice."""
+    res = compute_program_slice.invoke({
+        "source_code": TWO_FUNCTION_CODE,
+        "slicing_mode": "forward",
+        "target_variable": "helper",
+    })
+
+    assert res["success"] is True
+    # `main` calls `helper` on line 6, so that call site is inside the radius.
+    assert MAIN_CALL_LINE in res["data"]["impacted_lines"]
