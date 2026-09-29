@@ -41,13 +41,16 @@ def blackboard_record_evidence(
         confidence=confidence,
     )
 
-    return json.dumps({
-        "status": "recorded",
-        "evidence_id": item.evidence_id,
-        "plane_id": item.plane_id,
-        "evidence_type": item.evidence_type,
-        "confidence": item.confidence,
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "recorded",
+            "evidence_id": item.evidence_id,
+            "plane_id": item.plane_id,
+            "evidence_type": item.evidence_type,
+            "confidence": item.confidence,
+        },
+        indent=2,
+    )
 
 
 @tool("blackboard_query", parse_docstring=True)
@@ -64,9 +67,12 @@ def blackboard_query(
     pid = plane_id.strip() if plane_id else None
     evidence = _GLOBAL_BLACKBOARD.query_evidence(plane_id=pid, min_confidence=min_confidence)
 
-    return json.dumps({
-        "session_id": _GLOBAL_BLACKBOARD.session_id,
-        "current_phase": _GLOBAL_BLACKBOARD.current_phase.value,
-        "total_evidence_count": len(evidence),
-        "evidence": [e.to_dict() for e in evidence],
-    }, indent=2)
+    return json.dumps(
+        {
+            "session_id": _GLOBAL_BLACKBOARD.session_id,
+            "current_phase": _GLOBAL_BLACKBOARD.current_phase.value,
+            "total_evidence_count": len(evidence),
+            "evidence": [e.to_dict() for e in evidence],
+        },
+        indent=2,
+    )

@@ -34,10 +34,7 @@ def request_secure_credential(
     vault = get_credential_vault()
 
     if vault.has_credential(thread_id, credential_key):
-        return (
-            f"Credential '{credential_key}' is already active in the secure environment vault. "
-            f"You may proceed with execution using this environment variable."
-        )
+        return f"Credential '{credential_key}' is already active in the secure environment vault. You may proceed with execution using this environment variable."
 
     vault.request_credential(
         thread_id=thread_id,

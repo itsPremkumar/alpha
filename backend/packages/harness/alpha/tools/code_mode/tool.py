@@ -12,9 +12,11 @@ def register_default_tools(bridge: ToolBridge) -> None:
     if "echo" not in bridge._tools:
         bridge.register("echo", lambda text="": text)
     if "read_text_file" not in bridge._tools:
+
         def _read_file(path: str) -> str:
             with open(path, encoding="utf-8", errors="replace") as f:
                 return f.read()
+
         bridge.register("read_text_file", _read_file)
 
 

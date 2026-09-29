@@ -41,8 +41,11 @@ def inspect_repo_twin(
     if target_file_for_blast_radius:
         blast_report = BlastRadiusCalculator.calculate(target_file_for_blast_radius, graph).to_dict()
 
-    return json.dumps({
-        "reconnaissance": recon.to_dict(),
-        "total_symbols_indexed": len(graph.symbols),
-        "blast_radius": blast_report,
-    }, indent=2)
+    return json.dumps(
+        {
+            "reconnaissance": recon.to_dict(),
+            "total_symbols_indexed": len(graph.symbols),
+            "blast_radius": blast_report,
+        },
+        indent=2,
+    )

@@ -96,9 +96,7 @@ _JOIN = "\n\n"
 #: is: a rewritten memory must be visible, not silently altered. The wording
 #: deliberately never contains the token itself -- a disclosure that re-introduces
 #: the hazard it is disclosing about would be worse than no disclosure.
-_NEUTRALIZATION_NOTICE = (
-    "\n[memory: a recalled entry contained this block's closing tag and was neutralised]"
-)
+_NEUTRALIZATION_NOTICE = "\n[memory: a recalled entry contained this block's closing tag and was neutralised]"
 
 #: Short repeat of the data marking, placed after the last surface. The composed
 #: block is the last thing appended to the host's ``<memory>`` block, so this is
@@ -279,10 +277,7 @@ def compose_typed_memory_blocks(
     # a cap.
     content_budget = max(
         0,
-        max_total_chars
-        - len(RECALL_DATA_NOTICE)
-        - len(_RECALL_DATA_REMINDER)
-        - 2 * len(_JOIN),
+        max_total_chars - len(RECALL_DATA_NOTICE) - len(_RECALL_DATA_REMINDER) - 2 * len(_JOIN),
     )
     used = 0
     truncated = False

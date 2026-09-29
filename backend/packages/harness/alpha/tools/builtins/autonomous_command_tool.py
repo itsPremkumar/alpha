@@ -131,18 +131,11 @@ def identify_autonomous_command_tool(
     resolution = command_registry.resolve(detection.command)
     if resolution.command_def is None:
         recommendation["executable"] = False
-        recommendation["executable_reason"] = (
-            f"'{detection.command}' is not a registered command; calling execute_slash_command with it returns not_found."
-        )
+        recommendation["executable_reason"] = f"'{detection.command}' is not a registered command; calling execute_slash_command with it returns not_found."
     else:
         recommendation["executable"] = command_registry.has_handler(resolution.command_def.command)
-        recommendation["executable_reason"] = (
-            f"'{detection.command}' resolves to {resolution.command_def.command}; "
-            + (
-                "a handler is bound."
-                if recommendation["executable"]
-                else "it is a catalog placeholder with no handler, so nothing will execute."
-            )
+        recommendation["executable_reason"] = f"'{detection.command}' resolves to {resolution.command_def.command}; " + (
+            "a handler is bound." if recommendation["executable"] else "it is a catalog placeholder with no handler, so nothing will execute."
         )
 
     return (

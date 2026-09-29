@@ -47,10 +47,13 @@ def evaluate_agent_competence(
         competence_score=competence,
     )
 
-    return json.dumps({
-        "domain": domain,
-        "wilson_confidence_95": competence,
-        "curiosity_score": curiosity,
-        "dominant_mode": dominant_mode,
-        "total_motivation": total_motivation,
-    }, indent=2)
+    return json.dumps(
+        {
+            "domain": domain,
+            "wilson_confidence_95": competence,
+            "curiosity_score": curiosity,
+            "dominant_mode": dominant_mode,
+            "total_motivation": total_motivation,
+        },
+        indent=2,
+    )

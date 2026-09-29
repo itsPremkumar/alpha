@@ -50,12 +50,15 @@ def create_workflow_checkpoint(
         parent_id=parent_checkpoint_id.strip() or None,
     )
 
-    return json.dumps({
-        "status": "created",
-        "checkpoint_id": cp.checkpoint_id,
-        "workflow_id": cp.workflow_id,
-        "step": cp.step,
-        "strategy": cp.strategy.value,
-        "checksum": cp.checksum,
-        "integrity_verified": cp.verify_integrity(),
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "created",
+            "checkpoint_id": cp.checkpoint_id,
+            "workflow_id": cp.workflow_id,
+            "step": cp.step,
+            "strategy": cp.strategy.value,
+            "checksum": cp.checksum,
+            "integrity_verified": cp.verify_integrity(),
+        },
+        indent=2,
+    )

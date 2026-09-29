@@ -61,17 +61,23 @@ def run_variation_operator_step(
     if action == "knowledge_query":
         query = query_text or hypothesis
         entries = _AVO_ENGINE.knowledge_base.query(query)
-        return json.dumps({
-            "query": query,
-            "results": [e.to_dict() for e in entries],
-        }, indent=2)
+        return json.dumps(
+            {
+                "query": query,
+                "results": [e.to_dict() for e in entries],
+            },
+            indent=2,
+        )
 
     elif action == "inspect_frontier":
         frontier = _AVO_ENGINE.lineage.get_pareto_frontier()
-        return json.dumps({
-            "frontier_size": len(frontier),
-            "versions": [v.to_dict() for v in frontier],
-        }, indent=2)
+        return json.dumps(
+            {
+                "frontier_size": len(frontier),
+                "versions": [v.to_dict() for v in frontier],
+            },
+            indent=2,
+        )
 
     elif action == "stats":
         return json.dumps(_AVO_ENGINE.stats(), indent=2)
@@ -117,24 +123,25 @@ def run_variation_operator_step(
                 failure_reason=candidate.rejection_reason or "Non-improving metrics",
             )
 
-        return json.dumps({
-            "version_id": candidate.version_id,
-            "committed": committed,
-            "correctness": correctness,
-            "geometric_mean": vector.geometric_mean(),
-            "metrics": vector.metrics,
-            "current_head": _AVO_ENGINE.lineage.head_id,
-            "stagnation_detected": stagnated,
-            "diagnostic": diag,
-            "active_directive": directive.to_dict() if directive else None,
-            "pareto_frontier_size": len(_AVO_ENGINE.lineage.get_pareto_frontier()),
-        }, indent=2)
+        return json.dumps(
+            {
+                "version_id": candidate.version_id,
+                "committed": committed,
+                "correctness": correctness,
+                "geometric_mean": vector.geometric_mean(),
+                "metrics": vector.metrics,
+                "current_head": _AVO_ENGINE.lineage.head_id,
+                "stagnation_detected": stagnated,
+                "diagnostic": diag,
+                "active_directive": directive.to_dict() if directive else None,
+                "pareto_frontier_size": len(_AVO_ENGINE.lineage.get_pareto_frontier()),
+            },
+            indent=2,
+        )
 
     elif action == "workspace_run":
         if not target_file:
-            return json.dumps({
-                "error": "Parameter 'target_file' is required for action 'workspace_run'."
-            }, indent=2)
+            return json.dumps({"error": "Parameter 'target_file' is required for action 'workspace_run'."}, indent=2)
 
         runner = WorkspaceAVORunner(
             lineage=_AVO_ENGINE.lineage,
@@ -158,13 +165,16 @@ def run_variation_operator_step(
         mgr = AVOPersistenceManager(base_dir=root_path) if root_path else _AVO_PERSISTENCE
         lineage_path = mgr.save_lineage(_AVO_ENGINE.lineage)
         kb_path = mgr.save_knowledge_base(_AVO_ENGINE.knowledge_base)
-        return json.dumps({
-            "status": "persisted",
-            "lineage_path": str(lineage_path),
-            "knowledge_base_path": str(kb_path),
-            "versions_count": len(_AVO_ENGINE.lineage.versions),
-            "knowledge_entries": len(_AVO_ENGINE.knowledge_base.entries),
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "persisted",
+                "lineage_path": str(lineage_path),
+                "knowledge_base_path": str(kb_path),
+                "versions_count": len(_AVO_ENGINE.lineage.versions),
+                "knowledge_entries": len(_AVO_ENGINE.knowledge_base.entries),
+            },
+            indent=2,
+        )
 
     elif action == "restore":
         mgr = AVOPersistenceManager(base_dir=root_path) if root_path else _AVO_PERSISTENCE
@@ -174,30 +184,34 @@ def run_variation_operator_step(
             _AVO_ENGINE.lineage = loaded_lineage
         if loaded_kb:
             _AVO_ENGINE.knowledge_base = loaded_kb
-        return json.dumps({
-            "status": "restored",
-            "lineage_restored": loaded_lineage is not None,
-            "knowledge_restored": loaded_kb is not None,
-            "versions_count": len(_AVO_ENGINE.lineage.versions),
-            "knowledge_entries": len(_AVO_ENGINE.knowledge_base.entries),
-            "head_id": _AVO_ENGINE.lineage.head_id,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "restored",
+                "lineage_restored": loaded_lineage is not None,
+                "knowledge_restored": loaded_kb is not None,
+                "versions_count": len(_AVO_ENGINE.lineage.versions),
+                "knowledge_entries": len(_AVO_ENGINE.knowledge_base.entries),
+                "head_id": _AVO_ENGINE.lineage.head_id,
+            },
+            indent=2,
+        )
 
     elif action == "supervisor_status":
         sup = _AVO_ENGINE.supervisor
-        return json.dumps({
-            "consecutive_stagnation": sup.consecutive_stagnation,
-            "max_no_improve": sup.max_no_improve,
-            "recent_signatures": list(sup.signature_history),
-            "last_directive": sup.last_directive.to_dict() if sup.last_directive else None,
-            "total_stagnation_events": sup.total_stagnation_events,
-            "total_cycle_events": sup.total_cycle_events,
-        }, indent=2)
+        return json.dumps(
+            {
+                "consecutive_stagnation": sup.consecutive_stagnation,
+                "max_no_improve": sup.max_no_improve,
+                "recent_signatures": list(sup.signature_history),
+                "last_directive": sup.last_directive.to_dict() if sup.last_directive else None,
+                "total_stagnation_events": sup.total_stagnation_events,
+                "total_cycle_events": sup.total_cycle_events,
+            },
+            indent=2,
+        )
 
     else:
-        return json.dumps({
-            "error": f"Unknown action '{action}'. Supported actions: 'vary', 'workspace_run', 'inspect_frontier', 'knowledge_query', 'stats', 'persist', 'restore', 'supervisor_status'."
-        }, indent=2)
+        return json.dumps({"error": f"Unknown action '{action}'. Supported actions: 'vary', 'workspace_run', 'inspect_frontier', 'knowledge_query', 'stats', 'persist', 'restore', 'supervisor_status'."}, indent=2)
 
 
 # Transparent alias for backwards compatibility

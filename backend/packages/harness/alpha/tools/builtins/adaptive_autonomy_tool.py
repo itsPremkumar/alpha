@@ -41,21 +41,25 @@ def check_or_set_autonomy_profile(
     }
 
     if action == "get_profile":
-        return json.dumps({
-            "current_profile": _POLICY_ENGINE.current_profile.value,
-        }, indent=2)
+        return json.dumps(
+            {
+                "current_profile": _POLICY_ENGINE.current_profile.value,
+            },
+            indent=2,
+        )
 
     elif action == "set_profile":
         target = profile_map.get(profile_name.lower())
         if not target:
-            return json.dumps({
-                "error": f"Invalid profile '{profile_name}'. Must be one of: observer, assistant, operator, autonomous."
-            }, indent=2)
+            return json.dumps({"error": f"Invalid profile '{profile_name}'. Must be one of: observer, assistant, operator, autonomous."}, indent=2)
         _POLICY_ENGINE.set_profile(target)
-        return json.dumps({
-            "status": "profile_updated",
-            "active_profile": _POLICY_ENGINE.current_profile.value,
-        }, indent=2)
+        return json.dumps(
+            {
+                "status": "profile_updated",
+                "active_profile": _POLICY_ENGINE.current_profile.value,
+            },
+            indent=2,
+        )
 
     elif action == "evaluate_action":
         res = _POLICY_ENGINE.evaluate_action(
@@ -65,6 +69,4 @@ def check_or_set_autonomy_profile(
         return json.dumps(res.to_dict(), indent=2)
 
     else:
-        return json.dumps({
-            "error": f"Unknown action '{action}'. Supported: 'get_profile', 'set_profile', 'evaluate_action'."
-        }, indent=2)
+        return json.dumps({"error": f"Unknown action '{action}'. Supported: 'get_profile', 'set_profile', 'evaluate_action'."}, indent=2)

@@ -26,12 +26,15 @@ def ask_oracle(
     oracle = OracleService()
     resp = oracle.consult(query=query, technical_domain=technical_domain)
 
-    return json.dumps({
-        "query": resp.query,
-        "guidance": resp.guidance,
-        "best_practices": resp.best_practices,
-        "common_pitfalls": resp.common_pitfalls,
-        "references": resp.references,
-        "confidence": resp.confidence,
-        "markdown": resp.to_markdown(),
-    }, indent=2)
+    return json.dumps(
+        {
+            "query": resp.query,
+            "guidance": resp.guidance,
+            "best_practices": resp.best_practices,
+            "common_pitfalls": resp.common_pitfalls,
+            "references": resp.references,
+            "confidence": resp.confidence,
+            "markdown": resp.to_markdown(),
+        },
+        indent=2,
+    )

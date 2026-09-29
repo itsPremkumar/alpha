@@ -54,9 +54,12 @@ def execute_transactional_action(
 
     success = tx.execute_lifecycle(commit_fn=commit_fn, verify_fn=verify_fn)
 
-    return json.dumps({
-        "status": "success" if success else "rolled_back",
-        "transaction_id": tx.transaction_id,
-        "stage": tx.stage.value,
-        "error": tx.error,
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "success" if success else "rolled_back",
+            "transaction_id": tx.transaction_id,
+            "stage": tx.stage.value,
+            "error": tx.error,
+        },
+        indent=2,
+    )

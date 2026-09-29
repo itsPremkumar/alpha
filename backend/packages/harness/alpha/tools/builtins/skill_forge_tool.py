@@ -34,11 +34,14 @@ def forge_skill_from_trace(
     skill = SkillForge.forge_from_trace(name=name, description=description, trace_steps=steps)
     registered = _GLOBAL_SKILL_REGISTRY.register(skill, min_pass_rate=0.70)
 
-    return json.dumps({
-        "skill_name": skill.name,
-        "registered": registered,
-        "parameters_count": len(skill.parameters),
-        "parameters": [p.to_dict() for p in skill.parameters],
-        "hash": skill.hash(),
-        "skill_md_preview": skill.to_skill_md()[:300] + "...",
-    }, indent=2)
+    return json.dumps(
+        {
+            "skill_name": skill.name,
+            "registered": registered,
+            "parameters_count": len(skill.parameters),
+            "parameters": [p.to_dict() for p in skill.parameters],
+            "hash": skill.hash(),
+            "skill_md_preview": skill.to_skill_md()[:300] + "...",
+        },
+        indent=2,
+    )

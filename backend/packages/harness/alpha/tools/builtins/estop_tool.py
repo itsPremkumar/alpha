@@ -88,9 +88,7 @@ def emergency_stop_manage(
     if act == "status":
         return json.dumps(manager.get_status(), indent=2)
     elif act == "engage":
-        intent_id, started = _record_action(
-            "emergency_stop_manage", {"action": act, "reason": reason}, act
-        )
+        intent_id, started = _record_action("emergency_stop_manage", {"action": act, "reason": reason}, act)
         try:
             sentinel = manager.engage(reason=reason)
         except Exception:
@@ -99,9 +97,7 @@ def emergency_stop_manage(
         _record_receipt(intent_id, started, "succeeded", exit_ref=str(sentinel))
         return f"ESTOP successfully engaged at '{sentinel}'. Fleet execution paused."
     elif act == "disengage":
-        intent_id, started = _record_action(
-            "emergency_stop_manage", {"action": act, "reason": reason}, act
-        )
+        intent_id, started = _record_action("emergency_stop_manage", {"action": act, "reason": reason}, act)
         try:
             success = manager.disengage()
         except Exception:

@@ -49,25 +49,13 @@ def synthesize_reusable_skill(
         return f"Error synthesizing skill draft: {exc}"
 
     if not draft.is_valid:
-        return (
-            "Draft generated but failed quality review gates:\n"
-            + "\n".join(f"- {f}" for f in draft.findings)
-        )
+        return "Draft generated but failed quality review gates:\n" + "\n".join(f"- {f}" for f in draft.findings)
 
     if auto_publish:
         try:
             target_path = SkillWorkshopEngine.publish_skill(draft, overwrite=True)
-            return (
-                f"Skill '{draft.name}' synthesized and successfully published to {target_path}.\n"
-                f"Description: {draft.description}\n"
-                f"Parameters detected: {len(draft.parameters)}"
-            )
+            return f"Skill '{draft.name}' synthesized and successfully published to {target_path}.\nDescription: {draft.description}\nParameters detected: {len(draft.parameters)}"
         except Exception as exc:
             return f"Draft passed validation but failed to publish: {exc}"
 
-    return (
-        f"Skill draft '{draft.name}' synthesized successfully and ready for review.\n"
-        f"Description: {draft.description}\n"
-        f"Parameters: {draft.parameters}\n\n"
-        f"Draft Preview:\n```markdown\n{draft.markdown_content[:600]}...\n```"
-    )
+    return f"Skill draft '{draft.name}' synthesized successfully and ready for review.\nDescription: {draft.description}\nParameters: {draft.parameters}\n\nDraft Preview:\n```markdown\n{draft.markdown_content[:600]}...\n```"

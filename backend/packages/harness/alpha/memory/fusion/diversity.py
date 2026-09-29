@@ -150,10 +150,7 @@ def select_diverse(
         selected.append(best)
         remaining.remove(best)
 
-    limit_drops = [
-        DroppedItem(candidate_id=candidate.id, reason="mmr_limit", details={"limit": limit})
-        for candidate in remaining
-    ]
+    limit_drops = [DroppedItem(candidate_id=candidate.id, reason="mmr_limit", details={"limit": limit}) for candidate in remaining]
     return DiversityResult(
         selected=tuple(selected),
         dropped_with_reason=tuple([*contradiction_drops, *duplicate_drops, *limit_drops]),

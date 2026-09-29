@@ -60,10 +60,7 @@ class UniversalToolCatalog:
         q = query.strip().lower()
         if not q:
             # Return top entries up to limit
-            return [
-                {"name": e.name, "category": e.category, "description": e.description}
-                for e in list(self._entries.values())[:limit]
-            ]
+            return [{"name": e.name, "category": e.category, "description": e.description} for e in list(self._entries.values())[:limit]]
 
         scored: list[tuple[int, ToolCatalogEntry]] = []
         pattern = re.compile(re.escape(q), re.IGNORECASE)
@@ -81,10 +78,7 @@ class UniversalToolCatalog:
                 scored.append((score, entry))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [
-            {"name": e.name, "category": e.category, "description": e.description}
-            for _, e in scored[:limit]
-        ]
+        return [{"name": e.name, "category": e.category, "description": e.description} for _, e in scored[:limit]]
 
     async def asearch_smart(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
         """Re-rank with System One, merged behind the keyword hits.

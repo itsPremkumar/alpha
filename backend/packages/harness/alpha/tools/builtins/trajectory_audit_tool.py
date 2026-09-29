@@ -38,12 +38,7 @@ def trajectory_audit_tool(
             return f"No steps found for goal '{goal_id}'."
         out = [f"=== Execution Trajectory for Goal '{goal_id}' ({trace.total_steps} Steps) ==="]
         for s in trace.steps:
-            out.append(
-                f"[Step {s.step_index}] Tool: `{s.tool_name}` (Status: `{s.status}`)\n"
-                f"- Thought: {s.thought}\n"
-                f"- Output: {s.tool_output[:200]}"
-                + ("..." if len(s.tool_output) > 200 else "")
-            )
+            out.append(f"[Step {s.step_index}] Tool: `{s.tool_name}` (Status: `{s.status}`)\n- Thought: {s.thought}\n- Output: {s.tool_output[:200]}" + ("..." if len(s.tool_output) > 200 else ""))
         return "\n".join(out)
 
     elif action == "export":

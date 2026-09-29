@@ -90,12 +90,8 @@ class AdmissionRule:
         if self.rule_id not in RULE_ACTIONS:
             raise ValueError(f"unknown admission rule id: {self.rule_id}")
         if self.action != RULE_ACTIONS[self.rule_id]:
-            raise ValueError(
-                f"rule {self.rule_id!r} must use source-of-truth action {RULE_ACTIONS[self.rule_id]!r}"
-            )
-        if self.min_confidence is not None and (
-            not math.isfinite(self.min_confidence) or not 0.0 <= self.min_confidence <= 1.0
-        ):
+            raise ValueError(f"rule {self.rule_id!r} must use source-of-truth action {RULE_ACTIONS[self.rule_id]!r}")
+        if self.min_confidence is not None and (not math.isfinite(self.min_confidence) or not 0.0 <= self.min_confidence <= 1.0):
             raise ValueError("min_confidence must be finite and between 0 and 1")
         if self.min_successes is not None and self.min_successes < 1:
             raise ValueError("min_successes must be at least 1")
@@ -157,11 +153,7 @@ def detect_secret_like(text: str) -> SecretDetection:
     entropy_match = _ENTROPY_ASSIGNMENT_RE.search(content)
     if entropy_match is not None:
         value = entropy_match.group(1)
-        if (
-            len(value) >= _MIN_ASSIGNMENT_LENGTH
-            and not _PLACEHOLDER_RE.search(value)
-            and _shannon_entropy(value) >= _MIN_ASSIGNMENT_ENTROPY
-        ):
+        if len(value) >= _MIN_ASSIGNMENT_LENGTH and not _PLACEHOLDER_RE.search(value) and _shannon_entropy(value) >= _MIN_ASSIGNMENT_ENTROPY:
             return SecretDetection(
                 True,
                 "high_entropy_assignment",
@@ -272,9 +264,7 @@ def evaluate_rule(
         return RuleEvaluation(rule.rule_id, False, near_miss="no explicit remember request")
 
     if rule.rule_id == "project_decision":
-        is_project = _has_tag(candidate, "project_decision", "project_decisions") or (
-            "decision" in candidate.types and bool(candidate.project_id)
-        )
+        is_project = _has_tag(candidate, "project_decision", "project_decisions") or ("decision" in candidate.types and bool(candidate.project_id))
         if not is_project:
             return RuleEvaluation(rule.rule_id, False, near_miss="candidate is not a project decision")
         if rule.require_provenance and not candidate.provenance.strip():
@@ -292,10 +282,7 @@ def evaluate_rule(
             return RuleEvaluation(
                 rule.rule_id,
                 False,
-                near_miss=(
-                    f"user preference confidence {observed} does not meet "
-                    f"min_confidence={rule.min_confidence}"
-                ),
+                near_miss=(f"user preference confidence {observed} does not meet min_confidence={rule.min_confidence}"),
             )
         guarded = _nonpromotion_override(candidate)
         if guarded is not None:
@@ -310,10 +297,7 @@ def evaluate_rule(
             return RuleEvaluation(
                 rule.rule_id,
                 False,
-                near_miss=(
-                    f"procedure successes {observed} do not meet "
-                    f"min_successes={rule.min_successes}"
-                ),
+                near_miss=(f"procedure successes {observed} do not meet min_successes={rule.min_successes}"),
             )
         guarded = _nonpromotion_override(candidate)
         if guarded is not None:

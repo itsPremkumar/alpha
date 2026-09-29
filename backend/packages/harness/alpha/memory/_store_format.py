@@ -280,10 +280,7 @@ def classify_store_format(
             supported_version=supported,
             direction=DIRECTION_ABSENT,
             reason="schema_marker_absent",
-            detail=(
-                f"{store} writes one of {'/'.join(marker_keys)}; {located} has none, "
-                f"so it predates versioning and must be migrated, not discarded"
-            ),
+            detail=(f"{store} writes one of {'/'.join(marker_keys)}; {located} has none, so it predates versioning and must be migrated, not discarded"),
         )
 
     if found == supported:
@@ -303,10 +300,7 @@ def classify_store_format(
             found_version=found,
             direction=DIRECTION_FUTURE,
             reason="document_newer_than_reader",
-            detail=(
-                f"{store} document declares format {found} but this build implements {supported}; "
-                f"a newer worker owns {located} and an older process must not quarantine or rewrite it"
-            ),
+            detail=(f"{store} document declares format {found} but this build implements {supported}; a newer worker owns {located} and an older process must not quarantine or rewrite it"),
         )
     return StoreFormatVerdict(
         store=store,
@@ -470,9 +464,7 @@ class StoreFormatAudit:
         return cls(
             root=str(data.get("root", "")),
             scanned=int(data.get("scanned", 0)),
-            findings=tuple(
-                StoreFormatFinding.from_dict(item) for item in data.get("findings", ()) if isinstance(item, Mapping)
-            ),
+            findings=tuple(StoreFormatFinding.from_dict(item) for item in data.get("findings", ()) if isinstance(item, Mapping)),
             errors=tuple(str(item) for item in data.get("errors", ())),
         )
 

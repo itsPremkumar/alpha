@@ -52,12 +52,7 @@ def group_chat_tool(
     elif action == "create":
         member_list = [m.strip() for m in members.split(",") if m.strip()] if members else None
         room = service.get_or_create_room(name=room_name, members=member_list, mode=mode)
-        return (
-            f"Room '{room.name}' active.\n"
-            f"- Mode: `{room.mode}`\n"
-            f"- Members: {', '.join(room.members)}\n"
-            f"- Moderator: @{room.moderator}"
-        )
+        return f"Room '{room.name}' active.\n- Mode: `{room.mode}`\n- Members: {', '.join(room.members)}\n- Moderator: @{room.moderator}"
 
     elif action == "send":
         if not message.strip():
@@ -68,11 +63,7 @@ def group_chat_tool(
             content=message,
         )
         speaker_str = ", ".join(f"@{s}" for s in next_speakers) if next_speakers else "(none - discussion settled)"
-        return (
-            f"Message posted to room '{room_name}'.\n"
-            f"Sender: {sender}\n"
-            f"Next Scheduled Speaker(s): {speaker_str}"
-        )
+        return f"Message posted to room '{room_name}'.\nSender: {sender}\nNext Scheduled Speaker(s): {speaker_str}"
 
     elif action == "history":
         room = service.get_room(room_name)

@@ -54,12 +54,7 @@ def kanban_board_tool(
             priority=priority,
             dependencies=deps,
         )
-        return (
-            f"Created Task {task.task_id} on board '{board_id}'.\n"
-            f"- Title: {task.title}\n"
-            f"- Column: {task.column}"
-            + (f" (BLOCKED: {task.blocked_reason})" if task.column == "blocked" else "")
-        )
+        return f"Created Task {task.task_id} on board '{board_id}'.\n- Title: {task.title}\n- Column: {task.column}" + (f" (BLOCKED: {task.blocked_reason})" if task.column == "blocked" else "")
 
     elif action == "claim":
         if not task_id or not assignee:

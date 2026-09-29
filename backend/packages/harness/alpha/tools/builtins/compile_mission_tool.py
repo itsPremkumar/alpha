@@ -24,14 +24,17 @@ def compile_mission(
     compiler = MissionCompiler()
     mission = compiler.compile(raw_request)
 
-    return json.dumps({
-        "mission_id": mission.id,
-        "interpreted_intent": mission.interpreted_intent,
-        "latent_needs": mission.latent_needs,
-        "desired_outcome": mission.desired_outcome,
-        "risk_tier": mission.risk_tier.value,
-        "constraints": mission.constraints,
-        "acceptance_criteria": mission.acceptance_criteria,
-        "proof_obligations": [p.to_dict() for p in mission.proof_obligations],
-        "markdown_contract": mission.to_markdown(),
-    }, indent=2)
+    return json.dumps(
+        {
+            "mission_id": mission.id,
+            "interpreted_intent": mission.interpreted_intent,
+            "latent_needs": mission.latent_needs,
+            "desired_outcome": mission.desired_outcome,
+            "risk_tier": mission.risk_tier.value,
+            "constraints": mission.constraints,
+            "acceptance_criteria": mission.acceptance_criteria,
+            "proof_obligations": [p.to_dict() for p in mission.proof_obligations],
+            "markdown_contract": mission.to_markdown(),
+        },
+        indent=2,
+    )

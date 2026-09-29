@@ -100,10 +100,7 @@ def browser_navigate_and_inspect(
     except Exception as e:
         return f"Browser error: {e}"
 
-    return (
-        f"Unknown action '{action}'. Use 'navigate', 'dom', 'click', 'screenshot', "
-        "'table', 'next', 'run', 'fetch_run', 'cdp_run', 'parse', or 'close'."
-    )
+    return f"Unknown action '{action}'. Use 'navigate', 'dom', 'click', 'screenshot', 'table', 'next', 'run', 'fetch_run', 'cdp_run', 'parse', or 'close'."
 
 
 def _page_state(supervisor: Any, session_id: str) -> dict[str, Any]:

@@ -45,13 +45,15 @@ class KibitzerMemoryBank:
         self.entries: list[MemoryEntry] = []
 
     def add_entry(self, entry_id: str, topic: str, keywords: list[str], hint: str, details: str = "") -> None:
-        self.entries.append(MemoryEntry(
-            id=entry_id,
-            topic=topic,
-            keywords=[k.lower() for k in keywords],
-            hint=hint,
-            details=details,
-        ))
+        self.entries.append(
+            MemoryEntry(
+                id=entry_id,
+                topic=topic,
+                keywords=[k.lower() for k in keywords],
+                hint=hint,
+                details=details,
+            )
+        )
 
     def search_relevant(self, query_text: str) -> list[MemoryEntry]:
         clean = query_text.lower()

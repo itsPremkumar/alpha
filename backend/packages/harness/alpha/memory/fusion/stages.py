@@ -254,10 +254,7 @@ class GraphStage:
             )
         candidates = mapped_candidates[: ctx.max_candidates]
         capped = len(mapped_candidates) - len(candidates)
-        reason = (
-            f"graph_stage:visited={len(visited)};max_depth={max_depth};"
-            f"max_nodes={max_nodes};mapped_candidates={len(mapped_candidates)}"
-        )
+        reason = f"graph_stage:visited={len(visited)};max_depth={max_depth};max_nodes={max_nodes};mapped_candidates={len(mapped_candidates)}"
         if capped:
             reason += f";discarded_over_stage_cap={capped}"
         return StageResult(

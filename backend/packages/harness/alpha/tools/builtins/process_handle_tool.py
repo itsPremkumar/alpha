@@ -10,12 +10,7 @@ from alpha.sandbox.process_manager import START_SETTLE_SECONDS, get_process_mana
 
 
 def _handle_header(handle, command: str) -> str:
-    return (
-        f"Handle ID: {handle.handle_id}\n"
-        f"PID: {handle.pid}\n"
-        f"Command: {command}\n"
-        f"Use process_handle(action='poll', handle_id='{handle.handle_id}') to check status."
-    )
+    return f"Handle ID: {handle.handle_id}\nPID: {handle.pid}\nCommand: {command}\nUse process_handle(action='poll', handle_id='{handle.handle_id}') to check status."
 
 
 @tool("process_handle", parse_docstring=True)
@@ -56,12 +51,7 @@ def process_handle_tool(
         code = handle.await_outcome(timeout=START_SETTLE_SECONDS)
         captured = handle.tail(lines=20)
         if code is None:
-            return (
-                f"Process is RUNNING in the background "
-                f"(spawn verified: PID {handle.pid} alive after {START_SETTLE_SECONDS:g}s; "
-                f"exit status not yet known).\n"
-                f"{_handle_header(handle, command)}"
-            )
+            return f"Process is RUNNING in the background (spawn verified: PID {handle.pid} alive after {START_SETTLE_SECONDS:g}s; exit status not yet known).\n{_handle_header(handle, command)}"
         if code == 0:
             report = f"Process completed successfully in the background (exit code 0).\n{_handle_header(handle, command)}"
         else:
