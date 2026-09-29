@@ -46,9 +46,51 @@ This section accumulates work toward the **2.1.0** milestone
 - **on-device-chat-history:** Replaced the capped `localStorage` chat cache with an uncapped IndexedDB archive (no 100-thread, 300-message, or 20,000-character limits), added one-time migration of the previous value, full-text search, JSON backup/restore, and a background archiver that copies every server conversation onto the computer in bounded batches. Opening New Chat, picking a bot, or choosing a project is now an unsent draft — a thread is created only by a real prompt, slash command, or successful attachment, and a failed first attachment removes its own uncommitted draft. A server list failure, a partial page, or a timed-out request is stated explicitly instead of being rendered as an empty history; a run that outlives the conversation it belongs to is archived without repainting the newly opened thread; and rapid duplicate uploads can no longer each create a draft.
 - **bot-projects:** Every bot profile can now create a project with itself attached as lead, and the Projects view manages multi-bot membership with per-bot roles. Project conversations are paginated, presence rows are validated, and a membership change is re-read from the server's roster before it is reported as done.
 
+### Documentation
+
+- **docs-drift:** Corrected every user-facing and agent-facing document that
+  disagreed with the generated registries. Capability counts are generated, never
+  hand-typed, so a stale number is a false claim to any agent that reads the file
+  and trusts it.
+  - `contracts/feature_manifest.json` regenerated with
+    `backend/scripts/generate_feature_manifest.py`. It was stale in its
+    `submodules` lists: the durable-runtime additions
+    (`alpha/runtime/{network,sessions,side_effects,supervisor}` and the
+    `network_waits` / `side_effects` migration packages) were present in the tree
+    but absent from the committed manifest, so that wiring was invisible to the
+    artifact that exists to prove it. The five capability counts are unchanged at
+    134 tools / 61 routers / 42 middlewares / 8 supervisor loops / 102 engines.
+  - The engine catalogue had drifted into **four** different values across the
+    tree while the manifest said 102: `llms.txt` and `docs/README.md` said 99,
+    `docs/llms.txt` said 89, and `docs/ALPHA_UNIFIED_INTEGRATION_PLAN.md` carried
+    130 tools / 60 routers. All now state the generated 102 / 134 / 61.
+  - `docs/DISCOVERABILITY.md` §3.1 claimed the manifest "pins 130 tools, 60
+    routers"; corrected to 134 / 61. `CITATION.cff` claimed 130 native tools;
+    corrected to 134.
+  - `README.md` and `llms-full.txt` announced "102 packages" and then enumerated
+    only 99. `script_bridge_child`, `streamjson`, and `wire_contracts` were
+    missing from both lists, so a reader who ran the verification command printed
+    in the same block got a different answer. Both lists now enumerate all 102.
+  - `docs/llms.txt` and `docs/README.md` described "all 60 Gateway routers"; the
+    manifest says 61.
+  - `README.md`'s table of contents linked to `#system-architecture`, a heading
+    that does not exist (the subsystem map is a `<details>` summary, which has no
+    anchor). The entry now names the heading it actually resolves to.
+  - `references/README.md`, `references/06-workbuddy-and-tenant-harness/README.md`,
+    and `references/06-workbuddy-and-tenant-harness/inspiration-notes-product-craft.md`
+    described Alpha as having 89 engines / 100+ tools / 55 routers. Corrected.
+  - Deliberately **not** changed: dated plan and status logs that record what a
+    specific past commit's generator reported (`docs/IMPLEMENTATION_MATRIX.md`
+    rows 78 and 81, `docs/TASK_LIST.md`, `docs/SENTINEL_AUTONOMOUS_AGENT_PLAN.md`,
+    `docs/asi/04_alpha_gap_analysis.md`,
+    `references/ALPHA_ARCHITECTURE_ORGANIZATION_MASTER_PLAN.md`,
+    `references/ALPHA_WORKSWARM_GAPS_IMPLEMENTATION_PLAN.md`). Rewriting a dated
+    record to match today's count falsifies it, the same mistake as rewriting this
+    changelog. Their plan-time figures are also preserved as labelled history.
+
 ### ⚠ Breaking changes
 
-- **deep-research:** `output_path`/`output_filename` now accept a Markdown filename only and resolve beneath the current thread outputs directory; absolute host paths, nested relative paths, and output symlinks are rejected. Reports return `completed` or `no_evidence` rather than unconditional `success`, separate `citations_registered` from semantically verified citations, and label adversarial source juxtapositions rather than claiming proven contradictions.
+- **deep-research:** `output_path`/`output_filename` now accept a Markdown filename only and resolve beneath the current thread outputs directory; absolute host paths, nested relative paths, and output symlinks are rejected. Reports return `completed` or `no_evidence` rather than unconditional `success`, separate `citations_registered` from semantically verified citations, and label adversarial source juxtapapositions rather than claiming proven contradictions.
 - **run-recovery:** `RunCreateRequest.on_disconnect` now defaults to `continue` rather than `cancel`. A dropped browser/SSE connection no longer stops the run; clients that relied on disconnect-as-cancel must send `on_disconnect: "cancel"` explicitly or use the cancel endpoint. Safe recovery still refuses to replay ambiguous external tool effects without review.
 - **gateway:** Request trace ids are now issued unconditionally, and every
   Gateway HTTP response carries an `X-Trace-Id` header. Previously both were

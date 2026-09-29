@@ -151,8 +151,8 @@ hook point, so future changes cannot scatter.
 | Safety / sanitization | same list, **outermost** ring | must see raw input and final tool output | `input_sanitization`, `tool_result_sanitization`, `llm_error_handling`, `review_guard`, `read_before_write` |
 | Tool lifecycle (budget/progress/receipt) | same list, adjacent to the tool-call middleware | needs both request and result | `tool_output_budget`, `tool_progress`, `tool_receipt`, `sandbox_audit` |
 | Self-observation of the agent | same list, read-mostly, fail-open | must never change the user's answer | `metacognitive`, `continual_harness` (**currently unwired**) |
-| Model-facing tools | `alpha/tools/tools.py` → `BUILTIN_TOOLS` (+ `SUBAGENT_TOOLS`) | one registry de-duplicates and binds | 130 builtin tools (plan-time figure was 115) |
-| HTTP surface | `app/gateway/app.py` → `include_router` | one mount table, auth-free locally | 60 routers (plan-time figure was 54) |
+| Model-facing tools | `alpha/tools/tools.py` → `BUILTIN_TOOLS` (+ `SUBAGENT_TOOLS`) | one registry de-duplicates and binds | 134 builtin tools (plan-time figure was 115) |
+| HTTP surface | `app/gateway/app.py` → `include_router` | one mount table, auth-free locally | 61 routers (plan-time figure was 54) |
 | Background loops | `app/gateway/autonomy/supervisor.py` (new), started from the `app.py` lifespan | one owner, one stop path, capped concurrency | sentinel, perpetual daemon, curator, review queue |
 | Periodic/business schedules | `alpha/scheduler/{blueprints,cron_manager}.py` + `app/scheduler` service | durable, user-visible, already wired to the UI | daily-report, nightly-backup, weekly-audit, skill-curator |
 | Cross-subsystem signals | `alpha/events/bus.py` (new single bus) | avoids O(n^2) direct imports | incidents -> curator -> review queue |
@@ -199,7 +199,7 @@ the baseline that landed instead.
 ### Phase 2 — Manifest + integration health (2 days)
 - Add `contracts/feature_manifest.json`; backfill **all** tools, routers and
   middlewares and the background services. The plan-time figures were 115 tools,
-  54 routers and 40 middlewares; the regenerated manifest now holds **130 / 60 /
+  54 routers and 40 middlewares; the regenerated manifest now holds **134 / 61 /
   42**, plus 8 supervisor loops.
 - Add the two guard tests from §3.
 - Add `app/gateway/routers/ops_integration.py` exposing
@@ -269,7 +269,7 @@ lifecycle-event list below is unimplemented. Treat this phase as open backlog.
 **Outcome: LANDED.** All four artifacts exist: `backend/Makefile` has `test` and
 `test-blocking-io`, `scripts/verify_unified_system.py` is present, and
 `AGENTS.md` / `backend/AGENTS.md` carry the manifest-derived wiring map (they
-now state 130 tools, 60 routers, 42 middlewares, 8 loops).
+now state 134 tools, 61 routers, 42 middlewares, 8 loops).
 
 - Full backend suite: `cd backend && make test` (default) — green.
 - Strict blocking-I/O suite: `cd backend && make test-blocking-io`.

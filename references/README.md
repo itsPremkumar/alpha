@@ -29,8 +29,6 @@ High-level architectural blueprints, unified runtimes, and system topology desig
 - **[ASI-Level Universal Agent Harness Architecture](./01-architectures/ASI-Level%20Universal%20Agent%20Harness%20Architecture.md)**: Universal specification for an ASI-oriented agent harness combining planning, cognitive memory, and verification.
 - **[ASI-Oriented World-Class Agent Harness Architecture](./01-architectures/ASI_Agent_World_Class_Harness_Architecture.md)**: Production-grade multi-agent scaffolding, tool-use guarantees, and high-throughput execution engines.
 - **[ASI-Oriented Frontier Agent Harness Architecture 2026](./01-architectures/ASI_Frontier_Agent_Harness_Architecture_2026.md)**: Next-generation specifications incorporating 2026 state-of-the-art context engineering and runtime durability.
-- **[Universal ASI-Oriented Agent Harness — Final Architecture](./01-architectures/Universal%20ASI-Oriented%20Agent%20Harness%20—%20Final%20Architecture.md)**: Definitive architecture detailing the core harness engine, protocol interfaces, and execution contracts.
-- **[Autonomous Self-Configuring ASI-Oriented Agent Harness v2](./01-architectures/Autonomous%20Self-Configuring%20ASI-Oriented%20Agent%20Harness%20—%20Final%20Architecture%20v2.md)**: Dynamic agent self-configuration, runtime schema adaptation, and autonomous capability expansion.
 - **[Astra-Inspired Adaptive Autonomous Agent Runtime](./01-architectures/Astra_Inspired_Agentic_Harness_Architecture.md)**: Adaptive runtime patterns inspired by OpenAI Astra, featuring proactive interaction and real-time execution.
 - **[OpenAI Astra — Publicly-Informed Agentic Harness Architecture](./01-architectures/OpenAI_Astra_Agentic_Harness_Architecture.md)**: Deep-dive analysis of public research and engineering patterns derived from OpenAI's Astra initiative.
 - **[Antigravity 2.0-Inspired Advanced Harness Guide](./01-architectures/antigravity_2_harness_architecture_guide.md)**: Advanced subagent orchestration, tool sandboxing, and hierarchical workflow coordination.
@@ -81,7 +79,8 @@ Safe, bounded self-modification, mutation verification gates, and recursive opti
 
 Competitive intelligence, deep research methodologies, and comparative harness analyses:
 
-- **[Top AI Agents & Agentic Architectures — September 2026](./04-frontier-benchmarks-and-deep-research/Top_AI_Agents_2026_September_Deep_Research.md)**: SOTA state of the industry surveying Devin, OpenClaw, Hermes, Deep Agents, and enterprise systems.
+- **[Top AI Agents & Agentic Architectures - September 2026](./04-frontier-benchmarks-and-deep-research/Top_AI_Agents_2026_September_Deep_Research.md)**: SOTA state of the industry surveying Devin, Op
+- **[Frontier Agentic AI Comparative Study & Alpha Gap Analysis](./04-frontier-benchmarks-and-deep-research/ALPHA_VS_FRONTIER_AGENTS_GAP_ANALYSIS.md)**: Alpha against OpenClaw 2.0, Nous Hermes, Grok Bot, Meta Muse and Agent S3, with the six architectural gaps it names.enClaw, Hermes, Deep Agents, and enterprise systems.
 - **[Deep Research: Astra, Fable 5.1, AVO, Kimi K3](./04-frontier-benchmarks-and-deep-research/agent-harness-deep-research-v2.md)**: Multi-model comparative study and synthesized lessons for world-class harness engineering.
 - **[Frontier Agent Architectures Research](./04-frontier-benchmarks-and-deep-research/frontier-agent-architectures-research.md)**: In-depth analysis of emerging agent architectures, execution loops, and runtime scaffolds.
 - **[Anthropic Frontier Agent Harness Analysis](./04-frontier-benchmarks-and-deep-research/anthropic-fable-frontier-harness.md)**: Detailed breakdown of Anthropic's agent harness design, computer use, and safety primitives.
@@ -103,8 +102,6 @@ Competitive intelligence, deep research methodologies, and comparative harness a
 
 Autonomous enterprise operations, business goal trees, multi-agent workflows, and roadmaps:
 
-- **[Autonomous AI Company — Long-Term Continuous Operation Plan](./05-autonomous-operations-and-execution/Autonomous%20AI%20Company%20—%20Complete%20Long-Term%20Continuous%20Operation%20Plan.md)**: Blueprint for operating an autonomous AI enterprise with finance, engineering, marketing, and HR agent departments.
-- **[Full Autonomous Agent Goal List — Company Creation Demo](./05-autonomous-operations-and-execution/Full%20Autonomous%20Agent%20Goal%20List%20—%20Company%20Creation%20as%20a%20Demonstration.md)**: End-to-end decomposed goal tree guiding an agent swarm from incorporation to customer delivery.
 - **[Enterprise Swarm and Workflow Plan](./05-autonomous-operations-and-execution/enterprise-swarm-and-workflow-plan.md)**: Enterprise workflow integration combining OMO (One-Model-Orchestrator) and Hermes execution swarms.
 - **[Project Goal — Autonomous AI Execution Platform for Windows](./05-autonomous-operations-and-execution/PROJECT_GOAL.md)**: Core project charter, target capabilities, and operational requirements for the desktop execution platform.
 - **[Subagent Card Runtime Metadata](./05-autonomous-operations-and-execution/subagent-card-runtime-metadata.md)**: Runtime schema specification for subagent introspection, capability discovery, and dynamic routing.
@@ -129,7 +126,7 @@ extensibility ergonomics, and memory transparency — rather than new engines.
 
 **Headline finding:** Alpha has built an autonomous agent *operating system*; this
 category has built an agent *product*. The highest-leverage remaining work is not
-more engines but making Alpha's existing 89 engines **legible, steerable, and
+more engines but making Alpha's existing 102 engines **legible, steerable, and
 safe** to a human who did not build them.
 
 ---

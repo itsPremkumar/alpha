@@ -8,8 +8,8 @@ It is **not** a competitive teardown and **not** a claim of feature parity. It i
 working notebook: *what the product does, why it feels good, what Alpha already has,
 and what Alpha should build as a result.*
 
-> Scope note: Alpha already covers a very large surface (89 harness engines,
-> 100+ built-in tools, 55 gateway routers). Everything in this directory is filtered
+> Scope note: Alpha already covers a very large surface (102 harness engines,
+> 134 built-in tools, 61 gateway routers). Everything in this directory is filtered
 > through one question: **what does WorkBuddy do that Alpha still does not, or does
 > worse?** Anything already fully covered is marked as such and not re-proposed.
 
