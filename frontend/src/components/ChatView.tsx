@@ -69,6 +69,7 @@ const MessagesSection = lazy(() => import("@/components/sections/MessagesSection
 const PeerNetworkSection = lazy(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })));
 const KanbanSection = lazy(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })));
 const RunsSection = lazy(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })));
+const RunInspectorSection = lazy(() => import("@/components/sections/RunInspectorSection").then((m) => ({ default: m.RunInspectorSection })));
 const FilesSection = lazy(() => import("@/components/sections/FilesSection").then((m) => ({ default: m.FilesSection })));
 const ScheduledSection = lazy(() => import("@/components/sections/ScheduledSection").then((m) => ({ default: m.ScheduledSection })));
 const SubagentsSection = lazy(() => import("@/components/sections/SubagentsSection").then((m) => ({ default: m.SubagentsSection })));
@@ -1781,6 +1782,10 @@ export default function ChatView() {
         ) : view === "runs" ? (
           <Suspense fallback={<SectionFallback />}>
             <RunsSection threadId={activeThreadId} />
+          </Suspense>
+        ) : view === "run-inspector" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <RunInspectorSection threadId={activeThreadId} />
           </Suspense>
         ) : view === "files" ? (
           <Suspense fallback={<SectionFallback />}>
