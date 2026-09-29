@@ -756,7 +756,23 @@ async def read_project_events(project_id: str, request: Request, after_seq: int 
 
         bus = get_event_bus(project_id)
         rows = bus.search(q, limit=limit) if q else bus.read(after_seq=after_seq, limit=limit)
-        return {"project_id": project_id, "events": [e.to_dict() for e in rows]}
+        events = []
+        for e in rows:
+            row = e.to_dict()
+            # `ProjectEvent.created_at` is a float (`time.time()`) and `to_dict()`
+            # is `asdict`, so this was the only project read that put a raw epoch
+            # float on the wire while every sibling (`/projects`, `/threads`,
+            # `/approvals`, ...) returned ISO 8601. A client that parses
+            # `created_at` as a date reads that as a non-date and has to render
+            # "time not reported" for every event — which is what this repo's own
+            # Projects view did until the value was fixed here.
+            #
+            # Coerced at the API boundary only. The event log on disk keeps the
+            # float, so existing logs still load through
+            # `ProjectEvent.from_dict` and nothing is rewritten.
+            row["created_at"] = coerce_iso(row.get("created_at"))
+            events.append(row)
+        return {"project_id": project_id, "events": events}
 
     return await asyncio.to_thread(_do)
 

@@ -897,7 +897,7 @@ money is the model provider you choose.
 
 **Q: Which LLM providers are supported?**
 **A:** Any provider expressible in `config.yaml` — the shipped baseline is
-OpenRouter's `stealth/union-alpha` through `langchain_openai:ChatOpenAI`, and
+OpenRouter's `unbiased/pareto` through `langchain_openai:ChatOpenAI`, and
 OpenAI, Anthropic, Google Gemini, DeepSeek, Moonshot AI, MiniMax, StepFun, and
 Ollama are all wired. Multi-provider routing, load balancing, and fallbacks are
 built in.

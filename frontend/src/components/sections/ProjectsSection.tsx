@@ -19,13 +19,15 @@ import {
   Project,
   ProjectAgentInput,
   ProjectMember,
+  ProjectThread,
 } from "@/lib/projects";
 import { moveThread } from "@/lib/threads-ext";
 import { Thread } from "@/types/chat";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles } from "lucide-react";
+import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash } from "lucide-react";
 import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
+import { ProjectOverviewPanel } from "@/components/sections/ProjectOverviewPanel";
 
 export interface ProjectBot {
   name: string;
@@ -43,6 +45,16 @@ export function ProjectsSection(props: {
    * owning view must refresh instead of keeping a stale scope.
    */
   onThreadsChanged?: () => void;
+  /**
+   * Open the live per-project control surface for this project.
+   *
+   * Without this, the deep per-project state (war-room, RSI, perpetual, canary,
+   * blueprints) is only reachable from the Workforce view, which keeps its own
+   * project dropdown and defaults it to the FIRST project in the list — so
+   * opening a project here and then hunting for its state lands you on someone
+   * else's project. The view owner must select this project, not just switch.
+   */
+  onOpenLiveProject?: (projectId: string) => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +62,7 @@ export function ProjectsSection(props: {
   const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [open, setOpen] = useState<string | null>(null);
-  const [threads, setThreads] = useState<Record<string, Array<{ thread_id: string; display_name: string }>>>({});
+  const [threads, setThreads] = useState<Record<string, ProjectThread[]>>({});
   const [editing, setEditing] = useState<{ id: string; instructions: string } | null>(null);
   const [botFilter, setBotFilter] = useState<string>("all");
   const [membersByProject, setMembersByProject] = useState<Record<string, ProjectMember[]>>({});
@@ -122,6 +134,23 @@ export function ProjectsSection(props: {
         items: items.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || "")),
       }))
       .sort((a, b) => b.items.length - a.items.length);
+  };
+
+  /**
+   * Conversations the server has on this project that the grouped list above
+   * does not carry.
+   *
+   * The two lists are different reads: `projectThreads()` is the project's own
+   * record, `props.threads` is the workspace list. They can disagree while a
+   * page is in flight, for an archived conversation, or after a partial page —
+   * and when they do, rendering only `props.threads` hides a conversation the
+   * project really holds. The difference is shown rather than discarded.
+   */
+  const serverOnlyThreads = (projectId: string) => {
+    const onServer = threads[projectId] || [];
+    if (onServer.length === 0) return [];
+    const inGrouped = new Set(groupsFor(projectId).flatMap((group) => group.items.map((t) => t.thread_id)));
+    return onServer.filter((t) => !inGrouped.has(t.thread_id));
   };
 
   const visibleProjects = projects.filter((project) => {
@@ -453,10 +482,43 @@ export function ProjectsSection(props: {
                 const selectedCount = (selectedBots[p.id] || []).length;
                 return (
                   <div key={p.id} className="rounded-xl border border-border/60 bg-card">
-                    <div className="flex items-center gap-2 px-4 py-3 cursor-pointer" onClick={() => toggle(p)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && toggle(p)}>
+                    <div className="flex items-start gap-2 px-4 py-3 cursor-pointer" onClick={() => toggle(p)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && toggle(p)}>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{p.name}</p>
-                        <div className="flex gap-1 mt-1 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold truncate">{p.name}</p>
+                          {/* The id is what every other API call needs, and it was
+                              previously unreachable from the UI. */}
+                          <span className="text-[10px] font-mono text-muted-foreground inline-flex items-center gap-0.5" title={`Project id: ${p.id}`}>
+                            <Hash className="size-2.5" />
+                            {p.id.slice(0, 8)}
+                          </span>
+                        </div>
+                        {/* Instructions were in the payload the whole time and were
+                            never rendered outside the expanded editor, so a project
+                            said nothing about itself until you opened and edited it. */}
+                        {p.instructions ? (
+                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{p.instructions}</p>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground/80 mt-0.5 italic">no instructions set</p>
+                        )}
+                        <div className="flex gap-1 mt-1.5 flex-wrap items-center">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium inline-flex items-center gap-0.5"
+                            title={`${total} conversation${total === 1 ? "" : "s"} in this project`}
+                          >
+                            <MessagesSquare className="size-2.5" /> {total} chat{total === 1 ? "" : "s"}
+                          </span>
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium inline-flex items-center gap-0.5"
+                            title={`${members.length} bot${members.length === 1 ? "" : "s"} attached`}
+                          >
+                            <Users className="size-2.5" /> {members.length} bot{members.length === 1 ? "" : "s"}
+                          </span>
+                          {p.updated_at && (
+                            <span className="text-[10px] text-muted-foreground" title={p.updated_at}>
+                              updated {new Date(p.updated_at).toLocaleDateString()}
+                            </span>
+                          )}
                           {members.slice(0, 4).map((member) => (
                             <span key={member.bot_name} className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 font-medium">
                               <Users className="size-2.5 mr-0.5 inline" /> {botLabel(member.bot_name)}
@@ -474,8 +536,10 @@ export function ProjectsSection(props: {
                           ) : null}
                         </div>
                       </div>
-                      <Badge tone={p.status === "archived" ? "gray" : "green"}>{p.status}</Badge>
-                      <span className="text-[11px] text-muted-foreground shrink-0">{open === p.id ? "Hide" : `Show${total ? ` (${total})` : ""}`}</span>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <Badge tone={p.status === "archived" ? "gray" : "green"}>{p.status}</Badge>
+                        <span className="text-[11px] text-muted-foreground">{open === p.id ? "Hide" : "Show"}</span>
+                      </div>
                     </div>
               {open === p.id && (
                 <div className="px-4 pb-4 space-y-3 border-t border-border/50 pt-3">
@@ -598,6 +662,13 @@ export function ProjectsSection(props: {
                   </div>
 
                   <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
+                    <ProjectOverviewPanel
+                      projectId={p.id}
+                      onOpenLive={props.onOpenLiveProject}
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
                     <ProjectCrewPanel
                       projectId={p.id}
                       projectName={p.name}
@@ -612,7 +683,7 @@ export function ProjectsSection(props: {
                       <p className="text-[11px] text-muted-foreground">
                         {(threads[p.id] || []).length === 0
                           ? "Empty — move a chat here from the sidebar menu."
-                          : "Tracked on the server — open a chat to link its bot."}
+                          : "None of the workspace's loaded conversations are in this project, but the project's own record lists some below."}
                       </p>
                     ) : (
                       <div className="space-y-2.5">
@@ -624,9 +695,14 @@ export function ProjectsSection(props: {
                             <div className="space-y-1">
                               {g.items.map((t) => (
                                 <div key={t.thread_id} className="flex items-center gap-2 rounded-lg bg-card border border-border/40 px-2.5 py-1.5">
-                                  <button type="button" onClick={() => props.onOpenThread(t.thread_id)} className="text-[11px] font-medium flex-1 text-left truncate hover:text-primary" title={new Date(t.updated_at).toLocaleString()}>
+                                  <button type="button" onClick={() => props.onOpenThread(t.thread_id)} className="text-[11px] font-medium flex-1 text-left truncate hover:text-primary" title={t.updated_at ? new Date(t.updated_at).toLocaleString() : "no last-activity time reported"}>
                                     {t.title}
                                   </button>
+                                  {t.updated_at ? (
+                                    <span className="text-[10px] text-muted-foreground shrink-0">{new Date(t.updated_at).toLocaleDateString()}</span>
+                                  ) : (
+                                    <span className="text-[10px] text-muted-foreground/80 shrink-0" title="The server reported no last-activity time for this conversation.">no date</span>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -651,6 +727,47 @@ export function ProjectsSection(props: {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/*
+                      The grouped list above is built from the workspace's own thread
+                      list, so a conversation the server has on the project but this
+                      list has not loaded (a page still in flight, an archived thread,
+                      a partial page) is invisible here — while the count on the card
+                      would silently under-report. `projectThreads()` is the
+                      authoritative read and is already fetched per project, so any row
+                      it reports that the grouped list does not carry is listed here
+                      rather than dropped.
+                    */}
+                    {serverOnlyThreads(p.id).length > 0 && (
+                      <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2">
+                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                          On the server but not in this list ({serverOnlyThreads(p.id).length})
+                        </p>
+                        <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mb-1.5">
+                          The project holds these conversations, but the workspace list has not loaded them. They are shown
+                          from the project’s own record.
+                        </p>
+                        <div className="space-y-1">
+                          {serverOnlyThreads(p.id).map((t) => (
+                            <div key={t.thread_id} className="flex items-center gap-2 rounded-lg bg-card border border-border/40 px-2.5 py-1.5">
+                              <button
+                                type="button"
+                                onClick={() => props.onOpenThread(t.thread_id)}
+                                className="text-[11px] font-medium flex-1 text-left truncate hover:text-primary"
+                              >
+                                {t.display_name}
+                              </button>
+                              <span className="text-[10px] text-muted-foreground shrink-0 font-mono" title={t.thread_id}>
+                                {t.thread_id.slice(0, 8)}
+                              </span>
+                              {t.updated_at ? (
+                                <span className="text-[10px] text-muted-foreground shrink-0">{new Date(t.updated_at).toLocaleDateString()}</span>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

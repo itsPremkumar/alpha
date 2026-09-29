@@ -443,7 +443,7 @@ DINGTALK_CLIENT_SECRET="..."
 ```yaml
 - name: "union-alpha"
   provider: "openrouter"
-  model: "stealth/union-alpha"
+  model: "unbiased/pareto"
   api_key: "${OPENROUTER_API_KEY}"
   base_url: "https://openrouter.ai/api/v1"
   max_tokens: 16384

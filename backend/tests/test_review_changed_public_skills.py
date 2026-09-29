@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path, PurePosixPath
 
@@ -302,7 +303,16 @@ def test_main_exits_nonzero_when_review_cli_reports_error(tmp_path: Path, monkey
             "never",
         ]
         assert kwargs["cwd"] == tmp_path
-        assert "backend/packages/harness" in kwargs["env"]["PYTHONPATH"]
+        # The analyzer subprocess imports `alpha.*` from the harness source tree,
+        # so the harness root must be one of the PYTHONPATH entries. The
+        # comparison is per-entry through os.pathsep rather than a substring
+        # match on a literal "backend/packages/harness": PYTHONPATH is consumed
+        # by a *child interpreter*, so its entries have to be native paths
+        # joined by the native separator. The script is right to emit
+        # "backend\packages\harness" on Windows and "backend/packages/harness"
+        # on POSIX, and a hardcoded POSIX literal is a test that can only ever
+        # pass on Linux.
+        assert str(tmp_path / "backend" / "packages" / "harness") in kwargs["env"]["PYTHONPATH"].split(os.pathsep)
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
         assert kwargs["check"] is False

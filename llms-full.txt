@@ -88,9 +88,11 @@ cd frontend && pnpm test              # unit tests only
 - Reference secrets as `$ENV_VAR`, never as literals in `config.yaml`.
 - At least one entry under `models:` is required or the runtime will not start.
 - The shipped baseline model is `union-alpha`: `langchain_openai:ChatOpenAI`,
-  OpenRouter API slug `stealth/union-alpha`, key `$OPENROUTER_API_KEY`. The
-  CLI-qualified form `openrouter/stealth/union-alpha` is **not** a valid
-  OpenRouter API slug.
+  OpenRouter API slug `unbiased/pareto`, key `$OPENROUTER_API_KEY`. The
+  CLI-qualified form `openrouter/unbiased/pareto` is **not** a valid
+  OpenRouter API slug. `union-alpha` is the Alpha-side name and is stable; the
+  provider slug is not, and it appears in two namespaces (`models[].model` and
+  `model_catalog.models[].model_id`) that must be moved together.
 - Third-party Python extensions use the top-level `plugins:` list in `config.yaml`
   (operator-controlled, because it causes code to be imported), never the
   API-writable `extensions_config.json`. Every mutation needs a Gateway restart,

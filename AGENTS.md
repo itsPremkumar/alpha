@@ -163,11 +163,23 @@ table are in
 ## Union Alpha configuration baseline
 
 The first model in `config.example.yaml` is `union-alpha`, using
-`langchain_openai:ChatOpenAI`, OpenRouter's `stealth/union-alpha` API slug, and
+`langchain_openai:ChatOpenAI`, OpenRouter's `unbiased/pareto` API slug, and
 `$OPENROUTER_API_KEY`. Do not use the CLI-qualified
-`openrouter/stealth/union-alpha` as the OpenRouter API slug. Catalog metadata
-was checked on 2026-09-17; live account access is not established. The offline
-contract is pinned by `backend/tests/test_model_config.py`.
+`openrouter/unbiased/pareto` as the OpenRouter API slug; the CLI-qualified form
+never is.
+
+**The Alpha-side name and the provider slug are separate things.** OpenRouter
+retired the earlier `stealth/union-alpha` slug, so the name stayed `union-alpha`
+and only the slug moved. Every namespace that carries a provider-side identifier
+for this model must therefore be moved together: `models[].model` and
+`model_catalog.models[].model_id` (`config.yaml` and `config.example.yaml`).
+`alpha.models.catalog_consistency` compares *capabilities* by name and never the
+slug, so a stale `model_id` in the catalog is not caught at boot — it is a
+runtime 404 on a picker entry. The slug is pinned in both namespaces by
+`backend/tests/test_model_config.py`. The provider is the only authority on
+whether a slug exists, so re-verify against the live catalog before pinning a new
+one; the current slug was confirmed answering on 2026-09-28 (the earlier
+`stealth/union-alpha` metadata check was 2026-09-17, when the slug was live).
 
 The frontend package declares `typecheck`, `lint` (an alias of `typecheck`),
 `test`, `test:branding`, `test:extra`, and `verify`; it declares no `format`

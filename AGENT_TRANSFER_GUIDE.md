@@ -51,7 +51,7 @@ runs locally on one machine.
 ### Real bugs already fixed (don't re-fix)
 
 1. `config.yaml`+`config.example.yaml`: `agent_workspace.*` → `alpha.*` in active `use:` fields (10 entries: ddg_search, jina_ai, image_search, sandbox.tools ls/read_file/glob/grep/write_file/str_replace/bash, sandbox.local LocalSandboxProvider)
-2. `config.yaml`+`config.example.yaml`: model slug `stealth/union-alpha` → `unbiased/pareto`
+2. `config.yaml`+`config.example.yaml`: model slug `stealth/union-alpha` → `unbiased/pareto` in **both** namespaces (`models[].model` and `model_catalog.models[].model_id`); the Alpha-side name `union-alpha` is unchanged. Applied in both files — do not re-apply or revert.
 3. `organization.py`: added `GroupMessage, GroupChannel` to group_chat import
 4. `test_learning_fork.py`: `test_no_thread_id_returns_none`+`test_no_messages_returns_none` take `middleware` fixture
 5. `test_user_model.py`: added `patch` to `unittest.mock` import
@@ -94,7 +94,7 @@ autonomy:
   loops: {}
 ```
 
-Both configs also have the model slug `unbiased/pareto` (in `models:`, `union-alpha` entry, `model:` field). Always keep both in sync.
+Both configs also have the model slug `unbiased/pareto` — in **two** places, and both must stay in sync: the `models:` `union-alpha` entry's `model:` field, and the `model_catalog:` `union-alpha` entry's `model_id:` field (display name `Union Alpha (OpenRouter)` in both). The Alpha-side name `union-alpha` is unchanged; only the provider slug moved after OpenRouter retired `stealth/union-alpha`. The catalog `model_id` is not covered by `alpha.models.catalog_consistency`, which compares capabilities by name, so a stale slug there is a runtime 404 rather than a boot failure.
 
 ## 5. New files (next agent must NOT recreate these)
 

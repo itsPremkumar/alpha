@@ -209,3 +209,75 @@ test("the keep-out element is the composer, and every path that moves the pet go
   assert.match(componentSource, /findLionPetKeepOut\(document\)/);
   assert.match(componentSource, /addEventListener\("resize"/);
 });
+
+/**
+ * A modal drawer is the second keep-out, and the same `pointer-events: auto`
+ * hazard applies: the pet is `z-90` and a drawer is `z-50`, so an open drawer
+ * puts the companion on top of the drawer, not behind it.
+ *
+ * Found in the live UI: the bot profile drawer opened and the pet sat inside it,
+ * covering the agent's Soul text, with its speech bubble over the drawer's own
+ * copy.
+ */
+test("an open dialog is a keep-out region", () => {
+  const dialog = { getBoundingClientRect: () => ({ left: 464, right: 912, top: 0, bottom: 670, width: 448, height: 670 }) };
+  const doc = {
+    // No marked element: this is the drawer case, not the composer case.
+    querySelector: () => null,
+    querySelectorAll: () => [dialog],
+  };
+  const rect = pet.findLionPetKeepOut(doc);
+  assert.ok(rect, "an open dialog must be treated as a keep-out");
+  assert.deepEqual(rect, { left: 464, right: 912, top: 0, bottom: 670 });
+
+  // And the pet is moved clear of it, using real measured geometry.
+  const safe = pet.resolveLionPetSafeRight({
+    desiredRight: 341, // the pet sat at x=381..571, i.e. straddling the drawer edge
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 912,
+    viewportHeight: 670,
+    petBottom: 227,
+    keepOut: rect,
+  });
+  const petRect = (right) => ({
+    left: 912 - right - 190,
+    right: 912 - right,
+    top: 670 - 227 - 193,
+    bottom: 670 - 227,
+  });
+  assert.equal(pet.lionPetOverlaps(petRect(safe), rect), false, `still inside the drawer at right=${safe}`);
+});
+
+test("a marked keep-out still wins over a dialog, and no dialog means null", () => {
+  const marked = { getBoundingClientRect: () => ({ left: 279, right: 889, top: 494, bottom: 530, width: 610, height: 36 }) };
+  const dialog = { getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 100, width: 100, height: 100 }) };
+  const rect = pet.findLionPetKeepOut({ querySelector: () => marked, querySelectorAll: () => [dialog] });
+  assert.deepEqual(rect, { left: 279, right: 889, top: 494, bottom: 530 }, "the explicit marker is the stronger signal");
+
+  assert.equal(pet.findLionPetKeepOut({ querySelector: () => null, querySelectorAll: () => [] }), null);
+  assert.equal(pet.findLionPetKeepOut(null), null);
+  // A collapsed element is not a region.
+  assert.equal(
+    pet.findLionPetKeepOut({
+      querySelector: () => null,
+      querySelectorAll: () => [{ getBoundingClientRect: () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 }) }],
+    }),
+    null,
+  );
+});
+
+test("the component notices a drawer opening, and a drawer has dialog semantics", () => {
+  // A ResizeObserver on the composer never fires when a drawer opens: the
+  // drawer appears without the composer changing size. Without this the pet
+  // stays inside the panel until something else happens to resize the composer.
+  assert.match(componentSource, /new MutationObserver\(/, "opening a drawer must re-check the pet's position");
+  assert.match(componentSource, /mutations\.observe\(/);
+  assert.match(componentSource, /mutations\?\.disconnect\(\)/, "and the observer must be torn down");
+
+  // The bot panel is a hand-copied variant of the shared Modal and had lost the
+  // dialog attributes, so nothing announced it and nothing could detect it.
+  const panel = readFileSync(new URL("../components/bots/BotDetailPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /role="dialog"/, "the bot detail drawer is a dialog");
+  assert.match(panel, /aria-modal="true"/);
+});

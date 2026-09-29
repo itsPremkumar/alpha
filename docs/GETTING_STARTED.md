@@ -154,7 +154,7 @@ Or configure manually by editing `config.yaml`:
 models:
   - name: "primary"
     provider: "openrouter"
-    model: "stealth/union-alpha"
+    model: "unbiased/pareto"
     api_key: "${OPENROUTER_API_KEY}"
     # Or for other providers:
     # provider: "openai"

@@ -338,6 +338,16 @@ export default function ChatView() {
   const [botsLoading, setBotsLoading] = useState<boolean>(true);
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
   const [view, setView] = useState<WorkspaceView>("chat");
+  /**
+   * The project the Workforce view should show.
+   *
+   * Set when the operator opens a project from the Projects list, because the
+   * deep per-project state (war-room, RSI, perpetual, canary, blueprints) lives
+   * there behind its own dropdown — and that dropdown defaults to the first
+   * project in the list, not the one being looked at. Without this, "open this
+   * project's controls" lands on someone else's project.
+   */
+  const [focusedProjectId, setFocusedProjectId] = useState<string | null>(null);
   const voiceViewRef = useRef(view);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "models" | "connectivity" | "appearance" | "diagnostics">("general");
   const [botsTab, setBotsTab] = useState<"profiles" | "ops">("profiles");
@@ -1814,6 +1824,14 @@ export default function ChatView() {
               onOpenThread={openThread}
               threads={threads}
               bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name }))}
+              onOpenLiveProject={(projectId) => {
+                // The Workforce view owns its own project selection and otherwise
+                // defaults to the FIRST project, so switching views alone would land
+                // on a different project than the one the user just opened. Select
+                // it here, then switch.
+                setFocusedProjectId(projectId);
+                setView("workforce");
+              }}
               onThreadsChanged={() => {
                 void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`));
               }}
@@ -1837,7 +1855,10 @@ export default function ChatView() {
           </Suspense>
         ) : view === "workforce" ? (
           <Suspense fallback={<SectionFallback />}>
-            <WorkforceSection bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name }))} />
+            <WorkforceSection
+              bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name }))}
+              focusedProjectId={focusedProjectId}
+            />
           </Suspense>
         ) : view === "system" ? (
           <Suspense fallback={<SectionFallback />}>

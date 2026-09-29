@@ -443,14 +443,33 @@ def test_a_row_the_build_cannot_read_is_served_rather_than_hidden():
 def test_the_after_seq_cursor_pages_the_shared_route():
     from fastapi.testclient import TestClient
 
-    app, _thread_runs, _store = _app_with_rows(_rows())
-    total = len(_rows())
+    rows = _rows()
+    app, _thread_runs, _store = _app_with_rows(rows)
     with TestClient(app) as client:
-        first = client.get("/api/threads/t-1/runs/run-1/events", params={"limit": 3}).json()
-        second = client.get("/api/threads/t-1/runs/run-1/events", params={"limit": 3, "after_seq": first[-1]["seq"]}).json()
-    assert len(first) == 3
-    assert {row["seq"] for row in first} & {row["seq"] for row in second} == set(), "the cursor must neither re-read nor skip"
-    assert len(first) + len(second) == total
+        # Page with limit=3 until the feed is exhausted. ``limit`` is a row
+        # count, not a slice bound, so 7 rows in pages of 3 need three pages --
+        # the previous version of this test fetched two and then asserted
+        # ``3 + 3 == 7``, which no implementation can satisfy. Paging to
+        # exhaustion is also the only way to actually pin the property the test
+        # names: that the cursor neither re-reads nor skips.
+        paged: list[dict] = []
+        after_seq: int | None = None
+        while True:
+            params: dict[str, int] = {"limit": 3}
+            if after_seq is not None:
+                params["after_seq"] = after_seq
+            page = client.get("/api/threads/t-1/runs/run-1/events", params=params).json()
+            assert len(page) <= 3, "limit is a row count, so no page may exceed it"
+            if not page:
+                break
+            assert {row["seq"] for row in page}.isdisjoint({row["seq"] for row in paged}), "the cursor must never re-read"
+            paged.extend(page)
+            after_seq = page[-1]["seq"]
+        full = client.get("/api/threads/t-1/runs/run-1/events").json()
+
+    assert [row["seq"] for row in paged] == sorted(row["seq"] for row in paged), "pages must be ordered by the cursor"
+    assert len(paged) == len(rows) == len(full), "paging to exhaustion must reach every row exactly once"
+    assert [row["event_type"] for row in paged] == [row["event_type"] for row in full], "paging must not skip or reorder"
 
 
 def test_the_summary_endpoint_agrees_with_the_list_endpoint():

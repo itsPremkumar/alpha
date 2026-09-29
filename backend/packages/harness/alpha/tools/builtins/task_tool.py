@@ -432,7 +432,18 @@ def _trace_subagent_spawned(
     trace_id: str | None,
     agent_name: str | None = None,
 ) -> None:
-    """Record a subagent spawn (layer 6). Never raises."""
+    """Record a subagent spawn (layer 6). Never raises.
+
+    ``agent_name`` is the *delegating* agent -- this seam is the parent's, so the
+    emitter and the delegator are the same agent. It is passed twice on purpose
+    and the two envelope fields are not redundant: ``agent_name`` answers "who
+    emitted this event" and is resolved from the bound run context like every
+    other event, while ``parent_agent`` fills ``parent_agent_name``, which is the
+    only place the delegation tree can be reconstructed from names when a reader
+    has the events but not the span parentage. Passing only the first left
+    ``parent_agent_name`` permanently ``None`` in every real trace, which is a
+    field that exists for exactly this and was therefore always empty.
+    """
     try:
         from alpha.observability.trace.instrumentation import emit_subagent_spawned
 
@@ -446,6 +457,7 @@ def _trace_subagent_spawned(
             thread_id=thread_id,
             trace_id=trace_id,
             agent_name=agent_name,
+            parent_agent=agent_name,
             extra_payload={"execution_id": execution_id, "subagent_type": subagent_type},
         )
     except Exception:  # noqa: BLE001 - a trace must never break the run it traces

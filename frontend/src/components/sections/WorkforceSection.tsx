@@ -177,15 +177,20 @@ const STATE_FIELDS: Array<{ key: keyof ProjectStateSnapshot; label: string }> = 
   { key: "open_conflicts", label: "open conflicts" },
 ];
 
-function PresenceTab() {
+function PresenceTab(props: { focusedProjectId: string | null }) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [projectId, setProjectId] = useState("");
   useEffect(() => {
     listProjects().then((p) => {
       setProjects(p.map((x) => ({ id: x.id, name: x.name })));
-      if (p[0]) setProjectId(p[0].id);
+      // The focused project wins over the first one, but only if the server
+      // actually lists it. A focused id the server does not have (a deleted
+      // project, a stale link) falls back rather than leaving the tab blank.
+      const focused = props.focusedProjectId && p.some((x) => x.id === props.focusedProjectId);
+      if (focused) setProjectId(props.focusedProjectId as string);
+      else if (p[0]) setProjectId(p[0].id);
     }).catch(() => setProjects([]));
-  }, []);
+  }, [props.focusedProjectId]);
   const presence = useAsync<PresenceMember[]>(
     () => (projectId ? fetchPresence(projectId) : Promise.resolve([])),
     [projectId],
@@ -463,7 +468,7 @@ function InsightsTab() {
   );
 }
 
-function WarRoomTab() {
+function WarRoomTab(props: { focusedProjectId: string | null }) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedProject, setSelectedProject] = useState<string>("default");
   const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({});
@@ -478,10 +483,13 @@ function WarRoomTab() {
     listProjects().then((p) => {
       if (p && p.length > 0) {
         setProjects(p.map((x) => ({ id: x.id, name: x.name })));
-        setSelectedProject(p[0].id);
+        // Same rule as the presence tab: the focused project wins, but only if the
+        // server still lists it. Otherwise the first project is the honest default.
+        const focused = props.focusedProjectId && p.some((x) => x.id === props.focusedProjectId);
+        setSelectedProject(focused ? (props.focusedProjectId as string) : p[0].id);
       }
     }).catch(() => {});
-  }, []);
+  }, [props.focusedProjectId]);
 
   const warRoom = useAsync(() => fetchWarRoomData(selectedProject), [selectedProject]);
 
@@ -1876,7 +1884,7 @@ function WarRoomTab() {
   );
 }
 
-export function WorkforceSection(props: { bots: WorkforceBot[] }) {
+export function WorkforceSection(props: { bots: WorkforceBot[]; focusedProjectId: string | null }) {
   const [tab, setTab] = useState<TabId>("warroom");
   return (
     <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 w-full">
@@ -1893,9 +1901,9 @@ export function WorkforceSection(props: { bots: WorkforceBot[] }) {
             </button>
           ))}
         </div>
-        {tab === "warroom" && <WarRoomTab />}
+        {tab === "warroom" && <WarRoomTab focusedProjectId={props.focusedProjectId} />}
         {tab === "inbox" && <InboxTab bots={props.bots} />}
-        {tab === "presence" && <PresenceTab />}
+        {tab === "presence" && <PresenceTab focusedProjectId={props.focusedProjectId} />}
         {tab === "curator" && <CuratorTab />}
         {tab === "automation" && <AutomationTab />}
         {tab === "oversight" && <OversightTab />}

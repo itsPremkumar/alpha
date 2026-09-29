@@ -93,8 +93,8 @@ dependencies, and gets you to a running stack. Unattended:
 
 Any provider you configure in `config.yaml`. The shipped baseline is `union-alpha`
 via `langchain_openai:ChatOpenAI`, using OpenRouter's API slug
-`stealth/union-alpha` with `$OPENROUTER_API_KEY` — note that the CLI-qualified
-`openrouter/stealth/union-alpha` is *not* a valid OpenRouter API slug. OpenAI,
+`unbiased/pareto` with `$OPENROUTER_API_KEY` — note that the CLI-qualified
+`openrouter/unbiased/pareto` is *not* a valid OpenRouter API slug. OpenAI,
 Anthropic, Google Gemini, DeepSeek, Moonshot AI, MiniMax, StepFun, and Ollama are
 also wired, with multi-provider routing, load balancing, and fallbacks.
 

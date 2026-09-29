@@ -540,12 +540,24 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       : null;
     if (observer && keepOutEl) observer.observe(keepOutEl);
 
+    // A modal drawer is the other keep-out, and it appears and disappears
+    // without resizing the composer, so a ResizeObserver on the composer never
+    // notices. Observed in the live UI: opening a bot profile left the pet
+    // sitting inside the drawer, on top of the agent's Soul text. A
+    // MutationObserver on the document catches both the drawer being added and
+    // it being closed, which is when the pet should be allowed back.
+    const mutations = typeof MutationObserver === "function" ? new MutationObserver(() => nudgeClear()) : null;
+    if (mutations && document.body) {
+      mutations.observe(document.body, { childList: true, subtree: true, attributes: true });
+    }
+
     const frame = requestAnimationFrame(nudgeClear);
     window.addEventListener("resize", nudgeClear);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", nudgeClear);
       observer?.disconnect();
+      mutations?.disconnect();
     };
   }, [settings.visible, settings.desktopOverlay]);
 

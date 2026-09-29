@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
 
@@ -174,8 +175,34 @@ def test_the_journal_emits_a_terminal_run_error_with_a_stack_hash():
     assert len(raised) == 1
     assert raised[0].error_code == "RUN_EXECUTION_FAILED"
     assert raised[0].severity.value == "error"
-    assert len(raised[0].payload["stack_sha256"]) == 64, "a stack *fingerprint*, never the traceback"
+    # The fingerprint lives in the envelope's top-level ``digests`` mapping, not
+    # in ``payload``, and that is not a naming preference: the strict redaction
+    # policy classifies a bare 64-character lowercase-hex string -- exactly the
+    # shape of a SHA-256 digest, and also of some credentials -- as a
+    # high-entropy blob and replaces it. ``digests`` is the unsealed mapping
+    # reserved for digests this package minted itself, which is why the
+    # assertion below also pins the redaction that makes it necessary.
+    assert len(raised[0].digests["stack_sha256"]) == 64, "a stack *fingerprint*, never the traceback"
+    assert "stack_sha256" not in raised[0].payload
     assert "Traceback" not in json.dumps(raised[0].to_record())
+
+
+def test_a_digest_cannot_ride_in_the_payload_because_redaction_erases_it():
+    """The reason the assertion above reads ``digests``.
+
+    Pinned as its own test so nobody "fixes" the location back: a real SHA-256
+    is high-entropy enough to be scrubbed out of a payload, which is a property
+    of the redactor and would otherwise look like a lost field.
+    """
+    import hashlib
+
+    from alpha.observability.redaction import STRICT, Redactor
+
+    digest = hashlib.sha256(b"graph blew up").hexdigest()
+    scrubbed = Redactor(STRICT).redact_attributes({"stack_sha256": digest})[0]
+
+    assert scrubbed["stack_sha256"] != digest
+    assert scrubbed["stack_sha256"] == "[REDACTED:high_entropy_blob]"
 
 
 def test_the_journal_writes_nothing_to_the_trace_when_no_writer_is_installed():
@@ -224,6 +251,30 @@ def _fake_ranking(monkeypatch: pytest.MonkeyPatch, *, refined: bool) -> Any:
     return selection
 
 
+@contextmanager
+def _bound_run():
+    """Bind the run identity the selection emitters inherit.
+
+    ``alpha.tools.selection._emit_selection`` states no identity of its own, and
+    that is deliberate rather than an oversight: ``rank_candidates`` is the deep
+    call site the ambient-binding design exists for
+    (:mod:`alpha.observability.ambient` names it), so threading a run id
+    through it would change every one of its callers. The writer therefore
+    resolves the identity from the ambient :class:`RunContext`, and with none
+    bound it drops the event on purpose -- counted in ``disclosure()`` and
+    logged once, never silently, and deliberately *not* repaired by minting a
+    placeholder run id.
+
+    So the missing piece in a test that drives the real emitter is the binding,
+    not a producer change. ``RunContext.run_id`` must be 32 lowercase hex
+    characters, so it is not the ``"r-1"`` the sink-facing writer takes.
+    """
+    from alpha.observability.context import RunContext, run_scope
+
+    with run_scope(RunContext(trace_id="trace-1", run_id="a" * 32, thread_id="t-1", agent_name="lead-agent")):
+        yield
+
+
 def _client() -> Any:
     from alpha.config.system_one_config import SystemOneConfig
     from alpha.models.system_one import SystemOneClient
@@ -255,7 +306,8 @@ async def test_tool_selection_records_the_candidate_set_the_choice_and_a_reason(
     from alpha.tools.selection import Candidate
 
     candidates = [Candidate(id="bash", title="bash", summary="run a shell command"), Candidate(id="read_file", title="read_file", summary="read a file"), Candidate(id="write_file", title="write_file", summary="write a file")]
-    ranking = await selection.rank_candidates("delete the build output", candidates, top_n=2, site="tool_select")
+    with _bound_run():
+        ranking = await selection.rank_candidates("delete the build output", candidates, top_n=2, site="tool_select")
     assert ranking is not None
 
     envelopes = _trace_rows(await _drain(writer, store))
@@ -279,7 +331,8 @@ async def test_skill_selection_records_the_registry_version(monkeypatch: pytest.
     from alpha.tools.selection import Candidate
 
     candidates = [Candidate(id="alpha-wiki", title="alpha-wiki", summary="search the wiki"), Candidate(id="pdf-tools", title="pdf-tools", summary="extract from a PDF")]
-    ranking = await selection.rank_candidates("summarise this PDF", candidates, top_n=1, site="skill_select")
+    with _bound_run():
+        ranking = await selection.rank_candidates("summarise this PDF", candidates, top_n=1, site="skill_select")
     assert ranking is not None
     assert ranking.refined is True
 
@@ -357,7 +410,12 @@ def test_the_task_tool_emitter_records_a_spawn_and_a_completion_by_hash():
     assert spawned[0].agent_depth == 1
     assert spawned[0].subagent_id == "task-1"
     assert spawned[0].parent_agent_name == "lead-agent"
-    assert spawned[0].payload["prompt_sha256"] == _sha256(prompt)
+    # ``digests``, not ``payload``: a real SHA-256 is a bare 64-character
+    # lowercase-hex string, which the strict redaction policy erases from a
+    # payload as a high-entropy blob. See
+    # ``test_a_digest_cannot_ride_in_the_payload_because_redaction_erases_it``.
+    assert spawned[0].digests["prompt_sha256"] == _sha256(prompt)
+    assert "prompt_sha256" not in spawned[0].payload
     assert prompt not in json.dumps(spawned[0].to_record()), "the prompt is recorded by hash, never verbatim"
 
     assert len(completed) == 1

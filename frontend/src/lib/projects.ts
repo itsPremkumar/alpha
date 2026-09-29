@@ -83,7 +83,25 @@ export async function deleteProject(id: string): Promise<void> {
 
 export interface ProjectThread {
   thread_id: string;
+  /** Absent is a real state; the UI shows the raw id rather than inventing a title. */
   display_name: string;
+  /**
+   * When the conversation was created / last touched, per the server row.
+   *
+   * `GET /projects/{id}/threads` returns both, and the narrow
+   * `ProjectThreadResponse` model on the Gateway deliberately keeps them. This
+   * type declared only `thread_id` + `display_name`, so the timestamps were
+   * unreachable and a project's chat list could say nothing about which
+   * conversation actually ran most recently - the first thing you want to know
+   * when you open a project.
+   *
+   * `""` means the server sent no timestamp. That renders as unknown, never as
+   * an epoch.
+   */
+  created_at: string;
+  updated_at: string;
+  /** Redacted server metadata; `null` when the server sent none. */
+  metadata: Record<string, unknown> | null;
 }
 
 /** Server `limit` ceiling for GET /projects/{id}/threads. */
@@ -116,6 +134,12 @@ export async function projectThreads(id: string): Promise<ProjectThread[]> {
         thread_id: threadId,
         // An absent display name is a real state, not a fabricated id.
         display_name: String(pick(record, ["display_name", "title"], "Untitled")),
+        created_at: String(pick(record, ["created_at"], "")),
+        updated_at: String(pick(record, ["updated_at"], "")),
+        metadata:
+          record.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
+            ? (record.metadata as Record<string, unknown>)
+            : null,
       };
     });
     const boundary = mapped.length > 0 ? `${mapped[0].thread_id}:${mapped[mapped.length - 1].thread_id}` : "";

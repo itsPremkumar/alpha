@@ -156,7 +156,16 @@ def test_upload_skill_archive_installs_without_thread_workspace(monkeypatch, tmp
         refresh_calls.append(user_id)
 
     config = SimpleNamespace()
-    monkeypatch.setattr(skills_router, "_get_user_skill_storage", lambda cfg: _Storage())
+    # `_install_skill_archive` resolves storage through `get_or_new_user_skill_storage`
+    # rather than `_get_user_skill_storage`, and that is deliberate: it takes an
+    # explicit `user_id` so `approve_skill_proposal` can install on behalf of the
+    # proposer, and `_get_user_skill_storage` hardcodes the ambient
+    # `get_effective_user_id()` and cannot express that. Patching the read-path
+    # helper here left the real storage constructor running against an empty
+    # config, which is where the AttributeError came from. The sibling
+    # `test_install_skill_archive_static_scan_block_returns_findings` already
+    # patches this seam.
+    monkeypatch.setattr(skills_router, "get_or_new_user_skill_storage", lambda user_id, **kwargs: _Storage())
     monkeypatch.setattr(skills_router, "refresh_user_skills_system_prompt_cache_async", _refresh)
     monkeypatch.setattr(skills_router, "get_effective_user_id", lambda: "default")
 

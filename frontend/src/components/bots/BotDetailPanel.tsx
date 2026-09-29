@@ -52,7 +52,17 @@ export function BotDetailPanel({ bot, onClose, onChat, onProjectCreated }: BotDe
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    // Dialog semantics, matching the shared `Modal` in components/ui.tsx. This
+    // panel was a hand-copied variant of it and lost the attributes, so a
+    // screen reader announced nothing when the drawer opened, Escape/focus
+    // tooling had no handle, and nothing marked it as an overlay for the
+    // companion to step out of. Found in the live UI, not by reading.
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-label={botDisplayName(bot)}
+    >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <aside className="relative w-full max-w-md h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden">
         <div className="p-5 border-b border-border/60 flex items-start gap-3">

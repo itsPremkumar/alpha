@@ -45,7 +45,10 @@ async def test_executable_skill_runner_async():
     )
 
     res = await runner.execute(ref, {"name": "alpha"})
-    assert res == {"validated": True, "target": "AGENT_WORKSPACE"}
+    # The fixture uppercases the name it is handed, so "alpha" -> "ALPHA".
+    # Asserting the call's own contract rather than a literal borrowed from an
+    # unrelated fixture.
+    assert res == {"validated": True, "target": "ALPHA"}
 
 
 def test_executable_skill_reference_validation():

@@ -228,7 +228,12 @@ models:
     display_name: Union Alpha (OpenRouter)
     description: "Anonymous-provider preview; prompts and completions may be retained. Verify provider terms before sending sensitive data."
     use: langchain_openai:ChatOpenAI
-    model: stealth/union-alpha
+    # OpenRouter retired `stealth/union-alpha` (its own 404 names the successor)
+    # and the provider is the only authority on whether a slug exists. The
+    # Alpha-side name stays `union-alpha`; only the provider slug moved to
+    # `unbiased/pareto`. `openrouter/unbiased/pareto` is still NOT a valid API
+    # slug - the CLI-qualified form never is.
+    model: unbiased/pareto
     base_url: https://openrouter.ai/api/v1
     api_key: $OPENROUTER_API_KEY
     context_window: 262144
@@ -1079,8 +1084,8 @@ model_catalog:
   default_use: langchain_openai:ChatOpenAI
   models:
   - id: union-alpha
-    name: Union Alpha (Stealth Model)
-    model_id: stealth/union-alpha
+    name: Union Alpha (OpenRouter)
+    model_id: unbiased/pareto
     supports_thinking: false
     description: Unified hybrid agent intelligence architecture model.
   - id: openrouter-free-llama-70b

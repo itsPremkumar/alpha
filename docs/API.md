@@ -298,7 +298,7 @@ GET /api/models
     {
       "name": "primary",
       "provider": "openrouter",
-      "model": "stealth/union-alpha",
+      "model": "unbiased/pareto",
       "max_tokens": 16384,
       "supports_tools": true,
       "supports_vision": true,

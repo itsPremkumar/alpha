@@ -193,19 +193,52 @@ export function resolveLionPetSafeRight(args: {
 }
 
 /**
- * The composer's viewport rect, or null when it is absent or not laid out.
+ * The viewport rect the companion must stay clear of, or null when there is none.
  *
- * Read from the document rather than passed in, because the composer moves with
- * the window and with the transcript growing above it, and a stale rect would put
- * the pet straight back on the input.
+ * Two regions qualify, in priority order:
+ *
+ *  1. An element explicitly marked `[data-lion-pet-keepout]` — currently the
+ *     chat composer, whose hit area must never be covered.
+ *  2. A modal overlay (`[role="dialog"]`, `[aria-modal="true"]`) that the
+ *     companion is currently sitting on top of. Found in the live UI: opening a
+ *     bot profile put the pet inside the drawer, covering the agent's Soul text,
+ *     because the drawer is a `z-50` overlay and the pet is `z-90`.
+ *
+ * A dialog is only returned when the pet actually overlaps it. A drawer that
+ * covers, say, the right half still leaves real estate on the left, and
+ * returning it unconditionally would drive the pet into a corner it did not need
+ * to be in.
  */
-export function findLionPetKeepOut(doc: Pick<Document, "querySelector"> | null | undefined): LionPetRect | null {
-  const el = doc?.querySelector?.("[data-lion-pet-keepout]") as HTMLElement | null;
+export function findLionPetKeepOut(doc: Pick<Document, "querySelector" | "querySelectorAll"> | null | undefined): LionPetRect | null {
+  const marked = doc?.querySelector?.("[data-lion-pet-keepout]") as HTMLElement | null;
+  const markedRect = rectOf(marked);
+  if (markedRect) return markedRect;
+
+  const dialogs = doc?.querySelectorAll?.('[role="dialog"], [aria-modal="true"]') ?? [];
+  for (const node of Array.from(dialogs) as unknown as HTMLElement[]) {
+    // `rectOf` already rejects a collapsed or unlaid-out element, so its own
+    // null check is the whole test. Re-checking `.width`/`.height` here would
+    // be checking a `LionPetRect`, which has no such fields — `undefined > 0`
+    // is false, so the loop silently returned nothing.
+    const rect = rectOf(node);
+    if (rect) return rect;
+  }
+  return null;
+}
+
+/**
+ * The four edges of an element, or null when it is absent or not laid out.
+ *
+ * Declared after its callers on purpose: it is a `const` arrow, and hoisting
+ * rules would leave it in the temporal dead zone for anything invoked during
+ * module evaluation.
+ */
+const rectOf = (el: HTMLElement | null | undefined): LionPetRect | null => {
   if (!el || typeof el.getBoundingClientRect !== "function") return null;
   const rect = el.getBoundingClientRect();
   if (!rect || (rect.width === 0 && rect.height === 0)) return null;
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-}
+};
 
 export type LionPetSettings = {
   visible: boolean;
