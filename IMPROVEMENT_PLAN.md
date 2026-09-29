@@ -155,6 +155,47 @@ running now. Its result is the single most important unknown in this document. E
 above is scoped and targeted; nothing here establishes that `main` is green end to end, and
 until that run reports, nobody should say it is.
 
+## Wave 3 — the research wave
+
+Five agents, five distinct keyless models, one non-overlapping slice of the landscape
+each. Every one is required to fetch live and cite a URL and a retrieval date, because
+the question asked was *today's* state, not what a model remembers.
+
+| Worktree | Slice | Model / effort |
+| --- | --- | --- |
+| `alpha-r1-coding` | terminal- and IDE-first coding agents | `space-bunny-free` / high |
+| `alpha-r2-autonomous` | computer-use and browser agents, plus benchmark honesty | `nemotron-3-ultra-free` |
+| `alpha-r3-named` | the named family — Muse, Hermes, OpenClaw 2.0, Grok | `space-bunny-free` / xhigh |
+| `alpha-r4-orchestration` | orchestration, protocols, memory, evaluation | `muse-spark-1.3-contributor-free` / high |
+| `alpha-r5-selfaudit` | this repository's own source, measured | `mimo-v2.6-flash-free` |
+
+The slices are split so no two agents research the same systems, and the synthesis is
+mine rather than theirs — five reports read side by side by the same author would
+reconcile their disagreements into a false consensus.
+
+Three deliberate constraints on the briefs:
+
+- **Disambiguation before analysis** (`r3`). "Muse", "Hermes" and "OpenClaw" each name
+  more than one live thing, and two of them were former names of *this* repository
+  before the rename. The brief requires the agent to list every distinct meaning, say
+  which one it is reporting on, and write `COULD NOT IDENTIFY` rather than invent a
+  plausible project. A confidently wrong identity makes the entire report worthless.
+- **Benchmark honesty as its own section** (`r2`). A number from a vendor's private
+  benchmark is close to meaningless, and the field is saturated with them. The report
+  must state who ran the evaluation and whether scoring is automated or model-judged.
+- **Documented-vs-actual divergence as a first-class finding** (`r4`, `r5`). This
+  repository's own contribution rules make claim honesty mandatory, so an agent that
+  finds a doc claiming something the code does not do has found a bug, not a
+  documentation nit. `r5` is also told that `ruff format` passing proves nothing about
+  correctness, and that "implemented and tested", "implemented and untested", "declared
+  but not implemented", "documented but not implemented" and "documented as a limitation"
+  are five different states that get conflated into four.
+
+`r5` carries the sharpest instruction, because it is the one most likely to produce a
+report that reads well and is wrong: **every claim needs a file:line, never infer a
+capability from a doc, and "I found nothing here" is a valid result.** Manufacturing
+findings to make a report look thorough is the failure mode of an audit.
+
 ## Honest limits of this plan
 
 - **None of wave 2 has been merged.** All five are in separate worktrees, unverified
