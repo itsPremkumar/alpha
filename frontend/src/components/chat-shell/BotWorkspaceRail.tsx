@@ -9,7 +9,6 @@ import {
   FileText,
   Folder,
   FolderOpen,
-  FolderPlus,
   ListChecks,
   MessageSquare,
   MoreHorizontal,
@@ -174,7 +173,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   return (
     <div className="flex flex-col h-full select-none divide-y divide-border/40" data-shell="bot-workspace">
-      {/* ── 1. Roster summary ───────────────────────────────────────────
+      {/* â”€â”€ 1. Roster summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           The scrolling "AI Agents (N)" profile list was removed here. It
           duplicated the agent selector that already exists directly below
           (BotDropdownMenu), so the rail showed the same choice twice: once as
@@ -203,11 +202,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                 : "No agents reported"}
             </span>
           </span>
-          <span className="shrink-0 text-[10px] font-medium">All profiles →</span>
+          <span className="shrink-0 text-[10px] font-medium">All profiles â†’</span>
         </button>
       </section>
 
-      {/* ── 2. Current Agent Card & Primary New Chat ──────────────────── */}
+      {/* â”€â”€ 2. Current Agent Card & Primary New Chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="p-3 bg-card/30 space-y-2">
         <BotDropdownMenu
           bots={rosterBots}
@@ -265,7 +264,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
         </button>
       </section>
 
-      {/* ── 3. Standalone Conversations (Outside Any Project) ────────── */}
+      {/* â”€â”€ 3. Standalone Conversations (Outside Any Project) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="p-3 space-y-1.5" aria-label="Standalone conversations">
         <div className="flex items-center justify-between pb-0.5 px-0.5">
           <button
@@ -349,7 +348,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
         )}
       </section>
 
-      {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
+      {/* â”€â”€ 4. Projects & Nested Project Conversations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto" aria-label="Projects">
         <div className="flex items-center justify-between pb-0.5 px-0.5">
           <button
@@ -510,7 +509,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             }`}
                             title={count !== null ? `${count} conversations in this project` : "Conversation count unknown"}
                           >
-                            {count !== null ? count : "—"}
+                            {count !== null ? count : "â€”"}
                           </span>
 
                           {/* Project Options Menu using ProjectDropdownMenu */}
@@ -555,7 +554,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                         </div>
                       </div>
 
-                      {/* ── Hierarchical Nested Project Conversations ───────── */}
+                      {/* â”€â”€ Hierarchical Nested Project Conversations â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
                       {isExpanded && (
                         <div className="ml-4 pl-2 border-l-2 border-primary/20 space-y-0.5 my-1 pt-0.5">
                           {/* New inside project button & quick links */}
@@ -581,7 +580,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                               >
                                 Files
                               </button>
-                              <span>•</span>
+                              <span>â€¢</span>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -649,15 +648,6 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                   </button>
                 ) : null}
 
-                {/* Quick "+ New Project" action */}
-                <button
-                  type="button"
-                  onClick={() => setCreating(true)}
-                  className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-border/80 hover:border-primary/50 text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors mt-1 cursor-pointer"
-                >
-                  <FolderPlus className="size-3.5 text-primary" />
-                  <span>Create Project</span>
-                </button>
               </div>
             )}
           </>

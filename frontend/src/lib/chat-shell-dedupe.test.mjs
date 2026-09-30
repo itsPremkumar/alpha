@@ -333,3 +333,37 @@ test("the empty-state landing shows no Gateway API probe and no HTTP routes", ()
   // removed the starter prompts that actually help someone begin.
   assert.match(landing, /onPickStarter/, "the starter prompts must remain");
 });
+
+test("the rail has no trailing Create Project button; creation stays reachable elsewhere", () => {
+  // Removed at the operator's request: the dashed "Create Project" button that
+  // sat at the very bottom of the rail, under "Show N more projects...", where
+  // it read as a peer of the conversation list rather than a project action.
+  //
+  // Assertions are deliberately NARROW. An earlier draft of this test banned
+  // `border-dashed` outright and failed - correctly - because the projects
+  // EMPTY STATE also uses a dashed border, and that one is a different control
+  // ("No projects for <bot> yet" plus a "Create a project" link) which was not
+  // asked to be removed. So the pins target the removed button's own signature
+  // rather than a style class two controls share.
+  //
+  // The test also asserts creation did NOT become unreachable: the agent
+  // dropdown's "New Project" and the Projects header's "+" both still open the
+  // same dialog. A removal test that only checked absence would have passed even
+  // if this had been the only way to create a project.
+  const rail = readFileSync(
+    new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(rail, /<span>Create Project<\/span>/, "the trailing button must stay removed");
+  assert.doesNotMatch(rail, /Quick "\+ New Project" action/, "its comment must go with it");
+  assert.doesNotMatch(rail, /FolderPlus/, "and its icon import must not be left orphaned");
+
+  const opens = rail.match(/setCreating\(true\)/g) || [];
+  assert.ok(
+    opens.length >= 2,
+    "at least two other controls must still open the project dialog: " + opens.length,
+  );
+  assert.match(rail, /onNewProject=\{\(\) => setCreating\(true\)\}/, "the agent dropdown keeps it");
+  assert.match(rail, /aria-label="Create new project"/, "the Projects header plus keeps it");
+  assert.match(rail, /\{creating && \(/, "and the dialog itself is still rendered");
+});
