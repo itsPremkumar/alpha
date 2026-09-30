@@ -23,6 +23,8 @@ CONNECTOR_STORE_SCHEMA_VERSION: Final = 1
 
 
 class ConnectorHealth(str, Enum):
+    """Best-effort health of a connected service."""
+
     UNKNOWN = "unknown"
     OK = "ok"
     DEGRADED = "degraded"
@@ -69,6 +71,10 @@ class ConnectorInstallState:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> ConnectorInstallState:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise ConnectorError(f"connector state has unknown field(s): {unknown}")
         payload = dict(data)
         payload["health"] = ConnectorHealth(payload.get("health", "unknown"))
         return cls(**payload)
@@ -131,6 +137,8 @@ class ConnectorStore:
             tmp = self.storage_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, self.storage_path)
         except OSError as exc:
             raise ConnectorStoreUnreadable(f"could not persist connector store {self.store_label()}: {exc}") from exc
@@ -171,7 +179,9 @@ class ConnectorStore:
             if state is None:
                 raise ConnectorError(f"connector {connector_id!r} is not installed")
             state.health = ConnectorHealth(health) if not isinstance(health, ConnectorHealth) else health
-            state.last_error = error
+            # Cap upstream error text so a chatty/ hostile provider cannot grow
+            # the store without bound.
+            state.last_error = None if error is None else str(error)[:2000]
             state.last_checked_at = _now()
             if rate_limit_per_min is not None:
                 if not isinstance(rate_limit_per_min, int) or rate_limit_per_min < 0:

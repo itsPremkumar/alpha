@@ -16,6 +16,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Capability:
+    """One entry in the frontier capability checklist."""
+
     key: str
     name: str
     category: str

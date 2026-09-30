@@ -223,6 +223,8 @@ class RoutineStore:
             tmp = self.storage_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, self.storage_path)
         except OSError as exc:
             raise RoutineStoreUnreadable(f"could not persist routine store {self.store_label()}: {exc}") from exc

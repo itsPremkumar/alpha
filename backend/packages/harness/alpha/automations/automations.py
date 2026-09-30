@@ -36,6 +36,8 @@ class AutomationStoreUnreadable(AutomationError):
 
 
 class Frequency(str, Enum):
+    """How often an automation repeats."""
+
     ONCE = "once"
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -89,6 +91,10 @@ class AutomationSchedule:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> AutomationSchedule:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise AutomationValidationError(f"schedule has unknown field(s): {unknown}")
         payload = dict(data)
         payload["frequency"] = Frequency(payload["frequency"])
         return cls(**payload)
@@ -128,8 +134,9 @@ def next_run(schedule: AutomationSchedule, after: datetime) -> datetime | None:
     if freq in (Frequency.MONTHLY, Frequency.YEARLY):
         assert schedule.day_of_month is not None
         year, month = after.year, after.month
-        # Scan forward up to ~5 years; skip months that lack the target day.
-        for _ in range(61):
+        # Scan forward up to ~10 years so a leap-day (Feb 29) yearly rule is
+        # reachable; skip months that lack the target day.
+        for _ in range(120):
             if freq == Frequency.YEARLY and schedule.month is not None and month != schedule.month:
                 month += 1
                 if month > 12:
@@ -203,6 +210,10 @@ class Automation:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Automation:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise AutomationValidationError(f"automation has unknown field(s): {unknown}")
         payload = dict(data)
         payload["schedule"] = AutomationSchedule.from_dict(payload["schedule"])
         return cls(**payload)
@@ -264,6 +275,8 @@ class AutomationStore:
             tmp = self.storage_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, self.storage_path)
         except OSError as exc:
             raise AutomationStoreUnreadable(f"could not persist automation store {self.store_label()}: {exc}") from exc

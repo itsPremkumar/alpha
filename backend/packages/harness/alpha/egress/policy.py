@@ -47,6 +47,8 @@ class EgressStoreUnreadable(EgressError):
 
 
 class EgressRoute(str, Enum):
+    """Network path used to reach a domain."""
+
     DIRECT = "direct"
     RESIDENTIAL_PROXY = "residential_proxy"
     DATACENTER_PROXY = "datacenter_proxy"
@@ -86,6 +88,10 @@ class EgressRule:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> EgressRule:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise EgressValidationError(f"egress rule has unknown field(s): {unknown}")
         return cls(domain_pattern=data["domain_pattern"], route=EgressRoute(data["route"]))
 
 
@@ -121,6 +127,10 @@ class EgressPolicy:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> EgressPolicy:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise EgressValidationError(f"egress policy has unknown field(s): {unknown}")
         return cls(
             default_route=EgressRoute(data.get("default_route", "direct")),
             rules=[EgressRule.from_dict(r) for r in data.get("rules", [])],
@@ -247,6 +257,8 @@ class EgressStore:
             tmp = self.storage_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, self.storage_path)
         except OSError as exc:
             raise EgressStoreUnreadable(f"could not persist egress store {self.store_label()}: {exc}") from exc

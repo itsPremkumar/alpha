@@ -33,6 +33,8 @@ def _now() -> str:
 
 @dataclass
 class ExpertInstallState:
+    """Install/enable record for one expert or expert group."""
+
     expert_id: str
     kind: str = "expert"  # "expert" | "group"
     enabled: bool = False
@@ -50,6 +52,10 @@ class ExpertInstallState:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> ExpertInstallState:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise ExpertError(f"expert state has unknown field(s): {unknown}")
         return cls(**dict(data))
 
 
@@ -110,6 +116,8 @@ class ExpertRegistry:
             tmp = self.storage_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, self.storage_path)
         except OSError as exc:
             raise ExpertStoreUnreadable(f"could not persist expert store {self.store_label()}: {exc}") from exc

@@ -28,6 +28,8 @@ class AuthKind(str, Enum):
 
 
 class ConnectorCategory(str, Enum):
+    """Functional grouping used to browse the marketplace."""
+
     COMMUNICATION = "communication"
     CALENDAR = "calendar"
     STORAGE = "storage"
@@ -66,6 +68,10 @@ class ConnectorSpec:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> ConnectorSpec:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise ValueError(f"connector spec has unknown field(s): {unknown}")
         payload = dict(data)
         payload["category"] = ConnectorCategory(payload["category"])
         payload["auth"] = AuthKind(payload["auth"])

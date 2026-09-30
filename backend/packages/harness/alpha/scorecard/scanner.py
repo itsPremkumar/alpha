@@ -18,12 +18,16 @@ from alpha.scorecard.taxonomy import CATEGORIES, Capability, TAXONOMY
 
 @dataclass
 class CapabilityStatus:
+    """Presence of one capability in a scanned install."""
+
     capability: Capability
     present: bool
 
 
 @dataclass
 class ScorecardReport:
+    """Coverage of the frontier taxonomy for one install."""
+
     alpha_root: str
     statuses: list[CapabilityStatus]
 

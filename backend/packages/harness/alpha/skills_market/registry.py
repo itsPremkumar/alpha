@@ -33,6 +33,8 @@ def _now() -> str:
 
 @dataclass
 class SkillInstallState:
+    """Install/enable record for one marketplace skill."""
+
     skill_id: str
     enabled: bool = False
     installed_at: str = field(default_factory=_now)
@@ -47,6 +49,10 @@ class SkillInstallState:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> SkillInstallState:
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise SkillMarketError(f"skill state has unknown field(s): {unknown}")
         return cls(**dict(data))
 
 
@@ -107,6 +113,8 @@ class SkillMarketRegistry:
             tmp = self.storage_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, self.storage_path)
         except OSError as exc:
             raise SkillStoreUnreadable(f"could not persist skill store {self.store_label()}: {exc}") from exc

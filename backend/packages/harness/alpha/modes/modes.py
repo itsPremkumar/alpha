@@ -102,6 +102,7 @@ def parse_mode(value: WorkMode | str) -> WorkMode:
 
 
 def capabilities_for(mode: WorkMode | str) -> ModeCapabilities:
+    """Return the capability set for *mode*."""
     return MODE_CAPABILITIES[parse_mode(mode)]
 
 
@@ -121,6 +122,7 @@ def assert_allowed(mode: WorkMode | str, action: str) -> None:
 
 
 def is_allowed(mode: WorkMode | str, action: str) -> bool:
+    """Return whether *action* is permitted in *mode* (no raise)."""
     try:
         assert_allowed(mode, action)
     except ModeViolation:
