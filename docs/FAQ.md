@@ -22,7 +22,7 @@ Nginx reverse proxy on port `2026`. Maintained by
 ### Is Alpha a framework or a finished application?
 
 Both. It ships as a finished, self-hostable application, and its agent framework is
-also importable as `alpha-harness` (import name `alpha.*`) with 102 engine
+also importable as `alpha-harness` (import name `alpha.*`) with 112 engine
 modules you can use to build your own runtime.
 
 ### Is Alpha a chatbot?
@@ -138,8 +138,8 @@ Discord, Buzz, and Signal.
 
 ### How many tools, skills, routers, and middlewares ship?
 
-134 native tools, 61 Gateway routers, 42 middleware layers, and 8 background
-supervisor loops, plus 24 public skills and 102 harness engine packages. These
+134 native tools, Gateway 62 routers, 42 middleware layers, and 8 background
+supervisor loops, plus 24 public skills and 112 harness engine packages. These
 numbers are generated into
 [`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and enforced
 by a CI drift gate, so they cannot silently rot.
@@ -251,8 +251,7 @@ on-demand. → [Architecture](ARCHITECTURE.md)
 ### How is security handled?
 
 An Astra security enclave with a scoped credential vault (secrets go to tools, never
-into prompts), a risk-scoring command approval gate, an emergency stop, a
-trajectory flight recorder (local SQLite audit store with JSONL export), artifact
+into prompts), a risk-scoring command approval gate, an emergency stop, artifact
 lineage tracing with SHA-256 content digests, deterministic
 per-run token budgets, and per-thread sandbox isolation with three tiers (local
 subprocess, Docker, Kubernetes). Never put secrets in `config.yaml` literals — use
