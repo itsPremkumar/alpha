@@ -28,6 +28,18 @@ interface ThreadSidebarProps {
   /** True when the Gateway is reachable — controls honest sync copy. Defaults to true. */
   serverOnline?: boolean;
   onOpenSettings?: () => void;
+  /**
+   * The BotWorkspaceRail block, rendered above every existing element of this
+   * sidebar. It is supplied rather than imported-and-fetched so the rail reads
+   * the *same* roster and the *same* bot the chat header does, instead of
+   * issuing a second `GET /api/bots` and holding a second selection.
+   *
+   * Optional: when it is absent the sidebar is byte-for-byte the sidebar it was
+   * before this block existed.
+   */
+  rail?: React.ReactNode;
+  /** Re-read the project list. Used by the rail after it creates a project. */
+  onProjectsChanged?: () => void | Promise<void>;
 }
 
 export function ThreadSidebar({
@@ -45,6 +57,8 @@ export function ThreadSidebar({
   ownerLabel,
   serverOnline = true,
   onOpenSettings,
+  rail,
+  onProjectsChanged,
 }: ThreadSidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -355,6 +369,12 @@ export function ThreadSidebar({
           <PanelLeftClose className="size-4" />
         </button>
       </div>
+
+      {/* Bot -> Project -> Conversation. Added above the existing content; the
+          New Chat button, the scope summary, the search box, the conversation
+          list, the local-search results and the storage footer are all still
+          here, unchanged and in the same order. */}
+      {rail}
 
       {/* New Chat Button */}
       <div className="p-3 pb-2 space-y-2">
