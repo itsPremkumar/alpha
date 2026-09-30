@@ -489,3 +489,61 @@ test("the empty project list never claims a project is empty when its badge says
   // The genuinely-empty case must still exist and keep its original wording.
   assert.match(region, /No conversations in this project yet\./);
 });
+
+test("the workspace breadcrumb cannot collapse its own text", () => {
+  // Measured live, three defects in one row:
+  //     the chevron separators   3px wide
+  //     the conversation title   9px wide
+  // All present in the DOM, none of it readable.
+  //
+  // Cause is the flex trap this suite has now hit three times: `truncate` only
+  // works on a flex item when the OTHER items in the row can also shrink. The
+  // chevrons and the agent label had no `shrink-0`, so the row compressed
+  // every child at once and the truncating spans - the only ones that were
+  // meant to give way - took the worst of it.
+  //
+  // Pinned on the separators specifically. A check that only asserted
+  // "the row contains a truncate" would pass while the row rendered at 3px.
+  const bar = readFileSync(
+    new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url),
+    "utf8",
+  );
+  const start = bar.indexOf("border-l border-border/60 pl-3");
+  assert.notEqual(start, -1, "the breadcrumb row must exist");
+  const region = bar.slice(start - 400, start + 1200);
+
+  // Attributes may sit between className and the closing bracket, so the match
+  // allows them rather than assuming a bare "<span className=...>". The glyph is
+  // written as an escape so this file stays free of the character it matches.
+  const chevrons = region.match(/<span className="[^"]*"[^>]*>›<\/span>/g) || [];
+  assert.ok(chevrons.length >= 2, "expected two chevron separators, found " + chevrons.length);
+  for (const chevron of chevrons) {
+    assert.match(
+      chevron,
+      /shrink-0/,
+      "a breadcrumb separator must never compress: " + chevron,
+    );
+  }
+
+  assert.match(region, /min-w-0/, "the row must be allowed to shrink at all");
+  assert.match(
+    region,
+    /font-semibold text-foreground shrink-0/,
+    "the agent name is short and must not be the thing that gives way",
+  );
+
+  // And the elements that SHOULD absorb the shortfall still can.
+  const truncating = region.match(/className="[^"]*truncate[^"]*"/g) || [];
+  assert.ok(truncating.length >= 2, "the project and thread labels must still truncate");
+  for (const span of truncating) {
+    assert.match(span, /min-w-0/, "a truncating flex child needs min-w-0 to shrink: " + span);
+  }
+
+  // Decorative separators must be hidden from assistive technology, or a
+  // screen reader announces a bare "greater-than" between every crumb.
+  assert.equal(
+    (region.match(/aria-hidden="true"/g) || []).length,
+    chevrons.length,
+    "each decorative chevron must be aria-hidden",
+  );
+});
