@@ -181,6 +181,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "architecture",
         "Chat shell UX implementation notes: the component set, how the rail is wired into the existing sidebar, and the additive-change discipline it followed.",
     ),
+    "COMMAND_HONESTY.md": DocumentSpec(
+        "operations",
+        "Command honesty: why a slash command that did nothing must not report success, and how that is gated.",
+    ),
     "ALPHA_COLLABORATION_AUDIT.md": DocumentSpec(
         "plans",
         "Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.",

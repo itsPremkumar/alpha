@@ -46,6 +46,7 @@
 - [ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) — Free Alpha-to-Alpha peer network: pairing, transport, and deployment.
 - [AUTONOMY_TRUTH.md](AUTONOMY_TRUTH.md) — Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure classification, and bounded recovery briefs.
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
+- [COMMAND_HONESTY.md](COMMAND_HONESTY.md) — Command honesty: why a slash command that did nothing must not report success, and how that is gated.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference for files, settings, and environment.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment models and deployment procedures.
 - [INSTALLER.md](INSTALLER.md) — Windows installer: unattended bootstrap, measured footprint, uninstall and troubleshooting.
