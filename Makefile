@@ -1,6 +1,6 @@
 # Alpha - Unified Development Environment
 
-.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
+.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check verify-checkout support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -56,6 +56,13 @@ export UV_CACHE_DIR
 export UV_PYTHON_INSTALL_DIR
 export UV_TOOL_DIR
 export UV_TOOL_BIN_DIR
+
+# Fail loudly if this checkout/worktree is incomplete before anyone stages or
+# commits. `git worktree add` on this large repo has produced short checkouts
+# (files in the index, missing on disk) that would otherwise stage mass
+# deletions from a naive `git add <dir>`.
+verify-checkout:
+	$(PYTHON) scripts/verify_checkout.py
 
 help:
 	@echo "Alpha Development Commands:"

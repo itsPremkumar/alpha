@@ -4,8 +4,8 @@
 
 ### The Open-Source Autonomous Multi-Agent AI Operating System
 
-**Alpha is a self-hosted, local-first AI agent platform that plans, executes, and
-verifies long-horizon work.** It runs a LangGraph agent runtime behind a FastAPI
+**Alpha is a self-hosted, local-first AI agent platform that plans and executes
+long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
 research, multi-agent swarms, sandboxed code execution, persistent memory, 134 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
@@ -187,7 +187,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It hallucinates that it finished** | A Goal Engine with verifiable completion criteria plus a finish-first evidence matrix. A run can complete and still be honestly reported as *unverified*. |
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, an emergency stop (Estop), a scoped credential vault, and per-thread sandbox isolation. |
-| **You can't tell what it did** | A trajectory flight recorder and end-to-end artifact lineage tracing — cryptographic provenance from prompt to output. |
+| **You can't tell what it did** | A trajectory flight recorder and end-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation). |
 | **It can't use your tools** | 134 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |

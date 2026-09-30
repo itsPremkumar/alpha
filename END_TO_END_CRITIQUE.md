@@ -163,3 +163,24 @@ The README calls Alpha an "AI operating system." That framing raises expectation
 - **Self-critique is possible**: my deterministic critic found and I fixed 35 issues (fsync durability, unknown-key smuggling) in my own code — the project's conventions made that easy.
 
 **Bottom line:** Alpha has built the hard thing (capability depth) and under-invested in the equally hard thing (coherence, discoverability, and honest framing). Close the doc/claim/wiring gaps and it becomes as usable as it is capable.
+
+---
+
+## 7. Corrections & fixes applied (follow-up pass)
+
+### Corrections to this critique (integrity matters)
+Two remediation items were wrong because they were based on **absence of evidence**, not evidence of absence:
+
+- **Nav grouping already exists.** `frontend/src/components/NavTabs.tsx` already groups views into four categories (`core` / `collaboration` / `operations` / `system`) with a primary/secondary split and a categorized dropdown. The real issue is **scale and labelling**, not "26 flat tabs."
+- **A doctor and drift gates already exist.** `scripts/doctor.py`, `scripts/stack_doctor.py`, `check_generated_drift.py`, `check_no_silent_failures.py`, and `make doctor` / `make prod-check` are all present. The gap was narrower than stated.
+
+### Fixes applied and tested
+1. **Checkout-integrity verifier** — new `scripts/verify_checkout.py` + `make verify-checkout`. Detects the incomplete-worktree hazard (files in the index, missing on disk) that nearly caused a mass-deletion commit. **Tested:** 7/7 logic checks pass; runs clean on both the worktree and the main repo (`git ls-files --deleted` = 0).
+2. **Contributor safety** — `CONTRIBUTING.md` now documents the worktree hazard, the "**never `git add <directory>`**" rule, the repair step (`git checkout -- .`), and `core.longpaths`.
+3. **Claim reconciliation** — README headline changed from "plans, executes, and **verifies** long-horizon work" to "plans and executes long-horizon work — **and reports honestly when a result is unverified**", matching the honesty contract; "cryptographic provenance" → "hash-linked provenance … (stored locally; not a cryptographic attestation)."
+
+### Still open (honestly)
+- New harness capabilities still have **no UI surface** (product/frontend work).
+- Wiring the new modules behind the Gateway router + config flags.
+- Frontend component tests, a11y linting, and i18n extraction.
+
