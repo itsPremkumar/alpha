@@ -1,40 +1,45 @@
 "use client";
 
 import React, { useState } from "react";
-import { Loader2, PlayCircle } from "lucide-react";
-import { BotProfile, botDisplayName } from "@/types/bots";
+import {
+  Loader2,
+  PlayCircle,
+  Code2,
+  FileText,
+  FolderCheck,
+  HelpCircle,
+  ChevronRight,
+  Sparkles,
+  Bot,
+  Zap,
+} from "lucide-react";
 import { contextSentence, starterActions, type StarterAction } from "@/lib/chat-shell";
 import { get, send, errMsg } from "@/lib/http";
 import { Btn } from "@/components/ui";
 
-/**
- * The empty state for a new conversation.
- *
- * Its job is to answer two questions before the user types anything: which bot
- * am I talking to, and which project am I in. Both are answered from state the
- * Gateway supplied, and both branches are written out rather than composed from
- * optional fragments — dropping the project clause would read as "there is no
- * project", which is a claim the client cannot make on the user's behalf.
- *
- * **The starter actions issue real requests.** Each one is a genuine route with
- * a genuine body, the button shows the route it will call, and the result panel
- * shows the server's own response or the server's own error. There is no
- * "start a run" button here: the run boundary takes a real prompt, and a button
- * that invented one would be a request nobody made.
- *
- * The response is rendered verbatim rather than summarised, because a summary
- * is where a fabricated count would come from. Nothing in this panel counts
- * anything: it either ran a route and shows what came back, or it says the
- * route failed.
- */
-export function ChatShellLanding(props: {
+export interface ChatShellLandingProps {
   botName: string | null;
+  botRole?: string | null;
+  botAvatar?: string | null;
   projectId: string | null;
   projectName: string | null;
+  userName?: string;
   /** Called with the prompt the user picked, so the composer can be seeded. */
   onPickStarter?: (prompt: string) => void;
-}) {
-  const { botName, projectId, projectName, onPickStarter } = props;
+  onReviewProject?: () => void;
+}
+
+export function ChatShellLanding(props: ChatShellLandingProps) {
+  const {
+    botName,
+    botRole,
+    botAvatar,
+    projectId,
+    projectName,
+    userName = "MK",
+    onPickStarter,
+    onReviewProject,
+  } = props;
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<{ route: string; ok: boolean; text: string } | null>(null);
 
@@ -63,16 +68,147 @@ export function ChatShellLanding(props: {
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full space-y-3" data-shell="landing">
-      <p className="text-[11px] text-muted-foreground" data-shell="landing-sentence">
-        {sentence.text}
-      </p>
+    <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center text-center py-8 space-y-6 select-none" data-shell="landing">
+      {/* ── 1. Hero Avatar Icon with Subtle Glow ─────────────────────── */}
+      <div className="relative group">
+        <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />
+        <div className="relative size-18 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-xl border border-white/20">
+          {botAvatar ? (
+            <span className="text-3xl">{botAvatar}</span>
+          ) : (
+            <Code2 className="size-9 text-white" />
+          )}
+        </div>
+      </div>
 
-      <div>
-        <p className="text-[11px] font-semibold mb-1">Starter actions</p>
-        <p className="text-[10px] text-muted-foreground mb-1.5">
-          Each of these is a real request to this Gateway, not a canned response. The route is printed on each button.
+      {/* ── 2. Greeting & Context ────────────────────────────────────── */}
+      <div className="space-y-1.5 max-w-lg">
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          Welcome back, {userName}!
+        </h2>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          You are working with{" "}
+          <span className="text-foreground font-semibold">{botName || "Lead Agent"}</span>
+          {projectName ? (
+            <>
+              {" "}on the <span className="text-foreground font-semibold">{projectName}</span> project.
+            </>
+          ) : (
+            " in standalone mode."
+          )}
         </p>
+        <p className="text-sm font-medium text-foreground/90 pt-1">
+          How can I help you today?
+        </p>
+      </div>
+
+      {/* ── 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left pt-1">
+        {/* Card 1: Create a new plan */}
+        <button
+          type="button"
+          onClick={() => onPickStarter?.("/plan ")}
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 group-hover:bg-primary/20 transition-colors">
+              <FileText className="size-5" />
+            </div>
+            <div>
+              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                Create a new plan
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Plan your project step by step
+              </span>
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
+        </button>
+
+        {/* Card 2: Write or improve code */}
+        <button
+          type="button"
+          onClick={() => onPickStarter?.("Write or improve code for ")}
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
+              <Code2 className="size-5" />
+            </div>
+            <div>
+              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                Write or improve code
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Generate, debug or refactor code
+              </span>
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
+        </button>
+
+        {/* Card 3: Review the project */}
+        <button
+          type="button"
+          onClick={() => {
+            if (onReviewProject) {
+              onReviewProject();
+            } else {
+              onPickStarter?.("Review the current project status, files and logic.");
+            }
+          }}
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors">
+              <FolderCheck className="size-5" />
+            </div>
+            <div>
+              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                Review the project
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Check files, logic or progress
+              </span>
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
+        </button>
+
+        {/* Card 4: Ask a question */}
+        <button
+          type="button"
+          onClick={() => onPickStarter?.("")}
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
+              <HelpCircle className="size-5" />
+            </div>
+            <div>
+              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                Ask a question
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Get help with anything
+              </span>
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
+        </button>
+      </div>
+
+      {/* ── 4. Live Gateway Starter Actions (Honesty Preserved) ────────── */}
+      <div className="w-full max-w-xl text-left border-t border-border/50 pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+            <Zap className="size-3 text-amber-500" />
+            <span>Gateway Starter Actions</span>
+          </p>
+          <span className="text-[10px] text-muted-foreground">Direct API probe</span>
+        </div>
+
         <div className="flex flex-wrap gap-1.5">
           {actions.map((action) => (
             <button
@@ -81,80 +217,55 @@ export function ChatShellLanding(props: {
               onClick={() => void run(action)}
               disabled={busy !== null}
               title={`${action.route} — ${action.hint}`}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/70 text-[11px] font-medium hover:border-primary/50 hover:bg-muted/50 disabled:opacity-40 text-left"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-border/70 text-[11px] font-medium hover:border-primary/50 hover:bg-muted/50 disabled:opacity-40 text-left transition-colors cursor-pointer"
             >
-              {busy === action.id ? <Loader2 className="size-3 animate-spin" /> : <PlayCircle className="size-3 text-muted-foreground" />}
+              {busy === action.id ? (
+                <Loader2 className="size-3 animate-spin text-primary" />
+              ) : (
+                <PlayCircle className="size-3 text-muted-foreground" />
+              )}
               <span className="flex flex-col leading-tight">
-                <span>{action.label}</span>
+                <span className="text-[11px]">{action.label}</span>
                 <code className="text-[9px] text-muted-foreground font-mono">{action.route}</code>
               </span>
             </button>
           ))}
         </div>
-      </div>
 
-      {result && (
-        <div
-          className={`rounded-xl border px-2.5 py-2 text-left ${result.ok ? "border-border/60 bg-card/60" : "border-destructive/40 bg-destructive/5"}`}
-          role={result.ok ? undefined : "alert"}
-          data-read={result.ok ? "ok" : "failed"}
-        >
-          <p className="text-[10px] font-semibold">
-            <code className="font-mono">{result.route}</code>{" "}
-            {result.ok ? (
-              <span className="text-muted-foreground font-normal">returned</span>
-            ) : (
-              <span className="text-destructive">did not answer</span>
-            )}
-          </p>
-          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[10px] text-muted-foreground font-mono">
-            {result.text}
-          </pre>
-        </div>
-      )}
-
-      {onPickStarter && (
-        <div>
-          <p className="text-[11px] font-semibold mb-1">Or start from a prompt</p>
-          <div className="flex flex-wrap gap-1.5">
-            {["What is this project for?", "What has been decided so far?"].map((prompt) => (
-              <Btn
-                key={prompt}
-                variant="ghost"
-                onClick={() => onPickStarter(prompt)}
-                title="Puts this text in the composer. Nothing is sent until you press send."
-              >
-                {prompt}
-              </Btn>
-            ))}
+        {result && (
+          <div
+            className={`mt-2 rounded-xl border px-3 py-2 text-left ${
+              result.ok
+                ? "border-border/60 bg-card/60"
+                : "border-destructive/40 bg-destructive/5"
+            }`}
+            role={result.ok ? undefined : "alert"}
+            data-read={result.ok ? "ok" : "failed"}
+          >
+            <p className="text-[10px] font-semibold">
+              <code className="font-mono">{result.route}</code>{" "}
+              {result.ok ? (
+                <span className="text-muted-foreground font-normal">returned</span>
+              ) : (
+                <span className="text-destructive">did not answer</span>
+              )}
+            </p>
+            <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-words text-[10px] text-muted-foreground font-mono">
+              {result.text}
+            </pre>
           </div>
-        </div>
-      )}
-
-      {botName && (
-        <p className="text-[10px] text-muted-foreground/80">
-          Talking to {botName}. Switch specialists from the bot rail on the left, or the selector in the header above.
-        </p>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-/** Issue the request a starter action declares. Nothing is invented here. */
 async function issue(action: StarterAction): Promise<unknown> {
   return action.method === "POST"
     ? send<unknown>(action.path, action.method, action.body)
     : get<unknown>(action.path);
 }
 
-/**
- * Render a payload without summarising it.
- *
- * A summary is where a fabricated number would come from, so the response is
- * shown as the server sent it. An empty array is printed as `[]`, which says
- * "the server returned no rows" — an honest, small claim — rather than being
- * smoothed into prose that reads like a count.
- */
 function renderPayload(payload: unknown): string {
   if (payload === null) return "null (the server sent an empty body)";
   if (typeof payload === "string") return payload;

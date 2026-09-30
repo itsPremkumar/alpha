@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useMemo } from "react";
-import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight, Zap, Settings, Key, ExternalLink, Check, X } from "lucide-react";
+import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight, Zap, Settings, Key, ExternalLink, Check, X, Image as ImageIcon, Code2 } from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
 import { fetchCommands, BUILTIN_FREE_MODELS, configureProviderCredentials } from "@/lib/api";
 import { errMsg } from "@/lib/http";
@@ -78,6 +78,8 @@ interface ComposerProps {
   /** Canonical ladder + labels from `GET /api/models` (weakest → strongest). */
   effortLadder?: readonly string[];
   effortLabels?: Readonly<Record<string, string>>;
+  /** Name of the current active bot for the placeholder */
+  botDisplayName?: string;
 }
 
 export function Composer({
@@ -86,6 +88,7 @@ export function Composer({
   onSubmit,
   onStop,
   isLoading,
+  botDisplayName,
   models,
   selectedModel,
   onSelectModel,
@@ -455,7 +458,7 @@ export function Composer({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder="Ask anything or type / for Master Slash Commands..."
+          placeholder={botDisplayName ? `Ask ${botDisplayName} anything...` : "Ask anything or type / for Master Slash Commands..."}
           rows={1}
           aria-label="Message the agent"
           className="w-full resize-none bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-muted-foreground max-h-48 text-foreground"
@@ -551,17 +554,29 @@ export function Composer({
                 </button>
               )}
             </div>
+
+            {/* Attachments */}
             {onAttach && (
               <>
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
-                  title={uploading ? "Uploading…" : "Attach files"}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 cursor-pointer"
+                  title={uploading ? "Uploading…" : "Attach files (clip)"}
                   aria-label="Attach files"
                 >
                   <Paperclip className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 cursor-pointer"
+                  title="Upload images or media"
+                  aria-label="Upload images or media"
+                >
+                  <ImageIcon className="size-4" />
                 </button>
                 <input
                   ref={fileRef}
@@ -575,6 +590,21 @@ export function Composer({
                 />
               </>
             )}
+
+            {/* Code Block Snippet insert button */}
+            <button
+              type="button"
+              onClick={() => {
+                setInput((prev) => (prev ? `${prev}\n\`\`\`\n\n\`\`\`` : "```\n\n```"));
+                setTimeout(() => textareaRef.current?.focus(), 50);
+              }}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              title="Insert code block (</>)"
+              aria-label="Insert code block"
+            >
+              <Code2 className="size-4" />
+            </button>
+
             {onPolish && (
               <button
                 type="button"
@@ -617,7 +647,7 @@ export function Composer({
               <button
                 type="button"
                 onClick={onStop}
-                className="size-8 rounded-lg bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-90 transition-opacity"
+                className="size-9 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm"
                 title="Stop generating"
                 aria-label="Stop generating"
               >
@@ -628,11 +658,11 @@ export function Composer({
                 type="button"
                 disabled={!input.trim()}
                 onClick={onSubmit}
-                className="size-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 hover:opacity-95 transition-opacity"
+                className="size-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center disabled:opacity-40 hover:opacity-95 transition-all shadow-md cursor-pointer hover:shadow-blue-500/20"
                 title="Send message"
                 aria-label="Send message"
               >
-                <Send className="size-3.5" />
+                <Send className="size-4 -ml-0.5" />
               </button>
             )}
           </div>

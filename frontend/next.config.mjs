@@ -40,6 +40,7 @@ const PROD_DIST_DIR = ".next";
 export default function nextConfig(phase) {
   return {
     reactStrictMode: true,
+    devIndicators: false,
     // The dev server owns its own directory; every other phase (production
     // build, production server, export, typegen) shares the build directory.
     distDir: phase === PHASE_DEVELOPMENT_SERVER ? DEV_DIST_DIR : PROD_DIST_DIR,

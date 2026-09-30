@@ -59,7 +59,14 @@ import { BotGallery } from "@/components/bots/BotGallery";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
 import { ActiveBotPicker } from "@/components/bots/ActiveBotPicker";
-import { ChatShell, ChatShellEmptyState } from "@/components/chat-shell/ChatShell";
+import {
+  ChatShell,
+  ChatShellEmptyState,
+  ProjectContextHeader,
+  ProjectDetailPanel,
+  WorkspaceTopBar,
+  OmnisearchModal,
+} from "@/components/chat-shell/ChatShell";
 import { ErrorBox, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
@@ -409,6 +416,10 @@ export default function ChatView() {
   // Project scope for the active chat (creation + permission/selection in-chat).
   const [projects, setProjects] = useState<Project[]>([]);
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
+  const [omnisearchOpen, setOmnisearchOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [activeContextTab, setActiveContextTab] = useState<"conversation" | "files" | "tasks" | "knowledge">("conversation");
+
   const localThreadMetaRef = useRef<Record<string, ThreadMeta>>({});
   const historyLoadGenerationRef = useRef(0);
   // Bumped by every user-initiated navigation. An in-flight run compares its
@@ -547,6 +558,15 @@ export default function ChatView() {
   /** Project owning the active thread (server field first, pending pick fallback). */
   const activeProjectId: string | null =
     threads.find((t) => t.thread_id === activeThreadId)?.projectId || pendingProjectId;
+
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId) ?? null,
+    [projects, activeProjectId],
+  );
+  const activeProjectThreadCount = useMemo(
+    () => (activeProjectId ? threads.filter((t) => (t as unknown as Record<string, unknown>).projectId === activeProjectId || (t as unknown as Record<string, unknown>).project_id === activeProjectId).length : null),
+    [threads, activeProjectId],
+  );
 
   /** Scope an unsent draft now, or move the current persisted thread. */
   const handlePickProject = async (projectId: string | null) => {
@@ -1624,9 +1644,42 @@ export default function ChatView() {
   const selectedModelName = models.find((m) => m.id === selectedModel)?.name || null;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background">
-      {view === "chat" && (
-        <ThreadSidebar
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
+      {/* ── Global Top Bar (Alpha AI Agent Workspace, Ctrl+K Search, Notifications, Settings, User) ── */}
+      <WorkspaceTopBar
+        onOpenSearch={() => setOmnisearchOpen(true)}
+        onOpenSettings={() => setView("settings")}
+        onOpenView={(v) => setView(v)}
+        gatewayOk={gatewayOk}
+        userInitials="MK"
+        userName="MK"
+        botLabel={activeBot ? activeBot.display_name || activeBot.name : "Lead Agent"}
+        projectLabel={activeProject ? activeProject.name : "Standalone"}
+        threadLabel={threads.find((t) => t.thread_id === activeThreadId)?.title || null}
+      />
+
+      {/* ── Omnisearch Command Palette (Ctrl+K) ── */}
+      <OmnisearchModal
+        isOpen={omnisearchOpen}
+        onClose={() => setOmnisearchOpen(false)}
+        bots={bots}
+        projects={projects}
+        threads={threads}
+        onSelectBot={rememberBot}
+        onSelectProject={(id) => void handlePickProject(id)}
+        onSelectThread={(id) => openThread(id)}
+        onNewConversation={() => {
+          handleNewChat();
+        }}
+        onNewProject={() => {
+          setView("projects");
+        }}
+        onOpenSettings={() => setView("settings")}
+      />
+
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {view === "chat" && (
+          <ThreadSidebar
           threads={activeBot ? threads.filter((t) => threadOwner(t) === activeBot.name) : threads}
           threadsLoading={threadsLoading}
           activeThreadId={activeThreadId}
@@ -1689,106 +1742,84 @@ export default function ChatView() {
       )}
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        {/* Workspace navigation */}
-        <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
-          <div className="overflow-x-auto">
-            <NavTabs view={view} onChange={handleViewChange} badge={{ bots: bots.length }} />
-          </div>
-
-          {/* Live backend vitals: connectivity, usage and subsystem readiness,
-              always visible on the main screen instead of buried in settings. */}
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <WorkspaceVitals />
-            {/* Small update control: reads the persisted state on mount and only
-                contacts GitHub when pressed. */}
-            <UpdateControl />
-          </div>
-
-          {view === "chat" && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-foreground truncate max-w-52">
-                {threads.find((thread) => thread.thread_id === activeThreadId)?.title ||
-                  (activeBot ? `New chat with ${activeBot.display_name || activeBot.name}` : "New Conversation")}
-              </span>
-              {/* Project scope: create/select a project without leaving the chat. */}
-              <select
-                value={activeProjectId || ""}
-                onChange={(e) => handlePickProject(e.target.value || null)}
-                className="text-[11px] bg-muted/60 border border-border/80 rounded-lg px-2 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-44 truncate"
-                title={projects.length === 0 ? "No projects yet — pick one after creating it in Projects" : "Project for this chat"}
-                aria-label="Project for this chat"
-              >
-                <option value="">No project</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name || "Untitled project"}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setView("projects")}
-                className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded-lg hover:bg-muted transition-colors"
-                title="Manage projects"
-              >
-                Manage
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("system")}
-                title={gatewayOk === false ? "Server unreachable — open System to diagnose" : "Server status — open System control center"}
-                className={`text-[10px] px-2 py-0.5 rounded-full font-medium hidden sm:inline-flex items-center gap-1 ${
-                  gatewayOk === false
-                    ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
-                    : gatewayOk
-                      ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
-                      : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-                }`}
-              >
-                <span className={`size-1.5 rounded-full ${gatewayOk === false ? "bg-destructive" : gatewayOk ? "bg-emerald-500" : "bg-amber-400"}`} />
-                {gatewayOk === false ? "Offline" : gatewayOk ? "Connected" : "Checking…"}
-              </button>
-              <div className="flex-1" />
-              <ActiveBotPicker bots={bots} activeBot={activeBot} onPick={rememberBot} />
-              <button
-                type="button"
-                onClick={refreshFreeCatalog}
-                disabled={freeRefreshing}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors disabled:opacity-40"
-                title={freeNote || "Free keyless models — click to refresh live catalog"}
-                aria-label={freeNote || "Free keyless models — not read yet. Click to refresh the live catalog."}
-              >
-                <span className={`size-1.5 rounded-full ${FREE_TONE_DOT[freeTone]}`} aria-hidden="true" />
-                <span className="hidden lg:inline">{freeRefreshing ? "Refreshing free…" : freeNote ? freeNote.split(".")[0] : "Free models"}</span>
-                <span className="lg:hidden">Free</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("settings")}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors"
-                title="Open Settings"
-                aria-label="Open Settings — model selection, theme and API diagnostics"
-              >
-                <Settings className="size-3.5" />
-                {/*
-                  This control used to collapse to a bare 30px gear below the
-                  `lg` breakpoint, because its only label was behind
-                  `hidden lg:inline` and it carried no `aria-label`. A gear
-                  glyph next to a model name is guesswork, so the word "Settings"
-                  now stays at every width and the selected model is a separate,
-                  explicitly-labelled line underneath.
-                */}
-                <span className="whitespace-nowrap">Settings</span>
-                <span className="sr-only">
-                  {selectedModelName ? ` — selected model: ${selectedModelName}` : " — no model selected"}
-                </span>
-                {selectedModelName ? (
-                  <span className="hidden lg:inline text-muted-foreground/80 font-normal">· {selectedModelName}</span>
-                ) : null}
-              </button>
+        {/* Workspace navigation for non-chat views */}
+        {view !== "chat" && (
+          <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
+            <div className="overflow-x-auto">
+              <NavTabs view={view} onChange={handleViewChange} badge={{ bots: bots.length }} />
             </div>
-          )}
-        </header>
+
+            {/* Live backend vitals: connectivity, usage and subsystem readiness */}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <WorkspaceVitals />
+              <UpdateControl />
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={refreshFreeCatalog}
+                  disabled={freeRefreshing}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors disabled:opacity-40"
+                  title={freeNote || "Free keyless models — click to refresh live catalog"}
+                  aria-label={freeNote || "Free keyless models — not read yet. Click to refresh the live catalog."}
+                >
+                  <span className={`size-1.5 rounded-full ${FREE_TONE_DOT[freeTone]}`} aria-hidden="true" />
+                  <span className="hidden lg:inline">{freeRefreshing ? "Refreshing free…" : freeNote ? freeNote.split(".")[0] : "Free models"}</span>
+                  <span className="lg:hidden">Free</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("settings")}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors"
+                  title="Open Settings"
+                  aria-label="Open Settings — model selection, theme and API diagnostics"
+                >
+                  <Settings className="size-3.5" />
+                  {/*
+                    This control used to collapse to a bare 30px gear below the
+                    `lg` breakpoint, because its only label was behind
+                    `hidden lg:inline` and it carried no `aria-label`. A gear
+                    glyph next to a model name is guesswork, so the word "Settings"
+                    now stays at every width and the selected model is a separate,
+                    explicitly-labelled line underneath.
+                  */}
+                  <span className="whitespace-nowrap">Settings</span>
+                  <span className="sr-only">
+                    {selectedModelName ? ` — selected model: ${selectedModelName}` : " — no model selected"}
+                  </span>
+                  {selectedModelName ? (
+                    <span className="hidden lg:inline text-muted-foreground/80 font-normal">· {selectedModelName}</span>
+                  ) : null}
+                </button>
+              </div>
+            </div>
+          </header>
+        )}
+
+        {/* Project Context Header for Chat View (matches reference design) */}
+        {view === "chat" && (
+          <ProjectContextHeader
+            bot={activeBot}
+            bots={bots}
+            project={activeProject}
+            projectKnown={!activeProjectId || activeProject !== null}
+            thread={threads.find((thread) => thread.thread_id === activeThreadId) ?? null}
+            threads={threads}
+            projects={projects}
+            projectThreadCount={activeProjectThreadCount}
+            onSwitchProject={(id) => void handlePickProject(id)}
+            onSelectBot={rememberBot}
+            onSelectThread={(id) => openThread(id)}
+            onNewConversation={() => {
+              handleNewChat();
+            }}
+            onNewProject={() => setView("projects")}
+            onOpenView={(target) => setView(target)}
+            activeTab={activeContextTab}
+            onTabChange={(tab) => setActiveContextTab(tab)}
+            onToggleInspector={() => setInspectorOpen((v) => !v)}
+            inspectorOpen={inspectorOpen}
+          />
+        )}
 
         {gatewayOk === false && !offlineDismissed && (
           <div className="shrink-0 px-4 pt-2">
@@ -2013,7 +2044,21 @@ export default function ChatView() {
             />
           </Suspense>
         ) : (
-          <>
+          <div className="flex-1 flex overflow-hidden min-h-0">
+            {activeContextTab === "files" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <FilesSection threadId={activeThreadId} />
+              </Suspense>
+            ) : activeContextTab === "tasks" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <KanbanSection bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name, avatar: b.avatar }))} />
+              </Suspense>
+            ) : activeContextTab === "knowledge" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <MemorySection />
+              </Suspense>
+            ) : (
+              <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
             {/* Active-bot banner */}
             {activeBot && (
               <div className="shrink-0 px-4 pt-3">
@@ -2095,7 +2140,7 @@ export default function ChatView() {
               <div className="min-h-full flex flex-col justify-end gap-4">
                 {messages.length === 0 ? (
                   <div
-                    className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3"
+                    className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-4 w-full px-2"
                     aria-label={branding.name}
                   >
                     <h2 className="text-lg font-semibold text-foreground tracking-tight">
@@ -2139,11 +2184,15 @@ export default function ChatView() {
                     <div className="w-full pt-1">
                       <ChatShellEmptyState
                         botName={activeBot ? activeBot.display_name || activeBot.name : null}
+                        botRole={activeBot?.role}
+                        botAvatar={activeBot?.avatar}
                         projectId={activeProjectId}
                         projectName={
                           projects.find((p) => p.id === activeProjectId)?.name ?? null
                         }
+                        userName="MK"
                         onPickStarter={(prompt) => setInput(prompt)}
+                        onReviewProject={() => setInspectorOpen(true)}
                       />
                     </div>
                   </div>
@@ -2255,6 +2304,7 @@ export default function ChatView() {
             {/* Composer */}
             <footer className="shrink-0 pb-3">
               <Composer
+                botDisplayName={activeBot ? activeBot.display_name || activeBot.name : undefined}
                 input={input}
                 setInput={setInput}
                 onSubmit={handleSubmit}
@@ -2311,10 +2361,33 @@ export default function ChatView() {
                 slashCommands={slashCommands}
               />
             </footer>
-          </>
+          </div>
         )}
+
+        {/* Right-Hand Project Inspector Drawer */}
+        {inspectorOpen && (
+          <aside className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">
+            <ProjectDetailPanel
+              project={activeProject}
+              activeBot={activeBot}
+              projects={projects}
+              onOpenView={(target) => setView(target)}
+              onOpenThread={(id) => openThread(id)}
+              onNewConversationInProject={() => {
+                handleNewChat();
+                if (activeProjectId) void handlePickProject(activeProjectId);
+              }}
+              onClose={() => setInspectorOpen(false)}
+              onPickProject={(id) => void handlePickProject(id)}
+              onNewProject={() => setView("projects")}
+            />
+          </aside>
+        )}
+      </div>
+    )}
         </ErrorBoundary>
       </main>
+      </div>
 
       <LionPet
         state={lionState}

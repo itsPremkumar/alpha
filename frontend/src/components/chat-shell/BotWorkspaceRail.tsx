@@ -5,8 +5,11 @@ import {
   Building2,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   FileText,
+  Folder,
   FolderOpen,
+  FolderPlus,
   ListChecks,
   MessageSquare,
   MoreHorizontal,
@@ -14,6 +17,17 @@ import {
   RefreshCw,
   Settings,
   SquareStack,
+  Code2,
+  Search,
+  ShieldCheck,
+  CheckCircle2,
+  Palette,
+  Megaphone,
+  BarChart3,
+  Bot,
+  Sparkles,
+  Layers,
+  SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
 import { Project } from "@/lib/projects";
@@ -25,38 +39,13 @@ import {
   readProjectRailRows,
   type ProjectRailRow,
 } from "@/lib/chat-shell";
-import { MeasuredCount, BotGlyph, LeadGlyph, PresenceLine } from "./Honest";
-import { Menu, MenuGroup, MenuItem, MenuLink } from "./Menu";
+import { MeasuredCount, BotGlyph, LeadGlyph, PresenceLine, PresenceDot } from "./Honest";
+import { BotDropdownMenu } from "./BotDropdownMenu";
+import { ProjectDropdownMenu } from "./ProjectDropdownMenu";
 import { NewProjectDialog } from "./NewProjectDialog";
 import { threadTitle } from "@/lib/threads-ext";
 import type { Thread } from "@/types/chat";
 import type { WorkspaceView } from "@/lib/workspace-view";
-
-/**
- * The bot workspace rail: who you are talking to, what they own, and where the
- * conversation sits.
- *
- * This is the hierarchy from the spec, rendered in the left column above the
- * existing sidebar content. It is **additive** — the conversation list, search,
- * storage footer, backup and restore below it are untouched.
- *
- * Everything here is a projection of what the Gateway reported, and each
- * element names its own source:
- *
- *   - the bot row is `GET /api/bots`; the dot is derived from that row's
- *     `last_active` and is drawn only when the Gateway sent one;
- *   - a project's conversation count is the length of
- *     `GET /projects/{id}/threads`, because `GET /projects` carries no count
- *     field at all;
- *   - whether the selected bot is on a project comes from
- *     `GET /projects/{id}/presence`, and is left as *unknown* when that read
- *     fails rather than resolved to "no".
- *
- * The one thing this rail deliberately does not claim is that the project list
- * is scoped to the selected bot. `GET /projects` has no bot filter, so the group
- * says so in words instead of implying a per-bot split the Gateway does not
- * provide.
- */
 
 export interface BotWorkspaceRailProps {
   bots: BotProfile[];
@@ -92,19 +81,21 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     onProjectsChanged,
   } = props;
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [agentsCollapsed, setAgentsCollapsed] = useState(false);
+  const [standaloneCollapsed, setStandaloneCollapsed] = useState(false);
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const [projectScope, setProjectScope] = useState<"bot" | "all">("bot");
+
   const [rows, setRows] = useState<ProjectRailRow[] | null>(null);
   const [rowsError, setRowsError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [showAllStandalone, setShowAllStandalone] = useState(false);
-  // A bot switch changes every derived number below it, so a slow read that
-  // started under the previous bot must not be painted under the new one.
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const generationRef = useRef(0);
 
   const botName = activeBot ? activeBot.name : null;
-  const projectKey = projects.map((project) => project.id).join("|");
 
   const loadRows = useCallback(async () => {
     const generation = generationRef.current + 1;
@@ -117,9 +108,6 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       setRowsError(null);
     } catch (error) {
       if (generationRef.current !== generation) return;
-      // The rail keeps the previous rows rather than blanking them, but it says
-      // the refresh failed, because stale numbers presented as current are the
-      // same defect class as invented ones.
       setRowsError(error instanceof Error ? error.message : String(error));
     } finally {
       if (generationRef.current === generation) setRefreshing(false);
@@ -136,330 +124,610 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     void loadRows();
   }, [projects, loadRows]);
 
+  // Keep active project expanded
+  useEffect(() => {
+    if (activeProjectId) {
+      setExpandedProjects((prev) => ({ ...prev, [activeProjectId]: true }));
+    }
+  }, [activeProjectId]);
+
   const groups = groupConversations(threads, projects);
   const presence = activeBot
     ? botPresence(activeBot)
     : { state: "unrecorded" as const, label: "Lead Agent auto-routes", raw: null };
 
   const projectRows = projects.map((project) => railRowFor(rows ?? [], project.id));
-  const visibleProjects = showAllProjects ? projectRows : projectRows.slice(0, 4);
-  const hiddenProjects = projectRows.length - visibleProjects.length;
+
+  // Determine projects scoped to this bot
+  const botProjectRows = projectRows.filter((row) => {
+    if (!botName) return true;
+    if (row.leadsSelectedBot === true) return true;
+    const projGroup = groups.projects.find((g) => g.projectId === row.projectId);
+    if (projGroup && projGroup.items.length > 0) return true;
+    return false;
+  });
+
+  const displayedProjectRows =
+    projectScope === "bot" && botProjectRows.length > 0 ? botProjectRows : projectRows;
+
+  const visibleProjects = showAllProjects ? displayedProjectRows : displayedProjectRows.slice(0, 6);
+  const hiddenProjects = displayedProjectRows.length - visibleProjects.length;
+
   const standalone = groups.standalone.items;
-  const visibleStandalone = showAllStandalone ? standalone : standalone.slice(0, 3);
+  const visibleStandalone = showAllStandalone ? standalone : standalone.slice(0, 6);
   const hiddenStandalone = standalone.length - visibleStandalone.length;
 
-  return (
-    <div className="border-b border-border/60" data-shell="bot-workspace">
-      {/* ── current agent ────────────────────────────────────────────── */}
-      <div className="px-2 pt-2">
-        <Menu
-          label={`Bot menu for ${activeBot ? botDisplayName(activeBot) : "Lead Agent"}`}
-          trigger={
-            <span className="flex items-center gap-2 min-w-0 flex-1">
-              {activeBot ? (
-                <BotGlyph initials={botInitials(activeBot)} avatar={activeBot.avatar} presence={presence} />
-              ) : (
-                <LeadGlyph />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold leading-tight">
-                  {activeBot ? botDisplayName(activeBot) : "Lead Agent"}
-                </span>
-                <PresenceLine view={presence} className="mt-0.5" />
-              </span>
-            </span>
-          }
-        >
-          {(close) => (
-            <>
-              <MenuGroup caption="Start something">
-                <MenuItem
-                  icon={<MessageSquare className="size-3.5" />}
-                  label="New Conversation"
-                  hint="A plain chat with this bot. No project needed."
-                  onClick={() => {
-                    close();
-                    onNewConversation(null);
-                  }}
-                />
-                <MenuItem
-                  icon={<Building2 className="size-3.5" />}
-                  label="New Project"
-                  hint="Creates the project through POST /api/projects and attaches this bot as lead."
-                  onClick={() => {
-                    close();
-                    setCreating(true);
-                  }}
-                />
-              </MenuGroup>
-              <MenuGroup caption={`This bot's conversations (${standalone.length + groups.projects.reduce((sum, group) => sum + group.items.length, 0)})`}>
-                {groups.projects.length === 0 && standalone.length === 0 ? (
-                  <p className="px-2 py-1.5 text-[11px] text-muted-foreground italic">
-                    The Gateway listed no conversations for this bot.
-                  </p>
-                ) : null}
-                {groups.projects.map((group) => (
-                  <MenuLink
-                    key={group.projectId}
-                    label={group.name ?? `Project ${group.projectId}`}
-                    value={`${group.items.length}`}
-                    muted={!group.name}
-                    onClick={() => {
-                      close();
-                      if (group.projectId) onPickProject(group.projectId);
-                    }}
-                  />
-                ))}
-                {standalone.map((thread) => (
-                  <MenuLink
-                    key={thread.thread_id}
-                    label={threadTitle(thread as unknown as Record<string, unknown>)}
-                    value=""
-                    onClick={() => {
-                      close();
-                      onSelectThread(thread.thread_id);
-                    }}
-                  />
-                ))}
-              </MenuGroup>
-              <MenuGroup caption="This bot's projects">
-                {projects.length === 0 ? (
-                  <p className="px-2 py-1.5 text-[11px] text-muted-foreground italic">
-                    The Gateway listed no projects.
-                  </p>
-                ) : (
-                  projects.map((project) => (
-                    <MenuLink
-                      key={project.id}
-                      label={project.name || "Untitled project"}
-                      value={projectStatusText(project.status)}
-                      onClick={() => {
-                        close();
-                        onPickProject(project.id);
-                      }}
-                    />
-                  ))
-                )}
-              </MenuGroup>
-              <MenuGroup caption="More">
-                <MenuItem
-                  icon={<Settings className="size-3.5" />}
-                  label="Bot settings"
-                  hint="Opens the Bots view for this bot's profile and reputation."
-                  onClick={() => {
-                    close();
-                    onOpenView("bots");
-                  }}
-                />
-              </MenuGroup>
-            </>
-          )}
-        </Menu>
+  const toggleProjectExpand = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setExpandedProjects((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
-        <div className="flex items-center gap-1 mt-1.5">
+  const currentBotDisplayName = activeBot ? botDisplayName(activeBot) : "Lead Agent";
+
+  return (
+    <div className="flex flex-col h-full select-none divide-y divide-border/40" data-shell="bot-workspace">
+      {/* ── 1. AI Agents Roster (Hierarchical Bot Selection) ──────────── */}
+      <section className="p-2.5 bg-card/10">
+        <div className="flex items-center justify-between pb-1 px-1">
+          <button
+            type="button"
+            onClick={() => setAgentsCollapsed((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+          >
+            <Sparkles className="size-3.5 text-primary shrink-0" />
+            <span>AI Agents</span>
+            {bots.length > 0 && (
+              <span className="text-[10px] text-muted-foreground font-normal">({bots.length})</span>
+            )}
+            {agentsCollapsed ? (
+              <ChevronDown className="size-3 text-muted-foreground ml-0.5" />
+            ) : (
+              <ChevronUp className="size-3 text-muted-foreground ml-0.5" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenView("bots")}
+            className="text-[10px] text-muted-foreground hover:text-primary font-medium cursor-pointer"
+            title="Browse all agent profiles"
+          >
+            All profiles →
+          </button>
+        </div>
+
+        {!agentsCollapsed && (
+          <div className="space-y-1 mt-1.5 max-h-48 overflow-y-auto pr-0.5">
+            {/* Lead Agent default */}
+            <button
+              type="button"
+              onClick={() => onSelectBot(null)}
+              className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
+                activeBot === null
+                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                  : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className={`size-6 rounded-lg flex items-center justify-center shrink-0 text-xs ${
+                    activeBot === null ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  <Bot className="size-3.5" />
+                </div>
+                <span className="truncate text-xs">Lead Agent</span>
+              </div>
+              <span
+                className={`text-[10px] ${
+                  activeBot === null ? "text-white/80" : "text-muted-foreground"
+                }`}
+              >
+                Auto-routes
+              </span>
+            </button>
+
+            {/* List of registered bots */}
+            {bots.map((bot) => {
+              const isActive = activeBot?.name === bot.name;
+              const botPres = botPresence(bot);
+              const visual = getBotVisual(bot);
+
+              return (
+                <button
+                  key={bot.name}
+                  type="button"
+                  onClick={() => onSelectBot(bot)}
+                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                      : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className={`size-6 rounded-lg flex items-center justify-center shrink-0 border ${
+                        isActive
+                          ? "bg-white/20 text-white border-white/30"
+                          : `${visual.color}`
+                      }`}
+                    >
+                      {bot.avatar ? (
+                        <span className="text-xs">{bot.avatar}</span>
+                      ) : (
+                        visual.icon
+                      )}
+                    </div>
+                    <span className="truncate text-xs">{botDisplayName(bot)}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <PresenceDot
+                      view={botPres}
+                      className={isActive ? "ring-1 ring-white/50" : ""}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── 2. Current Agent Card & Primary New Chat ──────────────────── */}
+      <section className="p-3 bg-card/30 space-y-2">
+        <BotDropdownMenu
+          bots={bots}
+          activeBot={activeBot}
+          onSelectBot={onSelectBot}
+          onNewConversation={() => onNewConversation(null)}
+          onNewProject={() => setCreating(true)}
+          onViewConversations={() => setStandaloneCollapsed(false)}
+          onViewProjects={() => {
+            setProjectsCollapsed(false);
+            setProjectScope("bot");
+          }}
+          onOpenSettings={() => onOpenView("bots")}
+          onOpenView={onOpenView}
+        >
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 hover:bg-card hover:border-primary/40 transition-all cursor-pointer group shadow-2xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {activeBot ? (
+                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 border border-primary/20">
+                  {activeBot.avatar || <Code2 className="size-4" />}
+                </div>
+              ) : (
+                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                  <Bot className="size-4" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <span className="block truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                  {currentBotDisplayName}
+                </span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <PresenceDot view={presence} />
+                  <span className="text-[10px] text-muted-foreground truncate">
+                    {activeBot ? activeBot.role : "Autonomous Supervisor"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 text-muted-foreground group-hover:text-foreground shrink-0">
+              <ChevronDown className="size-3.5" />
+            </div>
+          </div>
+        </BotDropdownMenu>
+
+        {/* Primary "+ New Conversation" Button (direct with selected bot) */}
+        <button
+          type="button"
+          onClick={() => onNewConversation(null)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:opacity-95 transition-opacity shadow-xs cursor-pointer"
+          title={`Start a new conversation with ${currentBotDisplayName}`}
+        >
+          <Plus className="size-4" />
+          <span>New Conversation</span>
+        </button>
+      </section>
+
+      {/* ── 3. Standalone Conversations (Outside Any Project) ────────── */}
+      <section className="p-3 space-y-1.5" aria-label="Standalone conversations">
+        <div className="flex items-center justify-between pb-0.5 px-0.5">
+          <button
+            type="button"
+            onClick={() => setStandaloneCollapsed((v) => !v)}
+            className="text-xs font-semibold text-foreground hover:text-primary flex items-center gap-1.5 cursor-pointer transition-colors"
+          >
+            <MessageSquare className="size-3.5 text-primary" />
+            <span>Standalone</span>
+            {standalone.length > 0 && (
+              <span className="text-[10px] text-muted-foreground font-normal">({standalone.length})</span>
+            )}
+            {standaloneCollapsed ? (
+              <ChevronDown className="size-3 text-muted-foreground" />
+            ) : (
+              <ChevronUp className="size-3 text-muted-foreground" />
+            )}
+          </button>
           <button
             type="button"
             onClick={() => onNewConversation(null)}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold hover:opacity-95"
-            title="New Conversation: a plain chat with the selected bot and no project"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+            title="Start standalone conversation"
+            aria-label="Start standalone conversation"
           >
-            <Plus className="size-3.5" /> New Conversation
-          </button>
-          <button
-            type="button"
-            onClick={() => setCollapsed((value) => !value)}
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand the bot workspace" : "Collapse the bot workspace"}
-            title={collapsed ? "Expand the bot workspace" : "Collapse the bot workspace"}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            {collapsed ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            <Plus className="size-3.5" />
           </button>
         </div>
 
-        {/* The bot switcher. Selecting one scopes every group below it, which
-            is the first rule of the hierarchy. */}
-        <label className="mt-1.5 flex items-center gap-1.5 px-1">
-          <span className="text-[10px] text-muted-foreground shrink-0">Bot</span>
-          <select
-            value={botName ?? ""}
-            onChange={(event) => {
-              const next = event.target.value;
-              onSelectBot(next ? bots.find((bot) => bot.name === next) ?? null : null);
-            }}
-            aria-label="Select the bot whose workspace you are working in"
-            title="Selecting a bot scopes the projects and conversations below. The Gateway reports no bot filter on the project list, so the project group is not silently narrowed to this bot."
-            className="flex-1 min-w-0 text-[11px] bg-muted/60 border border-border/80 rounded-lg px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
-          >
-            <option value="">Lead Agent (auto-routes)</option>
-            {bots.map((bot) => (
-              <option key={bot.name} value={bot.name}>
-                {botDisplayName(bot)}
-              </option>
-            ))}
-          </select>
-          {bots.length === 0 && (
-            <span className="text-[10px] text-muted-foreground italic" title="GET /api/bots returned no rows.">
-              none
-            </span>
-          )}
-        </label>
-      </div>
-
-      {!collapsed && (
-        <div className="px-2 pb-2 space-y-2">
-          {/* ── projects ─────────────────────────────────────────────── */}
-          <section aria-label="Projects">
-            <div className="flex items-center gap-1 px-1 pt-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex-1">
-                Projects{" "}
-                {projects.length === 0 ? (
-                  <span className="italic normal-case tracking-normal">— none listed</span>
-                ) : (
-                  <span className="tabular-nums">({projects.length})</span>
-                )}
-              </p>
-              <button
-                type="button"
-                onClick={() => setCreating(true)}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-                title="New Project: creates it through POST /api/projects"
-                aria-label="New Project"
-              >
-                <Plus className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => void loadRows()}
-                disabled={refreshing}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40"
-                title="Re-read each project's conversation count and team from the Gateway"
-                aria-label="Refresh project counts"
-              >
-                <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-
-            {/* The Gateway has no per-bot project filter, and saying so is the
-                difference between a scoped list and a list that looks scoped. */}
-            {projects.length > 0 && (
-              <p className="px-1 pt-0.5 text-[10px] text-muted-foreground/90">
-                {activeBot
-                  ? `The Gateway lists every project on this installation and exposes no per-bot filter, so this is not narrowed to ${botDisplayName(activeBot)}. The badge on each row is the one thing the Gateway does answer: whether that bot is on the project.`
-                  : "The Gateway lists every project on this installation. Select a bot to see which ones it is on."}
-              </p>
-            )}
-
-            {rowsError && (
-              <p className="px-1 pt-1 text-[10px] text-destructive" role="alert">
-                The project refresh failed: {rowsError} The counts below may be from the previous read.
-              </p>
-            )}
-
-            {projects.length === 0 ? (
-              <p className="px-1 pt-1 text-[11px] text-muted-foreground italic">
-                GET /projects returned no projects. That is the server saying there are none, not a failed read.
+        {!standaloneCollapsed && (
+          <>
+            {standalone.length === 0 ? (
+              <p className="px-2 py-2 text-[11px] text-muted-foreground italic">
+                No standalone chats with {currentBotDisplayName} yet.
               </p>
             ) : (
-              <div className="mt-1 space-y-0.5">
-                {visibleProjects.map((project) => (
-                  <ProjectRow
-                    key={project.projectId}
-                    project={projects.find((candidate) => candidate.id === project.projectId) ?? null}
-                    row={project}
-                    active={project.projectId === activeProjectId}
-                    onOpenOverview={() => {
-                      onPickProject(project.projectId);
-                      onOpenView("projects");
-                    }}
-                    onNewConversation={() => onNewConversation(project.projectId)}
-                    onOpenFiles={() => {
-                      onPickProject(project.projectId);
-                      onNewConversation(project.projectId);
-                      onOpenView("files");
-                    }}
-                    onOpenTasks={() => {
-                      onPickProject(project.projectId);
-                      onOpenView("kanban");
-                    }}
-                    onOpenSettings={() => {
-                      onPickProject(project.projectId);
-                      onOpenView("projects");
-                    }}
-                  />
-                ))}
-                {hiddenProjects > 0 && (
+              <div className="space-y-0.5 mt-1">
+                {visibleStandalone.map((thread) => {
+                  const isActive = thread.thread_id === activeThreadId;
+                  const title = threadTitle(thread as unknown as Record<string, unknown>);
+
+                  return (
+                    <button
+                      key={thread.thread_id}
+                      type="button"
+                      onClick={() => onSelectThread(thread.thread_id)}
+                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                        isActive
+                          ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                          : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MessageSquare className={`size-3 shrink-0 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                        <span className="truncate">{title}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {hiddenStandalone > 0 ? (
                   <button
                     type="button"
-                    onClick={() => setShowAllProjects(true)}
-                    className="w-full px-2 py-1 text-left text-[10px] text-primary hover:underline"
+                    onClick={() => setShowAllStandalone(true)}
+                    className="w-full text-left text-[11px] text-primary hover:underline px-2 py-0.5 font-medium cursor-pointer"
                   >
-                    View all {hiddenProjects} more project{hiddenProjects === 1 ? "" : "s"}
+                    Show {hiddenStandalone} more chats...
                   </button>
-                )}
-                {showAllProjects && projectRows.length > 4 && (
+                ) : showAllStandalone && standalone.length > 6 ? (
                   <button
                     type="button"
-                    onClick={() => setShowAllProjects(false)}
-                    className="w-full px-2 py-1 text-left text-[10px] text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowAllStandalone(false)}
+                    className="w-full text-left text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 cursor-pointer"
                   >
                     Show fewer
                   </button>
-                )}
+                ) : null}
               </div>
             )}
-          </section>
+          </>
+        )}
+      </section>
 
-          {/* ── standalone conversations ─────────────────────────────── */}
-          <section aria-label="Standalone conversations">
-            <div className="flex items-center gap-1 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex-1 truncate">
-                Standalone Conversations{" "}
-                {standalone.length === 0 ? (
-                  <span className="italic normal-case tracking-normal">— none</span>
-                ) : (
-                  <span className="tabular-nums">({standalone.length})</span>
-                )}
-              </p>
-              {hiddenStandalone > 0 && (
+      {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
+      <section className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto" aria-label="Projects">
+        <div className="flex items-center justify-between pb-0.5 px-0.5">
+          <button
+            type="button"
+            onClick={() => setProjectsCollapsed((v) => !v)}
+            className="text-xs font-semibold text-foreground hover:text-primary flex items-center gap-1.5 cursor-pointer transition-colors"
+          >
+            <Folder className="size-3.5 text-primary" />
+            <span>Projects</span>
+            {displayedProjectRows.length > 0 && (
+              <span className="text-[10px] text-muted-foreground font-normal">
+                ({displayedProjectRows.length})
+              </span>
+            )}
+            {projectsCollapsed ? (
+              <ChevronDown className="size-3 text-muted-foreground" />
+            ) : (
+              <ChevronUp className="size-3 text-muted-foreground" />
+            )}
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+              title={`Create project for ${currentBotDisplayName}`}
+              aria-label="Create new project"
+            >
+              <Plus className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadRows()}
+              disabled={refreshing}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Refresh project counts"
+              aria-label="Refresh project counts"
+            >
+              <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenView("projects")}
+              className="text-[10px] text-muted-foreground hover:text-primary font-medium pl-1 cursor-pointer"
+              title="Manage all projects"
+            >
+              Manage
+            </button>
+          </div>
+        </div>
+
+        {/* Project Scope Filter Pills (Bot vs All) */}
+        {!projectsCollapsed && botName && botProjectRows.length > 0 && botProjectRows.length < projectRows.length && (
+          <div className="flex items-center gap-1 px-1 py-1">
+            <button
+              type="button"
+              onClick={() => setProjectScope("bot")}
+              className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                projectScope === "bot"
+                  ? "bg-primary/20 text-primary font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              {currentBotDisplayName} ({botProjectRows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setProjectScope("all")}
+              className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                projectScope === "all"
+                  ? "bg-primary/20 text-primary font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              All Projects ({projectRows.length})
+            </button>
+          </div>
+        )}
+
+        {rowsError && (
+          <p className="px-1 text-[10px] text-destructive" role="alert">
+            Refresh failed: {rowsError}
+          </p>
+        )}
+
+        {!projectsCollapsed && (
+          <>
+            {displayedProjectRows.length === 0 ? (
+              <div className="px-2 py-3 rounded-xl border border-dashed border-border/70 text-center space-y-1.5">
+                <p className="text-[11px] text-muted-foreground italic">
+                  {botName ? `No projects for ${currentBotDisplayName} yet` : "No projects yet"}
+                </p>
                 <button
                   type="button"
-                  onClick={() => setShowAllStandalone(true)}
-                  className="text-[10px] text-primary hover:underline"
+                  onClick={() => setCreating(true)}
+                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium cursor-pointer"
                 >
-                  View all {hiddenStandalone}
+                  <Plus className="size-3" /> Create a project
                 </button>
-              )}
-            </div>
-            <p className="px-1 text-[10px] text-muted-foreground/90">
-              Conversations with no project. Kept apart from projects on purpose.
-            </p>
-            {standalone.length === 0 ? (
-              <p className="px-1 pt-1 text-[11px] text-muted-foreground italic">
-                None. Every conversation in view belongs to a project.
-              </p>
+              </div>
             ) : (
-              <div className="mt-0.5 space-y-0.5">
-                {visibleStandalone.map((thread) => (
+              <div className="space-y-1 mt-1">
+                {visibleProjects.map((row) => {
+                  const project = projects.find((p) => p.id === row.projectId) ?? null;
+                  const isSelected = row.projectId === activeProjectId;
+                  const isExpanded = Boolean(expandedProjects[row.projectId]);
+                  const count = row.conversationCount;
+                  const projGroup = groups.projects.find((g) => g.projectId === row.projectId);
+                  const projThreads = projGroup ? projGroup.items : [];
+
+                  return (
+                    <div key={row.projectId} className="rounded-xl transition-colors">
+                      {/* Project Row Header */}
+                      <div
+                        className={`group flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                          isSelected
+                            ? "bg-primary/10 border border-primary/30 text-primary font-semibold"
+                            : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => toggleProjectExpand(row.projectId, e)}
+                          className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
+                          title={isExpanded ? "Collapse project conversations" : "Expand project conversations"}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="size-3 text-primary" />
+                          ) : (
+                            <ChevronRight className="size-3" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onPickProject(row.projectId);
+                            toggleProjectExpand(row.projectId);
+                          }}
+                          className="flex items-center gap-1.5 min-w-0 flex-1 text-left cursor-pointer"
+                          title={`Project: ${project?.name || row.projectId}`}
+                        >
+                          {isExpanded ? (
+                            <FolderOpen className={`size-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                          ) : (
+                            <Folder className={`size-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                          )}
+                          <span className="truncate">{project?.name || row.projectId}</span>
+                        </button>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Measured count badge */}
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full tabular-nums ${
+                              isSelected
+                                ? "bg-primary/20 text-primary font-bold"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                            title={count !== null ? `${count} conversations in this project` : "Conversation count unknown"}
+                          >
+                            {count !== null ? count : "—"}
+                          </span>
+
+                          {/* Project Options Menu using ProjectDropdownMenu */}
+                          <ProjectDropdownMenu
+                            project={project}
+                            projects={projects}
+                            projectThreads={projThreads}
+                            activeThreadId={activeThreadId}
+                            onSwitchProject={onPickProject}
+                            onNewConversation={(id) => onNewConversation(id)}
+                            onSelectThread={onSelectThread}
+                            onOpenOverview={() => {
+                              onPickProject(row.projectId);
+                              onOpenView("projects");
+                            }}
+                            onOpenFiles={() => {
+                              onPickProject(row.projectId);
+                              onOpenView("files");
+                            }}
+                            onOpenTasks={() => {
+                              onPickProject(row.projectId);
+                              onOpenView("kanban");
+                            }}
+                            onOpenKnowledge={() => {
+                              onPickProject(row.projectId);
+                              onOpenView("memory");
+                            }}
+                            onOpenSettings={() => {
+                              onPickProject(row.projectId);
+                              onOpenView("projects");
+                            }}
+                            onOpenView={onOpenView}
+                          >
+                            <button
+                              type="button"
+                              className="p-1 rounded text-muted-foreground hover:text-foreground opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title={`Project options for ${project?.name || row.projectId}`}
+                            >
+                              <MoreHorizontal className="size-3" />
+                            </button>
+                          </ProjectDropdownMenu>
+                        </div>
+                      </div>
+
+                      {/* ── Hierarchical Nested Project Conversations ───────── */}
+                      {isExpanded && (
+                        <div className="ml-4 pl-2 border-l-2 border-primary/20 space-y-0.5 my-1 pt-0.5">
+                          {/* New inside project button & quick links */}
+                          <div className="flex items-center justify-between gap-1 pr-1">
+                            <button
+                              type="button"
+                              onClick={() => onNewConversation(row.projectId)}
+                              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-left text-[11px] text-primary hover:bg-primary/10 transition-colors font-medium cursor-pointer"
+                              title="Start new conversation in this project"
+                            >
+                              <Plus className="size-3 shrink-0" />
+                              <span>New in Project</span>
+                            </button>
+                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onPickProject(row.projectId);
+                                  onOpenView("files");
+                                }}
+                                className="hover:text-primary transition-colors cursor-pointer"
+                                title="Project files"
+                              >
+                                Files
+                              </button>
+                              <span>•</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onPickProject(row.projectId);
+                                  onOpenView("kanban");
+                                }}
+                                className="hover:text-primary transition-colors cursor-pointer"
+                                title="Project tasks"
+                              >
+                                Tasks
+                              </button>
+                            </div>
+                          </div>
+
+                          {projThreads.length === 0 ? (
+                            <span className="block px-2 py-1 text-[10px] text-muted-foreground italic">
+                              No conversations in this project yet.
+                            </span>
+                          ) : (
+                            projThreads.map((thread) => {
+                              const isCurrent = thread.thread_id === activeThreadId;
+                              const title = threadTitle(thread as unknown as Record<string, unknown>);
+
+                              return (
+                                <button
+                                  key={thread.thread_id}
+                                  type="button"
+                                  onClick={() => onSelectThread(thread.thread_id)}
+                                  className={`w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded-md text-left text-[11px] transition-colors cursor-pointer ${
+                                    isCurrent
+                                      ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <MessageSquare className="size-2.5 shrink-0 opacity-70" />
+                                    <span className="truncate">{title}</span>
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Clean pagination toggle */}
+                {hiddenProjects > 0 ? (
                   <button
-                    key={thread.thread_id}
                     type="button"
-                    onClick={() => onSelectThread(thread.thread_id)}
-                    className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-left text-[11px] ${
-                      thread.thread_id === activeThreadId
-                        ? "bg-muted text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                    }`}
+                    onClick={() => setShowAllProjects(true)}
+                    className="w-full text-left text-[11px] text-primary hover:underline px-2 py-0.5 font-medium cursor-pointer"
                   >
-                    <MessageSquare className="size-3 shrink-0 opacity-60" />
-                    <span className="truncate">{threadTitle(thread as unknown as Record<string, unknown>)}</span>
+                    Show {hiddenProjects} more projects...
                   </button>
-                ))}
+                ) : showAllProjects && displayedProjectRows.length > 6 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllProjects(false)}
+                    className="w-full text-left text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 cursor-pointer"
+                  >
+                    Show fewer
+                  </button>
+                ) : null}
+
+                {/* Quick "+ New Project" action */}
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-border/80 hover:border-primary/50 text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors mt-1 cursor-pointer"
+                >
+                  <FolderPlus className="size-3.5 text-primary" />
+                  <span>Create Project</span>
+                </button>
               </div>
             )}
-          </section>
-        </div>
-      )}
+          </>
+        )}
+      </section>
 
       {creating && (
         <NewProjectDialog
@@ -476,133 +744,52 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
   );
 }
 
-/**
- * One project row: its name, the one number the Gateway actually reports for it,
- * whether the selected bot is on it, and the eight-item project menu.
- */
-function ProjectRow(props: {
-  project: Project | null;
-  row: ProjectRailRow;
-  active: boolean;
-  onOpenOverview: () => void;
-  onNewConversation: () => void;
-  onOpenFiles: () => void;
-  onOpenTasks: () => void;
-  onOpenSettings: () => void;
-}) {
-  const { project, row } = props;
-  const status = project ? projectStatusText(project.status) : "status not reported";
-  return (
-    <div className={`group rounded-lg ${props.active ? "bg-muted/70" : "hover:bg-muted/40"}`}>
-      <div className="flex items-center gap-1 pl-2 pr-1">
-        <button
-          type="button"
-          onClick={props.onOpenOverview}
-          className="flex items-center gap-1.5 min-w-0 flex-1 text-left py-1"
-          title={`${project?.name || row.projectId} — open this project's overview`}
-        >
-          <FolderOpen className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate text-[11px] font-medium">{project?.name || row.projectId}</span>
-          {/* The count, with its own unknown case. `count` is the length of the
-              server's paginated list, so 0 is a real measurement. */}
-          <MeasuredCount
-            value={row.conversationCount}
-            source="GET /api/projects/{id}/threads"
-            className="ml-auto shrink-0 text-[10px] text-muted-foreground"
-          />
-        </button>
-        {row.leadsSelectedBot === true ? (
-          <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-primary/15 text-primary font-semibold" title={`${props.row.members?.join(", ") || "This bot"} — from GET /api/projects/{id}/presence`}>
-            on it
-          </span>
-        ) : row.leadsSelectedBot === false ? (
-          <span
-            className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground"
-            title={`Not on this project's team. Members: ${row.members?.join(", ") || "none listed"} — from GET /api/projects/{id}/presence`}
-          >
-            not on
-          </span>
-        ) : (
-          <span
-            className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground italic"
-            title={
-              row.crewError
-                ? `The project team could not be read, so whether this bot is on it is unknown: ${row.crewError}`
-                : "The project team was not read, so whether this bot is on it is unknown."
-            }
-          >
-            team ?
-          </span>
-        )}
-        <Menu
-          compact
-          label={`Project menu for ${project?.name || row.projectId}`}
-          trigger={<MoreHorizontal className="size-3.5" />}
-        >
-          {(close) => (
-            <>
-              <MenuGroup caption={project?.name || row.projectId}>
-                <p className="px-2 pt-0.5 pb-1 text-[10px] text-muted-foreground">
-                  Status: {status}.{" "}
-                  {row.conversationCount === null
-                    ? "Conversation count not reported."
-                    : `${row.conversationCount} conversation${row.conversationCount === 1 ? "" : "s"} in the loaded list.`}
-                </p>
-                <MenuItem
-                  icon={<SquareStack className="size-3.5" />}
-                  label="Project overview"
-                  hint="Opens the Projects view with this project selected."
-                  onClick={() => {
-                    close();
-                    props.onOpenOverview();
-                  }}
-                />
-                <MenuItem
-                  icon={<MessageSquare className="size-3.5" />}
-                  label="New conversation in this project"
-                  hint="Opens a blank conversation scoped to this project."
-                  onClick={() => {
-                    close();
-                    props.onNewConversation();
-                  }}
-                />
-                <MenuItem
-                  icon={<FileText className="size-3.5" />}
-                  label="Files and knowledge"
-                  hint="The Gateway has no project-scoped file route. This opens the conversation-scoped Files view for a new conversation in this project."
-                  onClick={() => {
-                    close();
-                    props.onOpenFiles();
-                  }}
-                />
-                <MenuItem
-                  icon={<ListChecks className="size-3.5" />}
-                  label="Tasks"
-                  hint="Opens the Kanban view. Task counts for a project come from GET /api/projects/{id}/state."
-                  onClick={() => {
-                    close();
-                    props.onOpenTasks();
-                  }}
-                />
-                <MenuItem
-                  icon={<Settings className="size-3.5" />}
-                  label="Project settings"
-                  hint="Opens the Projects view, where the crew and collaboration policy are edited."
-                  onClick={() => {
-                    close();
-                    props.onOpenSettings();
-                  }}
-                />
-              </MenuGroup>
-            </>
-          )}
-        </Menu>
-      </div>
-      {row.conversationError && (
-        <p className="px-2 pb-1 text-[10px] text-destructive" role="alert">
-          Conversation count unavailable: {row.conversationError}
-        </p>
-      )}
-    </div>
-  );
+function getBotVisual(bot: BotProfile) {
+  const name = (bot.name + " " + (bot.role || "") + " " + (bot.display_name || "")).toLowerCase();
+  if (name.includes("coder") || name.includes("developer") || name.includes("engineer")) {
+    return {
+      icon: <Code2 className="size-3.5" />,
+      color: "bg-blue-500/15 text-blue-500 border-blue-500/30",
+    };
+  }
+  if (name.includes("research") || name.includes("search")) {
+    return {
+      icon: <Search className="size-3.5" />,
+      color: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
+    };
+  }
+  if (name.includes("review") || name.includes("sec") || name.includes("audit")) {
+    return {
+      icon: <ShieldCheck className="size-3.5" />,
+      color: "bg-amber-500/15 text-amber-500 border-amber-500/30",
+    };
+  }
+  if (name.includes("test") || name.includes("qa")) {
+    return {
+      icon: <CheckCircle2 className="size-3.5" />,
+      color: "bg-teal-500/15 text-teal-500 border-teal-500/30",
+    };
+  }
+  if (name.includes("design") || name.includes("ui") || name.includes("front")) {
+    return {
+      icon: <Palette className="size-3.5" />,
+      color: "bg-fuchsia-500/15 text-fuchsia-500 border-fuchsia-500/30",
+    };
+  }
+  if (name.includes("market") || name.includes("growth") || name.includes("sales")) {
+    return {
+      icon: <Megaphone className="size-3.5" />,
+      color: "bg-rose-500/15 text-rose-500 border-rose-500/30",
+    };
+  }
+  if (name.includes("data") || name.includes("analyst") || name.includes("sql")) {
+    return {
+      icon: <BarChart3 className="size-3.5" />,
+      color: "bg-sky-500/15 text-sky-500 border-sky-500/30",
+    };
+  }
+  return {
+    icon: <Bot className="size-3.5" />,
+    color: "bg-primary/15 text-primary border-primary/30",
+  };
 }

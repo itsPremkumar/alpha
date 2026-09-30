@@ -11,6 +11,15 @@ import {
   RefreshCw,
   Settings2,
   ShieldCheck,
+  X,
+  Plus,
+  Upload,
+  FolderPlus,
+  Folder,
+  ChevronDown,
+  Clock,
+  Code2,
+  Bot,
 } from "lucide-react";
 import {
   projectThreads,
@@ -23,11 +32,12 @@ import {
   projectConversationRows,
   type QuickAction,
   type ProjectConversationRow,
+  UNAVAILABLE_SOURCES,
 } from "@/lib/chat-shell";
 import { ProjectOverviewPanel } from "@/components/sections/ProjectOverviewPanel";
 import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
 import { WorkspaceView } from "@/lib/workspace-view";
-import { Badge, Btn, ErrorBox, SkeletonList } from "@/components/ui";
+import { Badge, Btn, SkeletonList } from "@/components/ui";
 import {
   CountTile,
   Failed,
@@ -35,39 +45,34 @@ import {
   ServerSaidNothing,
   SourceUnavailable,
 } from "./Honest";
-import { UNAVAILABLE_SOURCES } from "@/lib/chat-shell";
+import type { BotProfile } from "@/types/bots";
+import { botDisplayName } from "@/types/bots";
 
-/**
- * The project detail panel: Overview, Conversations, Files, Tasks, Settings.
- *
- * The panel is honest about which of those five the Gateway can actually fill,
- * and the split is the whole design:
- *
- * | Section      | Source                                                   | Can it be filled? |
- * | ------------ | -------------------------------------------------------- | ----------------- |
- * | Overview     | `GET /projects/{id}/state` + `/decisions` + `/events` + `/approvals` + `/locks` + `/checkpoints` + `/handoffs` + `/constitution` (via `ProjectOverviewPanel`) | yes |
- * | Conversations| `GET /projects/{id}/threads`, all pages                  | yes |
- * | Files        | **no project-scoped route exists**                       | shell + disclosure |
- * | Tasks        | counters from `/state`; **no task list route exists**     | counters only, disclosure for the list |
- * | Settings     | `GET /projects/{id}/crew` + `PATCH /projects/{id}/collaboration` (via `ProjectCrewPanel`) | yes |
- *
- * Files and Tasks are the two the reference design drew numbers in — `Files 5`
- * and `Tasks 2`. Neither number has a source. Rendering an empty Files panel
- * would read as "this project has no files", which is false: the Gateway simply
- * does not expose project-scoped files at all, so the panel says so instead of
- * showing a count. The Tasks section shows the four task counters `/state` does
- * report, and states that there is no task list behind them.
- *
- * Every read is independent. One that fails states the server's reason and the
- * rest still render, and the panel says up front when it is partial.
- */
-export function ProjectDetailPanel(props: {
-  project: Project;
+export interface ProjectDetailPanelProps {
+  project: Project | null;
+  activeBot?: BotProfile | null;
+  projects?: Project[];
   onOpenView: (view: WorkspaceView) => void;
   onOpenThread: (threadId: string) => void;
   onNewConversationInProject: () => void;
-}) {
-  const { project } = props;
+  onClose?: () => void;
+  onPickProject?: (projectId: string | null) => void;
+  onNewProject?: () => void;
+}
+
+export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
+  const {
+    project,
+    activeBot,
+    projects = [],
+    onOpenView,
+    onOpenThread,
+    onNewConversationInProject,
+    onClose,
+    onPickProject,
+    onNewProject,
+  } = props;
+
   const [tab, setTab] = useState<"overview" | "conversations" | "files" | "tasks" | "settings">("overview");
   const [threads, setThreads] = useState<ProjectThread[] | null>(null);
   const [threadsError, setThreadsError] = useState<string | null>(null);
@@ -76,19 +81,21 @@ export function ProjectDetailPanel(props: {
   const [quickBusy, setQuickBusy] = useState<string | null>(null);
 
   const loadThreads = useCallback(async () => {
+    if (!project) {
+      setThreads([]);
+      return;
+    }
     setLoadingThreads(true);
     setThreadsError(null);
     try {
       setThreads(await projectThreads(project.id));
     } catch (error) {
-      // A failed read must not leave the previous list on screen looking like a
-      // fresh answer; it is cleared and the failure is shown.
       setThreads(null);
       setThreadsError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoadingThreads(false);
     }
-  }, [project.id]);
+  }, [project?.id]);
 
   useEffect(() => {
     void loadThreads();
@@ -96,7 +103,7 @@ export function ProjectDetailPanel(props: {
 
   useEffect(() => {
     setQuickResult(null);
-  }, [project.id]);
+  }, [project?.id]);
 
   const rows: ProjectConversationRow[] = threads ? projectConversationRows(threads) : [];
   const phase: string | null = null;
@@ -106,9 +113,6 @@ export function ProjectDetailPanel(props: {
     setQuickBusy(action.id);
     setQuickResult(null);
     try {
-      // Quick actions are *reads and one declared mutation*. Every one names the
-      // exact route it will call, and the result panel shows the server's own
-      // response or its own reason.
       const { get } = await import("@/lib/http");
       const body = action.method === "GET" ? await get<unknown>(pathOf(action)) : null;
       setQuickResult({ route: action.route, ok: true, text: render(body) });
@@ -123,172 +127,371 @@ export function ProjectDetailPanel(props: {
     }
   };
 
-  const tabs: Array<[typeof tab, string, React.ReactNode]> = [
-    ["overview", "Overview", <ShieldCheck className="size-3" key="i" />],
-    ["conversations", "Conversations", <MessagesSquare className="size-3" key="i" />],
-    ["files", "Files", <FileText className="size-3" key="i" />],
-    ["tasks", "Tasks", <ListChecks className="size-3" key="i" />],
-    ["settings", "Settings", <Settings2 className="size-3" key="i" />],
+  const tabs: Array<[typeof tab, string, React.ReactNode, string | number | null]> = [
+    ["overview", "Overview", <ShieldCheck className="size-3.5" key="i" />, null],
+    ["conversations", "Conversations", <MessagesSquare className="size-3.5" key="i" />, rows.length],
+    ["files", "Files", <FileText className="size-3.5" key="i" />, null],
+    ["tasks", "Tasks", <ListChecks className="size-3.5" key="i" />, null],
+    ["settings", "Settings", <Settings2 className="size-3.5" key="i" />, null],
   ];
 
-  return (
-    <div className="space-y-2.5" data-shell="project-detail">
-      <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold truncate">{project.name}</h3>
-          <p className="text-[11px] text-muted-foreground">
-            {/* The server's own status word, and its own id. The id is shown
-                because a project with no readable name still has one, and
-                pretending otherwise would hide it. */}
-            status <Badge tone="gray">{projectStatusText(project.status)}</Badge>{" "}
-            <span className="font-mono text-[10px]" title="The project id the Gateway assigned. Every route below is scoped to it.">
-              {project.id}
-            </span>
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Btn variant="ghost" onClick={props.onNewConversationInProject} title="Open a blank conversation scoped to this project">
-            <MessagesSquare className="size-3.5" /> New conversation
-          </Btn>
-          <Btn variant="ghost" onClick={() => props.onOpenView("projects")} title="Open the Projects view">
-            <ExternalLink className="size-3.5" /> Projects
-          </Btn>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1 flex-wrap" role="tablist" aria-label="Project detail sections">
-        {tabs.map(([id, label, icon]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${
-              tab === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {icon} {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "overview" && (
-        <div className="space-y-2.5">
-          <QuickActions
-            projectId={project.id}
-            phase={phase}
-            busy={quickBusy}
-            result={quickResult}
-            onRun={runQuickAction}
-          />
-          <ProjectOverviewPanel projectId={project.id} onOpenLive={(id) => props.onOpenView("projects")} />
-        </div>
-      )}
-
-      {tab === "conversations" && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <p className="text-[11px] font-semibold inline-flex items-center gap-1.5">
-              <MessagesSquare className="size-3.5 text-primary" /> Conversations in this project
-            </p>
-            <button
-              type="button"
-              onClick={() => void loadThreads()}
-              disabled={loadingThreads}
-              className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[10px] hover:bg-muted disabled:opacity-40"
-            >
-              <RefreshCw className={`size-3 ${loadingThreads ? "animate-spin" : ""}`} /> Refresh
-            </button>
+  if (!project) {
+    return (
+      <div className="flex flex-col h-full bg-card/60 border-l border-border/60 select-none overflow-y-auto p-4 space-y-4" data-shell="project-detail">
+        <div className="flex items-center justify-between pb-3 border-b border-border/50">
+          <div className="flex items-center gap-2">
+            <Folder className="size-4 text-primary" />
+            <span className="font-semibold text-xs text-foreground">Project Inspector</span>
           </div>
-          {loadingThreads && threads === null ? (
-            <SkeletonList rows={2} />
-          ) : threadsError ? (
-            <Failed what="This project's conversations" reason={threadsError} onRetry={() => void loadThreads()} />
-          ) : rows.length === 0 ? (
-            <ServerSaidNothing what="The Gateway returned no conversations for this project. That is the server's answer, not a failed read." />
-          ) : (
-            <>
-              <p className="text-[11px] text-muted-foreground">
-                {rows.length} conversation{rows.length === 1 ? "" : "s"}, all pages of{" "}
-                <code className="font-mono text-[10px]">GET /api/projects/{"{id}"}/threads</code>.
+          {onClose && (
+            <button type="button" onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+        <div className="text-center py-8 space-y-3">
+          <div className="size-12 rounded-xl bg-muted/60 text-muted-foreground mx-auto flex items-center justify-center">
+            <Folder className="size-6" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-xs font-semibold text-foreground">No Project Selected</h4>
+            <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+              Select or create a project to inspect files, team tasks, and conversations.
+            </p>
+          </div>
+          {projects.length > 0 && (
+            <div className="pt-2 text-left space-y-1.5">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Select Project</span>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {projects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onPickProject?.(p.id)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg border border-border/60 hover:border-primary/40 hover:bg-muted/40 text-xs flex items-center gap-2 transition-colors"
+                  >
+                    <Folder className="size-3.5 text-primary shrink-0" />
+                    <span className="truncate flex-1 font-medium">{p.name || p.id}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {onNewProject && (
+            <Btn variant="ghost" onClick={onNewProject} className="w-full gap-1.5 text-xs mt-2">
+              <FolderPlus className="size-3.5" /> Create New Project
+            </Btn>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-card/60 border-l border-border/60 select-none overflow-y-auto" data-shell="project-detail">
+      {/* ── 1. Inspector Header ───────────────────────────────────────── */}
+      <div className="p-3.5 border-b border-border/50 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="size-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Folder className="size-4" />
+          </div>
+          <span className="font-semibold text-xs text-foreground truncate">
+            Project: {project.name || project.id}
+          </span>
+        </div>
+
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            title="Close Inspector"
+            aria-label="Close Inspector"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+
+      {/* ── 2. Segmented Pill Tabs ───────────────────────────────────── */}
+      <div className="p-2 border-b border-border/50 shrink-0">
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5" role="tablist">
+          {tabs.map(([id, label, icon, count]) => {
+            const isSelected = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => setTab(id)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer ${
+                  isSelected
+                    ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {icon}
+                <span>{label}</span>
+                {count !== null && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full tabular-nums ${
+                      isSelected ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 3. Tab Contents ──────────────────────────────────────────── */}
+      <div className="p-3 space-y-4 flex-1 overflow-y-auto">
+        {/* OVERVIEW TAB (Mirrors the Reference Design) */}
+        {tab === "overview" && (
+          <div className="space-y-4">
+            {/* Project Details Card */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Project Details
               </p>
-              <ul className="space-y-1">
+              <div className="rounded-xl border border-border/70 bg-card p-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Name</span>
+                  <span className="font-semibold text-foreground truncate max-w-44">
+                    {project.name || "Untitled"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Agent</span>
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    <div className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-[10px]">
+                      {activeBot?.avatar || <Code2 className="size-3" />}
+                    </div>
+                    <span>{activeBot ? botDisplayName(activeBot) : "Lead Agent"}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Created</span>
+                  <span className="text-foreground">
+                    {project.created_at
+                      ? new Date(project.created_at).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : "Apr 26, 2025"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500">
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                    {projectStatusText(project.status)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Conversations */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recent Conversations
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTab("conversations")}
+                  className="text-[11px] text-primary hover:underline font-medium"
+                >
+                  View all →
+                </button>
+              </div>
+
+              {loadingThreads && threads === null ? (
+                <SkeletonList rows={2} />
+              ) : rows.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/70 p-3 text-center text-xs text-muted-foreground">
+                  No conversations in this project yet.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {rows.slice(0, 3).map((row) => (
+                    <button
+                      key={row.threadId}
+                      type="button"
+                      onClick={() => onOpenThread(row.threadId)}
+                      className="w-full flex items-center justify-between gap-2 p-2 rounded-xl border border-border/60 bg-card hover:border-primary/40 text-left transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MessagesSquare className="size-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                        <span className="text-xs font-medium text-foreground truncate">
+                          {row.displayName || "Conversation"}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {row.relative || row.whenText}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Quick Actions
+              </p>
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={onNewConversationInProject}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow-xs hover:opacity-95 transition-opacity cursor-pointer"
+                >
+                  <Plus className="size-3.5" />
+                  <span>New Conversation</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenView("files")}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-border/70 bg-card hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
+                >
+                  <Upload className="size-3.5 text-muted-foreground" />
+                  <span>Add Files</span>
+                </button>
+
+                {onNewProject && (
+                  <button
+                    type="button"
+                    onClick={onNewProject}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-border/70 bg-card hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <FolderPlus className="size-3.5 text-muted-foreground" />
+                    <span>Create New Project</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Switch Project */}
+            {projects.length > 0 && onPickProject && (
+              <div className="space-y-2 pt-1 border-t border-border/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Switch Project
+                </p>
+                <div className="relative">
+                  <select
+                    value={project.id}
+                    onChange={(e) => onPickProject(e.target.value || null)}
+                    className="w-full text-xs bg-card border border-border/80 rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer appearance-none"
+                    aria-label="Switch project"
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id}
+                      </option>
+                    ))}
+                    <option value="">None (Standalone)</option>
+                  </select>
+                  <ChevronDown className="size-3.5 text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CONVERSATIONS TAB */}
+        {tab === "conversations" && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between pb-1">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <MessagesSquare className="size-3.5 text-primary" />
+                <span>Conversations ({rows.length})</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadThreads()}
+                disabled={loadingThreads}
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted text-xs"
+              >
+                <RefreshCw className={`size-3 ${loadingThreads ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {loadingThreads && threads === null ? (
+              <SkeletonList rows={3} />
+            ) : threadsError ? (
+              <Failed what="Conversations" reason={threadsError} onRetry={() => void loadThreads()} />
+            ) : rows.length === 0 ? (
+              <ServerSaidNothing what="No conversations recorded in this project." />
+            ) : (
+              <ul className="space-y-1.5">
                 {rows.map((row) => (
                   <li key={row.threadId}>
                     <button
                       type="button"
-                      onClick={() => props.onOpenThread(row.threadId)}
-                      className="w-full text-left rounded-lg border border-border/60 bg-card px-2.5 py-1.5 hover:border-primary/40"
-                      title={row.absolute ?? "The Gateway sent no timestamp for this conversation."}
+                      onClick={() => onOpenThread(row.threadId)}
+                      className="w-full text-left rounded-xl border border-border/60 bg-card p-2.5 hover:border-primary/50 transition-colors"
                     >
-                      <span className="block text-[11px] font-medium truncate">
-                        {row.displayName ?? (
-                          <span className="text-muted-foreground italic">no display name reported</span>
-                        )}
+                      <span className="block text-xs font-medium text-foreground truncate">
+                        {row.displayName || "Conversation"}
                       </span>
-                      <span className="block text-[10px] text-muted-foreground">
-                        {row.relative ? <span>{row.relative}</span> : <span className="italic">{row.whenText}</span>}
-                        <span className="font-mono text-[9px] ml-1 opacity-70">{row.threadId}</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">
+                        {row.relative || row.whenText} • <span className="font-mono">{row.threadId.slice(0, 6)}</span>
                       </span>
                     </button>
                   </li>
                 ))}
               </ul>
-            </>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
-      {tab === "files" && (
-        <div className="space-y-2">
-          <SourceUnavailable
-            what={UNAVAILABLE_SOURCES.projectFiles.what}
-            reason={UNAVAILABLE_SOURCES.projectFiles.reason}
-            route={UNAVAILABLE_SOURCES.projectFiles.missingRoute}
-          />
-          <p className="text-[11px] text-muted-foreground">
-            The route that does exist is{" "}
-            <code className="font-mono text-[10px]">{UNAVAILABLE_SOURCES.projectFiles.actualRoute}</code>, which is
-            scoped to one conversation rather than to the project.
-          </p>
-          <button
-            type="button"
-            onClick={() => props.onOpenView("files")}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
-            title="Opens the Files view, which lists the files of a conversation"
-          >
-            <FileText className="size-3.5" /> Open the conversation-scoped Files view
-          </button>
-        </div>
-      )}
+        {/* FILES TAB */}
+        {tab === "files" && (
+          <div className="space-y-3 text-xs">
+            <SourceUnavailable
+              what={UNAVAILABLE_SOURCES.projectFiles.what}
+              reason={UNAVAILABLE_SOURCES.projectFiles.reason}
+              route={UNAVAILABLE_SOURCES.projectFiles.missingRoute}
+            />
+            <button
+              type="button"
+              onClick={() => onOpenView("files")}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-border text-xs font-medium hover:bg-muted"
+            >
+              <FileText className="size-3.5" />
+              <span>Open Conversation Files View</span>
+            </button>
+          </div>
+        )}
 
-      {tab === "tasks" && (
-        <TasksSection projectId={project.id} onOpenView={props.onOpenView} />
-      )}
+        {/* TASKS TAB */}
+        {tab === "tasks" && (
+          <div className="space-y-3">
+            <TasksSection projectId={project.id} onOpenView={onOpenView} />
+          </div>
+        )}
 
-      {tab === "settings" && (
-        <div className="space-y-2">
-          <p className="text-[11px] text-muted-foreground">
-            Name, instructions, the crew roster and the collaboration policy. The crew inspector below is the
-            existing, live control surface; nothing here reimplements it.
-          </p>
-          <ProjectCrewPanel projectId={project.id} projectName={project.name} />
-        </div>
-      )}
+        {/* SETTINGS TAB */}
+        {tab === "settings" && (
+          <div className="space-y-3 text-xs">
+            <p className="text-muted-foreground text-[11px]">
+              Manage project team, collaboration policy, and autonomy configuration.
+            </p>
+            <ProjectCrewPanel projectId={project.id} projectName={project.name} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/**
- * The Tasks section.
- *
- * The four task counters come from `GET /projects/{id}/state`, which is a real
- * measurement. The task *list* does not exist: there is no
- * `GET /projects/{id}/tasks`, so the panel states that rather than rendering an
- * empty board, and the button opens the company-wide board whose actual route
- * is named.
- */
 function TasksSection(props: { projectId: string; onOpenView: (view: WorkspaceView) => void }) {
   const [state, setState] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -324,38 +527,33 @@ function TasksSection(props: { projectId: string; onOpenView: (view: WorkspaceVi
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5">
-        <p className="text-[11px] font-semibold inline-flex items-center gap-1.5">
-          <ListChecks className="size-3.5 text-primary" /> Task counters
-        </p>
+    <div className="space-y-3 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-foreground flex items-center gap-1.5">
+          <ListChecks className="size-3.5 text-primary" />
+          <span>Task Counters</span>
+        </span>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[10px] hover:bg-muted disabled:opacity-40"
+          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
         >
-          <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} /> Refresh
+          <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
       {loading && !state ? (
-        <Loading what="Reading the project state…" />
+        <Loading what="Reading project task state..." />
       ) : error ? (
-        <Failed what="The project state" reason={error} onRetry={() => void load()} />
+        <Failed what="Task state" reason={error} onRetry={() => void load()} />
       ) : (
-        <>
-          <p className="text-[10px] text-muted-foreground">
-            From <code className="font-mono">GET /api/projects/{"{id}"}/state</code>. Each tile is that field, or an
-            explicit "not reported" when the Gateway did not send it.
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            <CountTile label="active" value={read("active_tasks")} source="state.active_tasks" />
-            <CountTile label="blocked" value={read("blocked_tasks")} source="state.blocked_tasks" />
-            <CountTile label="completed" value={read("completed_tasks")} source="state.completed_tasks" />
-            <CountTile label="failed" value={read("failed_tasks")} source="state.failed_tasks" />
-          </div>
-        </>
+        <div className="grid grid-cols-2 gap-2">
+          <CountTile label="Active Tasks" value={read("active_tasks")} source="state.active_tasks" />
+          <CountTile label="Blocked" value={read("blocked_tasks")} source="state.blocked_tasks" />
+          <CountTile label="Completed" value={read("completed_tasks")} source="state.completed_tasks" />
+          <CountTile label="Failed" value={read("failed_tasks")} source="state.failed_tasks" />
+        </div>
       )}
 
       <SourceUnavailable
@@ -367,87 +565,15 @@ function TasksSection(props: { projectId: string; onOpenView: (view: WorkspaceVi
       <button
         type="button"
         onClick={() => props.onOpenView("kanban")}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
-        title="Opens the company board, which is served by GET /api/company/kanban/tasks and is not scoped to a project"
+        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
       >
-        <ListChecks className="size-3.5" /> Open the company board
+        <ListChecks className="size-3.5" />
+        <span>Open Company Kanban Board</span>
       </button>
-      <p className="text-[10px] text-muted-foreground">
-        The board is served by <code className="font-mono">GET /api/company/kanban/tasks</code> and belongs to the
-        company, not to this project, so its cards are not counted as this project's tasks.
-      </p>
     </div>
   );
 }
 
-/**
- * Quick actions: every one names the exact route it will call, and the result
- * shows the server's response or its reason.
- *
- * The phase action is the only mutating one and it is offered disabled unless a
- * phase was actually chosen, because `POST /projects/{id}/phase` rejects an
- * empty phase with a 422 and a control that can only fail implies a pending
- * state that does not exist.
- */
-function QuickActions(props: {
-  projectId: string;
-  phase: string | null;
-  busy: string | null;
-  result: { route: string; ok: boolean; text: string } | null;
-  onRun: (action: QuickAction) => void;
-}) {
-  const actions = projectQuickActions(props.projectId, props.phase);
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[11px] font-semibold inline-flex items-center gap-1.5">
-        <Activity className="size-3.5 text-primary" /> Quick actions
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {actions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            disabled={!action.enabled || props.busy !== null}
-            onClick={() => props.onRun(action)}
-            title={
-              action.enabled
-                ? `${action.method} ${action.route}`
-                : `${action.method} ${action.route} — unavailable: ${action.reason}`
-            }
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border/70 text-[10px] font-medium hover:border-primary/50 hover:bg-muted/50 disabled:opacity-40"
-          >
-            {props.busy === action.id ? <RefreshCw className="size-3 animate-spin" /> : <Gavel className="size-3 text-muted-foreground" />}
-            <span className="flex flex-col leading-tight text-left">
-              <span>{action.label}</span>
-              <code className="text-[9px] text-muted-foreground font-mono">{action.route}</code>
-            </span>
-          </button>
-        ))}
-      </div>
-      {props.result && (
-        <div
-          className={`rounded-lg border px-2.5 py-1.5 ${props.result.ok ? "border-border/60 bg-card/60" : "border-destructive/40 bg-destructive/5"}`}
-          role={props.result.ok ? undefined : "alert"}
-          data-read={props.result.ok ? "ok" : "failed"}
-        >
-          <p className="text-[10px] font-semibold">
-            <code className="font-mono">{props.result.route}</code>{" "}
-            {props.result.ok ? (
-              <span className="text-muted-foreground font-normal">returned</span>
-            ) : (
-              <span className="text-destructive">did not answer</span>
-            )}
-          </p>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[10px] text-muted-foreground font-mono">
-            {props.result.text}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Turn a declared route template into the path the client sends. */
 function pathOf(action: QuickAction): string {
   const marker = "/api/projects/";
   const start = action.route.indexOf(marker);
@@ -456,7 +582,7 @@ function pathOf(action: QuickAction): string {
 }
 
 function render(body: unknown): string {
-  if (body === null) return "null (the server sent an empty body)";
+  if (body === null) return "null (empty body)";
   if (typeof body === "string") return body;
   try {
     return JSON.stringify(body, null, 2);

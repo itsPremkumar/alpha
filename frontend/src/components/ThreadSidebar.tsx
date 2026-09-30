@@ -355,14 +355,18 @@ export function ThreadSidebar({
   }
 
   return (
-    <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-screen shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl">
+    <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-full shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl">
       {/* Top Header */}
-      <div className="p-3 border-b border-border/60 flex items-center justify-between">
-        <BrandLogo logoSize={28} textClassName="text-sm" priority />
+      <div className="p-3 border-b border-border/60 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-semibold text-foreground truncate">
+            {scopeLabel ? `${scopeLabel}'s Space` : "Agent Workspace"}
+          </span>
+        </div>
         <button
           type="button"
           onClick={() => setIsOpen(false)}
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
           title="Collapse sidebar"
           aria-label="Collapse sidebar"
         >
@@ -370,58 +374,97 @@ export function ThreadSidebar({
         </button>
       </div>
 
-      {/* Bot -> Project -> Conversation. Added above the existing content; the
-          New Chat button, the scope summary, the search box, the conversation
-          list, the local-search results and the storage footer are all still
-          here, unchanged and in the same order. */}
-      {rail}
+      {rail ? (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* Quick Search across conversations */}
+          <div className="px-3 pt-2.5 pb-1 shrink-0">
+            <div className="relative flex items-center">
+              <Search className="size-3.5 absolute left-2.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search conversations…"
+                aria-label="Search conversations"
+                className="w-full bg-muted/50 border border-border/60 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </div>
+            {error && <p className="text-[11px] text-destructive mt-1">{error}</p>}
+          </div>
 
-      {/* New Chat Button */}
-      <div className="p-3 pb-2 space-y-2">
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95 shadow-xs transition-opacity"
-          title={scopeLabel ? `Start a new chat with ${scopeLabel}` : "Start a new chat"}
-        >
-          <Plus className="size-4" />
-          <span className="truncate">{scopeLabel ? `New chat with ${scopeLabel}` : "New Chat"}</span>
-        </button>
-        <div className="flex items-center gap-2 px-1" title={scopeLabel ? `Showing only ${scopeLabel}'s conversations — switch bots above to see others` : "Showing every conversation across all bots"}>
-          {scopeLabel ? (
-            <>
-              <span className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-bold overflow-hidden shrink-0">
-                {scopeAvatar || scopeLabel.slice(0, 2).toUpperCase()}
-              </span>
-              <span className="text-[11px] font-semibold truncate flex-1">{scopeLabel}'s space</span>
-            </>
+          {search.trim().length >= 2 || serverHits !== null ? (
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Search results ({serverHits ? serverHits.length : local.length})
+              </p>
+              {(serverHits !== null ? serverHits : local).map((h, i) => {
+                const id = String((h as Record<string, unknown>).thread_id ?? (h as Record<string, unknown>).id ?? i);
+                const title = String((h as Record<string, unknown>).title ?? (h as Record<string, unknown>).display_name ?? threadTitle(h as unknown as Record<string, unknown>));
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onSelectThread(id)}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+                  >
+                    <MessageSquare className="size-3.5 text-primary shrink-0" />
+                    <span className="truncate flex-1">{title}</span>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
-            <span className="text-[11px] font-semibold text-muted-foreground">All conversations</span>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {rail}
+            </div>
           )}
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">
-            {threadsLoading ? "…" : threads.length}
-          </span>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Legacy fallback when rail is not supplied */}
+          <div className="p-3 pb-2 space-y-2">
+            <button
+              type="button"
+              onClick={onNewChat}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95 shadow-xs transition-opacity"
+              title={scopeLabel ? `Start a new chat with ${scopeLabel}` : "Start a new chat"}
+            >
+              <Plus className="size-4" />
+              <span className="truncate">{scopeLabel ? `New chat with ${scopeLabel}` : "New Chat"}</span>
+            </button>
+            <div className="flex items-center gap-2 px-1" title={scopeLabel ? `Showing only ${scopeLabel}'s conversations — switch bots above to see others` : "Showing every conversation across all bots"}>
+              {scopeLabel ? (
+                <>
+                  <span className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-bold overflow-hidden shrink-0">
+                    {scopeAvatar || scopeLabel.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="text-[11px] font-semibold truncate flex-1">{scopeLabel}'s space</span>
+                </>
+              ) : (
+                <span className="text-[11px] font-semibold text-muted-foreground">All conversations</span>
+              )}
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">
+                {threadsLoading ? "…" : threads.length}
+              </span>
+            </div>
+          </div>
 
-      {/* Search Input (searches the server after 2 characters) */}
-      <div className="px-3 py-1">
-        <div className="relative flex items-center">
-          <Search className="size-3.5 absolute left-2.5 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search conversations…"
-            aria-label="Search conversations"
-            className="w-full bg-muted/50 border border-border/60 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-          />
-        </div>
-        {error && <p className="text-[11px] text-destructive mt-1.5">{error}</p>}
-      </div>
+          <div className="px-3 py-1">
+            <div className="relative flex items-center">
+              <Search className="size-3.5 absolute left-2.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search conversations…"
+                aria-label="Search conversations"
+                className="w-full bg-muted/50 border border-border/60 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </div>
+            {error && <p className="text-[11px] text-destructive mt-1.5">{error}</p>}
+          </div>
 
-      {/* Conversation Thread List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {serverHits !== null && (
           <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Server results ({serverHits.length})
@@ -503,6 +546,8 @@ export function ThreadSidebar({
           </>
         )}
       </div>
+      </>
+      )}
 
       {/* History storage footer. Marked as a keep-out region: the lion companion's
           hit area is `pointer-events: auto`, and a live hit-test found it sitting
