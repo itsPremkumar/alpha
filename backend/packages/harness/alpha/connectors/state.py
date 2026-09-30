@@ -140,6 +140,12 @@ class ConnectorStore:
         key = (connector_id or "").strip().lower()
         if self._catalog.get(key) is None:
             raise ConnectorError(f"unknown connector {connector_id!r}; not present in the catalog")
+        # Validate the input on EVERY call. Re-installing an existing connector
+        # reuses the stored state object, so the dataclass ``__post_init__``
+        # validation does not run again — without this guard a negative rate
+        # limit would be written silently on the second install.
+        if not isinstance(rate_limit_per_min, int) or rate_limit_per_min < 0:
+            raise ConnectorError("rate_limit_per_min must be a non-negative integer")
         with self._lock:
             state = self._states.get(key) or ConnectorInstallState(connector_id=key)
             state.enabled = bool(enable)
@@ -168,6 +174,8 @@ class ConnectorStore:
             state.last_error = error
             state.last_checked_at = _now()
             if rate_limit_per_min is not None:
+                if not isinstance(rate_limit_per_min, int) or rate_limit_per_min < 0:
+                    raise ConnectorError("rate_limit_per_min must be a non-negative integer")
                 state.rate_limit_per_min = rate_limit_per_min
             self._save()
             return state

@@ -147,3 +147,32 @@ Run: `uv run --with pydantic --with langchain --with "sqlalchemy[asyncio]" --wit
 
 > Features that require live model API keys were verified up to the point of their honest refusal; a full model-backed run needs provider credentials.
 
+---
+
+## 9. Real-world scenario + advanced testing — `realworld_scenario.py` (23/23)
+
+One integrated run — **"Acme Sales, Q4 renewal drive"** — chains every feature, then runs advanced testing.
+
+**Scenario (all passed):**
+1. **Connectors** — installed/enabled the sales stack (gmail, google_calendar, slack, hubspot, github).
+2. **Security** — `*.bank.com` / `*.stripe.com` routed to a residential proxy; imported the rep's profile; cookie smuggling refused.
+3. **Routines** — captured `renewal_outreach` (hubspot_list_deals → gmail_draft → slack_post) and replayed it for `cto@bigco.com`; the `owner` email was auto-detected as a required parameter.
+4. **Swarm** — decomposed the drive into a **5-node hierarchical DAG**.
+5. **Cloning** — forked `researcher` into a specialist agent.
+6. **Council** — routed the pricing-exception question to `debate`.
+7. **Tournament** — 3 candidate emails → Pareto winner `cand_rewrite`.
+8. **Perpetual** — daemon `RUNNING`.
+
+**Advanced testing (all passed):**
+- **9.1 Concurrency** — 30 parallel operators → 31 routines stored, 0 corruption (~1.3 s).
+- **9.2 Persistence** — connectors, routines and egress policy all survived a restart.
+- **9.3 Security / failure modes** — path-traversal name, missing param, unknown connector, negative rate limit, credential field, corrupt stores (×2), bad schema version, and a model-less council were **all refused**.
+- **9.4 Scale** — 300 routines written and reloaded.
+
+### Bug found AND fixed by this advanced testing
+`ConnectorStore.install()` validated `rate_limit_per_min` only through the dataclass `__post_init__`, which does **not** re-run when re-installing an existing connector — so a negative rate limit was silently written on a second install. Fixed by validating on every call (and in `record_health`), with a regression test (`test_reinstall_rejects_negative_rate_limit`).
+
+### Known limitation
+The durable stores rewrite the whole JSON document on every `save()`, so a single write is O(n) and a full build is O(n²). Measured ≈66 ms/save at n≈150 here (300 saves ≈ 20 s). Fine for hundreds of records; tens of thousands would need a per-record file or append-only log.
+
+

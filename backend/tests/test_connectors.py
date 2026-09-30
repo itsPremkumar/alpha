@@ -86,3 +86,23 @@ def test_builtin_connectors_cover_grok_advertised_apps():
     for expected in ("gmail", "google_calendar", "outlook", "onedrive", "x"):
         assert expected in ids
     assert ConnectorCatalog().get("gmail").auth == AuthKind.OAUTH2
+
+
+def test_reinstall_rejects_negative_rate_limit(tmp_path):
+    """Regression: re-installing an existing connector must still validate.
+
+    The dataclass ``__post_init__`` only runs on construction; re-installing
+    reuses the stored object, so the store must validate the input itself.
+    """
+    store = ConnectorStore(tmp_path / "connectors.json")
+    store.install("gmail", enable=True, rate_limit_per_min=60)
+    with pytest.raises(ConnectorError):
+        store.install("gmail", enable=True, rate_limit_per_min=-1)
+    assert store.get("gmail").rate_limit_per_min == 60  # unchanged
+
+
+def test_record_health_rejects_negative_rate_limit(tmp_path):
+    store = ConnectorStore(tmp_path / "connectors.json")
+    store.install("slack")
+    with pytest.raises(ConnectorError):
+        store.record_health("slack", ConnectorHealth.OK, rate_limit_per_min=-3)
