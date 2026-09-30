@@ -59,6 +59,7 @@ import { BotGallery } from "@/components/bots/BotGallery";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
 import { ActiveBotPicker } from "@/components/bots/ActiveBotPicker";
+import { ChatShell, ChatShellEmptyState } from "@/components/chat-shell/ChatShell";
 import { ErrorBox, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
@@ -1651,6 +1652,39 @@ export default function ChatView() {
           onImportHistory={handleImportHistory}
           serverOnline={gatewayOk === true && serverHistoryError === null}
           onOpenSettings={() => setView("settings")}
+          onProjectsChanged={async () => {
+            setProjects(await listProjects());
+          }}
+          // Bot -> Project -> Conversation. Rendered inside the sidebar, above
+          // the conversation list. Nothing that was already in this sidebar was
+          // removed to make room for it: the New Chat button, the scope
+          // summary, the search box, the grouped conversation list, the local
+          // message search and the storage footer are all untouched.
+          rail={
+            <ChatShell
+              bots={bots}
+              activeBot={activeBot}
+              threads={activeBot ? threads.filter((t) => threadOwner(t) === activeBot.name) : threads}
+              projects={projects}
+              activeThreadId={activeThreadId}
+              activeProjectId={activeProjectId}
+              onSelectBot={rememberBot}
+              onSelectThread={(id) => {
+                openThread(id);
+              }}
+              onNewConversation={(projectId) => {
+                handleNewChat();
+                if (projectId !== null) void handlePickProject(projectId);
+              }}
+              onPickProject={(projectId) => {
+                void handlePickProject(projectId);
+              }}
+              onOpenView={(target) => setView(target)}
+              onProjectsChanged={async () => {
+                setProjects(await listProjects());
+              }}
+            />
+          }
         />
       )}
 
@@ -2097,6 +2131,21 @@ export default function ChatView() {
                         </button>
                       </div>
                     )}
+                    {/* Added beneath the existing welcome block, not in place of
+                        it: the logo, the intro sentence and the bot chips above
+                        are all still here. This adds the one line that names the
+                        bot and the project, and the starter actions, each of
+                        which is a real request to this Gateway. */}
+                    <div className="w-full pt-1">
+                      <ChatShellEmptyState
+                        botName={activeBot ? activeBot.display_name || activeBot.name : null}
+                        projectId={activeProjectId}
+                        projectName={
+                          projects.find((p) => p.id === activeProjectId)?.name ?? null
+                        }
+                        onPickStarter={(prompt) => setInput(prompt)}
+                      />
+                    </div>
                   </div>
                 ) : (
                   messages.map((msg) => (
