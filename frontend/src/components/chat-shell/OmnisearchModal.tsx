@@ -37,18 +37,63 @@ export function OmnisearchModal({
 }: OmnisearchModalProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Focus belongs back on whatever opened the palette: without this the
+  // keyboard user is dropped on <body> every time they dismiss it.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setQuery("");
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setTimeout(() => inputRef.current?.focus(), 50);
+    } else if (returnFocusRef.current) {
+      returnFocusRef.current.focus();
+      returnFocusRef.current = null;
     }
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    /** Every tab stop inside the panel, in DOM order. */
+    const stops = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>("button, input, a[href], [tabindex]:not([tabindex='-1'])") ?? [],
+      ).filter((el) => !el.hasAttribute("disabled"));
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
+      if (e.key === "Escape") {
         onClose();
+        return;
+      }
+      // Arrow keys walk the result list: the palette never told a screen
+      // reader it was a dialog and never offered a way to move through results
+      // without leaving the widget, so Tab escaped into the page behind it.
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const stopsInPanel = stops();
+        if (stopsInPanel.length === 0) return;
+        e.preventDefault();
+        const current = stopsInPanel.indexOf(document.activeElement as HTMLElement);
+        const next =
+          e.key === "ArrowDown"
+            ? (current + 1) % stopsInPanel.length // -1 + 1 = 0: arrows from the body reach the first result
+            : current <= 0
+              ? stopsInPanel.length - 1
+              : current - 1;
+        stopsInPanel[next]?.focus();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const stopsInPanel = stops();
+      if (stopsInPanel.length === 0) return;
+      const first = stopsInPanel[0];
+      const last = stopsInPanel[stopsInPanel.length - 1];
+      const active = document.activeElement;
+      if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && (active === first || !stopsInPanel.includes(active as HTMLElement))) {
+        e.preventDefault();
+        last.focus();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -84,14 +129,24 @@ export function OmnisearchModal({
     });
   }, [threads, q]);
 
+  // The empty-query caps are a deliberate first-paint budget, but a cap with
+  // no count implies "these are all of them". Each capped section says how
+  // many it is holding back instead of truncating silently.
+  const hidden = (total: number, shown: number) => (q ? 0 : Math.max(0, total - shown));
+
   if (!isOpen) return null;
 
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search agents, projects and conversations"
         className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col max-h-[75vh] animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
@@ -200,6 +255,11 @@ export function OmnisearchModal({
                   </button>
                 ))}
               </div>
+              {hidden(bots.length, filteredBots.length) > 0 && (
+                <p className="px-2 pt-1.5 text-[10px] text-muted-foreground">
+                  +{hidden(bots.length, filteredBots.length)} more agents — type to search all
+                </p>
+              )}
             </div>
           )}
 
@@ -234,6 +294,11 @@ export function OmnisearchModal({
                   </button>
                 ))}
               </div>
+              {hidden(projects.length, filteredProjects.length) > 0 && (
+                <p className="px-2 pt-1.5 text-[10px] text-muted-foreground">
+                  +{hidden(projects.length, filteredProjects.length)} more projects — type to search all
+                </p>
+              )}
             </div>
           )}
 
@@ -266,6 +331,11 @@ export function OmnisearchModal({
                   </button>
                 ))}
               </div>
+              {hidden(threads.length, filteredThreads.length) > 0 && (
+                <p className="px-2 pt-1.5 text-[10px] text-muted-foreground">
+                  +{hidden(threads.length, filteredThreads.length)} more conversations — type to search all
+                </p>
+              )}
             </div>
           )}
 

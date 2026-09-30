@@ -191,7 +191,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 <button
                   type="button"
                   onClick={() => onRate(message.id, 1)}
-                  className={`p-1 rounded hover:bg-muted/60 transition-colors ${message.rating === 1 ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`p-1.5 rounded hover:bg-muted/60 transition-colors ${message.rating === 1 ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}`}
                   title="Good answer"
                   aria-label="Rate answer good"
                 >
@@ -200,7 +200,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 <button
                   type="button"
                   onClick={() => onRate(message.id, -1)}
-                  className={`p-1 rounded hover:bg-muted/60 transition-colors ${message.rating === -1 ? "text-destructive" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`p-1.5 rounded hover:bg-muted/60 transition-colors ${message.rating === -1 ? "text-destructive" : "text-muted-foreground hover:text-foreground"}`}
                   title="Bad answer"
                   aria-label="Rate answer bad"
                 >
@@ -213,7 +213,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 type="button"
                 onClick={onRegenerate}
                 disabled={regenerating}
-                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40"
+                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40"
                 title="Ask again (regenerate)"
                 aria-label="Regenerate answer"
               >
@@ -227,7 +227,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                   setDraft(message.content);
                   setEditing((v) => !v);
                 }}
-                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                 title="Edit and resend"
                 aria-label="Edit and resend message"
               >
@@ -237,7 +237,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
             <button
               type="button"
               onClick={copyToClipboard}
-              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               title={isUser ? "Copy prompt" : "Copy answer"}
               aria-label={isUser ? "Copy prompt" : "Copy answer"}
             >
@@ -246,7 +246,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
             <button
               type="button"
               onClick={downloadResponse}
-              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               title={isUser ? "Download prompt (.md)" : "Download answer (.md)"}
               aria-label={isUser ? "Download prompt" : "Download answer"}
             >
@@ -256,7 +256,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
               <button
                 type="button"
                 onClick={() => void playSpeech()}
-                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                 title={
                   speakError
                     ? `Speech failed: ${speakError}`

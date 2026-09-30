@@ -545,7 +545,7 @@ test("a genuinely present company still maps through", async () => {
 });
 
 /**
- * `system.ts` pulls in nine sibling modules and only `probeReason` is under test.
+ * `system.ts` pulls in its sibling modules and only `probeReason` is under test.
  *
  * They are pointed at a stub that exports every one of those names, because
  * ESM validates named imports at link time: a stub missing a single export
@@ -567,6 +567,11 @@ const PROBE_DEPS_URL = dataUrl(`
   export const channelStatus = async () => { throw new Error("stub: must not run"); };
   export const companyStatus = async () => { throw new Error("stub: must not run"); };
   export const fetchMcpConfig = async () => { throw new Error("stub: must not run"); };
+  // The voice probe reads \`GET /api/multimodal/capabilities\` through this
+  // client. \`probeReason\` never calls it, but ESM validates the named import at
+  // link time, so the export has to exist or this file dies after the last
+  // assertion for a reason unrelated to what was asserted.
+  export const getCapabilities = async () => { throw new Error("stub: must not run"); };
   // The watchdog probe reads through the STRICT fleet reader and words its own
   // detail, so the detail is a function of the fleet rather than the constant
   // "watching" it used to be. Both names must exist for \`system.ts\` to link at
@@ -582,7 +587,7 @@ const PROBE_DEPS_URL = dataUrl(`
 `);
 
 const systemCode = transpile(read("./system.ts")).replace(
-  /from\s+"\.\/(http|workspace|memory|skills|scheduled|channels|supervision|teamops|mcp)"/g,
+  /from\s+"\.\/(http|workspace|memory|skills|scheduled|channels|supervision|teamops|mcp|multimodal)"/g,
   `from "${PROBE_DEPS_URL}"`,
 );
 

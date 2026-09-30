@@ -9,6 +9,12 @@ import { listProjects, Project } from "@/lib/projects";
 import { errMsg } from "@/lib/http";
 import { branding } from "@/lib/branding";
 import { BrandLogo, BrandMark } from "@/components/BrandLogo";
+// One source for the build's version: `frontend/package.json` is one of the
+// three files `scripts/verify_versions.sh` pins, so the chip cannot drift from
+// the release the way the hardcoded `v3.0` it replaced had (the app shipped
+// 2.1.0 while the footer claimed 3.0, and support tickets quote whatever this
+// says).
+import packageJson from "../../package.json";
 
 interface ThreadSidebarProps {
   threads: Thread[];
@@ -63,12 +69,19 @@ export function ThreadSidebar({
   const [isOpen, setIsOpen] = useState(true);
 
   // The sidebar is a fixed 16rem rail. On a phone that would consume most of
-  // the viewport and leave the conversation unusable, so start collapsed on
-  // narrow screens. This runs after mount (not in the initialiser) to keep the
-  // server and client first render identical.
+  // the viewport and leave the conversation unusable, so it starts collapsed on
+  // narrow screens. The breakpoint is *watched*, not sampled once: with the old
+  // empty-dep effect, rotating a phone or resizing the window left the rail in
+  // the state the previous viewport had decided, and the initial `true` meant
+  // the first paint on a phone was an overlay until the effect ran. This still
+  // runs after mount, keeping the server and client first render identical.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.innerWidth < 768) setIsOpen(false);
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(max-width: 767px)");
+    const apply = () => setIsOpen(!query.matches);
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
   }, []);
   const [search, setSearch] = useState("");
   const [serverHits, setServerHits] = useState<Array<Record<string, unknown>> | null>(null);
@@ -223,7 +236,7 @@ export function ThreadSidebar({
               onClick={() => setMenuFor(menuOpen ? null : t.thread_id)}
               className={`p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted ${menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
               title="Conversation options"
-              aria-label={`Options for ${t.title}`}
+              aria-label={`Options for ${threadTitle(t as unknown as Record<string, unknown>)}`}
             >
               <MoreHorizontal className="size-3.5" />
             </button>
@@ -355,7 +368,21 @@ export function ThreadSidebar({
   }
 
   return (
-    <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-full shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl">
+    <>
+      {/* Below `md` the rail is an overlay, so it needs a way out that is not
+          the 16px collapse icon: tapping the covered conversation closes it.
+          `aria-hidden` would hide an interactive control from AT, so it is a
+          real button with a name instead. Display is decided by the same
+          breakpoint the rail uses, so desktop never sees it. */}
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Close conversation sidebar"
+          onClick={() => setIsOpen(false)}
+          className="hidden max-md:block fixed inset-0 z-30 bg-black/40"
+        />
+      )}
+      <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-full shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl">
       {/* Top Header */}
       <div className="p-3 border-b border-border/60 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -638,16 +665,17 @@ export function ThreadSidebar({
                   }
                 })();
               }}
-              className="hover:text-destructive"
-              title="Erase browser-saved history"
+              className="font-semibold text-destructive/80 hover:text-destructive"
+              title="Erase this browser's saved history (server copies are kept)"
             >
-              Erase saved
+              Erase local history
             </button>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/80">v3.0</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/80">v{packageJson.version}</span>
           </span>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

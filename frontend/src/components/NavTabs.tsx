@@ -108,6 +108,26 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];
 
+/**
+ * Menu order for the "More Views" dropdown, one entry per `TabCategory`.
+ *
+ * The dropdown used to hardcode three groups — collaboration, operations,
+ * system — while `deliberation` was declared with `category: "core"`, so that
+ * tab was rendered by no group at all: it could not be reached from the
+ * navigation it belongs to, and arriving there by other means left an active
+ * label ("Deliberation") on a menu that did not contain it. Driving the menu
+ * from this list makes membership total by construction — every tab category
+ * has exactly one heading, so adding a category without a group fails the
+ * source-pin test in `src/lib/workspace-nav.test.mjs` instead of silently
+ * hiding a view.
+ */
+const SECONDARY_GROUPS: { category: TabCategory; heading: string }[] = [
+  { category: "core", heading: "Core" },
+  { category: "collaboration", heading: "Collaboration & Team" },
+  { category: "operations", heading: "Operations & Resources" },
+  { category: "system", heading: "System & Architecture" },
+];
+
 export function NavTabs(props: {
   view: WorkspaceView;
   onChange: (v: WorkspaceView) => void;
@@ -183,110 +203,39 @@ export function NavTabs(props: {
 
         {dropdownOpen && (
           <div className="absolute left-0 mt-1.5 w-64 rounded-2xl border border-border/80 bg-card shadow-xl z-50 p-2 space-y-2 focus:outline-none animate-in fade-in zoom-in-95 duration-100">
-            {/* Category: Collaboration */}
-            <div>
-              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Collaboration & Team
+            {SECONDARY_GROUPS.map((group, index) => (
+              <div key={group.category} className={index === 0 ? undefined : "pt-1 border-t border-border/50"}>
+                <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{group.heading}</div>
+                <div className="space-y-0.5">
+                  {secondaryTabs
+                    .filter((t) => t.category === group.category)
+                    .map((t) => {
+                      const active = props.view === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => {
+                            props.onChange(t.id);
+                            setDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-left transition-colors ${
+                            active
+                              ? "bg-primary text-primary-foreground font-semibold"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                          }`}
+                        >
+                          <span className={active ? "text-primary-foreground" : "text-primary"}>{t.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="block truncate">{t.label}</span>
+                            <span className={`block text-[10px] truncate ${active ? "text-white/80" : "text-muted-foreground"}`}>{t.blurb}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
               </div>
-              <div className="space-y-0.5">
-                {secondaryTabs
-                  .filter((t) => t.category === "collaboration")
-                  .map((t) => {
-                    const active = props.view === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          props.onChange(t.id);
-                          setDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-left transition-colors ${
-                          active
-                            ? "bg-primary text-primary-foreground font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        <span className={active ? "text-primary-foreground" : "text-primary"}>{t.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="block truncate">{t.label}</span>
-                          <span className={`block text-[10px] truncate ${active ? "text-white/80" : "text-muted-foreground"}`}>{t.blurb}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-
-            {/* Category: Operations */}
-            <div className="pt-1 border-t border-border/50">
-              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Operations & Resources
-              </div>
-              <div className="space-y-0.5">
-                {secondaryTabs
-                  .filter((t) => t.category === "operations")
-                  .map((t) => {
-                    const active = props.view === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          props.onChange(t.id);
-                          setDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-left transition-colors ${
-                          active
-                            ? "bg-primary text-primary-foreground font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        <span className={active ? "text-primary-foreground" : "text-primary"}>{t.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="block truncate">{t.label}</span>
-                          <span className={`block text-[10px] truncate ${active ? "text-white/80" : "text-muted-foreground"}`}>{t.blurb}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-
-            {/* Category: System */}
-            <div className="pt-1 border-t border-border/50">
-              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                System & Architecture
-              </div>
-              <div className="space-y-0.5">
-                {secondaryTabs
-                  .filter((t) => t.category === "system")
-                  .map((t) => {
-                    const active = props.view === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          props.onChange(t.id);
-                          setDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-left transition-colors ${
-                          active
-                            ? "bg-primary text-primary-foreground font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        <span className={active ? "text-primary-foreground" : "text-primary"}>{t.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="block truncate">{t.label}</span>
-                          <span className={`block text-[10px] truncate ${active ? "text-white/80" : "text-muted-foreground"}`}>{t.blurb}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
+            ))}
           </div>
         )}
       </div>

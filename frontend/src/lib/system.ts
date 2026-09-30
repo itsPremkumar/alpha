@@ -7,6 +7,7 @@ import { channelStatus } from "./channels";
 import { fetchFleetWorkers, watchdogDetail } from "./supervision";
 import { companyStatus } from "./teamops";
 import { fetchMcpConfig } from "./mcp";
+import { getCapabilities } from "./multimodal";
 
 export interface Probe {
   key: string;
@@ -92,7 +93,42 @@ export async function probeAll(): Promise<Probe[]> {
     runProbe("memory", "Memory", "Facts the agent remembers", async () => fetchMemory(), (m) => `${m.facts.length} ${m.facts.length === 1 ? "fact" : "facts"}`),
     runProbe("skills", "Skills", "Toggleable abilities", async () => listSkills(), (s) => `${s.length} ${s.length === 1 ? "skill" : "skills"}`),
     runProbe("scheduled", "Scheduler", "Recurring background work", async () => listScheduledTasks(), (t) => `${t.length} ${t.length === 1 ? "schedule" : "schedules"}`),
-    runProbe("channels", "Chat channels", "Telegram / Slack / Discord…", async () => channelStatus(), (c) => (c.length === 0 ? "none linked" : `${c.length} running`)),
+    runProbe("channels", "Chat channels", "Telegram / Slack / Discord…", async () => channelStatus(), (c) => {
+      // A configured roster is not a connected one. `/api/channels` answers with
+      // every supported platform, `enabled: false, running: false` on a default
+      // install, so counting rows rendered "10 running" while nothing was
+      // linked — and made voice's own honest "no speech models installed" read
+      // as a failure of something else. Empty roster and "linked but stopped"
+      // are different operator problems, so they read differently.
+      if (c.length === 0) return "no platforms linked";
+      const connected = c.filter((channel) => channel.connected).length;
+      return connected === 0 ? "none connected" : `${connected} connected`;
+    }),
+    // Voice is read from voice's own report (`GET /api/multimodal/capabilities`),
+    // never from the IM channel row: a healthy Telegram link says nothing about
+    // whether a speech engine is installed. Each failure names its real cause —
+    // `voice.enabled=false` is a configuration switch and must not tell the
+    // operator to run `make voice-setup`, and a report that could not be read
+    // fails its own row with the server's reason instead of looking like nothing
+    // is wrong.
+    runProbe(
+      "voice",
+      "Voice",
+      "Speech input & output. Separate from the IM channel links.",
+      async () => {
+        const report = await getCapabilities();
+        if (!report.voice?.enabled) {
+          throw new Error("voice.enabled=false — speech is switched off in config.yaml.");
+        }
+        const ready = (capability: string) => (report.rows ?? []).some((row) => row.capability === capability && row.status === "available");
+        const engines = { stt: ready("stt"), tts: ready("tts") };
+        if (!engines.stt && !engines.tts) {
+          throw new Error("No local speech engine is installed — run `make voice-setup` to fetch Whisper + Piper.");
+        }
+        return engines;
+      },
+      (engines) => (engines.stt && engines.tts ? "local STT + TTS ready" : engines.stt ? "local STT only" : "local TTS only")
+    ),
     runProbe("mcp", "App connections (MCP)", "External tool servers", async () => fetchMcpConfig(), (s) => (s.length === 0 ? "none added" : `${s.length} ${s.length === 1 ? "server" : "servers"}`)),
     // `fetchFleetWorkers` (the strict reader) rather than `supervisionFleet`, so
     // a failed read rejects with the Gateway's own reason instead of arriving as
