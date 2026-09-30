@@ -18,6 +18,13 @@ APPROVAL_REQUIRED_COMMANDS: frozenset[str] = frozenset(
     }
 )
 
+#: Status returned for a catalog row that resolved but has no handler bound to
+#: it.  This is deliberately NOT ``success``: the row was recognised, and nothing
+#: else happened.  It is a distinct status rather than a distinct output string so
+#: a consumer can branch on the payload without parsing prose, and so the honesty
+#: invariant ("no row reports success without doing something") is checkable.
+UNIMPLEMENTED_STATUS = "unimplemented"
+
 #: How many sibling subcommands an unknown-subcommand message lists before it
 #: truncates.  Enough to be useful, bounded so a huge family cannot flood a
 #: model context.
@@ -353,21 +360,34 @@ class SlashCommandRegistry:
                     data={"result": res},
                 )
 
-            # Default autonomous execution / intent parsing
+            # No handler is bound to this row.  The row was recognised; nothing
+            # ran.  Reporting "success" here is the defect this branch removes:
+            # an operator or an agent typed a command, was told it was accepted,
+            # and no work was performed.  The status is the machine-readable part
+            # of that answer, so it must not read as success.
             directives: list[str] = []
             if cmd_def.is_autonomous_trigger:
                 directives.append(f"Execute autonomous directive for {cmd_def.command} ({cmd_def.category.value}) with args: {resolution.args}")
 
             return CommandExecutionResult(
-                status="success",
+                status=UNIMPLEMENTED_STATUS,
                 command=cmd_def.command,
-                output=f"Directive {cmd_def.command} accepted [{cmd_def.category.value}]. {cmd_def.description}",
+                output=(
+                    f"{cmd_def.command} is a catalogued command with no handler bound to it, "
+                    f"so nothing was executed. It is listed under [{cmd_def.category.value}] "
+                    f"and is documented as: {cmd_def.description} "
+                    f"Nothing in this invocation performed that action."
+                ),
                 data={
                     "category": cmd_def.category.value,
                     "arguments": resolution.args,
                     "is_core": cmd_def.is_core,
                     "is_autonomous_trigger": cmd_def.is_autonomous_trigger,
                     "requires_approval": cmd_def.requires_approval,
+                    # The two fields a consumer must never have to infer from prose.
+                    "executed": False,
+                    "has_handler": False,
+                    "not_implemented": True,
                 },
                 autonomous_directives=directives,
             )

@@ -2,11 +2,10 @@
 
 The slash-command catalog (``alpha.commands.catalog``) is the public *name*
 surface.  ``SlashCommandRegistry`` is the *executable* surface, and a catalog
-row with no bound handler still answers ``execute()`` with
-``status="success"`` and ``"Directive /help accepted [...]"``.  That default path
-is a placeholder.  A placeholder nobody has classified is how a catalog quietly
-overstates what the product can do, which is the exact hole the one-way version
-of this test left open.
+row with no bound handler does nothing.  It used to answer ``execute()`` with
+``status="success"`` and ``"Directive /help accepted [...]"`` — a command that did
+nothing, reported as having succeeded.  It now answers
+``status="unimplemented"`` with ``data.executed is False``.
 
 ``IMPLEMENTED_COMMANDS`` is this repository's honest equivalent of the reviewed
 branch's ``registered=True`` flag: the catalog rows the repository claims to
@@ -17,11 +16,20 @@ actually serve.  It is checked in *both* directions:
   unclassified capability -> red, and declaring it also gives it its own
   execution assertion through the parametrised dispatch test.
 
-The remaining catalog rows are placeholders.  They are counted rather than
-listed, and a sample of them is executed so the placeholder path cannot change
-shape unnoticed.  ``UNPUBLISHED_ALIASES`` and ``DUPLICATE_CATALOG_ROWS`` pin two
-pre-existing catalog defects so neither can grow silently; they are inventories
-of known debt, not endorsements, and the ability plane
+The remaining catalog rows have no handler.  That is a real gap in the product
+and this file deliberately does **not** pretend otherwise: it pins the gap's size
+(``NO_HANDLER_ROW_COUNT``) so it cannot grow unnoticed, and pins that none of
+those rows claims to have done anything
+(``test_no_handler_row_reports_itself_as_unimplemented``, and
+``test_command_honesty.py`` for the whole population).  The size is an inventory;
+the honesty rule is the invariant.
+
+An earlier revision pinned ``PLACEHOLDER_ROW_COUNT = 410`` and asserted that those
+rows returned the directive-accepted success.  That test certified the defect, and
+its count was itself wrong by three because the production-handler filter
+excluded ``alpha.mission.goalloop.bindings``.  ``UNPUBLISHED_ALIASES`` and
+``DUPLICATE_CATALOG_ROWS`` pin two further pre-existing catalog defects; they are
+likewise inventories of known debt, not endorsements.  The ability plane
 (``alpha.capabilities.catalog``) is held to the same "must really exist" rule.
 """
 
@@ -35,7 +43,7 @@ import pytest
 from alpha.capabilities.catalog import CAPABILITY_CATALOG
 from alpha.commands import backend_handlers  # noqa: F401 - binds the handlers
 from alpha.commands.catalog import get_default_catalog_entries
-from alpha.commands.registry import CommandExecutionResult, command_registry
+from alpha.commands.registry import UNIMPLEMENTED_STATUS, CommandExecutionResult, command_registry
 
 # Catalog rows the repository claims to serve with a concrete handler.  Adding a
 # row here is a claim; the tests below prove the claim and add its execution
@@ -46,9 +54,12 @@ IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
         "/compact",
         "/compress",
         "/doctor",
+        "/goal",
+        "/goal clear",
         "/goal create",
         "/goal decompose",
         "/goal status",
+        "/goal verify",
         "/grill-me",
         "/learn",
         "/moa",
@@ -61,21 +72,33 @@ IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
     }
 )
 
-# Unique catalog rows (426) minus the 16 implemented ones: rows with no handler
-# that fall through to the "Directive accepted" placeholder.  Pinned so a new
-# catalog row cannot land as an unclassified claim.
-PLACEHOLDER_ROW_COUNT = 410
+# Unique catalog rows with no bound handler of any kind.  Measured, not assumed:
+# see ``test_no_handler_row_count_is_exact`` for the derivation, and
+# ``docs/COMMAND_HONESTY.md`` for the measurement.
+#
+# This number is NOT an endorsement. It is the size of a known gap, pinned so it
+# cannot grow unnoticed: a new catalog row without a handler must be noticed. The
+# *honesty* of these rows is enforced separately and absolutely, by
+# ``test_no_handler_row_reports_itself_as_unimplemented`` below and by
+# ``test_command_honesty.py``, which cannot be satisfied by any count. The
+# previous revision of this file pinned 410 and asserted that those rows answer
+# ``status="success"`` with "Directive /help accepted [...]" — a test that
+# certified the lie. 410 was also wrong: it excluded the 14 production handlers
+# bound by ``alpha.mission.goalloop.bindings``.
+NO_HANDLER_ROW_COUNT = 407
 
-# Placeholder rows executed per run to prove the fallback path still behaves as
-# documented instead of quietly becoming a real handler.
-PLACEHOLDER_PROBES: tuple[str, ...] = ("/help", "/status", "/goal")
+# Rows executed per run to prove the handler-less path behaves as documented
+# instead of quietly becoming a real handler.
+NO_HANDLER_PROBES: tuple[str, ...] = ("/help", "/status", "/plan")
 
-# KNOWN DEFECT, pinned so it cannot grow: 21 handler bindings resolve to names
+# KNOWN DEFECT, pinned so it cannot grow: 32 handler bindings resolve to names
 # the catalog never publishes, so they are reachable but undiscoverable.  The
 # registry keys on the name, so a colon spelling and its space spelling are two
-# bindings for one intent.
+# bindings for one intent.  The previous count of 21 missed the 11 goal-loop
+# aliases, for the same reason the row count was wrong.
 UNPUBLISHED_ALIASES: frozenset[str] = frozenset(
     {
+        # alpha.commands.backend_handlers
         "/loop pause",
         "/loop resume",
         "/loop start",
@@ -97,6 +120,20 @@ UNPUBLISHED_ALIASES: frozenset[str] = frozenset(
         "/subagent spawn",
         "/subagent:list",
         "/subagent:spawn",
+        # alpha.mission.goalloop.bindings. These were invisible to the previous
+        # revision of this inventory, which filtered production handlers on
+        # `alpha.commands.*` and so never saw the goal-loop bindings at all.
+        "/goal draft",
+        "/goal gate",
+        "/goal gate add",
+        "/goal gate clear",
+        "/goal gate list",
+        "/goal gate remove",
+        "/goal show",
+        "/goal step",
+        "/subgoal",
+        "/subgoal clear",
+        "/subgoal remove",
     }
 )
 
@@ -120,8 +157,17 @@ def _catalog_names() -> list[str]:
 
 
 def _production_handlers() -> dict[str, object]:
-    """Handlers bound by production code, ignoring test-only registrations."""
-    return {command: handler for command, handler in command_registry._handlers.items() if getattr(handler, "__module__", "").startswith("alpha.commands.")}
+    """Handlers bound by production code, ignoring test-only registrations.
+
+    The module filter used to be ``alpha.commands.*``, which silently dropped the
+    14 handlers bound by ``alpha.mission.goalloop.bindings`` — a different package
+    that is still production code reached through ``alpha.commands.__init__``.
+    Excluding them made three handler-backed catalog rows (``/goal``, ``/goal
+    clear``, ``/goal verify``) look like no-ops, and inflated
+    NO_HANDLER_ROW_COUNT by 3. Production is now "anything not defined in a test
+    module".
+    """
+    return {command: handler for command, handler in command_registry._handlers.items() if not getattr(handler, "__module__", "").startswith("tests")}
 
 
 def _handler_backed_catalog_rows() -> set[str]:
@@ -129,9 +175,20 @@ def _handler_backed_catalog_rows() -> set[str]:
     return {_canonical(command) for command in _production_handlers() if _canonical(command) in catalog}
 
 
-def _is_placeholder(result: CommandExecutionResult) -> bool:
-    """Recognise the registry's default "directive accepted" success path."""
-    return result.status == "success" and result.output.startswith("Directive ") and "accepted [" in result.output and "result" not in result.data
+def _no_handler_catalog_rows() -> list[str]:
+    catalog = _catalog_names()
+    handler_backed = _handler_backed_catalog_rows()
+    return [row for row in catalog if row not in handler_backed]
+
+
+def _reports_success_without_a_handler(result: CommandExecutionResult) -> bool:
+    """The defect, as a predicate: a success status for a row with no handler.
+
+    Deliberately structural rather than string-matching. The old predicate
+    recognised the lie by its exact wording ("Directive ... accepted [...]"), so
+    rewording the lie would have satisfied it.
+    """
+    return result.status in {"success", "ok"} and not command_registry.has_handler(result.command)
 
 
 def test_production_handlers_are_bound() -> None:
@@ -162,7 +219,7 @@ def test_every_declared_command_is_a_catalog_row_with_a_bound_handler() -> None:
     assert not missing_from_catalog, f"declared implemented commands are not catalog rows: {missing_from_catalog}"
 
     without_handler = sorted(command for command in IMPLEMENTED_COMMANDS if command not in command_registry._handlers)
-    assert not without_handler, f"declared implemented catalog rows have no concrete handler and would silently return the directive-accepted placeholder: {without_handler}"
+    assert not without_handler, f"declared implemented catalog rows have no concrete handler and would answer as unimplemented: {without_handler}"
 
 
 def test_every_handler_backed_catalog_row_is_declared_implemented() -> None:
@@ -195,35 +252,60 @@ def test_declared_command_dispatches_to_its_handler(command: str, monkeypatch: p
     result = command_registry.execute(command)
 
     assert calls, f"{command} did not dispatch to its bound handler"
-    assert not _is_placeholder(result), f"{command} still answers with the directive-accepted placeholder"
+    assert not _reports_success_without_a_handler(result), f"{command} still reports success without a handler"
     assert result.data == {"parity_probe": True}
 
 
-def test_placeholder_rows_are_exactly_the_rows_without_handlers() -> None:
-    """The placeholder population is counted and cannot grow silently."""
+def test_no_handler_row_count_is_exact() -> None:
+    """The known-gap count is pinned so the gap cannot grow silently.
+
+    This is an inventory of debt, not an approval: the rows it counts must also
+    satisfy the honesty invariant in ``test_command_honesty.py``, which no count
+    can satisfy.
+    """
     catalog = _catalog_names()
     handler_backed = _handler_backed_catalog_rows()
-    placeholders = [row for row in catalog if row not in handler_backed]
+    no_handler = _no_handler_catalog_rows()
 
-    assert len(placeholders) == PLACEHOLDER_ROW_COUNT, (
-        f"{len(catalog)} unique catalog rows, {len(handler_backed)} with "
-        f"handlers, {len(placeholders)} directive-only placeholders (expected "
-        f"{PLACEHOLDER_ROW_COUNT}). A new catalog row without a handler is a "
-        "new claim about the product: give it a handler and declare it in "
-        "IMPLEMENTED_COMMANDS, or move this count on purpose."
+    assert len(catalog) == 426, f"the unique catalog row count changed: {len(catalog)}"
+    assert len(no_handler) == NO_HANDLER_ROW_COUNT, (
+        f"{len(catalog)} unique catalog rows, {len(handler_backed)} with handlers, "
+        f"{len(no_handler)} with none (expected {NO_HANDLER_ROW_COUNT}). A new catalog "
+        "row without a handler is a new claim about the product: give it a handler and "
+        "declare it in IMPLEMENTED_COMMANDS, or move this count on purpose."
     )
     for row in IMPLEMENTED_COMMANDS:
-        assert row not in placeholders, f"{row} is declared but is a placeholder"
+        assert row not in no_handler, f"{row} is declared implemented but has no handler"
 
 
-@pytest.mark.parametrize("command", PLACEHOLDER_PROBES)
-def test_placeholder_rows_still_take_the_disclosed_fallback_path(command: str) -> None:
-    """A row without a handler is a documented placeholder, not a capability."""
+@pytest.mark.parametrize("command", NO_HANDLER_PROBES)
+def test_no_handler_row_reports_itself_as_unimplemented(command: str) -> None:
+    """A row with no handler must say so in the payload, not in prose alone."""
     assert command not in command_registry._handlers
 
     result = command_registry.execute(command)
 
-    assert _is_placeholder(result), f"{command} is catalogued without a handler but no longer returns the documented directive-accepted placeholder; declare it as implemented if that is intended"
+    assert result.status == UNIMPLEMENTED_STATUS
+    # Distinguishable in the payload, so no consumer has to parse `output`.
+    assert result.data["executed"] is False
+    assert result.data["has_handler"] is False
+    assert result.data["not_implemented"] is True
+
+
+def test_every_no_handler_row_is_counted_and_disclosed() -> None:
+    """The count and the population agree, for the whole catalog.
+
+    Pinned on every row rather than a sample: a test that executes three probes
+    cannot tell 407 honest rows from 406 honest ones and one liar.
+    """
+    catalog = set(_catalog_names())
+    handler_backed = _handler_backed_catalog_rows()
+    no_handler = _no_handler_catalog_rows()
+
+    assert len(no_handler) == len(catalog) - len(handler_backed), "the no-handler set is not the catalog minus the handler-backed rows"
+    assert no_handler, "every catalog row suddenly has a handler; retire NO_HANDLER_ROW_COUNT on purpose"
+    for row in no_handler:
+        assert row in catalog, f"{row} is counted as a no-op but is not a catalog row"
 
 
 def test_duplicate_catalog_rows_are_pinned() -> None:

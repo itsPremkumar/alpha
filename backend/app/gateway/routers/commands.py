@@ -23,7 +23,7 @@ from alpha.commands import (
     autonomous_command_engine,
     command_registry,
 )
-from alpha.commands.registry import APPROVAL_CONTEXT_KEY
+from alpha.commands.registry import APPROVAL_CONTEXT_KEY, UNIMPLEMENTED_STATUS
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,10 @@ router = APIRouter(prefix="/api/commands", tags=["commands"])
 #: instead of hanging the caller.
 DEFAULT_EXECUTE_TIMEOUT_SECONDS = 120.0
 
-#: ``status`` alone is not a verdict: a catalog row with no bound handler answers
-#: ``status="success"`` (the documented directive-accepted placeholder). The
-#: response therefore also carries a ``verdict`` that says whether anything ran.
+#: ``status`` alone is not a verdict: a catalog row with no bound handler
+#: resolves and answers ``status="unimplemented"`` (it was recognised; nothing
+#: ran).  The response therefore also carries a ``verdict`` that says whether
+#: anything executed, so an HTTP client never has to parse ``output``.
 _VERDICTS: dict[str, str] = {
     "success": "succeeded",
     "ok": "succeeded",
@@ -46,6 +47,7 @@ _VERDICTS: dict[str, str] = {
     "not_found": "unknown_command",
     "approval_required": "blocked_needs_approval",
     "timeout": "failed_timed_out",
+    UNIMPLEMENTED_STATUS: "not_executed_no_handler",
 }
 
 
@@ -62,7 +64,10 @@ def _verdict_for(result: dict[str, Any]) -> str:
     status = str(result.get("status") or "").lower()
     verdict = _VERDICTS.get(status, "failed")
     if verdict == "succeeded" and not command_registry.has_handler(str(result.get("command") or "")):
-        return "not_executed_placeholder"
+        # Defence in depth. A handler-backed row is the only thing allowed to
+        # read as succeeded, so if a handler is ever unbound while a success
+        # result is still produced, the HTTP verdict refuses to inherit it.
+        return "not_executed_no_handler"
     if status == "not_found":
         data = result.get("data") or {}
         if not data.get("unknown_subcommand") and not str(result.get("output") or "").startswith("Unknown slash command"):
@@ -107,8 +112,8 @@ async def list_commands(
         "category": category,
         "core_only": core_only,
         # A row is only invokable if a handler is bound; the rest answer with the
-        # directive-accepted placeholder. Saying which is which here stops the
-        # discovery plane from advertising 410 rows as capabilities.
+        # honest "no handler" status. Saying which is which here stops the
+        # discovery plane from advertising handler-less rows as capabilities.
         "executable": sum(1 for c in commands if command_registry.has_handler(c.command)),
         "commands": [{**c.to_dict(), "has_handler": command_registry.has_handler(c.command)} for c in commands],
     }
