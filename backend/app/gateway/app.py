@@ -77,6 +77,7 @@ from app.gateway.routers import (
     supervision,
     swarms,
     system_monitor,
+    teams,
     thread_runs,
     threads,
     uploads,
@@ -1165,6 +1166,12 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(peer_network.router)
     app.include_router(peer_network.public_router)
     app.include_router(swarms.router)
+    # The team read plane. Mounted here rather than inside `create_swarm` so the
+    # roster and report are reachable for a swarm that already exists; the
+    # composition itself still runs inside `create_swarm`, so all four existing
+    # entry points (the `spawn` model action, `POST /api/swarms`, the planning
+    # bridge and swarm triggers) get it without a new entry point.
+    app.include_router(teams.router)
     app.include_router(plan_mode.router)
     app.include_router(subagent_control.router)
     app.include_router(deliberation.router)

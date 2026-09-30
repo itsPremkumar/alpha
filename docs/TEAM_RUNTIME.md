@@ -175,13 +175,15 @@ never queued forever and never handed to a non-capable specialist.
 
 Read this section before relying on any of the above.
 
-1. **The HTTP routes are not mounted.** `app/gateway/routers/teams.py` exists
-   and is tested, but this change does not own `app/gateway/app.py`, where
-   routers are registered by explicit `app.include_router(...)` calls. Two
-   lines are required (see [Mounting the team routes](#mounting-the-team-routes)).
-   Until they land, **every route in that file is dead over HTTP.**
-   `tests/test_team_routes.py::test_the_team_routes_are_not_mounted_yet` pins
-   this so it cannot rot into a false claim.
+1. **The HTTP routes are mounted, but reachability is not the same as
+   usefulness.** `app/gateway/routers/teams.py` is registered in
+   `app/gateway/app.py` beside the swarms mount, so `/api/teams/*` answers over
+   HTTP. It was previously dead code, and the pin that said so has been inverted
+   to `tests/test_team_routes.py::test_the_team_routes_are_mounted` so the mount
+   cannot rot back. Note what that does *not* buy you: with no `specialists:`
+   catalogue registered (item 3), the roster is empty and a report describes a
+   plan that assigned nothing. A reachable route returning an honest empty
+   result is not the same as a working team.
 2. **No `swarm` tool action was added.** `swarm_tool.py` is not owned by this
    change, so there is no `swarm(action="team")`. The team is visible through
    the existing `status` / `metrics` actions and `GET /api/swarms/{id}`.
@@ -225,7 +227,7 @@ Read this section before relying on any of the above.
 
 ## Mounting the team routes
 
-Two lines in `backend/app/gateway/app.py` (not owned by this change):
+**Done.** Two lines in `backend/app/gateway/app.py`:
 
 ```python
 # 1. in the `from app.gateway.routers import (...)` block, beside `swarms`
@@ -235,8 +237,13 @@ Two lines in `backend/app/gateway/app.py` (not owned by this change):
 app.include_router(teams.router)
 ```
 
-Then invert `test_the_team_routes_are_not_mounted_yet` in
-`tests/test_team_routes.py`, and update the bullet above.
+The mount is pinned positively by
+`tests/test_team_routes.py::test_the_team_routes_are_mounted`, which asserts the
+`include_router` call is still present. The pin previously asserted the opposite
+— that the router was *not* mounted — and was inverted when the lines landed.
+A router module with no `include_router` call is the defect class this repository
+keeps measuring, so un-mounting it now fails a test rather than silently turning
+`/api/teams/*` into 404s.
 
 ## Measured behaviour
 

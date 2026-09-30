@@ -126,17 +126,23 @@ def test_the_markdown_route_returns_text(roster, tmp_path, monkeypatch):
     assert b"# Team Report" in response.body
 
 
-def test_the_team_routes_are_not_mounted_yet():
-    """The honest state, pinned so it cannot rot into a false claim.
+def test_the_team_routes_are_mounted():
+    """The mount is real, pinned so it cannot silently rot back to dead code.
 
-    Two lines in `app/gateway/app.py` (the import in the `app.gateway.routers`
-    block and one `app.include_router(teams.router)` beside the swarms mount)
-    are required. This work does not own that file. Until they land, every
-    route here is dead over HTTP, and this test is the thing that says so.
+    This assertion used to assert the opposite - that the router was NOT
+    mounted - because mounting it needed two edits in `app/gateway/app.py`,
+    which the swarm work did not own. Those edits have landed: the `teams`
+    import in the `app.gateway.routers` block and one
+    `app.include_router(teams.router)` beside the swarms mount.
+
+    A router that exists but is not included is the exact defect class this
+    repository keeps measuring, so the reachability is now pinned positively.
+    Un-mounting it fails here rather than turning every route in
+    `routers/teams.py` into a silent 404.
     """
 
     from pathlib import Path
 
     app_py = Path(__file__).resolve().parents[1] / "app" / "gateway" / "app.py"
     source = app_py.read_text(encoding="utf-8")
-    assert "include_router(teams.router)" not in source, "the team router is now mounted: update docs/TEAM_RUNTIME.md, which states it is not, and re-check the reachability claim in the team report before flipping this assertion"
+    assert "include_router(teams.router)" in source, "the team router must stay mounted; every route in routers/teams.py is dead over HTTP without this line"
