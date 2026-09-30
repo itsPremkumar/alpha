@@ -185,6 +185,29 @@ test("an existing row is returned untouched rather than replaced by the fallback
   assert.equal(row.leadsSelectedBot, true);
 });
 
+test("the agent selector is reachable from the keyboard, not click-only", () => {
+  // The custom trigger the rail passes in was a bare `<div onClick>`: not
+  // focusable, no Enter/Space handling, and announced as an unnamed group, so
+  // the one control that picks the agent could not be operated without a mouse.
+  // The `else` branch was already a real button; this pins the children branch
+  // to the same contract.
+  const menu = readFileSync(
+    new URL("../components/chat-shell/BotDropdownMenu.tsx", import.meta.url),
+    "utf8",
+  );
+  const branch = menu.slice(menu.indexOf("{children ? ("), menu.indexOf(") : ("));
+  assert.match(branch, /role="button"/, "the custom trigger must expose a button role");
+  assert.match(branch, /tabIndex=\{0\}/, "and must be focusable");
+  assert.match(branch, /aria-expanded=\{open\}/, "and must report whether the menu is open");
+  assert.match(branch, /aria-haspopup="true"/);
+  assert.match(
+    branch,
+    /e\.key === "Enter" \|\| e\.key === " "/,
+    "Enter and Space must open the menu, or the control is mouse-only",
+  );
+  assert.match(branch, /aria-label=/, "and it must name which agent it acts on");
+});
+
 test("the dropdown is the ONLY agent selector; the scrolling roster list is gone", () => {
   // Structural pin. The rail used to offer the same choice twice: a fixed-height
   // scrollable "AI Agents (N)" list AND the dropdown card below it. The list was
