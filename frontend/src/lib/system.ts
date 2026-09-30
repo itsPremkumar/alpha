@@ -7,6 +7,7 @@ import { channelStatus } from "./channels";
 import { fetchFleetWorkers, watchdogDetail } from "./supervision";
 import { companyStatus } from "./teamops";
 import { fetchMcpConfig } from "./mcp";
+import { getCapabilities } from "./multimodal";
 
 export interface Probe {
   key: string;
@@ -92,7 +93,24 @@ export async function probeAll(): Promise<Probe[]> {
     runProbe("memory", "Memory", "Facts the agent remembers", async () => fetchMemory(), (m) => `${m.facts.length} ${m.facts.length === 1 ? "fact" : "facts"}`),
     runProbe("skills", "Skills", "Toggleable abilities", async () => listSkills(), (s) => `${s.length} ${s.length === 1 ? "skill" : "skills"}`),
     runProbe("scheduled", "Scheduler", "Recurring background work", async () => listScheduledTasks(), (t) => `${t.length} ${t.length === 1 ? "schedule" : "schedules"}`),
-    runProbe("channels", "Chat channels", "Telegram / Slack / Discord…", async () => channelStatus(), (c) => (c.length === 0 ? "none linked" : `${c.length} running`)),
+    // Count CONNECTED LINKS, never the roster size. `/api/channels` returns all
+    // ten supported platforms with `{enabled:false, running:false}` on a default
+    // install, so the old `${c.length} running` rendered a green "10 running"
+    // while nothing was linked. "nothing linked" (no platform configured) and
+    // "none connected" (configured but stopped) are different operator problems
+    // and now read differently.
+    runProbe(
+      "channels",
+      "Chat channels",
+      "Telegram / Slack / Discord…",
+      async () => channelStatus(),
+      (c) => {
+        if (c.length === 0) return "no platforms linked";
+        const connected = c.filter((ch) => ch.connected);
+        if (connected.length === 0) return "none connected";
+        return `${connected.length} connected`;
+      }
+    ),
     runProbe("mcp", "App connections (MCP)", "External tool servers", async () => fetchMcpConfig(), (s) => (s.length === 0 ? "none added" : `${s.length} ${s.length === 1 ? "server" : "servers"}`)),
     // `fetchFleetWorkers` (the strict reader) rather than `supervisionFleet`, so
     // a failed read rejects with the Gateway's own reason instead of arriving as
@@ -109,6 +127,36 @@ export async function probeAll(): Promise<Probe[]> {
       if (!c) throw new Error("The Gateway returned an empty company status document.");
       return c;
     }, () => "active"),
+    // Voice is its own subsystem and must be probed from its OWN capabilities
+    // report, never inferred from a channel link: a perfectly healthy IM channel
+    // would otherwise make a speech install with no models look ready (and,
+    // conversely, a dead channel link would blame voice). The rows carry the
+    // T3 engine status the T1→T2→T3 chain actually resolved, so a partial
+    // install names the engine that is ready instead of claiming both.
+    runProbe(
+      "voice",
+      "Voice (STT/TTS)",
+      "Local speech in and out. Separate from the IM channel links",
+      () => getCapabilities(),
+      (report) => {
+        // Config switched the whole subsystem off: this is a real, actionable
+        // "not available", so it must fail its own row (ok:false) and say why.
+        // It must NOT blame missing models, because none were ever the problem.
+        if (!report.voice || report.voice.enabled !== true) {
+          throw new Error("voice.enabled=false — switched off by configuration");
+        }
+        const t3 = (cap: string) =>
+          report.rows.find((r) => r.capability === cap && r.tier === "T3")?.status ?? "not_installed";
+        const stt = t3("stt") === "available";
+        const tts = t3("tts") === "available";
+        if (stt && tts) return "local STT + TTS ready";
+        if (stt) return "local STT only";
+        if (tts) return "local TTS only";
+        // Enabled but nothing usable: name the command that fixes it, so the row
+        // is actionable rather than merely red.
+        throw new Error("no local speech models installed — run `make voice-setup`");
+      }
+    ),
   ]);
 }
 

@@ -1,6 +1,8 @@
 """Memory API router for retrieving and managing global memory data."""
 
 import asyncio
+import json
+import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -11,6 +13,8 @@ from alpha.config.memory_config import get_memory_config
 from alpha.config.paths import make_safe_user_id
 from alpha.runtime.user_context import get_effective_user_id
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -199,6 +203,16 @@ class MemoryStatusResponse(BaseModel):
 
     config: MemoryConfigResponse
     data: MemoryResponse
+    # The extraction pipeline's own health record, when the backend exposes one.
+    #
+    # Without this field a memory subsystem whose updater had stopped working
+    # (an expired API key, a rejected model) rendered as `200` with `facts: []`
+    # -- byte-identical to a fresh agent that simply has no memories yet. The
+    # two are different operator problems and the surface now distinguishes
+    # them. Backends that predate the hook omit the field entirely (the route
+    # runs with `response_model_exclude_none`), which reads as "unavailable"
+    # and is deliberately *not* a claim of health.
+    health: dict[str, Any] | None = None
 
 
 @router.get(
@@ -508,7 +522,51 @@ async def get_memory_status(http_request: Request) -> MemoryStatusResponse:
             backend_config=config.backend_config,
         ),
         data=MemoryResponse(**memory_data),
+        health=_memory_health_or_none(manager),
     )
+
+
+def _memory_health_or_none(manager: Any) -> dict[str, Any] | None:
+    """Read the backend's memory-update health, never letting it break the route.
+
+    Three cases, all expected: a backend that exposes `memory_health()`, one that
+    predates the hook entirely (`AttributeError`), and one whose health read
+    raises. The last two both mean "no health statement available", which the
+    response renders by omission rather than inventing a verdict. A status route
+    that 500s because its optional diagnostic failed would be a worse outcome
+    than the silence this field exists to fix.
+
+    A fourth case is a backend that returns a *shape* this route cannot render
+    (a non-dict, or a dict holding a value with no JSON representation, e.g. a
+    `MagicMock` or a bare `object()` from a third-party backend). Pydantic
+    serializes the response eagerly, so an unrenderable diagnostic would turn
+    into a 500 on a read whose other half succeeded. It degrades to `None` for
+    the same reason: an operator cannot act on a field that crashes the request,
+    and the honest statement is that no readable verdict was produced.
+    """
+    reader = getattr(manager, "memory_health", None)
+    if not callable(reader):
+        return None
+    try:
+        health = reader()
+    except Exception:  # noqa: BLE001 - a diagnostic must not fail its own route
+        logger.warning("memory_health() raised; reporting no health statement", exc_info=True)
+        return None
+    if not isinstance(health, dict):
+        return None
+    # `default` is never used: an unencodable value must raise here, where the
+    # route can degrade it, rather than inside response serialization, where it
+    # can only become a 500.
+    try:
+        json.dumps(health, default=_unrenderable_health)
+    except (TypeError, ValueError):
+        logger.warning("memory_health() returned a value this route cannot render; reporting no health statement")
+        return None
+    return health
+
+
+def _unrenderable_health(value: Any) -> Any:
+    raise TypeError(f"unrenderable health value of type {type(value).__name__}")
 
 
 # =============================================================================

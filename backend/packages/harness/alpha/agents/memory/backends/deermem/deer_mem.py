@@ -33,6 +33,7 @@ from alpha.agents.memory.manager import MemoryConflictError, MemoryCorruptionErr
 
 from .deermem.config import DeerMemConfig
 from .deermem.core.eviction import EVICTION_POLICY_HYBRID_V1
+from .deermem.core.extraction_health import describe_model, get_memory_update_health, set_extraction_backend
 from .deermem.core.llm import build_llm
 from .deermem.core.message_processing import (
     SIGNAL_NAMES,
@@ -133,6 +134,19 @@ class DeerMem(MemoryManager):
         # so zero-config DeerMem (empty `model`) still extracts via the app default,
         # mirroring pre-abstraction `model_name: null`. Standalone (no factory) -> None.
         self._llm = self._config.host_llm if self._config.host_llm is not None else build_llm(self._config.model)
+        # Publish which model actually extracts, and where it came from, so a
+        # memory failure can be tied to the credential that caused it. `model:
+        # null` means "inherit the app default", which is a different statement
+        # from "no model" -- hence the source label rather than a bare name.
+        # Keyed on whether an LLM actually resolved rather than on whether
+        # `config.model` is set: the config default is a placeholder that
+        # `build_llm` may legitimately resolve to nothing, and reporting
+        # "config" for a backend that will never extract is the false
+        # configuration answer this label exists to avoid.
+        set_extraction_backend(
+            model=describe_model(self._llm),
+            source="host_llm (app default model)" if self._config.host_llm is not None else ("config" if self._llm is not None else "none"),
+        )
         self._updater = MemoryUpdater(self._config, self._storage, self._llm, prompts_dir=self._config.prompts_dir, callbacks=self.callbacks)
         # Retrieval is derived data. The first search for a scope lazily
         # rebuilds it; Gateway warm-up performs the full rebuild off-loop.
@@ -449,6 +463,25 @@ class DeerMem(MemoryManager):
     ) -> dict[str, Any]:
         memory_data = _call_backend(lambda: self._updater.get_memory_data(agent_name=_resolve_agent_name(agent_name), user_id=user_id))
         return _compat_document(memory_data)
+
+    def memory_health(self) -> dict[str, Any] | None:
+        """Report whether extraction is actually working, with its reason.
+
+        A Tier-3 optional hook: the Gateway's ``/api/memory/status`` calls it
+        through ``getattr`` and treats ``None`` as "this backend has no health
+        statement", which is the honest answer for a backend that never
+        attempted an extraction.
+
+        Returning ``None`` on an internal error is deliberate. A diagnostic must
+        not be able to break the status route that serves it, and a 500 from
+        ``/api/memory/status`` tells the operator strictly less than the
+        unhealthiness it was reporting.
+        """
+        try:
+            return get_memory_update_health().as_dict()
+        except Exception:  # noqa: BLE001 - never fail the route we are reporting on
+            logger.warning("memory_health() failed; reporting no health statement", exc_info=True)
+            return None
 
     # delete_memory / export_memory inherit the base tier-2 default (raise
     # NotImplementedError) -- they are dead contract (zero callers; /memory/export

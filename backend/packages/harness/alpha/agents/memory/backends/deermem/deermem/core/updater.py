@@ -22,6 +22,13 @@ from .eviction import (
     FactEvictionDecision,
     select_facts_for_capacity,
 )
+from .extraction_health import (
+    MemoryUpdateDisabled,
+    MemoryUpdateRejected,
+    record_attempt,
+    record_failure,
+    record_success,
+)
 from .message_processing import detect_signals, extract_message_text
 from .prompt import (
     format_conversation_for_update,
@@ -1633,6 +1640,10 @@ class MemoryUpdater:
         model_name: str | None = None
         success = False
         attempted = False
+        # The health record needs to name the scope a verdict belongs to, so an
+        # operator can tell one dead thread from a dead subsystem. Built once
+        # and carried to every record_* call below.
+        health_scope = f"thread={thread_id} user={user_id} agent={agent_name or '-'}"
         try:
             watermark_key = (thread_id, user_id, agent_name)
             if bypass_watermark:
@@ -1662,7 +1673,11 @@ class MemoryUpdater:
             model_name = self._config.model.model
             model = self._llm
             if model is None:
-                raise RuntimeError("DeerMem memory update requested but no LLM is configured (set memory.backend_config.model in config).")
+                # A named type, not a bare RuntimeError: "no model was ever
+                # configured" is a different operator problem from "the provider
+                # rejected us", and the status surface reports the type.
+                raise MemoryUpdateDisabled("no LLM is configured (set memory.backend_config.model in config).")
+            record_attempt(scope=health_scope)
             invoke_config: dict[str, Any] = {"run_name": "memory_agent"}
             # Pre-LLM-call observability hook (e.g. langfuse): merge trace
             # metadata into invoke_config before the call so a tracer emits a
@@ -1721,12 +1736,28 @@ class MemoryUpdater:
                 # path -- the subset's last message is older than the
                 # conversation's latest, so advancing from it would regress.
                 self._watermark_set(watermark_key, _message_identity(messages[-1]))
+            if success:
+                record_success()
+            else:
+                # The model answered and `_finalize_update` stored nothing. Not
+                # an exception, so nothing else would report it -- but a memory
+                # that answers and remembers nothing is broken, and reporting
+                # "ok" here because the call did not raise is the exact false
+                # healthy this record exists to prevent.
+                extracted = metrics.get("facts_extracted")
+                record_failure(
+                    MemoryUpdateRejected("the extraction was answered but every proposal was rejected or nothing was stored"),
+                    scope=health_scope,
+                    reason=f"nothing stored (facts_extracted={extracted})",
+                )
             return success
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse LLM response for memory update: %s", e)
+            record_failure(e, scope=health_scope)
             return False
         except Exception as e:
             logger.exception("Memory update failed: %s", e)
+            record_failure(e, scope=health_scope)
             return False
         finally:
             # Emit metrics even when _finalize_update (or invoke) raises, so the

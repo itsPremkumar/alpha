@@ -12,6 +12,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── OS / editor noise ───────────────────────────────────────────────────────
+# Test-harness scratch, not source. `rendered-honesty-markup.test.mjs` writes
+# `__render_stub_<name>.mjs` into frontend/src/lib/ at module-eval time to fake
+# the component's sibling imports; its own `process.on("exit")` hook now removes
+# them, so anything still here is debris from a run that was killed outright.
+# `.tmp/` holds throwaway fixture trees (docs-index tracked-root rebuilds, model
+# probes) that are rebuilt on demand.
+.tmp/
+frontend/src/lib/__render_stub_*.mjs
 .DS_Store
 ._*
 .Spotlight-V100

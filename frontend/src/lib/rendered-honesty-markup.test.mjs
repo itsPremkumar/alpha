@@ -33,6 +33,23 @@ const { renderToStaticMarkup } = await import(resolve("react-dom/server"));
       inside a component resolve to real modules ──────────────────────────── */
 
 const STUBS = new Map();
+function removeStubs() {
+  for (const name of STUBS.keys()) {
+    try {
+      rmSync(here(`./__render_stub_${name}.mjs`));
+    } catch {
+      /* already gone, or the run is tearing down — never fail cleanup */
+    }
+  }
+}
+// `test.after` only runs once a test has been *registered*, but these stubs are
+// written during module top-level evaluation, before the first `test(...)` call.
+// A throw anywhere in that setup (a component import that no longer resolves is
+// enough) therefore skipped cleanup entirely and left `__render_stub_*.mjs`
+// debris in `src/lib/`, which is exactly what happened when `system.ts` gained
+// the `./multimodal` import. An `exit` hook is registered before any stub is
+// written, so cleanup is guaranteed on every path: pass, fail, or throw.
+process.on("exit", removeStubs);
 function stub(name, source) {
   const file = here(`./__render_stub_${name}.mjs`);
   writeFileSync(file, source, "utf8");
@@ -151,7 +168,10 @@ const { ChannelsSection } = await loadComponent("../components/sections/Channels
 });
 const { BotOpsSection, killSwitchView } = await loadComponent("../components/sections/BotOpsSection.tsx");
 
-test.after(() => { for (const n of STUBS.keys()) { try { rmSync(here(`./__render_stub_${n}.mjs`)); } catch {} } });
+// Kept as well as the `exit` hook: this removes the stubs as soon as the suite
+// finishes (so a later file in the same run cannot accidentally resolve one),
+// and the `exit` hook is the backstop for a throw before this line is reached.
+test.after(removeStubs);
 
 /* ══ 1. The kill-switch card, as markup ════════════════════════════════ */
 

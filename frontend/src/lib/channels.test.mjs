@@ -232,8 +232,14 @@ test("a genuinely empty list is still [] — empty means the server said empty, 
 test("the channels probe reports a dead gateway as down, not as a healthy subsystem with no channels", () => {
   // system.ts must keep channelStatus inside runProbe (which turns a rejection
   // into ok:false + the real reason) and must NOT pre-catch it back into [].
+  //
+  // The guard is whitespace-tolerant on purpose: the requirement is structural
+  // (which callable sits inside runProbe), not a particular line layout. Pinning
+  // the exact `runProbe("channels"` on one line made a multi-line reformat of an
+  // otherwise-correct fix fail for a reason that had nothing to do with the
+  // behaviour under test.
   const src = read("./system.ts");
-  assert.match(src, /runProbe\("channels"/);
+  assert.match(src, /runProbe\(\s*"channels"/);
   assert.match(src, /async \(\) => channelStatus\(\)/);
   assert.doesNotMatch(src, /channelStatus\(\)\s*\.catch\(\s*\(\)\s*=>\s*\[\]/);
   // ChannelsSection's catch is the surface that must become reachable again.

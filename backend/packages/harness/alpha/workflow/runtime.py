@@ -387,6 +387,54 @@ def _system1_loop_termination(run: WorkflowRun, node: WorkflowNode, iteration: i
     }
 
 
+class WaveOverlap:
+    """Measure how many wave members actually overlapped in time.
+
+    A wave is dispatched through ``execute_wave(..., max_concurrency=...)`` on a
+    bounded pool, but the engine never *acquired* the ``ConcurrencyGovernor`` that
+    models that cap - the governor's ``limit`` is read and its slots are not. So
+    ``peak_in_flight`` had no source at all and every ``wave_dispatched`` payload
+    carried the ``0`` default, including for a genuinely 4-wide wave. A report
+    field named ``peak_in_flight`` that always reads 0 is a false measurement,
+    not an absent one.
+
+    This counts real overlap around each per-node call instead, so the journal
+    records what actually happened. It is **measurement only**: it never blocks
+    and never admits, because the documented contract of the governor here is
+    that it bounds CONCURRENCY and not wave membership - gating admission on an
+    in-flight count would admit exactly ``limit`` nodes and silently serialise a
+    three-node wave into three steps.
+    """
+
+    __slots__ = ("_current", "_lock", "peak")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._current = 0
+        self.peak = 0
+
+    @contextmanager
+    def track(self):
+        with self._lock:
+            self._current += 1
+            if self._current > self.peak:
+                self.peak = self._current
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._current -= 1
+
+    def observe(self, invoke: Callable[[Any], Any]) -> Callable[[Any], Any]:
+        """Wrap a per-item callable so each of its invocations is counted."""
+
+        def _tracked(item: Any) -> Any:
+            with self.track():
+                return invoke(item)
+
+        return _tracked
+
+
 class DynamicWorkflowEngine:
     """Production-grade Dynamic Workflow Engine."""
 
@@ -910,6 +958,11 @@ class DynamicWorkflowEngine:
                 # pretended away.
                 self._execute_single_node(nid, graph, run, runner, compensation_runner)
 
+            # Counted, not limited: see `WaveOverlap`. The governor's cap is
+            # applied by the pool below; this only records what overlapped so
+            # `peak_in_flight` is a measurement instead of the old hardcoded 0.
+            overlap = WaveOverlap()
+
             # ``governor.limit`` is the run's declared cap and is what
             # ``execute_wave`` bounds the wave by.  A wave is dispatched
             # synchronously inside this call, so gating admission on an
@@ -917,7 +970,7 @@ class DynamicWorkflowEngine:
             # silently serialise a three-node wave into three steps.  The
             # governor therefore bounds CONCURRENCY, not wave membership: the
             # whole wave always runs, at most ``limit`` at a time.
-            outcomes = execute_wave(wave_nodes, _invoke, max_concurrency=governor.limit)
+            outcomes = execute_wave(wave_nodes, overlap.observe(_invoke), max_concurrency=governor.limit)
 
             self._record_wave(
                 run,
@@ -925,6 +978,7 @@ class DynamicWorkflowEngine:
                 nodes=list(wave_nodes),
                 concurrency=governor.limit,
                 elapsed=time.monotonic() - wave_started,
+                peak_in_flight=overlap.peak,
             )
 
             escaped = first_error(outcomes)
@@ -2230,9 +2284,10 @@ class DynamicWorkflowEngine:
         started = time.monotonic()
         # As with a scheduling wave, the whole group runs; ``max_concurrency``
         # bounds how many members overlap rather than truncating the group.
+        group_overlap = WaveOverlap()
         outcomes = execute_wave(
             member_ids,
-            lambda member: self._execute_single_node(member, graph, run, node_runner, compensation_runner),
+            group_overlap.observe(lambda member: self._execute_single_node(member, graph, run, node_runner, compensation_runner)),
             max_concurrency=governor.limit,
         )
         self._record_wave(
@@ -2241,6 +2296,7 @@ class DynamicWorkflowEngine:
             nodes=list(member_ids),
             concurrency=governor.limit,
             elapsed=time.monotonic() - started,
+            peak_in_flight=group_overlap.peak,
         )
 
         escaped = first_error(outcomes)
