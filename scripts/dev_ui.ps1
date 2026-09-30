@@ -64,8 +64,14 @@ if (Test-Path $devDir) {
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 Write-Host "starting next dev on $Port (hot reload, no build)..." -ForegroundColor Cyan
+# The CLI path is quoted because `Start-Process -ArgumentList` joins its array
+# with spaces and does NOT quote an element that contains one. Unquoted, node
+# received `C:\Users\PREM` as its entry script and died instantly with
+# MODULE_NOT_FOUND, so any checkout under a path containing a space (including
+# this one) could never start the frontend. The explicit quote pair is stripped
+# by the child's own argv parser, so the path arrives intact.
 $proc = Start-Process -FilePath 'node' `
-    -ArgumentList $cli, 'dev', '-p', $Port, '-H', '127.0.0.1' `
+    -ArgumentList "`"$cli`"", 'dev', '-p', $Port, '-H', '127.0.0.1' `
     -WorkingDirectory $frontend `
     -RedirectStandardOutput $log -RedirectStandardError $err `
     -WindowStyle Hidden -PassThru
@@ -78,6 +84,24 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 $deadline = $Wait
 while ($sw.Elapsed.TotalSeconds -lt $deadline) {
     Start-Sleep -Seconds 10
+    # A cold compile is genuinely silent, so the loop below must not report every
+    # silence as "STARTING". The one thing that is NOT a cold compile is the
+    # child we just started being gone: node dies on a bad entry script, a
+    # missing dependency, or a port clash, and each of those leaves stderr. We
+    # reported "still compiling (this is STARTING, not a failure)" for 1500s
+    # against a process that had already exited with MODULE_NOT_FOUND, which
+    # taught the operator to distrust the one message meant to reassure them.
+    if ($proc.HasExited) {
+        Write-Host "next dev EXITED after $([Math]::Round($sw.Elapsed.TotalSeconds))s with exit code $($proc.ExitCode)." -ForegroundColor Red
+        Write-Host "That is a real failure, not a cold compile. Its stderr:" -ForegroundColor Red
+        if ((Test-Path $err) -and (Get-Item $err).Length -gt 0) {
+            Get-Content $err -Tail 40
+        } else {
+            Write-Host "  (stderr was empty)"
+        }
+        Write-Host "log: $log"
+        exit 1
+    }
     try {
         $resp = Invoke-WebRequest "http://127.0.0.1:$Port" -TimeoutSec 20 -UseBasicParsing
         if ($resp.StatusCode -eq 200) {
