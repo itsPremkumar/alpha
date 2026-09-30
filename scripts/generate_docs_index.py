@@ -297,6 +297,21 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     # Classified as plans for the same reason AGENT_LANDSCAPE_AND_ROADMAP.md is:
     # they survey what exists elsewhere in order to drive what this project builds
     # next, rather than describing Alpha's own reasoning plane.
+    #
+    # GROK_VS_ALPHA_GAP_ANALYSIS.md is the same shape: a competitive survey of
+    # xAI's Grok family against this tree, ending in a prioritized gap list.
+    "GROK_VS_ALPHA_GAP_ANALYSIS.md": DocumentSpec(
+        "plans",
+        "Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.",
+    ),
+    "WIRING_AUDIT.md": DocumentSpec(
+        "plans",
+        "Measured audit of implemented-but-uncalled capabilities: what was wired, what was not, and the remaining inert surface.",
+    ),
+    "VERIFICATION_LOOP.md": DocumentSpec(
+        "architecture",
+        "The bounded verification controller: run the tests, read the real failure, refuse a weakened test, and report three honest outcomes.",
+    ),
     "RESEARCH_AUTONOMOUS_AGENTS.md": DocumentSpec(
         "plans",
         "Live research: computer-use and browser agents, with a benchmark-trust audit.",
@@ -346,6 +361,9 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "SKILLS.md": DocumentSpec(
         "architecture", "Skills packages, tools, workflows, and runtime integration."
+    ),
+    "SPECIALISTS.md": DocumentSpec(
+        "architecture", "Leader-authored specialist catalogue: schema, default team, and honest limits."
     ),
     "TEAM_RUNTIME.md": DocumentSpec(
         "architecture",
