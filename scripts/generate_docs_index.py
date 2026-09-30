@@ -323,6 +323,9 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "SKILLS.md": DocumentSpec(
         "architecture", "Skills packages, tools, workflows, and runtime integration."
     ),
+    "SPECIALISTS.md": DocumentSpec(
+        "architecture", "Leader-authored specialist catalogue: schema, default team, and honest limits."
+    ),
     "SYSTEM_ONE.md": DocumentSpec(
         "reasoning", "System One fast structured decision layer."
     ),

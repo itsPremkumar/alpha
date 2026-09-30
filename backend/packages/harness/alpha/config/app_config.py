@@ -52,6 +52,7 @@ from alpha.config.self_tuning.config import SelfTuningConfig
 from alpha.config.skill_evolution_config import SkillEvolutionConfig
 from alpha.config.skill_scan_config import SkillScanConfig
 from alpha.config.skills_config import SkillsConfig
+from alpha.config.specialist_config import SpecialistCatalogConfig, SpecialistConfig
 from alpha.config.stream_bridge_config import StreamBridgeConfig, load_stream_bridge_config_from_dict
 from alpha.config.subagent_batches_config import SubagentBatchesConfig
 from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
@@ -408,6 +409,17 @@ class AppConfig(BaseModel):
     safety_finish_reason: SafetyFinishReasonConfig = Field(default_factory=SafetyFinishReasonConfig, description="Provider safety-filter finish_reason interception middleware configuration")
     autonomy: AutonomyConfig = Field(default_factory=AutonomyConfig, description="Self-running subsystems: event bus, observe-only middlewares and background loops (AutonomySupervisor).")
     capabilities: CapabilitiesConfig = Field(default_factory=CapabilitiesConfig, description="Opt-in capability subsystems (see alpha.capabilities.catalog); all off unless enabled here.")
+    specialists: SpecialistCatalogConfig = Field(
+        default_factory=SpecialistCatalogConfig,
+        description=(
+            "Leader-authored catalogue of declared specialists: a stable name, the permission-ring role it "
+            "fills, its capability/skill/tool declaration, its approval posture (draft-first or autonomous), "
+            "its model ROUTING SLOT (a model_routing category/tier - never a model name), and its reporting "
+            "line. Hot-reloaded. A declaration grants nothing by itself: it feeds the Bot forge, the role "
+            "permission rings and the approval gate, and it never bypasses them. Every field is leader-only "
+            "in the bot_roster self-service sense, so a Bot cannot edit its own specialist entry."
+        ),
+    )
     auth: AuthAppConfig = Field(default_factory=AuthAppConfig, description="Authentication configuration (local + OIDC SSO)")
     model_config = ConfigDict(extra="allow")
     database: DatabaseConfig = Field(
@@ -502,6 +514,7 @@ class AppConfig(BaseModel):
     _models_by_name: dict[str, ModelConfig] = PrivateAttr(default_factory=dict)
     _tools_by_name: dict[str, ToolConfig] = PrivateAttr(default_factory=dict)
     _tool_groups_by_name: dict[str, ToolGroupConfig] = PrivateAttr(default_factory=dict)
+    _specialists_by_name: dict[str, SpecialistConfig] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -769,11 +782,16 @@ class AppConfig(BaseModel):
         tool_groups_by_name: dict[str, ToolGroupConfig] = {}
         for group in self.tool_groups:
             tool_groups_by_name.setdefault(group.name, group)
+        specialists_by_name: dict[str, SpecialistConfig] = {}
+        for specialist in self.specialists.entries:
+            specialists_by_name.setdefault(specialist.name, specialist)
         self._models_by_name = models_by_name
         self._tools_by_name = tools_by_name
         self._tool_groups_by_name = tool_groups_by_name
+        self._specialists_by_name = specialists_by_name
         self._validate_default_model()
         self._validate_model_routing()
+        self._validate_specialists()
         return self
 
     def _validate_model_routing(self) -> None:
@@ -806,6 +824,82 @@ class AppConfig(BaseModel):
             details = "; ".join(f"`model_routing.{where}` -> '{name}' ({kind}) is not in `models`" for where, name, kind in unknown)
             available = ", ".join(m.name for m in self.models)
             raise ValueError(f"Unresolvable model_routing entries: {details}. Configured models: {available}.")
+
+    def _validate_specialists(self) -> None:
+        """Fail closed when a declared specialist names something undeclared.
+
+        A specialist's declarations are only *executable* if the things they
+        point at exist: a ``tool_groups`` entry is meaningless unless
+        ``tool_groups[]`` declares it, and a ``model_routing`` slot resolves to
+        no model unless the operator mapped it. Without this check a typo
+        would produce a specialist that looks routed and privileged and is
+        neither — precisely the silent degradation the routing section exists
+        to remove.
+
+        The one tolerated case is an operator who has declared **no**
+        ``model_routing`` mappings at all (the shipped template does not).
+        There the slot is still a valid key of the router vocabulary, so it is
+        accepted and warned about, and resolution returns nothing rather than
+        inventing a model.
+        """
+        entries = self.specialists.entries
+        if not entries:
+            return
+
+        known_groups = set(self._tool_groups_by_name)
+        unknown_groups = sorted({group for entry in entries for group in entry.tool_groups if group not in known_groups})
+        if unknown_groups:
+            raise ValueError(
+                f"Unresolvable specialists tool_groups: {', '.join(unknown_groups)} {'is' if len(unknown_groups) == 1 else 'are'} not declared in `tool_groups`. Configured groups: {', '.join(sorted(known_groups)) or '<none>'}."
+            )
+
+        from alpha.config.agent_preset_config import default_presets
+
+        known_presets = set(default_presets()) | set(self.agent_presets)
+        unknown_presets = sorted({entry.agent_preset for entry in entries if entry.agent_preset and entry.agent_preset not in known_presets})
+        if unknown_presets:
+            raise ValueError(f"Unresolvable specialists agent_preset: {', '.join(unknown_presets)} {'is a' if len(unknown_presets) == 1 else 'are'} unknown preset name. Known: {', '.join(sorted(known_presets)) or '<none>'}.")
+
+        routing = self.model_routing
+        declared_categories = set(routing.categories)
+        declared_tiers = set(routing.tiers)
+        if not routing.enabled:
+            declared_categories = set()
+            declared_tiers = set()
+        routing_declared = bool(declared_categories or declared_tiers)
+
+        unresolved: list[str] = []
+        for entry in entries:
+            if entry.routing is None:
+                continue
+            for label in entry.routing.slot_labels():
+                _kind, key = label.split(":", 1)
+                known = declared_categories if _kind == "category" else declared_tiers
+                if key in known:
+                    continue
+                if routing_declared:
+                    raise ValueError(
+                        f"specialists entry '{entry.name}' routes on {label} but `model_routing` declares no such "
+                        f"{_kind}. Declared {_kind}s: {', '.join(sorted(known)) or '<none>'}. Declare the slot, or point "
+                        f"the specialist at one that exists."
+                    )
+                unresolved.append(f"{entry.name} -> {label}")
+        if unresolved:
+            logger.warning(
+                "specialists: no `model_routing` mappings are declared, so %s resolve to no model. "
+                "A specialist with an unresolved routing slot runs on the configured default_model; declare "
+                "`model_routing.categories` / `model_routing.tiers` to make the intent executable.",
+                ", ".join(unresolved),
+            )
+
+    def get_specialist_config(self, name: str) -> SpecialistConfig | None:
+        """Get a declared specialist by name, or ``None``.
+
+        Same shape as :meth:`get_model_config` / :meth:`get_tool_config`: the
+        O(1) name index built during validation, so a caller resolving a
+        specialist per task does not scan the list.
+        """
+        return self._specialists_by_name.get((name or "").strip().lower())
 
     def _validate_default_model(self) -> None:
         """Fail closed when ``default_model`` names a model that does not exist.

@@ -27,7 +27,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 55
+config_version: 56
 
 # ============================================================================
 # Logging
@@ -4522,6 +4522,183 @@ self_tuning:
 capabilities:
   enabled: true                 # master switch for the capability loader
   capabilities: {}              # per-capability opt-in, e.g. { net_policy: true }
+
+# ============================================================================
+# Specialist catalogue (see docs/SPECIALISTS.md)
+# ============================================================================
+# A specialist is a DECLARED unit of expertise the rest of the system can
+# schedule. It is not a Bot, not a persona, and not a swarm plan: it is the
+# leader-authored configuration saying "work of this shape belongs to this
+# role, here is what it may touch, here is what it must ask about, and here is
+# the routing slot it runs on".
+#
+# Why this is here and not in a Python table: config.yaml is the single source
+# of truth, and a hand-maintained role table in Python is a second source of
+# truth that drifts silently. The two existing vocabularies stay where they
+# are and are REFERENCED, never restated:
+#   * `role` must contain one of the worker permission rings in
+#     alpha/bots/permissions.py. That ring is what decides which tools the
+#     specialist may execute, so the loader refuses a role that resolves to
+#     nothing - and refuses the all-tools rings (lead/supervisor/admin)
+#     outright, because a worker specialist is not the leader.
+#   * `department` must be one of alpha/bots/templates.py DEPARTMENTS.
+#   * `sandbox` must be one of alpha/bots/forge.py SANDBOX_BACKENDS.
+#
+# Every field here is leader-only in the bot_roster self-service sense
+# (display_name/avatar are the only self-editable fields), so a Bot cannot
+# edit its own specialist entry. Loading this file is the only way a
+# specialist's role, capabilities or reporting line changes.
+#
+# `description` + `not_for` + `role` form the query that a duplicate-territory
+# check scores, so they must clear alpha/bots/survey.MIN_OVERLAP_TERMS
+# (3 significant words) - exactly the floor alpha/bots/forge.py
+# `check_overlap` uses before it will refuse anything. A thinner description
+# scores 1.0 against any neighbour that shares one word, so it is a load
+# error rather than a declaration that silently protects nothing. Two entries
+# that the forge's own check_overlap calls the same job (>= 0.34) are also a
+# load error, because the second Bot would be refused at build time anyway.
+#
+# `routing` names a model_routing SLOT (a category or a tier), never a model
+# name. `model_routing` is the only executable routing source; a vendor id
+# hardcoded here would be the mistake this repository already made once and
+# removed. If you declare no `model_routing` mappings at all, the slot is
+# still valid but resolves to nothing and the specialist runs on
+# `default_model` - declared, not silently assumed.
+#
+# THIS SECTION GRANTS NOTHING BY ITSELF. A specialist declaration produces
+# forge_bot() arguments, role-ring membership, and an approval list. It does
+# not mint a Bot, does not bypass ToolPermissionGate, the authority ceiling,
+# or the approval gate, and it does not decide whether a build succeeds. Read
+# docs/SPECIALISTS.md for the field table and the honest limits.
+
+specialists:
+  enabled: true                  # master switch; declarations still parse and validate when false
+  allow_overlap: false           # operator override for the duplicate-territory refusal (forge parity)
+  entries:
+    - name: researcher
+      title: Researcher
+      # 'researcher' is a declared permission ring: read + search + message, no writes.
+      role: researcher
+      department: product
+      tool_groups: [web, file:read, knowledge]
+      approvals: draft_first     # composes forge.DEFAULT_APPROVALS (ask before publish/spend/delete)
+      routing: {tier: fast}      # slot, not a model. See model_routing.
+      capabilities: [web_research, source_verification, evidence_synthesis]
+      description: >-
+        External evidence gathering: searches the web and the knowledge base,
+        reads the sources it found, cross-checks each claim against a second
+        source, and returns a cited synthesis that keeps visible where the
+        sources disagree.
+      not_for:
+        - writing or editing source code, tests, or configuration files
+        - choosing an architecture, approving a release, or running a deployment
+
+    - name: code-reviewer
+      title: Code Reviewer
+      # 'architect' is the narrowest read-only ring: it can read, search and
+      # message, and is denied file replacement and shell.
+      role: architect
+      department: qa
+      tool_groups: [file:read]
+      approvals: draft_first
+      routing: {category: deep, tier: coding}
+      capabilities: [code_review, contract_analysis, regression_risk]
+      description: >-
+        Defect hunting in a proposed change: reads the diff, traces the logic
+        for a wrong answer, an unhandled failure path, or a broken interface
+        contract, and reports each finding with its file and line. Returns
+        findings, never a rewritten patch.
+      not_for:
+        - rewriting, refactoring, or committing the change under review
+        - triaging a failing alert from a running service
+        - deciding whether a release may ship
+
+    - name: security-reviewer
+      title: Security Reviewer
+      role: architect
+      department: security
+      tool_groups: [file:read]
+      approvals: draft_first
+      routing: {category: deep, tier: frontier}
+      capabilities: [threat_modelling, secret_scanning, permission_audit]
+      description: >-
+        Exploitable-weakness hunting: follows untrusted input to a shell,
+        a query, or a deserialiser, checks authentication and authorization
+        on each exposed route, scans for committed secret material, and
+        matches published dependency advisories against this codebase.
+      not_for:
+        - rotating a credential or changing authorization configuration
+        - judging readability, naming, or test coverage
+        - approving a release or a production deployment
+
+    - name: test-engineer
+      title: Test Engineer
+      # 'tester' may run the suite and read, but is denied file replacement:
+      # a tester that cannot edit the code under test cannot make it pass.
+      role: tester
+      department: qa
+      tool_groups: [bash, file:read]
+      approvals: draft_first
+      routing: {tier: coding}
+      capabilities: [test_design, regression_suite, failure_triage]
+      description: >-
+        Regression coverage: writes the missing case for a stated defect,
+        runs the project's own test command, narrows a failure to the single
+        assertion that broke, and reports the measured pass/fail count
+        rather than a claim that it works.
+      not_for:
+        - choosing the framework or deciding the release gate
+        - triaging a production alert or restarting a service
+        - editing application behaviour so an assertion stops failing
+
+    - name: technical-writer
+      title: Technical Writer
+      # 'developer' is the narrowest ring that can write files at all. There
+      # is no writer ring today, so this entry inherits developer's shell
+      # access; narrow it by adding a ring in alpha/bots/permissions.py.
+      role: developer
+      department: product
+      tool_groups: [file:read, file:write]
+      approvals: draft_first
+      routing: {category: writing}
+      capabilities: [technical_writing, api_reference, release_notes]
+      description: >-
+        Prose maintenance: keeps the setup guide, the configuration
+        reference, and the API pages true to the code and the config as they
+        actually are, and flags any documented option that no longer exists
+        instead of quietly leaving it in place.
+      not_for:
+        - changing runtime behaviour, a schema, or a configuration default
+        - answering an outage or restarting a failed deployment
+        - documenting a flag, option, or variable that is not implemented
+
+    - name: operations-engineer
+      title: Operations Engineer
+      # 'tester' again on purpose: an operator must be able to run the
+      # runbook's commands, and must not be able to rewrite the artifact.
+      role: tester
+      department: operations
+      tool_groups: [bash, file:read]
+      approvals: draft_first
+      routing: {tier: fast}
+      capabilities: [incident_triage, health_monitoring, rollback_execution]
+      description: >-
+        Keeping the deployed service up: reads logs and health endpoints,
+        narrows an alert to the failing component, follows the runbook for a
+        restart or a rollback, and reports the measured recovery or, failing
+        that, the honest reason it did not recover.
+      not_for:
+        - writing new product code or new test cases
+        - approving a release or amending authorization policy
+        - declaring a service healthy without a live signal from it
+
+# A `reports_to` entry names another DECLARED SPECIALIST, and the loader
+# rejects a dangling name or a cycle. Note what that does and does not buy:
+# it orders the declaration, and it becomes BotProfile.reports_to when the
+# team is forged. It does not create the manager - a specialist pointing at
+# another specialist that was never forged as a Bot has an escalation target
+# nobody can receive the escalation. The default team is flat for that reason:
+# the leader is a Bot (alpha/bots/alpha_leader.py), not a specialist.
 
 # ============================================================================
 # Voice & multimodal (fully local realtime voice; legacy wake word optional)
