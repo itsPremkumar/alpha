@@ -179,6 +179,19 @@ class SandboxConfig(BaseModel):
         default=False,
         description="Allow the bash tool to execute directly on the host when using LocalSandboxProvider. Dangerous; intended only for fully trusted local environments.",
     )
+    allow_in_process_repl: bool = Field(
+        default=False,
+        description=(
+            "Allow the python_repl tool, which executes Python via exec() inside the Gateway "
+            "process itself and therefore has no sandbox boundary at all. It is a distinct "
+            "switch from allow_host_bash because it is not a subprocess: it cannot be confined "
+            "by build_sandbox_env, and its namespace preloads `os`, so os.environ is readable "
+            "regardless of any env scrubbing. Defaults to False; without this key the tool was "
+            "reachable in the shipped default even while allow_host_bash was False, which made "
+            "allow_host_bash an incomplete kill switch. Dangerous; intended only for fully "
+            "trusted local environments."
+        ),
+    )
     image: str | None = Field(
         default=None,
         description="Sandbox image to use (Docker/AIO, BoxLite OCI, or OpenSandbox image)",

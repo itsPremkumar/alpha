@@ -7,7 +7,7 @@ from alpha.config import get_app_config
 from alpha.config.app_config import AppConfig
 from alpha.mcp.tasks.runtime import is_mcp_task_runtime_available
 from alpha.reflection import resolve_variable
-from alpha.sandbox.security import is_host_bash_allowed
+from alpha.sandbox.security import is_host_bash_allowed, is_in_process_repl_allowed
 from alpha.subagents.batch_runtime import is_subagent_batch_runtime_available
 from alpha.tools.builtins import (
     a2a_tool,
@@ -481,6 +481,16 @@ def get_available_tools(
         from alpha.tools.skill_manage_tool import skill_manage_tool
 
         builtin_tools.append(skill_manage_tool)
+
+    # python_repl is NOT a host-bash tool, so the allow_host_bash filter above
+    # never saw it: it lives in BUILTIN_TOOLS, and that filter is not applied to
+    # BUILTIN_TOOLS at all. It exec()s the cell inside the Gateway process with
+    # os preloaded, so it grants process-level execution and full environment
+    # read access with no sandbox boundary whatsoever. Leaving it reachable made
+    # allow_host_bash: false an incomplete kill switch. It now has its own
+    # default-off switch and is dropped here so the model is never offered it.
+    if not is_in_process_repl_allowed(config):
+        builtin_tools = [t for t in builtin_tools if getattr(t, "name", None) != "python_repl"]
 
     # Add subagent tools only if enabled via runtime parameter
     if subagent_enabled:
