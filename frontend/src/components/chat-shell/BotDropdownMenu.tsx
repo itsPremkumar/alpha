@@ -156,6 +156,78 @@ export function BotDropdownMenu({
               <p className="text-[10px] text-muted-foreground truncate">{botRole}</p>
             </div>
           </div>
+          {/* Quick Switch Agent Submenu */}
+          <div className="pt-1.5">
+            <div className="px-2 pb-1 flex items-center justify-between text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+              <span>Switch AI Agent</span>
+              {onOpenView && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenView("bots");
+                  }}
+                  className="hover:text-primary transition-colors lowercase font-normal"
+                >
+                  All profiles â†’
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
+              {/* Lead Agent */}
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onSelectBot(null);
+                }}
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                  activeBot === null
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Bot className="size-3.5 shrink-0" />
+                  <span className="truncate">Lead Agent</span>
+                </div>
+                <span className="text-[9px] opacity-75">Auto-routes</span>
+              </button>
+
+              {/* Other bots */}
+              {bots.map((b) => {
+                const isCurrent = activeBot?.name === b.name;
+                return (
+                  <button
+                    key={b.name}
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      onSelectBot(b);
+                    }}
+                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                      isCurrent
+                        ? "bg-primary text-primary-foreground font-semibold"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {b.avatar ? (
+                        <span className="text-xs shrink-0">{b.avatar}</span>
+                      ) : (
+                        <Code2 className="size-3.5 shrink-0" />
+                      )}
+                      <span className="truncate">{botDisplayName(b)}</span>
+                    </div>
+                    <span className="text-[9px] opacity-75 truncate max-w-24">
+                      {b.role || "Agent"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Core Bot Actions (Items 1-5 required by User Specification) */}
           <div className="py-1 space-y-0.5">
@@ -263,78 +335,6 @@ export function BotDropdownMenu({
             </button>
           </div>
 
-          {/* Quick Switch Agent Submenu */}
-          <div className="pt-1.5">
-            <div className="px-2 pb-1 flex items-center justify-between text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-              <span>Switch AI Agent</span>
-              {onOpenView && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onOpenView("bots");
-                  }}
-                  className="hover:text-primary transition-colors lowercase font-normal"
-                >
-                  All profiles →
-                </button>
-              )}
-            </div>
-
-            <div className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
-              {/* Lead Agent */}
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  onSelectBot(null);
-                }}
-                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                  activeBot === null
-                    ? "bg-primary text-primary-foreground font-semibold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Bot className="size-3.5 shrink-0" />
-                  <span className="truncate">Lead Agent</span>
-                </div>
-                <span className="text-[9px] opacity-75">Auto-routes</span>
-              </button>
-
-              {/* Other bots */}
-              {bots.map((b) => {
-                const isCurrent = activeBot?.name === b.name;
-                return (
-                  <button
-                    key={b.name}
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      onSelectBot(b);
-                    }}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                      isCurrent
-                        ? "bg-primary text-primary-foreground font-semibold"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {b.avatar ? (
-                        <span className="text-xs shrink-0">{b.avatar}</span>
-                      ) : (
-                        <Code2 className="size-3.5 shrink-0" />
-                      )}
-                      <span className="truncate">{botDisplayName(b)}</span>
-                    </div>
-                    <span className="text-[9px] opacity-75 truncate max-w-24">
-                      {b.role || "Agent"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       )}
     </div>

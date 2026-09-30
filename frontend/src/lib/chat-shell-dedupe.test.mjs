@@ -267,3 +267,42 @@ test("no HTTP method or route is rendered as visible text in the rail surfaces",
     );
   }
 });
+
+test("the agent list comes FIRST in the dropdown; the actions come after it", () => {
+  // Ordering is the whole point of this change. The bot list used to sit at the
+  // BOTTOM, below five actions, inside a max-h-40 scroller - so opening the menu
+  // to change agent showed six things that were not agent choices, and the
+  // actual list was below the fold. The operator asked for the selection first
+  // and the actions after.
+  //
+  // Asserted by INDEX, not by presence: every one of these blocks exists in both
+  // orderings, so a presence check would pass either way and prove nothing.
+  const menu = readFileSync(
+    new URL("../components/chat-shell/BotDropdownMenu.tsx", import.meta.url),
+    "utf8",
+  );
+  const iSwitch = menu.indexOf("Switch AI Agent");
+  const iActions = menu.indexOf("Core Bot Actions");
+  const iNewConversation = menu.indexOf("New Conversation");
+  const iBotSettings = menu.indexOf("Bot settings");
+  const iRows = menu.indexOf("bots.map(");
+  const iLeadRow = menu.indexOf("Auto-routes");
+
+  const parts = [
+    ["Switch AI Agent", iSwitch],
+    ["Core Bot Actions", iActions],
+    ["New Conversation", iNewConversation],
+    ["Bot settings", iBotSettings],
+    ["bots.map(", iRows],
+    ["Auto-routes", iLeadRow],
+  ];
+  for (const entry of parts) {
+    assert.notEqual(entry[1], -1, entry[0] + " must still exist in the menu");
+  }
+
+  assert.ok(iRows < iActions, "per-bot rows must render before the action block");
+  assert.ok(iSwitch < iActions, "the Switch AI Agent heading must precede the actions");
+  assert.ok(iLeadRow < iActions, "the Lead Agent row must precede the actions");
+  assert.ok(iActions < iNewConversation, "the actions stay together, after the list");
+  assert.ok(iBotSettings > iActions, "including the last action");
+});
