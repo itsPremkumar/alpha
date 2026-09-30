@@ -116,3 +116,34 @@ GROK_GAP_IMPLEMENTATION_REPORT.md   (this file)
 - Wire `RoutineStore`/`ConnectorStore`/`EgressStore` into their owning routers
   (skills, extensions, gateway) behind config flags.
 - Add the connector marketplace UI and real OAuth flows.
+
+---
+
+## 8. Live end-to-end verification (executed 2026-09-30)
+
+Two runnable scripts were added and executed against the worktree; both exit 0 on full pass.
+
+### 8.1 New features — `verify_features_live.py` (26/26 checks)
+Realistic scenario: onboarding a sales rep, "Priya".
+
+- **Feature 1 (connectors):** marketplace listed 10 connectors; search "google" → Gmail + Google Calendar; installed gmail/google_calendar/slack; recorded slack health (degraded, 20/min); disabled gmail; state survived a reload; unknown connector refused; corrupt store failed loudly.
+- **Feature 2 (egress):** `*.bank.com` and `*.chase.com` routed to a residential proxy while ordinary domains stayed direct; imported Priya's authenticated Chrome profile (reference only); a raw cookie blob and a `cookies` field were both refused; policy + profile survived a reload.
+- **Feature 3 (routines):** captured a 3-step `morning_briefing` (gmail_search → calendar_list → slack_post); the email recipient was auto-detected as a required parameter; saved, reloaded, and replayed for `rep42@acme.com` on 2026-10-01 with `{{channel}}` defaulting to `#sales`; replay without the required parameter was refused.
+
+Run: `python verify_features_live.py` — pure stdlib, no dependencies.
+
+### 8.2 Pre-existing features — `verify_existing_live.py` (7/7 checks)
+Real tasks executed against the existing capabilities:
+
+- **Swarm decomposition:** "Build a marketing landing page, test it, and deploy to production" → a real **5-node hierarchical DAG** (research → architecture → 2 parallel implementation streams → QA/red-team audit), `mode=hierarchical`.
+- **Speculative tournament:** generated 3 candidate patches and ran a real bake-off → winner `cand_rewrite` (pareto 0.9796).
+- **Bot cloning:** `researcher` → `researcher_clone_fc3a37`, a `SPECIALIST_FORK` with role "Deep Researcher & Synthesis Specialist [Specialist]", skills `['deep-research']`, lineage recorded.
+- **Deliberation council:** router classified "Compare three database engines…" → strategy `debate` ("Contested architectural trade-off … routing to Sparse Multi-Agent Debate"); and it refused to fabricate with an empty roster (`RuntimeError: No chat models configured`).
+- **Computer use:** package imports (OS backend optional).
+- **Perpetual daemon:** instantiates and is `RUNNING`.
+
+Run: `uv run --with pydantic --with langchain --with "sqlalchemy[asyncio]" --with python-dotenv python verify_existing_live.py`
+(needs `config.yaml` — copied from `config.example.yaml` for local runs; gitignored.)
+
+> Features that require live model API keys were verified up to the point of their honest refusal; a full model-backed run needs provider credentials.
+
