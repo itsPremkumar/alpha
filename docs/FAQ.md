@@ -252,7 +252,8 @@ on-demand. → [Architecture](ARCHITECTURE.md)
 
 An Astra security enclave with a scoped credential vault (secrets go to tools, never
 into prompts), a risk-scoring command approval gate, an emergency stop, a
-cryptographic trajectory flight recorder, artifact lineage tracing, deterministic
+trajectory flight recorder (local SQLite audit store with JSONL export), artifact
+lineage tracing with SHA-256 content digests, deterministic
 per-run token budgets, and per-thread sandbox isolation with three tiers (local
 subprocess, Docker, Kubernetes). Never put secrets in `config.yaml` literals — use
 `$VAR` plus `.env`. → [Security](SECURITY.md)

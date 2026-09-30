@@ -18,8 +18,9 @@ Maintainer: Prem Kumar (https://github.com/itsPremkumar) · License: MIT · Vers
 
 ## 1. One-paragraph definition
 
-Alpha is a self-hosted platform where LLM agents plan, execute, and verify
-long-horizon tasks against real tools, files, and the web. The backend is an
+Alpha is a self-hosted platform where LLM agents plan and execute long-horizon
+tasks against real tools, files, and the web — reporting honestly when a result is
+unverified. The backend is an
 asynchronous, distributed Python 3.12+ system built on LangGraph and served by a
 FastAPI Gateway exposing 61 routers; the front ends are a Next.js 15 (App Router,
 React 19, Tailwind) web workspace and an Electron Windows desktop app that bundles
@@ -152,9 +153,11 @@ verification.
 
 ### 5.6 Security and governance
 Astra security enclave with a scoped credential vault; a risk-scoring command
-approval gate; emergency stop (Estop); a trajectory flight recorder that
-cryptographically logs every reasoning step, tool call, and state transition;
-universal artifact lineage tracing; and deterministic per-run token budgeting
+approval gate; emergency stop (Estop); a trajectory flight recorder that records
+every reasoning step, tool call, and state transition in a local SQLite audit store
+with JSONL export; universal artifact lineage tracing with SHA-256 content digests
+(hash-linked provenance, stored locally; not a cryptographic attestation); and
+deterministic per-run token budgeting
 with cache-aware cost telemetry.
 
 ### 5.7 Channels and integrations

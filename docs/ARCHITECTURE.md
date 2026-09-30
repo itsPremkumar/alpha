@@ -134,7 +134,7 @@ The deep research pipeline solves shallow web-search limitations by executing an
 - **Astra Security Enclave**: Enforces task boundaries and encrypts sensitive API tokens and credentials.
 - **Smart Command Approval**: Scores the blast radius of terminal commands and prompts the operator for approval when necessary.
 - **Emergency Stop (Estop)**: Instant hard-stop mechanism halting runaway loops, swarms, and background jobs.
-- **Trajectory Flight Recorder**: Cryptographically logs every reasoning step, tool call, and state transition for forensic audits.
+- **Trajectory Flight Recorder**: Records every reasoning step, tool call, and state transition to a local SQLite audit store (JSONL export) for forensic audits.
 - **Token Budget Ceilings**: Enforces deterministic token spend limits per run with real-cost provider pricing telemetry.
 
 ---

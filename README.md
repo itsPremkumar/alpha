@@ -76,8 +76,9 @@ proprietary backend.
 ## What is Alpha?
 
 **Alpha is an open-source autonomous multi-agent AI operating system** — a
-self-hosted platform where LLM agents plan, execute, and verify long-horizon tasks
-against your real tools, files, and the web, instead of only answering a chat prompt.
+self-hosted platform where LLM agents plan and execute long-horizon tasks against
+your real tools, files, and the web — reporting honestly when a result is unverified
+— instead of only answering a chat prompt.
 
 It is **not** a chat wrapper and **not** a hosted SaaS. You run it on your own
 machine or your own server, bring your own model API keys, and every artifact
@@ -557,10 +558,12 @@ exactly-once execution.
   verification for high-impact terminal commands.
 - **Emergency stop (Estop)** — hard-stops runaway loops, subagents, and background
   processes.
-- **Trajectory flight recorder** — cryptographically logs every reasoning step,
-  tool call, and state transition for forensic audit.
-- **Universal artifact lineage** — end-to-end cryptographic provenance of every
-  generated file, code, and document.
+- **Trajectory flight recorder** — records every reasoning step, tool call, and
+  state transition to a local SQLite audit store with JSONL export, for forensic
+  audit.
+- **Universal artifact lineage** — hash-linked provenance of every generated
+  file, code, and document (SHA-256 content digests, stored locally; not a
+  cryptographic attestation).
 - **Deterministic token budgeting & cost telemetry** — per-run ceilings and
   real-time spend with cache-aware pricing.
 

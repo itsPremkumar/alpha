@@ -36,8 +36,9 @@ personality, isolated system prompt, and private inbox. → [WORKFORCE.md](WORKF
 **Approval gate** — the risk-scoring command gate that requires explicit operator
 verification before a high-impact terminal command runs.
 
-**Artifact lineage** — end-to-end cryptographic provenance of every generated file,
-code, and document, from the originating prompt.
+**Artifact lineage** — end-to-end hash-linked provenance of every generated file,
+code, and document, from the originating prompt: SHA-256 content digests stored
+locally, not a cryptographic attestation.
 
 **Astra enclave** — the security plane providing credential scoping and process
 isolation, so the model never receives raw secrets. → [SECURITY.md](SECURITY.md)

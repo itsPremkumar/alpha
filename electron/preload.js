@@ -22,9 +22,7 @@ const bridgeApi = {
   onStatus(callback) {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('alpha:status', listener);
-    ipcRenderer.on('alpha:status', listener);
     return () => {
-      ipcRenderer.removeListener('alpha:status', listener);
       ipcRenderer.removeListener('alpha:status', listener);
     };
   },
