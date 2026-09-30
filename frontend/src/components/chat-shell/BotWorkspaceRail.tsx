@@ -173,7 +173,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   return (
     <div className="flex flex-col h-full select-none divide-y divide-border/40" data-shell="bot-workspace">
-      {/* â”€â”€ 1. Roster summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      {/* ── 1. Roster summary ───────────────────────────────────────────
           The scrolling "AI Agents (N)" profile list was removed here. It
           duplicated the agent selector that already exists directly below
           (BotDropdownMenu), so the rail showed the same choice twice: once as
@@ -202,11 +202,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                 : "No agents reported"}
             </span>
           </span>
-          <span className="shrink-0 text-[10px] font-medium">All profiles â†’</span>
+          <span className="shrink-0 text-[10px] font-medium">All profiles →</span>
         </button>
       </section>
 
-      {/* â”€â”€ 2. Current Agent Card & Primary New Chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── 2. Current Agent Card & Primary New Chat ──────────────────── */}
       <section className="p-3 bg-card/30 space-y-2">
         <BotDropdownMenu
           bots={rosterBots}
@@ -264,7 +264,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
         </button>
       </section>
 
-      {/* â”€â”€ 3. Standalone Conversations (Outside Any Project) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── 3. Standalone Conversations (Outside Any Project) ────────── */}
       <section className="p-3 space-y-1.5" aria-label="Standalone conversations">
         <div className="flex items-center justify-between pb-0.5 px-0.5">
           <button
@@ -348,7 +348,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
         )}
       </section>
 
-      {/* â”€â”€ 4. Projects & Nested Project Conversations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
       <section className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto" aria-label="Projects">
         <div className="flex items-center justify-between pb-0.5 px-0.5">
           <button
@@ -509,7 +509,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             }`}
                             title={count !== null ? `${count} conversations in this project` : "Conversation count unknown"}
                           >
-                            {count !== null ? count : "â€”"}
+                            {count !== null ? count : "—"}
                           </span>
 
                           {/* Project Options Menu using ProjectDropdownMenu */}
@@ -554,7 +554,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                         </div>
                       </div>
 
-                      {/* â”€â”€ Hierarchical Nested Project Conversations â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                      {/* ── Hierarchical Nested Project Conversations ───────── */}
                       {isExpanded && (
                         <div className="ml-4 pl-2 border-l-2 border-primary/20 space-y-0.5 my-1 pt-0.5">
                           {/* New inside project button & quick links */}
@@ -580,7 +580,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                               >
                                 Files
                               </button>
-                              <span>â€¢</span>
+                              <span>•</span>
                               <button
                                 type="button"
                                 onClick={() => {

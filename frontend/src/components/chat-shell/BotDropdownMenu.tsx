@@ -169,7 +169,7 @@ export function BotDropdownMenu({
                   }}
                   className="hover:text-primary transition-colors lowercase font-normal"
                 >
-                  All profiles â†’
+                  All profiles →
                 </button>
               )}
             </div>

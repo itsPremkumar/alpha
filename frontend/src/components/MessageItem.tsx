@@ -393,8 +393,23 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
               <ToolGroup toolCalls={message.toolCalls} live={streaming} />
             )}
 
+            {/* The assistant reply. Scoped to .response-prose, defined in
+                globals.css.
+                *
+                * This used to carry `prose prose-sm dark:prose-invert
+                * max-w-none`, and every one of those `prose*` classes was DEAD:
+                * @tailwindcss/typography is neither installed nor registered in
+                * tailwind.config.cjs, which lists only tailwindcss-animate. So
+                * the reply had no typographic styling at all - headings, lists,
+                * quotes, tables and code blocks fell back to browser defaults,
+                * and `max-w-none` left the measure unbounded inside a full-width
+                * transcript, which is why a long answer read as one flat wall.
+                *
+                * .response-prose is plain CSS rather than a new dependency: a
+                * 68ch measure, a heading scale where size/weight/tracking move
+                * together, real block spacing, and code and table treatments. */}
             {displayContent && (
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed break-words">
+              <div className="response-prose">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {displayContent}
                 </ReactMarkdown>
