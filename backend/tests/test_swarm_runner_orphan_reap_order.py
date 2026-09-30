@@ -41,6 +41,20 @@ into a callable. That is a refactor of the runner's control flow rather than a
 test, so it is not done here. Until then the behavioural cases are documentary
 and the ordering pin is the real guard. Do not read "5 passed" as five
 independent proofs of this fix.
+
+Live confirmation (gateway restarted so the running process actually loaded this
+code - it runs `uvicorn app.gateway.app:app` with no `--reload`, so an earlier
+re-run of the reproduction silently measured the pre-fix process and proved
+nothing). Same script, same endpoint, before vs after:
+
+  before: status=running rev=12  map-1..3=failed/1  reduce=pending/0   (frozen 40s+)
+  after:  status=failed rev=15  map-1..3=failed/1  reduce=failed/0    (stable from t+5s)
+
+The plan now reaches a real terminal state, `task-reduce` is reaped rather than
+stranded PENDING, and `status` stops reporting `running` for a swarm nobody is
+working on. The tasks being FAILED is the honest outcome here: `step` leased them
+without executing, so they genuinely never ran and their reducer genuinely could
+not.
 """
 
 from __future__ import annotations
