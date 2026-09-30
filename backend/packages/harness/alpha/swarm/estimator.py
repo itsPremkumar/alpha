@@ -49,14 +49,30 @@ class SwarmBenefitEstimator:
             speedup = round(serial_sec / max(total_parallel_sec, 1.0), 2)
             net_benefit = serial_sec - total_parallel_sec
 
-            should_swarm = item_count >= 3 and net_benefit > 10.0
+            batch_wide_enough = item_count >= 3
+            net_benefit_measured = net_benefit > 10.0
+            should_swarm = batch_wide_enough and net_benefit_measured
             mode = SwarmMode.MAP_REDUCE if mode_hint in (SwarmMode.AUTO, SwarmMode.PARALLEL) else mode_hint
 
-            reason = (
-                f"Batch workload of {item_count} items. Deploying {workers} workers reduces critical path from {serial_sec:.0f}s to {total_parallel_sec:.0f}s ({speedup}x speedup, saving {net_benefit:.0f}s)."
-                if should_swarm
-                else f"Batch count of {item_count} is too small to overcome swarm spawn and merge overhead."
-            )
+            # The refusal sentence has to name the half of the gate that actually
+            # refused, and it has to agree with the durations shipped beside it.
+            # A single hardcoded "too small to overcome overhead" string asserted
+            # the opposite of the payload on every batch-narrow refusal: a 2-item
+            # batch is refused on `batch_wide_enough`, while its own arithmetic
+            # measured 40s serial against 23.8s parallel - a 1.68x saving the
+            # sentence then denied. `net_benefit` is reported either way, so the
+            # caller can see a positive saving is being declined for batch size
+            # rather than being told the swarm would have been slower.
+            if should_swarm:
+                reason = f"Batch workload of {item_count} items. Deploying {workers} workers reduces critical path from {serial_sec:.0f}s to {total_parallel_sec:.0f}s ({speedup}x speedup, saving {net_benefit:.0f}s)."
+            elif not batch_wide_enough:
+                reason = (
+                    f"Batch of {item_count} items is below the 3-item floor for swarming, so this runs as a single agent. "
+                    f"Swarming would still measure faster ({serial_sec:.0f}s serial vs {total_parallel_sec:.0f}s across {workers} workers, "
+                    f"a {net_benefit:.0f}s saving); the floor is a fixed policy threshold, not a measured loss."
+                )
+            else:
+                reason = f"Batch of {item_count} items measures only a {net_benefit:.0f}s saving ({serial_sec:.0f}s serial vs {total_parallel_sec:.0f}s across {workers} workers), below the 10s net-benefit floor."
 
             return SwarmDecision(
                 should_swarm=should_swarm,

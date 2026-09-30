@@ -8,11 +8,15 @@ mutation a team needs is a mutation the swarm routes already expose
 (``POST /api/swarms``, ``POST /api/swarms/{id}/run-async``). This router adds
 readability, not authority.
 
-**Not mounted yet.** Router registration in this Gateway is explicit
-(``app.include_router(...)`` in ``app/gateway/app.py``), so these routes answer
-nothing until that file grows two lines. See ``docs/TEAM_RUNTIME.md``; the
-module is written and tested, and a passing test on an unmounted router is
-explicitly *not* claimed as reachability.
+**Mounted.** Router registration in this Gateway is explicit
+(``app.include_router(...)`` in ``app/gateway/app.py``); the ``teams`` import and
+one ``app.include_router(teams.router)`` beside the swarms mount are both
+present, so every route below answers over HTTP. The mount is pinned positively
+by ``tests/test_team_routes.py::test_the_team_routes_are_mounted`` so it cannot
+rot back into dead code that merely looks like a working feature. See
+``docs/TEAM_RUNTIME.md`` for the mount history - this notice previously said the
+router was *not* mounted, which was true when written and stopped being true when
+those two lines landed. Keep the claim in step with ``app.py``.
 """
 
 from __future__ import annotations
