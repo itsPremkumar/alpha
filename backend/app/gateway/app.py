@@ -1144,6 +1144,21 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(threads.router)
 
     # Scheduled tasks API is mounted at /api/scheduled-tasks
+    #
+    # ROUTE ORDER IS LOAD-BEARING: `deliveries` is included BEFORE
+    # `scheduled_tasks`, and must stay there. It owns the single-segment literal
+    # `/api/scheduled-tasks/blueprints`; `scheduled_tasks` owns the
+    # `/api/scheduled-tasks/{task_id}` catch-all. Starlette matches in
+    # registration order, so including `scheduled_tasks` first let the catch-all
+    # swallow `/blueprints` and answer `404 {"detail":"Scheduled task not
+    # found"}` - indistinguishable from a genuinely absent task id.
+    # `frontend/src/lib/protocols.ts` `listScheduledBlueprints` and
+    # `frontend/src/lib/workforce.ts` `fetchBlueprints` both call it, and
+    # `ProtocolsSection.tsx` awaits it as the FIRST statement in its `load()`,
+    # so the 404 aborted the deliveries and incidents reads with it.
+    # `deliveries` has no other two-segment path, so moving it earlier shadows
+    # nothing. Pinned by tests/test_scheduled_tasks_route_order.py.
+    app.include_router(deliveries.router)
     app.include_router(scheduled_tasks.router)
 
     # Agents API is mounted at /api/agents
@@ -1195,7 +1210,6 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(benchmarks.router)
     app.include_router(evolution.router)
     app.include_router(evidence.router)
-    app.include_router(deliveries.router)
     app.include_router(checkpoints.router)
     app.include_router(skills_workshop.router)
     app.include_router(credentials.router)

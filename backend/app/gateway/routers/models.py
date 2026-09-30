@@ -686,6 +686,27 @@ async def run_moa_round(
     )
 
 
+# ROUTE ORDER IS LOAD-BEARING. This single-segment literal must stay ABOVE the
+# `/models/{model_name}` catch-all below. Starlette matches in registration
+# order, so a catch-all declared first swallows this path and answers
+# `404 {"detail": "Model 'providers' not found"}` - indistinguishable from a
+# genuinely absent model. `frontend/src/lib/api.ts` `fetchProvidersCatalog`
+# calls it, so the Settings provider catalog rendered that 404. Same reason
+# `routers/skills.py` keeps its collection routes above `/skills/{skill_name}`.
+# Pinned by tests/test_route_order_literal_above_catchall.py.
+@router.get(
+    "/models/providers",
+    summary="List Supported LLM Providers & Configuration Status",
+    description="Retrieve catalog of all supported providers (keyless, recurring free, gateways, paid, custom) and their configuration status.",
+)
+async def list_providers() -> list[dict]:
+    import asyncio as _asyncio
+
+    from alpha.models.provider_manager import get_providers_catalog
+
+    return await _asyncio.to_thread(get_providers_catalog)
+
+
 @router.get(
     "/models/{model_name}",
     response_model=ModelResponse,
@@ -817,19 +838,6 @@ async def free_llm_catalog(refresh: bool = False, probe: bool = False) -> dict:
         return view
 
     return await _asyncio.to_thread(_view)
-
-
-@router.get(
-    "/models/providers",
-    summary="List Supported LLM Providers & Configuration Status",
-    description="Retrieve catalog of all supported providers (keyless, recurring free, gateways, paid, custom) and their configuration status.",
-)
-async def list_providers() -> list[dict]:
-    import asyncio as _asyncio
-
-    from alpha.models.provider_manager import get_providers_catalog
-
-    return await _asyncio.to_thread(get_providers_catalog)
 
 
 class ConfigureProviderRequest(BaseModel):

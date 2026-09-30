@@ -748,7 +748,11 @@ test("a formatter dash is always paired with a worded label", () => {
   // sits under has to say the reading is unknown.
   for (const [name, file] of Object.entries(DASH_SURFACES)) {
     const code = stripComments(read(file));
-    const formatters = [...code.matchAll(/function (\w+)\([^)]*\)[^{]*\{([\s\S]*?)\n\}/g)]
+    // `\r?\n` for the same reason as the `toneSource` match below: these source
+    // files are CRLF on this checkout, so a literal `\n\}` cannot terminate a
+    // function body and the extractor would silently return an empty list - a
+    // vacuous scan that reads as "nothing to fix".
+    const formatters = [...code.matchAll(/function (\w+)\([^)]*\)[^{]*\{([\s\S]*?)\r?\n\}/g)]
       .filter(([, , body]) => /return "—"/.test(body))
       .map(([, fn]) => fn);
     for (const fn of formatters) {
@@ -833,8 +837,16 @@ const chatViewSource = read("../components/ChatView.tsx");
 
 // `freeCatalogTone` is a pure exported function; load just it rather than the
 // whole 2000-line view, which would drag in every section and browser global.
+//
+// `\r?\n`, not `\n`: `ChatView.tsx` is CRLF on this checkout, and `^}\n` can
+// never match when the byte after `}` is `\r`. A bare `\n` made this assertion
+// unsatisfiable on Windows, so the module-level `assert.ok` rejected AFTER the
+// 34 already-registered tests had finished. `node:test` then reported it as a
+// file-level `'test failed'` with no assertion detail, and the six `test()`
+// calls below never registered at all - silently skipped tests that read as
+// coverage. The same class of bug is fixed at the `matchAll` above.
 const toneSource = chatViewSource.match(
-  /export type FreeCatalogTone[\s\S]*?^}\n/ms,
+  /export type FreeCatalogTone[\s\S]*?^}\r?\n/ms,
 );
 assert.ok(toneSource, "expected the exported FreeCatalogTone helpers in ChatView.tsx");
 const { freeCatalogTone, FREE_TONE_DOT } = await load(transpile(toneSource[0]));
