@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Bell, Settings, Check, User, ExternalLink, ShieldCheck, Sparkles } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { UpdateControl } from "@/components/UpdateControl";
 import { ANONYMOUS_INITIALS, ANONYMOUS_LABEL, ANONYMOUS_ROLE } from "@/lib/operator";
 import type { WorkspaceView } from "@/lib/workspace-view";
 
@@ -24,6 +25,14 @@ export interface WorkspaceTopBarProps {
   botLabel?: string | null;
   projectLabel?: string | null;
   threadLabel?: string | null;
+  /**
+   * Unread messages across the bot roster, or `null` when nothing measured it.
+   *
+   * `null` is not zero: the roster only carries `unread_count` when the read
+   * asked for the activity projection, so an unknown total must hide the badge
+   * rather than render a dot that claims a count nobody took.
+   */
+  unreadCount?: number | null;
 }
 
 export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
@@ -37,6 +46,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
     botLabel,
     projectLabel,
     threadLabel,
+    unreadCount = null,
   } = props;
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -133,6 +143,13 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
           </span>
         </div>
 
+        {/* Update state belongs where every view can see it: it used to mount
+            only in the per-section header, which is not rendered in the chat
+            view at all, so an available update was invisible on the screen a
+            user actually spends their time on. This bar is the one header all
+            views share. */}
+        <UpdateControl />
+
         {/* Notifications toggle */}
         <div className="relative" ref={notifRef}>
           <button
@@ -141,11 +158,18 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
             className={`relative p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors ${
               notificationsOpen ? "bg-muted text-foreground" : ""
             }`}
-            title="Notifications & Activity"
-            aria-label="Notifications"
+            title={unreadCount ? `Notifications & Activity — ${unreadCount} unread` : "Notifications & Activity"}
+            aria-label={unreadCount ? `Notifications, ${unreadCount} unread messages` : "Notifications"}
           >
             <Bell className="size-4" />
-            <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" />
+            {/* The dot was unconditional, so the bell announced unread activity
+                on every install — including one that has never received a
+                message — and could not be dismissed. It now renders only when
+                the roster read actually measured a non-zero total, and stays
+                hidden while that total is unknown (`null`). */}
+            {unreadCount !== null && unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" aria-hidden="true" />
+            )}
           </button>
 
           {notificationsOpen && (

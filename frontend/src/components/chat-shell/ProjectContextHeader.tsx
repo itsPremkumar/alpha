@@ -292,14 +292,19 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
           <span>Knowledge</span>
         </button>
 
+          {/* This row is a *context* switcher: conversation, files, tasks and
+              knowledge each render a panel inside this view. "Agent" used to
+              be a fifth member of that row, but `ChatView` only branches on
+              files/tasks/knowledge, so selecting it fell through to the
+              conversation branch — the tab lit up and the chat stayed on
+              screen, with no panel behind the label. There is a real Agents
+              surface, so the control navigates to it instead of pretending a
+              panel exists. */}
           <button
             type="button"
-            onClick={() => onTabChange?.("agent")}
-            className={`py-2 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "agent"
-                ? "border-primary text-primary font-semibold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+            onClick={() => onOpenView("agents")}
+            title="Open the Agents view"
+            className="py-2 border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <SlidersHorizontal className="size-3.5" />
             <span>Agent</span>

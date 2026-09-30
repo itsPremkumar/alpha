@@ -1,4 +1,4 @@
-import { get, send, asList, pick } from "./http";
+import { get, send, asList, pick, ApiError } from "./http";
 
 /** Per-model token split persisted on a run (absent when never reported). */
 export interface RunModelUsage {
@@ -442,7 +442,16 @@ export async function fetchWorkspaceChanges(threadId: string, runId: string): Pr
   }));
 }
 
-/** Ask the backend for clean regenerate input for an assistant answer. Returns null when unsupported. */
+/**
+ * Ask the backend for clean regenerate input for an assistant answer.
+ *
+ * Returns `null` only when the Gateway has no such route (its 404 carries
+ * Starlette's bare `Not Found` detail); every other failure — "only the latest
+ * assistant message can be regenerated", "could not find source run", a dead
+ * Gateway — is re-raised so the caller can show the reason instead of
+ * mistaking a refusal for an unsupported feature and quietly sending a second,
+ * duplicate turn.
+ */
 export async function prepareRegenerate(threadId: string, messageId: string): Promise<Record<string, unknown> | null> {
   try {
     // Backend requires {message_id} — the target assistant message id.
@@ -451,12 +460,13 @@ export async function prepareRegenerate(threadId: string, messageId: string): Pr
       "POST",
       { message_id: messageId }
     );
-  } catch {
-    return null;
+  } catch (error) {
+    if (isMissingRoute(error)) return null;
+    throw error;
   }
 }
 
-/** Ask the backend for edit-replay input. Returns null when unsupported. */
+/** Ask the backend for edit-replay input. Same failure contract as {@link prepareRegenerate}. */
 export async function prepareEditRegenerate(
   threadId: string,
   humanMessageId: string,
@@ -469,7 +479,20 @@ export async function prepareEditRegenerate(
       "POST",
       { human_message_id: humanMessageId, replacement_text: replacementText }
     );
-  } catch {
-    return null;
+  } catch (error) {
+    if (isMissingRoute(error)) return null;
+    throw error;
   }
+}
+
+/** A route-level 404 (`{"detail": "Not Found"}`) means the endpoint is absent; a
+ *  404 that names the message or thread is the server answering, not missing. */
+function isMissingRoute(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    // Starlette's own 404 detail is exactly `Not Found` (the gateway's routes
+    // that name a resource instead say e.g. `Message <id> not found`).
+    /(?:^|\. )Not Found\s*$/.test(error.message)
+  );
 }

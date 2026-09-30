@@ -176,8 +176,19 @@ test("a failed update call rejects with the server's reason rather than resolvin
 
 test("the update control is mounted on the main screen, not only in settings", () => {
   const view = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
-  assert.match(view, /import \{ UpdateControl \} from "@\/components\/UpdateControl"/);
-  assert.match(view, /<UpdateControl \/>/);
+  // `WorkspaceTopBar` is the one header every view shares, so mounting the
+  // control there puts it in front of the user on the chat screen too. It used
+  // to live only in the per-section header, which `view === "chat"` never
+  // renders — the strongest screen of all was the one without it.
+  assert.match(view, /<WorkspaceTopBar\b/);
+  assert.doesNotMatch(
+    view,
+    /<UpdateControl \/>/,
+    "the control must not be mounted a second time beside WorkspaceVitals",
+  );
+  const topBar = readFileSync(new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url), "utf8");
+  assert.match(topBar, /import \{ UpdateControl \} from "@\/components\/UpdateControl"/);
+  assert.match(topBar, /<UpdateControl \/>/);
 });
 
 test("the control reads persisted state on mount and only calls GitHub on a click", () => {

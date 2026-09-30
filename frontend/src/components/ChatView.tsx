@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { ActivityStatus } from "@/components/ActivityStatus";
@@ -28,10 +28,9 @@ import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
-import { UpdateControl } from "@/components/UpdateControl";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
-import { listThreadRuns, cancelRun } from "@/lib/runs";
+import { listThreadRuns, cancelRun, prepareRegenerate, prepareEditRegenerate } from "@/lib/runs";
 import { rateMessage } from "@/lib/feedback";
 import { suggestionsEnabled, suggestFollowUps, polishDraft } from "@/lib/assist";
 import { listCommands, executeCommand, SlashCommand } from "@/lib/commands";
@@ -321,6 +320,7 @@ export default function ChatView() {
   const [requestError, setRequestError] = useState<{ threadId: string; message: string; draft: string; partial: string; partialArchived: boolean } | null>(null);
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Live run status. The phase is derived from what the stream has actually
@@ -470,10 +470,56 @@ export default function ChatView() {
     hasApproval: messages.some((message) => Boolean(message.approvalRequest)),
   });
 
+  // One timer, owned: two notices inside 4.5s used to schedule two independent
+  // clears, and the *first* timer extinguished the second notice after up to a
+  // fraction of its window. The handle is kept so a newer notice cancels the
+  // pending clear of the older one.
+  const noticeTimerRef = useRef<number | null>(null);
   const flash = (msg: string) => {
     setNotice(msg);
-    window.setTimeout(() => setNotice(null), 4500);
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => {
+      setNotice(null);
+      noticeTimerRef.current = null;
+    }, 4500);
   };
+
+  // Gateway connectivity is a changing fact, not a mount-time snapshot. It used
+  // to be probed exactly once, inside the mount effect: the offline banner and
+  // the header pill froze at whatever was true when the tab loaded, so
+  // restarting the Gateway left "Backend not connected" up until a full reload,
+  // and a Gateway that went down mid-session never produced the banner at all.
+  // The probe re-runs on an interval, on the browser's own network
+  // transitions, and when the tab returns to the foreground — each a moment
+  // where the answer can genuinely have changed.
+  const probeGateway = useCallback(() => {
+    fetchOpsStatus()
+      .then(() => {
+        setGatewayOk(true);
+        // A dismissal belongs to the outage that caused it. Once the Gateway
+        // answers again, the next real outage has to warn again rather than
+        // inherit a dismissed state from five minutes ago.
+        setOfflineDismissed(false);
+      })
+      .catch(() => setGatewayOk(false));
+  }, []);
+
+  useEffect(() => {
+    probeGateway();
+    const id = window.setInterval(probeGateway, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") probeGateway();
+    };
+    window.addEventListener("online", probeGateway);
+    window.addEventListener("offline", probeGateway);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("online", probeGateway);
+      window.removeEventListener("offline", probeGateway);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [probeGateway]);
 
   const persistLocalHistory = async (
     operation: () => Promise<void>,
@@ -732,8 +778,8 @@ export default function ChatView() {
           // previous green dot in place through this catch.
           setFreeTone("unknown");
         });
-      // Lightweight liveness probe for the header status pill.
-      fetchOpsStatus().then(() => setGatewayOk(true)).catch(() => setGatewayOk(false));
+      // Lightweight liveness probe for the header status pill — moved out of
+      // this mount effect; see `probeGateway` below.
       // Shortcut commands for the "/" palette (quiet if unavailable).
       listCommands().then(setSlashCommands).catch(() => setSlashCommands([]));
       setThreadsLoading(false);
@@ -926,9 +972,36 @@ export default function ChatView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId, bots]);
 
+  // Auto-scroll follows the answer only while the reader is already at the
+  // bottom. Without that test, every SSE frame called
+  // `scrollIntoView({behavior:"smooth"})`, so scrolling up to re-read the start
+  // of a streaming answer fought the viewport back down for the whole run.
+  // Opening another conversation also animated through the entire history
+  // instead of simply showing the conversation selected, so a thread change
+  // jumps instead of gliding. `prefers-reduced-motion` is checked here because
+  // this scroll is issued from JavaScript, which the global
+  // `prefers-reduced-motion` stylesheet rule cannot reach.
+  const stickToBottomRef = useRef(true);
+  const jumpScrollRef = useRef(true);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    stickToBottomRef.current = true;
+    jumpScrollRef.current = true;
+  }, [activeThreadId]);
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    const reduce =
+      typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior = reduce || jumpScrollRef.current ? "auto" : "smooth";
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    jumpScrollRef.current = false;
   }, [messages, isLoading, view]);
+  const handleTranscriptScroll = () => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    // 80px of slack: a trackpad's momentum or a scrollbar drag to the very end
+    // must not by itself re-arm following.
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
 
   const handleNewChat = () => {
     stopVoiceForNavigation();
@@ -987,7 +1060,34 @@ export default function ChatView() {
   };
 
   /** Core send: streams one answer, attaches its run id, stores everything locally. */
-  const sendMessage = async (text: string, options: { voiceTurn?: boolean } = {}): Promise<boolean> => {
+  /**
+   * Send a turn, optionally as a **server-prepared replay**.
+   *
+   * `replay` is what turns "Regenerate" and "Edit & resend" from a second,
+   * appended turn into the thing the buttons promise. Both used to ignore
+   * their target entirely: regenerate re-sent the last user text as a *new*
+   * user message (so the question appeared twice and the old answer stayed
+   * above the new one), and edit discarded its `messageId` and appended the
+   * replacement after the unedited turn (so the transcript showed both the
+   * original and the edit, and the model still read the original — the edit
+   * never reached it). The Gateway's `runs/regenerate/prepare` and
+   * `runs/edit-regenerate/prepare` endpoints own the replay: they return the
+   * graph input at the checkpoint *before* the turn, the checkpoint to fork
+   * from, and the metadata that marks this run as a replay so the paged
+   * history hides the superseded attempt.
+   *
+   * `supersedeIds` are the local messages the replay replaces — dropped from
+   * the transcript before the turn starts. `appendUserMessage` distinguishes
+   * the two callers: a regenerate re-asks the question already on screen, an
+   * edit puts the replacement in its place.
+   */
+  const sendMessage = async (
+    text: string,
+    options: {
+      voiceTurn?: boolean;
+      replay?: { prepared: Record<string, unknown>; supersedeIds: string[]; appendUserMessage: boolean };
+    } = {}
+  ): Promise<boolean> => {
     const content = text.trim();
     // Ref is deliberately synchronous: two voice callbacks can arrive before
     // React has committed isLoading=true, and a second run must still be blocked.
@@ -1059,16 +1159,35 @@ export default function ChatView() {
       }
     }
     const tid = threadId;
+    const replay = options.replay;
+    // Captured before the drop so a failed replay can put them back — a failed
+    // attempt supersedes nothing on the server either, and leaving the
+    // transcript with the original answer removed would be a silent deletion.
+    const supersededMessages =
+      replay && replay.supersedeIds.length > 0 ? messages.filter((m) => replay.supersedeIds.includes(m.id)) : [];
+    if (replay && supersededMessages.length > 0) {
+      // The superseded tail leaves the transcript *before* the replacement
+      // turn begins, so the transcript shows the turn that is actually
+      // running. The server's own filter drops the same rows from the paged
+      // history once the replay succeeds; a failed attempt restores them (see
+      // `showRequestFailure`), so reloading agrees with what is on screen.
+      const superseded = new Set(replay.supersedeIds);
+      setMessages((prev) => prev.filter((message) => !superseded.has(message.id)));
+    }
 
     // Automatically detect and trigger slash command lifecycle at the right time
+    // — but never for a replay: the original turn already ran its command, and
+    // re-detecting here would fire it a second time for a regenerated prompt.
     let detection = undefined;
-    try {
-      const d = await autoTriggerCommand(content, undefined, true, { thread_id: tid });
-      if (d && d.matched) {
-        detection = d;
+    if (!replay) {
+      try {
+        const d = await autoTriggerCommand(content, undefined, true, { thread_id: tid });
+        if (d && d.matched) {
+          detection = d;
+        }
+      } catch (e) {
+        console.warn("Autonomous trigger check:", e);
       }
-    } catch (e) {
-      console.warn("Autonomous trigger check:", e);
     }
 
     const userMsg: ChatMessage = {
@@ -1078,11 +1197,13 @@ export default function ChatView() {
       autonomousDetection: detection,
       createdAt: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, userMsg]);
-    await persistLocalHistory(
-      () => appendLocalMessages(tid, [userMsg]),
-      "Your message is visible, but its local archive write failed.",
-    );
+    if (!replay || replay.appendUserMessage) {
+      setMessages((prev) => [...prev, userMsg]);
+      await persistLocalHistory(
+        () => appendLocalMessages(tid, [userMsg]),
+        "Your message is visible, but its local archive write failed.",
+      );
+    }
     // Record bot activity on the server (last_active / version bump).
     if (activeBot) void touchBot(activeBot.name);
     setSuggestions([]);
@@ -1122,7 +1243,15 @@ export default function ChatView() {
       // After a navigation the visible thread is a different conversation, so
       // the retry panel/draft would be painted into the wrong place.
       if (!runIsCurrent()) return;
-      setMessages((prev) => prev.filter((message) => !streamedIds.has(message.id)));
+      setMessages((prev) => {
+        const kept = prev.filter((message) => !streamedIds.has(message.id));
+        if (supersededMessages.length === 0) return kept;
+        // A replay that did not complete supersedes nothing: put its original
+        // turn back, and drop the replacement row this call appended (its text
+        // is in the retry panel, which is where the user can act on it).
+        const appendedId = replay?.appendUserMessage ? userMsg.id : null;
+        return [...kept.filter((message) => message.id !== appendedId), ...supersededMessages];
+      });
       setRequestError({
         threadId: tid,
         message: chatRequestErrorMessage({ ...failure, partialArchived }),
@@ -1151,9 +1280,20 @@ export default function ChatView() {
           // `custom` carries the root-namespace `task_*` subagent events. Without
           // it the transcript can show only a spinner while a delegation runs.
           stream_mode: ["messages-tuple", "values", "custom"],
-          input: {
-            messages: [{ role: "user", content }],
-          },
+          ...(replay
+            ? {
+                // The prepared payload is authoritative: `input` is the graph
+                // input recorded at the base checkpoint (a regenerate re-sends
+                // the original question without a second user row; an edit
+                // carries the replacement already spliced in), `checkpoint` is
+                // the fork point *before* the superseded turn, and `metadata`
+                // marks the run as a replay so the paged history hides the
+                // attempt it replaces.
+                input: replay.prepared.input,
+                checkpoint: replay.prepared.checkpoint,
+                metadata: replay.prepared.metadata,
+              }
+            : { input: { messages: [{ role: "user", content }] } }),
           config: {
             configurable: {
               model_name: selectedModel,
@@ -1429,13 +1569,68 @@ export default function ChatView() {
     }
   };
 
-  const handleRegenerate = () => {
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUser) sendMessage(lastUser.content);
+  /**
+   * Regenerate the newest answer through the Gateway's prepare route.
+   *
+   * The old implementation called `sendMessage(lastUser.content)`, which
+   * appended a *second* copy of the question and streamed a second answer
+   * under the first one — the button's promise ("generate again") is
+   * replacement, not accumulation, and the duplicate prompt also changed what
+   * the model saw.
+   */
+  const handleRegenerate = async () => {
+    if (!activeThreadId) return;
+    const userIndex = messages.map((m) => m.role).lastIndexOf("user");
+    if (userIndex < 0) return;
+    const assistantIndex = messages.findIndex((m, i) => i > userIndex && m.role === "assistant");
+    if (assistantIndex < 0) {
+      flash("There is no answer to regenerate yet.");
+      return;
+    }
+    const supersedeIds = messages.slice(assistantIndex).map((m) => m.id);
+    try {
+      const prepared = await prepareRegenerate(activeThreadId, messages[assistantIndex].id);
+      if (!prepared) {
+        flash("This Gateway has no regenerate endpoint, so nothing was sent.");
+        return;
+      }
+      await sendMessage(messages[userIndex].content, {
+        replay: { prepared, supersedeIds, appendUserMessage: false },
+      });
+    } catch (error) {
+      // Refusing is the honest outcome: silently falling back would append the
+      // duplicate turn this change exists to remove.
+      flash(`The answer was not regenerated: ${errMsg(error)}`);
+    }
   };
 
-  const handleEditResend = (_messageId: string, newContent: string) => {
-    sendMessage(newContent);
+  /**
+   * Edit a message and re-run from it.
+   *
+   * `messageId` was accepted and dropped — the replacement was appended as a
+   * brand-new turn after the message it was supposed to replace, so the
+   * transcript showed both versions and the model read the original text. The
+   * prepare route hands back the replay base with the replacement spliced in;
+   * everything from the edited message on is superseded by it.
+   */
+  const handleEditResend = async (messageId: string, newContent: string) => {
+    const replacement = newContent.trim();
+    if (!replacement || !activeThreadId) return;
+    const index = messages.findIndex((m) => m.id === messageId);
+    if (index < 0) return;
+    const supersedeIds = messages.slice(index).map((m) => m.id);
+    try {
+      const prepared = await prepareEditRegenerate(activeThreadId, messageId, replacement);
+      if (!prepared) {
+        flash("This Gateway has no edit-replay endpoint, so nothing was sent.");
+        return;
+      }
+      await sendMessage(replacement, {
+        replay: { prepared, supersedeIds, appendUserMessage: true },
+      });
+    } catch (error) {
+      flash(`The edit was not applied: ${errMsg(error)}`);
+    }
   };
 
   const handleRate = async (messageId: string, rating: 1 | -1) => {
@@ -1685,6 +1880,14 @@ export default function ChatView() {
 
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
   const selectedModelName = models.find((m) => m.id === selectedModel)?.name || null;
+  // Unread is a measured total only if the roster read asked for it: a row
+  // without `unread_count` means "not projected", and mixing an unknown row
+  // into a sum would invent a number. `null` (unknown) hides the badge instead
+  // of showing one.
+  const unreadCount =
+    bots.length > 0 && bots.every((bot) => typeof bot.unread_count === "number")
+      ? bots.reduce((total, bot) => total + (bot.unread_count ?? 0), 0)
+      : null;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
@@ -1699,6 +1902,7 @@ export default function ChatView() {
         botLabel={activeBot ? activeBot.display_name || activeBot.name : "Lead Agent"}
         projectLabel={activeProject ? activeProject.name : "Standalone"}
         threadLabel={threads.find((t) => t.thread_id === activeThreadId)?.title || null}
+        unreadCount={unreadCount}
       />
 
       {/* ── Omnisearch Command Palette (Ctrl+K) ── */}
@@ -1792,10 +1996,12 @@ export default function ChatView() {
               <NavTabs view={view} onChange={handleViewChange} badge={{ bots: bots.length }} />
             </div>
 
-            {/* Live backend vitals: connectivity, usage and subsystem readiness */}
+            {/* Live backend vitals: connectivity, usage and subsystem readiness.
+                Update state moved to `WorkspaceTopBar`, which renders in every
+                view — here it was a second instance of a control the chat view
+                never showed at all. */}
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <WorkspaceVitals />
-              <UpdateControl />
               <div className="flex items-center gap-1.5 ml-auto">
                 <button
                   type="button"
@@ -1866,7 +2072,9 @@ export default function ChatView() {
 
         {gatewayOk === false && !offlineDismissed && (
           <div className="shrink-0 px-4 pt-2">
-            <div className="max-w-4xl mx-auto flex items-center gap-2.5 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
+            {/* An interruption: `role="alert"` so a screen reader is told now,
+                not on the next focus move. */}
+            <div role="alert" className="max-w-4xl mx-auto flex items-center gap-2.5 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
               <span className="size-2 rounded-full bg-destructive animate-pulse shrink-0" aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <strong>Backend not connected.</strong>{" "}
@@ -1884,7 +2092,7 @@ export default function ChatView() {
 
         {serverHistoryError && view === "chat" && (
           <div className="shrink-0 px-4 pt-2">
-            <div className="max-w-4xl mx-auto flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+            <div role="alert" className="max-w-4xl mx-auto flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
               <span className="size-2 rounded-full bg-amber-500 shrink-0 mt-1" aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <strong>Server conversation list unavailable.</strong>{" "}
@@ -1913,7 +2121,15 @@ export default function ChatView() {
 
         {notice && (
           <div className="shrink-0 px-4 pt-2">
-            <div className="max-w-4xl mx-auto rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs">{notice}</div>
+            {/* Transient by design, so `status` (polite) rather than `alert`
+                (interruptive): it reports a completed action, not a failure. */}
+            <div
+              role="status"
+              aria-live="polite"
+              className="max-w-4xl mx-auto rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
+            >
+              {notice}
+            </div>
           </div>
         )}
 
@@ -2179,7 +2395,21 @@ export default function ChatView() {
                 transcript is unchanged. `space-y-4` became the inner wrapper's
                 `gap-4` because `space-y` on a flex column adds top margins that
                 a bottom-anchored layout would render as leading blank. */}
-            <div className="flex-1 overflow-y-auto px-4 py-6">
+            {/* `role="log"` + polite live region: without it a screen reader
+                gets the transcript as inert markup and hears nothing when an
+                answer arrives. It is a focusable region too, so the scroller can
+                be driven from the keyboard (WCAG 2.1.1) — which also makes the
+                "I scrolled up" state reachable without a pointer, and that state
+                is what disarms auto-follow below. */}
+            <div className="flex-1 overflow-y-auto px-4 py-6"
+              ref={transcriptRef}
+              onScroll={handleTranscriptScroll}
+              tabIndex={0}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label="Conversation transcript"
+            >
               <div className="min-h-full flex flex-col justify-end gap-4">
                 {messages.length === 0 ? (
                   <div
@@ -2372,7 +2602,11 @@ export default function ChatView() {
             )}
 
             {/* Composer */}
-            <footer className="shrink-0 pb-3">
+            {/* On an iPhone the home indicator sits over the bottom ~34px, and a
+            fixed `pb-3` put the composer's send button underneath it. The
+            inset is read from the viewport so the bar clears the indicator
+            without padding it on devices that have none. */}
+        <footer className="shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               <Composer
                 botDisplayName={activeBot ? activeBot.display_name || activeBot.name : undefined}
                 input={input}
