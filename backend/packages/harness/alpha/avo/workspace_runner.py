@@ -150,10 +150,22 @@ class WorkspaceAVORunner:
                 raise ValueError("Unknown candidate parent")
             if parent_id and parent_id != self.lineage.head_id:
                 raise ValueError("Workspace candidate must use the current lineage head")
-            from alpha.tools.builtins.code_agentic_core import manage_code_checkpoint
+            from alpha.tools.builtins.code_agentic_core import (
+                create_shadow_checkpoint,
+                rollback_to_checkpoint,
+            )
 
             rel_file = str(target.relative_to(self.root_path))
-            checkpoint = json.loads(manage_code_checkpoint.invoke({"action": "create", "label": f"avo_pre_{time.time_ns()}", "target_files": [rel_file], "root_path": str(self.root_path)}))
+            # This runner owns self.root_path and has already enforced that rel_file
+            # stays inside it, so it may declare that root as authoritative. The
+            # equivalent flag does not exist on the model-facing tool.
+            created = create_shadow_checkpoint(
+                label=f"avo_pre_{time.time_ns()}",
+                target_files=[rel_file],
+                root_path=str(self.root_path),
+                root_is_trusted=True,
+            )
+            checkpoint = {"status": "created", "checkpoint_id": created.checkpoint_id, "captured_files": list(created.files_snapshot), "captured_files_count": len(created.files_snapshot)}
             if not isinstance(checkpoint, dict) or checkpoint.get("status") != "created" or not isinstance(checkpoint.get("checkpoint_id"), str) or not checkpoint["checkpoint_id"]:
                 raise ValueError("Successful checkpoint required before candidate write")
             if checkpoint.get("captured_files") != [rel_file] or checkpoint.get("captured_files_count") != 1:
@@ -168,7 +180,7 @@ class WorkspaceAVORunner:
             response["workspace_state"] = "unknown"
             try:
                 self._target(target_file_path)
-                result = json.loads(manage_code_checkpoint.invoke({"action": "rollback", "checkpoint_id": checkpoint_id, "root_path": str(self.root_path)}))
+                result = rollback_to_checkpoint(checkpoint_id, root_path=str(self.root_path), root_is_trusted=True)
                 if not isinstance(result, dict) or result.get("status") != "rolled_back" or result.get("checkpoint_id") != checkpoint_id or rel_file not in result.get("restored_files", []):
                     raise RuntimeError("Checkpoint rollback was not successful")
                 if self._target(target_file_path).read_text(encoding="utf-8").replace("\r\n", "\n") != baseline_text:
@@ -306,10 +318,7 @@ class WorkspaceAVORunner:
                 source="differential_invariant_fuzzer",
                 target_digest=digest,
                 scope="not_applicable",
-                detail=(
-                    f"no shared public function between baseline and candidate at {target.name}; "
-                    "the differential invariant suite has no entrypoint to exercise"
-                ),
+                detail=(f"no shared public function between baseline and candidate at {target.name}; the differential invariant suite has no entrypoint to exercise"),
             )
         return self.gate.invariant_oracle.check(
             baseline_code=baseline_text,

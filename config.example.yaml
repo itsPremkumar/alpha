@@ -2273,6 +2273,23 @@ sandbox:
   # not a secure isolation boundary for shell access. Enable only for fully
   # trusted, single-user local workflows.
   allow_host_bash: false
+  # In-process Python execution (`python_repl` exec()s inside the Gateway
+  # process, with no subprocess boundary at all) is disabled by default. It is a
+  # separate switch from allow_host_bash on purpose: an in-process exec() cannot be
+  # confined by env scrubbing, and its namespace preloads `os`.
+  allow_in_process_repl: false
+  # Irreversible git through the `bash` tool. Alpha's autonomy guard classifies
+  # force-pushing, and pushing directly to a protected branch (main/master/trunk/
+  # develop/release), as work that must clear a human approval gate. Set this to
+  # true only on a branch you alone own; the refusal names this key.
+  allow_protected_git_push: false
+  # Extra directories the code tools (generate_repo_map, auto_test_and_repair,
+  # manage_code_checkpoint, ...) may treat as a workspace root. The project root is
+  # always allowed and needs no entry; declare a root only if your agent
+  # workspaces live outside the project (a git worktree tree, an evaluation
+  # sandbox, a per-run scratch directory). Nothing is scanned by default.
+  # ALPHA_WORKSPACE_ROOTS (os.pathsep-separated) is the environment equivalent.
+  workspace_roots: []
   # Optional: Mount additional host directories into the sandbox.
   # Each mount maps a host path to a virtual container path accessible by the agent.
   # Note: with LocalSandboxProvider under `make up` (docker-compose), host_path is

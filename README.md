@@ -261,13 +261,16 @@ none of it is hypothetical.
 | :--- | :--- | :--- |
 | **Autonomous code → PR → merge** | ❌ Not operational. `sandbox/worktrees.py` is 338 lines of correct, hardened code with **no tool, route, or caller**. The one production use drops the model's diff text into a `.patch` and never applies it. Nothing commits, reviews, or merges; the prompts tell the LLM to call `gh pr create` itself. | `swarm/worker.py:397-447`; no `git commit` in the codebase |
 | **Emergency stop (ESTOP)** | ❌ Advertised to the model as pausing "all background tasks and subagents"; in fact it gates **only** the RSI cycle. Nothing in the run worker, run manager, admission controller, or the 8 autonomy loops reads it. The tool returns *"Fleet execution paused."* | `rsi/switchboard.py:51` is the sole consumer; the repo's own test is named `test_estop_engagement_refuses_cycle` |
-| **PR checklist** | ❌ `pr_synthesizer` writes `- [x] Automated unit and regression test suite passed` having run no tests. The "reviewer" and "architect" signatures are a dict literal and three regexes. | `projects/pr_synthesizer.py:147-149` |
+| **PR checklist** | ❌ **Fixed** for the checklist. It printed `- [x] Automated unit and regression test suite passed` for every PR having run nothing; boxes are now derived from real evidence receipts, and required-but-missing evidence produces an explicit "this PR is not verified / must not be merged" callout. ⚠️ The *signatures* behind it are still a dict literal and three regexes. | `65464c1`; `projects/pr_synthesizer.py` |
 | **Concurrent subagent writes** | ❌ All subagents in a thread share one workspace directory. A per-path lock serialises writes but there is no shared version counter, so the second writer silently overwrites the first — and both report success. | `subagents/executor.py:1360-1363`; `file_operation_lock.py:20-27` |
 | **Goal hierarchy** | ⚠️ The run loop's goal is one flat objective string with no children. The versioned plan store that *does* model this has no run-loop caller. | `agents/goal_state.py:22-31`; `goals/` unimported by `runtime/` |
 | **Distribution tracing** | ⚠️ Off by default and **not reachable from `config.yaml` at all** — there is no `observability:`/`trace:` key in `AppConfig`. The run-event feed and `X-Trace-Id` correlation do work. | `observability/config.py:68`; `config/app_config.py:258-509` |
 | **Behavioural evaluation** | ❌ 26,933 tests, none of which asks whether the *agent* works. Loop-detection and duplicate-work guards have unit tests; plan success and tool-failure recovery have no behavioural eval. | `alpha/benchmarks/suites.py` evaluators are pure functions with fixtures |
-| **Mixture-of-Agents tool** | ❌ The registered `moa_multi_model_reasoning` tool injects a `mock_worker` returning a fixed string; it never calls a model. The orchestrator underneath is real but uninjected. | `moa_reasoning_tool.py:27-28` |
+| **Mixture-of-Agents tool** | ❌ **Fixed.** It injected a `mock_worker` returning a fixed string and never called a model. It now resolves every named model through the real model factory: an unconfigured name is reported as a failed perspective, an all-failed round is an explicit refusal rather than a consensus, and a partial round reports `1/2 models answered`. | `65464c1`; `models/moa/workers.py` |
 | **In-process REPL** | ✅ Fixed. `python_repl` `exec()`s in the Gateway process and previously bypassed `allow_host_bash: false`. Now default-off behind `sandbox.allow_in_process_repl`. | `39416bf`, `tests/test_python_repl_boundary.py` |
+| **RSI preview honesty** | ✅ Fixed. `run_rsi_cycle` hardcoded `0.72 -> 0.88` and `0.80 -> 0.89`, so it always reported an improvement. Scores are now `null` with the reason disclosed, and `regressed` is `null` rather than `false` — an unrun suite is not a clean one. It still only *proposes*; a real verdict needs the hidden-suite harness. | `65464c1`, `rsi/engine.py` |
+| **Irreversible git** | ✅ Fixed. `force_push` and `git_push_protected` were already classified as approval-requiring by the autonomy guard, but `assert_requires_approval` had no production caller — so nothing stopped a force-push over `main`. The `bash` tool now refuses both, with `sandbox.allow_protected_git_push: true` to restore it. | `sandbox/git_push_guard.py` |
+| **Code-tool workspace escape** | ✅ Fixed. `auto_test_and_repair` ran a model-supplied string through `shell=True` with no gate while `bash` required `allow_host_bash`, and `manage_code_checkpoint` wrote `root / target_files[i]` after `mkdir(parents=True)`, so `../..` both read and wrote outside the workspace. Roots are bounded (`sandbox.workspace_roots`) and a caller-supplied `test_command` now needs the same opt-in `bash` does. | `sandbox/workspace_boundary.py` |
 | **Local sandbox as a boundary** | ⚠️ `LocalSandbox` is a path convention running at full user privilege; Windows has no Job Object. Real isolation requires AIO/E2B/BoxLite. The code says so itself. | `sandbox/AGENTS.md`: *"This is not a host filesystem security boundary."* |
 
 ### When to pick something else
@@ -537,12 +540,11 @@ exactly-once execution.
 
 - **Agentic Variation Operators (AVO)** — evolutionary prompt and strategy
   mutation driven by compiler-grounded feedback.
-- **Mixture of Agents (MoA)** — ⚠️ the orchestrator underneath is real and
-  genuinely parallel, but the **registered `moa_multi_model_reasoning` tool does not
-  inject it**; it supplies a stub worker that returns a fixed string and never
-  calls a model. The capability is real in the library and not yet reachable
-  through the tool.
-- **Theory of Mind (ToM) consult** — simulates user mental models, stakeholder
+- **Mixture of Agents (MoA)** - fans a question out to several models in parallel,
+  redacts PII and secrets on the way in and out, and aggregates the independent
+  answers. Every model named must exist in `config.yaml` -> `models[]`; one that
+  does not resolve is reported as a failed perspective rather than replaced by
+  invented text, and an all-failed round returns a refusal instead of a consensus.
   expectations, and downstream receiver perspectives.
 - **Epistemic belief evaluation** — checks claims against an empirical
   ground-truth base to flag unsubstantiated assumptions.

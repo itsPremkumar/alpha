@@ -7,6 +7,7 @@ import pytest
 from alpha.avo.persistence import AVOPersistenceManager
 from alpha.avo.workspace_runner import WorkspaceAVORunner
 from alpha.tools.builtins import code_agentic_core
+from alpha.tools.builtins.code_agentic_core import create_shadow_checkpoint, rollback_to_checkpoint
 
 
 @pytest.fixture
@@ -26,7 +27,15 @@ def run(runner, **kwargs):
 @pytest.mark.parametrize("response", ["invalid", "{}", '{"status":"error"}', '{"status":"created","checkpoint_id":"x","captured_files":[]}'])
 def test_checkpoint_failure_prevents_write(workspace, monkeypatch, response):
     _, target, runner = workspace
-    monkeypatch.setattr(code_agentic_core, "manage_code_checkpoint", SimpleNamespace(invoke=lambda _: response))
+
+    # A checkpoint that did not really happen must abort the write. The runner
+    # reads the same response shape it always did.
+    class _FailedCreate:
+        files_snapshot: dict = {}
+        checkpoint_id = ""
+
+    monkeypatch.setattr(code_agentic_core, "create_shadow_checkpoint", lambda *a, **k: _FailedCreate())
+    monkeypatch.setattr(code_agentic_core, "rollback_to_checkpoint", lambda *a, **k: {"status": response})
     result = run(runner)
     assert result["success"] is False
     assert result["rolled_back"] is False
@@ -47,8 +56,8 @@ def test_outside_target_rejected(workspace):
 @pytest.mark.parametrize("response", ["invalid", '{"status":"error"}', '{"status":"rolled_back","checkpoint_id":"wrong","restored_files":["calc.py"]}'])
 def test_rollback_failure_is_not_fabricated(workspace, monkeypatch, response):
     _, target, runner = workspace
-    original = code_agentic_core.manage_code_checkpoint
-    monkeypatch.setattr(code_agentic_core, "manage_code_checkpoint", SimpleNamespace(invoke=lambda args: original.invoke(args) if args["action"] == "create" else response))
+    # Create succeeds for real; only the rollback returns the canned failure.
+    monkeypatch.setattr(code_agentic_core, "rollback_to_checkpoint", lambda *a, **k: {"status": response})
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="failed"))
     result = run(runner)
     assert result["rolled_back"] is False
@@ -59,14 +68,18 @@ def test_rollback_failure_is_not_fabricated(workspace, monkeypatch, response):
 
 def test_rollback_claim_requires_restored_content(workspace, monkeypatch):
     _, _, runner = workspace
-    original = code_agentic_core.manage_code_checkpoint
-
-    def invoke(args):
-        if args["action"] == "create":
-            return original.invoke(args)
-        return json.dumps({"status": "rolled_back", "checkpoint_id": args["checkpoint_id"], "restored_files": ["calc.py"]})
-
-    monkeypatch.setattr(code_agentic_core, "manage_code_checkpoint", SimpleNamespace(invoke=invoke))
+    # A rollback that CLAIMS success but restores nothing must still not count:
+    # the runner verifies the baseline content byte-for-byte, not the status flag.
+    monkeypatch.setattr(
+        code_agentic_core,
+        "rollback_to_checkpoint",
+        lambda checkpoint_id, *a, **k: {
+            "status": "rolled_back",
+            "checkpoint_id": checkpoint_id,
+            "restored_files": ["calc.py"],
+            "rejected_paths": [],
+        },
+    )
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="failed"))
     assert run(runner)["rolled_back"] is False
 

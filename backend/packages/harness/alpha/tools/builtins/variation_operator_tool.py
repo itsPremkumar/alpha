@@ -15,6 +15,7 @@ from alpha.avo import (
 )
 from alpha.avo.persistence import AVOPersistenceManager
 from alpha.avo.workspace_runner import WorkspaceAVORunner
+from alpha.sandbox.workspace_boundary import WorkspaceBoundaryError, resolve_workspace_root
 
 _AVO_ENGINE = AVOEngine()
 _AVO_PERSISTENCE = AVOPersistenceManager()
@@ -143,12 +144,21 @@ def run_variation_operator_step(
         if not target_file:
             return json.dumps({"error": "Parameter 'target_file' is required for action 'workspace_run'."}, indent=2)
 
+        # `root_path` arrives from the model. Bound it here, at the model-facing
+        # edge, so the runner may then treat it as server-owned: the runner's own
+        # containment check is relative to whatever root it is given, which is
+        # exactly why the root must not be model-chosen in the first place.
+        try:
+            resolved_root = resolve_workspace_root(root_path) if root_path else None
+        except WorkspaceBoundaryError as exc:
+            return json.dumps({"error": str(exc), "action": "workspace_run", "success": False}, indent=2)
+
         runner = WorkspaceAVORunner(
             lineage=_AVO_ENGINE.lineage,
             knowledge_base=_AVO_ENGINE.knowledge_base,
             supervisor=_AVO_ENGINE.supervisor,
             persistence_mgr=_AVO_PERSISTENCE,
-            root_path=root_path,
+            root_path=resolved_root,
         )
         res = runner.run_workspace_variation(
             target_file_path=target_file,
