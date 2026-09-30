@@ -262,7 +262,21 @@ function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** Look one project's rail row up. An unread id reads as unreadable, not as 0. */
+/**
+ * Look one project's rail row up.
+ *
+ * A project id that is not in `rows` means the per-project reads have not
+ * produced a row for it YET - which is the normal state on the rail's first
+ * paint, before any `GET /projects/{id}/threads` has answered. It does not
+ * mean a read failed.
+ *
+ * So the fallback carries `null` in both error fields, never a sentence. The
+ * earlier version answered `"This project's facts were not read."` and
+ * `"This project's team was not read."`, which asserts a failure that was never
+ * attempted and painted a red alert on the rail before the operator had done
+ * anything. `null` is the shape this file already uses for "the server did not
+ * say", and the renderer distinguishes it from a real error.
+ */
 export function railRowFor(
   rows: ReadonlyArray<ProjectRailRow>,
   projectId: string,
@@ -271,9 +285,9 @@ export function railRowFor(
     rows.find((row) => row.projectId === projectId) ?? {
       projectId,
       conversationCount: null,
-      conversationError: "This project's facts were not read.",
+      conversationError: null,
       members: null,
-      crewError: "This project's team was not read.",
+      crewError: null,
       leadsSelectedBot: null,
     }
   );

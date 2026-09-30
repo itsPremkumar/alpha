@@ -18,7 +18,6 @@ import {
   Settings,
   SquareStack,
   Code2,
-  Search,
   ShieldCheck,
   CheckCircle2,
   Palette,
@@ -40,7 +39,7 @@ import {
   readProjectRailRows,
   type ProjectRailRow,
 } from "@/lib/chat-shell";
-import { MeasuredCount, BotGlyph, LeadGlyph, PresenceLine, PresenceDot } from "./Honest";
+import { MeasuredCount, LeadGlyph, PresenceLine, PresenceDot } from "./Honest";
 import { BotDropdownMenu } from "./BotDropdownMenu";
 import { ProjectDropdownMenu } from "./ProjectDropdownMenu";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -82,7 +81,6 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     onProjectsChanged,
   } = props;
 
-  const [agentsCollapsed, setAgentsCollapsed] = useState(false);
   const [standaloneCollapsed, setStandaloneCollapsed] = useState(false);
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
   const [projectScope, setProjectScope] = useState<"bot" | "all">("bot");
@@ -176,110 +174,37 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   return (
     <div className="flex flex-col h-full select-none divide-y divide-border/40" data-shell="bot-workspace">
-      {/* ── 1. AI Agents Roster (Hierarchical Bot Selection) ──────────── */}
-      <section className="p-2.5 bg-card/10">
-        <div className="flex items-center justify-between pb-1 px-1">
-          <button
-            type="button"
-            onClick={() => setAgentsCollapsed((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
-          >
+      {/* ── 1. Roster summary ───────────────────────────────────────────
+          The scrolling "AI Agents (N)" profile list was removed here. It
+          duplicated the agent selector that already exists directly below
+          (BotDropdownMenu), so the rail showed the same choice twice: once as
+          a scrollable list with its own scrollbar and once as the dropdown
+          card. Two selectors for one decision is a defect even when they
+          agree, and here they did not have to: the list was a fixed-height
+          scroller, so a long roster was reachable only by scrolling a nested
+          pane inside an already-scrolling sidebar.
+
+          BotDropdownMenu is a complete replacement, not a subset: it carries
+          its own Lead Agent row (onSelectBot(null), "Auto-routes") and one row
+          per de-duplicated bot, so nothing became unreachable by removing the
+          list. The measured count stays, because the count is real data - what
+          was removed is the duplicate way of choosing, not the information. */}
+      <section className="px-3 py-2 bg-card/10">
+        <button
+          type="button"
+          onClick={() => onOpenView("bots")}
+          className="w-full flex items-center justify-between gap-2 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+        >
+          <span className="flex items-center gap-1.5 min-w-0">
             <Sparkles className="size-3.5 text-primary shrink-0" />
-            <span>AI Agents</span>
-            {bots.length > 0 && (
-              <span className="text-[10px] text-muted-foreground font-normal">({bots.length})</span>
-            )}
-            {agentsCollapsed ? (
-              <ChevronDown className="size-3 text-muted-foreground ml-0.5" />
-            ) : (
-              <ChevronUp className="size-3 text-muted-foreground ml-0.5" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenView("bots")}
-            className="text-[10px] text-muted-foreground hover:text-primary font-medium cursor-pointer"
-            title="Browse all agent profiles"
-          >
-            All profiles →
-          </button>
-        </div>
-
-        {!agentsCollapsed && (
-          <div className="space-y-1 mt-1.5 max-h-48 overflow-y-auto pr-0.5">
-            {/* Lead Agent default */}
-            <button
-              type="button"
-              onClick={() => onSelectBot(null)}
-              className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
-                activeBot === null
-                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                  : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div
-                  className={`size-6 rounded-lg flex items-center justify-center shrink-0 text-xs ${
-                    activeBot === null ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
-                  }`}
-                >
-                  <Bot className="size-3.5" />
-                </div>
-                <span className="truncate text-xs">Lead Agent</span>
-              </div>
-              <span
-                className={`text-[10px] ${
-                  activeBot === null ? "text-white/80" : "text-muted-foreground"
-                }`}
-              >
-                Auto-routes
-              </span>
-            </button>
-
-            {/* List of registered bots */}
-            {rosterBots.map((bot) => {
-              const isActive = activeBot?.name === bot.name;
-              const botPres = botPresence(bot);
-              const visual = getBotVisual(bot);
-
-              return (
-                <button
-                  key={bot.name}
-                  type="button"
-                  onClick={() => onSelectBot(bot)}
-                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                      : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div
-                      className={`size-6 rounded-lg flex items-center justify-center shrink-0 border ${
-                        isActive
-                          ? "bg-white/20 text-white border-white/30"
-                          : `${visual.color}`
-                      }`}
-                    >
-                      {bot.avatar ? (
-                        <span className="text-xs">{bot.avatar}</span>
-                      ) : (
-                        visual.icon
-                      )}
-                    </div>
-                    <span className="truncate text-xs">{botDisplayName(bot)}</span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <PresenceDot
-                      view={botPres}
-                      className={isActive ? "ring-1 ring-white/50" : ""}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
+            <span className="truncate">
+              {bots.length > 0
+                ? `${bots.length} agent${bots.length === 1 ? "" : "s"} available`
+                : "No agents reported"}
+            </span>
+          </span>
+          <span className="shrink-0 text-[10px] font-medium">All profiles →</span>
+        </button>
       </section>
 
       {/* ── 2. Current Agent Card & Primary New Chat ──────────────────── */}
@@ -752,54 +677,4 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       )}
     </div>
   );
-}
-
-function getBotVisual(bot: BotProfile) {
-  const name = (bot.name + " " + (bot.role || "") + " " + (bot.display_name || "")).toLowerCase();
-  if (name.includes("coder") || name.includes("developer") || name.includes("engineer")) {
-    return {
-      icon: <Code2 className="size-3.5" />,
-      color: "bg-blue-500/15 text-blue-500 border-blue-500/30",
-    };
-  }
-  if (name.includes("research") || name.includes("search")) {
-    return {
-      icon: <Search className="size-3.5" />,
-      color: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
-    };
-  }
-  if (name.includes("review") || name.includes("sec") || name.includes("audit")) {
-    return {
-      icon: <ShieldCheck className="size-3.5" />,
-      color: "bg-amber-500/15 text-amber-500 border-amber-500/30",
-    };
-  }
-  if (name.includes("test") || name.includes("qa")) {
-    return {
-      icon: <CheckCircle2 className="size-3.5" />,
-      color: "bg-teal-500/15 text-teal-500 border-teal-500/30",
-    };
-  }
-  if (name.includes("design") || name.includes("ui") || name.includes("front")) {
-    return {
-      icon: <Palette className="size-3.5" />,
-      color: "bg-fuchsia-500/15 text-fuchsia-500 border-fuchsia-500/30",
-    };
-  }
-  if (name.includes("market") || name.includes("growth") || name.includes("sales")) {
-    return {
-      icon: <Megaphone className="size-3.5" />,
-      color: "bg-rose-500/15 text-rose-500 border-rose-500/30",
-    };
-  }
-  if (name.includes("data") || name.includes("analyst") || name.includes("sql")) {
-    return {
-      icon: <BarChart3 className="size-3.5" />,
-      color: "bg-sky-500/15 text-sky-500 border-sky-500/30",
-    };
-  }
-  return {
-    icon: <Bot className="size-3.5" />,
-    color: "bg-primary/15 text-primary border-primary/30",
-  };
 }

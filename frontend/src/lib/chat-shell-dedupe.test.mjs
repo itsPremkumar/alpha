@@ -126,19 +126,96 @@ test("an empty roster stays empty rather than becoming a placeholder row", async
   assert.deepEqual(dedupeBots([]), []);
 });
 
-test("the list and the dropdown are fed the SAME de-duped roster", () => {
-  // Structural pin: a behavioural test cannot render two React surfaces here
-  // (no jsdom in this suite), so this guards the wiring that makes them agree.
-  // It would pass vacuously if `rosterBots` stopped existing, so it asserts the
-  // memo declaration too.
+test("a project with no row yet reports no failure, because no read was attempted", async () => {
+  const { railRowFor } = await loadChatShell();
+  // First paint: the project list is known, but none of the per-project
+  // conversation/crew reads have answered. The row does not exist yet.
+  const row = railRowFor([], "p1");
+
+  assert.equal(row.projectId, "p1");
+  assert.equal(row.conversationCount, null, "an unread count is unknown, never 0");
+  assert.equal(
+    row.conversationError,
+    null,
+    "a read that was never attempted must not be reported as a read that failed",
+  );
+  assert.equal(row.crewError, null, "same for the crew read");
+  assert.equal(row.members, null);
+  assert.equal(row.leadsSelectedBot, null);
+});
+
+test("a real read failure is still reported as a failure", async () => {
+  const { railRowFor } = await loadChatShell();
+  // The distinction that matters: null means "nobody asked", a string means
+  // "the server said no". Collapsing the two is the defect.
+  const failed = railRowFor(
+    [
+      {
+        projectId: "p1",
+        conversationCount: null,
+        conversationError: "The Gateway did not answer.",
+        members: null,
+        crewError: null,
+        leadsSelectedBot: null,
+      },
+    ],
+    "p1",
+  );
+  assert.equal(failed.conversationError, "The Gateway did not answer.");
+  assert.notEqual(failed.conversationError, null, "a genuine failure must stay visible");
+});
+
+test("an existing row is returned untouched rather than replaced by the fallback", async () => {
+  const { railRowFor } = await loadChatShell();
+  const row = railRowFor(
+    [
+      {
+        projectId: "p1",
+        conversationCount: 7,
+        conversationError: null,
+        members: ["coder"],
+        crewError: null,
+        leadsSelectedBot: true,
+      },
+    ],
+    "p1",
+  );
+  assert.equal(row.conversationCount, 7);
+  assert.deepEqual(row.members, ["coder"]);
+  assert.equal(row.leadsSelectedBot, true);
+});
+
+test("the dropdown is the ONLY agent selector; the scrolling roster list is gone", () => {
+  // Structural pin. The rail used to offer the same choice twice: a fixed-height
+  // scrollable "AI Agents (N)" list AND the dropdown card below it. The list was
+  // removed, so this asserts it cannot come back and that the dropdown still
+  // receives the de-duped roster.
+  //
+  // The dropdown must remain a COMPLETE replacement, so this also pins that it
+  // still carries the Lead Agent row - `onSelectBot(null)`, "Auto-routes" -
+  // which the deleted list also provided. Without it, removing the list would
+  // make the Lead Agent unselectable, and a structural pin on the file's
+  // existence would happily pass over that regression.
   const rail = readFileSync(
     new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(rail, /const rosterBots = useMemo\(\(\) => dedupeBots\(bots\), \[bots\]\)/);
-  assert.doesNotMatch(rail, /\{bots\.map\(/, "the inline list must not read the raw roster");
-  assert.doesNotMatch(rail, /\bbots=\{bots\}/, "the dropdown must not receive the raw roster");
-  assert.match(rail, /bots=\{rosterBots\}/, "the dropdown receives the de-duped roster");
+  assert.doesNotMatch(rail, /rosterBots\.map\(/, "the scrolling roster list must stay removed");
+  assert.doesNotMatch(rail, /AI Agents<\/span>/, "the roster list header must stay removed");
+  assert.doesNotMatch(rail, /setAgentsCollapsed/, "its collapse state must stay removed");
+  assert.match(rail, /<BotDropdownMenu/, "the dropdown must remain");
+  assert.match(rail, /bots=\{rosterBots\}/, "the dropdown must receive the de-duped roster");
+
+  const menu = readFileSync(
+    new URL("../components/chat-shell/BotDropdownMenu.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    menu,
+    /onSelectBot\(null\)/,
+    "the dropdown must keep a Lead Agent row, or removing the list made it unreachable",
+  );
+  assert.match(menu, /bots\.map\(/, "the dropdown must still render one row per bot");
 });
 
 test("no HTTP method or route is rendered as visible text in the rail surfaces", () => {
