@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   ChevronRight,
@@ -33,6 +33,7 @@ import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
 import { Project } from "@/lib/projects";
 import {
   botPresence,
+  dedupeBots,
   groupConversations,
   projectStatusText,
   railRowFor,
@@ -132,6 +133,15 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
   }, [activeProjectId]);
 
   const groups = groupConversations(threads, projects);
+
+  // One row per bot, for BOTH the inline list and the dropdown below. The raw
+  // roster can carry the same bot twice (it is assembled from the bot registry
+  // plus a crew-membership read), which rendered as the same specialist listed
+  // twice with two rows both claiming the selection. De-duplicating here rather
+  // than in each surface is what keeps the two from disagreeing about how many
+  // bots there are.
+  const rosterBots = useMemo(() => dedupeBots(bots), [bots]);
+
   const presence = activeBot
     ? botPresence(activeBot)
     : { state: "unrecorded" as const, label: "Lead Agent auto-routes", raw: null };
@@ -227,7 +237,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
             </button>
 
             {/* List of registered bots */}
-            {bots.map((bot) => {
+            {rosterBots.map((bot) => {
               const isActive = activeBot?.name === bot.name;
               const botPres = botPresence(bot);
               const visual = getBotVisual(bot);
@@ -275,7 +285,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       {/* ── 2. Current Agent Card & Primary New Chat ──────────────────── */}
       <section className="p-3 bg-card/30 space-y-2">
         <BotDropdownMenu
-          bots={bots}
+          bots={rosterBots}
           activeBot={activeBot}
           onSelectBot={onSelectBot}
           onNewConversation={() => onNewConversation(null)}

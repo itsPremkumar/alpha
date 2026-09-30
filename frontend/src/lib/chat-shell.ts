@@ -706,3 +706,40 @@ export function projectStatusText(status: string | null | undefined): string {
   const text = typeof status === "string" ? status.trim() : "";
   return text || "status not reported";
 }
+
+/**
+ * Collapse a bot roster to one row per bot.
+ *
+ * The roster can legitimately arrive with the same bot more than once: it is
+ * assembled from more than one source (the bot registry and a project/crew
+ * membership read), and a bot that is both a registry entry and a project
+ * member appears twice. Rendered as-is that is a visible defect - the same
+ * specialist listed twice, with two rows both claiming the selection, and
+ * React logging a duplicate-key warning because the rows key on `name`.
+ *
+ * Identity is `name`, because that is what the selection compares against and
+ * what the row keys on; two entries with the same name are the same bot as far
+ * as this UI is concerned.
+ *
+ * FIRST WINS, deliberately. A later duplicate is not a fresher read of the same
+ * bot in any way this UI can verify, and preferring the last would let a
+ * membership projection silently overwrite the registry's own record. Keeping
+ * the first also keeps the render order stable, so a re-read that reorders the
+ * array cannot make rows jump.
+ *
+ * A row with no usable name is DROPPED rather than rendered: a nameless entry
+ * cannot be selected, cannot be keyed, and would render as a blank row that
+ * looks like a loading artefact. Dropping is a smaller lie than showing an
+ * unselectable empty row.
+ */
+export function dedupeBots<T extends { name?: string | null }>(bots: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const bot of bots) {
+    const name = typeof bot?.name === "string" ? bot.name.trim() : "";
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(bot);
+  }
+  return out;
+}

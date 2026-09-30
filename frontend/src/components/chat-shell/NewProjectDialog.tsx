@@ -65,7 +65,6 @@ export function NewProjectDialog(props: {
 
         <p className="text-[11px] text-muted-foreground">
           Projects hold conversations, files and tasks for one piece of work.
-          This one is created through <code className="font-mono text-[10px]">POST /api/projects</code>.
         </p>
 
         {error && <ErrorBox message={error} onRetry={() => void submit()} />}
