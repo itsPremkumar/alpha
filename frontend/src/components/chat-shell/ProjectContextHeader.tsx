@@ -82,8 +82,17 @@ export function ProjectContextHeader(props: {
       ) : (
         <span className="flex items-center gap-1.5 min-w-0">
           <LeadGlyph />
-          <span className="text-[11px] font-semibold truncate">Lead Agent</span>
-          <span className="text-[10px] text-muted-foreground">auto-routes, sees every conversation</span>
+          {/* The name is the point of this chip, so it never truncates.
+              `auto-routes, sees every conversation` must therefore be the
+              element that absorbs the compression: a `truncate` sibling only
+              shrinks when the *other* items in the flex row can too. Without
+              `truncate` here that description is rigid, so the name took the
+              whole shortfall and rendered at 4px — present in the DOM,
+              unreadable on screen. Measured in the live page before the fix. */}
+          <span className="text-[11px] font-semibold shrink-0">Lead Agent</span>
+          <span className="text-[10px] text-muted-foreground truncate min-w-0">
+            auto-routes, sees every conversation
+          </span>
         </span>
       )}
 
