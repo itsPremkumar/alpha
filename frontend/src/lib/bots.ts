@@ -164,3 +164,32 @@ export async function touchBot(name: string): Promise<void> {
     /* offline or not permitted — never block chatting */
   }
 }
+
+/**
+ * PATCH a bot profile with only the keys that changed.
+ *
+ * The response is mapped back through `normalizeBot`, so the caller shows the
+ * SERVER's answer after a save rather than the draft the user typed. That is the
+ * same rule the project settings form follows: a 2xx means the request was
+ * accepted, not proof the registry now reads the way the form claims.
+ *
+ * Throws with the server's reason. An empty patch is a 422, so this refuses one
+ * outright rather than relying on every caller to remember.
+ */
+export async function updateBotProfile(
+  name: string,
+  patch: Record<string, unknown>,
+): Promise<BotProfile | null> {
+  if (Object.keys(patch).length === 0) {
+    throw new Error("Refusing to send an empty update: the Gateway rejects it as invalid.");
+  }
+  const res = await apiFetch(`/bots/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  const body = (await res.json()) as Record<string, unknown>;
+  // Tolerate a bare profile or one wrapped under `bot` / `profile`.
+  const candidate = (body.bot ?? body.profile ?? body) as Record<string, unknown>;
+  if (!candidate || typeof candidate !== "object" || !("name" in candidate)) return null;
+  return normalizeBot(candidate);
+}
