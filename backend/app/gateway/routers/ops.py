@@ -20,6 +20,11 @@ deploy verification, dashboards, and monitoring gates beyond ``/health`` and
   operator dashboard reason about, so it is reported at ``warning`` (once per
   probe, with a running count at ``debug`` afterwards) rather than being
   invisible at the default level.
+* ``GET /api/ops/runtime`` - the durable-runtime facts the process measures but
+  does not otherwise surface: whether the **previous** shutdown finished, and
+  the live connectivity reading with its durable parked-session count. Both
+  blocks carry an explicit ``reported`` flag, so "not measured" never renders
+  as a healthy value. See :mod:`app.gateway.ops_runtime`.
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ import time
 from datetime import UTC, datetime
 from importlib import metadata
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.config import get_gateway_config
@@ -266,3 +271,146 @@ async def ops_advice(current_workers: int = 1) -> AutonomyAdviceResponse:
 
     advice, reading = await _asyncio.to_thread(_advise)
     return AutonomyAdviceResponse(recommendation=advice.recommendation, max_workers=advice.max_workers, model_class=advice.model_class, reasons=advice.reasons, reading=reading.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# Durable runtime: the last drain, and live connectivity
+# ---------------------------------------------------------------------------
+
+
+class DrainStepSnapshot(BaseModel):
+    """One shutdown phase and how it ended."""
+
+    phase: str = Field(..., description="Shutdown phase name")
+    status: str = Field(..., description="completed|skipped|failed|timed_out")
+    detail: str = Field(default="", description="Why it ended that way, when the step said so")
+
+
+class LastDrainResponse(BaseModel):
+    """The previous process's ordered-shutdown outcome.
+
+    ``reported`` is the field to branch on. ``is_clean`` is ``None`` whenever it
+    is ``False``, because "we do not know how the last shutdown went" and "the
+    last shutdown went cleanly" are opposite claims and a reader must not have
+    to guess which one a bare ``true`` meant.
+    """
+
+    reported: bool = Field(..., description="Whether a drain report from a previous process was found and understood")
+    reason: str = Field(default="", description="Machine-readable reason when reported is false")
+    detail: str = Field(default="", description="Human-readable detail when reported is false")
+    is_clean: bool | None = Field(default=None, description="True only when every registered drain step completed")
+    emergency: bool | None = Field(default=None, description="Whether the emergency path was taken")
+    total_seconds: float | None = Field(default=None, description="Measured drain duration in seconds")
+    steps: list[DrainStepSnapshot] = Field(default_factory=list, description="Per-phase outcomes, in contract order")
+    incomplete: list[str] = Field(default_factory=list, description="Phases that did not complete")
+    recorded_at: str | None = Field(default=None, description="ISO 8601 UTC time the record was written")
+
+
+class ParkedSessionsResponse(BaseModel):
+    """Durable parked-session bookkeeping (migration 0026_network_waits)."""
+
+    reported: bool = Field(..., description="Whether the parked-session registry answered this read")
+    reason: str = Field(default="", description="Machine-readable reason when reported is false")
+    detail: str = Field(default="", description="The server's own error text when the read failed")
+    open_waits: int | None = Field(default=None, description="Sessions currently parked on connectivity")
+    claimed: int | None = Field(default=None, description="Resume attempts claimed by this process")
+    resumed: int | None = Field(default=None, description="Parks this process successfully handed back")
+    gave_up: int | None = Field(default=None, description="Parks this process gave up on after exhausting the attempt budget")
+
+
+class NetworkResponse(BaseModel):
+    """Live connectivity, with absence kept distinct from a reading."""
+
+    reported: bool = Field(..., description="Whether this process has a running connectivity measurement")
+    reason: str = Field(default="", description="Machine-readable reason when reported is false")
+    state: str | None = Field(default=None, description="online|degraded|unknown|offline. Never rounded: unknown stays unknown")
+    monitoring: bool = Field(default=False, description="Whether the poll loop is running right now")
+    parked_durability: str = Field(default="unavailable", description="installed|unavailable — whether a park can be recorded durably")
+    parked_sessions: ParkedSessionsResponse | None = Field(default=None, description="Durable parked-session counts, null when no registry is installed")
+    last_observation: dict | None = Field(default=None, description="The most recent measured probe result, verbatim")
+
+
+class RuntimeResponse(BaseModel):
+    """Durable-runtime facts an operator needs and the process already knows."""
+
+    last_drain: LastDrainResponse = Field(..., description="How the previous process's ordered shutdown ended")
+    network: NetworkResponse = Field(..., description="Live connectivity and parked-session state")
+    notes: list[str] = Field(default_factory=list, description="Disclosures a consumer must not read past")
+
+
+@router.get(
+    "/ops/runtime",
+    response_model=RuntimeResponse,
+    summary="Durable-runtime facts: last drain and live connectivity",
+    description=(
+        "Report the previous process's shutdown outcome and this process's connectivity reading. Each block carries reported=false with a reason when the fact is unmeasured, so a missing measurement is never rendered as a healthy value."
+    ),
+)
+async def ops_runtime(request: Request) -> RuntimeResponse:
+    """Return the last recorded drain plus the live connectivity reading.
+
+    Reads the monitor and the parked-session registry the Gateway lifespan
+    already installed, plus the drain record written at the previous teardown.
+    Deliberately does **not** read the side-effect ledger: it has no production
+    writer, so a count there would always be zero and would read as "no unknown
+    effects" rather than "nothing records effects". That gap is documented in
+    `runtime/AGENTS.md` and tracked in `docs/WIRING_AUDIT.md` instead of being
+    given a permanently-empty view.
+    """
+    from app.gateway.ops_runtime import network_snapshot, read_last_drain
+
+    state = request.app.state
+    monitor = getattr(state, "network_monitor", None)
+    wait_service = getattr(state, "network_waits", None)
+
+    drain = read_last_drain()
+    snapshot = network_snapshot(monitor, wait_service)
+    notes: list[str] = []
+
+    parked: ParkedSessionsResponse | None = None
+    if wait_service is not None:
+        try:
+            status = await wait_service.status()
+            parked = ParkedSessionsResponse(
+                reported=True,
+                reason="",
+                open_waits=status.open_waits,
+                claimed=status.claimed,
+                resumed=status.resumed,
+                gave_up=status.gave_up,
+            )
+        except Exception as exc:  # noqa: BLE001 - a store outage is a disclosed read, not a failed request
+            # Reported, not raised: this is an operator surface, and turning a
+            # parked-session store outage into a 500 would hide the connectivity
+            # reading that is still perfectly good.
+            logger.warning("parked-session status read failed; reporting it as unmeasured", exc_info=True)
+            parked = ParkedSessionsResponse(reported=False, reason="the parked-session registry could not be read", detail=f"{type(exc).__name__}: {exc}")
+    elif snapshot["reported"]:
+        parked = ParkedSessionsResponse(
+            reported=False,
+            reason="parked-session durability is not installed on this deployment",
+            detail="a memory database backend has nowhere durable to record a park, so no park can have been recorded",
+        )
+
+    if not drain["reported"]:
+        notes.append("last_drain.reported is false: this installation has no readable record of a previous shutdown. That is the state of a first boot, and it is not a claim that the last shutdown was clean.")
+    if not snapshot["reported"]:
+        notes.append(f"network.reported is false ({snapshot['reason']}): connectivity is not being measured by this process, which is not the same as connectivity being fine.")
+    if snapshot["reported"] and snapshot["state"] == "unknown":
+        notes.append("network.state is 'unknown': the probe could not run or returned nothing. UNKNOWN is never rounded to offline, and it still permits a network attempt.")
+    if snapshot["parked_durability"] == "unavailable" and snapshot["reported"]:
+        notes.append("network.parked_durability is 'unavailable': a session that parked on connectivity could not be recorded durably on this deployment.")
+
+    return RuntimeResponse(
+        last_drain=LastDrainResponse(**drain),
+        network=NetworkResponse(
+            reported=snapshot["reported"],
+            reason=snapshot["reason"],
+            state=snapshot["state"],
+            monitoring=snapshot["monitoring"],
+            parked_durability=snapshot["parked_durability"],
+            parked_sessions=parked,
+            last_observation=snapshot["last_observation"],
+        ),
+        notes=notes,
+    )
