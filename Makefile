@@ -1,6 +1,6 @@
 # Alpha - Unified Development Environment
 
-.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check verify-checkout support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
+.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check verify-checkout engine-inventory support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -63,6 +63,10 @@ export UV_TOOL_BIN_DIR
 # deletions from a naive `git add <dir>`.
 verify-checkout:
 	$(PYTHON) scripts/verify_checkout.py
+
+# Regenerate the authoritative engine/package inventory (docs-code drift guard).
+engine-inventory:
+	$(PYTHON) scripts/generate_engine_inventory.py
 
 help:
 	@echo "Alpha Development Commands:"

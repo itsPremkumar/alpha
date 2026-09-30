@@ -5,6 +5,11 @@ rules live in the nearest `AGENTS.md` below it (for example
 `app/gateway/AGENTS.md`, `packages/harness/alpha/AGENTS.md`, and the per-subsystem
 guides under `packages/harness/alpha/`) and win where they are stricter.
 
+> **Engine inventory:** the authoritative, regenerated list of the engine packages
+> under `packages/harness/alpha/` is [`ENGINE_INVENTORY.md`](../ENGINE_INVENTORY.md)
+> (run `make engine-inventory`). Point here rather than hand-maintaining a package
+> list that drifts; each row also carries a `core` / `preview/partial` tier.
+
 ## Integration health + autonomy ownership
 
 - `tests/test_feature_manifest_wiring.py` pins every registry entry
