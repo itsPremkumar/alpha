@@ -23,6 +23,7 @@ import {
   Megaphone,
   BarChart3,
   Bot,
+  Users,
   Sparkles,
   Layers,
   SlidersHorizontal,
@@ -611,6 +612,48 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                 Tasks
                               </button>
                             </div>
+                          </div>
+
+                          {/* Who is on this project.
+                              No extra request: `row.members` is already
+                              populated by the per-project presence read that
+                              `readProjectRailRows` performs, so this renders a
+                              fact the rail is already fetching.
+
+                              The three states are kept apart on purpose.
+                              `members === null` means the read did not answer,
+                              which is NOT the same as nobody being attached -
+                              rendering that as an empty crew would claim the
+                              server measured zero. `[]` is a real zero. */}
+                          <div className="px-2 py-1">
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                              <Users className="size-2.5 shrink-0 opacity-70" />
+                              <span className="font-medium">Agents</span>
+                            </div>
+                            {row.members === null ? (
+                              <span
+                                className="block mt-0.5 text-[10px] italic text-muted-foreground/80"
+                                title={row.crewError ?? undefined}
+                              >
+                                {row.crewError ? "Crew not read." : "Crew not reported."}
+                              </span>
+                            ) : row.members.length === 0 ? (
+                              <span className="block mt-0.5 text-[10px] italic text-muted-foreground/80">
+                                No agents attached to this project.
+                              </span>
+                            ) : (
+                              <ul className="mt-0.5 space-y-0.5">
+                                {row.members.map((member) => (
+                                  <li
+                                    key={member}
+                                    className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                                  >
+                                    <span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                                    <span className="truncate">{member}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
 
                           {projThreads.length === 0 ? (

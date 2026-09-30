@@ -409,3 +409,38 @@ test("each project row carries a + that starts a conversation in THAT project", 
   const pluses = rail.match(/onNewConversation\(/g) || [];
   assert.ok(pluses.length >= 3, "expected the per-project +, the panel button and the dropdown");
 });
+
+test("an expanded project shows its agents, and never turns an unread crew into zero", () => {
+  // The rail already fetched this. `readProjectRailRows` reads per-project
+  // presence, and `ProjectRailRow.members` is the member list it produced, so
+  // surfacing it costs no new request.
+  //
+  // The load-bearing assertion is the three-way split. `members === null` means
+  // the read did not answer; `[]` means the server said nobody is attached.
+  // Collapsing them would make a failed read claim the server measured zero -
+  // the exact defect class this suite keeps guarding. So a test that only
+  // checked "the agent names render" would pass while the UI lied about a
+  // failed read, which is why each state is pinned separately.
+  const rail = readFileSync(
+    new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(rail, /row\.members === null/, "the unread case must be distinguished");
+  assert.match(
+    rail,
+    /No agents attached to this project/,
+    "an empty crew is a real answer and says so",
+  );
+  assert.match(rail, /row\.members\.length === 0/, "and it is checked as length, not truthiness");
+  assert.match(rail, /row\.members\.map\(/, "the member list must be rendered");
+  assert.match(rail, /<Users /, "with an icon, so the block reads as a group");
+
+  // No new request: the strip must read the row it is already inside.
+  assert.doesNotMatch(rail, /getCrew\(/, "the rail must not re-fetch crew it already has");
+
+  // The unread branch must not leak the server's error reason as if it were a
+  // fact about the project; it is a failure to read, and says so.
+  assert.match(rail, /Crew not reported\./, "an unread crew states that, not a count");
+  assert.match(rail, /row\.crewError \? "Crew not read\." : "Crew not reported\."/);
+});
