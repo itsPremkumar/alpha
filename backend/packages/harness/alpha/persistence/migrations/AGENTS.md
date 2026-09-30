@@ -22,10 +22,15 @@ The empty-DB path keeps using `create_all` because `Base.metadata` is the only a
 **Rolling forward compatibility**: the local chain is
 `0018_oauth_identity_pg_partial` → `0019_projects` →
 `0020_threads_meta_project_id` → `0021_batch_acceptance` →
-`0019_thread_incarnations` → `0022_scheduled_occurrence_seq` → `0024_feedback_category` → `0025_run_recovery_index` (current head).
+`0019_thread_incarnations` → `0022_scheduled_occurrence_seq` →
+`0023_run_events_fts` → `0024_feedback_category` →
+`0025_run_recovery_index` → `0026_network_waits` →
+`0027_side_effect_ledger` (current head).
 The incarnation revision deliberately retains the exact id audited by the
 rollback-floor binary; Alembic orders revisions by `down_revision`, not by the
-numeric prefix.
+numeric prefix. Regenerate this list from `versions/*.py` when a revision is
+added — a "current head" that trails the newest file sends anyone reading the
+chain to a stale revision.
 
 The deployed `0020_threads_meta_project_id` rollback-floor binary knows none of
 `0021_batch_acceptance`, `0019_thread_incarnations`, or

@@ -54,25 +54,28 @@ each module's own `AGENTS.md` is the normative contract.
   drain is logged instead of looking clean. Tests: `tests/test_planned_shutdown.py`.
 
 **Honesty boundary, stated so nobody reads a claim into these modules that the
-code does not make.** Three of these are gaps; the fourth is the shape of the
-first one, and the distinction matters because "the storage does not exist" and
-"nothing writes to the storage" call for different work.
+code does not make.** Two of these are gaps. The first pair records how one gap
+closed, because "the storage does not exist" and "nothing writes to the storage"
+are different findings that call for different work, and both directions of that
+distinction have been wrong in this file before.
 
-- **There is no cross-process exactly-once here.** True, and it stays true for a
-  specific reason: the `UNKNOWN` ledger and the parked-session registry are the
-  machinery that *would* provide it, and the Gateway wires the registry but
-  **never writes a side-effect ledger row** — so in a running deployment the
-  ledger table is empty and no second gateway instance could collide over
-  nothing. This is the honest statement; "no exactly-once" alone would read as
-  "there is no storage", which is false.
-- **The side-effect ledger's SQL repository exists and is tested; it has no
-  production writer.** `alpha.persistence.side_effects.SqlSideEffectLedger`
-  (migration `0027_side_effect_ledger`) implements the `SideEffectLedger`
-  protocol with the cross-process conditional transitions
-  (`tests/test_side_effect_ledger_sql.py`), and nothing under `backend/app/` or
-  the harness constructs it — only tests do. So `UNKNOWN` is *durable and
-  enumerable in the schema* and *absent from a real run*. Recording an effect is
-  a caller decision, and no caller makes it.
+- **Side effects are announced durably when the Gateway runs on a SQL backend,
+  and that is what makes exactly-once *of an announced effect* reachable across
+  processes.** `app/gateway/deps.py` constructs
+  `alpha.persistence.side_effects.SqlSideEffectLedger` (migration
+  `0027_side_effect_ledger`) into the process-wide `SideEffectRecorder`, and
+  starts `SideEffectReclaimer` beside it - a ledger written but never reclaimed
+  would leave a row `in_flight` under a dead lease forever, which is the silent
+  gap the reclaimer exists to close. On that path an effect site calls
+  `begin`/`complete`/`fail`, a second process's late `complete` is refused by
+  the conditional transition instead of overwriting an `UNKNOWN`, and two
+  reconcilers cannot both settle one entry
+  (`tests/test_side_effect_ledger_sql.py`). Two limits stay true and must stay
+  stated: with `database.backend: memory` there is no store at all, and the
+  JSON/JSONL state behind swarms, dynamic workflows and the peer network is
+  process-local and restart-recoverable, not exactly-once - announcing an effect
+  is still a caller decision, so an effect nothing announces cannot be
+  deduplicated either.
 - **The supervisor is not yet wired into the Windows launcher.** `start.ps1`
   still owns process startup, so nothing restarts the backend automatically on
   Windows. True.
@@ -87,10 +90,10 @@ Each module's `AGENTS.md` repeats the gaps it owns.
 
 <!-- honesty-claims
 side_effect_ledger_sql_repository: exists
-side_effect_ledger_production_writer: absent
+side_effect_ledger_production_writer: exists
 parked_session_durable_registry: exists
 parked_session_resume_launcher: absent
-cross_process_exactly_once: absent
+cross_process_exactly_once: exists
 supervisor_in_windows_launcher: absent
 -->
 

@@ -9,7 +9,9 @@ narrower and more interesting than the text said.
     runtime/AGENTS.md claimed the side-effect ledger "has no SQL repository yet".
     It has one -- alpha.persistence.side_effects.SqlSideEffectLedger, migration
     0027_side_effect_ledger, covered by tests/test_side_effect_ledger_sql.py.
-    Nothing in production constructs it.
+    Nothing in production constructed it at audit time; app/gateway/deps.py
+    does now, and the claim block was upgraded to `exists` in that same change
+    -- which is precisely the first direction of drift listed below.
 
     runtime/AGENTS.md claimed a parked session's state "is re-derived rather than
     kept in a dedicated durable registry". It is kept in one --
@@ -41,7 +43,7 @@ So this file's primary guard deliberately does not read prose. It reads a
 
     <!-- honesty-claims
     side_effect_ledger_sql_repository: exists
-    side_effect_ledger_production_writer: absent
+    side_effect_ledger_production_writer: exists
     ...
     -->
 
@@ -261,8 +263,9 @@ FORBIDDEN_CLAIMS: tuple[tuple[str, str, str], ...] = (
         "the side-effect ledger has no SQL repository yet",
         RUNTIME_AGENTS,
         "False: alpha/persistence/side_effects/sql.py defines SqlSideEffectLedger, migration 0027_side_effect_ledger "
-        "exists, and tests/test_side_effect_ledger_sql.py covers it. The accurate limitation is that no production "
-        "module constructs it.",
+        "exists, and tests/test_side_effect_ledger_sql.py covers it. app/gateway/deps.py constructs it for the SQL "
+        "backend, so the accurate limitations are that `database.backend: memory` has no store at all, and that an "
+        "effect nothing announces still cannot be deduplicated.",
     ),
     (
         "a session's parked-across-restart state is re-derived rather than kept in a dedicated durable registry",
@@ -325,17 +328,24 @@ class TestHonestyClaimsMatchTheCode:
         assert not failures, "Documented honesty boundary disagrees with the code:\n" + "\n".join(failures)
 
     def test_the_ledger_claim_is_not_simply_inverted(self) -> None:
-        """Guard against the lazy "fix": declaring the whole thing absent.
+        """Guard against the lazy fix in *either* direction.
 
         The audit's real finding was that the old text collapsed two distinct
-        states -- "no storage" and "no writer" -- into one denial. A future edit
-        could pass the checks above by declaring
-        ``side_effect_ledger_sql_repository: absent``, which would be a *different*
-        false claim rather than a true one. So the pair is asserted explicitly.
+        states -- "no storage" and "no writer" -- into one denial. Both are now
+        true: ``sql.py`` implements the ledger, and ``app/gateway/deps.py``
+        constructs it into the recorder for the SQL backend. So the laziness has
+        moved with the facts: a future edit could pass the checks above by
+        declaring either key ``absent``, which is the same drift the audit
+        found, only backwards. Assert the pair explicitly, each with the
+        evidence it rests on.
         """
         declared = _declared_claims()
         assert declared["side_effect_ledger_sql_repository"] == "exists", "the durable ledger implementation exists and is tested; denying it is a new false claim"
-        assert declared["side_effect_ledger_production_writer"] == "absent", "nothing in production constructs the ledger; claiming a writer is a new false claim"
+        assert declared["side_effect_ledger_production_writer"] == "exists", (
+            "app/gateway/deps.py constructs SqlSideEffectLedger into the process-wide SideEffectRecorder "
+            "(with SideEffectReclaimer beside it); a doc that says nothing writes the ledger is false now, "
+            "just as it was false when it said no repository existed"
+        )
 
 
 def _normalized_prose(text: str) -> str:
