@@ -18,6 +18,7 @@ class ProofType(enum.Enum):
 @dataclass
 class ClaimItem:
     """A factual claim made by an agent regarding task deliverables or state."""
+
     claim_id: str = field(default_factory=lambda: f"clm_{uuid.uuid4().hex[:8]}")
     statement: str = ""
     target_path: str | None = None
@@ -37,6 +38,7 @@ class ClaimItem:
 @dataclass
 class VerificationProof:
     """Physical, execution-grounded proof supporting or refuting a claim."""
+
     proof_type: ProofType
     command_run: str | None = None
     exit_code: int = 0
@@ -62,6 +64,7 @@ class VerificationProof:
 @dataclass
 class EvidenceEntry:
     """Binds a claim to physical verification proof."""
+
     claim: ClaimItem
     proof: VerificationProof | None = None
     certified: bool = False

@@ -31,28 +31,18 @@ class FinishFirstAuditor:
             blocking_issues.append("No claims or deliverables were recorded in the evidence matrix.")
 
         if summary["unverified_claims"] > 0:
-            blocking_issues.append(
-                f"{summary['unverified_claims']} claim(s) lack physical verification proof."
-            )
+            blocking_issues.append(f"{summary['unverified_claims']} claim(s) lack physical verification proof.")
 
         if summary["contradictions_count"] > 0:
-            blocking_issues.append(
-                f"{summary['contradictions_count']} contradiction(s) detected between claims and execution logs."
-            )
+            blocking_issues.append(f"{summary['contradictions_count']} contradiction(s) detected between claims and execution logs.")
 
-        can_finalize = (len(blocking_issues) == 0)
+        can_finalize = len(blocking_issues) == 0
 
         if can_finalize:
-            msg = (
-                f"AUDIT_PASSED: All {summary['total_claims']} claim(s) certified with 100% "
-                "physical verification proof. Task can safely finalize."
-            )
+            msg = f"AUDIT_PASSED: All {summary['total_claims']} claim(s) certified with 100% physical verification proof. Task can safely finalize."
             logger.info(msg)
         else:
-            msg = (
-                f"AUDIT_BLOCKED: Finish-First criteria unmet. "
-                f"Issues: {'; '.join(blocking_issues)}"
-            )
+            msg = f"AUDIT_BLOCKED: Finish-First criteria unmet. Issues: {'; '.join(blocking_issues)}"
             logger.warning(msg)
 
         return can_finalize, msg, blocking_issues

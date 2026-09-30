@@ -27,10 +27,7 @@ class ContradictionDetector:
         # Case 1: Agent claims success or tests passed, but exit_code is non-zero
         if claim.claimed_success or "pass" in stmt_lower or "success" in stmt_lower:
             if proof.exit_code != 0:
-                msg = (
-                    f"CONTRADICTION: Claim asserts '{claim.statement}', "
-                    f"but verified exit code is {proof.exit_code} (non-zero)."
-                )
+                msg = f"CONTRADICTION: Claim asserts '{claim.statement}', but verified exit code is {proof.exit_code} (non-zero)."
                 logger.warning(msg)
                 return True, msg
 
@@ -38,10 +35,7 @@ class ContradictionDetector:
             out_lower = proof.output_snippet.lower()
             if "failed" in out_lower or "error" in out_lower or "traceback" in out_lower:
                 if "0 failed" not in out_lower and "errors=0" not in out_lower:
-                    msg = (
-                        f"CONTRADICTION: Claim asserts '{claim.statement}', "
-                        f"but execution output contains failure keywords."
-                    )
+                    msg = f"CONTRADICTION: Claim asserts '{claim.statement}', but execution output contains failure keywords."
                     logger.warning(msg)
                     return True, msg
 

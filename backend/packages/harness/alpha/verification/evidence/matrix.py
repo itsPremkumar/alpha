@@ -63,9 +63,7 @@ class EvidenceMatrix:
         total = len(self.entries)
         certified = sum(1 for e in self.entries.values() if e.certified)
         unverified = sum(1 for e in self.entries.values() if e.proof is None)
-        contradictions = sum(
-            1 for e in self.entries.values() if e.proof and e.proof.contradiction_detected
-        )
+        contradictions = sum(1 for e in self.entries.values() if e.proof and e.proof.contradiction_detected)
 
         return {
             "total_claims": total,
