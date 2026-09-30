@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/itsPremkumar/alpha/blob/main/contracts/inert_declarations_allowlist.v1.schema.json",
+  "title": "Inert declaration allowlist v1",
+  "description": "Recorded state of the declared-but-unread configuration defect class. Every entry must state why the declaration is acceptable as it stands; the gate fails on an empty reason, on an undocumented finding, and on a stale entry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "contract", "purpose", "operator_kwarg_models", "declaration_only_keys", "unreachable_flags", "known_blind_spots", "reported_defects"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "contract_version": {"type": "integer", "minimum": 1},
+    "contract": {"const": "inert_declarations_allowlist"},
+    "purpose": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "rules": {"type": "array", "items": {"type": "string"}},
+    "operator_kwarg_models": {
+      "description": "AppConfig-reachable models that are extra=\"allow\": their fields are an operator keyword bag consumed by a provider chosen at run time, so a name-mention scan cannot see a reader. Derived from the models and cross-checked in both directions by the gate.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "reason"],
+        "properties": {
+          "target": {"type": "string", "pattern": "^(alpha|app)\\.[A-Za-z0-9_.]+\\.[A-Z][A-Za-z0-9_]*$"},
+          "reason": {"$ref": "#/$defs/reason"}
+        }
+      }
+    },
+    "declaration_only_keys": {
+      "description": "Gate A allowlist: config keys read only by the module that declares them. Must equal the scan's finding set exactly.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "reason"],
+        "properties": {
+          "target": {"$ref": "#/$defs/configKey"},
+          "reason": {"$ref": "#/$defs/reason"}
+        }
+      }
+    },
+    "unreachable_flags": {
+      "description": "Gate B allowlist: enabled-shaped flags whose subsystem production never reaches. Must equal the scan's finding set exactly.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "reason"],
+        "properties": {
+          "target": {"$ref": "#/$defs/configKey"},
+          "reason": {"$ref": "#/$defs/reason"}
+        }
+      }
+    },
+    "known_blind_spots": {
+      "description": "Keys an audit believes are inert that the gate cannot prove, each with why the gate cannot see it. Gate B errs toward under-reporting, never toward a false build failure; this list is what keeps that honest and keeps the blind spot from being re-discovered as if it were new.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "reason"],
+        "properties": {
+          "target": {"$ref": "#/$defs/configKey"},
+          "reason": {"$ref": "#/$defs/reason"}
+        }
+      }
+    },
+    "reported_defects": {
+      "description": "Inert declarations found by audit that this guard does not measure. Recorded so the defect class has one register; each module must still exist, so fixing one means deleting its entry.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "symbol", "reason"],
+        "properties": {
+          "target": {"type": "string", "pattern": "^(alpha|app)\\.[A-Za-z0-9_.]+$"},
+          "symbol": {"type": "string"},
+          "reason": {"$ref": "#/$defs/reason"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "A written justification. minLength 1 is enforced by the schema AND re-checked by the gate, because a whitespace-only reason is the failure mode a reviewer cannot see.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "configKey": {"type": "string", "minLength": 1, "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"},
+    "reasoned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "reason"],
+      "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "reason": {"$ref": "#/$defs/reason"}
+      }
+    }
+  }
+}

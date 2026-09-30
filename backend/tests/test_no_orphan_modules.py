@@ -305,6 +305,35 @@ def test_allowed_orphans_have_reasons() -> None:
             assert module and reason, f"{name} entry needs both module and reason: {module!r}"
 
 
+def test_waived_modules_still_exist() -> None:
+    """Every waiver must name a module that is still there.
+
+    A waiver whose module has been renamed or deleted permits nothing -- the orphan
+    scan never reaches a file that is not there -- so the entry stops doing any work
+    and rots silently, while the real module it was written about is re-reported as an
+    orphan under a new name. This is the same freshness rule the inert-declaration
+    contract (``contracts/inert_declarations_allowlist.v1.json``) applies to its own
+    entries, and it is why that contract can be trusted: neither list grows in one
+    direction only.
+
+    Resolution is per import root, because the two trees are not siblings:
+    ``app.gateway.x`` lives under ``backend/app`` while ``alpha.x`` lives under
+    ``backend/packages/harness/alpha``. Joining the dotted name onto a single root
+    would look under the wrong tree and report a live shim as missing.
+    """
+    roots = {"app": APP, "alpha": HARNESS / "alpha"}
+    for name, table in (
+        ("ALLOWED_ORPHANS", ALLOWED_ORPHANS),
+        ("CLI_ENTRY_POINTS", CLI_ENTRY_POINTS),
+        ("TEST_ONLY_MODULES", TEST_ONLY_MODULES),
+    ):
+        for module in table:
+            head, _, rest = module.partition(".")
+            assert head in roots, f"{name} entry {module!r} does not live under a scanned import root ({sorted(roots)}), so the scan can never reach it and the waiver permits nothing"
+            path = roots[head] / f"{rest.replace('.', '/')}.py"
+            assert path.exists(), f"{name} entry {module!r} points at {path}, which does not exist. The waiver is dead weight; delete it (or fix the path) so the list cannot rot into a blanket waiver."
+
+
 def test_cli_entry_points_are_main_modules() -> None:
     """A CLI entry point must actually be runnable as ``python -m <pkg>``.
 
