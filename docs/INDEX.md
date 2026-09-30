@@ -17,6 +17,7 @@
 - [SKILLS.md](SKILLS.md) — Skills packages, tools, workflows, and runtime integration.
 - [SPECIALISTS.md](SPECIALISTS.md) — Leader-authored specialist catalogue: schema, default team, and honest limits.
 - [TEAM_RUNTIME.md](TEAM_RUNTIME.md) — Composing a swarm plan into a team of declared specialists: assignment, honest failure, and the operator report.
+- [VERIFICATION_LOOP.md](VERIFICATION_LOOP.md) — The bounded verification controller: run the tests, read the real failure, refuse a weakened test, and report three honest outcomes.
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
 - [architecture/durable-runtime.md](architecture/durable-runtime.md) — Architecture and subsystem documentation.
@@ -94,6 +95,7 @@
 - [SYSTEM_ONE_ALPHA_ROADMAP.md](SYSTEM_ONE_ALPHA_ROADMAP.md) — System One implementation roadmap for Alpha.
 - [TASK_LIST.md](TASK_LIST.md) — Living master task list for project delivery.
 - [TEAM_WIRING_AUDIT.md](TEAM_WIRING_AUDIT.md) — Which team and coordination mechanisms are live, partial, or inert, with caller counts.
+- [WIRING_AUDIT.md](WIRING_AUDIT.md) — Measured audit of implemented-but-uncalled capabilities: what was wired, what was not, and the remaining inert surface.
 - [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.
 - [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
 - [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
