@@ -367,3 +367,45 @@ test("the rail has no trailing Create Project button; creation stays reachable e
   assert.match(rail, /aria-label="Create new project"/, "the Projects header plus keeps it");
   assert.match(rail, /\{creating && \(/, "and the dialog itself is still rendered");
 });
+
+test("each project row carries a + that starts a conversation in THAT project", () => {
+  // The operator asked for a + on every project row, matching the one the
+  // Standalone group already had on its header.
+  //
+  // Before this, starting a conversation inside a project took two clicks on a
+  // collapsed row (expand, then "New in Project"), while the same action for a
+  // standalone conversation took one. The cost of the same action depended on
+  // which group the conversation belonged to.
+  //
+  // The pin asserts the control is wired to the ROW's own projectId, not to a
+  // closure over some outer selection. A + that opens a conversation in the
+  // wrong project is worse than no + at all, and a structural check that only
+  // looked for a Plus icon would pass over exactly that bug.
+  const rail = readFileSync(
+    new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
+    "utf8",
+  );
+  const start = rail.indexOf("Start a conversation in THIS project");
+  assert.notEqual(start, -1, "the per-project + must exist");
+  // The explanatory comment above the control is ~700 chars on its own, so the
+  // window has to clear it plus the button body or the assertions below read a
+  // truncated region and fail for the wrong reason.
+  const region = rail.slice(start, start + 2000);
+
+  assert.match(
+    region,
+    /onClick=\{\(\) => onNewConversation\(row\.projectId\)\}/,
+    "the + must open a conversation in ITS OWN project",
+  );
+  assert.match(region, /aria-label=\{`New conversation in /, "and it must be named for a screen reader");
+  assert.match(
+    region,
+    /title=\{`Start a new conversation in /,
+    "with a tooltip, because an icon-only control has no visible label",
+  );
+  assert.match(region, /<Plus className="size-3"/, "and it must render the Plus glyph");
+
+  // Parity: the standalone group keeps its own +, so both groups offer one click.
+  const pluses = rail.match(/onNewConversation\(/g) || [];
+  assert.ok(pluses.length >= 3, "expected the per-project +, the panel button and the dropdown");
+});

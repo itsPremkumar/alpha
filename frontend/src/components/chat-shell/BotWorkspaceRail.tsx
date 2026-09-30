@@ -512,6 +512,24 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             {count !== null ? count : "—"}
                           </span>
 
+                          {/* Start a conversation in THIS project, without first
+                              expanding the row. The expanded panel already
+                              offered "New in Project", but reaching it meant two
+                              clicks on a collapsed row, while the Standalone
+                              group has had a one-click "+" on its header all
+                              along - so the same action cost different numbers
+                              of clicks depending on where the conversation
+                              belonged. This is that control, for parity. */}
+                          <button
+                            type="button"
+                            onClick={() => onNewConversation(row.projectId)}
+                            className="p-1 rounded text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                            title={`Start a new conversation in ${project?.name || row.projectId}`}
+                            aria-label={`New conversation in ${project?.name || row.projectId}`}
+                          >
+                            <Plus className="size-3" />
+                          </button>
+
                           {/* Project Options Menu using ProjectDropdownMenu */}
                           <ProjectDropdownMenu
                             project={project}
