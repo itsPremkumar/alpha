@@ -1,9 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import {
-  Loader2,
-  PlayCircle,
   Code2,
   FileText,
   FolderCheck,
@@ -11,10 +9,8 @@ import {
   ChevronRight,
   Sparkles,
   Bot,
-  Zap,
 } from "lucide-react";
-import { contextSentence, starterActions, type StarterAction } from "@/lib/chat-shell";
-import { get, send, errMsg } from "@/lib/http";
+import { contextSentence } from "@/lib/chat-shell";
 import { Btn } from "@/components/ui";
 
 export interface ChatShellLandingProps {
@@ -40,36 +36,16 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
     onPickStarter,
     onReviewProject,
   } = props;
-  const [busy, setBusy] = useState<string | null>(null);
-  const [result, setResult] = useState<{ route: string; ok: boolean; text: string } | null>(null);
 
   const sentence = contextSentence({
     botName,
     projectName,
     conversationTitle: null,
   });
-  const actions = starterActions(projectId);
-
-  const run = async (action: StarterAction) => {
-    setBusy(action.id);
-    setResult(null);
-    try {
-      const payload = await issue(action);
-      setResult({
-        route: action.route,
-        ok: true,
-        text: renderPayload(payload),
-      });
-    } catch (error) {
-      setResult({ route: action.route, ok: false, text: errMsg(error) });
-    } finally {
-      setBusy(null);
-    }
-  };
 
   return (
     <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center text-center py-8 space-y-6 select-none" data-shell="landing">
-      {/* ── 1. Hero Avatar Icon with Subtle Glow ─────────────────────── */}
+      {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 1. Hero Avatar Icon with Subtle Glow ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />
         <div className="relative size-18 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-xl border border-white/20">
@@ -81,7 +57,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         </div>
       </div>
 
-      {/* ── 2. Greeting & Context ────────────────────────────────────── */}
+      {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 2. Greeting & Context ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div className="space-y-1.5 max-w-lg">
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
           Welcome back, {userName}!
@@ -102,7 +78,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         </p>
       </div>
 
-      {/* ── 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ── */}
+      {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left pt-1">
         {/* Card 1: Create a new plan */}
         <button
@@ -199,79 +175,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         </button>
       </div>
 
-      {/* ── 4. Live Gateway Starter Actions (Honesty Preserved) ────────── */}
-      <div className="w-full max-w-xl text-left border-t border-border/50 pt-4">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
-            <Zap className="size-3 text-amber-500" />
-            <span>Gateway Starter Actions</span>
-          </p>
-          <span className="text-[10px] text-muted-foreground">Direct API probe</span>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={() => void run(action)}
-              disabled={busy !== null}
-              title={`${action.route} — ${action.hint}`}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-border/70 text-[11px] font-medium hover:border-primary/50 hover:bg-muted/50 disabled:opacity-40 text-left transition-colors cursor-pointer"
-            >
-              {busy === action.id ? (
-                <Loader2 className="size-3 animate-spin text-primary" />
-              ) : (
-                <PlayCircle className="size-3 text-muted-foreground" />
-              )}
-              <span className="flex flex-col leading-tight">
-                <span className="text-[11px]">{action.label}</span>
-                <code className="text-[9px] text-muted-foreground font-mono">{action.route}</code>
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {result && (
-          <div
-            className={`mt-2 rounded-xl border px-3 py-2 text-left ${
-              result.ok
-                ? "border-border/60 bg-card/60"
-                : "border-destructive/40 bg-destructive/5"
-            }`}
-            role={result.ok ? undefined : "alert"}
-            data-read={result.ok ? "ok" : "failed"}
-          >
-            <p className="text-[10px] font-semibold">
-              <code className="font-mono">{result.route}</code>{" "}
-              {result.ok ? (
-                <span className="text-muted-foreground font-normal">returned</span>
-              ) : (
-                <span className="text-destructive">did not answer</span>
-              )}
-            </p>
-            <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-words text-[10px] text-muted-foreground font-mono">
-              {result.text}
-            </pre>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-async function issue(action: StarterAction): Promise<unknown> {
-  return action.method === "POST"
-    ? send<unknown>(action.path, action.method, action.body)
-    : get<unknown>(action.path);
-}
-
-function renderPayload(payload: unknown): string {
-  if (payload === null) return "null (the server sent an empty body)";
-  if (typeof payload === "string") return payload;
-  try {
-    return JSON.stringify(payload, null, 2);
-  } catch {
-    return String(payload);
-  }
-}

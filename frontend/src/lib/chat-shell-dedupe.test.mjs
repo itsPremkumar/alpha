@@ -251,6 +251,7 @@ test("no HTTP method or route is rendered as visible text in the rail surfaces",
     "../components/chat-shell/ProjectDetailPanel.tsx",
     "../components/chat-shell/BotDropdownMenu.tsx",
     "../components/chat-shell/ProjectDropdownMenu.tsx",
+    "../components/chat-shell/ChatShellLanding.tsx",
   ];
   for (const rel of files) {
     const src = readFileSync(new URL(rel, import.meta.url), "utf8");
@@ -305,4 +306,30 @@ test("the agent list comes FIRST in the dropdown; the actions come after it", ()
   assert.ok(iLeadRow < iActions, "the Lead Agent row must precede the actions");
   assert.ok(iActions < iNewConversation, "the actions stay together, after the list");
   assert.ok(iBotSettings > iActions, "including the last action");
+});
+
+test("the empty-state landing shows no Gateway API probe and no HTTP routes", () => {
+  // Removed at the operator's request: the "Gateway Starter Actions" block that
+  // offered "Read the agent roster / GET /api/agents", "List installed skills /
+  // GET /api/skills" and "Show the model catalog / GET /api/models", each
+  // rendering its route in a <code> element under a "Direct API probe" caption.
+  //
+  // That is developer plumbing presented as the first things a new user is
+  // offered, and it is the same complaint as the `POST /api/projects` line in
+  // the new-project dialog: an HTTP verb is not something an operator chooses
+  // from. The whole probe section is gone, not just its labels.
+  const landing = readFileSync(
+    new URL("../components/chat-shell/ChatShellLanding.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(landing, /Gateway Starter Actions/, "the probe block must stay removed");
+  assert.doesNotMatch(landing, /Direct API probe/);
+  assert.doesNotMatch(landing, /starterActions\(/, "it must not build a probe list");
+  assert.doesNotMatch(landing, /<code[^>]*>\{action\.route\}<\/code>/, "no route in a code element");
+  assert.doesNotMatch(landing, /action\.method === "POST"/, "no POST/GET branch for a probe");
+  assert.doesNotMatch(landing, /data-read=/, "no probe result panel");
+
+  // The landing must still be a landing: removing the probe must not have
+  // removed the starter prompts that actually help someone begin.
+  assert.match(landing, /onPickStarter/, "the starter prompts must remain");
 });
