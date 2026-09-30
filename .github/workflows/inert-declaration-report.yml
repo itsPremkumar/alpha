@@ -1,0 +1,96 @@
+name: Inert Declaration Report
+
+# Non-blocking by construction. The two inert-declaration gates already run inside the
+# backend unit-test shards, because a finding nobody sees is a gate that gets switched
+# off. This workflow exists for the other half of the problem: the state of the
+# register itself. It prints every recorded inert declaration with its reason, so the
+# allowlist is reviewed on a schedule instead of accumulating quietly between unrelated
+# changes.
+#
+# `continue-on-error` is set on the only step that can fail, and the job gates nothing.
+# A new finding fails the unit tests -- that is the gate. A new *recording* is
+# reviewed here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    # Weekly, so a declaration that drifted since the last release is re-read even when
+    # no commit touched the config surface.
+    - cron: '37 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inert-report-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inert-declaration-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # Must match backend/Dockerfile's UV_IMAGE tag; pinned by backend/tests/test_ci_uv_version_pin.py
+          version: '0.11.1'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Print the inert-declaration state
+        working-directory: backend
+        # Report only. The blocking version of this is tests/test_no_inert_config.py,
+        # which the unit-test shards already run.
+        continue-on-error: true
+        run: |
+          uv run --no-sync python tests/test_no_inert_config.py | tee "${RUNNER_TEMP}/gate-state.txt"
+
+      - name: Publish the inert-declaration register
+        working-directory: backend
+        continue-on-error: true
+        # The register is data, not code, so it is published as it stands rather than
+        # through an inline renderer: every entry already carries a written reason, and
+        # a renderer is one more thing that can disagree with the contract.
+        run: |
+          {
+            echo '## Inert declaration register'
+            echo
+            echo 'Every entry is a configuration key or flag an operator can set and that'
+            echo 'production cannot act on, recorded with the reason it is acceptable as it'
+            echo 'stands. Deleting a key is a breaking change for every existing install and'
+            echo 'an operator decision, so the gates ask for a record, never for a deletion.'
+            echo
+            echo '### Gate state'
+            echo '```'
+            cat "${RUNNER_TEMP}/gate-state.txt"
+            echo '```'
+            echo
+            echo '### The register'
+            echo '```json'
+            cat ../contracts/inert_declarations_allowlist.v1.json
+            echo '```'
+          } > "${RUNNER_TEMP}/inert-report.md"
+          cat "${RUNNER_TEMP}/inert-report.md"
+
+      - name: Upload the register
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inert-declaration-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/inert-report.md
+          if-no-files-found: warn

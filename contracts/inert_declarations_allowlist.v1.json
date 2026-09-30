@@ -1,0 +1,136 @@
+{
+  "$schema": "./inert_declarations_allowlist.v1.schema.json",
+  "contract_version": 1,
+  "contract": "inert_declarations_allowlist",
+  "purpose": [
+    "The declared-but-unread configuration defect class, recorded once, with a written reason for every entry.",
+    "A configuration key that an operator can set, that ships in config.example.yaml, and that nothing reads is the defect this contract exists for. Setting it is not an error, the model accepts it, and the configured behaviour never appears. The originating incident was a model_pricing block documented as the cost fallback and read by nobody, so every cost in the product was null while the shipped template carried eight price entries and no test failed: the test that existed asserted that the config parses, and parsing is not reading.",
+    "Entries here are not a to-do list of things somebody forgot. They are the current, reviewed state of the defect, and each states why the declaration is acceptable as it stands. Deleting a config key is a breaking change for every existing install and an operator decision (backend/packages/harness/alpha/config/AGENTS.md), so a gate never demands a key be removed to pass; it demands the inertness be recorded.",
+    "An entry must be removed as soon as a reader exists, and the gate fails on a stale entry precisely so an allowlist cannot quietly become a permanent waiver."
+  ],
+  "rules": [
+    "reason is required on every entry and must be a non-empty string; the schema and the gate both reject a whitespace-only reason.",
+    "declaration_only_keys and unreachable_flags must equal the scan's finding sets exactly: an undocumented finding fails the gate, and so does a documented finding that no longer exists.",
+    "operator_kwarg_models is derived from the models (extra=\"allow\") and cross-checked in both directions, so opening a model to operator kwargs fails until somebody says how they are consumed, and closing one fails the stale check.",
+    "The root AppConfig is listed as an open model but exempts no declared field; see kwarg_bag_paths in backend/tests/test_no_inert_config.py.",
+    "known_blind_spots is the inverse list: keys an audit believes are inert that the gate cannot prove, each with the reason it is out of reach. Gate B errs toward under-reporting, never toward a false build failure, so this section is what keeps that honest."
+  ],
+  "operator_kwarg_models": [
+    {
+      "target": "alpha.config.app_config.AppConfig",
+      "reason": "extra=\"allow\" on purpose, and the gate deliberately exempts none of its declared fields. The root's openness is about keys no model declares (an operator may put one in config.yaml and the loader hands it to plugins and provider factories); it says nothing about the sections AppConfig does declare, and those are where an inert declaration lives. The undeclared tail has no field surface to gate; the declared sections are all gated by path."
+    },
+    {
+      "target": "alpha.config.tool_config.ToolConfig",
+      "reason": "extra=\"allow\" on purpose: every field past the registry identity is a provider keyword argument forwarded verbatim to the constructor of whichever class the operator names in `use:`. Who consumes a given kwarg is a property of that choice, not of this model, so no static reference can prove a reader and requiring one would require a fiction. The registry identity (name/group/use) is separately pinned by the feature-manifest wiring gate."
+    },
+    {
+      "target": "alpha.config.tool_config.ToolGroupConfig",
+      "reason": "Same operator-kwarg bag as ToolConfig: a group carries the tool names and per-tool kwargs the operator selected, resolved by the tool registry at agent-construction time."
+    },
+    {
+      "target": "alpha.config.voice_config.VoiceConfig",
+      "reason": "extra=\"allow\" on purpose: STT/TTS/wake-word settings are per-engine keyword arguments resolved by the voice chain at run time from the engine the operator selected, so a kwarg's reader is chosen dynamically."
+    },
+    {
+      "target": "alpha.config.sandbox_config.SandboxConfig",
+      "reason": "extra=\"allow\" on purpose: sandbox settings are passed to the provider selected by `sandbox.use`, whose class decides which kwargs it honours. The provider registry itself is separately pinned by the feature-manifest wiring gate; the kwarg bag is not statically checkable."
+    },
+    {
+      "target": "alpha.config.agent_preset_config.AgentPresetConfig",
+      "reason": "extra=\"allow\" on purpose: a preset carries operator-selected toolset kwargs resolved by the tool registry when the agent is built, so which key a preset passes on is decided by the named tool rather than by this model."
+    },
+    {
+      "target": "alpha.config.extensions_config.ExtensionsConfig",
+      "reason": "extra=\"allow\" on purpose: mcpServers and skill entries are third-party declarations (headers, oauth, env, task toolsets) consumed by the MCP client factory per server. A given key's reader is the third-party server, which is by definition outside this repository."
+    },
+    {
+      "target": "alpha.config.model_config.ModelConfig",
+      "reason": "extra=\"allow\" on purpose and documented in model_config.py: operators carry provider-specific connection kwargs (api_key, base_url, and whatever a given provider class accepts) that are forwarded verbatim to the chat client its `use:` names. Which key is honoured is a property of the provider class the operator selected, so no reference in this repository can prove a reader. The fields this repository does own (name, model, capabilities, the reasoning-effort ladder) are separately pinned: the ladder by alpha/config/reasoning_effort.py, the slug by tests/test_model_config.py."
+    },
+    {
+      "target": "alpha.config.model_config.ProviderConfig",
+      "reason": "Same mechanism as ModelConfig: a named provider profile holds the connection kwargs inherited by every models[] entry that references it, forwarded to that provider's client. Which models may name the profile is checked at load by AppConfig._validate_model_routing."
+    }
+  ],
+  "declaration_only_keys": [
+    {
+      "target": "evolution_evidence",
+      "reason": "Group A. The whole evolution_evidence subtree is declared on AppConfig and read by nothing outside alpha/evolution/evidence/, which production never imports: the evidence subsystem takes its configuration through evaluate_proposal(config=...) and is reachable only from tests. Recorded as a known inert declaration; deleting the key is a breaking config change and an operator decision, not a test edit."
+    },
+    {
+      "target": "verification.judge_enabled",
+      "reason": "Group A. A specced selective acceptance-criteria judge that was never wired. alpha.subagents.jev_acceptance is the implementation that took its place and reads system_one instead, so no production module reads this flag."
+    },
+    {
+      "target": "verification.judge_model_name",
+      "reason": "Same unshipped selective judge as verification.judge_enabled: the model name has no consumer because the judge that would have used it was never built."
+    }
+  ],
+  "unreachable_flags": [
+    {
+      "target": "self_tuning.enabled",
+      "reason": "Group B, and the sharpest instance of it: a real reader exists (alpha/config/self_tuning/{apply,validate,canary,protocol,targets,verify}.py all read the flag and refuse the whole protocol when it is false) but every one of those modules is outside the production import closure, so nothing in the running product ever calls the protocol. Flipping enabled: true starts nothing."
+    },
+    {
+      "target": "memory.fabric.enabled",
+      "reason": "Group B. The fabric store (alpha/memory/fabric/store.py) is fully implemented and the only importer of FabricConfig outside its own package is alpha/config/memory_config.py, which declares the field. Nothing in the production import closure constructs MemoryEnvelopeStore, so flipping this starts nothing. The rest of the fabric subtree is inert for the same reason and is recorded here as one subsystem rather than as six identical entries."
+    },
+    {
+      "target": "memory.codebase.enabled",
+      "reason": "Group B. CodebaseConfig is imported only by alpha/config/memory_config.py; nothing in the production import closure imports alpha.memory.codebase.graph, hotspots or the indexer, so the codebase memory is never built."
+    },
+    {
+      "target": "memory.fusion.enabled",
+      "reason": "Group B. FusionConfig is imported only by alpha/config/memory_config.py; alpha.memory.fusion.stages and the fusion entry point are outside the production import closure, so no run fuses memory types."
+    },
+    {
+      "target": "evolution_evidence.enabled",
+      "reason": "Group A seen through Gate B. The declaring module alpha.evolution.evidence.config is not in the production import closure at all, and no live module references the section: the only non-declaring mentions are inside the same unwired package. Flipping it starts nothing."
+    },
+    {
+      "target": "channel_connections.slack.enabled",
+      "reason": "Read, but not statically visible, so recorded rather than treated as inert. app/channels/runtime_config_store.py::_provider_enabled does getattr(channel_connections_config, provider, None) and then getattr(provider_config, \"enabled\", False) with `provider` supplied at run time, so the name slack appears in no read expression. The flag does gate the Slack channel; a name-based scan cannot see that. The sibling providers feishu, telegram, wechat and wecom happen to be matched by an incidental chain, which is luck, not coverage."
+    },
+    {
+      "target": "channel_connections.discord.enabled",
+      "reason": "Same dynamic-accessor case as channel_connections.slack.enabled: the per-channel enabled flag is read through getattr(connection_config, provider) in app/channels/runtime_config_store.py, so the name is absent from every read expression and a static scan cannot see the reader. The flag is live."
+    }
+  ],
+  "known_blind_spots": [
+    {
+      "target": "memory.health.enabled",
+      "reason": "Believed inert, not provable by the gate. HealthConfig is imported only by alpha/config/memory_config.py and nothing in the production import closure imports alpha.memory.health.health, so the health monitor is never constructed. Gate B cannot conclude that, because the section's last component is the ordinary word `health` and the chain channel matches unrelated attributes such as registry.health() in alpha/workflow/registry.py."
+    },
+    {
+      "target": "memory.policy.enabled",
+      "reason": "Believed inert, not provable by the gate. PolicyConfig is imported only by alpha/config/memory_config.py, and the one consumer of alpha.memory.policy.models is alpha/memory/capture_composition.py, which is itself an allowlisted orphan pending the per-memory-type registration wave. The gate cannot conclude that, because the chain channel matches `policy` in unrelated attributes such as decision.policy and JournalPolicy."
+    },
+    {
+      "target": "memory.utility.enabled",
+      "reason": "Believed inert, not provable by the gate. UtilityConfig is imported only by alpha/config/memory_config.py and nothing in the production import closure imports the utility memory store. The gate cannot conclude that because the chain channel matches the word `utility` inside an unrelated docstring in alpha/models/performance_registry.py."
+    }
+  ],
+  "reported_defects": [
+    {
+      "target": "alpha.runtime.side_effects",
+      "symbol": "SideEffectLedger",
+      "reason": "Reported, not fixed: fully implemented, SQL-backed, migration 0027, fully tested, and reached by zero production callers. The best idea in the codebase executes zero times. The orphan-module gate does not catch it because the test suite imports it, and a test import is not a production reference. Wiring it into the run lifecycle is a product change and out of scope for a test-only assignment."
+    },
+    {
+      "target": "alpha.evolution.evidence",
+      "symbol": "",
+      "reason": "Reported, not fixed: an entire gate/verdict subsystem imported only by its own config module and by its own tests. This is the subsystem behind the evolution_evidence entries above, and the reason that whole config section is inert."
+    },
+    {
+      "target": "alpha.runtime.supervisor",
+      "symbol": "",
+      "reason": "Reported, not fixed: a supervisor package with no production importer. The production loop lifecycle is app/gateway/autonomy/supervisor.py, which is a different module; this one is unreachable."
+    },
+    {
+      "target": "alpha.memory.capture_composition",
+      "symbol": "",
+      "reason": "Reported, not fixed: the write-side memory composition module, allowlisted as an orphan alongside its read-side twin alpha.memory.recall_composition. It is the only consumer of the memory policy subsystem, so policy_enabled reads as live while nothing in the product can reach the thing that would honour it. This is the same defect the orphan-module gate already records, listed here so the config-level consequence is not rediscovered later."
+    }
+  ]
+}
