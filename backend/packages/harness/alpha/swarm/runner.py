@@ -627,6 +627,34 @@ class AsyncSwarmRunner:
                                     task_id=task_node.task_id,
                                     details={"error": task_node.error_message},
                                 )
+                    # ORDERING FIX. The two passes above cannot reap a dependent
+                    # between them: `fail_unrunnable_tasks` only fails a PENDING
+                    # task once one of its dependencies is FAILED or CANCELLED,
+                    # and it ran while the orphans were still RUNNING. Only the
+                    # second pass - the one above - makes them FAILED, so a
+                    # reducer depending on them became unrunnable exactly when
+                    # nothing was left to notice. `break` then exited with the
+                    # plan non-terminal: `POST /run-async` had already answered
+                    # 200 `runner_status: "running"`, the revision froze, and
+                    # `status` stayed `running` forever with a task that nothing
+                    # would ever dispatch. Reproduced on a 3-item batch:
+                    # step -> run-async -> map-1/2/3 failed, reduce pending/0,
+                    # revision pinned, status `running` at t+45s.
+                    #
+                    # Reaping again AFTER the orphans are terminal closes that
+                    # window, which in turn lets `is_swarm_finished()` answer
+                    # truthfully so the `break` below is actually earned.
+                    if not scheduler.is_swarm_finished():
+                        newly_stranded = scheduler.fail_unrunnable_tasks()
+                        if newly_stranded:
+                            self.coordinator.append_event(
+                                swarm_id,
+                                "SWARM_STRANDED_TASKS_FAILED",
+                                details={
+                                    "task_ids": [task.task_id for task in newly_stranded],
+                                    "reason": "dependency failed while the swarm was idle",
+                                },
+                            )
                     break
 
                 completed_now = sum(1 for task_node in plan.tasks.values() if task_node.state == TaskNodeState.COMPLETED)
