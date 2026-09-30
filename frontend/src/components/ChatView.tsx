@@ -418,7 +418,7 @@ export default function ChatView() {
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const [omnisearchOpen, setOmnisearchOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [activeContextTab, setActiveContextTab] = useState<"conversation" | "files" | "tasks" | "knowledge">("conversation");
+  const [activeContextTab, setActiveContextTab] = useState<"conversation" | "files" | "tasks" | "knowledge" | "agent">("conversation");
 
   const localThreadMetaRef = useRef<Record<string, ThreadMeta>>({});
   const historyLoadGenerationRef = useRef(0);

@@ -16,6 +16,7 @@ import {
   PanelRight,
   MoreHorizontal,
   Bot,
+  SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
 import { Project } from "@/lib/projects";
@@ -26,7 +27,7 @@ import { BotDropdownMenu } from "./BotDropdownMenu";
 import { ProjectDropdownMenu } from "./ProjectDropdownMenu";
 import type { Thread } from "@/types/chat";
 
-export type WorkspaceContextTab = "conversation" | "files" | "tasks" | "knowledge";
+export type WorkspaceContextTab = "conversation" | "files" | "tasks" | "knowledge" | "agent";
 
 export interface ProjectContextHeaderProps {
   bot: BotProfile | null;
@@ -290,7 +291,20 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
           <Brain className="size-3.5" />
           <span>Knowledge</span>
         </button>
+
+          <button
+            type="button"
+            onClick={() => onTabChange?.("agent")}
+            className={`py-2 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "agent"
+                ? "border-primary text-primary font-semibold"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            <span>Agent</span>
+          </button>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
