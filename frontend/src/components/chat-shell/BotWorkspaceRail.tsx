@@ -658,7 +658,27 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
                           {projThreads.length === 0 ? (
                             <span className="block px-2 py-1 text-[10px] text-muted-foreground italic">
-                              No conversations in this project yet.
+                              {row.conversationCount === null ? (
+                                // The count read did not answer, so nothing is
+                                // known about this project - not even whether the
+                                // agent has conversations here.
+                                "Conversations not reported."
+                              ) : row.conversationCount > 0 ? (
+                                // THE FIX. This row's list is built from the
+                                // BOT-FILTERED thread set, while the badge counts
+                                // the whole project. A project with three
+                                // conversations and none of them this agent's
+                                // used to read "No conversations in this project
+                                // yet" - which is false, and contradicted the
+                                // badge two inches above it. Say what is actually
+                                // true: the project has some, this agent has none.
+                                <>
+                                  {row.conversationCount} in this project, none with{" "}
+                                  {currentBotDisplayName} yet.
+                                </>
+                              ) : (
+                                "No conversations in this project yet."
+                              )}
                             </span>
                           ) : (
                             projThreads.map((thread) => {

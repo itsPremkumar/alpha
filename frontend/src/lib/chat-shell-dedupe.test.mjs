@@ -444,3 +444,48 @@ test("an expanded project shows its agents, and never turns an unread crew into 
   assert.match(rail, /Crew not reported\./, "an unread crew states that, not a count");
   assert.match(rail, /row\.crewError \? "Crew not read\." : "Crew not reported\."/);
 });
+
+test("the empty project list never claims a project is empty when its badge says otherwise", () => {
+  // The contradiction the operator reported: a row whose badge read 3, and
+  // whose expanded body read "No conversations in this project yet."
+  //
+  // Two different sources produced those. The badge is `row.conversationCount`,
+  // counted by the Gateway over the whole project. The list is `projThreads`,
+  // which comes from `groupConversations(threads, ...)` on a thread set that
+  // ChatView has ALREADY filtered to the selected agent. So "empty" here only
+  // ever meant "empty for this agent" - and the copy said otherwise, in the
+  // same row as a badge that said the opposite.
+  //
+  // Asserted on the copy, because the copy is the defect. A test that merely
+  // checked the list renders would pass while the UI contradicted itself.
+  const rail = readFileSync(
+    new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
+    "utf8",
+  );
+  const start = rail.indexOf("{projThreads.length === 0 ? (");
+  assert.notEqual(start, -1, "the empty-project branch must exist");
+  // The inline rationale comments run long, so the window has to clear them
+  // plus all three branches or the later assertions read a truncated region and
+  // fail for the wrong reason.
+  const region = rail.slice(start, start + 2600);
+
+  // The unread case, so a failed count is not read as a zero either.
+  assert.match(region, /row\.conversationCount === null/, "an unreported count stays unknown");
+  assert.match(region, /Conversations not reported\./);
+
+  // The contradiction case, which is the one that was wrong.
+  assert.match(
+    region,
+    /row\.conversationCount > 0 \? \(/,
+    "a non-zero project count must take its own branch",
+  );
+  assert.match(
+    region,
+    /in this project, none with/,
+    "and that branch must say the project HAS conversations, naming the agent",
+  );
+  assert.match(region, /\{currentBotDisplayName\}/, "the agent must be named, as the standalone copy does");
+
+  // The genuinely-empty case must still exist and keep its original wording.
+  assert.match(region, /No conversations in this project yet\./);
+});
