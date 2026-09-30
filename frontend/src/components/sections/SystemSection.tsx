@@ -10,7 +10,7 @@ import { SystemMonitorSection } from "@/components/sections/SystemMonitorSection
 import { errMsg } from "@/lib/http";
 import { RefreshCw, Terminal, PlugZap, Trash2, Wand2, Globe, Pause, Play } from "lucide-react";
 
-export function SystemSection(props: { threadId: string | null; browserActive: boolean }) {
+export function SystemSection(props: { threadId: string | null; browserActive: boolean | null }) {
   const [probes, setProbes] = useState<Probe[]>([]);
   const [probing, setProbing] = useState(true);
   const [auto, setAuto] = useState(false);
@@ -294,7 +294,16 @@ export function SystemSection(props: { threadId: string | null; browserActive: b
         <div className="flex items-center gap-2">
           <Globe className="size-4 text-primary" />
           <p className="text-xs font-semibold">Live browser</p>
-          {!props.browserActive && <Badge tone="amber">needs browser capability</Badge>}
+          {/* Tri-state: a failed `/features` read is `null`, which must not be
+          reported as "the browser capability is off" — the server never said
+          that. */}
+      {props.browserActive === null ? (
+        <Badge tone="amber" title="The Gateway did not report this capability.">
+          browser capability not reported
+        </Badge>
+      ) : (
+        !props.browserActive && <Badge tone="amber">needs browser capability</Badge>
+      )}
         </div>
         <p className="text-[11px] text-muted-foreground">Point the agent's browser tab at a page. Full remote control streams over websocket (see server docs).</p>
         <Field label="Open URL in agent browser">

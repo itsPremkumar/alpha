@@ -48,7 +48,7 @@ function swarmActions(status: string): SwarmAction[] {
   return ["run-async", "step", "pause", "cancel"];
 }
 
-export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailable: boolean }) {
+export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailable: boolean | null }) {
   const [tab, setTab] = useState<SubTab>("groups");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

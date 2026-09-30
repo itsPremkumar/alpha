@@ -11,6 +11,7 @@ import {
   Bot,
 } from "lucide-react";
 import { contextSentence } from "@/lib/chat-shell";
+import { ANONYMOUS_LABEL, landingGreeting, operatorIdentity } from "@/lib/operator";
 import { Btn } from "@/components/ui";
 
 export interface ChatShellLandingProps {
@@ -19,7 +20,25 @@ export interface ChatShellLandingProps {
   botAvatar?: string | null;
   projectId: string | null;
   projectName: string | null;
-  userName?: string;
+  /**
+   * The operator's own name, or `null` when none is configured.
+   *
+   * This used to default to a developer's initials, so a first-time visitor was
+   * greeted by name as someone who had never used the product. The Gateway
+   * authenticates requests but exposes no display name, so the honest default is
+   * "no name" and the greeting degrades to a first-run line. See
+   * `lib/operator.ts` for the single place a name is resolved.
+   */
+  userName?: string | null;
+  /**
+   * Whether a previous session actually exists.
+   *
+   * Gates the "Welcome back" phrasing, which the old build printed
+   * unconditionally — a false claim on a first run. Callers derive this from
+   * real history (a non-empty conversation list); it defaults to `false` so the
+   * default can never overstate familiarity.
+   */
+  returning?: boolean;
   /** Called with the prompt the user picked, so the composer can be seeded. */
   onPickStarter?: (prompt: string) => void;
   onReviewProject?: () => void;
@@ -32,7 +51,8 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
     botAvatar,
     projectId,
     projectName,
-    userName = "MK",
+    userName = null,
+    returning = false,
     onPickStarter,
     onReviewProject,
   } = props;
@@ -48,7 +68,15 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
       {/* ΓöÇΓöÇ 1. Hero Avatar Icon with Subtle Glow ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />
-        <div className="relative size-18 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-xl border border-white/20">
+        {/* `size-[4.5rem]` is NOT in Tailwind's default spacing scale (it steps
+            14 -> 16 -> 20) and `tailwind.config.cjs` extends only `colors` and
+            `borderRadius`, so the class generated nothing at all. The circle
+            silently collapsed to its content's size while the `blur-lg` glow
+            sized itself around it — the largest element on the empty state
+            rendering wrong with no lint, no build error and no test. An
+            arbitrary value keeps the intended 4.5rem without inventing a new
+            theme scale. `lib/tailwind-class-guard.test.mjs` pins this. */}
+        <div className="relative size-[4.5rem] rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-xl border border-white/20">
           {botAvatar ? (
             <span className="text-3xl">{botAvatar}</span>
           ) : (
@@ -60,9 +88,20 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
       {/* ΓöÇΓöÇ 2. Greeting & Context ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <div className="space-y-1.5 max-w-lg">
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-          Welcome back, {userName}!
+          {landingGreeting(operatorIdentity(userName), returning)}
         </h2>
         <p className="text-xs text-muted-foreground leading-relaxed">
+          {userName ? (
+            <>
+              Signed in as{" "}
+              <span className="text-foreground font-semibold">{userName}</span>.
+            </>
+          ) : (
+            <>
+              Running as the local {ANONYMOUS_LABEL.toLowerCase()}. Set your name in{" "}
+              <span className="text-foreground font-semibold">Settings</span> to be greeted by it.
+            </>
+          )}{" "}
           You are working with{" "}
           <span className="text-foreground font-semibold">{botName || "Lead Agent"}</span>
           {projectName ? (
@@ -80,10 +119,23 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
 
       {/* ΓöÇΓöÇ 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ΓöÇΓöÇ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left pt-1">
-        {/* Card 1: Create a new plan */}
+        {/* Card 1: Create a new plan.
+
+            These cards used to seed the composer with raw internal command
+            strings — `"/plan "` with a trailing space, and
+            `"Write or improve code for "` with a dangling preposition. So a
+            button labelled in friendly prose dropped a CLI invocation into the
+            input box, and an unresolvable command produced a command error from
+            a card that had promised a conversation. Each now seeds a complete,
+            self-contained prompt the agent can answer as written, and the
+            composer shows the operator the text before they send it. */}
         <button
           type="button"
-          onClick={() => onPickStarter?.("/plan ")}
+          onClick={() =>
+            onPickStarter?.(
+              "Create a plan for this work. Break it into concrete steps, call out anything you need from me, and tell me what to start with.",
+            )
+          }
           className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
         >
           <div className="flex items-center gap-3">
@@ -105,7 +157,11 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         {/* Card 2: Write or improve code */}
         <button
           type="button"
-          onClick={() => onPickStarter?.("Write or improve code for ")}
+          onClick={() =>
+            onPickStarter?.(
+              "Write or improve some code. Show me the code, explain what it does, and point out anything you would do differently.",
+            )
+          }
           className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
         >
           <div className="flex items-center gap-3">

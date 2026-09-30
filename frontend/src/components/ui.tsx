@@ -71,9 +71,9 @@ export function Notice(props: { message: string }) {
 }
 
 /** Labeled form field with hint text — keeps every form self-explanatory. */
-export function Field(props: { label: string; hint?: string; children: React.ReactNode }) {
+export function Field(props: { label: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
-    <label className="block space-y-1">
+    <label className={`block space-y-1 ${props.className || ""}`}>
       <span className="text-[11px] font-semibold">{props.label}</span>
       {props.children}
       {props.hint && <span className="block text-[11px] text-muted-foreground font-normal">{props.hint}</span>}
@@ -117,6 +117,12 @@ export function Btn(props: {
 export function Badge(props: {
   children: React.ReactNode;
   tone?: "green" | "amber" | "gray" | "blue" | "purple" | "cyan" | "red" | "indigo";
+  /**
+   * Native tooltip. Added so a status chip can carry the *reason* it is in that
+   * state — required for the honesty pattern where "not reported" must be
+   * distinguishable from "off", since a badge has no room to explain itself.
+   */
+  title?: string;
 }) {
   const tone =
     props.tone === "green"
@@ -135,9 +141,99 @@ export function Badge(props: {
                 ? "bg-red-500/10 text-red-600 dark:text-red-400"
                 : "bg-muted text-muted-foreground";
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${tone}`}>
+    <span
+      title={props.title}
+      className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${tone}`}
+    >
       {props.children}
     </span>
+  );
+}
+
+/**
+ * A selectable card that behaves like a real control.
+ *
+ * ## Why this exists
+ *
+ * The model catalog (`SettingsSection`) and the three theme cards were
+ * `<div onClick={...} className="cursor-pointer">`. A div is not a control: it
+ * is not focusable, it is absent from the tab order, and it cannot be activated
+ * with Enter or Space. That made *selecting the active LLM model* — arguably
+ * the most consequential control in the whole app — reachable by mouse only,
+ * while every other card in the product (the `ChatShellLanding` starters, the
+ * model filter pills) was a real `<button>`.
+ *
+ * This renders a `<button type="button">` with `role="radio"` and
+ * `aria-checked`, inside a `role="radiogroup"`, so a theme or a model is
+ * announced as selected and arrow keys work. It keeps the original visual
+ * classes; only the element and its semantics change.
+ */
+export function SelectableCard(props: {
+  selected: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+  className?: string;
+  /** Accessible name when the card's text content is not self-describing. */
+  ariaLabel?: string;
+  disabled?: boolean;
+  title?: string;
+  /** Overrides the default selected/unselected border+background treatment. */
+  baseClassName?: string;
+}) {
+  // A caller that supplies `baseClassName` owns its own selected/unselected
+  // styling (the model catalog does), so the default is not layered on top.
+  const treatment = props.baseClassName
+    ? ""
+    : props.selected
+      ? "border-primary bg-primary/5 ring-1 ring-primary"
+      : "border-border/60 bg-muted/30 hover:bg-muted/60";
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={props.selected}
+      aria-label={props.ariaLabel}
+      title={props.title}
+      disabled={props.disabled}
+      onClick={props.onSelect}
+      className={`text-left w-full rounded-xl border p-3.5 transition-all ${treatment} ${
+        props.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+      } ${props.className || ""}`}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+/** The accessible wrapper for a set of `SelectableCard`s. */
+export function SelectableGroup(props: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={props.label} className={props.className}>
+      {props.children}
+    </div>
+  );
+}
+
+/**
+ * Renders a Gateway capability honestly.
+ *
+ * `true` → "Enabled", `false` → "Disabled", `null` → "Not reported". The third
+ * state is the one that used to be missing: a failed `/features` read resolved
+ * to `false`, so an unreachable Gateway rendered as four confident "Disabled"
+ * badges — a measurement the server had never made. Anything that is not a
+ * measured `true` must not read as green.
+ */
+export function CapabilityBadge(props: { state: boolean | null }) {
+  if (props.state === true) return <Badge tone="green">Enabled</Badge>;
+  if (props.state === false) return <Badge tone="gray">Disabled</Badge>;
+  return (
+    <Badge tone="amber" title="The Gateway did not report this capability.">
+      Not reported
+    </Badge>
   );
 }
 

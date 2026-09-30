@@ -24,6 +24,7 @@ import { consumeChatStream } from "@/lib/chat-stream";
 import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { branding } from "@/lib/branding";
+import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
@@ -384,6 +385,16 @@ export default function ChatView() {
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
   const [view, setView] = useState<WorkspaceView>("chat");
   /**
+   * Who is operating this workspace.
+   *
+   * Resolved from storage rather than hardcoded, because the previous build
+   * greeted every visitor as a developer's initials in five places. It is state
+   * rather than a bare read so that naming yourself in Settings updates the top
+   * bar and the landing greeting without a reload. `lib/operator.ts` is the only
+   * place a name is resolved.
+   */
+  const [operator, setOperator] = useState(() => currentOperatorIdentity());
+  /**
    * The project the Workforce view should show.
    *
    * Set when the operator opens a project from the Projects list, because the
@@ -408,6 +419,15 @@ export default function ChatView() {
   const [usage, setUsage] = useState<TokenUsage | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestionsOn, setSuggestionsOn] = useState(false);
+  /**
+   * The Gateway's follow-up-suggestions setting, or `null` when unknown.
+   *
+   * `suggestionsEnabled()` used to swallow a failed read as `false`, so a
+   * gateway that simply did not answer rendered as "suggestions are off". The
+   * tri-state lets the toggle below say *unknown* rather than assert a value
+   * nobody reported.
+   */
+  const [suggestionsServerState, setSuggestionsServerState] = useState<boolean | null>(null);
   const [polishing, setPolishing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [planMode, setPlanMode] = useState(false);
@@ -586,6 +606,11 @@ export default function ChatView() {
     }
   };
 
+  // Keep the resolved identity in step with Settings, and with other browser
+  // tabs. `storage` never fires in the tab that wrote the value, so the module
+  // also dispatches its own event; subscribing to both covers every case.
+  useEffect(() => subscribeOperatorName(() => setOperator(currentOperatorIdentity())), []);
+
   // Initial load: complete local archive first (instant), then merge every
   // server page. Read failures keep the local archive visible and are surfaced
   // instead of being converted into a convincing empty history.
@@ -668,7 +693,11 @@ export default function ChatView() {
       setBots(bList);
       setBotsLoading(false);
       setFeatures(feats);
-      setSuggestionsOn(suggOn);
+      // A `null` here means the Gateway did not report the setting, so the
+      // session toggle starts off and the UI reports "unknown" rather than
+      // claiming suggestions are disabled.
+      setSuggestionsServerState(suggOn);
+      setSuggestionsOn(suggOn === true);
       // Projects for the in-chat scope picker; an unavailable list is not an
       // authoritative empty project set.
       listProjects().then(setProjects).catch((error) => {
@@ -717,12 +746,26 @@ export default function ChatView() {
     setBotsLoading(true);
     // Keep the activity projection on refresh: a manual refresh that silently
     // dropped unread badges would make a read look like a write.
-    const bList = await fetchBots({ activity: true });
-    setBots(bList);
-    setBotsLoading(false);
-    if (activeBot) {
-      const fresh = bList.find((b) => b.name === activeBot.name);
-      if (fresh) setActiveBot(fresh);
+    //
+    // This had no `try`/`catch`, so a failed roster read rejected out of an
+    // async handler, skipped `setBotsLoading(false)`, and left the sidebar
+    // stuck on its skeleton for the life of the page - plus an unhandled
+    // rejection in the console. The failure is now surfaced with the server's
+    // reason and the loading state always clears in `finally`.
+    try {
+      const bList = await fetchBots({ activity: true });
+      setBots(bList);
+      if (activeBot) {
+        const fresh = bList.find((b) => b.name === activeBot.name);
+        if (fresh) setActiveBot(fresh);
+      }
+    } catch (error) {
+      // The existing roster stays on screen: an empty grid would be
+      // indistinguishable from "the workspace has no agents", which is a claim
+      // the failed read cannot make.
+      flash(`Agent roster unavailable. ${errMsg(error)}`);
+    } finally {
+      setBotsLoading(false);
     }
   };
 
@@ -1651,8 +1694,8 @@ export default function ChatView() {
         onOpenSettings={() => setView("settings")}
         onOpenView={(v) => setView(v)}
         gatewayOk={gatewayOk}
-        userInitials="MK"
-        userName="MK"
+        userInitials={operator.name ? operator.initials : null}
+        userName={operator.name}
         botLabel={activeBot ? activeBot.display_name || activeBot.name : "Lead Agent"}
         projectLabel={activeProject ? activeProject.name : "Standalone"}
         threadLabel={threads.find((t) => t.thread_id === activeThreadId)?.title || null}
@@ -2190,7 +2233,8 @@ export default function ChatView() {
                         projectName={
                           projects.find((p) => p.id === activeProjectId)?.name ?? null
                         }
-                        userName="MK"
+                        userName={operator.name}
+                        returning={threads.length > 0}
                         onPickStarter={(prompt) => setInput(prompt)}
                         onReviewProject={() => setInspectorOpen(true)}
                       />
@@ -2294,8 +2338,34 @@ export default function ChatView() {
                   >
                     <ClipboardList className="size-3.5" /> Plan {planMode ? "on" : "off"}
                   </button>
-                  <button type="button" onClick={() => setSuggestionsOn((v) => !v)} className="hover:text-foreground px-1.5 py-1 rounded-lg hover:bg-muted" title="Toggle follow-up question suggestions">
-                    Suggestions {suggestionsOn ? "on" : "off"}
+                  {/* This toggle is a per-session client switch, not the
+                      server setting. The server owns the capability, so when it
+                      reports "off" the control is disabled with the reason
+                      rather than letting the operator flip a switch that cannot
+                      do anything; when the read failed it says "unknown"
+                      instead of implying "off". */}
+                  <button
+                    type="button"
+                    onClick={() => setSuggestionsOn((v) => !v)}
+                    disabled={suggestionsServerState !== true}
+                    aria-pressed={suggestionsOn}
+                    className="hover:text-foreground px-1.5 py-1 rounded-lg hover:bg-muted disabled:opacity-60 disabled:cursor-not-allowed"
+                    title={
+                      suggestionsServerState === false
+                        ? "Follow-up suggestions are disabled by the Gateway (suggestions.enabled in config.yaml)."
+                        : suggestionsServerState === null
+                          ? "The Gateway did not report whether suggestions are enabled."
+                          : "Toggle follow-up question suggestions for this session"
+                    }
+                  >
+                    Suggestions{" "}
+                    {suggestionsServerState === null
+                      ? "unknown"
+                      : suggestionsServerState === false
+                        ? "off (server)"
+                        : suggestionsOn
+                          ? "on"
+                          : "off"}
                   </button>
                 </div>
               </div>

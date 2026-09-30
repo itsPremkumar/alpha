@@ -1,11 +1,27 @@
 import { get, send, pick } from "./http";
 
-export async function suggestionsEnabled(): Promise<boolean> {
+/**
+ * Whether the Gateway reports follow-up suggestions as enabled.
+ *
+ * ## Why this is tri-state
+ *
+ * This used to be `catch { return false }`, which meant a failed read was
+ * rendered as "suggestions are off" - a claim the server never made. The
+ * frontend guide is explicit that a failed call must not be resolved into a
+ * value that looks like a real answer, because the UI then shows a confident
+ * state derived from nothing.
+ *
+ * `null` means "the Gateway did not tell us". Callers must render that as
+ * unknown rather than folding it into `false`; see `SettingsSection`, which
+ * labels it "Unknown" and does not offer a control to change it.
+ */
+export async function suggestionsEnabled(): Promise<boolean | null> {
   try {
     const d = await get<Record<string, unknown>>("/suggestions/config");
-    return Boolean(pick(d, ["enabled"], true));
+    const raw = pick(d, ["enabled"], null);
+    return typeof raw === "boolean" ? raw : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
