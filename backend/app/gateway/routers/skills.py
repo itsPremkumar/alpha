@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import BinaryIO, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import FormData, Headers, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
@@ -65,6 +66,22 @@ _ADMIN_REQUIRED_DETAIL = "Admin privileges required to manage skills."
 _MAX_SKILL_ARCHIVE_UPLOAD_BYTES = 100 * 1024 * 1024
 _MAX_SKILL_ARCHIVE_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 _UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
+
+# Stable machine-readable discriminator for the "this route exists but the
+# skill does not" 404. Starlette answers a path that matches no route with a
+# bare {"detail": "Not Found"} carrying no code, so without this key a caller
+# cannot tell "this endpoint does not exist" from "this skill does not exist".
+#
+# `code` is emitted NEXT TO a plain-string `detail` rather than replacing it
+# with an object, because frontend/src/lib/api-client.ts only lifts a *string*
+# detail into the error text it renders; a dict-valued detail would leave the
+# user with no message at all.
+SKILL_NOT_FOUND_CODE = "skill_not_found"
+
+
+def _skill_not_found(skill_name: str) -> JSONResponse:
+    """404 for a matched route whose named skill does not exist."""
+    return JSONResponse(status_code=404, content={"detail": f"Skill '{skill_name}' not found", "code": SKILL_NOT_FOUND_CODE})
 
 
 class _SkillArchiveUploadTooLargeError(MultiPartException):
@@ -907,29 +924,6 @@ async def skill_graph(
     return await asyncio.to_thread(_load)
 
 
-@router.get(
-    "/skills/{skill_name}",
-    response_model=SkillResponse,
-    summary="Get Skill Details",
-    description="Retrieve detailed information about a specific skill by its name.",
-)
-async def get_skill(skill_name: str, config: AppConfig = Depends(get_config)) -> SkillResponse:
-    try:
-        skill_name = skill_name.replace("\r\n", "").replace("\n", "")
-        skills = _get_user_skill_storage(config).load_skills(enabled_only=False)
-        skill = next((s for s in skills if s.name == skill_name), None)
-
-        if skill is None:
-            raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
-
-        return _skill_to_response(skill)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get skill {skill_name}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get skill: {str(e)}")
-
-
 def _write_extensions_skill_state(
     storage: SkillStorage,
     skill_name: str,
@@ -1234,3 +1228,43 @@ async def skill_restore(skill_name: str, request: Request) -> dict:
     if not restored:
         raise HTTPException(status_code=404, detail=f"Archived skill '{skill_name}' not found.")
     return {"skill_name": skill_name, "restored": True}
+
+
+# ---------------------------------------------------------------------------
+# Single-skill catch-all, declared LAST on purpose.
+#
+# Starlette matches routes in registration order, so this parameterised
+# /skills/{skill_name} must be registered after every literal collection route
+# above. Declared earlier it swallowed the single-segment collection paths
+# (/skills/tiers, /skills/usage, /skills/curator) and answered each of them
+# with "Skill '<collection>' not found" - indistinguishable from a genuinely
+# absent skill, so a caller could not tell "this route does not exist" from
+# "this skill does not exist", and the real curator/tier/usage payloads were
+# unreachable. This is the same discipline the dynamic-workflow router applies
+# to its control routes ahead of /{workflow_id} (see app/gateway/AGENTS.md).
+# tests/test_skills_router_route_order.py pins the ordering so a future literal
+# route added below this line fails the suite instead of regressing silently.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/skills/{skill_name}",
+    response_model=SkillResponse,
+    summary="Get Skill Details",
+    description="Retrieve detailed information about a specific skill by its name.",
+)
+async def get_skill(skill_name: str, config: AppConfig = Depends(get_config)) -> SkillResponse | JSONResponse:
+    try:
+        skill_name = skill_name.replace("\r\n", "").replace("\n", "")
+        skills = _get_user_skill_storage(config).load_skills(enabled_only=False)
+        skill = next((s for s in skills if s.name == skill_name), None)
+
+        if skill is None:
+            # Machine-readable code so a client can distinguish an absent skill
+            # from Starlette's route-level {"detail": "Not Found"}.
+            return _skill_not_found(skill_name)
+
+        return _skill_to_response(skill)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get skill {skill_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get skill: {str(e)}")
