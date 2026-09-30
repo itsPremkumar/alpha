@@ -5,11 +5,16 @@ Gives the LLM agent full access to:
 2. Query the Autonomous Command Engine to detect which slash command is needed for the current phase
 
 Honesty contract: the first line of every ``execute_slash_command`` result is a
-plain-language verdict. A catalog row with no bound handler is a *placeholder*
-(the registry answers it with ``status="success"`` and a "Directive ... accepted"
-echo), so a bare ``status`` is not enough to tell the model whether anything
-actually ran — the verdict resolves that explicitly. Failures, unknown
-commands, approval gates and timeouts can never read as success.
+plain-language verdict. A catalog row with no bound handler answers
+``status="unimplemented"`` (recognised; nothing ran) rather than ``success``, so
+the status alone already says whether anything executed — the verdict spells it
+out. Failures, unknown commands, approval gates and timeouts can never read as
+success.
+
+This tool is also the one caller for which "the model can just do it instead" is
+a true statement: the model holds the context, the tools and the turn, so a
+handler-less row is handed back to it as work rather than as a dead end. That is
+said here and nowhere else, because no such consumer exists on the HTTP path.
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ from typing import Any
 from langchain.tools import tool
 
 from alpha.commands.autonomous_engine import LifecyclePhase, autonomous_command_engine
-from alpha.commands.registry import command_registry
+from alpha.commands.registry import UNIMPLEMENTED_STATUS, command_registry
 
 #: Hard ceiling on one slash-command dispatch from the agent tool. Commands such
 #: as ``/grill-me`` make a real model turn, so an unbounded call can wedge the
@@ -35,6 +40,9 @@ _VERDICTS: dict[str, str] = {
     "not_found": "FAILED (unknown command)",  # narrowed to "target not found" below when the command itself resolved
     "approval_required": "BLOCKED (needs human approval)",
     "timeout": "FAILED (timed out)",
+    # Recognised, no handler, nothing ran. Not a failure either: the model is
+    # holding this request and can carry it out itself.
+    UNIMPLEMENTED_STATUS: "NOT EXECUTED (no handler is bound to this command; nothing ran)",
 }
 
 
@@ -71,7 +79,14 @@ def execute_slash_command_tool(
     status = (res.status or "").lower()
     verdict = _VERDICTS.get(status, "FAILED (unknown status)")
     if status in {"success", "ok"} and not command_registry.has_handler(res.command):
-        verdict = "NOT EXECUTED (catalog placeholder: no handler is bound to this command)"
+        # Defence in depth: the registry now answers a handler-less row with
+        # `unimplemented`, so this branch should be unreachable. It stays so that
+        # a future success-without-a-handler still cannot read as SUCCEEDED.
+        verdict = "NOT EXECUTED (no handler is bound to this command; nothing ran)"
+    elif status == UNIMPLEMENTED_STATUS:
+        # The one caller that can act on this: hand the request back to the model
+        # instead of reporting a dead end it could resolve itself.
+        verdict += f" It is documented as '{res.data.get('category', 'unknown')}'. If the model wants this work done, do it directly with the available tools rather than calling {res.command} again."
     elif status == "not_found" and not res.data.get("unknown_subcommand") and not res.output.startswith("Unknown slash command"):
         # The command resolved; something the command names (a skill, a job, a
         # goal) is what is missing. Say so instead of blaming the command name.
@@ -135,7 +150,7 @@ def identify_autonomous_command_tool(
     else:
         recommendation["executable"] = command_registry.has_handler(resolution.command_def.command)
         recommendation["executable_reason"] = f"'{detection.command}' resolves to {resolution.command_def.command}; " + (
-            "a handler is bound." if recommendation["executable"] else "it is a catalog placeholder with no handler, so nothing will execute."
+            "a handler is bound." if recommendation["executable"] else "it is a catalog row with no handler, so nothing will execute."
         )
 
     return (
