@@ -21,11 +21,13 @@ from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState, is_terminal_swarm_status
 from alpha.swarm.reflection import SwarmReflector
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
+from alpha.swarm.team import SPECIALIST_WORKER_TYPE
 from alpha.swarm.watchdog import SwarmWatchdog
 from alpha.swarm.worker import (
     CodingWorktreeWorker,
     EphemeralSubagentWorker,
     SpecialistBotWorker,
+    SpecialistSubagentWorker,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,14 @@ class AsyncSwarmRunner:
         self.reflector = reflector or SwarmReflector()
         self.provider = str(provider or "default")
         self._active_tasks: dict[str, asyncio.Task | threading.Thread] = {}
+        # One shared tool pool for every specialist in a run, assembled at most
+        # once and threaded through each worker. Per-worker assembly would
+        # re-enter MCP discovery once per task; the pool is the same list
+        # object handed to each ``SubagentExecutor``, which filters it down to
+        # that specialist's allowlist, so sharing is safe.
+        self._specialist_tool_pool: list[Any] | None = None
+        self._specialist_tool_pool_error: str | None = None
+        self.thread_id: str | None = None
 
     def is_running(self, swarm_id: str) -> bool:
         with _ACTIVE_SWARM_REGISTRY_LOCK:
@@ -78,6 +88,21 @@ class AsyncSwarmRunner:
             return task is not None and not task.done()
 
     def _build_worker(self, task_node: SwarmTaskNode):
+        if task_node.worker_type == SPECIALIST_WORKER_TYPE and task_node.assigned_worker:
+            # A declared specialist: a real tool-using subagent with its own
+            # system prompt and tool allowlist, not a renamed generalist.
+            # Resolved lazily and by name so an unknown specialist is an
+            # honest, named failure rather than a silent downgrade to a
+            # generic worker.
+            return SpecialistSubagentWorker(
+                task_node.assigned_worker,
+                agent_type=(task_node.result_payload or {}).get("specialist_agent_type") or None,
+                model=task_node.model_override,
+                tool_pool=self._specialist_tool_pool,
+                tool_pool_error=self._specialist_tool_pool_error,
+                thread_id=self.thread_id,
+                run_id=None,
+            )
         if task_node.worker_type == "permanent_bot" and task_node.assigned_worker:
             return SpecialistBotWorker(task_node.assigned_worker)
         if task_node.worktree_path:
@@ -89,6 +114,47 @@ class AsyncSwarmRunner:
                 safe_task_id = safe_task_id.replace("..", "-")
             return CodingWorktreeWorker(repo_root=project_root(), branch_name=f"wt-{safe_task_id}"[:200])
         return EphemeralSubagentWorker(task_node.task_id, model=task_node.model_override)
+
+    async def _prepare_specialist_pool(self, plan: SwarmPlan) -> None:
+        """Assemble the shared specialist tool pool once, disclosing failure.
+
+        Assembly runs on the dedicated assembly pool rather than
+        ``asyncio.to_thread`` because it re-enters tool assembly, which can
+        block for the full MCP discovery duration; parking the default executor
+        would stall every other offload in the process.
+        """
+
+        try:
+            from alpha.config import get_app_config
+            from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+            from alpha.subagents.config import resolve_subagent_model_name
+            from alpha.tools import get_available_tools
+            from alpha.utils.assembly_io import run_assembly
+
+            app_config = get_app_config()
+            if not getattr(app_config, "models", None):
+                raise RuntimeError("No chat models are configured; a declared specialist cannot execute its task.")
+            probe = BUILTIN_SUBAGENTS.get("general-purpose")
+            probe_config = probe if probe is not None else None
+            model_name = resolve_subagent_model_name(probe_config, None, app_config=app_config) if probe_config is not None else None
+            self._specialist_tool_pool = await run_assembly(
+                get_available_tools,
+                groups=None,
+                model_name=model_name,
+                subagent_enabled=False,
+                include_upload_tool=False,
+                app_config=app_config,
+            )
+        except Exception as exc:
+            # Fail loudly into the plan, then fail closed per task. The
+            # specialist raises with this reason, the runner records an honest
+            # task failure, and the report lists it as unknown.
+            logger.exception("Failed to assemble the swarm specialist tool pool")
+            self._specialist_tool_pool = None
+            self._specialist_tool_pool_error = f"specialist tool pool unavailable: {type(exc).__name__}: {exc}"
+            plan.metrics["specialist_tool_pool"] = {"assembled": False, "error": self._specialist_tool_pool_error}
+            return
+        plan.metrics["specialist_tool_pool"] = {"assembled": True, "tool_count": len(self._specialist_tool_pool or [])}
 
     def _stop_active_tasks(self, active: set[asyncio.Task]) -> None:
         for task in list(active):
@@ -149,6 +215,14 @@ class AsyncSwarmRunner:
                 )
                 self.coordinator.checkpoint(swarm_id)
             return {"status": plan.status, "tasks_completed": completed_count, "error": str(exc)}
+
+        # Assemble the specialist tool pool ONCE, before any dispatch, and only
+        # when the plan actually has specialists. A plan with no declared
+        # specialist must not pay MCP discovery, and a pool that fails to
+        # assemble is recorded as a reason the specialists will fail -- not
+        # swallowed, and not a silent downgrade to a generic worker.
+        if any(task.worker_type == SPECIALIST_WORKER_TYPE and task.assigned_worker for task in plan.tasks.values()):
+            await self._prepare_specialist_pool(plan)
 
         plan.status = "running"
         plan.terminal_reason = None

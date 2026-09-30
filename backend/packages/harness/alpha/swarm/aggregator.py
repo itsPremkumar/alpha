@@ -92,6 +92,32 @@ class SwarmAggregator:
         return {**consensus_result, "deliberation": payload}
 
     @classmethod
+    def compose_team(cls, plan: SwarmPlan, *, conflicts: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+        """Record and render the team section of a plan's synthesis.
+
+        Called from :meth:`aggregate` so the deliverable an operator reads and
+        the ``team`` key in the aggregate result are produced by the same code
+        on the same state -- a report that could describe a different run than
+        the one being summarized is worse than no report. The conflicts
+        argument lets the caller pass the list it already computed, so the two
+        cannot disagree.
+
+        Returns the team report, and stores the machine-readable part in
+        ``plan.metrics["team"]`` (adding the conflicts it was given) so a later
+        read, including after a restart, sees the same membership.
+        """
+
+        from alpha.swarm.team import build_team_report, render_team_report_markdown
+
+        if conflicts is not None:
+            team_metrics = plan.metrics.get("team")
+            if isinstance(team_metrics, dict):
+                team_metrics["conflicts"] = [dict(item) for item in conflicts]
+        report = build_team_report(plan)
+        report["markdown"] = render_team_report_markdown(report)
+        return report
+
+    @classmethod
     def aggregate(cls, plan: SwarmPlan) -> dict[str, Any]:
         completed_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED]
         failed_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.FAILED]
@@ -108,6 +134,9 @@ class SwarmAggregator:
                     artifacts.append(artifact)
 
         conflicts = cls._detect_conflicts(completed_tasks)
+        # The team report is composed from the SAME `conflicts` and the same
+        # plan this aggregation is about, so the operator-facing team section
+        # and the aggregate result cannot describe two different runs.
         consensus_result: dict[str, Any] | None = None
         if plan.requires_consensus:
             evidence: list[Mapping[str, Any]] = []
@@ -206,6 +235,16 @@ class SwarmAggregator:
         else:
             plan.status = "partial_success"
 
+        # The team report is composed LAST, after the terminal status is
+        # decided, so the `execution_status` it prints is the final one rather
+        # than the transient `aggregating` the plan held a moment earlier. It
+        # is appended to `plan.final_result` and NOT to `deliverable_text`,
+        # because `deliverable_text` is the input to the keyword quality gate:
+        # letting a new section change what the gate saw would silently move an
+        # existing status decision.
+        team_report = cls.compose_team(plan, conflicts=conflicts)
+        plan.final_result = f"{deliverable_text}\n\n{team_report.get('markdown') or ''}".rstrip()
+
         return {
             "deliverable": deliverable_text,
             "quality_gate": quality_gate,
@@ -219,6 +258,7 @@ class SwarmAggregator:
             "artifacts": artifacts,
             "consensus": consensus_result,
             "execution_status": plan.status,
+            "team": team_report,
         }
 
     @classmethod
@@ -231,6 +271,18 @@ class SwarmAggregator:
                 seen.add(normalized)
                 deduped.append(summary.strip())
         return deduped
+
+    @classmethod
+    def detect_conflicts(cls, tasks: list[Any]) -> list[dict[str, str]]:
+        """Public name for the polarity-conflict detector.
+
+        The team report needs the *same* conflict list the aggregation used, so
+        it calls this rather than keeping a second, possibly-divergent copy of
+        the regexes. The private alias below stays so existing internal callers
+        are unaffected.
+        """
+
+        return cls._detect_conflicts(tasks)
 
     @classmethod
     def _detect_conflicts(cls, tasks: list[Any]) -> list[dict[str, str]]:

@@ -14,6 +14,7 @@ tests replace to stay offline (``test_swarm_worker_execution.py`` and the
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -21,6 +22,14 @@ from alpha.bots.health import get_health_monitor
 from alpha.bots.registry import BotRegistry
 from alpha.sandbox.worktrees import WorktreeManager
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +163,193 @@ class SpecialistBotWorker:
             "usage": usage,
             "tool_calls": 1,
             "model": _model_label(model, bot.model),
+        }
+
+
+class SpecialistSubagentWorker:
+    """Executes one task as a DECLARED specialist, via the real subagent stack.
+
+    This is the difference between a team and one agent wearing hats. The
+    existing :class:`EphemeralSubagentWorker` makes a single model call with no
+    tools: whatever specialist name is on the task changes nothing about what
+    runs. This worker hands the task to
+    :class:`alpha.subagents.executor.SubagentExecutor` as a named
+    ``SubagentConfig`` -- its own system prompt, its own tool allowlist, its own
+    turn budget -- so the specialist genuinely runs as itself, with the same
+    tool receipts, turn/token/loop caps and sandbox lease that every other
+    delegation in the system uses.
+
+    Honesty rules this worker does not bend:
+
+    * **No models configured raises.** The runner's exception path records an
+      honest failure. There is no canned summary and no unconditional success.
+    * **A non-``COMPLETED`` status raises**, carrying the real status, error and
+      ``stop_reason`` in the message so the failure text an operator reads
+      names what actually happened.
+    * **Token usage comes from the child's measured records**, and is reported
+      as ``None``-free zeros only when the provider genuinely reported nothing;
+      ``absent`` is preserved as absent in ``usage_source``.
+    * The worker's context is bounded untrusted data, matching the other
+      workers, so a blackboard message cannot become an instruction.
+    """
+
+    def __init__(
+        self,
+        specialist: str,
+        *,
+        agent_type: str | None = None,
+        model: str | None = None,
+        tool_pool: list[Any] | None = None,
+        tool_pool_error: str | None = None,
+        thread_id: str | None = None,
+        run_id: str | None = None,
+    ):
+        self.specialist = str(specialist)
+        self.agent_type = agent_type
+        self.model = model
+        self.tool_pool = tool_pool
+        self.tool_pool_error = tool_pool_error
+        self.thread_id = thread_id
+        self.run_id = run_id
+        self.context: object = None
+
+    def set_context(self, context: object) -> None:
+        self.context = context
+
+    def _resolve_agent_config(self):
+        """Return the ``SubagentConfig`` this specialist executes as.
+
+        An explicit ``agent_type`` must name a real built-in: an unknown one
+        raises rather than falling back to ``general-purpose``, because a
+        specialist that silently runs as a generalist is precisely the claim
+        this worker exists to stop making.
+        """
+
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.config import SubagentConfig
+
+        base = BUILTIN_SUBAGENTS.get("general-purpose")
+        if self.agent_type:
+            chosen = BUILTIN_SUBAGENTS.get(self.agent_type)
+            if chosen is None:
+                known = ", ".join(sorted(BUILTIN_SUBAGENTS))
+                raise RuntimeError(f"specialist {self.specialist!r} declares unknown agent_type {self.agent_type!r}; available: {known}")
+            if base is None:
+                return chosen
+            return SubagentConfig(
+                name=f"team-{self.specialist}",
+                description=f"{self.specialist} ({chosen.description})",
+                system_prompt=chosen.system_prompt,
+                tools=list(chosen.tools) if chosen.tools is not None else None,
+                inherit_all=bool(chosen.inherit_all),
+                disallowed_tools=list(chosen.disallowed_tools or []),
+                skills=list(chosen.skills) if chosen.skills else None,
+                model=self.model or "inherit",
+                max_turns=chosen.max_turns,
+                timeout_seconds=chosen.timeout_seconds,
+            )
+        if base is None:
+            raise RuntimeError("no built-in subagent configuration is available for a declared specialist")
+        return SubagentConfig(
+            name=f"team-{self.specialist}",
+            description=f"{self.specialist} team specialist",
+            system_prompt=base.system_prompt,
+            tools=list(base.tools) if base.tools is not None else None,
+            inherit_all=bool(base.inherit_all),
+            disallowed_tools=list(base.disallowed_tools or []),
+            skills=list(base.skills) if base.skills else None,
+            model=self.model or "inherit",
+            max_turns=base.max_turns,
+            timeout_seconds=base.timeout_seconds,
+        )
+
+    @staticmethod
+    def _measured_usage(result: Any) -> tuple[dict[str, int], str]:
+        """Child-measured token totals, and where they came from."""
+
+        input_tokens = 0
+        output_tokens = 0
+        seen = False
+        for record in getattr(result, "token_usage_records", None) or []:
+            if not isinstance(record, Mapping):
+                continue
+            if record.get("input_tokens") is not None or record.get("output_tokens") is not None:
+                seen = True
+            input_tokens += max(0, _as_int(record.get("input_tokens")))
+            output_tokens += max(0, _as_int(record.get("output_tokens")))
+        usage = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
+        return usage, "subagent_reported" if seen else "unreported_by_provider"
+
+    def execute_task(self, task: SwarmTaskNode, plan: SwarmPlan) -> dict[str, Any]:
+        if self.tool_pool_error:
+            raise RuntimeError(f"specialist {self.specialist!r} cannot execute: {self.tool_pool_error}")
+        if not self.tool_pool:
+            raise RuntimeError(f"specialist {self.specialist!r} cannot execute: no tool pool was assembled for the swarm")
+
+        from alpha.subagents.executor import SubagentExecutor, SubagentStatus
+
+        config = self._resolve_agent_config()
+        executor = SubagentExecutor(
+            config=config,
+            tools=list(self.tool_pool),
+            thread_id=self.thread_id,
+            run_id=self.run_id or plan.swarm_id,
+            parent_model=self.model,
+        )
+        prompt = (
+            f"Plan goal: {plan.goal}\n"
+            f"You are @{self.specialist}, a declared specialist on this team.\n"
+            f"Your task ({task.task_id}): {task.objective}\n"
+            "Deliver the actual result of this task, not a plan to do it. "
+            "If you cannot complete it, say exactly what blocked you."
+        )
+        result = executor.execute(f"{prompt}{_context_prompt(getattr(self, 'context', None))}")
+        status = getattr(result, "status", None)
+        if status is not SubagentStatus.COMPLETED:
+            raise RuntimeError(
+                f"specialist {self.specialist!r} execution {getattr(status, 'value', 'unknown')}"
+                f"{f' (stop_reason={result.stop_reason})' if getattr(result, 'stop_reason', None) else ''}"
+                f": {getattr(result, 'error', None) or 'no error text reported'}"
+            )
+        summary = str(getattr(result, "result", "") or "")
+        if not summary.strip():
+            # A terminal COMPLETED with no text is not a result. The existing
+            # `_deliver_objective` path raises on the same condition; matching
+            # it keeps "empty output" a failure rather than a success.
+            raise RuntimeError(f"specialist {self.specialist!r} returned an empty response for its task objective.")
+        usage, usage_source = self._measured_usage(result)
+        receipts = getattr(result, "tool_receipts", None)
+        evidence: list[dict[str, Any]] = [
+            {
+                "source": f"specialist:{self.specialist}",
+                "agent_type": config.name,
+                "system_prompt_source": "builtin" if self.agent_type else "builtin_default",
+                "turn_budget": config.max_turns,
+            }
+        ]
+        if receipts is not None:
+            evidence.append({"source": "tool_receipts", "count": len(receipts), "receipts": list(receipts)[:32]})
+        if getattr(result, "bash_executions", None):
+            evidence.append({"source": "bash_executions", "count": len(result.bash_executions)})
+        return {
+            "status": "success",
+            "summary": summary,
+            "evidence": evidence,
+            "artifacts": list(task.output_artifacts),
+            "usage": usage,
+            "usage_source": usage_source,
+            "tool_calls": max(1, len(receipts or []) or 1),
+            "model": self.model or "inherit",
+            "result_payload": {
+                "specialist": self.specialist,
+                "agent_type": config.name,
+                "stop_reason": getattr(result, "stop_reason", None),
+                "usage_source": usage_source,
+            },
         }
 
 

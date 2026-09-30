@@ -347,6 +347,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "SKILLS.md": DocumentSpec(
         "architecture", "Skills packages, tools, workflows, and runtime integration."
     ),
+    "TEAM_RUNTIME.md": DocumentSpec(
+        "architecture",
+        "Composing a swarm plan into a team of declared specialists: assignment, honest failure, and the operator report.",
+    ),
     "SYSTEM_ONE.md": DocumentSpec(
         "reasoning", "System One fast structured decision layer."
     ),

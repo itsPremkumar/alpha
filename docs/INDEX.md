@@ -15,6 +15,7 @@
 - [LION_COMPANION.md](LION_COMPANION.md) — Local-first lion companion behavior and presentation contract.
 - [SELF_DOCUMENTATION.md](SELF_DOCUMENTATION.md) — Offline, allowlist-scoped project documentation search with line ranges, SHA-256 evidence, and digest-checked reads.
 - [SKILLS.md](SKILLS.md) — Skills packages, tools, workflows, and runtime integration.
+- [TEAM_RUNTIME.md](TEAM_RUNTIME.md) — Composing a swarm plan into a team of declared specialists: assignment, honest failure, and the operator report.
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
 - [architecture/durable-runtime.md](architecture/durable-runtime.md) — Architecture and subsystem documentation.
