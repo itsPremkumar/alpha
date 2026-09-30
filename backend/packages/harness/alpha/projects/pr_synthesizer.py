@@ -80,6 +80,77 @@ def infer_conventional_commit(title: str, diff_content: str) -> str:
     return f"{prefix}: {clean_title}"
 
 
+#: Evidence kind -> the checklist line it satisfies. Kept as data so the mapping
+#: between a receipt and a claim is reviewable in one place, and so a new receipt
+#: kind is added to the gate rather than to a string literal.
+_CHECKLIST_FOR_EVIDENCE_KIND: dict[str, str] = {
+    "security": "Static AST & secret scanning passed (Audit Council)",
+    "tests_passed": "Automated unit and regression test suite passed",
+    "lint": "Linting passed",
+    "typecheck": "Type checking passed",
+    "integration": "Integration suite passed",
+    "commit": "Change is committed",
+}
+
+
+def _verification_checklist(contract: Any | None) -> list[str]:
+    """Render the verification checklist from real evidence receipts.
+
+    A line is checked only when a receipt of the corresponding kind exists on the
+    task contract. Anything else is rendered unchecked with the reason it is
+    unchecked, so an incomplete PR reads as incomplete instead of asserting work
+    that was never performed.
+    """
+    receipts = list(getattr(contract, "evidence_receipts", []) or [])
+    present: dict[str, list[Any]] = {}
+    for r in receipts:
+        kind = getattr(r, "kind", None) or (r.get("kind") if isinstance(r, dict) else None)
+        if kind:
+            present.setdefault(str(kind), []).append(r)
+
+    required: list[str] = []
+    dod = getattr(contract, "definition_of_done", None)
+    if dod is not None:
+        required = [str(k) for k in (getattr(dod, "required_evidence", None) or [])]
+
+    # The contract's own required evidence drives the list, so the PR body cannot
+    # quietly assert a check the task never asked for.
+    kinds = list(dict.fromkeys(required + list(_CHECKLIST_FOR_EVIDENCE_KIND)))
+    if not required:
+        kinds = list(_CHECKLIST_FOR_EVIDENCE_KIND)
+
+    lines: list[str] = []
+    if not receipts:
+        lines.append(
+            "_No evidence receipts are attached to this task. Nothing below has been "
+            "verified: this synthesizer does not run tests, linters or audits itself._"
+        )
+    for kind in kinds:
+        label = _CHECKLIST_FOR_EVIDENCE_KIND.get(kind, f"Evidence supplied: {kind}")
+        matched = present.get(kind)
+        if matched:
+            refs = ", ".join(
+                f"`{getattr(r, 'reference', None) or (r.get('reference', '') if isinstance(r, dict) else '')}`"
+                for r in matched
+            )
+            lines.append(f"- [x] {label} — evidence: {refs}")
+        elif kind in required:
+            lines.append(f"- [ ] {label} — **required by the task contract, no evidence attached**")
+        else:
+            lines.append(f"- [ ] {label} — no evidence attached")
+
+    if required:
+        outstanding = [k for k in required if k not in present]
+        if outstanding:
+            lines.append("")
+            lines.append(
+                "> **This PR is not verified.** Missing required evidence: "
+                + ", ".join(f"`{k}`" for k in outstanding)
+                + ". It must not be merged on the basis of this document alone."
+            )
+    return lines
+
+
 class PRSynthesizer:
     """Synthesizes structured, audited Pull Requests from agent deliverables."""
 
@@ -132,7 +203,12 @@ class PRSynthesizer:
             for e in contract.evidence_receipts:
                 lines.append(f"- **[Verified: {e.kind}]** `{e.reference}` certified by @{e.verified_by} *(at {e.timestamp})*")
         else:
-            lines.append("- _Automated tests and verification verified in task worktree._")
+            # Previously "Automated tests and verification verified in task worktree",
+            # which asserted a verification that this function never performed.
+            lines.append(
+                "- _No evidence receipts attached to this task. Tests and verification "
+                "were **not** confirmed by this synthesizer; see section 4._"
+            )
 
         # 5. Linked Architectural Decisions
         lines.append("\n## 3. Architectural Alignment & ADRs")
@@ -143,10 +219,15 @@ class PRSynthesizer:
             lines.append("- _No conflicting architectural decisions recorded._")
 
         # 6. Verification Checklist
+        #
+        # This section previously printed three hardcoded `- [x]` lines, including
+        # "Automated unit and regression test suite passed", for every PR regardless
+        # of whether anything had been run — `synthesize_pr` invokes no test runner,
+        # no linter and no audit council. A checked box in a PR body is a claim a
+        # human reviewer acts on, so each line is now derived from the contract's
+        # real evidence receipts: a checked box means a receipt of that kind exists.
         lines.append("\n## 4. Verification & Testing")
-        lines.append("- [x] Static AST & secret scanning passed (Audit Council)")
-        lines.append("- [x] Automated unit and regression test suite passed")
-        lines.append("- [x] Pre-merge contract obligations certified")
+        lines.extend(_verification_checklist(contract))
 
         body_markdown = "\n".join(lines) + "\n"
 
