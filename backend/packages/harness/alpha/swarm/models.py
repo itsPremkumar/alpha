@@ -299,6 +299,15 @@ class SwarmTaskNode:
     next_attempt_at: float | None = None
     context_refs: list[str] = field(default_factory=list)
     capability_tags: list[str] = field(default_factory=list)
+    # How ``capability_tags`` came to be set: ``declared`` (a caller or an
+    # operator stated it), ``inferred`` (read from the task's own directive by
+    # the keyword vocabulary), or ``none``. Not cosmetic: the two are enforced
+    # differently. A declared requirement is strict -- a specialist must cover
+    # all of it. An inferred one is a hint -- a specialist must cover at least
+    # one tag, and coverage then ranks the survivors. Losing the distinction is
+    # what made a four-tag keyword hint read as a hard conjunction and left
+    # every task in a real plan unassignable.
+    capability_source: str = "none"
     parent_task_id: str | None = None
     priority: int = 0
     token_usage: dict[str, int] = field(default_factory=dict)
@@ -336,6 +345,7 @@ class SwarmTaskNode:
             "next_attempt_at": self.next_attempt_at,
             "context_refs": list(self.context_refs),
             "capability_tags": list(self.capability_tags),
+            "capability_source": self.capability_source,
             "parent_task_id": self.parent_task_id,
             "priority": self.priority,
             "token_usage": dict(self.token_usage),
@@ -354,6 +364,13 @@ class SwarmTaskNode:
             state = TaskNodeState(state_val)
         except (TypeError, ValueError):
             state = TaskNodeState.PENDING
+        tags = _as_str_list(data.get("capability_tags"))
+        # A record written before ``capability_source`` existed is read as
+        # ``declared`` when it carries tags: only a caller could have set them
+        # then, and the strict reading is the fail-closed one.
+        source = str(data.get("capability_source") or ("declared" if tags else "none")).strip().lower()
+        if source not in {"declared", "inferred", "none"}:
+            source = "declared" if tags else "none"
         return cls(
             task_id=str(data.get("task_id", "")),
             objective=str(data.get("objective", "")),
@@ -379,7 +396,8 @@ class SwarmTaskNode:
             lease_owner=data.get("lease_owner"),
             next_attempt_at=_as_optional_float(data.get("next_attempt_at")),
             context_refs=_as_str_list(data.get("context_refs")),
-            capability_tags=_as_str_list(data.get("capability_tags")),
+            capability_tags=tags,
+            capability_source=source,
             parent_task_id=data.get("parent_task_id"),
             priority=_as_int(data.get("priority")),
             token_usage={str(k): max(0, _as_int(v)) for k, v in _as_mapping(data.get("token_usage")).items()},

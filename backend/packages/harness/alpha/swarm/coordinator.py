@@ -31,6 +31,7 @@ from alpha.swarm.models import (
 )
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
 from alpha.swarm.stigmergy import StigmergicTraceStore, TraceCategory
+from alpha.swarm.team import assign_specialists, build_team_report
 from alpha.swarm.telemetry import SwarmTelemetry
 
 logger = logging.getLogger(__name__)
@@ -280,6 +281,14 @@ class SwarmCoordinator:
         )
         plan.owner_id = normalized_owner
         plan.budget = effective_budget
+        # Compose the team BEFORE leader election, so the election ranks
+        # candidates by a declared capability instead of by worker kind, and
+        # before `validate_graph`, so an assignment can never produce a plan
+        # the scheduler would reject. Composition cannot fail the create: with
+        # no roster registered it records why and leaves the plan exactly as it
+        # was.
+        team_assignment = assign_specialists(plan)
+        plan.metrics["team"] = team_assignment.to_dict()
         if normalized_key:
             plan.metrics["admission_idempotency_key"] = normalized_key
             plan.metrics["admission_fingerprint"] = fingerprint
@@ -337,6 +346,12 @@ class SwarmCoordinator:
                     "critical_path_seconds": plan.critical_path_seconds,
                     "schema_version": plan.schema_version,
                     "owner_id": plan.owner_id,
+                    "team": {
+                        "assigned": team_assignment.assigned_count,
+                        "unassigned": team_assignment.unassigned_count,
+                        "roster_registered": team_assignment.roster_registered,
+                        "roster_source": team_assignment.roster_source,
+                    },
                 },
             )
             self.checkpoint(plan.swarm_id)
@@ -840,6 +855,27 @@ class SwarmCoordinator:
                 "strategy": dict(plan.metrics.get("strategy") or {}),
                 "telemetry": SwarmTelemetry.snapshot(plan),
             }
+
+    def team_report(self, swarm_id: str, *, owner_id: str | None = None) -> dict[str, Any]:
+        """Project a plan into the operator-readable team report.
+
+        A pure projection of plan state, so it is always recomputable and owns
+        no lifecycle. ``metrics["team"]["conflicts"]`` is refreshed from the
+        aggregator's own detector first, so the report's conflict list and the
+        aggregator's cannot disagree about the same run.
+        """
+
+        with self._lock:
+            plan = self._swarms.get(swarm_id)
+            if not plan:
+                return {"status": "not_found", "swarm_id": swarm_id}
+            if owner_id is not None and plan.owner_id != owner_id:
+                return {"status": "not_found", "swarm_id": swarm_id}
+            completed = [task for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED]
+            team_metrics = plan.metrics.get("team")
+            if isinstance(team_metrics, dict):
+                team_metrics["conflicts"] = [dict(item) for item in SwarmAggregator.detect_conflicts(completed)]
+            return build_team_report(plan)
 
     # -- stigmergic traces -------------------------------------------------
 

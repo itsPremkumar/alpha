@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
+from alpha.capabilities.eligibility import infer_capability_tags
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
 from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate
 from alpha.swarm.strategy import StrategyResolution, resolve_strategy
@@ -139,8 +140,62 @@ class SwarmTaskDecomposer:
             tasks=tasks,
             max_concurrency=max_concurrency,
         )
+        cls._declare_capability_requirements(plan)
         cls._compute_critical_path_and_speedup(plan)
         return plan
+
+    @classmethod
+    def _declare_capability_requirements(cls, plan: SwarmPlan) -> None:
+        """Give every task the capability it requires, so one can be chosen.
+
+        Until this ran, no decomposed task ever carried ``capability_tags``:
+        the field was serialised, read by leader election, and filled by
+        nothing. ``SwarmCoordinator.create_swarm`` therefore elected a leader
+        over ``[task.worker_type]`` -- the literal string ``"ephemeral"`` or
+        ``"permanent_bot"`` -- which is a worker *kind*, not a capability, and
+        made every candidate advertise the same thing. It also meant no task
+        could state what it needed, so a specialist roster had nothing to match
+        against.
+
+        **The goal is stripped before the requirement is read, and that is the
+        load-bearing detail.** Every template embeds the goal in the node's
+        objective (``"... for: {goal}"``), so inferring from the raw objective
+        measures the *goal* four times over and hands every node the same
+        four-tag conjunction. Applied to a real goal that made every task
+        ineligible for every specialist -- a team that could never assign a
+        single task, which is the failure mode this whole change exists to
+        avoid. What a node requires is what the node *does*
+        ("System architecture and component design" -> ``system_design``,
+        "Execute primary implementation stream" -> ``code_generation``), and
+        the goal it serves is context, not requirement.
+
+        The requirement is read through the existing
+        :func:`alpha.capabilities.eligibility.infer_capability_tags` vocabulary
+        rather than a second keyword table. A node that already declares tags
+        (an operator-supplied plan, or a node whose tags survived an earlier
+        build) keeps them: a rebuild re-labels, it does not re-derive.
+
+        This runs before ``_compute_critical_path_and_speedup`` and touches no
+        dependency, mode or strategy field, so it cannot move
+        ``plan.metrics["strategy"]`` or the DAG the topology router measured.
+        """
+
+        goal = str(plan.goal or "")
+        for task in plan.tasks.values():
+            if task.capability_tags:
+                if task.capability_source == "none":
+                    task.capability_source = "declared"
+                continue
+            directive = task.objective
+            if goal and goal in directive:
+                directive = directive.replace(goal, " ")
+            declared = infer_capability_tags(directive)
+            if declared:
+                task.capability_tags = sorted(declared)
+                # Marked as a hint, not a declaration. Selection enforces the
+                # two differently: a declaration must be covered in full, a
+                # hint needs at least one tag and is then ranked by coverage.
+                task.capability_source = "inferred"
 
     @classmethod
     def _candidate_modes(cls, resolved: StrategyResolution, items: Sequence[str] | None) -> list[SwarmMode]:
