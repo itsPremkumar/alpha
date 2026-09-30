@@ -830,6 +830,22 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
                 # stuck restart needs, so it is logged in full.
                 logger.warning("Gateway drain incomplete:\n%s", drain_report.to_text())
 
+            # ...and persisted, because the log line dies with the process. The
+            # next boot is exactly when somebody wants to know whether the
+            # previous shutdown finished, and a drain report only ever exists
+            # during teardown, so before this the answer was unrecoverable
+            # outside a logfile. `record_drain_report` never raises: a
+            # bookkeeping failure must not turn a completed drain into a failed
+            # one, which is the same fail-OPEN rule the side-effect ledger
+            # documents. A failure is logged here rather than swallowed so it is
+            # still visible to whoever is reading the log they would have read
+            # anyway.
+            from app.gateway.ops_runtime import record_drain_report
+
+            recorded = record_drain_report(drain_report)
+            if not recorded["recorded"]:
+                logger.warning("Gateway drain report was not recorded (%s)", recorded["reason"])
+
 
 # ---------------------------------------------------------------------------
 # Getters – called by routers per-request
