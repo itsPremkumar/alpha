@@ -1,25 +1,41 @@
 import { get, asList, pick } from "./http";
 
+/**
+ * A capability the Gateway reported as enabled, disabled, or did not report.
+ *
+ * `null` is not decoration. This used to be `boolean` with
+ * `catch { return { ...all false } }`, so a *failed* `/features` read produced
+ * four "Disabled" badges in Settings — indistinguishable from a Gateway that
+ * had genuinely measured every capability as off. That inverts the rule the
+ * frontend guide states ("a control that is off by default renders as off, with
+ * the reason it is off" and "silence is not success"): the honest rendering of
+ * an unanswered question is "unknown", not "off".
+ */
 export interface FeatureFlags {
-  agentsApi: boolean;
-  browserControl: boolean;
-  mcpTasks: boolean;
-  subagentBatches: boolean;
+  agentsApi: boolean | null;
+  browserControl: boolean | null;
+  mcpTasks: boolean | null;
+  subagentBatches: boolean | null;
+}
+
+/** Read one capability block, mapping an absent/invalid value to `null`. */
+function capability(raw: unknown, keys: string[]): boolean | null {
+  const value = pick(raw as Record<string, unknown>, keys, null);
+  return typeof value === "boolean" ? value : null;
 }
 
 export async function fetchFeatures(): Promise<FeatureFlags> {
   try {
     const d = await get<Record<string, unknown>>("/features");
     return {
-      agentsApi: Boolean(pick(d.agents_api as unknown, ["enabled"], false)),
-      browserControl: Boolean(pick(d.browser_control as unknown, ["enabled"], false)),
-      mcpTasks: Boolean(pick(d.mcp_tasks as unknown, ["enabled"], false)),
-      subagentBatches: Boolean(
-        pick(d.subagent_batches as unknown, ["worker_running", "enabled"], false)
-      ),
+      agentsApi: capability(d.agents_api, ["enabled"]),
+      browserControl: capability(d.browser_control, ["enabled"]),
+      mcpTasks: capability(d.mcp_tasks, ["enabled"]),
+      subagentBatches: capability(d.subagent_batches, ["worker_running", "enabled"]),
     };
   } catch {
-    return { agentsApi: false, browserControl: false, mcpTasks: false, subagentBatches: false };
+    // Every capability becomes "not reported" rather than "off".
+    return { agentsApi: null, browserControl: null, mcpTasks: null, subagentBatches: null };
   }
 }
 

@@ -39,6 +39,8 @@ import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags, fetchEvol
 import { probeAll, Probe } from "@/lib/system";
 import { applyThemeMode, isThemeMode, THEME_STORAGE_KEY } from "@/lib/theme";
 import { FALLBACK_LABELS, modelEffortLadder } from "@/lib/reasoning-effort";
+import { suggestionsEnabled } from "@/lib/assist";
+import { currentOperatorIdentity, writeOperatorName } from "@/lib/operator";
 
 /**
  * Display label per rung. Server-declared labels reach the composer through
@@ -51,7 +53,7 @@ const EFFORT_LABELS = FALLBACK_LABELS;
 /** The declared effort ladder for a model entry, normalized. */
 const effortLadderOf = (model: AIModel): string[] => modelEffortLadder(model);
 import { fetchIntegrationHealth, IntegrationHealth } from "@/lib/integration";
-import { Section, StatCard, Badge, Btn, Field, inputCls, EmptyState, ErrorBox, Notice, SkeletonList } from "@/components/ui";
+import { Section, StatCard, Badge, Btn, Field, inputCls, EmptyState, ErrorBox, Notice, SkeletonList, SelectableCard, SelectableGroup, CapabilityBadge } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { branding } from "@/lib/branding";
 import { getCapabilities, type CapabilitiesReport } from "@/lib/multimodal";
@@ -168,7 +170,42 @@ export function SettingsSection({
   // Initial "system": the system-preference default wins until the mount
   // effect below loads an explicit user choice — never a phantom "dark".
   const [themeMode, setThemeMode] = useState<string>("system");
-  const [autoSuggestions, setAutoSuggestions] = useState<boolean>(true);
+  /**
+   * The Gateway's real follow-up-suggestions setting: `true`, `false`, or
+   * `null` when the read failed.
+   *
+   * This replaces a localStorage flag that nothing read, so the old checkbox
+   * reported a change with no effect. `null` renders as "Unknown" rather than
+   * as "off", because a failed read is not a measurement.
+   */
+  const [suggestionsState, setSuggestionsState] = useState<boolean | null>(null);
+  /** The name field's draft text. Empty means "stay anonymous". */
+  const [operatorDraft, setOperatorDraft] = useState<string>(
+    () => currentOperatorIdentity().name ?? "",
+  );
+
+  /**
+   * Persist the operator's own name.
+   *
+   * `writeOperatorName` reports whether the write actually landed, so a
+   * blocked localStorage is disclosed rather than being reported as a success
+   * the operator will never see reflected.
+   */
+  const saveOperatorName = () => {
+    const ok = writeOperatorName(operatorDraft);
+    if (!ok) {
+      flash("Couldn't save your name — this browser is blocking local storage.");
+      return;
+    }
+    setOperatorDraft(currentOperatorIdentity().name ?? "");
+    flash(operatorDraft.trim() ? "Name saved in this browser." : "Name cleared.");
+  };
+
+  const clearOperatorName = () => {
+    setOperatorDraft("");
+    const ok = writeOperatorName(null);
+    flash(ok ? "Name cleared." : "Couldn't clear your name — local storage is blocked.");
+  };
   const [streamSpeed, setStreamSpeed] = useState<string>("normal");
   const [compactDensity, setCompactDensity] = useState<boolean>(false);
   const [codeHighlightTheme, setCodeHighlightTheme] = useState<string>("github-dark");
@@ -189,10 +226,12 @@ export function SettingsSection({
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
       setThemeMode(isThemeMode(storedTheme) ? storedTheme : "system");
       const savedDensity = localStorage.getItem("alpha_density") === "compact";
-      const savedSugg = localStorage.getItem("alpha_suggestions_auto") !== "false";
       const savedModel = localStorage.getItem("alpha_selected_model");
       setCompactDensity(savedDensity);
-      setAutoSuggestions(savedSugg);
+      // The suggestions flag is no longer read from here: the Gateway owns it.
+      // A stale `alpha_suggestions_auto` from an older build is cleared rather
+      // than left to be re-read, so it cannot be mistaken for a live setting.
+      localStorage.removeItem("alpha_suggestions_auto");
       if (savedModel) {
         setSelectedModel(savedModel);
       }
@@ -200,6 +239,22 @@ export function SettingsSection({
       /* storage unavailable - ThemeController still applies "system" */
       setThemeMode("system");
     }
+  }, []);
+
+  // Ask the Gateway for the real follow-up-suggestions setting. A failure
+  // resolves to null and renders as "Unknown" - never as "off".
+  useEffect(() => {
+    let live = true;
+    suggestionsEnabled()
+      .then((value) => {
+        if (live) setSuggestionsState(value);
+      })
+      .catch(() => {
+        if (live) setSuggestionsState(null);
+      });
+    return () => {
+      live = false;
+    };
   }, []);
 
   const handleThemeChange = (mode: string) => {
@@ -378,6 +433,53 @@ export function SettingsSection({
       {/* TAB CONTENT: GENERAL */}
       {activeTab === "general" && (
         <div className="space-y-4 pt-1">
+          {/* This is where a name now comes from. Until this field existed the
+              app greeted everyone as "MK" - a developer's initials baked into
+              five component defaults - so there was no honest way to be called
+              anything. Alpha's gateway authenticates requests but exposes no
+              display name, so the operator states it here and it is stored
+              locally. Clearing the field is the supported way to go back to the
+              anonymous identity. */}
+          <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Your name</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Used to greet you in the chat landing page and to label the account
+                menu. Stored only in this browser. Leave it blank to stay anonymous.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <Field
+                label="Display name"
+                hint={
+                  operatorDraft
+                    ? `Greeted as "${operatorDraft}".`
+                    : "No name set — Alpha will not show one."
+                }
+                className="flex-1 min-w-56"
+              >
+                <input
+                  className={inputCls}
+                  value={operatorDraft}
+                  maxLength={64}
+                  placeholder="Optional"
+                  onChange={(e) => setOperatorDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveOperatorName();
+                  }}
+                  aria-label="Your display name"
+                />
+              </Field>
+              <Btn variant="primary" onClick={saveOperatorName}>
+                Save name
+              </Btn>
+              {operatorDraft.trim() && (
+                <Btn variant="ghost" onClick={clearOperatorName} title="Remove your name and return to the anonymous identity">
+                  Clear
+                </Btn>
+              )}
+            </div>
+          </div>
           <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -445,7 +547,7 @@ export function SettingsSection({
                       <span className="text-[10px] text-muted-foreground block">Dynamic persona generation</span>
                     </div>
                   </div>
-                  <Badge tone={features.agentsApi ? "green" : "gray"}>{features.agentsApi ? "Enabled" : "Disabled"}</Badge>
+                  <CapabilityBadge state={features.agentsApi} />
                 </div>
 
                 <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border/40">
@@ -456,7 +558,7 @@ export function SettingsSection({
                       <span className="text-[10px] text-muted-foreground block">Automated web exploration</span>
                     </div>
                   </div>
-                  <Badge tone={features.browserControl ? "green" : "gray"}>{features.browserControl ? "Enabled" : "Disabled"}</Badge>
+                  <CapabilityBadge state={features.browserControl} />
                 </div>
 
                 <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border/40">
@@ -467,7 +569,7 @@ export function SettingsSection({
                       <span className="text-[10px] text-muted-foreground block">Model Context Protocol jobs</span>
                     </div>
                   </div>
-                  <Badge tone={features.mcpTasks ? "green" : "gray"}>{features.mcpTasks ? "Enabled" : "Disabled"}</Badge>
+                  <CapabilityBadge state={features.mcpTasks} />
                 </div>
 
                 <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border/40">
@@ -478,7 +580,7 @@ export function SettingsSection({
                       <span className="text-[10px] text-muted-foreground block">Parallel background execution</span>
                     </div>
                   </div>
-                  <Badge tone={features.subagentBatches ? "green" : "gray"}>{features.subagentBatches ? "Enabled" : "Disabled"}</Badge>
+                  <CapabilityBadge state={features.subagentBatches} />
                 </div>
               </div>
             ) : (
@@ -1021,7 +1123,7 @@ export function SettingsSection({
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+              <SelectableGroup label="Model catalog — choose the active model" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
                 {models
                   .filter((m) => {
                     const q = modelSearch.toLowerCase();
@@ -1048,9 +1150,11 @@ export function SettingsSection({
                     const isKeyless = Boolean(m.is_free && (m.free_status === "no_key_free" || m.quota_type === "keyless_free" || m.id.startsWith("free:") || m.id === "alpha-free"));
 
                     return (
-                      <div
+                      <SelectableCard
                         key={m.id}
-                        onClick={() => {
+                        selected={isSelected}
+                        ariaLabel={`Select model ${m.name}`}
+                        onSelect={() => {
                           setSelectedModel(m.id);
                           try {
                             localStorage.setItem("alpha_selected_model", m.id);
@@ -1058,11 +1162,14 @@ export function SettingsSection({
                           if (onModelChange) onModelChange(m.id);
                           flash(`Switched primary model to ${m.name}`);
                         }}
-                        className={`cursor-pointer rounded-xl border p-3.5 transition-all flex flex-col justify-between ${
-                          isSelected
-                            ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm"
-                            : "border-border/60 bg-muted/20 hover:bg-muted/50 hover:border-primary/40"
-                        }`}
+                        // This card was a `<div onClick>`, which is not a
+                        // control: not focusable, absent from the tab order,
+                        // and not activatable with Enter or Space. Choosing the
+                        // active LLM - the most consequential control in the
+                        // product - was mouse-only. The selected/unselected
+                        // classes are carried over verbatim via baseClassName.
+                        baseClassName={isSelected ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm" : "border-border/60 bg-muted/20 hover:bg-muted/50 hover:border-primary/40"}
+                        className="flex flex-col justify-between"
                       >
                         <div>
                           <div className="flex items-start justify-between gap-1.5">
@@ -1114,14 +1221,14 @@ export function SettingsSection({
                                 <CheckCircle2 className="size-3.5" /> Active
                               </span>
                             ) : (
-                              <span className="text-muted-foreground hover:text-foreground">Click to select</span>
+                              <span className="text-muted-foreground group-hover:text-foreground">Select</span>
                             )}
                           </div>
                         </div>
-                      </div>
+                      </SelectableCard>
                     );
                   })}
-              </div>
+              </SelectableGroup>
             )}
           </div>
         </div>
@@ -1206,44 +1313,40 @@ export function SettingsSection({
               <p className="text-xs text-muted-foreground mt-0.5">Customize the color scheme and appearance</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div
-                onClick={() => handleThemeChange("dark")}
-                className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
-                  themeMode === "dark"
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border/60 bg-muted/30 hover:bg-muted/60"
-                }`}
+            {/* These three were `<div onClick>`: not focusable, not in the tab
+                order, and not activatable with Enter or Space, so the theme
+                could only be changed with a mouse. `SelectableCard` renders a
+                real button inside a `radiogroup` so the choice is announced and
+                keyboard-reachable. The visual classes are unchanged. */}
+            <SelectableGroup label="Colour theme" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <SelectableCard
+                selected={themeMode === "dark"}
+                onSelect={() => handleThemeChange("dark")}
+                ariaLabel="Dark theme"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-foreground">Dark Theme</span>
                   {themeMode === "dark" && <CheckCircle2 className="size-4 text-primary" />}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">High-contrast dark mode tailored for developer productivity</p>
-              </div>
+              </SelectableCard>
 
-              <div
-                onClick={() => handleThemeChange("light")}
-                className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
-                  themeMode === "light"
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border/60 bg-muted/30 hover:bg-muted/60"
-                }`}
+              <SelectableCard
+                selected={themeMode === "light"}
+                onSelect={() => handleThemeChange("light")}
+                ariaLabel="Light theme"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-foreground">Light Theme</span>
                   {themeMode === "light" && <CheckCircle2 className="size-4 text-primary" />}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">Crisp light mode with clear typography and soft borders</p>
-              </div>
+              </SelectableCard>
 
-              <div
-                onClick={() => handleThemeChange("system")}
-                className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
-                  themeMode === "system"
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border/60 bg-muted/30 hover:bg-muted/60"
-                }`}
+              <SelectableCard
+                selected={themeMode === "system"}
+                onSelect={() => handleThemeChange("system")}
+                ariaLabel="Match system theme"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-foreground">System (Default)</span>
@@ -1251,7 +1354,7 @@ export function SettingsSection({
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">Follows your OS light/dark preference - what applies when nothing is chosen</p>
               </div>
-            </div>
+            </SelectableGroup>
 
             <div className="pt-2 border-t border-border/50 space-y-3">
               <h4 className="text-xs font-semibold text-foreground">Interface Density & UX Flow</h4>
@@ -1271,20 +1374,25 @@ export function SettingsSection({
               <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/40">
                 <div>
                   <span className="text-xs font-semibold block">AI Follow-up Suggestions</span>
-                  <span className="text-[11px] text-muted-foreground block">Automatically draft context-aware suggestions after responses</span>
+                  <span className="text-[11px] text-muted-foreground block">
+                    Server-controlled by <code className="font-mono">suggestions.enabled</code> in{" "}
+                    <code className="font-mono">config.yaml</code>. Alpha reads the Gateway's real
+                    value and does not override it.
+                  </span>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={autoSuggestions}
-                  onChange={(e) => {
-                    setAutoSuggestions(e.target.checked);
-                    try {
-                      localStorage.setItem("alpha_suggestions_auto", e.target.checked ? "true" : "false");
-                    } catch {}
-                    flash(`AI follow-up suggestions ${e.target.checked ? "enabled" : "disabled"}.`);
-                  }}
-                  className="size-4 text-primary rounded border-border focus:ring-primary/40 cursor-pointer"
-                />
+                {/* This checkbox wrote `alpha_suggestions_auto` to localStorage,
+                    but the runtime reads `assist.suggestionsEnabled()`, which
+                    asks the Gateway. Nothing ever read the local key, so the
+                    control reported a change that had no effect whatsoever - a
+                    settings toggle that silently did nothing. It is now a
+                    read-only reflection of the server value, with the reason it
+                    is off, and the local override is gone rather than left
+                    behind as a key nothing consumes. */}
+                <span className="flex items-center gap-2 shrink-0">
+                  <Badge tone={suggestionsState === true ? "green" : suggestionsState === false ? "gray" : "amber"}>
+                    {suggestionsState === true ? "Enabled by server" : suggestionsState === false ? "Off by server" : "Unknown"}
+                  </Badge>
+                </span>
               </div>
             </div>
           </div>
