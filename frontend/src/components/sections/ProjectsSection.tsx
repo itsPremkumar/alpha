@@ -25,14 +25,41 @@ import { moveThread } from "@/lib/threads-ext";
 import { Thread } from "@/types/chat";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash } from "lucide-react";
+import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash, ChevronRight } from "lucide-react";
 import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
 import { ProjectOverviewPanel } from "@/components/sections/ProjectOverviewPanel";
+import { ProjectInspectorSection } from "@/components/sections/ProjectInspectorSection";
 
 export interface ProjectBot {
   name: string;
   display_name: string;
 }
+
+/**
+ * Which kind of project this is, from what the server reported.
+ *
+ * A project is not "a single project" or a "group project" by its name or its
+ * instructions — the crew layer decides it. The membership roster
+ * (`GET /projects/{id}/presence`) is that authority, and the crew service
+ * provisions a shared group room at the *second* member, so:
+ *
+ *  - `crew`    — two or more agents attached: a shared room exists.
+ *  - `solo`    — exactly one agent: real membership, no shared room yet.
+ *  - `empty`   — nobody attached.
+ *  - `unknown` — the roster read failed or has not answered, which is NOT the
+ *                same claim as "this project has no crew".
+ *
+ * "unknown" is the state that matters: rendering a failed read as `solo` would
+ * make an unreadable project look like a deliberately single-agent one.
+ */
+type ProjectShape = "crew" | "solo" | "empty" | "unknown";
+
+const SHAPE_META: Record<ProjectShape, { label: string; tone: "purple" | "cyan" | "gray" | "amber"; title: string }> = {
+  crew: { label: "team crew", tone: "purple", title: "Two or more agents attached — this project has a shared group room." },
+  solo: { label: "single agent", tone: "cyan", title: "Exactly one agent attached — a shared room opens when a second joins." },
+  empty: { label: "no agents", tone: "gray", title: "No agents are attached to this project." },
+  unknown: { label: "crew unknown", tone: "amber", title: "The project roster could not be read, so this is unknown — not empty." },
+};
 
 export function ProjectsSection(props: {
   onOpenThread: (id: string) => void;
@@ -79,6 +106,17 @@ export function ProjectsSection(props: {
   const [draftInstructions, setDraftInstructions] = useState("");
   const [draftBots, setDraftBots] = useState<string[]>([]);
   const [touchedDraft, setTouchedDraft] = useState(false);
+  /**
+   * The project whose full end-to-end read is open, or null for the list.
+   *
+   * This is the "View more" target: one project at a time, read live by
+   * `ProjectInspectorSection` rather than assembled from what this list already
+   * happens to hold — otherwise "every detail" would mean "every detail the card
+   * had fetched", which was the gap that made the deep state unreachable.
+   */
+  const [inspectedProjectId, setInspectedProjectId] = useState<string | null>(null);
+  /** "all" | "crew" | "solo" — a view filter, never a claim about the data. */
+  const [shapeFilter, setShapeFilter] = useState<"all" | "crew" | "solo">("all");
 
   const template = useMemo(() => getProjectTemplate(templateId), [templateId]);
 
@@ -153,11 +191,42 @@ export function ProjectsSection(props: {
     return onServer.filter((t) => !inGrouped.has(t.thread_id));
   };
 
+  /**
+   * Classify a project from the roster read alone.
+   *
+   * While the read is in flight the answer is `unknown`, not `empty` — a list
+   * that has not answered must not be painted as a project with no agents. The
+   * same applies to a failed read: `teamErrors` says why, and the shape badge
+   * says unknown rather than quietly reporting zero.
+   */
+  const shapeOf = (projectId: string): ProjectShape => {
+    if (teamLoading[projectId] || teamErrors[projectId]) return "unknown";
+    const members = membersByProject[projectId];
+    if (!members) return "unknown";
+    if (members.length === 0) return "empty";
+    return members.length === 1 ? "solo" : "crew";
+  };
+
   const visibleProjects = projects.filter((project) => {
+    // The shape filter narrows on what the roster reported. A project whose
+    // roster is unreadable matches "all" but neither shape, so a failed read can
+    // never be silently hidden by a filter the operator did not intend.
+    if (shapeFilter !== "all") {
+      const shape = shapeOf(project.id);
+      if (shape === "unknown") return false;
+      if (shapeFilter === "crew" && shape !== "crew") return false;
+      if (shapeFilter === "solo" && (shape === "crew" || shape === "empty")) return false;
+    }
     if (botFilter === "all" || teamLoading[project.id]) return true;
     const isMember = (membersByProject[project.id] || []).some((member) => member.bot_name === botFilter);
     return isMember || groupsFor(project.id).some((group) => group.key === botFilter);
   });
+
+  const shapeCounts = useMemo(() => {
+    const counts = { crew: 0, solo: 0, empty: 0, unknown: 0 };
+    for (const project of projects) counts[shapeOf(project.id)] += 1;
+    return counts;
+  }, [projects, membersByProject, teamLoading, teamErrors]);
 
   const refreshTeam = async (projectId: string) => {
     setTeamLoading((previous) => ({ ...previous, [projectId]: true }));
@@ -317,10 +386,28 @@ export function ProjectsSection(props: {
     }
   };
 
+  /**
+   * The full end-to-end read of one project replaces the list while it is open.
+   *
+   * This section's own create/manage surface owns the list; the inspector is a
+   * separate read-only surface mounted in its place, so "View more" is a real
+   * drill-down rather than another collapsed accordion row.
+   */
+  if (inspectedProjectId) {
+    return (
+      <ProjectInspectorSection
+        projectId={inspectedProjectId}
+        onOpenThread={props.onOpenThread}
+        onClose={() => setInspectedProjectId(null)}
+        onOpenLiveProject={props.onOpenLiveProject}
+      />
+    );
+  }
+
   return (
     <Section
       title="Projects"
-      hint="Group related conversations — one project per client, topic or goal. Give a project instructions and every chat inside follows them."
+      hint="Every project on this installation — single-agent and team crews alike. Open one to read its full state end to end."
       actions={
         <Btn variant="ghost" onClick={load}>
           <RefreshCw className="size-3.5" /> Refresh
@@ -448,6 +535,39 @@ export function ProjectsSection(props: {
         <EmptyState title="No projects yet" hint="Create one above, then move conversations into it from the chat sidebar." />
       ) : (
         <>
+          {/*
+            Two filters, both honest about what they hide. The shape counts are
+            counted from real roster reads; a project whose roster could not be
+            read is counted as unknown rather than folded into "single agent".
+          */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold">Crew type:</span>
+            {(["all", "crew", "solo"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setShapeFilter(option)}
+                aria-pressed={shapeFilter === option}
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-colors ${
+                  shapeFilter === option
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {option === "all"
+                  ? `All (${projects.length})`
+                  : option === "crew"
+                    ? `Team crews (${shapeCounts.crew})`
+                    : `Single agent (${shapeCounts.solo})`}
+              </button>
+            ))}
+            {shapeCounts.unknown > 0 && (
+              <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                {shapeCounts.unknown} project{shapeCounts.unknown === 1 ? "" : "s"}: crew not reported
+              </span>
+            )}
+          </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             <label className="text-[11px] font-semibold" htmlFor="project-bot-filter">
               Show projects for:
@@ -480,6 +600,7 @@ export function ProjectsSection(props: {
                 const total = groups.reduce((n, g) => n + g.items.length, 0);
                 const members = membersByProject[p.id] || [];
                 const selectedCount = (selectedBots[p.id] || []).length;
+                const shapeMeta = SHAPE_META[shapeOf(p.id)];
                 return (
                   <div key={p.id} className="rounded-xl border border-border/60 bg-card">
                     <div className="flex items-start gap-2 px-4 py-3 cursor-pointer" onClick={() => toggle(p)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && toggle(p)}>
@@ -492,6 +613,15 @@ export function ProjectsSection(props: {
                             <Hash className="size-2.5" />
                             {p.id.slice(0, 8)}
                           </span>
+                          {/*
+                            Single-agent vs team crew, from the roster the server
+                            reported. This is the distinction a project list cannot
+                            otherwise make: two projects with identical names and
+                            instructions can be a one-bot job and a five-bot crew.
+                          */}
+                          <Badge tone={shapeMeta.tone} title={shapeMeta.title}>
+                            {shapeMeta.label}
+                          </Badge>
                         </div>
                         {/* Instructions were in the payload the whole time and were
                             never rendered outside the expanded editor, so a project
@@ -536,8 +666,22 @@ export function ProjectsSection(props: {
                           ) : null}
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <Badge tone={p.status === "archived" ? "gray" : "green"}>{p.status}</Badge>
+                        {/*
+                          "View more" is a real button rather than the row's own
+                          expand: it swaps this whole surface for the project's
+                          full read, so it must not be nested inside the clickable
+                          card header that toggles the inline detail.
+                        */}
+                        <button
+                          type="button"
+                          onClick={() => setInspectedProjectId(p.id)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
+                          title={`Read every detail the Gateway knows about ${p.name}`}
+                        >
+                          View more <ChevronRight className="size-3" />
+                        </button>
                         <span className="text-[11px] text-muted-foreground">{open === p.id ? "Hide" : "Show"}</span>
                       </div>
                     </div>

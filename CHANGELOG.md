@@ -88,6 +88,28 @@ This section accumulates work toward the **2.1.0** milestone
     record to match today's count falsifies it, the same mistake as rewriting this
     changelog. Their plan-time figures are also preserved as labelled history.
 
+### Fixed
+
+- **workspace-navigation:** The **More Views** menu could not be opened. The
+  button toggled its state and the panel node existed, but the panel was an
+  `absolute` child of its own trigger, so it was clipped by every ancestor
+  overflow: `ChatView` wraps the nav in `overflow-x-auto` — whose `overflow-y`
+  *computes* to `auto`, so it clips vertically too — inside a
+  `<main class="overflow-hidden">`. Measured in the running app, a 256x1060 menu
+  was laid out inside a 30px-tall clip box and left **4 visible pixels**: the
+  click did nothing a user could see. The panel also carried no `max-height` and
+  no internal scroll, so its last group (`System & Architecture`) was below the
+  fold of any viewport, not just a short one. The panel is now portalled to
+  `document.body` and positioned by `placeFloatingPanel()`
+  (`frontend/src/lib/workspace-menu-geometry.ts`), which flips it upward when
+  there is no room below, clamps it inside the viewport, and caps its height so
+  the panel scrolls instead of hiding entries. The outside-click handler now
+  tests the portal node as well as the trigger — testing only the trigger closed
+  the menu on the panel's own `mousedown` and unmounted the clicked row before
+  its `click` could land — and `Escape` closes the menu. Coverage:
+  `src/lib/workspace-menu-geometry.test.mjs` (asserts against the defect's own
+  measured numbers) alongside the existing `src/lib/workspace-nav.test.mjs`.
+
 ### ⚠ Breaking changes
 
 - **deep-research:** `output_path`/`output_filename` now accept a Markdown filename only and resolve beneath the current thread outputs directory; absolute host paths, nested relative paths, and output symlinks are rejected. Reports return `completed` or `no_evidence` rather than unconditional `success`, separate `citations_registered` from semantically verified citations, and label adversarial source juxtapapositions rather than claiming proven contradictions.

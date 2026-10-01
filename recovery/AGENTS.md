@@ -12,7 +12,7 @@ asserts it.
 | Layer | File | Role |
 | --- | --- | --- |
 | 4 | `watchdog.ps1 -Once` (`Invoke-WatchdogOfWatchdog`) | Windows Task Scheduler tasks `Alpha_Autostart` / `Alpha_Watchdog` verify that a correct Layer 3 loop exists *for this installation* and recreate it when missing, frozen, or watching another checkout. |
-| 3 | `watchdog.ps1` (loop) | Monitors gateway / frontend / launcher; escalates defer → component restart → full stack restart. |
+| 3 | `watchdog.ps1` (loop) | Monitors gateway / frontend / launcher; escalates defer → component restart → full stack restart, where the full-stack step is **gated**: it may run only when the launcher cannot act (dead, or heartbeat stale) or a component has exhausted its component-restart budget. A live launcher that is mid-boot is deferred, never killed (the pre-gate code destroyed a booting stack after 28 deferred checks and looped). |
 | 2 | `../start.ps1` | Launcher: starts children, monitors, restarts them. |
 | 1 | gateway, frontend, workers | The services themselves. |
 
@@ -27,6 +27,50 @@ crash or `taskkill` never creates it and is always recovered.
   VBScript shims in `logs/`, so killing one layer cannot kill another.
   Threshold budgets are a contract with `start.ps1`, pinned by
   `backend/tests/test_launcher_watchdog_budget.py`.
+
+  The Layer-3 decision table itself — defer → component → stack, the Tier-3
+  gate, the supervisor-lock and cooldown branches — is executed (not described)
+  by `backend/tests/test_watchdog_decision_table.py`, which extracts the real
+  config block, `Get-StackSnapshot` and `Invoke-HealthCheck` under PowerShell
+  with every probe, lock and destructive action stubbed. Two invariants that
+  test owns and that are easy to break by eye: **a deferral must not feed
+  `$script:ConsecutiveFailures`** (it counts against `$script:DeferPasses`
+  instead, which is why that counter is what "Deferring recovery xN" logs), and
+  **a `return` must sit on its own line** — PowerShell parses a bare `return`
+  trailing another statement on the same line as a positional *argument* to
+  that statement, which silently turned the cooldown branch into a fall-through
+  into Tier 2/3. Keep the three extraction markers (`$ErrorActionPreference =
+  "SilentlyContinue"`, `function Get-StackSnapshot`, `function
+  Invoke-HealthCheck`, `function Invoke-WatchdogOfWatchdog`) stable.
+
+- **`../start.ps1`** (Layer 2, the launcher) — three behaviours the watchdog's
+  honesty depends on, pinned by `backend/tests/test_launcher_diagnostics.py`:
+
+  - **Readiness is re-probed every boot-wait pass, never latched.** The old
+    `if (-not $gatewayReady)` guards made the first 200 permanent, so a gateway
+    that crashed mid-boot-wait stayed "ready" and the loop could break out
+    with it dead.
+  - **The monitor heartbeat probes serving, not just bound ports.**
+    `Write-MonitorHeartbeat` asks `/health/ready` (gateway) and `/` (frontend)
+    before writing `status: healthy`; ports-only announced healthy while the
+    gateway was still migrating, which is the `status=healthy
+    gateway=starting` pair the watchdog used to escalate into a full restart.
+  - **Every redirecting spawn sweeps previous incarnations, then archives its
+    previous logs first.** `Start-Process -RedirectStandardOutput/-RedirectStandardError`
+    *truncates* an existing file, so each restart used to wipe the crash
+    evidence it should have preserved. `Archive-ServiceLog` moves them to
+    `logs/diagnostics/` (timestamped, newest 20 per log) immediately before
+    each spawn. Two live-observed (2026-10-01) failure modes are pinned too:
+    a previous incarnation that is *still booting* holds no listener, so
+    `Free-PortOrExit` misses it — `Stop-ServiceChainOrphans` tree-kills every
+    command-line match carrying our port before the archive runs (and before
+    the spawn can be double-bound); and when the holder is nonetheless still
+    alive, rename is denied while reads are allowed, so the archive falls
+    back to a copy and a failure emits a `Write-Warning` — never a silent
+    `catch {}`, which is how `logs/diagnostics/` ended up with frontend
+    archives but zero gateway archives. If you add a spawn site, add the
+    `Stop-ServiceChainOrphans` + `Archive-ServiceLogs` calls directly above
+    it — the 400-char sweep-then-archive pairing is asserted.
 - **`register_autostart.ps1`** — registers the scheduled tasks. **Generated
   `recovery/autostart/*.vbs` launchers bake this machine's absolute path, so
   they are gitignored** (see `.gitignore`) and must be regenerated with

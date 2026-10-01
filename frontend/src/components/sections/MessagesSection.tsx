@@ -4,22 +4,63 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   listRooms, getRoom, createRoom, postToRoom, deleteRoom, startRoomRun, listRoomRuns, cancelRoomRun,
   listDmThreads, ensureRosterAgent, unreadCount, markSeen, senderColor, kindTone,
-  MESSAGE_KINDS, rollCall, OPERATOR, ChatMsg, DmThread,
+  MESSAGE_KINDS, REACTION_EMOJI, OPERATOR, ChatMsg, DmThread, MemberPresence, PresenceState,
+  listRoomMembers, editRoomMessage, deleteRoomMessage, reactToRoomMessage, forwardRoomMessage,
 } from "@/lib/comm";
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
 import { runCouncil, CouncilStrategy } from "@/lib/deliberation";
-import { clockTime, dayLabel as sharedDayLabel } from "@/lib/time";
+import { clockTime, dayLabel as sharedDayLabel, absoluteStamp } from "@/lib/time";
 import { orgEvents } from "@/lib/teamops";
 import { Section, EmptyState, ErrorBox, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import {
   Search, Users, User, Plus, Send, ArrowLeft, Info, X, Check, CheckCheck,
-  Play, Ban, Trash2, Scale, RefreshCw, Pause,
+  Play, Ban, Trash2, Scale, RefreshCw, Pause, Reply, Pencil, Forward,
+  Smile, Copy, CornerUpLeft,
 } from "lucide-react";
 
 type Filter = "all" | "unread" | "groups" | "direct" | "decisions" | "blockers";
 type Selection = { kind: "group"; name: string } | { kind: "dm"; peer: string };
+
+/**
+ * The roster headline for a room header.
+ *
+ * Derived from the measured roster and stated in those terms: an unread roster
+ * says the states are not read yet, never "nobody is working", and an all-idle
+ * room says so.
+ */
+function busySummary(entries: MemberPresence[]): string {
+  if (entries.length === 0) return "presence not read yet";
+  const busy = entries.filter((e) => e.state === "busy" || e.state === "online").length;
+  if (busy === 0) {
+    const unknown = entries.filter((e) => !e.state || e.state === "unknown").length;
+    if (unknown === entries.length) return "no member state reported";
+    return "none working now";
+  }
+  return `${busy} of ${entries.length} working now`;
+}
+
+/** One icon-only per-message control. */
+function BubbleAction(props: {
+  title: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      title={props.title}
+      className={`p-1 rounded-full border border-border/70 bg-card shadow-sm hover:bg-muted ${
+        props.danger ? "text-destructive" : "text-muted-foreground"
+      }`}
+    >
+      {props.children}
+    </button>
+  );
+}
 
 interface Conv {
   id: string;
@@ -39,14 +80,23 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   const [dms, setDms] = useState<DmThread[]>([]);
   const [roomMsgs, setRoomMsgs] = useState<Record<string, ChatMsg[]>>({});
   const [roster, setRoster] = useState<Array<{ name: string; role: string; status: string }>>([]);
-  const [presence, setPresence] = useState<Array<{ name: string; status: string; detail: string }>>([]);
+  /**
+   * The open room's measured roster, keyed by room name.
+   *
+   * This is per-room because it reads the room's own membership: the
+   * thread-scoped agent roster above is empty for any room the operator never
+   * opened as a thread, which is why every participant used to render as
+   * `unknown`. A failed read leaves the key absent and `membersError` set, so
+   * the panel reports "could not read this roster" instead of "nobody is here".
+   */
+  const [membersByRoom, setMembersByRoom] = useState<Record<string, MemberPresence[]>>({});
+  const [membersError, setMembersError] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<Array<Record<string, unknown>>>([]);
   // Per-list fetch-failure flags: every list surfaces its own failure instead
   // of collapsing into an empty list that reads as "you have nothing here".
   const [roomsError, setRoomsError] = useState<string | null>(null);
   const [dmsError, setDmsError] = useState<string | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
-  const [presenceError, setPresenceError] = useState<string | null>(null);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +116,20 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   const [draft, setDraft] = useState("");
   const [kind, setKind] = useState<string>("discussion");
   const [sending, setSending] = useState(false);
+  /* ── Message features ── */
+  /** The message being replied to; renders as a quote strip above the composer. */
+  const [replyTo, setReplyTo] = useState<ChatMsg | null>(null);
+  /** The message open in the inline editor; only one at a time. */
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  /** Per-message in-flight state, so one row's spinner cannot disable another's. */
+  const [busyMsg, setBusyMsg] = useState<Record<string, boolean>>({});
+  /** The message whose reaction picker is open. */
+  const [reactingTo, setReactingTo] = useState<string | null>(null);
+  const [forwarding, setForwarding] = useState<ChatMsg | null>(null);
+  const [forwardRoom, setForwardRoom] = useState("");
+  const [forwardingBusy, setForwardingBusy] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(true);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroup, setNewGroup] = useState({ name: "", members: "" });
@@ -83,9 +147,8 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     try {
       // Each list settles independently: one failed fetch flags only that
       // list as unavailable — never a silent empty array.
-      const [roomsRes, presenceRes, eventsRes] = await Promise.allSettled([
+      const [roomsRes, eventsRes] = await Promise.allSettled([
         listRooms(),
-        rollCall(),
         orgEvents(15),
       ]);
       if (roomsRes.status === "fulfilled") {
@@ -93,12 +156,6 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
         setRoomsError(null);
       } else {
         setRoomsError(errMsg(roomsRes.reason));
-      }
-      if (presenceRes.status === "fulfilled") {
-        setPresence(presenceRes.value);
-        setPresenceError(null);
-      } else {
-        setPresenceError(errMsg(presenceRes.reason));
       }
       if (eventsRes.status === "fulfilled") {
         setEvents(eventsRes.value);
@@ -157,6 +214,9 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     setSel({ kind: "group", name });
     setRoomRead({ name, state: "loading" });
     setRoomReadError(null);
+    // The roster is fetched alongside the transcript, and settles on its own:
+    // a failed member read must not blank a room whose messages arrived fine.
+    void loadMembers(name);
     try {
       const room = await getRoom(name);
       setRoomMsgs((prev) => ({ ...prev, [name]: room.messages }));
@@ -167,6 +227,21 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
       setRoomRead({ name, state: "failed" });
       setRoomReadError(errMsg(e));
       setError(errMsg(e));
+    }
+  };
+
+  /** Re-read one room's roster. Success replaces the entry; failure records the reason. */
+  const loadMembers = async (name: string) => {
+    try {
+      const members = await listRoomMembers(name);
+      setMembersByRoom((prev) => ({ ...prev, [name]: members }));
+      setMembersError((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    } catch (e) {
+      setMembersError((prev) => ({ ...prev, [name]: errMsg(e) }));
     }
   };
 
@@ -255,15 +330,70 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
       : [OPERATOR, sel.peer]
     : [];
 
+  /**
+   * The measured roster for the open room.
+   *
+   * For a group this is the server's own read. For a direct thread there is no
+   * room, so the two participants are the whole roster — stated, not inferred
+   * from a failed read.
+   */
+  const activePresence: MemberPresence[] = sel
+    ? sel.kind === "group"
+      ? membersByRoom[sel.name] ?? []
+      : [
+          { name: OPERATOR, state: "online", source: "operator", activityAt: null, detail: "you", role: null, displayName: null },
+          {
+            name: sel.peer,
+            state: roster.find((r) => r.name === sel.peer)?.status === "busy" ? "busy" : "unknown",
+            source: "agent_roster",
+            activityAt: null,
+            detail: roster.find((r) => r.name === sel.peer)?.status ?? "",
+            role: roster.find((r) => r.name === sel.peer)?.role ?? null,
+            displayName: null,
+          },
+        ]
+    : [];
+  const activeMembersError = sel?.kind === "group" ? membersError[sel.name] ?? null : null;
+
   const totalUnread = convs.reduce((n, c) => n + Math.min(c.unread, 99), 0);
+
+  /**
+   * How many members of a group row are working right now.
+   *
+   * Read from the measured roster only. An unread or failed roster returns 0,
+   * which renders as no dot — never a green one over a list nobody measured.
+   */
+  const groupBusyCount = (convId: string) => {
+    if (!convId.startsWith("group:")) return 0;
+    const room = convId.slice("group:".length);
+    if (membersByRoom[room] === undefined || membersError[room]) return 0;
+    return membersByRoom[room].filter((m) => m.state === "busy" || m.state === "online").length;
+  };
+
+  const markBusy = (id: string, on: boolean) =>
+    setBusyMsg((prev) => {
+      const next = { ...prev };
+      if (on) next[id] = true;
+      else delete next[id];
+      return next;
+    });
+
+  /** Re-read the open room after a mutation, keeping the message list truthful. */
+  const refreshRoom = async (name: string) => {
+    await Promise.all([openRoom(name), loadMembers(name)]);
+  };
 
   const send = async () => {
     if (!draft.trim() || sending) return;
     if (sel?.kind === "group") {
       setSending(true);
       try {
-        await postToRoom(sel.name, OPERATOR, draft.trim(), kind);
+        await postToRoom(sel.name, OPERATOR, draft.trim(), kind, replyTo?.id ?? null);
         setDraft("");
+        // A consumed reply is cleared in the same commit as the send it
+        // belonged to: leaving it would silently re-attach the next message
+        // to a reply that already went out.
+        setReplyTo(null);
         await openRoom(sel.name);
       } catch (e) {
         setError(errMsg(e));
@@ -281,6 +411,87 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
       } finally {
         setSending(false);
       }
+    }
+  };
+
+  const onSaveEdit = async (messageId: string) => {
+    if (!editing || savingEdit) return;
+    const text = editing.text.trim();
+    if (!text || sel?.kind !== "group") {
+      setError("An edited message cannot be empty.");
+      return;
+    }
+    setSavingEdit(true);
+    markBusy(messageId, true);
+    try {
+      await editRoomMessage(sel.name, messageId, text);
+      setEditing(null);
+      await refreshRoom(sel.name);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setSavingEdit(false);
+      markBusy(messageId, false);
+    }
+  };
+
+  const onDeleteMessage = async (m: ChatMsg) => {
+    if (sel?.kind !== "group" || busyMsg[m.id]) return;
+    if (!window.confirm("Delete this message? Replies to it keep pointing here.")) return;
+    markBusy(m.id, true);
+    try {
+      await deleteRoomMessage(sel.name, m.id);
+      if (editing?.id === m.id) setEditing(null);
+      await refreshRoom(sel.name);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      markBusy(m.id, false);
+    }
+  };
+
+  const onReact = async (m: ChatMsg, emoji: string) => {
+    if (sel?.kind !== "group" || busyMsg[m.id]) return;
+    markBusy(m.id, true);
+    try {
+      // The server's map is the result; the local row is never painted as
+      // reacted before the gateway confirmed it.
+      await reactToRoomMessage(sel.name, m.id, OPERATOR, emoji);
+      setReactingTo((cur) => (cur === m.id ? null : cur));
+      await openRoom(sel.name);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      markBusy(m.id, false);
+    }
+  };
+
+  const onForward = async () => {
+    if (sel?.kind !== "group" || !forwarding || forwardingBusy) return;
+    const target = forwardRoom.trim();
+    if (!target) return;
+    setForwardingBusy(true);
+    markBusy(forwarding.id, true);
+    try {
+      await forwardRoomMessage(sel.name, forwarding.id, target, OPERATOR);
+      setForwarding(null);
+      setForwardRoom("");
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setForwardingBusy(false);
+      markBusy(forwarding.id, false);
+    }
+  };
+
+  const onCopy = async (m: ChatMsg) => {
+    try {
+      await navigator.clipboard.writeText(m.content);
+      setCopied(m.id);
+      window.setTimeout(() => setCopied((cur) => (cur === m.id ? null : cur)), 1500);
+    } catch (e) {
+      setError(errMsg(e));
     }
   };
 
@@ -318,6 +529,12 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   const dayLabel = (at: string | null) => sharedDayLabel(at) ?? "";
 
   let lastDay = "";
+
+  /** The quoted row a reply points at, or null when it was deleted/unknown. */
+  const quoted = (m: ChatMsg): ChatMsg | null => {
+    if (!m.replyTo) return null;
+    return activeMsgs.find((x) => x.id === m.replyTo) ?? null;
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -397,7 +614,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
           </div>
 
           {/* Per-list failures: shown as unavailable, never as an empty list. */}
-          {(roomsError || dmsError || rosterError || presenceError) && (
+          {(roomsError || dmsError || rosterError) && (
             <div className="px-3 py-2 space-y-2 border-b border-border/60">
               {roomsError && (
                 <ErrorBox message={`Group list unavailable — failed to load, not empty. (${roomsError})`} onRetry={() => load()} />
@@ -407,9 +624,6 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
               )}
               {rosterError && (
                 <ErrorBox message={`Agent roster unavailable — statuses may show as unknown. (${rosterError})`} onRetry={() => load()} />
-              )}
-              {presenceError && (
-                <ErrorBox message={`Presence roll-call unavailable — failed to load, not empty. (${presenceError})`} onRetry={() => load()} />
               )}
             </div>
           )}
@@ -440,8 +654,21 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                     onClick={() => (c.kind === "group" ? openRoom(c.title.slice(2)) : openDm(c.title, dms.find((d) => d.id === c.id)?.messages || []))}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 hover:bg-muted/40 ${isActive ? "bg-primary/10" : ""}`}
                   >
-                    <span className="size-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 text-white" style={{ backgroundColor: c.kind === "group" ? "#5566ff" : senderColor(c.title) }}>
-                      {c.kind === "group" ? <Users className="size-4" /> : c.title.slice(0, 2).toUpperCase()}
+                    <span className="relative shrink-0">
+                      <span className="size-10 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ backgroundColor: c.kind === "group" ? "#5566ff" : senderColor(c.title) }}>
+                        {c.kind === "group" ? <Users className="size-4" /> : c.title.slice(0, 2).toUpperCase()}
+                      </span>
+                      {/* A group row shows how many of its members are actually
+                          working. Counted from the measured roster, and only
+                          once the roster was read — an unread roster shows no
+                          dot rather than a green one. */}
+                      {c.kind === "group" && groupBusyCount(c.id) > 0 && (
+                        <span
+                          className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background"
+                          title={`${groupBusyCount(c.id)} member${groupBusyCount(c.id) === 1 ? "" : "s"} working now`}
+                          aria-label={`${groupBusyCount(c.id)} members working now`}
+                        />
+                      )}
                     </span>
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-1.5">
@@ -482,9 +709,24 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{activeTitle}</p>
                   <p className="text-[11px] text-muted-foreground truncate">
-                    {sel.kind === "group" ? `${activeMembers.length} participants • tap ⓘ for presence & decisions` : "direct thread — private between you two"}
+                    {sel.kind === "group"
+                      ? `${activeMembers.length} participants — ${busySummary(activePresence)}`
+                      : "direct thread — private between you two"}
                   </p>
                 </div>
+                {/* The roster is the point of this view, so the participant count
+                    in the header opens it directly rather than hiding it behind
+                    the details toggle. */}
+                <button
+                  type="button"
+                  onClick={() => setShowDetails(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full bg-muted/60 hover:bg-muted text-muted-foreground shrink-0"
+                  title="Show who is in this group"
+                  aria-label={`Show the ${activeMembers.length} members of this group`}
+                >
+                  <Users className="size-3" aria-hidden="true" />
+                  {activeMembers.length}
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowDetails((v) => !v)}
@@ -537,10 +779,15 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                           const isA2A = Boolean(dmMatch);
                           const a2aSender = dmMatch ? dmMatch[1] : null;
                           const cleanContent = dmMatch ? dmMatch[2] : m.content;
+                          const isEditing = editing?.id === m.id;
+                          const busy = !!busyMsg[m.id];
+                          const replyQuote = quoted(m);
+                          const reactions = m.reactions ?? {};
+                          const reactionEntries = Object.entries(reactions).filter(([, who]) => who.length > 0);
 
                           return (
-                            <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                              <div className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm ${
+                            <div className={`flex ${mine ? "justify-end" : "justify-start"} group/bubble`}>
+                              <div className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm relative ${
                                 mine
                                   ? "bg-emerald-600/90 text-white rounded-br-md"
                                   : isA2A
@@ -559,16 +806,155 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                                     )}
                                   </div>
                                 )}
+
+                                {/* Forward provenance: stated, because a message
+                                    that crossed rooms is a different claim
+                                    from one authored here. */}
+                                {m.forwardedFrom && (
+                                  <p className={`text-[10px] italic mb-1 ${mine ? "text-white/75" : "text-muted-foreground"}`}>
+                                    ↪ forwarded from #{m.forwardedFrom.room}
+                                    {m.forwardedFrom.sender ? ` by ${m.forwardedFrom.sender}` : ""}
+                                  </p>
+                                )}
+
+                                {/* A reply quotes its target. A target that is
+                                    gone says so instead of rendering an empty
+                                    quote box. */}
+                                {m.replyTo && (
+                                  <div className={`text-[10px] mb-1 pl-2 border-l-2 rounded-r ${
+                                    mine ? "border-white/50 text-white/80" : "border-primary/50 text-muted-foreground"
+                                  }`}>
+                                    {replyQuote ? (
+                                      <>
+                                        <span className="font-bold">{replyQuote.sender}</span>
+                                        {": "}
+                                        {replyQuote.deleted ? <em>message deleted</em> : replyQuote.content.slice(0, 120)}
+                                      </>
+                                    ) : (
+                                      <em>original message not available</em>
+                                    )}
+                                  </div>
+                                )}
+
                                 {m.kind !== "discussion" && (
                                   <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md mt-0.5 mb-1 ${kindTone(m.kind) === "green" ? "bg-emerald-500/15 text-emerald-600" : kindTone(m.kind) === "amber" ? "bg-amber-500/15 text-amber-600" : kindTone(m.kind) === "blue" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
                                     {m.kind.replace(/_/g, " ").toUpperCase()}
                                   </span>
                                 )}
-                                <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{cleanContent}</p>
+
+                                {m.deleted ? (
+                                  <p className={`text-[13px] italic ${mine ? "text-white/70" : "text-muted-foreground"}`}>
+                                    This message was deleted.
+                                  </p>
+                                ) : isEditing ? (
+                                  <div className="space-y-1.5">
+                                    <textarea
+                                      value={editing.text}
+                                      onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onSaveEdit(m.id);
+                                        if (e.key === "Escape") setEditing(null);
+                                      }}
+                                      rows={3}
+                                      aria-label="Edit message"
+                                      className="w-full text-[13px] rounded-lg border border-border bg-background p-2 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                    />
+                                    <div className="flex items-center gap-2 justify-end">
+                                      <Btn variant="ghost" onClick={() => setEditing(null)}>Cancel</Btn>
+                                      <Btn onClick={() => onSaveEdit(m.id)} disabled={savingEdit || !editing.text.trim()}>
+                                        {savingEdit ? "Saving…" : "Save"}
+                                      </Btn>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{cleanContent}</p>
+                                )}
+
+                                {/* Reactions render only what the server
+                                    returned. An absent set renders nothing at
+                                    all rather than an empty strip. */}
+                                {reactionEntries.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {reactionEntries.map(([emoji, who]) => (
+                                      <button
+                                        key={emoji}
+                                        type="button"
+                                        onClick={() => onReact(m, emoji)}
+                                        disabled={busy}
+                                        title={who.join(", ")}
+                                        aria-label={`${emoji} reacted by ${who.join(", ")}`}
+                                        className={`text-[10px] px-1.5 py-0.5 rounded-full border disabled:opacity-50 ${
+                                          who.includes(OPERATOR)
+                                            ? "border-primary/60 bg-primary/10"
+                                            : "border-border/60 bg-muted/40"
+                                        }`}
+                                      >
+                                        {emoji} {who.length}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {reactingTo === m.id && !m.deleted && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5 p-1.5 rounded-lg bg-muted/60 border border-border/60">
+                                    {REACTION_EMOJI.map((emoji) => (
+                                      <button
+                                        key={emoji}
+                                        type="button"
+                                        onClick={() => onReact(m, emoji)}
+                                        disabled={busy}
+                                        aria-label={`React with ${emoji}`}
+                                        className="text-sm px-1 rounded hover:bg-muted disabled:opacity-50"
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+
                                 <p className={`text-[10px] mt-1 flex items-center gap-1 justify-end ${mine ? "text-white/70" : "text-muted-foreground"}`}>
-                                  {fmtTime(m.at)}
-                                  {mine && (m.read ? <CheckCheck className="size-3" /> : <Check className="size-3" />)}
+                                  {m.editedAt && !m.deleted && (
+                                    <span title={`Edited ${absoluteStamp(m.editedAt) ?? ""}`}>edited</span>
+                                  )}
+                                  <span title={absoluteStamp(m.at) ?? "no recorded time"}>{fmtTime(m.at)}</span>
+                                  {mine && !m.deleted && (m.read ? <CheckCheck className="size-3" /> : <Check className="size-3" />)}
                                 </p>
+
+                                {/* Per-message actions. Hover-revealed on
+                                    pointer devices, always present for keyboard
+                                    and touch so the control is reachable. */}
+                                {!m.deleted && (
+                                  <div className="flex items-center gap-0.5 absolute -top-2 right-2 opacity-0 focus-within:opacity-100 group-hover/bubble:opacity-100 transition-opacity">
+                                    <BubbleAction title="Reply" onClick={() => setReplyTo(m)}>
+                                      <CornerUpLeft className="size-3" aria-hidden="true" />
+                                      <span className="sr-only">Reply to {m.sender}</span>
+                                    </BubbleAction>
+                                    <BubbleAction title="React" onClick={() => setReactingTo((cur) => (cur === m.id ? null : m.id))}>
+                                      <Smile className="size-3" aria-hidden="true" />
+                                      <span className="sr-only">React to message from {m.sender}</span>
+                                    </BubbleAction>
+                                    {sel.kind === "group" && (
+                                      <>
+                                        <BubbleAction title="Edit" onClick={() => setEditing({ id: m.id, text: m.content })}>
+                                          <Pencil className="size-3" aria-hidden="true" />
+                                          <span className="sr-only">Edit message from {m.sender}</span>
+                                        </BubbleAction>
+                                        <BubbleAction title="Forward" onClick={() => { setForwarding(m); setForwardRoom(""); }}>
+                                          <Forward className="size-3" aria-hidden="true" />
+                                          <span className="sr-only">Forward message from {m.sender}</span>
+                                        </BubbleAction>
+                                        <BubbleAction title="Delete" danger onClick={() => onDeleteMessage(m)}>
+                                          <Trash2 className="size-3" aria-hidden="true" />
+                                          <span className="sr-only">Delete message from {m.sender}</span>
+                                        </BubbleAction>
+                                      </>
+                                    )}
+                                    <BubbleAction title={copied === m.id ? "Copied" : "Copy"} onClick={() => onCopy(m)}>
+                                      <Copy className="size-3" aria-hidden="true" />
+                                      <span className="sr-only">Copy message from {m.sender}</span>
+                                    </BubbleAction>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -581,7 +967,67 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
               </div>
 
               <footer className="shrink-0 p-3 border-t border-border/60 bg-card/40">
-                <div className="flex items-center gap-2 max-w-3xl mx-auto">
+                <div className="max-w-3xl mx-auto space-y-2">
+                {/* Forwarding target picker. Named before the post so it is
+                    obvious what "forward" means — the destination room is
+                    typed, never guessed from the first room in the list. */}
+                {forwarding && (
+                  <div className="rounded-xl border border-border/60 bg-card p-2.5 space-y-2">
+                    <p className="text-[11px] font-semibold">
+                      Forward to another group — from {forwarding.sender}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground line-clamp-2">
+                      {forwarding.deleted ? "This message was deleted." : forwarding.content}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={forwardRoom}
+                        onChange={(e) => setForwardRoom(e.target.value)}
+                        placeholder="target-group"
+                        aria-label="Target group name"
+                        className={inputCls}
+                      />
+                      <Btn onClick={onForward} disabled={!forwardRoom.trim() || forwardingBusy}>
+                        {forwardingBusy ? "Forwarding…" : "Forward"}
+                      </Btn>
+                      <Btn variant="ghost" onClick={() => setForwarding(null)}>Cancel</Btn>
+                    </div>
+                    {rooms.length > 0 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Existing groups:{" "}
+                        {rooms
+                          .filter((r) => r.name !== (sel?.kind === "group" ? sel.name : null))
+                          .map((r) => r.name)
+                          .slice(0, 8)
+                          .join(", ") || "none yet"}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* The reply strip. Dismissing it drops the pending reply so
+                    the next send is not silently attached to it. */}
+                {replyTo && (
+                  <div className="flex items-start gap-2 rounded-xl border border-primary/40 bg-primary/5 px-2.5 py-2">
+                    <Reply className="size-3.5 text-primary mt-0.5 shrink-0" aria-hidden="true" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold text-primary">
+                        Replying to {replyTo.sender}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground line-clamp-2">{replyTo.content}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyTo(null)}
+                      className="p-1 rounded hover:bg-muted text-muted-foreground"
+                      aria-label="Cancel reply"
+                    >
+                      <X className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
                   <select value={kind} onChange={(e) => setKind(e.target.value)} className="text-[11px] bg-muted/60 border border-border/70 rounded-xl px-2 py-2.5 font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40 shrink-0" title="Message type" aria-label="Message type">
                     {MESSAGE_KINDS.map((k) => (
                       <option key={k} value={k}>{k.replace(/_/g, " ")}</option>
@@ -606,6 +1052,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                     <Send className="size-4" />
                   </button>
                 </div>
+                </div>
               </footer>
             </>
           )}
@@ -616,9 +1063,10 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
           <DetailsPane
             sel={sel}
             members={activeMembers}
+            presence={activePresence}
+            presenceError={activeMembersError}
             messages={activeMsgs}
             roster={roster}
-            presence={presence}
             events={events}
             eventsError={eventsError}
             botNames={props.botNames}
@@ -666,9 +1114,12 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 function DetailsPane(props: {
   sel: { kind: "group"; name: string } | { kind: "dm"; peer: string };
   members: string[];
+  /** Measured per-member presence; empty when the roster has not been read. */
+  presence: MemberPresence[];
+  /** Why the roster could not be read, or null. Never conflated with empty. */
+  presenceError: string | null;
   messages: ChatMsg[];
   roster: Array<{ name: string; role: string; status: string }>;
-  presence: Array<{ name: string; status: string; detail: string }>;
   events: Array<Record<string, unknown>>;
   eventsError: string | null;
   botNames: string[];
@@ -748,37 +1199,31 @@ function DetailsPane(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.sel]);
 
-  const decisions = props.messages.filter((m) => m.kind === "decision");
-  const blockers = props.messages.filter((m) => ["blocker", "warning", "escalation"].includes(m.kind));
-  const statusOf = (name: string) =>
-    props.roster.find((r) => r.name === name)?.status ||
-    props.presence.find((p) => p.name === name)?.status ||
-    "unknown";
+  const decisions = props.messages.filter((m) => m.kind === "decision" && !m.deleted);
+  const blockers = props.messages.filter((m) => ["blocker", "warning", "escalation"].includes(m.kind) && !m.deleted);
+
   /**
-   * The presence dot's colour, from the server's own status word.
+   * The presence dot, from the server's resolved state.
    *
-   * This was one chained regex, evaluated in order:
-   *   /active|working|online|idle/i → emerald, else /busy|testing|running/i →
-   *   amber, else /off|unknown|idle/i → grey.
-   * Two measured problems, both from matching a SUBSTRING:
-   *
-   *  * `idle` is listed in the FIRST branch, so an idle agent drew a GREEN
-   *    "working" dot. The third branch names `idle` too and is unreachable for
-   *    it — the author's own intent contradicted by evaluation order.
-   *  * `inactive` contains `active`, so an INACTIVE agent drew a green dot.
-   *    The exact opposite of the truth, from a status the server can send.
-   *
-   * Now each status is matched whole, and an unrecognised one is neutral
-   * rather than green.
+   * Matched whole against a fixed set — the earlier version chained regexes
+   * over the raw status word, where `idle` appeared in the *first* branch
+   * (drawing a green "working" dot for an idle agent) and `inactive` matched
+   * `active` (drawing a green dot for a suspended one). The server now resolves
+   * a closed vocabulary, so there is nothing left to pattern-match: an absent
+   * state is a neutral dot and never an online one.
    */
-  const dot = (s: string) => {
-    const v = s.toLowerCase();
-    if (["active", "working", "online", "available", "present"].includes(v)) return "bg-emerald-500";
-    if (["busy", "testing", "running", "in_progress"].includes(v)) return "bg-amber-500";
-    if (["idle", "off", "offline", "unknown", "absent", "inactive", "stale"].includes(v)) {
-      return "bg-muted-foreground";
-    }
-    return "bg-primary";
+  const dot = (state: PresenceState | null) => {
+    if (state === "online") return "bg-emerald-500";
+    if (state === "busy") return "bg-amber-500";
+    if (state === "idle") return "bg-muted-foreground";
+    if (state === "offline") return "bg-destructive";
+    return "bg-muted-foreground/40";
+  };
+
+  /** Human label for a member row; always says something the server supports. */
+  const stateLabel = (entry: MemberPresence) => {
+    if (!entry.state) return "state not reported";
+    return entry.detail || entry.state;
   };
 
   return (
@@ -800,21 +1245,71 @@ function DetailsPane(props: {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {/* This roster is the reason the view exists: every bot in the group,
+            with the state the server actually measured. */}
         <section>
-          <p className="text-[11px] font-bold mb-1.5">Participants ({props.members.length})</p>
-          {props.members.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">Nobody listed.</p>
+          <p className="text-[11px] font-bold mb-1.5 flex items-center gap-1.5">
+            <Users className="size-3" aria-hidden="true" />
+            Members in this group ({props.members.length})
+          </p>
+          {props.presenceError ? (
+            <ErrorBox
+              message={`Group roster unavailable — failed to load, not empty. (${props.presenceError})`}
+              onRetry={props.onRefresh}
+            />
+          ) : props.presence.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              {props.members.length === 0
+                ? "This room has no members."
+                : "Reading who is in this group…"}
+            </p>
           ) : (
             <div className="space-y-1">
-              {props.members.map((m) => (
-                <div key={m} className="flex items-center gap-2 text-[11px]">
-                  <span className={`size-2 rounded-full shrink-0 ${dot(statusOf(m))}`} />
-                  <span className="font-semibold flex-1 truncate" style={{ color: m === OPERATOR ? undefined : senderColor(m) }}>{m === OPERATOR ? "You (operator)" : m}</span>
-                  <span className="text-muted-foreground">{statusOf(m)}</span>
-                </div>
-              ))}
+              {props.presence.map((entry) => {
+                const mine = entry.name === OPERATOR;
+                return (
+                  <div
+                    key={entry.name}
+                    className="flex items-center gap-2 text-[11px] rounded-lg px-1.5 py-1 hover:bg-muted/40"
+                    title={
+                      entry.source === "unresolved"
+                        ? `${entry.name}: no registry or attendance record`
+                        : `${entry.name} — ${stateLabel(entry)} (reported by ${entry.source.replace(/\+/g, " + ")})`
+                    }
+                  >
+                    <span className={`size-2 rounded-full shrink-0 ${dot(entry.state)}`} aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="font-semibold truncate block"
+                        style={{ color: mine ? undefined : senderColor(entry.name) }}
+                      >
+                        {mine ? "You (operator)" : entry.displayName || entry.name}
+                      </span>
+                      {(entry.role || entry.state) && (
+                        <span className="text-[10px] text-muted-foreground truncate block">
+                          {entry.role || "role not reported"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground shrink-0 text-right">
+                      {stateLabel(entry)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
+          {/* A room can list a member the roster cannot resolve. Naming that
+              gap is the difference between "this bot is down" and "we have no
+              record of this bot". */}
+          {props.presence.length > 0 &&
+            props.members
+              .filter((m) => !props.presence.some((p) => p.name === m))
+              .map((m) => (
+                <p key={m} className="text-[10px] text-muted-foreground mt-1">
+                  {m} is listed as a member but was not in the roster read.
+                </p>
+              ))}
         </section>
 
         {decisions.length > 0 && (

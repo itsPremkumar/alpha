@@ -484,7 +484,7 @@ export function VoiceControls({
       <span
         role="status"
         aria-live="polite"
-        className={`text-[10px] truncate max-w-[240px] ${terminal ? "text-destructive" : conversationActive || armed || listening ? "text-primary" : "text-muted-foreground"}`}
+        className={`text-[10px] truncate max-w-[240px] min-w-0 ${terminal ? "text-destructive" : conversationActive || armed || listening ? "text-primary" : "text-muted-foreground"}`}
         title={statusText}
       >
         {statusText}

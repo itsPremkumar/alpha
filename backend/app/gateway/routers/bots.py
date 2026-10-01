@@ -949,3 +949,85 @@ async def run_bot_workflow_endpoint(
         return await asyncio.to_thread(_run)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Per-bot project membership
+#
+# The bot detail page needs "which projects is this bot on?". There was no way
+# to ask that: `GET /projects` returns project rows without their crew, and
+# `GET /projects/{id}/crew` requires an id you do not have yet. So the page
+# would have had to fan out over every project and N+1 its crew -- or worse,
+# guess.
+#
+# This resolves membership server-side by reading each project's crew, and it
+# deliberately does NOT invent a per-bot memory store: cognitive memory in Alpha
+# is project-scoped and owner-resolved, so the page aggregates the existing
+# `GET /projects/{id}/memory` across these ids instead. Putting a model-supplied
+# owner inside the cognitive-memory boundary is exactly what that boundary
+# exists to prevent.
+#
+# Honesty rules for this payload:
+#   - `projects` lists only projects where the bot is actually a member.
+#   - A project whose crew cannot be read is reported in `unreadable` with its
+#     reason rather than silently dropped, so "not on any project" stays
+#     distinguishable from "we could not tell".
+#   - `memory_scoped: "project"` is stated, not implied, because a caller
+#     looking for per-bot memory would otherwise conclude none exists.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{name}/projects", summary="Projects this bot belongs to")
+@require_permission("projects", "read")
+async def bot_projects(name: str, request: Request) -> dict:
+    from alpha.projects.crew import get_crew_service
+    from app.gateway.deps import get_project_repo
+
+    key = _validate_bot_name(name)
+
+    # The repository read is async, so it stays on the event loop. Only the
+    # blocking crew reconciliation goes to a thread - `crew_view` reconciles
+    # against the group room as a side effect and touches the filesystem, so it
+    # must not run on the loop. `_collect` is deliberately a *sync* function:
+    # handing an `async def` to `asyncio.to_thread` returns an un-awaited
+    # coroutine instead of a payload.
+    rows = await get_project_repo(request).list()
+
+    def _collect() -> dict:
+        crew = get_crew_service()
+        projects: list[dict] = []
+        unreadable: list[dict] = []
+        for row in rows:
+            project_id = row["id"]
+            try:
+                view = crew.crew_view(project_id)
+            except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+                unreadable.append({"id": project_id, "name": row.get("name", ""), "reason": str(exc)})
+                continue
+            # `MemberBrief` exposes `bot_name` / `role_in_project` (not
+            # `name` / `role`), and its membership key is the lowercased bot name
+            # that `attach()` stored. Reading the wrong attribute here would make
+            # every project look empty, so the field names are load-bearing.
+            members = list(getattr(view, "members", None) or [])
+            mine = [m for m in members if str(getattr(m, "bot_name", "")).lower() == key]
+            if not mine:
+                continue
+            projects.append(
+                {
+                    "id": project_id,
+                    "name": row.get("name", ""),
+                    "status": row.get("status", ""),
+                    "role": str(getattr(mine[0], "role_in_project", "") or ""),
+                    "member_status": str(getattr(mine[0], "status", "") or ""),
+                    "updated_at": row.get("updated_at") or None,
+                }
+            )
+        return {
+            "bot": key,
+            "projects": projects,
+            "unreadable": unreadable,
+            "memory_scoped": "project",
+            "memory_note": ("Alpha stores cognitive memory per project, not per bot. Read GET /api/projects/{id}/memory for each project listed here."),
+        }
+
+    return await asyncio.to_thread(_collect)

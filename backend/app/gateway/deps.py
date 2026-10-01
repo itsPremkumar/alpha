@@ -687,6 +687,12 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         app.state.network_monitor = None
         app.state.network_waits = None
         startup_network = getattr(startup_config, "network", None)
+        # Recorded whether or not the monitor is installed, because "disabled by
+        # configuration" and "enabled but absent" are different operator
+        # problems and an operator surface cannot tell them apart from a missing
+        # attribute alone. Set before the branch so a startup failure still
+        # leaves the true configuration answer behind.
+        app.state.network_configured = bool(startup_network is not None and startup_network.enabled)
         if startup_network is not None and startup_network.enabled:
             monitor = NetworkMonitor(to_monitor_config(startup_network), targets=startup_network.to_probe_targets(), bus=get_event_bus())
             app.state.network_monitor = monitor

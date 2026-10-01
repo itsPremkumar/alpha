@@ -64,7 +64,10 @@ def test_windows_launcher_uses_installed_next_entrypoint() -> None:
 def test_windows_launcher_requires_successful_readiness() -> None:
     launcher = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
     assert "http://127.0.0.1:$GatewayPort/health/ready" in launcher
-    frontend_probe = launcher[launcher.index("if (-not $frontendReady) {") : launcher.index("if ($gatewayReady -and $frontendReady) {")]
+    # Anchored on the probe URL (unique in the file) rather than on the old
+    # `if (-not $frontendReady) {` guard: that guard was removed because it
+    # latched readiness forever instead of re-probing every boot-wait pass.
+    frontend_probe = launcher[launcher.index("http://127.0.0.1:$FrontendPort/") : launcher.index("if ($gatewayReady -and $frontendReady) {")]
     assert "if ($resp.StatusCode -eq 200)" in frontend_probe
     assert "catch [System.Net.WebException]" not in frontend_probe
 

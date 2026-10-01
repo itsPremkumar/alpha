@@ -152,21 +152,35 @@ def _source_roots(extra: tuple[str, ...] = ()) -> list[Path]:
     return found
 
 
-def _resolve_defining_module(module_path: str, roots: list[Path]) -> Path | None:
-    """Locate the module or package that defines ``module_path``."""
-    wanted = module_path.replace("\\", "/").strip("/")
-    if wanted.endswith(".py"):
-        wanted = wanted[: -len(".py")]
+def _scan_roots(roots: list[Path]) -> tuple[list[Path], dict[str, Path]]:
+    """One tree walk producing both things the audit needs.
+
+    Returns ``(source_files, relative_path -> file_or_package)``.
+
+    This used to be two separate walks executed *per claim*: module resolution
+    ran ``rglob("*")`` over every root and source enumeration ran
+    ``rglob("*.py")`` over every root. On this checkout each walk measures
+    ~11 s, so four claims paid ~88 s of pure directory traversal before a single
+    line of source was read.
+    """
+    sources: list[Path] = []
+    module_map: dict[str, Path] = {}
     for base in roots:
         for path in base.rglob("*"):
-            if "__pycache__" in path.parts or path.suffix not in {".py", ""}:
+            if "__pycache__" in path.parts:
                 continue
-            relative = path.relative_to(base).as_posix()
-            if relative.endswith(".py"):
-                relative = relative[: -len(".py")]
-            if relative == wanted:
-                return path
-    return None
+            try:
+                relative = path.relative_to(base)
+            except ValueError:
+                continue
+            if path.suffix.lower() == ".py":
+                sources.append(path)
+                module_map.setdefault(relative.with_suffix("").as_posix(), path)
+            elif path.suffix == "":
+                # A package directory (or an extensionless file) can be the
+                # target of a whole-module claim such as ``runtime/side_effects``.
+                module_map.setdefault(relative.as_posix(), path)
+    return sources, module_map
 
 
 def _import_name(path: Path, roots: list[Path]) -> str | None:
@@ -194,44 +208,173 @@ def _import_name(path: Path, roots: list[Path]) -> str | None:
     return None
 
 
-def _module_referenced_outside(path: Path, roots: list[Path]) -> list[str]:
-    """Find imports of *path* from any other module.
+class SourceIndex:
+    """One tree walk and one read pass, shared by every claim.
 
-    Module-level, so `from alpha.x import y` and `import alpha.x` both count
-    while an unrelated same-named local variable does not.
+    ## Why this exists
+
+    ``check_claims`` used to call :func:`find_consumers` once per claim, and
+    every call re-walked the whole tree with ``rglob`` *and* re-read and
+    re-parsed every source file. Measured on this checkout (2069 files):
+
+    ================================  =========
+    per claim (old)                   111 s
+    four registered claims (old)      358 s
+    ================================  =========
+
+    That number is not a performance footnote - it was an outage. ``GET
+    /api/features`` ran this inline inside an ``async def`` route, so the
+    Gateway's asyncio event loop stopped for the whole audit: every other
+    request, including ``/health/ready``, timed out, the launcher gave up at its
+    240 s readiness budget and restarted the stack, and the audit - needing
+    358 s - never survived long enough to fill its per-process cache. Every boot
+    therefore repeated it, and the stack restarted forever.
+
+    Sharing one index makes it a single walk and a single read, and the token
+    pre-filter turns a 42 s full re-parse into a 0.08 s substring scan plus
+    parsing only the few files that can mention the symbol.
+
+    The pre-filter is sound rather than heuristic: a name that does not occur
+    literally in a file's text cannot appear as an ``ast.Name``/``ast.Attribute``
+    with that spelling, nor as a dotted import target, so a file rejected by
+    ``token in text`` could never have produced a match.
     """
-    base_module = _import_name(path, roots)
-    if base_module is None:
-        return []
 
-    hits: list[str] = []
-    for candidate in _iter_sources(roots):
-        if candidate == path:
-            continue
-        try:
-            tree = ast.parse(candidate.read_text(encoding="utf-8", errors="ignore"), filename=str(candidate))
-        except (OSError, SyntaxError):
-            continue
-        for node in ast.walk(tree):
-            name: str | None = None
-            if isinstance(node, ast.ImportFrom) and node.module:
-                name = node.module
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.startswith(base_module):
-                        name = alias.name
+    __slots__ = ("roots", "sources", "_module_map", "_texts", "_trees")
+
+    def __init__(self, roots: list[Path]):
+        self.roots = list(roots)
+        self.sources, self._module_map = _scan_roots(self.roots)
+        self._texts: dict[Path, str] | None = None
+        self._trees: dict[Path, ast.AST | None] = {}
+
+    @property
+    def texts(self) -> dict[Path, str]:
+        """Every source file's text, read once and memoized.
+
+        Read lazily so constructing an index to resolve a module does not pay
+        for files the audit will never look at.
+        """
+        if self._texts is None:
+            texts: dict[Path, str] = {}
+            for path in self.sources:
+                try:
+                    texts[path] = path.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    continue
+            self._texts = texts
+        return self._texts
+
+    def resolve_module(self, module_path: str) -> Path | None:
+        """Locate the module or package that defines ``module_path``."""
+        wanted = module_path.replace("\\", "/").strip("/")
+        if wanted.endswith(".py"):
+            wanted = wanted[: -len(".py")]
+        return self._module_map.get(wanted)
+
+    def _tree(self, path: Path) -> ast.AST | None:
+        """Parse *path* once, and only if its text can match the token asked for."""
+        if path in self._trees:
+            return self._trees[path]
+        text = self.texts.get(path)
+        tree: ast.AST | None = None
+        if text is not None:
+            try:
+                tree = ast.parse(text, filename=str(path))
+            except (SyntaxError, ValueError):
+                # ValueError covers embedded NUL bytes, which ``ast.parse``
+                # rejects but ``read_text(errors="ignore")`` keeps. The old
+                # catch list omitted it, so one binary file left in a source
+                # root raised out of the audit.
+                tree = None
+        self._trees[path] = tree
+        return tree
+
+    def _module_references(self, definition: Path) -> list[str]:
+        """Find imports of *definition* from any other module.
+
+        Module-level, so ``from alpha.x import y`` and ``import alpha.x`` both
+        count while an unrelated same-named local variable does not.
+        """
+        base_module = _import_name(definition, self.roots)
+        if base_module is None:
+            return []
+
+        hits: list[str] = []
+        for path, text in self.texts.items():
+            if path == definition or base_module not in text:
+                continue
+            tree = self._tree(path)
+            if tree is None:
+                continue
+            for node in ast.walk(tree):
+                name: str | None = None
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    name = node.module
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith(base_module):
+                            name = alias.name
+                            break
+                if name and (name == base_module or name.startswith(base_module + ".")):
+                    hits.append(f"{path.as_posix()}:{node.lineno}")
+                    break
+        return hits
+
+    def find_consumers(self, claim: Claim) -> WiringReport:
+        """Find every production call site for ``claim.symbol``.
+
+        The defining module is excluded: a symbol referencing itself is not a
+        consumer, which is precisely what a stub looks like.
+        """
+        definition = self.resolve_module(claim.module_path)
+        member = claim.member
+
+        if definition is None:
+            return WiringReport(
+                WiringState.UNPROVEN,
+                claim.capability_id,
+                claim.symbol,
+                reason=claim.reason,
+                detail=(f"no module found for {claim.module_path!r}; a dynamic or registry-driven reference cannot be ruled out"),
+            )
+
+        if member is None:
+            # Whole-module claim: the question is whether anything imports it at all.
+            consumers = self._module_references(definition)
+            noun = "module"
+        else:
+            consumers = []
+            for path, text in self.texts.items():
+                if path == definition or member not in text:
+                    continue
+                tree = self._tree(path)
+                if tree is None:
+                    continue
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Name) and node.id == member:
+                        consumers.append(f"{path.as_posix()}:{node.lineno}")
                         break
-            if name and (name == base_module or name.startswith(base_module + ".")):
-                hits.append(f"{candidate.as_posix()}:{node.lineno}")
-                break
-    return hits
+                    if isinstance(node, ast.Attribute) and node.attr == member:
+                        consumers.append(f"{path.as_posix()}:{node.lineno}")
+                        break
+            noun = "symbol"
 
+        if consumers:
+            state = WiringState.WIRED
+            detail = ""
+        else:
+            state = WiringState.UNWIRED
+            detail = f"{definition.name} defines the claimed {noun}, but no module outside it references it. A unit-test-passing module with no production caller is a stub, not a capability."
 
-def _iter_sources(roots: list[Path]) -> list[Path]:
-    for base in roots:
-        for path in base.rglob("*.py"):
-            if "__pycache__" not in path.parts:
-                yield path
+        return WiringReport(
+            state=state,
+            capability_id=claim.capability_id,
+            symbol=claim.symbol,
+            consumers=sorted(consumers)[:8],
+            reason=claim.reason,
+            detail=detail,
+        )
 
 
 def find_consumers(claim: Claim, *, roots: list[Path] | None = None) -> WiringReport:
@@ -246,8 +389,8 @@ def find_consumers(claim: Claim, *, roots: list[Path] | None = None) -> WiringRe
             tested against a synthetic tree; production callers leave it unset and
             get the real package roots.
     """
-    roots = list(roots) if roots is not None else _source_roots(claim.extra_roots)
-    if not roots:
+    resolved = list(roots) if roots is not None else _source_roots(claim.extra_roots)
+    if not resolved:
         return WiringReport(
             WiringState.UNPROVEN,
             claim.capability_id,
@@ -255,60 +398,27 @@ def find_consumers(claim: Claim, *, roots: list[Path] | None = None) -> WiringRe
             reason=claim.reason,
             detail="no source roots found to search",
         )
-
-    definition = _resolve_defining_module(claim.module_path, roots)
-    member = claim.member
-
-    if definition is None:
-        return WiringReport(
-            WiringState.UNPROVEN,
-            claim.capability_id,
-            claim.symbol,
-            reason=claim.reason,
-            detail=(f"no module found for {claim.module_path!r}; a dynamic or registry-driven reference cannot be ruled out"),
-        )
-
-    if member is None:
-        # Whole-module claim: the question is whether anything imports it at all.
-        consumers = _module_referenced_outside(definition, roots)
-        noun = "module"
-    else:
-        consumers = []
-        for path in _iter_sources(roots):
-            if path == definition:
-                continue
-            try:
-                tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"), filename=str(path))
-            except (OSError, SyntaxError):
-                continue
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Name) and node.id == member:
-                    consumers.append(f"{path.as_posix()}:{node.lineno}")
-                    break
-                if isinstance(node, ast.Attribute) and node.attr == member:
-                    consumers.append(f"{path.as_posix()}:{node.lineno}")
-                    break
-        noun = "symbol"
-
-    if consumers:
-        state = WiringState.WIRED
-        detail = ""
-    else:
-        state = WiringState.UNWIRED
-        detail = f"{definition.name} defines the claimed {noun}, but no module outside it references it. A unit-test-passing module with no production caller is a stub, not a capability."
-
-    return WiringReport(
-        state=state,
-        capability_id=claim.capability_id,
-        symbol=claim.symbol,
-        consumers=sorted(consumers)[:8],
-        reason=claim.reason,
-        detail=detail,
-    )
+    return SourceIndex(resolved).find_consumers(claim)
 
 
-def check_claims(claims: list[Claim]) -> list[WiringReport]:
-    """Check every claim, in declaration order."""
+def check_claims(claims: list[Claim], *, roots: list[Path] | None = None) -> list[WiringReport]:
+    """Check every claim, in declaration order.
+
+    Every claim in one batch shares a single :class:`SourceIndex`, so the tree
+    is walked and read once no matter how many claims are registered. Claims
+    that declare *different* ``extra_roots`` fall back to one index each,
+    because they genuinely search different trees.
+    """
+    claims = list(claims)
+    if not claims:
+        return []
+    if roots is not None:
+        index = SourceIndex(list(roots))
+        return [index.find_consumers(c) for c in claims]
+    extras = {c.extra_roots for c in claims}
+    if len(extras) == 1:
+        index = SourceIndex(_source_roots(next(iter(extras))))
+        return [index.find_consumers(c) for c in claims]
     return [find_consumers(c) for c in claims]
 
 

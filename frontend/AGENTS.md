@@ -254,6 +254,51 @@ server is up, because only `next build` writes `.next`.
   sidebar-grouping and panel-wiring source pins) alongside
   `src/lib/projects.test.mjs`.
 
+## Projects tab: the list and the full per-project read
+
+`projects` is a **primary** tab, ordered `Bots -> Projects -> Board`. It is
+declared once in `WORKSPACE_TABS`; the primary row and the More Views dropdown
+are both derived from that list, so a second `projects` entry would render twice
+and `workspace-nav.test.mjs` fails on it.
+
+- **The list answers "which projects exist", not "what is in one".** Every
+  project is listed by default; the bot filter and the crew-type filter both
+  default to `all`.
+- **Single-agent vs team crew is the server's claim, not a guess.** The crew
+  service provisions a shared group room at the *second* member, so
+  `members.length >= 2` is a crew and `=== 1` is solo. A roster read that is in
+  flight or has failed is `unknown` — its own badge, its own count, and
+  deliberately *not* folded into "single agent", which would dress a broken read
+  up as a deliberate choice. `SHAPE_META` in `ProjectsSection.tsx` is the single
+  place that mapping lives.
+- **"View more" is a real drill-down, not another accordion row.** It swaps the
+  whole surface for `ProjectInspectorSection`, which re-reads the project live
+  rather than assembling a view from what the list already happened to fetch.
+  The card's own expand keeps the management controls.
+- **`ProjectInspectorSection` is strictly read-only.** It imports `errMsg` from
+  `lib/http` and never `send`, and `src/lib/project-inspector.ts` imports only
+  `get`. Every mutating per-project action already belongs to the Workforce view,
+  whose project picker defaults to the *first* project — so a copied button here
+  would act on a different project than the one on screen. "Live controls"
+  therefore calls `onOpenLiveProject(projectId)`, which selects the project; a
+  bare view switch is the defect this replaced.
+- **Seventeen independent reads, seventeen independent failures.**
+  `inspectProject()` never rejects. A route that 404s on an older Gateway, 403s
+  on a locked-down deployment, or times out blanks exactly one block and carries
+  the server's reason; the header says how many sections did not answer and names
+  them. A whole-read failure is therefore never silently an empty project.
+- **Honesty rules this surface is built around.** A count the server did not
+  send is `null` and renders as `—`, never `0`. `last_verified: null` is "never
+  verified". `kill_switch.active` is tri-state: an unreported block is grey and
+  disclosed, never a green "not engaged". A member with no recorded brief is
+  *absent* from `member_briefs`, not present and empty. Every timestamp goes
+  through `parseTime`, because `new Date("")` is the epoch and would claim the
+  event happened in 1970.
+- Regression coverage: `src/lib/project-inspector.test.mjs` (routes, verbs, the
+  read-only guarantee, partial reads, and the honesty inversions) and
+  `src/lib/project-inspector-view.test.mjs` (tab placement and ordering, the
+  crew-type classification, the drill-down wiring, and the rendered claims).
+
 ## Testing (required for client changes)
 
 ```

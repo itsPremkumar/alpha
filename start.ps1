@@ -166,6 +166,108 @@ Write-Host "========================================================`n" -Foregro
 # listener — the next start then dies with EADDRINUSE and the browser
 # shows a dead page. That was the recurring "webpage is not working" bug.
 
+# -- Service-log archiving ----------------------------------------------------
+# Start-Process -RedirectStandardOutput/-RedirectStandardError TRUNCATES an
+# existing file on spawn: whatever the previous run printed last - including
+# the crash reason that triggered this very restart - was destroyed by the
+# restart itself, which is why logs/gateway.err.log never held the answer to
+# "why did it die". Move the previous file into logs\diagnostics\ first (same
+# bytes, timestamped name, bounded to the newest 20 per log) and let the spawn
+# create a clean file for the new run. Every -RedirectStandard* spawn site
+# must call Archive-ServiceLogs immediately beforehand; that pairing is pinned
+# by backend/tests/test_launcher_diagnostics.py.
+function Archive-ServiceLog {
+    param([string]$Path, [string]$Reason)
+    $name = Split-Path $Path -Leaf
+    try {
+        $f = Get-Item $Path -ErrorAction SilentlyContinue
+        if (-not $f -or $f.Length -le 0) { return 'skipped' }
+        $diagDir = Join-Path $RepoRoot "logs\diagnostics"
+        if (-not (Test-Path $diagDir)) { New-Item -ItemType Directory -Path $diagDir -Force | Out-Null }
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $dest  = Join-Path $diagDir "$stamp.$name"
+        $seq   = 0
+        while (Test-Path $dest) { $seq += 1; $dest = Join-Path $diagDir "$stamp-$seq.$name" }
+        $how = 'moved'
+        try {
+            Move-Item -LiteralPath $Path -Destination $dest -Force -ErrorAction Stop
+        } catch {
+            # A previous incarnation that has not fully exited still holds its
+            # redirect file open: rename needs delete access, which the holder
+            # denies. Readers are allowed, so copy the bytes instead - the
+            # spawn truncates the live file for the new run, making the copy
+            # diagnostic-equivalent to the move. Observed live 2026-10-01:
+            # this path is why logs/diagnostics/ held frontend archives but
+            # zero gateway archives, silently.
+            Copy-Item -LiteralPath $Path -Destination $dest -Force -ErrorAction Stop
+            $how = 'copied'
+        }
+        # Bounded: keep the newest 20 archives per log so diagnostics never grow forever.
+        $excess = Get-ChildItem -Path $diagDir -Filter "*.$name" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -Skip 20
+        foreach ($e in $excess) { Remove-Item -LiteralPath $e.FullName -Force -ErrorAction SilentlyContinue }
+        if ($how -eq 'moved') {
+            Write-Host "  Archived previous $name -> logs\diagnostics\$(Split-Path $dest -Leaf) ($Reason)" -ForegroundColor Gray
+        } else {
+            Write-Host "  Archived previous $name by copy -> logs\diagnostics\$(Split-Path $dest -Leaf) ($Reason; the previous child still held the file)" -ForegroundColor Yellow
+        }
+        return $how
+    } catch {
+        # Never silent: an unarchivable log is lost crash evidence, and the
+        # empty catch that used to live here is exactly how the gateway log
+        # vanished on every restart without anyone noticing.
+        Write-Warning "Could not archive ${name} ($Reason): $($_.Exception.Message). The previous run's log will be truncated by the next spawn."
+        return 'failed'
+    }
+}
+
+# Archive the .log/.err.log pair for one service, immediately before its spawn.
+function Archive-ServiceLogs {
+    param([string]$Service, [string]$Reason)
+    $null = Archive-ServiceLog -Path (Join-Path $RepoRoot "logs\$Service.log") -Reason $Reason
+    $null = Archive-ServiceLog -Path (Join-Path $RepoRoot "logs\$Service.err.log") -Reason $Reason
+}
+
+# Tree-kill every previous incarnation of $Service that matches the
+# port-qualified command line, so archiving runs against a file nobody holds.
+# Free-PortOrExit only finds processes that LISTEN, so a chain still booting
+# (2-3 min for this gateway) or left behind by a dead launcher survives the
+# port sweep: it keeps the redirect logs locked - which made the archive above
+# fail silently on 2026-10-01 - and can bind the port after our spawn, i.e. a
+# duplicate gateway answering half the requests. The pattern carries our port,
+# so another Alpha instance on a different port is never touched. Kill is a
+# scriptblock seam so tests can record instead of really killing.
+function Stop-ServiceChainOrphans {
+    param(
+        [Parameter(Mandatory)][string]$Service,
+        [array]$ProcessList = $null,
+        [scriptblock]$KillAction = $null
+    )
+    $port     = if ($Service -eq 'gateway') { $GatewayPort } else { $FrontendPort }
+    $patterns = if ($Service -eq 'gateway') {
+        @("app.gateway.app:app --host 127.0.0.1 --port $port")
+    } else {
+        @("next dev -p $port", "next start -p $port")
+    }
+    $kill = if ($KillAction) { $KillAction } else { { param($procId) Stop-ProcessTree -ProcessId $procId } }
+    # A tree-kill releases the grandchildren's inherited handles asynchronously,
+    # so re-query until nothing matches; an injected snapshot gets one round.
+    $maxRounds = if ($ProcessList) { 1 } else { 5 }
+    for ($round = 0; $round -lt $maxRounds; $round++) {
+        $list = if ($ProcessList) { $ProcessList } else { Get-CimInstance Win32_Process -ErrorAction SilentlyContinue }
+        $targets = @()
+        foreach ($p in $list) {
+            $cl = $p.CommandLine
+            if (-not $cl) { continue }
+            foreach ($pat in $patterns) { if ($cl -like "*$pat*") { $targets += $p; break } }
+        }
+        if ($targets.Count -eq 0) { break }
+        foreach ($p in $targets) { & $kill $p.ProcessId }
+        if ($ProcessList) { break }
+        Start-Sleep -Milliseconds 600
+    }
+}
+
 function Get-ListeningProcessIds {
     param([int]$Port)
     $ids = @()
@@ -581,7 +683,8 @@ Write-HealthFile -Status "starting" -Detail "launcher initialising"
 Write-Host "`n[1/2] Starting Gateway API on port $GatewayPort..." -ForegroundColor Yellow
 Write-Host "  logs: logs\gateway.log, logs\gateway.err.log" -ForegroundColor Gray
 
-
+Stop-ServiceChainOrphans -Service "gateway"
+Archive-ServiceLogs -Service "gateway" -Reason "gateway start"
 $gatewayProcess = Start-Process -FilePath $uvPath `
     -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
     -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
@@ -607,6 +710,8 @@ if ($Prod) {
         }
     }
     # `next start` takes -p directly (no dev wrapper involved).
+    Stop-ServiceChainOrphans -Service "frontend"
+    Archive-ServiceLogs -Service "frontend" -Reason "frontend start (prod)"
     $frontendProcess = Start-Process -FilePath $nodePath `
         -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
         -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
@@ -615,6 +720,8 @@ if ($Prod) {
     # Pass -p explicitly: relying on $env:PORT alone is fragile, and without
     # it a custom -FrontendPort would boot on 3000 while the browser opens
     # the requested port (blank page).
+    Stop-ServiceChainOrphans -Service "frontend"
+    Archive-ServiceLogs -Service "frontend" -Reason "frontend start (dev)"
     $frontendProcess = Start-Process -FilePath $nodePath `
         -ArgumentList $frontendArgs `
         -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
@@ -677,6 +784,44 @@ function Reset-FrontendBackoffIfStable {
     }
 }
 
+# One probe: does the service answer HTTP 200 on its real route right now?
+function Test-Serving {
+    param([int]$Port, [string]$Path)
+    try {
+        $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port$Path" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+        return ($r.StatusCode -eq 200)
+    } catch {
+        return $false
+    }
+}
+
+# One monitor-phase heartbeat. Ports-only was a lie: `uvicorn` binds long
+# before /health/ready answers (migrations + app import measured 2-3 min), so
+# the launcher announced "healthy" while the gateway could not serve - exactly
+# the "status=healthy gateway=starting" the watchdog escalated into a
+# full-stack restart loop. Probe the same routes the watchdog probes before
+# claiming health: gateway /health/ready (readiness, never liveness-only
+# /health) and frontend /. Extracted and stubbed by
+# backend/tests/test_launcher_diagnostics.py.
+function Write-MonitorHeartbeat {
+    $gwPortUp = Test-PortListening -Port $GatewayPort
+    $fePortUp = Test-PortListening -Port $FrontendPort
+    if (-not $gwPortUp -or -not $fePortUp) {
+        Write-HealthFile -Status "degraded" -Detail "waiting for gateway/frontend to return"
+        return
+    }
+    $gwServing = Test-Serving -Port $GatewayPort -Path "/health/ready"
+    $feServing = Test-Serving -Port $FrontendPort -Path "/"
+    if ($gwServing -and $feServing) {
+        Write-HealthFile -Status "healthy"
+    } else {
+        # Both ports bound but not answering, after a boot that already
+        # succeeded, is a regression - "degraded" with the probe results is
+        # the truthful label, never "healthy".
+        Write-HealthFile -Status "degraded" -Detail "ports up but not serving (gateway=$gwServing frontend=$feServing)"
+    }
+}
+
 function Wait-ForHealthy {
     param([int]$Port, [string]$Path = "/", [int]$MaxWaitSeconds = 120)
     $deadline = [DateTime]::UtcNow.AddSeconds($MaxWaitSeconds)
@@ -715,6 +860,8 @@ function Restart-GatewayService {
     Write-HealthFile -Status "recovering" -Detail "gateway restart attempt $Attempt backoff ${backoff}s"
     if (-not (Free-PortOrExit -Port $GatewayPort -NonFatal)) { return }
     Start-SleepWithHeartbeat -Seconds $backoff
+    Stop-ServiceChainOrphans -Service "gateway"
+    Archive-ServiceLogs -Service "gateway" -Reason "gateway restart attempt $Attempt"
     $script:gatewayProcess = Start-Process -FilePath $uvPath `
         -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
         -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
@@ -742,11 +889,15 @@ function Restart-FrontendService {
     if (-not (Free-PortOrExit -Port $FrontendPort -NonFatal)) { return }
     Start-SleepWithHeartbeat -Seconds $backoff
     if ($Prod) {
+        Stop-ServiceChainOrphans -Service "frontend"
+        Archive-ServiceLogs -Service "frontend" -Reason "frontend restart attempt $Attempt (prod)"
         $script:frontendProcess = Start-Process -FilePath $nodePath `
             -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
             -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
     } else {
+        Stop-ServiceChainOrphans -Service "frontend"
+        Archive-ServiceLogs -Service "frontend" -Reason "frontend restart attempt $Attempt (dev)"
         $script:frontendProcess = Start-Process -FilePath $nodePath `
             -ArgumentList "node_modules/next/dist/bin/next dev -p $FrontendPort" `
             -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
@@ -784,6 +935,10 @@ Write-Host "(First Next.js compile on Windows can take a few minutes.)" -Foregro
 $maxAttempts = 450
 $gatewayReady = $false
 $frontendReady = $false
+# One-time-per-transition console messages: the probes above now run every
+# pass, so without these flags "[OK] ..." would print up to 449 times.
+$gatewayOkLogged = $false
+$frontendOkLogged = $false
 
 for ($i = 1; $i -le $maxAttempts; $i++) {
     if (Test-MaintenanceMode) { Stop-OnMaintenance }
@@ -799,40 +954,78 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
     # is liveness only - it answers 200 whenever the process is up - so waiting
     # on it would let this launcher declare a Gateway whose database is
     # unreachable healthy.
-    if (-not $gatewayReady) {
-        $script:LastGatewayProbeError = ""
-        try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$GatewayPort/health/ready" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-            if ($resp.StatusCode -eq 200) {
-                $gatewayReady = $true
-                $script:LastGatewayProbeError = ""
+    # Check gateway health. Note the route: /health/ready, not /health. /health
+    # is liveness only - it answers 200 whenever the process is up - so waiting
+    # on it would let this launcher declare a Gateway whose database is
+    # unreachable healthy.
+    #
+    # Re-probed EVERY pass, never latched: readiness is a present-tense fact.
+    # The old `if (-not $gatewayReady)` guard latched true forever, so a
+    # gateway that crashed after its first 200 stayed "ready" for the rest of
+    # the boot wait and the loop could declare success with a dead gateway as
+    # soon as the frontend answered once.
+    $script:LastGatewayProbeError = ""
+    try {
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$GatewayPort/health/ready" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+        if ($resp.StatusCode -eq 200) {
+            $gatewayReady = $true
+            $script:LastGatewayProbeError = ""
+            if (-not $gatewayOkLogged) {
                 Write-Host "  [OK] Gateway API is healthy on port $GatewayPort." -ForegroundColor Green
-            } else {
-                # 503 from /health/ready means the Gateway is up but cannot serve
-                # (unreachable database / checkpointer). Record the real reason
-                # rather than letting the loop look like a port that never opened.
-                $script:LastGatewayProbeError = "HTTP $($resp.StatusCode): $($resp.Content)"
+                $gatewayOkLogged = $true
             }
-        } catch {
-            # Name the actual cause - a refused connection (nothing is
-            # listening) and a reset/timeout (something crashed mid-boot) lead
-            # to completely different fixes.
-            $why = $_.Exception.Message
-            if ($why -match 'actively refused|Unable to connect|refused') {
-                $why = "nothing is listening on port $GatewayPort"
+        } else {
+            # 503 from /health/ready means the Gateway is up but cannot serve
+            # (unreachable database / checkpointer). Record the real reason
+            # rather than letting the loop look like a port that never opened.
+            $gatewayReady = $false
+            $script:LastGatewayProbeError = "HTTP $($resp.StatusCode): $($resp.Content)"
+            if ($gatewayOkLogged) {
+                Write-Host "  [WARN] Gateway readiness lost: HTTP $($resp.StatusCode) - re-probing." -ForegroundColor Yellow
+                $gatewayOkLogged = $false
             }
-            $script:LastGatewayProbeError = $why
+        }
+    } catch {
+        # Name the actual cause - a refused connection (nothing is
+        # listening) and a reset/timeout (something crashed mid-boot) lead
+        # to completely different fixes.
+        $why = $_.Exception.Message
+        if ($why -match 'actively refused|Unable to connect|refused') {
+            $why = "nothing is listening on port $GatewayPort"
+        }
+        $gatewayReady = $false
+        $script:LastGatewayProbeError = $why
+        if ($gatewayOkLogged) {
+            Write-Host "  [WARN] Gateway readiness lost: $why - re-probing." -ForegroundColor Yellow
+            $gatewayOkLogged = $false
         }
     }
 
-    if (-not $frontendReady) {
-        try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$FrontendPort/" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-            if ($resp.StatusCode -eq 200) {
-                $frontendReady = $true
+    # Frontend readiness probe - re-probed every pass, never latched (same
+    # reason as the gateway probe above: a frontend that answers once and then
+    # dies must flip back to not-ready instead of riding its first 200 to the
+    # success break).
+    try {
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$FrontendPort/" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        if ($resp.StatusCode -eq 200) {
+            $frontendReady = $true
+            if (-not $frontendOkLogged) {
                 Write-Host "  [OK] Frontend Web UI is serving HTTP 200 on port $FrontendPort." -ForegroundColor Green
+                $frontendOkLogged = $true
             }
-        } catch {}
+        } else {
+            $frontendReady = $false
+            if ($frontendOkLogged) {
+                Write-Host "  [WARN] Frontend readiness lost: HTTP $($resp.StatusCode) - re-probing." -ForegroundColor Yellow
+                $frontendOkLogged = $false
+            }
+        }
+    } catch {
+        $frontendReady = $false
+        if ($frontendOkLogged) {
+            Write-Host "  [WARN] Frontend readiness lost: $($_.Exception.Message) - re-probing." -ForegroundColor Yellow
+            $frontendOkLogged = $false
+        }
     }
 
     # Refresh the heartbeat while we wait, AFTER the probes so the recorded
@@ -956,16 +1149,13 @@ try {
         Start-Sleep -Seconds 2
         $script:heartbeatCounter++
         # Heartbeat every ~30 s (15 × 2s iterations). The status must reflect
-        # the ACTUAL port state: writing "running" while a service is down made
-        # the watchdog think the launcher was done healing, so it took over and
-        # killed the launcher mid-restart.
+        # the ACTUAL serving state, not just bound ports: writing "running" or
+        # "healthy" while a service was down or still booting made the watchdog
+        # think the launcher was done healing, so it took over and killed the
+        # launcher mid-restart (the measured "status=healthy gateway=starting"
+        # escalation). See Write-MonitorHeartbeat.
         if ($script:heartbeatCounter % 15 -eq 0) {
-            $bothUp = (Test-PortListening -Port $GatewayPort) -and (Test-PortListening -Port $FrontendPort)
-            if ($bothUp) {
-                Write-HealthFile -Status "healthy"
-            } else {
-                Write-HealthFile -Status "degraded" -Detail "waiting for gateway/frontend to return"
-            }
+            Write-MonitorHeartbeat
         }
 
         $gatewayProcess  = Update-TrackedProcess -Process $gatewayProcess  -Port $GatewayPort

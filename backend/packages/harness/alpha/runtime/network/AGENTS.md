@@ -98,6 +98,47 @@ reports the exact value the loop will wait, instead of an un-jittered ideal
 nobody sleeps on. Jitter is injectable, which is the whole reason the decision
 sits behind `alpha.runtime.resilience.clock` rather than inline.
 
+## One measurement at a time, and the operator's "retry now"
+
+`check_once()` is the **entire** state transition: probe, fold, apply
+hysteresis, advance the backoff ladder, publish. It is therefore serialized
+behind `_probe_lock`, and `recheck()` is the operator-facing entry point that
+runs the *same* transition through that same lock.
+
+Without the lock a `recheck()` landing on the same tick as a poll interleaves
+those steps: two probes in flight, corroboration counted twice, and a state
+published that the ladder has not seen twice. That is not a cosmetic bug — it
+collapses `online_after_consecutive` to a single sample, which is precisely the
+gate that stops a flapping link from parking and un-parking the fleet. Both
+readings still happen; they are serialized, not dropped.
+
+`recheck()` deliberately does **not** bypass hysteresis and does **not** restart
+or reschedule the poll loop. It adds one reading to the same history every other
+reading went into. A caller that has to explain a refused publish to a human
+reads `pending_confirmations` for how many confirmations are outstanding —
+`NetworkObservation` cannot carry it, because it reports the branch the probe
+took (which is `0` whenever the probe itself ran).
+
+`observation_age_seconds()` exists for the same reason. `observed_at` is stamped
+from the injected clock, and the production `SystemClock` is `time.monotonic`, so
+no consumer outside this package can turn it into an age without mixing two
+timelines. Wall time minus a monotonic reading is negative on any host; clamping
+it to `0` would render the wrongness as "measured just now", which is the most
+confident lie available. **Publish the age, never the stamp.**
+
+## Who keeps trying, and why there is no attempt ceiling
+
+The poll loop runs for the life of the process and does **not** stop while the
+link is down. It only slows: `backoff_initial_seconds` → `backoff_max_seconds`
+(default 5s → 300s, jitter only ever reducing it). So a machine that lost its
+link re-probes forever at a bounded rate, and the only thing that can notice the
+link returning is that loop.
+
+There is deliberately **no attempt ceiling here**. The bound on *work* parked on
+an outage belongs to the durable registry (`NetworkWaitPolicy.max_attempts`), and
+a probe loop that gave up would turn a ten-minute outage into permanent silence —
+the outage equivalent of the restart loop the supervisor refuses to write.
+
 ## Testability
 
 `check_once()` performs exactly one probe, folds it, and returns an immutable
@@ -162,6 +203,11 @@ the provider said.
 - `runtime/network/probe.py` — `ProbeTarget`, `ConnectivityProbe`,
   `TcpConnectivityProbe`, `ScriptedProbe`, `normalize_targets`
 - `runtime/network/monitor.py` — `NetworkMonitor`, `NetworkMonitorConfig`,
-  `NetworkObservation`, `NetworkWaitDecision`, the bus event names
+  `NetworkObservation`, `NetworkWaitDecision`, `recheck()`/`pending_confirmations`,
+  and the bus event names
 - `config/network_resilience_config.py` — the `config.yaml -> network` section
-- Tests: `tests/test_network_resilience.py`
+- `app.gateway.routers.ops` — `GET /api/ops/network` (the reading, its measured
+  round-trip, and the automatic re-probe schedule) and
+  `POST /api/ops/network/recheck` (the manual retry), both projected by
+  `app.gateway.ops_runtime.network_snapshot`
+- Tests: `tests/test_network_resilience.py`, `tests/test_ops_network_router.py`

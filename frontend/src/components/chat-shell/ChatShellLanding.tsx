@@ -64,7 +64,18 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
   });
 
   return (
-    <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center text-center py-8 space-y-6 select-none" data-shell="landing">
+    /* `justify-center` was the clipping cause, not `my-*`. A flex container
+       taller than its scroller centres its content by overflowing *both* ends,
+       and the top overflow is unreachable — the transcript scroller is
+       `flex-1 overflow-y-auto`, so the greeting and "How can I help you today?"
+       were sliced in half on any viewport where the landing block exceeds the
+       available height. Measured: scroller clientH 219 vs scrollH 652.
+
+       `my-auto` on a column flex item resolves to 0 in the cross axis (height is
+       not stretched), so it centres nothing and the `py-8` already present keeps
+       the spacing the design intends. `justify-start` keeps the top reachable and
+       `my-auto` centres when there *is* spare room. */
+    <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-start text-center py-8 space-y-6 select-none my-auto" data-shell="landing">
       {/* ΓöÇΓöÇ 1. Hero Avatar Icon with Subtle Glow ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />

@@ -15,13 +15,18 @@ import {
   Layers,
   MessageSquare,
   Plug,
+  RefreshCw,
   Server,
   ShieldCheck,
   Sigma,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui";
 import { Probe, probeAll } from "@/lib/system";
+import { Connectivity, connectivityView, fetchConnectivity, recheckConnectivity } from "@/lib/network";
+import { errMsg } from "@/lib/http";
 import { ConsoleStats, fetchConsoleStats, fetchOpsVersion } from "@/lib/workspace";
 import { SystemVitals, fetchSystemVitals } from "@/lib/systemMonitor";
 
@@ -30,8 +35,17 @@ import { SystemVitals, fetchSystemVitals } from "@/lib/systemMonitor";
  *
  * The main screen should never leave the user guessing whether the backend is
  * actually there, so this strip consolidates the highest-signal numbers
- * (connectivity, version, usage, and subsystem readiness) in one place instead
- * of scattering them across settings pages.
+ * (is the Gateway up, what is the internet link doing and how fast, the version,
+ * usage, and subsystem readiness) in one place instead of scattering them across
+ * settings pages.
+ *
+ * Two of those are genuinely different questions and must not be conflated:
+ * `online`/`offline` is whether this Gateway answered, while the **internet**
+ * entry is the runtime's own connectivity reading from
+ * `GET /api/ops/network` — a four-state link with hysteresis, per-endpoint
+ * round-trips, and the backend's automatic re-probe schedule, plus the one
+ * control on this strip an operator can actually press. A Gateway that is up
+ * says nothing about whether the link is.
  *
  * ## The legibility contract this file is built around
  *
@@ -83,6 +97,16 @@ export interface Vitals {
   /** True when the probe request itself failed — counts below are unknown, not zero. */
   probesFailed: boolean;
   host: SystemVitals | null;
+  /**
+   * The Gateway's own internet-connectivity reading (`GET /api/ops/network`).
+   *
+   * `null` means that read failed, which is a *different* claim from a link that
+   * was measured and found down — so it is carried separately from
+   * `connectivityFailed` and the strip words both.
+   */
+  connectivity: Connectivity | null;
+  /** True when the connectivity read itself failed. */
+  connectivityFailed: boolean;
 }
 
 /**
@@ -161,13 +185,18 @@ export function costView(cost: number | null, currency: string | null): {
 async function load(): Promise<Vitals> {
   // Three-state probes (same pattern as SettingsSection): a failed probe
   // request is "status unavailable" — never collapsed into an empty/zero view.
-  const [probesRes, statsRes, version, host] = await Promise.all([
+  // The connectivity read follows the same rule for the same reason: a Gateway
+  // that did not answer about the internet is not a Gateway with no internet.
+  const [probesRes, statsRes, version, host, connectivityRes] = await Promise.all([
     probeAll()
       .then((list) => ({ ok: true as const, list }))
       .catch(() => ({ ok: false as const, list: [] as Probe[] })),
     fetchConsoleStats().catch(() => null),
     fetchOpsVersion().catch(() => "unknown"),
     fetchSystemVitals().catch(() => null),
+    fetchConnectivity()
+      .then((value) => ({ ok: true as const, value }))
+      .catch(() => ({ ok: false as const, value: null as Connectivity | null })),
   ]);
   const probes = probesRes.list;
   const gateway = probes.find((p) => p.key === "gateway");
@@ -178,6 +207,8 @@ async function load(): Promise<Vitals> {
     probes,
     probesFailed: !probesRes.ok,
     host,
+    connectivity: connectivityRes.value,
+    connectivityFailed: !connectivityRes.ok,
   };
 }
 
@@ -250,6 +281,16 @@ function Cluster({ label, title, children }: { label: string; title: string; chi
 export function WorkspaceVitals({ className = "" }: { className?: string }) {
   const [vitals, setVitals] = useState<Vitals | null>(null);
   const [loading, setLoading] = useState(true);
+  /**
+   * A manual "retry now" against `POST /api/ops/network/recheck`.
+   *
+   * The control is here rather than inside `VitalsStrip` because the fetching
+   * half owns both the in-flight guard and the re-read: the strip stays a pure
+   * function of `vitals`, which is what makes it renderable in a test with no
+   * Gateway and no DOM.
+   */
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckError, setRecheckError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -259,6 +300,34 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
       setLoading(false);
     }
   }, []);
+
+  // Named `onRetryConnectivity`, deliberately NOT `retryConnectivity`: the
+  // imported client function already has that name, and a local `const` of the
+  // same name is in scope inside its own initialiser — so the call below would
+  // have resolved to this very callback and recursed instead of probing anything.
+  const onRetryConnectivity = useCallback(async () => {
+    // Guarded, not debounced: the guide's rule is that a repeated trigger must
+    // not create two records, and a second in-flight probe would be a second
+    // reading of the same link rather than anything useful.
+    if (rechecking) return;
+    setRechecking(true);
+    setRecheckError(null);
+    try {
+      await recheckConnectivity();
+      // The recheck's own response is discarded on purpose. The strip renders
+      // one source of truth, and re-reading it means the row can never show a
+      // value the server did not just confirm.
+      await refresh();
+    } catch (e) {
+      // A rejected call surfaces the server's reason, and the strip is still
+      // re-read: a failed probe is a *new* measurement result, not a reason to
+      // keep showing the previous one as if it were current.
+      setRecheckError(errMsg(e));
+      await refresh();
+    } finally {
+      setRechecking(false);
+    }
+  }, [rechecking, refresh]);
 
   useEffect(() => {
     void refresh();
@@ -280,7 +349,61 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
 
   if (!vitals) return null;
 
-  return <VitalsStrip vitals={vitals} className={className} />;
+  return (
+    <VitalsStrip
+      vitals={vitals}
+      className={className}
+      onRetryConnectivity={onRetryConnectivity}
+      rechecking={rechecking}
+      recheckError={recheckError}
+    />
+  );
+}
+
+/**
+ * The manual "retry now" control that sits beside the internet reading.
+ *
+ * It is offered only when a recheck could actually change the answer: a link
+ * that is down, degraded, or unmeasured. A link that is merely *unmeasured
+ * because this process has no probe at all* renders as off with the reason in
+ * the tooltip instead — a button that could only ever come back with the same
+ * refusal implies a pending state that does not exist.
+ */
+function ConnectivityRetry({
+  onRetry,
+  pending,
+  error,
+}: {
+  onRetry: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <span className="inline-flex items-center px-2 py-1" data-internet-retry={pending ? "in-flight" : "idle"}>
+      <button
+        type="button"
+        onClick={onRetry}
+        // Disabled while in flight: a second click would be a second probe of
+        // the same link, not a second useful reading.
+        disabled={pending}
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 disabled:hover:bg-muted/40 disabled:hover:text-muted-foreground"
+        title={
+          error
+            ? `The last retry did not run: ${error}`
+            : "Ask the backend to measure the link now, through the same probe its own poll loop uses. The backend also keeps retrying on its own schedule."
+        }
+        aria-label={pending ? "Re-checking the internet connection" : "Retry the internet connection check"}
+      >
+        <RefreshCw className={`size-3 shrink-0 ${pending ? "animate-spin" : ""}`} aria-hidden="true" />
+        <span className="font-medium">{pending ? "Retrying…" : "Retry"}</span>
+      </button>
+      {error && (
+        <span className="ml-1.5 whitespace-nowrap text-muted-foreground" data-internet-retry-error>
+          Retry failed — {error}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /**
@@ -290,19 +413,33 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
  * or the fetching wrapper. Every number it shows arrived in `vitals`; nothing
  * here invents, defaults, or re-derives a fact.
  */
-export function VitalsStrip({ vitals, className = "" }: { vitals: Vitals; className?: string }) {
+export function VitalsStrip({
+  vitals,
+  className = "",
+  onRetryConnectivity,
+  rechecking = false,
+  recheckError = null,
+}: {
+  vitals: Vitals;
+  className?: string;
+  /** Omitted in the pure-render tests, which pass no control at all. */
+  onRetryConnectivity?: () => void;
+  rechecking?: boolean;
+  recheckError?: string | null;
+}) {
   const s = vitals.stats;
   const host = vitals.host;
   const subsystems = vitals.probes.filter((p) => (VITALS_SUBSYSTEM_KEYS as readonly string[]).includes(p.key));
   const readyCount = subsystems.filter((p) => p.ok).length;
   const cost = costView(s ? s.cost : null, s ? s.currency : null);
+  const link = connectivityView(vitals.connectivity ?? null, vitals.connectivityFailed);
 
   return (
     <div className={`flex flex-wrap items-center gap-1.5 text-[11px] ${className}`}>
       {/* ── Cluster 1 · is the backend there, and how loaded is the box ─────── */}
       <Cluster
         label="Backend connection"
-        title="Measured live: GET /api/features (reachability), GET /api/ops/version, GET /api/system/vitals (host load)."
+        title="Measured live: GET /api/features (reachability), GET /api/ops/version, GET /api/system/vitals (host load), GET /api/ops/network (internet link)."
       >
         <span className="inline-flex items-center px-2.5">
           <Badge tone={vitals.probesFailed ? "gray" : vitals.online ? "green" : "red"}>
@@ -321,6 +458,35 @@ export function VitalsStrip({ vitals, className = "" }: { vitals: Vitals; classN
           label="Alpha"
           title={`Alpha version ${vitals.version}, reported by GET /api/ops/version. This is the installed build, not the newest published release — the update control beside this strip owns that question.`}
         />
+
+        {/* The internet link, from the durable-runtime connectivity monitor.
+            It sits with "is the backend there" rather than with the host-load
+            numbers because that is the question it answers, and it carries its
+            own Retry because that is the one control here an operator can
+            actually press. A healthy row stays quiet: the server's
+            "Connectivity confirmed." sentence is not repeated beside a green
+            dot, the same rule every passing subsystem row follows. */}
+        <span className="inline-flex items-center" data-connectivity-state={vitals.connectivity?.state ?? "unmeasured"}>
+          <Metric
+            icon={link.tone === "red" || link.tone === "gray" ? <WifiOff className="size-3" /> : <Wifi className="size-3" />}
+            value={link.value}
+            label={link.label}
+            emphasis={link.tone === "red"}
+            title={link.title}
+          />
+          {/* The detail renders whenever there is something to say, including on
+              a green row — that is how a stale reading is disclosed instead of
+              presented as current. A fresh healthy link produces no sentence at
+              all, so the quiet case stays quiet. */}
+          {link.detail && (
+            <span className="whitespace-nowrap text-muted-foreground" data-connectivity-detail>
+              — {link.detail}
+            </span>
+          )}
+          {link.canRetry && onRetryConnectivity && (
+            <ConnectivityRetry onRetry={onRetryConnectivity} pending={rechecking} error={recheckError} />
+          )}
+        </span>
 
         {host ? (
           <>

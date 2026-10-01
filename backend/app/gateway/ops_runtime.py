@@ -200,6 +200,126 @@ def read_last_drain(*, home: Path | None = None) -> dict[str, Any]:
     }
 
 
+def _finite_float(value: Any) -> float | None:
+    """Return a finite float, or ``None``.
+
+    ``None`` is the whole point of this helper. An unreachable endpoint has no
+    round-trip time to report, and rounding that to ``0`` would render the worst
+    possible result as the best possible one.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def _project_targets(observation: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Per-endpoint reachability and measured latency, from the last observation.
+
+    ``latency_ms`` is reported for unreachable targets too, and deliberately so:
+    a fast refusal and a black-holed route are different faults, and an operator
+    debugging "the internet is down" needs to tell them apart. The aggregate
+    :func:`_mean_latency_ms` is the value that only ever uses reachable samples.
+    """
+    outcomes = (observation or {}).get("outcomes")
+    if not isinstance(outcomes, list):
+        return []
+    targets: list[dict[str, Any]] = []
+    for entry in outcomes:
+        if not isinstance(entry, dict):
+            continue
+        target = {
+            "name": str(entry.get("target") or "?"),
+            "reachable": bool(entry.get("reachable")),
+            "latency_ms": _finite_float(entry.get("elapsed_ms")),
+            "failure_kind": str(entry.get("failure_kind") or ""),
+            "detail": str(entry.get("detail") or ""),
+        }
+        targets.append(target)
+    return targets
+
+
+def _mean_latency_ms(targets: list[dict[str, Any]]) -> float | None:
+    """Mean round-trip over the *reachable* targets, or ``None``.
+
+    Reachable only. Averaging a reachable endpoint together with a timed-out one
+    would produce a number describing neither, and reporting any latency while
+    nothing was reachable at all would be the most misleading value available.
+    """
+    samples = [t["latency_ms"] for t in targets if t["reachable"] and t["latency_ms"] is not None]
+    if not samples:
+        return None
+    return round(sum(samples) / len(samples), 1)
+
+
+def _project_retry(monitor: Any, state: str | None, running: bool) -> dict[str, Any]:
+    """The automatic-retry schedule, as the process itself decided it.
+
+    ``retrying`` answers the one operator question this projection exists for:
+    *is the backend still working on getting the link back?* It is true only
+    while the loop is running **and** the link is not fully up, so a healthy host
+    never claims to be retrying and a stopped loop never claims a retry that will
+    not happen. ``next_probe_seconds`` is the monitor's own drawn and jittered
+    delay, not an un-jittered ideal nobody sleeps on.
+    """
+    decision = None
+    config = None
+    try:
+        decision = monitor.wait_decision()
+    except Exception:  # noqa: BLE001 - an ops read must not raise into the request
+        logger.warning("network monitor wait_decision() failed", exc_info=True)
+    try:
+        config = monitor.config
+    except Exception:  # noqa: BLE001
+        logger.warning("network monitor config could not be read", exc_info=True)
+
+    next_probe = None
+    if decision is not None:
+        drawn = _finite_float(getattr(decision, "next_poll_seconds", None))
+        next_probe = round(drawn, 3) if drawn is not None else None
+
+    return {
+        "automatic": bool(running),
+        "retrying": bool(running and state is not None and state != "online"),
+        "next_probe_seconds": next_probe,
+        "poll_interval_seconds": _finite_float(getattr(config, "poll_interval_seconds", None)),
+        "backoff_max_seconds": _finite_float(getattr(config, "backoff_max_seconds", None)),
+    }
+
+
+def _unreported(reason: str, *, wait_service: Any = None) -> dict[str, Any]:
+    """The single shape for "connectivity is not being measured".
+
+    Every disabled-monitor and absent-monitor case returns this with a different
+    ``reason``. The key set matches the reported shape on purpose: a consumer must
+    never have to branch on which keys exist to learn that nothing was measured.
+    """
+    return {
+        "reported": False,
+        "reason": reason,
+        "detail": "",
+        "state": None,
+        "state_detail": "",
+        "allows_network_attempt": None,
+        "latency_ms": None,
+        "monitoring": False,
+        "observed_age_seconds": None,
+        "last_observation": None,
+        "targets": [],
+        "retry": {
+            "automatic": False,
+            "retrying": False,
+            "next_probe_seconds": None,
+            "poll_interval_seconds": None,
+            "backoff_max_seconds": None,
+        },
+        "parked_sessions": None,
+        "parked_durability": "installed" if wait_service is not None else "unavailable",
+    }
+
+
 def network_snapshot(monitor: Any, wait_service: Any, *, network_enabled: bool | None = None) -> dict[str, Any]:
     """Project the live connectivity fact, with absence kept distinct from a value.
 
@@ -217,32 +337,14 @@ def network_snapshot(monitor: Any, wait_service: Any, *, network_enabled: bool |
         network_enabled = monitor is not None
 
     if not network_enabled:
-        return {
-            "reported": False,
-            "reason": REASON_MONITOR_DISABLED,
-            "state": None,
-            "monitoring": False,
-            "state_detail": "",
-            "last_observation": None,
-            "parked_sessions": None,
-            "parked_durability": "unavailable",
-        }
+        return _unreported(REASON_MONITOR_DISABLED, wait_service=wait_service)
     if monitor is None:
         # Enabled but absent is a real deployment shape: the monitor failed to
         # start, or the process is shutting down. Saying "unknown" here would be
         # a claim about the network, which is exactly what we do not know.
-        return {
-            "reported": False,
-            "reason": REASON_MONITOR_ABSENT,
-            "state": None,
-            "monitoring": False,
-            "state_detail": "",
-            "last_observation": None,
-            "parked_sessions": None,
-            "parked_durability": "installed" if wait_service is not None else "unavailable",
-        }
+        return _unreported(REASON_MONITOR_ABSENT, wait_service=wait_service)
 
-    observation = None
+    observation: dict[str, Any] | None = None
     try:
         last = monitor.last_observation()
     except Exception:  # noqa: BLE001 - an ops read must not raise into the request
@@ -255,7 +357,7 @@ def network_snapshot(monitor: Any, wait_service: Any, *, network_enabled: bool |
             logger.warning("network observation could not be serialised", exc_info=True)
             observation = None
 
-    state = None
+    state: str | None = None
     state_detail = ""
     try:
         state_value = monitor.state
@@ -264,13 +366,51 @@ def network_snapshot(monitor: Any, wait_service: Any, *, network_enabled: bool |
     except Exception:  # noqa: BLE001
         logger.warning("network monitor state could not be read", exc_info=True)
 
+    try:
+        running = bool(getattr(monitor, "running", False))
+    except Exception:  # noqa: BLE001
+        running = False
+
+    targets = _project_targets(observation)
+
+    # ``allows_network_attempt`` is read from the monitor's own decision rather
+    # than re-derived from the state string here, because the rule that matters
+    # is not "is it online": ``UNKNOWN`` still permits an attempt, and a Gateway
+    # that copied the vocabulary into this module would eventually disagree with
+    # the harness about exactly that case.
+    allows_attempt: bool | None = None
+    try:
+        allows_attempt = bool(monitor.wait_decision().admit_network_work)
+    except Exception:  # noqa: BLE001
+        logger.warning("network monitor wait_decision() could not be read", exc_info=True)
+
+    # The age is asked of the monitor, never derived here. ``observed_at`` is
+    # stamped from the monitor's injected clock (``SystemClock`` is
+    # ``time.monotonic``), so subtracting wall time from it would produce a
+    # plausible-looking wrong number -- and clamping that to 0 would render as
+    # "measured just now", which is the most confident lie available.
+    observed_age: float | None = None
+    try:
+        reported_age = monitor.observation_age_seconds()
+    except Exception:  # noqa: BLE001
+        logger.warning("network monitor observation_age_seconds() could not be read", exc_info=True)
+    else:
+        observed_age = round(reported_age, 3) if isinstance(reported_age, (int, float)) and not isinstance(reported_age, bool) else None
+
     return {
         "reported": True,
         "reason": "",
+        "detail": "",
         "state": state,
-        "monitoring": bool(getattr(monitor, "running", False)),
         "state_detail": state_detail,
+        "allows_network_attempt": allows_attempt,
+        "latency_ms": _mean_latency_ms(targets),
+        "monitoring": running,
+        "observed_age_seconds": observed_age,
         "last_observation": observation,
+        "targets": targets,
+        "retry": _project_retry(monitor, state, running),
         "parked_sessions": None,
         "parked_durability": "installed" if wait_service is not None else "unavailable",
     }
+

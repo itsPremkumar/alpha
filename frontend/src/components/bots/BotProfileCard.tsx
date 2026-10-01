@@ -1,10 +1,20 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
 import { absoluteStamp, isRecent, PRESENCE_WINDOW_SECONDS, relTime } from "@/lib/time";
 import { completedRuns, totalRuns } from "@/lib/bots";
-import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2, Mail } from "lucide-react";
+import {
+  MessageSquare,
+  Star,
+  CheckCircle2,
+  PauseCircle,
+  XCircle,
+  Building2,
+  Mail,
+  ExternalLink,
+} from "lucide-react";
 
 /**
  * Presence window: a bot counts as working when it was last seen inside this.
@@ -185,7 +195,20 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold hover:opacity-90"
         >
           <MessageSquare className="size-3" /> Chat
-        </button>
+          </button>
+          {/* Full detail is a real route, not a modal: `/bots/<name>` is
+              shareable and survives a reload. `encodeURIComponent` matters —
+              a bot name with a slash or a space would otherwise build a broken
+              or unintended path. The card's own onClick opens the *editor*
+              panel, so this must stopPropagation to be its own action. */}
+          <Link
+            href={`/bots/${encodeURIComponent(bot.name)}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
+            title={`Open the full detail page for ${botDisplayName(bot)}`}
+          >
+            <ExternalLink className="size-3" /> Details
+          </Link>
         </div>
       </div>
     </div>

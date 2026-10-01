@@ -15,6 +15,25 @@ on purpose:
 * :meth:`NetworkMonitor.run` is a thin loop over ``check_once`` that waits
   between polls. The wait is ``asyncio.sleep`` on a delay *decided* by the
   clock, so a test can assert the backoff schedule without waiting for it.
+* :meth:`NetworkMonitor.recheck` is the operator "measure now" entry point. It
+  runs the *same* transition the loop runs, under the same lock, so a manual
+  retry from the UI adds a real reading to the hysteresis history instead of
+  being a second, parallel decision about the same link.
+
+Who keeps trying
+----------------
+The poll loop runs for the life of the process and it does **not** stop while
+the link is down -- that is the whole reason a host which boots offline ever
+recovers. It only slows down: the interval grows by ``backoff_multiplier`` to
+``backoff_max_seconds`` (default 5s -> 300s, with jitter only ever reducing it),
+so a machine that lost its link keeps re-probing forever at a bounded rate. It
+never gives up, never burns a tight loop, and never announces a false recovery.
+
+There is deliberately no attempt ceiling here. The bound on *work* parked on an
+outage belongs to the durable registry (``NetworkWaitPolicy.max_attempts``); a
+probe loop that gave up would turn a ten-minute outage into permanent silence,
+which is the outage equivalent of the restart loop the supervisor refuses to
+write.
 
 Hysteresis is the load-bearing rule
 -----------------------------------
@@ -224,6 +243,14 @@ class NetworkMonitor:
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._last_observation: NetworkObservation | None = None
+        # One measurement at a time. ``check_once`` is the whole state
+        # transition -- it probes, folds, applies hysteresis, advances the
+        # backoff ladder, and publishes -- so two overlapping calls would
+        # interleave those steps and double-count corroboration. The poll loop
+        # is the only caller that used to exist; the operator recheck route is
+        # the second, and a click landing on the same tick as a poll must not be
+        # able to move a state the ladder has not seen yet.
+        self._probe_lock = asyncio.Lock()
 
     # -- introspection ---------------------------------------------------------
 
@@ -244,8 +271,47 @@ class NetworkMonitor:
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    @property
+    def pending_confirmations(self) -> int:
+        """Agreeing observations collected so far toward the *next* publish.
+
+        ``0`` means the state is settled. A positive value means a candidate is
+        waiting on corroboration — an outage that needs
+        ``offline_after_consecutive`` agrees, or a recovery that needs
+        ``online_after_consecutive``.
+
+        This is the number an operator-facing "retry" has to report. A manual
+        recheck that legitimately cannot publish (the hysteresis gate is doing
+        its job) looks identical to a broken button unless it says how many
+        confirmations are still outstanding, and ``NetworkObservation`` cannot
+        carry it: ``check_once`` reports the branch it took, which is ``0``
+        whenever the probe itself ran.
+        """
+        return max(0, self._consecutive_agreeing)
+
     def last_observation(self) -> NetworkObservation | None:
         return self._last_observation
+
+    def observation_age_seconds(self) -> float | None:
+        """Seconds since the last completed probe, or ``None`` if there is none.
+
+        Computed **here** rather than by a reader, because ``observed_at`` is
+        stamped from the injected clock -- and the production clock is
+        ``SystemClock``, which is :func:`time.monotonic`. A consumer outside
+        this package therefore cannot turn that stamp into an age without mixing
+        two different timelines, and would end up reporting a plausible-looking
+        number that is wrong (wall time minus a monotonic reading is negative on
+        any host). Reporting the age is the honest answer; reporting ``0``
+        because the subtraction clamped is the one thing this must not do,
+        because a reader would render that as "measured just now".
+        """
+        last = self._last_observation
+        if last is None:
+            return None
+        try:
+            return max(0.0, self._clock.now() - float(last.observed_at))
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            return None
 
     def observations(self) -> tuple[NetworkObservation, ...]:
         """Bounded history, oldest first."""
@@ -259,7 +325,33 @@ class NetworkMonitor:
         Never raises: a probe that blows up is reported as ``UNKNOWN`` with the
         failure counted, because "the probe is broken" and "the link is gone"
         must never be reported as the same thing.
+
+        Serialized against other callers. :meth:`recheck` exists so an operator
+        can force a measurement *through the same code path the poll loop uses*
+        rather than beside it, which is what makes "Retry" in the UI a real
+        second reading instead of a UI-local guess.
         """
+        async with self._probe_lock:
+            return await self._observe_once()
+
+    async def recheck(self) -> NetworkObservation:
+        """Force an immediate measurement and return the observation it produced.
+
+        This is the operator "retry now" entry point, and it deliberately does
+        **not** bypass hysteresis: a single successful connect against a link
+        that is still flapping will not publish ``ONLINE``. A caller that has to
+        explain that to a human reads :attr:`pending_confirmations` for how many
+        confirmations are still outstanding — the returned observation cannot
+        carry it, because it reports the branch the probe took.
+
+        It also does not restart or reschedule the poll loop. The loop keeps its
+        own bounded backoff and is the only thing that can notice a recovery the
+        user did not ask about; a manual retry adds a reading, it does not
+        become a second scheduler.
+        """
+        return await self.check_once()
+
+    async def _observe_once(self) -> NetworkObservation:
         previous = self._state
         outcomes: tuple[ProbeOutcome, ...] = ()
         probe_failure_type = ""

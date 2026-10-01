@@ -69,11 +69,30 @@ const uiUrl = dataUrl(
     .replace(/from\s+"react\/jsx-runtime"/, `from "${resolveUrl("react/jsx-runtime")}"`),
 );
 
+// The transport `lib/network.ts` talks through. `errMsg` is re-exported here
+// because the strip surfaces a failed retry through it.
+const NET_HTTP_URL = dataUrl(`
+  export async function get() { throw new Error("stub: connectivity must not be fetched in this test"); }
+  export async function send() { throw new Error("stub: connectivity must not be fetched in this test"); }
+  export function errMsg(e) { return e instanceof Error ? e.message : String(e); }
+`);
+
+const NET_URL = dataUrl(
+  transpile(read("./network.ts")).replace(/from\s+"\.\/http"/, `from "${NET_HTTP_URL}"`),
+);
+
 const vitalsCode = transpile(read("../components/WorkspaceVitals.tsx"), { jsx: ts.JsxEmit.ReactJSX })
   .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
   .replace(/from\s+"react\/jsx-runtime"/, `from "${resolveUrl("react/jsx-runtime")}"`)
   .replace(/from\s+"lucide-react"/, `from "${LUCIDE}"`)
-  .replace(/from\s+"@\/components\/ui"/, `from "${uiUrl}"`);
+  .replace(/from\s+"@\/components\/ui"/, `from "${uiUrl}"`)
+  // `@/lib/http` and `@/lib/network` came in with the strip's connectivity entry.
+  // The connectivity client is loaded for REAL — only its own `./http` is
+  // stubbed — so `connectivityView` in this suite is the function that ships
+  // rather than a paraphrase. A dash-without-a-disclosure introduced by that
+  // entry therefore fails the rule below exactly like every other dash here.
+  .replace(/from\s+"@\/lib\/http"/, `from "${NET_HTTP_URL}"`)
+  .replace(/from\s+"@\/lib\/network"/, `from "${NET_URL}"`);
 
 // The fetching wrapper's four lib dependencies are replaced by inert stubs:
 // these tests drive the PURE half (`VitalsStrip`), so nothing should be
@@ -414,6 +433,136 @@ test("an offline gateway says offline and drops no other claim", () => {
   assert.ok(visibleText(markup).includes("Gateway offline"));
   // …and the version is still the server's, not a placeholder.
   assert.ok(visibleText(markup).includes("v2.1.0"));
+});
+
+/* ══ 3b. The internet entry: one reading, four states, three non-states ══ */
+
+const CONNECTIVITY = {
+  reported: true,
+  reason: "",
+  state: "online",
+  state_detail: "Connectivity confirmed.",
+  allows_network_attempt: true,
+  latency_ms: 18,
+  monitoring: true,
+  observed_age_seconds: 2,
+  targets: [
+    { name: "cloudflare", reachable: true, latency_ms: 16, failure_kind: "unknown", detail: "" },
+    { name: "google", reachable: true, latency_ms: 20, failure_kind: "unknown", detail: "" },
+  ],
+  retry: { automatic: true, retrying: false, next_probe_seconds: 15, poll_interval_seconds: 15, backoff_max_seconds: 300 },
+  parked_durability: "installed",
+  parked_sessions: null,
+  recheck: null,
+  notes: [],
+};
+
+const withLink = (over) => ({ ...HEALTHY, connectivity: { ...CONNECTIVITY, ...over }, connectivityFailed: false });
+
+/** Render with the retry control wired, which is the production wiring. */
+const renderLinked = (vitals, props = {}) =>
+  renderToStaticMarkup(h(VitalsStrip, { vitals, onRetryConnectivity: () => {}, ...props }));
+
+test("a measured link shows its round-trip with a label, not a bare number", () => {
+  const text = visibleText(render(withLink({})));
+  assert.ok(text.includes("18 ms"), `expected the measured round-trip, got: ${text}`);
+  assert.ok(text.includes("internet"), `the figure needs its noun, got: ${text}`);
+  // The route and the unit are both named on hover.
+  assert.match(titles(render(withLink({}))).join("\n"), /GET \/api\/ops\/network/);
+  // A healthy link offers nothing to press.
+  assert.doesNotMatch(renderLinked(withLink({})), /data-internet-retry/);
+});
+
+test("a lost link is red, names the backend's own retry, and offers a Retry", () => {
+  const offline = withLink({
+    state: "offline",
+    latency_ms: null,
+    allows_network_attempt: false,
+    state_detail: "No connectivity. Work is paused and will resume automatically when the link returns.",
+    targets: [
+      { name: "cloudflare", reachable: false, latency_ms: 2000, failure_kind: "timeout", detail: "connect timeout" },
+      { name: "google", reachable: false, latency_ms: 2000, failure_kind: "timeout", detail: "connect timeout" },
+    ],
+    retry: { automatic: true, retrying: true, next_probe_seconds: 240, poll_interval_seconds: 15, backoff_max_seconds: 300 },
+  });
+  const markup = renderLinked(offline);
+  const text = visibleText(markup);
+  assert.match(markup, /data-connectivity-state="offline"/);
+  assert.ok(text.includes("offline"), `got: ${text}`);
+  assert.ok(text.includes("Unreachable: cloudflare, google"), `the failing endpoints must be named, got: ${text}`);
+  assert.ok(text.includes("keeps trying until the link returns"), `the backend's own retry promise must be in the row, got: ${text}`);
+  assert.match(markup, /data-internet-retry="idle"/);
+  assert.match(markup, /Retry the internet connection check/, "the control needs an accessible name");
+  // A null latency is never drawn as 0 ms.
+  assert.doesNotMatch(text, /0 ms internet/);
+});
+
+test("an unknown link never renders as offline, and still offers Retry", () => {
+  const markup = renderLinked(
+    withLink({
+      state: "unknown",
+      latency_ms: null,
+      allows_network_attempt: true, // the asymmetry the whole vocabulary exists for
+      state_detail: "Connectivity has not been determined yet; network operations will be attempted and handled by the ordinary retry path.",
+      targets: [],
+    })
+  );
+  const text = visibleText(markup);
+  assert.match(markup, /data-connectivity-state="unknown"/);
+  assert.ok(!/offline/.test(text), `unknown must never read as offline, got: ${text}`);
+  assert.ok(text.includes("unknown"), `got: ${text}`);
+  assert.match(markup, /data-internet-retry="idle"/);
+});
+
+test("a backend that is not measuring connectivity says so and offers nothing to press", () => {
+  const markup = renderLinked({
+    ...HEALTHY,
+    connectivity: {
+      ...CONNECTIVITY,
+      reported: false,
+      reason: "network monitoring is disabled by configuration",
+      state: null,
+      state_detail: "",
+      allows_network_attempt: null,
+      latency_ms: null,
+      monitoring: false,
+      targets: [],
+      retry: { automatic: false, retrying: false, next_probe_seconds: null, poll_interval_seconds: null, backoff_max_seconds: null },
+    },
+    connectivityFailed: false,
+  });
+  const text = visibleText(markup);
+  assert.match(markup, /data-connectivity-state="unmeasured"/);
+  assert.ok(text.includes("network monitoring is disabled by configuration"), `the server's reason must be visible, got: ${text}`);
+  // A button here could only ever come back with the same refusal.
+  assert.doesNotMatch(markup, /data-internet-retry/, "an unmeasurable link must not offer a Retry that cannot help");
+});
+
+test("a failed connectivity read is retryable, because that is a real transient fault", () => {
+  const markup = renderLinked({ ...HEALTHY, connectivity: null, connectivityFailed: true });
+  const text = visibleText(markup);
+  assert.ok(text.includes("internet not reported"), `got: ${text}`);
+  assert.match(markup, /data-internet-retry="idle"/);
+});
+
+test("the retry control is disabled and honest while a probe is in flight", () => {
+  const markup = renderLinked(withLink({ state: "offline", latency_ms: null, retry: { automatic: true, retrying: true, next_probe_seconds: 240, poll_interval_seconds: 15, backoff_max_seconds: 300 } }), {
+    rechecking: true,
+  });
+  assert.match(markup, /data-internet-retry="in-flight"/);
+  assert.match(markup, /disabled=""/, "a second click would be a second probe of the same link");
+  assert.match(markup, /Re-checking the internet connection/);
+  assert.ok(visibleText(markup).includes("Retrying"), `got: ${visibleText(markup)}`);
+});
+
+test("a failed retry surfaces the server's reason rather than swallowing it", () => {
+  const markup = renderLinked(
+    withLink({ state: "offline", latency_ms: null, retry: { automatic: true, retrying: true, next_probe_seconds: 240, poll_interval_seconds: 15, backoff_max_seconds: 300 } }),
+    { recheckError: "Request failed (HTTP 503). Network monitor unavailable." }
+  );
+  const text = visibleText(markup);
+  assert.ok(text.includes("Network monitor unavailable"), `the reason must be visible, got: ${text}`);
+  assert.match(markup, /data-internet-retry-error/);
 });
 
 /* ══ 4. The row has a hierarchy ═══════════════════════════════════════════ */

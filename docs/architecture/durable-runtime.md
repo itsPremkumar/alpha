@@ -127,6 +127,25 @@ with no user request attached; an HTTP `GET` would both answer a provider-health
 question this layer must not answer, and send a request identifying the user to a
 third party on a timer.
 
+**Who keeps trying.** The poll loop runs for the life of the process and does
+**not** stop while the link is down — that is the whole reason a host which boots
+offline ever recovers. It only slows down: the interval grows by
+`backoff_multiplier` toward `backoff_max_seconds` (5s → 300s by default, with
+jitter only ever *reducing* it). So a machine that lost its link re-probes
+forever at a bounded rate. There is deliberately **no attempt ceiling** here: the
+bound on *work* parked on an outage belongs to the registry's `max_attempts`,
+and a probe loop that gave up would turn a ten-minute outage into permanent
+silence — the outage equivalent of the restart loop the supervisor refuses to
+write.
+
+**One measurement at a time.** `check_once()` is the whole transition — probe,
+fold, hysteresis, backoff, publish — so it is serialized behind a lock, and
+`recheck()` runs that same transition through that same lock. Without the lock a
+manual retry landing on the same tick as a poll would count one corroborating
+observation twice and collapse `online_after_consecutive` to a single sample,
+which is exactly the gate that stops a flapping link from parking and un-parking
+the fleet.
+
 → `backend/packages/harness/alpha/runtime/network/AGENTS.md`
 
 ### 3. "Might have happened" was a run-level shrug
@@ -271,6 +290,42 @@ implemented* below.
 
 → `backend/packages/harness/alpha/persistence/side_effects/AGENTS.md`
 
+## Seeing it, and re-probing it
+
+A measurement nobody can read is a measurement that did not happen. The reading
+is exposed two ways, both projected from the same place so they cannot drift:
+
+| Route | Answers |
+|---|---|
+| `GET /api/ops/network` | the four-state link, the **measured round-trip per endpoint**, whether a network operation may be attempted now, how old the reading is, and the automatic re-probe schedule |
+| `POST /api/ops/network/recheck` | force one immediate measurement — the manual "Retry" |
+| `GET /api/ops/runtime` | the same connectivity block, bundled with the previous process's drain outcome |
+
+Three honesty rules are load-bearing on that surface, because each has a
+plausible-looking wrong answer:
+
+- **`latency_ms` is `null`, never `0`,** when no endpoint answered. `0` is the
+  fastest possible link, so it would draw the worst possible result as the best
+  one. The mean is taken over the *reachable* targets only — averaging a live
+  endpoint together with a timed-out one describes neither.
+- **`allows_network_attempt` is read from the monitor's own decision**, not
+  re-derived from the state string in the Gateway, so `unknown` keeps permitting
+  an attempt instead of being quietly rounded into an outage.
+- **The payload carries `observed_age_seconds`, not the observation's
+  `observed_at`.** That stamp comes from `SystemClock`, which is
+  `time.monotonic`, so publishing it as wall-clock time would be a confident
+  wrong number — and clamping the subtraction would render the wrongness as
+  "measured just now".
+
+A recheck goes through `NetworkMonitor.recheck()` — the same serialized
+transition the poll loop runs — rather than a bespoke path beside it, and a
+recheck that hysteresis declines to publish reports how many confirmations are
+still outstanding instead of silently doing nothing.
+
+The workspace header renders this in its "Backend connection" cluster: the
+measured latency, the state, the backend's own retry sentence, and a **Retry**
+button that is offered only when a recheck could change the answer.
+
 ## Planned shutdown
 
 Shutdown is where a durable runtime most easily lies: a sequence of best-effort
@@ -349,6 +404,7 @@ Honesty about the boundary is part of the feature.
 |---|---|---|
 | Session lifecycle vocabulary | `alpha.runtime.sessions` | `tests/test_durable_session_state_machine.py` |
 | Connectivity state, probe, monitor | `alpha.runtime.network` | `tests/test_network_resilience.py` |
+| Operator surface + manual re-probe | `app.gateway.routers.ops`, `app.gateway.ops_runtime` | `tests/test_ops_network_router.py` |
 | Durable parked sessions | `alpha.runtime.network.wait_registry`, `alpha.persistence.network_waits` | `tests/test_network_wait_registry.py`, `tests/test_network_wiring.py` |
 | Side-effect ledger (semantics) | `alpha.runtime.side_effects` | `tests/test_side_effect_ledger.py` |
 | Side-effect ledger (durable) | `alpha.persistence.side_effects` | `tests/test_side_effect_ledger_sql.py` |

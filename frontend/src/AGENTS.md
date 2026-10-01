@@ -191,6 +191,64 @@ normalized by `lib/time.ts`), `last_message_sender` and `last_message_withheld`.
 
 Coverage: `lib/bots-activity-client.test.mjs`.
 
+## Internet connectivity in the workspace strip
+
+`WorkspaceVitals` renders a fourth measurement in its "Backend connection"
+cluster, from `src/lib/network.ts` → `GET /api/ops/network`. It is the runtime's
+own link reading, **not** the `internet` block on `GET /api/system/vitals`: that
+one is a single TCP connect sampled by the host monitor, while this one is the
+four-state durable-runtime reading with hysteresis, per-endpoint round-trips, and
+the automatic re-probe schedule. Rendering either in place of the other would
+show a healthy link while the runtime had parked work.
+
+Four states are four renderings, and three *non*-states are three more:
+
+| Server says | Strip shows | Retry offered |
+|---|---|---|
+| `online` | the measured round-trip, e.g. `18.4 ms internet` | only if the reading is stale |
+| `degraded` | `internet partial`, amber, unreachable endpoints named | yes |
+| `offline` | `offline internet`, red, the backend's own retry sentence | yes |
+| `unknown` | `unknown internet`, amber — **never** `offline` | yes |
+| `reported: false` | `internet not measured, not reported`, grey, the server's `reason` | **no** |
+| `state: null` while `reported: true` | `internet state not reported`, grey | yes |
+| read failed | `internet not reported`, grey | yes |
+
+Rules that must keep:
+
+- **`latency_ms: null` renders a dash with words beside it, never `0`.** Zero is
+  the fastest possible link; `null` means nothing answered. `toConnectivity`
+  keeps `null` as `null`, and `connectivityView` pairs every dash with a label
+  saying which absence it is (`latency not reported`).
+- **A reading older than three poll intervals is disclosed as stale**, even when
+  the state is green. This is reachable precisely because the backend backs off
+  to a five-minute ceiling while the link is down while the strip refreshes every
+  ten seconds, and a stale `online` presented as current is the failure this
+  disclosure exists to stop. A stale reading is the one *healthy* case that earns
+  a Retry.
+- **`Retry` appears only when a recheck could change the answer.** A link that is
+  *unmeasured because the process has no probe at all* renders as off with the
+  reason in its tooltip — a button that could only come back with the same
+  refusal implies a pending state that does not exist.
+- **The control is disabled while in flight** and says `Retrying…`, because a
+  second click would be a second probe of the same link.
+- **A retry never paints its own answer.** It calls
+  `POST /api/ops/network/recheck` and then re-reads; the strip always renders
+  what the server last confirmed.
+- **A recheck the backend declined to publish is not a failure.** The server
+  answers `performed: false` with a reason, and a `changed: false` result carries
+  how many confirming observations are still outstanding.
+- **An unfamiliar state string renders verbatim** rather than snapping to one of
+  the four this build knows.
+- **A process that is measuring but named no state is a third claim**, distinct
+  from both "unrecognised word" and "not measuring": `state` is nullable, so a
+  null reaches the final branch. It renders as a grey dash with words beside it,
+  never as a state literally called `null`, and it does not borrow the amber of
+  an unrecognised *word* — there is no word to recognise.
+
+Coverage: `src/lib/network.test.mjs` (routes, verbs, envelope mapping, every
+honesty inversion), and the new entries are also subject to
+`src/lib/ui-legibility.test.mjs`'s dash-with-disclosure rule.
+
 ## Honesty patterns to copy
 
 - A control that is off by default renders as off, with the reason it is off.
@@ -210,6 +268,42 @@ Coverage: `lib/bots-activity-client.test.mjs`.
   mean "the server said there is nothing", not "the call failed".
 - When a request is retried or triggered repeatedly, disable the control while
   in flight so a double-click cannot create two records.
+- **Read independent subsystems independently.** When one surface aggregates
+  several routes, each is its own section that can fail alone — never a single
+  promise that all-or-nothing blanks the ones that answered. Name the failures
+  up front (`project-inspector.ts` → `inspectionSections` is the reference) so a
+  partial read cannot present itself as a complete one.
+
+## Projects tab: list plus full per-project read
+
+`projects` is a **primary** tab between Bots and Board, declared once in
+`WORKSPACE_TABS` (the primary row and the More Views dropdown are both derived
+from it, so a second entry renders twice and `workspace-nav.test.mjs` fails).
+Its badge counts `projects.length` — each tab shows its own measured count, and
+inheriting the bot roster would label an installation with 2 projects "42".
+
+- **The list shows every project by default.** Both filters (bot, crew type)
+  default to `all`.
+- **Single-agent vs team crew comes from the roster the server reported.** The
+  crew service provisions a shared group room at the *second* member, so
+  `members.length >= 2` is a crew. A roster read in flight or failed is
+  `unknown` — its own badge and its own count, never folded into "single agent",
+  which would dress a broken read as a deliberate choice. `SHAPE_META` in
+  `ProjectsSection.tsx` is the single place that mapping lives.
+- **"View more" is a drill-down, not another accordion row.** It replaces the
+  surface with `ProjectInspectorSection`, which re-reads the project live
+  (`src/lib/project-inspector.ts` → `inspectProject`, 17 independent routes)
+  rather than assembling a view from what the list happened to have fetched.
+- **The inspector is strictly read-only**: it imports `errMsg` from `lib/http`
+  and never `send`, and the client imports only `get`. Mutating per-project
+  actions already belong to the Workforce view, whose picker defaults to the
+  *first* project — so "Live controls" must pass the project id
+  (`onOpenLiveProject`), not merely switch views.
+- **A conversation in the drill-down opens in the chat view**, so the inspection
+  is a step in a task rather than a dead end.
+- Coverage: `src/lib/project-inspector.test.mjs` (routes, read-only guarantee,
+  partial reads, honesty inversions) and `src/lib/project-inspector-view.test.mjs`
+  (tab placement/ordering, crew classification, wiring, rendered claims).
 
 ## Alpha Network client boundary
 

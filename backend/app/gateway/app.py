@@ -448,6 +448,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("System monitor failed to start (non-fatal)")
 
+        # Start the capability wiring audit now, in its own daemon thread.
+        #
+        # The audit is an AST walk over the whole harness/app tree and takes tens
+        # of seconds. It must never run inside a request: `GET /api/features`
+        # used to run it inline on the event loop, which froze every other
+        # route (including `/health/ready`) long enough for the launcher and
+        # watchdog to restart the stack in a loop. Starting it here means the
+        # result is usually ready before the frontend asks, and the request path
+        # only ever reads a cache. `start_wiring_audit` spawns and returns; it
+        # does not await the work, so boot cost is one thread spawn.
+        try:
+            from app.gateway.routers.capability_honesty import start_wiring_audit
+
+            if start_wiring_audit():
+                logger.info("Capability wiring audit started in the background")
+        except Exception:
+            logger.exception("Capability wiring audit warm-up failed (non-fatal)")
+
         # Alpha-to-Alpha peer network is local-first and does not require a
         # central broker. Start its UDP discovery/retry loop after runtime
         # initialization; socket failures are reported by /api/peer-network/status
@@ -455,7 +473,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             from alpha.peer_network import get_peer_network_service
             from alpha.peer_network.storage import NETWORK_OWNER
-
             from app.gateway.services import peer_network_agent_dispatcher
 
             peer_network_service = get_peer_network_service()

@@ -27,7 +27,10 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 56
+# 57: documented `network` (internet connectivity monitoring). Existing installs
+# get the same values they already run with — the section's defaults were
+# production-usable — so this is a documentation bump, not a behaviour change.
+config_version: 57
 
 # ============================================================================
 # Logging
@@ -110,6 +113,71 @@ token_budget:
 # the server default of 100. Raise this only if you legitimately run very
 # deeply nested subagent graphs.
 max_recursion_limit: 1000
+
+# ============================================================================
+# Internet Connectivity Monitoring
+# ============================================================================
+# Alpha measures its own internet link and uses it to decide whether work may
+# proceed: a run that dies from a confirmed outage is *parked*, not failed, and
+# resumes by itself when the link returns. The reading is visible in the workspace
+# header (state + measured round-trip), and the header's Retry button forces one
+# immediate measurement through `POST /api/ops/network/recheck`.
+#
+# What is measured: a bounded TCP connect to each target. No HTTP request, no TLS
+# handshake, no payload, and nothing derived from your data — a probe runs on a
+# timer for the life of the process, so it must not send anything identifying you
+# to a third party. The figure shown in the header is therefore the *route*, not
+# any provider's health.
+#
+# While the link is down the poll loop keeps re-probing forever; it only slows
+# down, from `backoff_initial_seconds` toward `backoff_max_seconds` (with jitter
+# that only ever *reduces* a delay, so the ceiling stays real). There is no
+# attempt limit on purpose — a probe loop that gave up would turn a ten-minute
+# outage into permanent silence.
+#
+# Two states are deliberately not the same thing:
+#   * `degraded` — some endpoints answered, some did not. NOT an outage; a
+#     network operation is still attempted and nothing is parked.
+#   * `unknown`  — the probe could not run. NOT offline. A broken probe is not a
+#     dead link, so a network operation is still attempted. Announcing an outage
+#     on a misconfigured probe would park every session on a lie.
+#
+# Restart required (see reload_boundary.py): the monitor, its backoff ladder and
+# its target set are captured once at Gateway startup.
+network:
+  enabled: true
+  # How often to probe while the link is healthy.
+  poll_interval_seconds: 15.0
+  # Consecutive agreeing probes required before publishing OFFLINE, and before
+  # publishing ONLINE again. These stop a *flapping* link from parking and
+  # un-parking your work; the exception is the very first probe after a cold
+  # start, which publishes at once so a Gateway booting offline reports `offline`
+  # now rather than `unknown` one poll later.
+  offline_after_consecutive: 2
+  online_after_consecutive: 2
+  # Consecutive probe executions that fail before a healthy link is downgraded to
+  # `unknown`. Raising it tolerates longer probe trouble.
+  unknown_after_consecutive: 3
+  # The offline ladder. Lower `backoff_max_seconds` to notice a recovery faster at
+  # the cost of more (harmless, TCP-only) probes; raise `backoff_initial_seconds`
+  # to be gentler on a link that is down for a long time.
+  backoff_initial_seconds: 5.0
+  backoff_max_seconds: 300.0
+  backoff_multiplier: 2.0
+  # Fraction by which each delay may be randomly reduced, so a fleet of hosts that
+  # lost the link together does not retry in lockstep.
+  backoff_jitter_ratio: 0.25
+  # In-memory observation history retained per monitor, for operators.
+  max_observations: 50
+  # Reachability endpoints. Omit this to use the built-in two public resolvers on
+  # provider-grade ports — which is what makes a single provider being down show
+  # as `degraded` rather than a false `offline`. An EMPTY LIST IS REFUSED: it
+  # would leave connectivity permanently `unknown`.
+  # targets:
+  #   - name: corp
+  #     host: proxy.corp.test
+  #     port: 8443
+  #     timeout_seconds: 2.0
 
 
 # ============================================================================

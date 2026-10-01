@@ -71,6 +71,12 @@ $script:WatchdogStartedUtc = [DateTime]::UtcNow.ToString("o")
 $script:GwHttpFail   = 0
 $script:FeHttpFail   = 0
 $script:ConsecutiveFailures = 0
+# Logging-only counter: how many passes chose to defer. Deferrals are not
+# failures, so the working-tier defer in Invoke-HealthCheck RESETS
+# ConsecutiveFailures instead of feeding it, and this counter is what
+# "Deferring recovery x24" counts. It resets whenever the stack is OK or a
+# recovery action is taken.
+$script:DeferPasses  = 0
 $script:ComponentAttempts   = @{}
 $script:LastActionUtc = $null
 $script:ActionBackoff = 0
@@ -498,6 +504,7 @@ function Invoke-HealthCheck {
 
     if ($everythingOk) {
         $script:ConsecutiveFailures = 0
+        $script:DeferPasses         = 0
         $script:ComponentAttempts   = @{}
         $script:ActionBackoff       = 0
         $script:MaintenanceLogged   = $false
@@ -528,13 +535,26 @@ function Invoke-HealthCheck {
 
     if ($s.LauncherAlive -and $s.HeartbeatFresh) {
         if ($working -and $workingDeferCap) {
+            # A deferral is a decision NOT to act: it must not feed the
+            # escalation counter, or a long working period builds a huge n and
+            # the FIRST healthy-status check after it fails the n<=8 budget in
+            # the next branch and escalates to a full stack restart instantly
+            # (measured: "escalation after 28 failing checks ... status=healthy").
+            # $script:DeferPasses is what those passes count against now.
+            $script:ConsecutiveFailures = 0
+            $script:DeferPasses++
             Write-Heartbeat -Status "deferring" -Stack $s.Summary
-            if ($n -eq 1 -or ($n % 4 -eq 0)) {
-                Write-WdLog "Deferring recovery x${n}: launcher status=$($s.Status) uptime=$([int]$launcherUptime)s is fixing it ($($s.Summary))"
+            if ($script:DeferPasses -eq 1 -or ($script:DeferPasses % 4 -eq 0)) {
+                Write-WdLog "Deferring recovery x$($script:DeferPasses): launcher status=$($s.Status) uptime=$([int]$launcherUptime)s is fixing it ($($s.Summary))"
             }
             return
         }
         if ($n -le $MaxDeferredRecoveries -and $s.Status -in @("healthy", "running", "degraded", "unknown")) {
+            # This branch DELIBERATELY lets $n grow: it is the launcher's
+            # budget (n checks on a "healthy" claim before we act), and it is
+            # only reachable with a small n now that the working defer above
+            # resets the counter instead of feeding it.
+            $script:DeferPasses++
             Write-Heartbeat -Status "deferring" -Stack $s.Summary
             if ($n -eq 1) {
                 Write-WdLog "Deferring recovery x${n}: launcher alive (status=$($s.Status)), letting its 2 s monitor act ($($s.Summary))"
@@ -559,7 +579,14 @@ function Invoke-HealthCheck {
     if ($script:LastActionUtc -and $script:ActionBackoff -gt 0) {
         $sinceAction = ([DateTime]::UtcNow - $script:LastActionUtc).TotalSeconds
         if ($sinceAction -lt $script:ActionBackoff) {
-            Write-Heartbeat -Status "cooldown" -Stack $s.Summary            return
+            # NOTE: `return` must be on its own line - PowerShell parses a
+            # trailing bare word on the same line as another command as a
+            # positional ARGUMENT to that command, so the merged form below
+            # never returned and the cooldown pass fell through to Tier 2/3
+            # and destroyed a stack it was supposed to leave alone:
+            #   Write-Heartbeat -Status "cooldown" -Stack $s.Summary   return
+            Write-Heartbeat -Status "cooldown" -Stack $s.Summary
+            return
         }
     }
 
@@ -567,6 +594,7 @@ function Invoke-HealthCheck {
     $badComponent = $null
     if ($s.GatewayState -in @("down", "hung")) { $badComponent = "gateway" }
     elseif ($s.FrontendState -in @("down", "hung")) { $badComponent = "frontend" }
+    $tier2Exhausted = $false
 
     if ($badComponent -and $s.LauncherAlive -and $s.HeartbeatFresh) {
         $attempts = 0
@@ -577,19 +605,47 @@ function Invoke-HealthCheck {
             $script:ComponentAttempts[$badComponent] = $attempts + 1
             Write-Heartbeat -Status "recovering" -Stack $s.Summary
             $script:ConsecutiveFailures = 0
+            $script:DeferPasses = 0     # an action ends the deferral streak (see the config comment)
             $script:LastActionUtc = [DateTime]::UtcNow
             $script:ActionBackoff = 15
             Restart-Component -Component $badComponent | Out-Null
             return
         }
+        $tier2Exhausted = $true
         Write-WdLog "$badComponent exceeded $MaxComponentRecoveries component restarts - escalating to full stack" "WARN"
     }
 
     # ---- Tier 3: full stack restart ---------------------------------------
+    # GATE: a full restart DESTROYS the whole tree, so it is only justified
+    # when nobody else can fix the stack:
+    #   * the launcher is dead or its heartbeat is stale (it cannot act), or
+    #   * a component is down/hung AND its Tier 2 budget is exhausted.
+    # Anything else - notably a live launcher still mid-boot with the gateway
+    # merely `starting` - is deferred instead of being killed mid-restart.
+    # That is the measured restart loop: "escalation after 28 failing checks:
+    # gateway=starting ... launcher=alive launcher_hb=fresh status=healthy".
+    # `starting`/`compiling` cannot persist past the hung thresholds (the
+    # http-fail counters only reset on success or port close), so a deferred
+    # state always resolves itself into `up` or into a Tier 2-eligible
+    # `down`/`hung` - the gate cannot create a permanent no-action state.
+    if ($s.LauncherAlive -and $s.HeartbeatFresh -and -not $tier2Exhausted) {
+        # Deferral is a decision NOT to act: it must not feed the escalation
+        # counter (same rule as Tier 1), and it must give the supervisor lock
+        # back so a pass that needs to act is not blocked by this one.
+        $script:ConsecutiveFailures = 0
+        $script:DeferPasses++
+        Write-Heartbeat -Status "deferring" -Stack $s.Summary
+        if ($script:DeferPasses -eq 1 -or ($script:DeferPasses % 4 -eq 0)) {
+            Write-WdLog "Deferring full-stack restart x$($script:DeferPasses): launcher alive and no component exhausted Tier 2 ($($s.Summary))"
+        }
+        Exit-SupervisorLock
+        return
+    }
     Write-Heartbeat -Status "recovering" -Stack $s.Summary
     $reason = "escalation after $n failing checks: $($s.Summary)"
     $ok = Start-AlphaStack -Reason $reason
     $script:ConsecutiveFailures = 0
+    $script:DeferPasses         = 0     # an action ends the deferral streak (see the config comment)
     $script:ComponentAttempts   = @{}
     $script:LastActionUtc = [DateTime]::UtcNow
     if ($script:ActionBackoff -eq 0) { $script:ActionBackoff = $ActionBackoffStart }

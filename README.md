@@ -102,6 +102,7 @@ In one sentence:
 | **Do I need a paid backend?** | No. Apache-2.0/MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
 | **Which models?** | Any provider you put in `config.yaml` — OpenRouter, OpenAI, Anthropic, Google, DeepSeek, Moonshot, Ollama, and self-hosted endpoints. |
 | **Does it run offline?** | Local models, local speech (Whisper + Piper), and local SQLite/PostgreSQL are all supported. |
+| **What happens when the internet drops?** | Alpha measures its own connectivity and says so — the workspace header shows the link state and its measured round-trip. Work that needs the link is *parked*, not lost, and the backend keeps re-probing automatically (5s → 300s backoff, no give-up) until it returns, then resumes on its own. A **Retry** button on that reading asks for an immediate measurement. See [durable runtime](./docs/architecture/durable-runtime.md). |
 | **Is it a framework or an app?** | Both. Use it as a finished app, or import `alpha-harness` (`import alpha.*`) and build your own agent runtime on the same engines. |
 
 ---
@@ -659,9 +660,18 @@ exactly-once execution.
   streaming answers archived without being painted into a conversation you
   switched away from). JSON backup/restore moves the whole archive between
   machines.
-- **Bot-led multi-bot projects** — every bot profile can create a project with
+- **Bot-led multi-bot projects** - every bot profile can create a project with
   itself as lead; other bot profiles can be added, assigned a role, and managed
   together, with every change confirmed by re-reading the server roster.
+- **Projects tab, list to end to end** - every project on the installation is
+  listed, with single-agent and team crews distinguished from the roster the
+  server reports. `View more` reads one project in full: lifecycle state, crew
+  and shared room, coordination policy, every conversation, shared memory and
+  the role-filtered context, constitution, decision log and event feed, locks,
+  handoffs, approvals, checkpoints, the 20-subsystem War Room aggregate, and the
+  autonomy subsystems. Each subsystem is read independently, so one that fails
+  says so instead of hiding the rest; counts the server did not send stay
+  unknown rather than showing as zero.
 - **Free local real-time voice** — browser mic streaming, local Whisper interim +
   final transcription, VAD turn endpointing, normal SSE agent streaming,
   sentence-level local Piper playback, hands-free resume, and no paid speech API.

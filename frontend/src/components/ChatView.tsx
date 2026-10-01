@@ -1993,7 +1993,15 @@ export default function ChatView() {
         {view !== "chat" && (
           <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
             <div className="overflow-x-auto">
-              <NavTabs view={view} onChange={handleViewChange} badge={{ bots: bots.length }} />
+              {/* Each badge is that tab's own measured count. The Projects tab must
+                  read the project list, not inherit the bot roster: an
+                  installation with 42 bots and 2 projects would otherwise show
+                  "42" next to Projects. */}
+              <NavTabs
+                view={view}
+                onChange={handleViewChange}
+                badge={{ bots: bots.length, projects: projects.length }}
+              />
             </div>
 
             {/* Live backend vitals: connectivity, usage and subsystem readiness.

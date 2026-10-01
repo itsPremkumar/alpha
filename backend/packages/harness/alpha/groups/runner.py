@@ -329,8 +329,20 @@ class GroupRunService:
         if len(objective) > _MAX_OBJECTIVE_CHARS:
             raise ValueError(f"objective exceeds {_MAX_OBJECTIVE_CHARS} characters")
 
-        room = get_group_chat_service().get_or_create_room(room_name)
-        resolved_members = [m.lower().strip() for m in (members or room.members)]
+        svc = get_group_chat_service()
+        room = svc.get_or_create_room(room_name)
+        # Effective membership: direct + rule-matched + inherited, minus
+        # exclusions and expired borrows. A nested room must run the bots it
+        # inherits, not just the ones typed into its own `room.members` — the
+        # roster is what makes a subgroup able to act without being restaffed.
+        # A read failure falls back to the room's own list rather than raising,
+        # because refusing the run would be worse than running a narrower one.
+        try:
+            roster_members = svc.effective_members(room_name)
+        except Exception:
+            logger.warning("Group run: effective roster read failed for '%s'; using room members", room_name, exc_info=True)
+            roster_members = list(room.members)
+        resolved_members = [m.lower().strip() for m in (members or roster_members)]
         resolved_members = [m for m in dict.fromkeys(resolved_members) if m]
         if not resolved_members:
             raise ValueError(f"Room '{room.name}' has no members to run.")
