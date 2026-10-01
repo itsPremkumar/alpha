@@ -8,6 +8,7 @@ import { listKanbanTasks, moveKanbanTask, KanbanTask as ServerTask } from "./kan
 
 export type CardStatus =
   | "backlog"
+  | "todo"
   | "ready"
   | "in_progress"
   | "blocked"
@@ -16,9 +17,12 @@ export type CardStatus =
   | "approval"
   | "done";
 
+/** The four stages the server's `TaskStatus` enum can represent on this board. */
+export const SYNCABLE_STAGES: CardStatus[] = ["todo", "in_progress", "review", "done"];
+
 export const COLUMNS: Array<{ id: CardStatus; label: string; hint: string }> = [
   { id: "backlog", label: "Backlog", hint: "Ideas, not started" },
-  { id: "ready", label: "Ready", hint: "Defined, can start" },
+  { id: "todo", label: "Ready", hint: "Defined, can start" },
   { id: "in_progress", label: "Doing", hint: "Someone is on it" },
   { id: "blocked", label: "Blocked", hint: "Needs unblocking" },
   { id: "review", label: "Review", hint: "Needs a check" },
@@ -47,7 +51,16 @@ export interface Card {
   projectName: string;
   dependencies: string[];
   files: string[];
-  progress: number;
+  /**
+   * Operator-entered progress, 0-100 — or `null` for "not recorded".
+   *
+   * This was `number` and defaulted to 0, which meant a card mirrored from the
+   * server rendered a measured "0%" bar for a card the server tracks no
+   * progress for at all. The server's `KanbanTask` has no progress field, so
+   * there is nothing to mirror and the honest value is absent. A number here
+   * always means somebody typed it.
+   */
+  progress: number | null;
   deadline: string;
   blockedReason: string;
   evidence: string;
@@ -79,7 +92,10 @@ export function emptyCard(): Card {
     projectName: "",
     dependencies: [],
     files: [],
-    progress: 0,
+    // Absent, not 0. A new card has had no progress reported; saying "0%"
+    // would be a measurement nobody took. The editor's slider shows 0 as its
+    // starting position, but nothing is stored until the operator moves it.
+    progress: null,
     deadline: "",
     blockedReason: "",
     evidence: "",
@@ -91,8 +107,16 @@ export function emptyCard(): Card {
   };
 }
 
+/**
+ * Map a stage onto one of this board's eight columns.
+ *
+ * `todo` and `ready` are the same stage spelled two ways — the backend's
+ * `TaskStatus` enum says `todo`, this board's own vocabulary and the older UI
+ * said `ready` — so they share one column rather than two.
+ */
 function normalizeStatus(s: string): CardStatus {
   const v = (s || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (v === "ready") return "todo";
   const ids = COLUMNS.map((c) => c.id);
   if ((ids as string[]).includes(v)) return v as CardStatus;
   if (v.includes("progress") || v === "doing") return "in_progress";
@@ -116,6 +140,12 @@ export function loadCards(): Card[] {
         ...c,
         id: String(c.id),
         status: normalizeStatus(String(c.status || "backlog")),
+        // A board written before `progress` became nullable stored a real
+        // number; that number is a value the operator entered, so it is kept.
+        // Anything else (absent, a string, a non-finite number) is "not
+        // recorded" — not a measured zero.
+        progress:
+          typeof c.progress === "number" && Number.isFinite(c.progress) ? c.progress : null,
         history: Array.isArray(c.history) ? c.history : [],
         dependencies: Array.isArray(c.dependencies) ? c.dependencies : [],
         files: Array.isArray(c.files) ? c.files : [],
@@ -167,25 +197,67 @@ export function clearBoard(): void {
   }
 }
 
+/**
+ * Mirror a server row into a card, carrying the server's OWN facts.
+ *
+ * This used to spread `emptyCard()` and then overwrite a few fields, which left
+ * the card asserting things the server never said:
+ *
+ *  * `progress: 0` — `emptyCard()`'s default, painted as a measured "0%" bar on
+ *    a card the server tracks no progress for. The board has no progress
+ *    channel for a server card, so the field is left at the local default and
+ *    the card is flagged `serverManaged`; the view states the progress is
+ *    local-only rather than reporting a fabricated zero.
+ *  * `createdAt: <now>` — the card editor printed "Created <the moment the page
+ *    loaded>" for a card the server created months ago. `ServerTask.createdAt`
+ *    is the server's own `created_at` (epoch seconds), so it is used when
+ *    present and left empty (not invented) when absent.
+ *  * `history: [{at: now, text: "Mirrored…"}]` — same fabrication, now
+ *    timestamped with the server's `updated_at` when it sent one.
+ */
 function serverToCard(t: ServerTask): Card {
-  const now = new Date().toISOString();
+  const base = emptyCard();
+  const createdAt =
+    t.createdAt != null ? new Date(t.createdAt * 1000).toISOString() : base.createdAt;
+  const updatedAt =
+    t.updatedAt != null ? new Date(t.updatedAt * 1000).toISOString() : createdAt;
   return {
-    ...emptyCard(),
+    ...base,
     id: `srv-${t.id}`,
     title: t.title || t.id,
     description: t.description || "",
     status: normalizeStatus(t.status),
     agent: t.assignee || null,
-    updatedAt: now,
-    history: [{ at: now, text: "Mirrored from the server board." }],
+    // The server has no progress channel, so this stays absent rather than
+    // inheriting a measured 0%.
+    progress: null,
+    createdAt,
+    updatedAt,
+    history: [{ at: updatedAt, text: "Mirrored from the server board." }],
     serverId: t.id,
   };
 }
 
 /**
  * Merge server company-board cards with local ones (matched by serverId).
- * Local edits (title, fields) win; server status wins unless locally moved
- * after the last sync — tracked implicitly by updatedAt ordering.
+ *
+ * **The server's status wins for a mirrored card.** The old comment here
+ * claimed "server status wins unless locally moved after the last sync —
+ * tracked implicitly by updatedAt ordering", but no comparison was ever
+ * performed: the merge kept `existing.status` and adopted only the server's
+ * `assignee`. Measured, a server row reading `status: "done"` merged into a
+ * local card still reading `in_progress`, on the first sync and on every one
+ * after. So if an agent moved the card on the server, the operator never saw
+ * it, and the operator's next move wrote their stale stage straight back over
+ * the agent's — the exact "one agent's action silently overwrites another's"
+ * failure, on a surface whose whole purpose is several agents on one board.
+ *
+ * The server is the authority for a card it owns. A local edit that is still
+ * waiting to be pushed is applied to the *card* and then pushed by
+ * `pushStatus`; it does not need to win the merge to take effect. Local-only
+ * cards (no `serverId`) are untouched, and a local-only field the user typed
+ * — title, description, deadline — still wins, because the server row has no
+ * value for it.
  */
 export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
   // Local-only cards carry no serverId. Bucketing them all under one "" Map
@@ -202,7 +274,17 @@ export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
   for (const t of server) {
     const existing = byServer.get(t.id);
     if (existing) {
-      out.push({ ...existing, agent: existing.agent ?? (t.assignee || null) });
+      const serverStatus = normalizeStatus(t.status);
+      out.push({
+        ...existing,
+        // The server owns the stage of a card it owns.
+        status: serverStatus,
+        // A local assignee the user chose wins; otherwise adopt the server's.
+        agent: existing.agent ?? (t.assignee || null),
+        // The server's own clock, when it sent one. Never `new Date()`.
+        updatedAt:
+          t.updatedAt != null ? new Date(t.updatedAt * 1000).toISOString() : existing.updatedAt,
+      });
       byServer.delete(t.id);
     } else {
       out.push(serverToCard(t));
@@ -216,10 +298,34 @@ export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
   return out;
 }
 
-/** Push a status move to the server board for mirrored cards.Throws on failure. */
+/**
+ * Push a status move to the server board for mirrored cards. Throws on failure.
+ *
+ * This cast `status as "ready" | "in_progress" | "review" | "done"` and then
+ * posted whatever the local board held. Measured, the local board's `testing`,
+ * `approval` and `backlog` stages went on the wire verbatim — and the backend
+ * does `TaskStatus(new_status.lower())` (alpha/company/kanban.py:156) against a
+ * six-value enum that contains none of them, raising a `ValueError` that
+ * `update_kanban_task` (company.py:456) does not catch. The operator got a 500
+ * and a "server board rejected …" message about a stage the server had never
+ * heard of.
+ *
+ * So the mapping is now explicit and refusable: `ready` is translated to the
+ * enum's `todo`, and a local-only stage throws a message that says the stage is
+ * this browser's, so the caller can report that instead of blaming the server.
+ */
 export async function pushStatus(card: Card, status: CardStatus): Promise<void> {
   if (!card.serverId) return;
-  await moveKanbanTask(card.serverId, status as "ready" | "in_progress" | "review" | "done", `Moved to ${status} from board UI`);
+  if (!SYNCABLE_STAGES.includes(status)) {
+    throw new Error(
+      `The server board has no "${status}" stage, so it was not sent. This stage is only in your browser.`,
+    );
+  }
+  await moveKanbanTask(
+    card.serverId,
+    status as "todo" | "in_progress" | "review" | "done",
+    `Moved to ${status} from board UI`,
+  );
 }
 
 export function boardStats(cards: Card[]): { total: number; done: number; blocked: number; overdue: number } {

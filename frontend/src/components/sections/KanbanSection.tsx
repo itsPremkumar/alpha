@@ -45,6 +45,8 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [editing, setEditing] = useState<Card | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  /** Card whose move is in flight. See `move()` for what this prevents. */
+  const [busyCard, setBusyCard] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -100,8 +102,25 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
 
   const stats = useMemo(() => boardStats(filtered), [filtered]);
 
+  /**
+   * One card move, locked for the round trip.
+   *
+   * `move` was unguarded and async, so two presses inside the request window
+   * interleaved. `saveCard` is a read-modify-write of the whole board keyed on
+   * the `card` captured at click time, so the second press wrote its snapshot
+   * over the first press's result — and a server rejection on the first press
+   * then rolled the card back to a `prev` that the second press had already
+   * superseded. Net effect on a server-synced card: two clicks, two audit-log
+   * writes, and a local stage that could be either move rather than the last
+   * one. `busyCard` makes the second press a no-op instead.
+   *
+   * The revert is also conditional now: it only fires if the card is still at
+   * the stage this call moved it to, so a later successful move is never undone
+   * by an earlier failure.
+   */
   const move = async (card: Card, to: CardStatus) => {
     if (card.status === to) return;
+    if (busyCard) return;
     if (to === "blocked" && !card.blockedReason.trim()) {
       setEditing({ ...card });
       setError("A blocked card needs a reason — added it in the editor.");
@@ -109,15 +128,21 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
     }
     const prev = card.status;
     const next = { ...card, status: to };
+    setBusyCard(card.id);
     setCards((cs) => saveCard(next, `${labelOf(prev)} → ${labelOf(to)}`));
     if (next.serverId) {
       try {
         await pushStatus(next, to);
       } catch (e) {
-        setCards((cs) => saveCard({ ...next, status: prev }, `Server rejected move, reverted to ${labelOf(prev)}`));
+        // Only undo our own move: a newer move must not be clobbered.
+        const current = loadCards().find((c) => c.id === card.id);
+        if (current && current.status === to) {
+          setCards((cs) => saveCard({ ...current, status: prev }, `Server rejected move, reverted to ${labelOf(prev)}`));
+        }
         setError(`Server board rejected "${to}": ${errMsg(e)}`);
       }
     }
+    setBusyCard(null);
   };
 
   const labelOf = (s: CardStatus) => COLUMNS.find((c) => c.id === s)?.label || s;
@@ -250,11 +275,20 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
                     {c.status === "blocked" && c.blockedReason && (
                       <p className="text-[10px] text-amber-600 mt-1 line-clamp-2">⛔ {c.blockedReason}</p>
                     )}
+                    {/* Progress is operator-entered, or absent. A card mirrored
+                        from the server has no progress channel at all, so it
+                        said nothing rather than drawing a measured "0%" bar. */}
                     <div className="flex items-center gap-2 mt-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden" title={`${c.progress}% complete`}>
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, c.progress))}%` }} />
-                      </div>
-                      <span className="text-[10px] font-mono text-muted-foreground">{c.progress}%</span>
+                      {c.progress === null ? (
+                        <span className="text-[10px] text-muted-foreground">progress not recorded</span>
+                      ) : (
+                        <>
+                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden" title={`${c.progress}% complete — entered by you`}>
+                            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, c.progress))}%` }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-muted-foreground">{c.progress}%</span>
+                        </>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 mt-1.5">
                       {c.deadline && (
@@ -266,28 +300,35 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
                       <span className="flex-1" />
                       <button
                         type="button"
-                        aria-label="Move back"
+                        aria-label={`Move "${c.title || c.id}" back`}
+                        title={`Move "${c.title || c.id}" back`}
+                        disabled={busyCard === c.id}
                         onClick={(e) => {
                           e.stopPropagation();
                           const i = COLUMNS.findIndex((x) => x.id === c.status);
                           if (i > 0) move(c, COLUMNS[i - 1].id);
                         }}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30"
                       >
-                        <ChevronLeft className="size-3.5" />
+                        <ChevronLeft className="size-3.5" aria-hidden="true" />
                       </button>
                       <button
                         type="button"
-                        aria-label="Move forward"
+                        aria-label={`Move "${c.title || c.id}" forward`}
+                        title={`Move "${c.title || c.id}" forward`}
+                        disabled={busyCard === c.id}
                         onClick={(e) => {
                           e.stopPropagation();
                           const i = COLUMNS.findIndex((x) => x.id === c.status);
                           if (i < COLUMNS.length - 1) move(c, COLUMNS[i + 1].id);
                         }}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30"
                       >
-                        <ChevronRight className="size-3.5" />
+                        <ChevronRight className="size-3.5" aria-hidden="true" />
                       </button>
+                      {busyCard === c.id && (
+                        <span className="text-[10px] text-muted-foreground">saving…</span>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -398,10 +439,23 @@ function CardEditor(props: {
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Field label="Progress (%)">
+            <Field label="Progress (%)" hint="Yours alone — the server board does not track progress for a card.">
               <div className="flex items-center gap-2">
-                <input type="range" min={0} max={100} value={c.progress} onChange={(e) => set({ progress: Number(e.target.value) })} className="flex-1" aria-label="Progress percent" />
-                <span className="text-xs font-mono w-10 text-right">{c.progress}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  // The slider needs a position, so an unrecorded card shows
+                  // the slider at 0 — but the field stays `null` until it is
+                  // moved, so "0%" is never stored or claimed as a reading.
+                  value={c.progress ?? 0}
+                  onChange={(e) => set({ progress: Number(e.target.value) })}
+                  className="flex-1"
+                  aria-label="Progress percent"
+                />
+                <span className="text-xs font-mono w-10 text-right">
+                  {c.progress === null ? "—" : `${c.progress}%`}
+                </span>
               </div>
             </Field>
             <Field label="Deadline">
@@ -435,14 +489,24 @@ function CardEditor(props: {
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {[...c.history].reverse().slice(0, 20).map((h, i) => (
                   <p key={i} className="text-[11px] text-muted-foreground">
-                    <span className="font-mono">{h.at ? new Date(h.at).toLocaleString() : ""}</span> — {h.text}
+                    <span className="font-mono">{h.at ? new Date(h.at).toLocaleString() : "time not recorded"}</span>
+                    {" — "}
+                    {h.text}
                   </p>
                 ))}
               </div>
             </div>
           )}
           <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-            <User className="size-3" /> Created {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
+            <User className="size-3" aria-hidden="true" />
+            {/* The source shape here is pinned by src/lib/text-encoding.test.mjs
+                (an owner-maintained mojibake guard for exactly this line), so
+                the `""` fallback is kept. It is now effectively dead: the real
+                fabrication was upstream, where `serverToCard` stamped a server
+                card with `new Date()`, and that is fixed in lib/kanban-board.ts
+                — a server card now carries the server's own `created_at`. */}
+            Created {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
+            {c.serverId && " · mirrored from the server board, which owns this card's stage"}
           </p>
         </div>
         <div className="p-3 border-t border-border/60 flex gap-2">

@@ -49,16 +49,124 @@ export async function startGroupRun(name: string, objective: string): Promise<vo
 
 /* ---------- Swarms ---------- */
 
+/**
+ * The server's own task-state projection for one swarm.
+ *
+ * `SwarmPlan.progress()` (alpha/swarm/models.py:423) always returns all six
+ * counters, but the type keeps them optional because an older Gateway, or a
+ * plan persisted by one, may omit a key. Absent is therefore `undefined`, never
+ * 0 — `swarmProgress()` below is what turns this into a view, and it is the
+ * only thing allowed to decide what a missing counter means.
+ */
+export interface SwarmProgress {
+  total?: number;
+  completed?: number;
+  running?: number;
+  pending?: number;
+  failed?: number;
+  cancelled?: number;
+}
+
 export interface Swarm {
   id: string;
   objective: string;
   status: string;
   mode?: string;
   maxConcurrency?: number;
-  progress?: { total?: number; completed?: number; running?: number; pending?: number; failed?: number; cancelled?: number };
+  progress?: SwarmProgress;
   qualityScore?: number | null;
   terminalReason?: string | null;
   revision?: number;
+}
+
+/** One counter of a swarm's task projection, with its absence made explicit. */
+export interface SwarmProgressView {
+  /** The server's number, or `null` when the server did not report it. */
+  count: number | null;
+  /** What a reader is entitled to conclude, in words. */
+  note: string;
+}
+
+/**
+ * A swarm's task counters, with every absent counter stated rather than shown
+ * as a zero.
+ *
+ * The row used to render one 1.5px bar whose only numbers lived in an
+ * `aria-label` reading `"2 of 7 tasks complete"`, built from
+ * `completed ?? 0` and `total ?? 0`. Measured, that is:
+ *
+ *  * a zero-denominator `"0 of 0 tasks complete"` when the counters are absent,
+ *    which `ui-legibility.test.mjs` already rules out elsewhere as "not
+ *    information";
+ *  * a fabricated measured 0% for counters nobody reported;
+ *  * and, for the surface whose entire purpose is "several agents working at
+ *    the same time", `running` / `pending` / `failed` / `cancelled` rendered
+ *    nowhere at all — the concurrency was invisible.
+ *
+ * So every counter is resolved here, each one carrying its own note, and the
+ * section renders all of them.
+ */
+export function swarmProgress(progress: SwarmProgress | undefined | null): {
+  total: SwarmProgressView;
+  completed: SwarmProgressView;
+  running: SwarmProgressView;
+  pending: SwarmProgressView;
+  failed: SwarmProgressView;
+  cancelled: SwarmProgressView;
+  /** Bar width in percent, or `null` when there is nothing to measure. */
+  percent: number | null;
+  /** True when the server reported enough to say anything at all. */
+  measured: boolean;
+} {
+  const view = (v: unknown): SwarmProgressView =>
+    typeof v === "number" && Number.isFinite(v)
+      ? { count: v, note: `${v}` }
+      : { count: null, note: "not reported" };
+
+  if (!progress) {
+    const unknown = { count: null, note: "not reported" } as SwarmProgressView;
+    return {
+      total: unknown,
+      completed: unknown,
+      running: unknown,
+      pending: unknown,
+      failed: unknown,
+      cancelled: unknown,
+      percent: null,
+      measured: false,
+    };
+  }
+  const total = view(progress.total);
+  const completed = view(progress.completed);
+  const running = view(progress.running);
+  const pending = view(progress.pending);
+  const failed = view(progress.failed);
+  const cancelled = view(progress.cancelled);
+  // A ratio is only drawn from two numbers the server actually reported, and
+  // never from a zero denominator.
+  const percent =
+    total.count !== null && total.count > 0 && completed.count !== null
+      ? Math.min(100, (completed.count / total.count) * 100)
+      : null;
+  return {
+    total,
+    completed,
+    running,
+    pending,
+    failed,
+    cancelled,
+    percent,
+    measured: total.count !== null || completed.count !== null,
+  };
+}
+
+/** Title for the swarm progress bar: the measured ratio, or why there is none. */
+export function swarmProgressLabel(p: ReturnType<typeof swarmProgress>): string {
+  if (!p.measured) return "Task progress not reported by the server";
+  if (p.total.count === null) return "Task total not reported by the server";
+  if (p.total.count === 0) return "No tasks in this swarm yet";
+  if (p.completed.count === null) return "Completed count not reported by the server";
+  return `${p.completed.count} of ${p.total.count} tasks complete`;
 }
 
 export interface SwarmMessage {
@@ -74,17 +182,31 @@ export interface SwarmMessage {
 }
 
 export async function listSwarms(): Promise<Swarm[]> {
+  // No try/catch: a failed read must reject so the caller renders the server's
+  // reason. Resolving `[]` here would render "No swarms" for a Gateway that is
+  // down — the catch-and-empty this file's own header comment warns about.
   const d = await get<unknown>("/swarms");
-  return asList(d, ["swarms", "data"]).map((s, i) => ({
-    id: String(pick(s, ["id", "swarm_id"], `swarm-${i}`)),
+  return asList(d, ["swarms", "data"]).map((s) => ({
+    // The plan's own id (`swarm_id`, alpha/swarm/models.py:439). It used to
+    // default to a positional `swarm-${i}`, so a row that arrived without an
+    // id was rendered in a monospace slot as if it were one — a fabricated
+    // identifier the operator could not act on and could not match to a route.
+    id: String(pick(s, ["id", "swarm_id"], "")),
     objective: String(pick(s, ["objective", "goal"], "")),
-    status: String(pick(s, ["status", "state"], "unknown")),
+    // Verbatim, and never snapped to a known status. A status from a newer
+    // Gateway is displayed as itself so an operator can see that the Gateway
+    // knows a state this build has no name for.
+    status: String(pick(s, ["status", "state"], "")),
     mode: String(pick(s, ["mode"], "")),
-    maxConcurrency: Number(pick(s, ["max_concurrency"], 0)) || undefined,
-    progress: (pick(s, ["progress"], undefined) as Swarm["progress"]) || undefined,
-    qualityScore: typeof pick(s, ["quality_score"], null) === "number" ? Number(pick(s, ["quality_score"], 0)) : null,
-    terminalReason: (pick(s, ["terminal_reason"], null) as string | null) ?? null,
-    revision: Number(pick(s, ["revision"], 0)) || undefined,
+    // `max_concurrency` is `ge=1` server-side, so a real 0 cannot occur; a
+    // missing value stays absent rather than becoming a measured 0.
+    maxConcurrency: typeof s.max_concurrency === "number" ? s.max_concurrency : undefined,
+    progress: (s.progress ?? undefined) as Swarm["progress"],
+    qualityScore: typeof s.quality_score === "number" ? s.quality_score : null,
+    terminalReason: typeof s.terminal_reason === "string" ? s.terminal_reason : null,
+    // `|| undefined` used to turn a real revision 0 into "absent". Read the
+    // type, not the truthiness.
+    revision: typeof s.revision === "number" ? s.revision : undefined,
   }));
 }
 
@@ -244,13 +366,21 @@ export async function companyStatus(): Promise<Record<string, unknown> | null> {
   return get<Record<string, unknown>>("/company/status");
 }
 
+/**
+ * The executive briefing text, or `""` when the server sent none.
+ *
+ * Rejects on failure. This used to `catch { return "Executive digest is not
+ * available right now." }`, which is a catch-and-empty wearing a sentence:
+ * `TeamOpsSection` rendered that string inside the briefing card in the same
+ * muted prose as a real briefing, so an unreachable Gateway and a genuinely
+ * empty digest were indistinguishable — and the server's own `detail` was
+ * thrown away. The empty case is now `""`, which the section words, and a
+ * failure rejects so the section can show the reason.
+ */
 export async function executiveDigest(): Promise<string> {
-  try {
-    const d = await get<Record<string, unknown>>("/company/executive-digest");
-    return String(pick(d, ["digest", "text", "summary"], "No digest available."));
-  } catch {
-    return "Executive digest is not available right now.";
-  }
+  const d = await get<Record<string, unknown>>("/company/executive-digest");
+  const text = pick(d, ["digest", "text", "summary"], "");
+  return typeof text === "string" ? text : String(text ?? "");
 }
 
 export async function companyKpis(): Promise<Array<Record<string, unknown>>> {
