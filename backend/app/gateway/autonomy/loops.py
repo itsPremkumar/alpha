@@ -158,6 +158,81 @@ def free_models_sync_tick() -> dict[str, Any]:
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
+def company_operations_tick() -> dict[str, Any]:
+    """Advance every Company OS loop that is currently eligible.
+
+    One tick per company, in a bounded sweep. Companies whose own gate refuses —
+    paused, over budget, no progress, disabled, or with the kill switch engaged —
+    are **counted and reported**, not silently skipped: "the loop did nothing"
+    and "three companies are refusing to run" are different operational facts.
+
+    Each company is isolated, so one company's failure cannot stop the others and
+    cannot park this loop. The adapter is model-free by construction, which is why
+    a per-tick sweep is safe to run on a thread.
+    """
+    try:
+        from alpha.company_os.service import get_company_service
+        from alpha.company_os.store import CompanyNotFound
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Company OS unavailable for the autonomy tick: %s", exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    try:
+        service = get_company_service()
+        owner_ids = service.store.list_owner_ids()
+    except Exception as exc:
+        logger.warning("Could not enumerate company owners for the autonomy tick: %s", exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    summary: dict[str, Any] = {
+        "owners_scanned": len(owner_ids),
+        "companies_advanced": 0,
+        "companies_refused": 0,
+        "companies_failed": 0,
+        "outcomes": {},
+        "refusals": [],
+        "errors": [],
+    }
+
+    for owner_id in owner_ids:
+        try:
+            companies = service.list_companies(owner_id)
+        except Exception as exc:
+            summary["companies_failed"] += 1
+            summary["errors"].append({"owner": owner_id, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+
+        for company in companies:
+            company_id = company.company_id
+            # A disabled loop is reported as "not enabled", not as a refusal: the
+            # operator turned it off, which is not a fault.
+            if not company.loop_policy.enabled:
+                continue
+            try:
+                view = service.run_tick(company_id, owner_id)
+            except CompanyNotFound:
+                # Deleted between listing and tick; nothing to report.
+                continue
+            except Exception as exc:
+                summary["companies_failed"] += 1
+                summary["errors"].append({"company_id": company_id, "error": f"{type(exc).__name__}: {exc}"})
+                logger.warning("Company tick failed for %s: %s", company_id, exc)
+                continue
+
+            record = view.record
+            outcome = record.outcome.value
+            summary["outcomes"][outcome] = summary["outcomes"].get(outcome, 0) + 1
+            if outcome == "idle":
+                # Idle is the healthy no-op; it is not counted as an advance.
+                continue
+            summary["companies_advanced"] += 1
+            if outcome in ("paused", "budget_exhausted", "no_progress"):
+                summary["companies_refused"] += 1
+                summary["refusals"].append({"company_id": company_id, "outcome": outcome, "reason": record.reason})
+
+    return summary
+
+
 def self_update_tick() -> dict[str, Any]:
     """Run the opt-in source-update check/apply policy.
 

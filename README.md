@@ -113,7 +113,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 62 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 63 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -125,7 +125,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 112 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 113 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -680,14 +680,14 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (112 harness engines)</b></summary>
+<summary><b>Full subsystem map (113 harness engines)</b></summary>
 
 Every directory under `backend/packages/harness/alpha/` (102 packages, counted by
 `backend/scripts/generate_feature_manifest.py`) is a dedicated engine:
 
 `action` `agency` `agent` `agents` `authz` `autoconfig` `avo` `benchmarks`
 `blackboard` `bots` `browser` `canvas` `capabilities` `channels` `coding`
-`commands` `community` `company` `computer_use` `config` `consequence` `context`
+`commands` `community` `company` `company_os` `computer_use` `config` `consequence` `context`
 `council` `critic` `debugging` `deepagent` `deliberation` `diagnostics` `editing`
 `enterprise` `epistemics` `errors` `evaluation` `events` `evidence` `evolution`
 `extensions` `goals` `governance` `groups` `guardrails` `harness` `integrations`
@@ -911,7 +911,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Two contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 134 tools, 62 routers, 42 middlewares, and 8 supervisor loops. CI fails
+  pins all 134 tools, 63 routers, 42 middlewares, and 9 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

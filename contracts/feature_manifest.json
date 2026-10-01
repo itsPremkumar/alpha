@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-30T21:50:38Z",
+ "generated_at": "2026-10-01T17:08:05Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1190,6 +1190,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.companies",
+   "module": "app.gateway.routers.companies",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.company",
    "module": "app.gateway.routers.company",
    "symbol": "router",
@@ -1872,6 +1880,13 @@
  ],
  "loops": [
   {
+   "id": "company_operations",
+   "module": "app.gateway.autonomy.loops:company_operations_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "enterprise_heartbeat",
    "module": "app.gateway.autonomy.loops:enterprise_heartbeat_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
@@ -2061,6 +2076,11 @@
   },
   {
    "id": "alpha.company",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.company_os",
    "kind": "package",
    "submodules": []
   },
@@ -2589,6 +2609,7 @@
    "submodules": [
     "builtins",
     "code_mode",
+    "discovery",
     "repair",
     "script_bridge",
     "search"
@@ -2623,7 +2644,7 @@
   },
   {
    "id": "alpha.verification",
-   "kind": "namespace",
+   "kind": "package",
    "submodules": [
     "evidence"
    ]

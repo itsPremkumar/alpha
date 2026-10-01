@@ -50,7 +50,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
   `extensions_config.json` (MCP servers + skills, API-editable at runtime),
   `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
 - Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
-  134 tools, 62 routers, 42 middlewares, 8 supervisor loops.
+  134 tools, 63 routers, 42 middlewares, 9 supervisor loops.
 - Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
   `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
 - Third-party Python extensions use the operator-controlled top-level `plugins:`
@@ -69,7 +69,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 
 ## Architecture
 
-- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, the sandbox tiers, and the 112 harness engine packages.
+- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, the sandbox tiers, and the 113 harness engine packages.
 - [Deep research](https://github.com/itsPremkumar/alpha/blob/main/docs/DEEP_RESEARCH.md): the 5-pass search pipeline, gap filling, and the citation contract.
 - [Workforce](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, and Kanban.
 - [Memory](https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md): the layered memory plane, vector memory, episodic replay, and dreaming consolidation.
