@@ -1,4 +1,4 @@
-# Alpha - Windows notification-area (system tray) status indicator
+﻿# Alpha - Windows notification-area (system tray) status indicator
 #
 # Shows at a glance whether Alpha is running, directly in the taskbar tray:
 #   GREEN  "Alpha - Running (healthy)"      both services answering HTTP
@@ -16,8 +16,8 @@
 # "Stopped") while Alpha is down. It never starts or stops anything on its own.
 #
 # Usage:
-#   powershell -NoProfile -STA -ExecutionPolicy Bypass -File scripts\tray_status.ps1
-#   (registered for every logon by scripts\register_autostart.ps1 as Alpha_TrayStatus)
+#   powershell -NoProfile -STA -ExecutionPolicy Bypass -File recovery\tray_status.ps1
+#   (registered for every logon by recovery\register_autostart.ps1 as Alpha_TrayStatus)
 
 [CmdletBinding()]
 param()
@@ -32,7 +32,7 @@ $GatewayPort     = 8001
 $FrontendPort    = 3000
 $UiUrl           = "http://localhost:$FrontendPort"
 # How old alpha_health.json may be before it stops describing the present.
-# Matches scripts/watchdog.ps1's LauncherHeartbeatMaxAge, which allows for
+# Matches recovery/watchdog.ps1's LauncherHeartbeatMaxAge, which allows for
 # start.ps1 legitimately pausing up to 300 s in backoff.
 $HealthFileMaxAgeSeconds = 360
 
@@ -54,19 +54,146 @@ if (Test-Path $TrayPidFile) {
 if ($alreadyRunning) { exit 0 }
 [System.IO.File]::WriteAllText($TrayPidFile, "$PID")
 
+# ---- diagnostics (defined first: icon construction reports through it) ------
+function Write-TrayDiag {
+    param([string]$Message)
+    try { Add-Content -Path "$LogDir\tray.log" -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message" } catch {}
+}
+
 # ---- icons (built once, cached - no repeated handle allocation) -------------
+#
+# The badge shows the real Alpha mark rather than a drawn letter, and every
+# load, rejection and fallback is written to tray.log: "why is my icon a
+# letter?" would otherwise be unanswerable from outside the process. The
+# face-vs-mane ordering rule and the never-blank invariant are documented in
+# recovery/AGENTS.md and pinned by backend/tests/test_tray_status_logo.py.
+
+# Read one PNG payload straight out of a multi-resolution .ico.
+#
+# System.Drawing re-rasterises an .ico entry through Icon/ToBitmap, which can
+# drop the alpha channel - the badge would then show a black square instead of
+# a circle. The generated .ico stores PNG-compressed entries (the Vista+ form),
+# so reading the container hands back the exact bytes generate-brand-assets.mjs
+# wrote, and the entry is already at the size we want instead of being scaled.
+function Get-IcoLayerPng {
+    param([string]$IcoPath, [int]$Size)
+    $bytes = [System.IO.File]::ReadAllBytes($IcoPath)
+    if ($bytes.Length -lt 6) { throw "ico truncated ($($bytes.Length) bytes)" }
+    $count = [System.BitConverter]::ToInt16($bytes, 4)   # ICONDIR: 0, type, count
+    for ($i = 0; $i -lt $count; $i++) {
+        $e = 6 + (16 * $i)                                # ICONDIRENTRY
+        if (($e + 16) -gt $bytes.Length) { break }
+        $w = [int]$bytes[$e]
+        if ($w -eq 0) { $w = 256 }                        # 0 encodes 256
+        if ($w -ne $Size) { continue }
+        $len = [System.BitConverter]::ToInt32($bytes, $e + 8)
+        $off = [System.BitConverter]::ToInt32($bytes, $e + 12)
+        if ($len -le 0 -or ($off + $len) -gt $bytes.Length) { throw "ico entry #$i out of range" }
+        $ms = New-Object System.IO.MemoryStream(,$bytes[$off..($off + $len - 1)])
+        $img = $null
+        try {
+            $img = [System.Drawing.Image]::FromStream($ms)
+            $bmp = New-Object System.Drawing.Bitmap($img)
+        } finally {
+            if ($img) { $img.Dispose() }
+            $ms.Dispose()
+        }
+        return $bmp
+    }
+    throw "ico carries no ${Size}px layer"
+}
+
+function Get-AlphaLogo {
+    # The badge clips the mark into a 22px circle, and generate-brand-assets.mjs
+    # switches crop at FACE_MAX_SIZE (24): at or below it the FACE reads and the
+    # MANE averages into an unreadable dark blob. So the face sources lead and
+    # the mane ones are only a last resort.
+    #
+    # The poster itself (frontend/src/assets/images/alpha.png) is deliberately
+    # NOT a candidate: it carries the ALPHA wordmark and the tagline, and no
+    # mark may include the type. Only the generated crops are eligible.
+    $ico = "$RepoRoot\electron\assets\alpha.ico"
+    $candidates = @(
+        @{ Label = "face 24 (alpha.ico)";     Ico  = $ico; IcoSize = 24 },
+        @{ Label = "face 16 (favicon)";       Path = "$RepoRoot\frontend\public\favicon-16x16.png" },
+        @{ Label = "mane 32 (favicon)";       Path = "$RepoRoot\frontend\public\favicon-32x32.png" },
+        @{ Label = "mane 192 (pwa)";          Path = "$RepoRoot\frontend\public\icon-192.png" },
+        @{ Label = "mane 512 (shell)";        Path = "$RepoRoot\electron\assets\alpha-mark.png" }
+    )
+    foreach ($c in $candidates) {
+        if ($c.Ico) {
+            if (-not (Test-Path -LiteralPath $c.Ico)) {
+                Write-TrayDiag "logo candidate absent ($($c.Label)): $($c.Ico)"
+                continue
+            }
+            try {
+                $bmp = Get-IcoLayerPng -IcoPath $c.Ico -Size $c.IcoSize
+                Write-TrayDiag "logo loaded ($($c.Label)): $($bmp.Width)x$($bmp.Height)"
+                return $bmp
+            } catch {
+                Write-TrayDiag "logo load FAILED ($($c.Label)) -> $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+                continue
+            }
+        }
+        if (-not (Test-Path -LiteralPath $c.Path)) {
+            Write-TrayDiag "logo candidate absent ($($c.Label)): $($c.Path)"
+            continue
+        }
+        try {
+            # Clone out of FromFile and dispose the source at once: FromFile
+            # holds an exclusive lock on the file for as long as it lives,
+            # which would block asset regeneration and `next build` for the
+            # whole life of the tray process.
+            $src  = [System.Drawing.Image]::FromFile($c.Path)
+            $copy = New-Object System.Drawing.Bitmap($src)
+            $src.Dispose()
+            Write-TrayDiag "logo loaded ($($c.Label)): $($copy.Width)x$($copy.Height)"
+            return $copy
+        } catch {
+            # Reported rather than swallowed - this is exactly the "which file
+            # failed, and why" an operator needs when the badge shows a letter.
+            Write-TrayDiag "logo load FAILED ($($c.Label)) -> $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+        }
+    }
+    Write-TrayDiag "logo unavailable (tried $($candidates.Count) tracked assets) - using the drawn 'A' fallback"
+    return $null
+}
+
 function New-StatusIcon {
-    param([string]$Color, [string]$Glyph)
+    param([string]$Color, [string]$Glyph, [System.Drawing.Bitmap]$Logo = $null)
     $bmp = New-Object System.Drawing.Bitmap(32, 32)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.Clear([System.Drawing.Color]::Transparent)
     $fill = [System.Drawing.Color]::FromName($Color)
     $brush = New-Object System.Drawing.SolidBrush($fill)
     $g.FillEllipse($brush, 1, 1, 30, 30)
+
+    # The mark is clipped to an inner circle so the state colour survives as a
+    # ring around it: LimeGreen/Orange/Crimson/DimGray stays readable at tray
+    # size instead of being covered by the logo. The source marks are opaque
+    # squares, so without the clip their corners would square off the badge.
+    $drewLogo = $false
+    if ($Logo) {
+        try {
+            $clip = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $clip.AddEllipse(5, 5, 22, 22)
+            $g.SetClip($clip)
+            $g.DrawImage($Logo, (New-Object System.Drawing.Rectangle(5, 5, 22, 22)))
+            $g.ResetClip()
+            $clip.Dispose()
+            $drewLogo = $true
+        } catch {
+            Write-TrayDiag "logo composite FAILED: $($_.Exception.GetType().FullName): $($_.Exception.Message) - using the glyph"
+        }
+    }
+
+    # White hairline drawn last so it sits on top of both fills.
     $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 2)
     $g.DrawEllipse($pen, 1, 1, 30, 30)
-    if ($Glyph) {
+    if (-not $drewLogo -and $Glyph) {
         $font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
         $fmt = New-Object System.Drawing.StringFormat
         $fmt.Alignment = [System.Drawing.StringAlignment]::Center
@@ -83,10 +210,14 @@ function New-StatusIcon {
     }
 }
 
-$IconHealthy   = New-StatusIcon -Color "LimeGreen"    -Glyph "A"
-$IconWorking   = New-StatusIcon -Color "Orange"       -Glyph "A"
+$AlphaLogo = Get-AlphaLogo
+
+$IconHealthy   = New-StatusIcon -Color "LimeGreen"    -Glyph "A" -Logo $AlphaLogo
+$IconWorking   = New-StatusIcon -Color "Orange"       -Glyph "A" -Logo $AlphaLogo
+# The failure badge keeps the "!" instead of the mark: on the one state where
+# the colour alone is easy to miss, the glyph carries the signal.
 $IconFailed    = New-StatusIcon -Color "Crimson"      -Glyph "!"
-$IconStopped   = New-StatusIcon -Color "DimGray"      -Glyph "A"
+$IconStopped   = New-StatusIcon -Color "DimGray"      -Glyph "A" -Logo $AlphaLogo
 
 # ---- status evaluation (read-only) -----------------------------------------
 function Test-PortUp {
@@ -123,7 +254,7 @@ function Get-AlphaState {
     #
     # So the file must earn the right to describe the current state: it has to be
     # recent, and the PID it names has to still exist. 360 s matches
-    # scripts/watchdog.ps1's LauncherHeartbeatMaxAge, which allows for the
+    # recovery/watchdog.ps1's LauncherHeartbeatMaxAge, which allows for the
     # launcher legitimately pausing in backoff.
     $healthUsable = $false
     $healthAge = -1
@@ -271,13 +402,8 @@ $timer.Add_Tick({
 $timer.Start()
 Update-TrayStatus
 
-function Write-TrayDiag {
-    param([string]$Message)
-    try { Add-Content -Path "$LogDir\tray.log" -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message" } catch {}
-}
-
 # Diagnostics: if the icon never appears, tray.log tells us where it stopped.
-Write-TrayDiag "PID=$PID icons built, notify-icon visible=$($ni.Visible), entering message loop"
+Write-TrayDiag "PID=$PID icons built (logo=$(if ($AlphaLogo) { 'mark' } else { 'glyph-fallback' })), notify-icon visible=$($ni.Visible), entering message loop"
 try {
     [System.Windows.Forms.Application]::Run()
     Write-TrayDiag "message loop ended normally"

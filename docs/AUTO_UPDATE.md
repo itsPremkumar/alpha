@@ -1,4 +1,4 @@
-# Alpha Auto-Update
+﻿# Alpha Auto-Update
 
 Alpha can keep a **local source checkout** synchronized with GitHub without
 blindly replacing files in a running process. The updater is an explicit,
@@ -90,7 +90,7 @@ To enable unattended updates on a local checkout:
 3. Register Windows autostart if applicable:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/register_autostart.ps1 -Force
+powershell -ExecutionPolicy Bypass -File recovery/register_autostart.ps1 -Force
 ```
 
 When the policy is enabled, registration creates the optional

@@ -1,4 +1,4 @@
-# Alpha Implementation Matrix (P1)
+﻿# Alpha Implementation Matrix (P1)
 
 Living status matrix for the production-grade implementation plan. One row per
 subsystem, each linked to evidence. Status values:
@@ -43,7 +43,7 @@ Updated: 2026-09-24 · cycle base `3910838` · remote `main` @ `https://github.c
 | Scheduled tasks: `Alpha_Autostart`, `Alpha_Watchdog` (-Once/5 min), `Alpha_TrayStatus` | ✅ | all `Ready`, `StartWhenAvailable` + `IgnoreNew` |
 | Watchdog behaviour under load | ✅ | watchdog.log: readiness flaps to `starting` under CPU load are **deferred** (no restart loop), gateway uptime continuous (no restart observed across probes) |
 | Live stack heartbeat | ✅ | `GET :8001/health` 200 `healthy`; `GET :8001/health/ready` 200 `database:ok checkpointer:ok`; frontend `:3000` listening; heartbeat files fresh |
-| Tray state display (state-colored icon behind `^` chevron) | 🟡 | tray process + `logs/tray.log` verified running; **visual confirmation from user pending** |
+| Tray state display (Alpha mark on a state-coloured ring, behind `^` chevron) | 🟡 | tray process + `logs/tray.log` verified running (`logo loaded (face 24 (alpha.ico))`, `icons built (logo=mark)`); badge rendered and checked at 16/24/32 px, drawn-`A` fallback proven by `tests/test_tray_status_logo.py`; **visual confirmation from user pending** |
 | Unplanned full-stack recovery — **2 real events** | ✅ | OpenCode server restarts at **07:44** and **08:15** killed launcher+gateway+frontend (harness children); `watchdog.log` shows **Layer-4 `loop_recreate` + `full_restart` escalation** both times (`pid=13192 alive=False → repairing`, `escalation after 1 failing checks: gateway=down frontend=down launcher=dead`); stack healthy again within seconds, all tasks `Ready` — and the restarted gateway came up with the new config (`docs_enabled: false`, `version: 2.1.0` live) |
 
 ## C. Configuration & worldwide portability
@@ -81,8 +81,8 @@ Updated: 2026-09-24 · cycle base `3910838` · remote `main` @ `https://github.c
 
 | Item | Status | Action |
 |---|---|---|
-| Reboot verification | ⬜ | after reboot run: `powershell -ExecutionPolicy Bypass -File scripts\verify_reboot.ps1` |
-| Tray icon visual check | ⬜ | confirm state-colored circle behind the `^` chevron (hover/click/menu) |
+| Reboot verification | ⬜ | after reboot run: `powershell -ExecutionPolicy Bypass -File recovery\verify_reboot.ps1` |
+| Tray icon visual check | ⬜ | confirm the Alpha mark sits on the state-coloured ring behind the `^` chevron, and that the colour tracks state (green/amber/red/grey) - hover/click/menu |
 | Controlled gateway restart | ✅ | completed via the 07:44/08:15 watchdog escalations (gateway relaunched with current `.env`); live probes green: `docs_enabled: false`, `version: "2.1.0"` |
 
 ---

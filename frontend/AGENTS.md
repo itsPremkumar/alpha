@@ -1,4 +1,4 @@
-# Frontend agent guide (`frontend/`)
+﻿# Frontend agent guide (`frontend/`)
 
 Scope: this file covers everything under `frontend/`. Deeper, subsystem-specific
 rules live in `frontend/src/AGENTS.md` and win where they are stricter.
@@ -119,7 +119,7 @@ is `recursiveDelete(join(dir, distDir), /^cache/)`), so a single shared
 directory means **starting the dev server destroys the production build**. Two
 consequences follow, both measured on this repo:
 
-- `start.ps1:629` and `scripts/watchdog.ps1:436` gate the production path on
+- `start.ps1:629` and `recovery/watchdog.ps1:436` gate the production path on
   `Test-Path frontend\.next\BUILD_ID`. After any `next dev` run that file is
   gone, so every boot silently falls back to `next dev` and pays its cold
   compile (measured at ~880 s) instead of serving the build.

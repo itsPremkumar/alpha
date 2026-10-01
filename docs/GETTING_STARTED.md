@@ -1,4 +1,4 @@
-# Getting Started with Alpha
+﻿# Getting Started with Alpha
 
 ## The short version (Windows)
 
@@ -26,7 +26,7 @@ installed outside the project folder:
 | Verification | Starts Alpha, waits for the Gateway and frontend, checks the health endpoint, the launcher process, and the watchdog chain — and **fails loudly rather than claiming success** if any of it is not healthy |
 
 To uninstall later: `uninstall.ps1`. To remove just the autostart tasks:
-`scripts\unregister_autostart.ps1`.
+`recovery\unregister_autostart.ps1`.
 
 ## Requirements
 

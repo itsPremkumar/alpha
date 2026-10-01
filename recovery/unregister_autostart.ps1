@@ -2,7 +2,7 @@
 # Removes the Alpha_Autostart, Alpha_Watchdog, Alpha_Update and Alpha_TrayStatus tasks.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\unregister_autostart.ps1
+#   powershell -ExecutionPolicy Bypass -File recovery\unregister_autostart.ps1
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -46,4 +46,4 @@ if (Test-Path $WatchdogPid) {
 }
 
 Write-Host "`n[OK] Alpha autostart removed. Alpha will no longer start automatically.`n" -ForegroundColor Green
-Write-Host "To re-enable: .\scripts\register_autostart.ps1`n" -ForegroundColor Gray
+Write-Host "To re-enable: .\recovery\register_autostart.ps1`n" -ForegroundColor Gray

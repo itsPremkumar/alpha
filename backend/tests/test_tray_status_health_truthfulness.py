@@ -1,4 +1,4 @@
-"""The notification-area indicator must describe the *present*, not the past.
+﻿"""The notification-area indicator must describe the *present*, not the past.
 
 Reproduced on this checkout before any of it was fixed:
 
@@ -16,7 +16,7 @@ probes were ever consulted. The indicator therefore sat on "booting services"
 indefinitely while both services were up: a permanent, confident lie, in the one
 component whose entire job is to be trustworthy about uptime.
 
-These tests run the real ``Get-AlphaState`` out of ``scripts/tray_status.ps1``
+These tests run the real ``Get-AlphaState`` out of ``recovery/tray_status.ps1``
 under PowerShell, with the two port/HTTP probes replaced by controllable stubs
 and the health file pointed at a temp directory. So they exercise the shipped
 decision table rather than a description of it, and they fail on the pre-fix
@@ -34,9 +34,9 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TRAY_PS1 = REPO_ROOT / "scripts" / "tray_status.ps1"
+TRAY_PS1 = REPO_ROOT / "recovery" / "tray_status.ps1"
 
-pytestmark = pytest.mark.skipif(os.name != "nt", reason="scripts/tray_status.ps1 is the Windows tray")
+pytestmark = pytest.mark.skipif(os.name != "nt", reason="recovery/tray_status.ps1 is the Windows tray")
 
 # PowerShell that loads the evaluator and prints the decision it reaches.
 #

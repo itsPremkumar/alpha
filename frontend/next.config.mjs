@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
@@ -18,7 +18,7 @@ const gatewayBase = (process.env.ALPHA_INTERNAL_GATEWAY_BASE_URL || "http://127.
  * therefore means starting the dev server DESTROYS the production build, and
  * then two things go wrong with nothing to indicate why:
  *
- *   - `start.ps1:629` and `scripts/watchdog.ps1:436` both gate the production
+ *   - `start.ps1:629` and `recovery/watchdog.ps1:436` both gate the production
  *     path on `Test-Path frontend\.next\BUILD_ID`. Once a dev run has deleted
  *     it, every boot silently falls back to `next dev` and its cold compile.
  *   - The next `next build` then consumes dev-written Pages Router bookkeeping
@@ -31,7 +31,7 @@ const gatewayBase = (process.env.ALPHA_INTERNAL_GATEWAY_BASE_URL || "http://127.
  * `.next/types` include still covers the dev server's generated types.
  *
  * The production path deliberately stays exactly `.next` - that path is the
- * contract `start.ps1` and `scripts/watchdog.ps1` read.
+ * contract `start.ps1` and `recovery/watchdog.ps1` read.
  */
 const DEV_DIST_DIR = ".next/dev";
 const PROD_DIST_DIR = ".next";

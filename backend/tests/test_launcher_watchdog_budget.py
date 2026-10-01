@@ -1,7 +1,7 @@
-"""The launcher and the watchdog must agree on how long a component may boot.
+﻿"""The launcher and the watchdog must agree on how long a component may boot.
 
 `start.ps1` is the process that actually starts the Gateway and the frontend and
-waits a bounded time for each to become healthy. `scripts/watchdog.ps1` runs
+waits a bounded time for each to become healthy. `recovery/watchdog.ps1` runs
 alongside it as a supervisor and will restart a component it believes is hung.
 
 If the supervisor's patience is not strictly greater than the budget the
@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WATCHDOG = REPO_ROOT / "scripts" / "watchdog.ps1"
+WATCHDOG = REPO_ROOT / "recovery" / "watchdog.ps1"
 LAUNCHER = REPO_ROOT / "start.ps1"
 
 
@@ -82,7 +82,7 @@ def test_supervisor_patience_exceeds_the_launcher_budget(
 
     watchdog_budget = threshold * interval
     assert watchdog_budget > budget, (
-        f"{component}: scripts/watchdog.ps1 gives up after {watchdog_budget}s "
+        f"{component}: recovery/watchdog.ps1 gives up after {watchdog_budget}s "
         f"(${threshold_var}={threshold} x ${'CheckIntervalSeconds'}={interval}) but start.ps1 "
         f"waits {budget}s (${port_var} MaxWaitSeconds). The watchdog would kill a component "
         f"that start.ps1 is still legitimately waiting for, so the stack can never converge. "
@@ -122,7 +122,7 @@ def test_watchdog_does_not_treat_a_compiling_frontend_as_hung(watchdog: str) -> 
     frontend hung and restarting it.
     """
     assert "Test-FileRecentlyWritten" in watchdog, (
-        "scripts/watchdog.ps1 must use Test-FileRecentlyWritten to avoid killing a frontend "
+        "recovery/watchdog.ps1 must use Test-FileRecentlyWritten to avoid killing a frontend "
         "that is still compiling"
     )
     assert "compiling" in watchdog, (
@@ -134,7 +134,7 @@ def test_watchdog_does_not_treat_a_compiling_frontend_as_hung(watchdog: str) -> 
 def test_watchdog_retains_its_utf8_bom() -> None:
     """PowerShell 5.1 requires the BOM on these scripts; a stripped BOM breaks them."""
     if not WATCHDOG.exists():
-        pytest.skip("scripts/watchdog.ps1 is not present in this checkout")
+        pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     assert WATCHDOG.read_bytes().startswith(b"\xef\xbb\xbf"), (
-        "scripts/watchdog.ps1 lost its UTF-8 BOM — PowerShell 5.1 needs it"
+        "recovery/watchdog.ps1 lost its UTF-8 BOM — PowerShell 5.1 needs it"
     )

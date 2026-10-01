@@ -1,6 +1,6 @@
-"""The watchdog must reap EVERY live launcher, not just the one in the PID file.
+﻿"""The watchdog must reap EVERY live launcher, not just the one in the PID file.
 
-`scripts/watchdog.ps1:Stop-StaleLauncher` used to read a single PID from
+`recovery/watchdog.ps1:Stop-StaleLauncher` used to read a single PID from
 `logs/alpha.pid` and kill that. A launcher that started before the file was last
 written -- or one whose entry a competing launcher had already overwritten --
 was therefore invisible, and two launchers coexisted.
@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WATCHDOG = REPO_ROOT / "scripts" / "watchdog.ps1"
+WATCHDOG = REPO_ROOT / "recovery" / "watchdog.ps1"
 START_PS1 = REPO_ROOT / "start.ps1"
 
 POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
@@ -59,7 +59,7 @@ def _alive(pid: int) -> bool:
 def test_stop_stale_launcher_does_not_rely_only_on_the_pid_file() -> None:
     """A structural guard: the sweep must enumerate launchers, not trust one PID."""
     if not WATCHDOG.exists():
-        pytest.skip("scripts/watchdog.ps1 is not present in this checkout")
+        pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     body = _function_body("Stop-StaleLauncher")
     assert "Get-CimInstance" in body, (
         "Stop-StaleLauncher must enumerate running processes to find launchers; "
@@ -79,7 +79,7 @@ def test_stop_stale_launcher_reaps_an_unrecorded_second_launcher(tmp_path: Path)
     duplicate survive in production.
     """
     if not WATCHDOG.exists():
-        pytest.skip("scripts/watchdog.ps1 is not present in this checkout")
+        pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
 
     decoy = subprocess.Popen(
         [
@@ -148,7 +148,7 @@ def test_watchdog_has_a_supervisor_lock() -> None:
     escalate on the same unhealthy stack and alternately rebuild it.
     """
     if not WATCHDOG.exists():
-        pytest.skip("scripts/watchdog.ps1 is not present in this checkout")
+        pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     text = WATCHDOG.read_text(encoding="utf-8-sig")
     assert "Enter-SupervisorLock" in text, "the watchdog must gate destructive actions on a lock"
     assert "FileShare]::None" in text, (
@@ -161,7 +161,7 @@ def test_watchdog_has_a_supervisor_lock() -> None:
 def test_supervisor_lock_is_exclusive_across_processes(tmp_path: Path) -> None:
     """Behavioural: while one process holds the lock, a second one cannot take it."""
     if not WATCHDOG.exists():
-        pytest.skip("scripts/watchdog.ps1 is not present in this checkout")
+        pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
 
     lock = tmp_path / "watchdog.lock"
     holder_body = f"""
@@ -216,7 +216,7 @@ def test_watchdog_requests_the_production_frontend_when_a_build_exists() -> None
     boot pays the dev compile again.
     """
     if not WATCHDOG.exists():
-        pytest.skip("scripts/watchdog.ps1 is not present in this checkout")
+        pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     text = WATCHDOG.read_text(encoding="utf-8-sig")
     start_body = text[text.index("function Start-AlphaStack") :]
     start_body = start_body[: start_body.index("\nfunction ")] if "\nfunction " in start_body else start_body

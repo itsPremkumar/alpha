@@ -82,6 +82,7 @@ alpha/
 ├── extensions_config.example.json  # Template → extensions_config.json (gitignored): MCP servers + skills
 ├── backend/                        # Python backend — see backend/AGENTS.md for its own tree and depth
 ├── frontend/                       # Next.js frontend (pnpm) — see frontend/AGENTS.md
+├── recovery/                       # Windows self-healing: watchdog, autostart registration, tray status, recovery checks
 ├── docker/, scripts/, tests/, docs/ # Compose + nginx + provisioner; root orchestration scripts; root-level tests; cross-cutting docs
 ├── skills/                         # public/ (committed) + custom/ (gitignored) agent skills; managed integration packs are global at .alpha/integrations/skills/{provider}/
 ├── contracts/                      # Cross-component JSON contracts (e.g. subagent status, skill review)

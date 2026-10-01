@@ -1,4 +1,4 @@
-# Alpha lifecycle & recovery verification
+﻿# Alpha lifecycle & recovery verification
 #
 # Actually executes failure injection and asserts automatic recovery. Prints one
 # PASS/FAIL line per scenario plus a summary, and exits non-zero if anything
@@ -6,7 +6,7 @@
 # recovery chain (watchdog -> launcher -> services) to restore them.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\verify_recovery.ps1
+#   powershell -ExecutionPolicy Bypass -File recovery\verify_recovery.ps1
 #   ... -IncludeMaintenance      # also test stop.ps1 maintenance + resume
 #   ... -IncludeProvider        # also test gateway boot with an empty API key
 #   ... -SkipStackKills         # state/task/health checks only (fast)
@@ -197,7 +197,7 @@ if (-not $SkipStackKills) {
         # Detachment check: killing Layer 3 must NOT take Layer 2/1 with it.
         Record "Alpha stayed up while watchdog was dead" ((Test-GwUp) -and (Test-FeUp)) "gw=$(Test-GwUp) fe=$(Test-FeUp)"
         # Layer 4 supervision pass (what Alpha_Watchdog runs every 5 minutes).
-        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\recovery\watchdog.ps1" -Once 2>&1 | Out-Null
         $r = Measure-Recovery { $n = Get-WatchdogPid; ($n -gt 0 -and $n -ne $wp -and (Get-Process -Id $n -ErrorAction SilentlyContinue)) } 60
         Record "Layer 4 (-Once) recreated the watchdog loop" $r.Ok "new pid=$(Get-WatchdogPid)"
         Record "Alpha still healthy after watchdog recreation" (Test-StackHealthy) ""
@@ -234,7 +234,7 @@ if ($IncludeMaintenance -and -not $SkipStackKills) {
     Record "stop.ps1 stopped the watchdog loop" $wdGone "pid=$wdPid"
 
     # Layer 4 must respect maintenance instead of resurrecting Alpha.
-    & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\recovery\watchdog.ps1" -Once 2>&1 | Out-Null
     Start-Sleep -Seconds 10
     $wdPid = Get-WatchdogPid
     Record "Layer 4 respected maintenance (no loop recreated)" (($wdPid -le 0) -or -not (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) "pid=$wdPid"
@@ -251,7 +251,7 @@ if ($IncludeMaintenance -and -not $SkipStackKills) {
     # Detail shows WHICH half failed: flag still set (start died early) vs
     # services not yet healthy (cold boot budget).
     Record "start.ps1 cleared maintenance and brought the stack up" $r.Ok "recovered in $($r.Seconds)s flag=$([bool](Test-MaintenanceFlag)) gw=$(Test-GwUp) fe=$(Test-FeUp)"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\recovery\watchdog.ps1" -Once 2>&1 | Out-Null
     Start-Sleep -Seconds 10
     $wdPid = Get-WatchdogPid
     Record "Watchdog loop restored after resume" (($wdPid -gt 0) -and (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) "pid=$wdPid flag=$([bool](Test-MaintenanceFlag))"

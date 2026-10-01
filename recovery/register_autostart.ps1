@@ -3,8 +3,8 @@
 # and a watchdog monitors it every 5 minutes.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\register_autostart.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts\register_autostart.ps1 -Force
+#   powershell -ExecutionPolicy Bypass -File recovery\register_autostart.ps1
+#   powershell -ExecutionPolicy Bypass -File recovery\register_autostart.ps1 -Force
 
 [CmdletBinding()]
 param(
@@ -13,11 +13,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot       = Split-Path $PSScriptRoot -Parent
-$WatchdogScript = "$RepoRoot\scripts\watchdog.ps1"
+$WatchdogScript = "$RepoRoot\recovery\watchdog.ps1"
 $TaskNameBoot   = "Alpha_Autostart"
 $TaskNameWatch  = "Alpha_Watchdog"
 $TaskNameUpdate = "Alpha_Update"
-$AutostartDir   = "$RepoRoot\scripts\autostart"
+$AutostartDir   = "$RepoRoot\recovery\autostart"
 $UpdateScript   = "$RepoRoot\scripts\auto_update.ps1"
 $UpdatePolicy   = if ($env:ALPHA_UPDATE_POLICY_PATH) { $env:ALPHA_UPDATE_POLICY_PATH } else { "$RepoRoot\config\update-policy.json" }
 
@@ -171,7 +171,7 @@ if ($existingWatch -and -not $Force) {
 }
 
 # ---- Task 3: Alpha_TrayStatus -- status icon in the notification area ------
-$TrayScript  = "$RepoRoot\scripts\tray_status.ps1"
+$TrayScript  = "$RepoRoot\recovery\tray_status.ps1"
 $TaskNameTray = "Alpha_TrayStatus"
 if (-not (Test-Path $TrayScript)) {
     Write-Host "[WARN] tray_status.ps1 not found - skipping the tray indicator task." -ForegroundColor Yellow
@@ -273,6 +273,6 @@ Write-Host "   - Survive crashes via multi-layer watchdog recovery"   -Foregroun
 Write-Host "   - Show a live status icon in the taskbar tray"         -ForegroundColor White
 if (Get-UpdateEnabled) { Write-Host "   - Check/apply guarded GitHub source updates"  -ForegroundColor White }
 Write-Host ""
-Write-Host " To remove autostart:  .\scripts\unregister_autostart.ps1" -ForegroundColor Gray
+Write-Host " To remove autostart:  .\recovery\unregister_autostart.ps1" -ForegroundColor Gray
 Write-Host ' To verify tasks:      Get-ScheduledTask -TaskName "Alpha_*"' -ForegroundColor Gray
 Write-Host ""

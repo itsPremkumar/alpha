@@ -1,4 +1,4 @@
-# Wiring audit: features that exist but are never called
+﻿# Wiring audit: features that exist but are never called
 
 **Agent:** wiring audit. **Branch:** `agent/wiring`. **Worktree:** `alpha-wiring`.
 **Date:** 2026-09-29. **Base:** `origin/main` @ `7772995`.
@@ -542,7 +542,7 @@ forbids and that `test_documented_claims.py` was written to prevent.
 `supervisor.py:441` is `subprocess.Popen(argv)` of an operator-supplied command:
 it supervises a **child OS process**. The Gateway *is* the process, not a host
 for one, and Alpha ships no out-of-band worker host that would be the supervised
-child. The two real process owners are `start.ps1` / `scripts/watchdog.ps1` (not
+child. The two real process owners are `start.ps1` / `recovery/watchdog.ps1` (not
 in this change's owned files) and the container/orchestrator. Wiring it
 in-process would mean supervising the Gateway's own background loops — which
 `AutonomySupervisor` already owns, with its own restart budget and `park_reason`.
@@ -838,7 +838,7 @@ reopen** (`persistence/side_effects/sql.py:161`), contradicting the module's own
 because nothing calls it; it would become live the moment a writer is added.
 
 **3. `ProcessSupervisor` is still not wired into the Windows launcher**, and now
-also has no in-Gateway seam. `start.ps1` / `scripts/watchdog.ps1` remain the
+also has no in-Gateway seam. `start.ps1` / `recovery/watchdog.ps1` remain the
 process owners. On Windows, **nothing restarts the backend automatically.**
 
 **4. `write_safe_reasoning_payload` is still unreachable and would throw if

@@ -20,10 +20,10 @@
 # stopped. Crashes and taskkill never create the flag and are always recovered.
 #
 # Usage:
-#   .\scripts\watchdog.ps1             # Start watchdog loop (blocks)
-#   .\scripts\watchdog.ps1 -Once       # Layer 4 pass: verify/recreate the loop
-#   .\scripts\watchdog.ps1 -StartIfDown# Alias of -Once (logon trigger)
-#   .\scripts\watchdog.ps1 -Stop       # Stop the running loop
+#   .\recovery\watchdog.ps1             # Start watchdog loop (blocks)
+#   .\recovery\watchdog.ps1 -Once       # Layer 4 pass: verify/recreate the loop
+#   .\recovery\watchdog.ps1 -StartIfDown# Alias of -Once (logon trigger)
+#   .\recovery\watchdog.ps1 -Stop       # Stop the running loop
 
 [CmdletBinding()]
 param (
@@ -43,7 +43,7 @@ $HealthFile       = "$LogDir\alpha_health.json"
 $MaintenanceFile  = "$LogDir\alpha_maintenance.json"
 $RecoveryHistory  = "$LogDir\recovery_history.jsonl"
 $StartScript      = "$RepoRoot\start.ps1"
-$WatchdogScript   = "$RepoRoot\scripts\watchdog.ps1"
+$WatchdogScript   = "$RepoRoot\recovery\watchdog.ps1"
 $GatewayPort      = 8001
 $FrontendPort     = 3000
 

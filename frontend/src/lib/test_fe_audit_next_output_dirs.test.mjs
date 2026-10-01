@@ -1,4 +1,4 @@
-// test_fe_audit_next_output_dirs.test.mjs — the dev server and the production
+﻿// test_fe_audit_next_output_dirs.test.mjs — the dev server and the production
 // build must not share one output directory.
 //
 // MEASURED mechanism (Next 15.5.25, this checkout):
@@ -9,7 +9,7 @@
 // With one shared distDir (`.next`) that means starting the dev server destroys
 // the production build: `.next/BUILD_ID`, `.next/server` and `.next/static` go.
 // Two things then break, both measured on this repo:
-//   * start.ps1:629 and scripts/watchdog.ps1:436 both gate the production path on
+//   * start.ps1:629 and recovery/watchdog.ps1:436 both gate the production path on
 //     `Test-Path frontend\.next\BUILD_ID`, so after any `next dev` run the build
 //     looks absent forever and every boot silently falls back to `next dev` plus
 //     its ~880 s cold compile (the board's F9 measurement).
@@ -84,7 +84,7 @@ test("the production build and the production server share one directory", async
 });
 
 test("the production output directory stays .next, which is what the launcher gates on", async () => {
-  // start.ps1:629 and scripts/watchdog.ps1:436 both read
+  // start.ps1:629 and recovery/watchdog.ps1:436 both read
   // `frontend\.next\BUILD_ID`. Moving the production build elsewhere would make
   // the launcher believe no build exists on every boot.
   for (const phase of [PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER]) {

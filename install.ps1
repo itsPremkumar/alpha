@@ -1,4 +1,4 @@
-# Alpha - One-Click Installer for Windows (PowerShell)
+﻿# Alpha - One-Click Installer for Windows (PowerShell)
 # Usage: .\install.ps1
 
 [CmdletBinding()]
@@ -215,14 +215,14 @@ if (-not $SkipVerification) {   # non-interactive runs default to registering
 $registered = $false
 if ($autostart -ne "n" -and $autostart -ne "N") {
     try {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\register_autostart.ps1"
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\recovery\register_autostart.ps1"
         $registered = $true
     } catch {
         Write-Host "  [WARN] Autostart registration failed: $_" -ForegroundColor Yellow
-        Write-Host "  Run manually: .\scripts\register_autostart.ps1" -ForegroundColor Gray
+        Write-Host "  Run manually: .\recovery\register_autostart.ps1" -ForegroundColor Gray
     }
 } else {
-    Write-Host "  Skipped. Run later: .\scripts\register_autostart.ps1`n" -ForegroundColor Gray
+    Write-Host "  Skipped. Run later: .\recovery\register_autostart.ps1`n" -ForegroundColor Gray
 }
 
 # -- Post-install: first autonomous start + recovery-system verification -----
@@ -280,7 +280,7 @@ if ($SkipVerification) {
 
     # 4. Recovery system: Layer 4 pass must produce a live watchdog loop.
     if ($registered) {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\recovery\watchdog.ps1" -Once 2>&1 | Out-Null
         Start-Sleep -Seconds 5
         $wpid = 0; try { $wpid = [int](Get-Content "$LogDir\watchdog.pid" -Raw -ErrorAction Stop) } catch {}
         $wAlive = ($wpid -gt 0 -and (Get-Process -Id $wpid -ErrorAction SilentlyContinue))
@@ -317,7 +317,7 @@ if ($SkipVerification) {
         Write-Host "INSTALLATION NOT VERIFIED - $($failed.Count) check(s) failed:" -ForegroundColor Red
         $failed | ForEach-Object { Write-Host "  - $($_.Check) $($_.Detail)" -ForegroundColor Red }
         Write-Host "Inspect logs\gateway.err.log, logs\frontend.err.log, logs\watchdog.log" -ForegroundColor Yellow
-        Write-Host "Then re-run: .\scripts\verify_recovery.ps1`n" -ForegroundColor Yellow
+        Write-Host "Then re-run: .\recovery\verify_recovery.ps1`n" -ForegroundColor Yellow
         exit 1
     }
 }

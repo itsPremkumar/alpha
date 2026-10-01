@@ -1,4 +1,4 @@
-# Alpha - Uninstaller for the autonomous/always-on layer
+﻿# Alpha - Uninstaller for the autonomous/always-on layer
 # Usage:
 #   .\uninstall.ps1                 # stop Alpha, remove autostart + watchdog + state
 #   .\uninstall.ps1 -PurgeLogs      # also delete logs\* and generated shim files
@@ -106,9 +106,9 @@ foreach ($tn in @('Alpha_Autostart', 'Alpha_Watchdog', 'Alpha_TrayStatus')) {
 # ---- 3. Remove generated launchers / shims / state -------------------------
 Write-Host "Removing generated launchers and state..." -ForegroundColor Yellow
 $generated = @(
-    "$RepoRoot\scripts\autostart\Alpha_Autostart.vbs",
-    "$RepoRoot\scripts\autostart\Alpha_Watchdog_Check.vbs",
-    "$RepoRoot\scripts\autostart\Alpha_Tray_Status.vbs",
+    "$RepoRoot\recovery\autostart\Alpha_Autostart.vbs",
+    "$RepoRoot\recovery\autostart\Alpha_Watchdog_Check.vbs",
+    "$RepoRoot\recovery\autostart\Alpha_Tray_Status.vbs",
     "$LogDir\alpha_launch_shim.vbs",
     "$LogDir\alpha_watchdog_shim.vbs",
     "$LogDir\alpha.pid",
@@ -142,7 +142,7 @@ Write-Host "Verifying that Alpha is fully stopped..." -ForegroundColor Yellow
 
 $loopAlive = $false
 $p = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    $_.Name -eq 'powershell.exe' -and $_.CommandLine -like "*$RepoRoot\scripts\watchdog.ps1*"
+    $_.Name -eq 'powershell.exe' -and $_.CommandLine -like "*$RepoRoot\recovery\watchdog.ps1*"
 }
 if ($p) { $loopAlive = $true }
 Add-Result "No watchdog process remains" (-not $loopAlive) $(if ($p) { "pids: " + ((@($p) | ForEach-Object { $_.ProcessId }) -join ',') } else { "" })
@@ -170,7 +170,7 @@ $failed = @($script:Results | Where-Object Result -eq 'FAIL')
 if ($failed.Count -eq 0) {
     Write-Host "Alpha autonomous layer uninstalled. Nothing will auto-start or self-heal." -ForegroundColor Green
     Write-Host "To remove Alpha entirely, delete this folder. To restore autonomy, run" -ForegroundColor Gray
-    Write-Host "  .\scripts\register_autostart.ps1   (then .\start.ps1)`n" -ForegroundColor Gray
+    Write-Host "  .\recovery\register_autostart.ps1   (then .\start.ps1)`n" -ForegroundColor Gray
     exit 0
 }
 Write-Host "UNINSTALL INCOMPLETE: $($failed.Count) check(s) failed - Alpha may still be protected:" -ForegroundColor Red

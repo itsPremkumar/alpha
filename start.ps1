@@ -26,7 +26,7 @@ $MaintenanceFile = "$RepoRoot\logs\alpha_maintenance.json"
 # match this start time is not our launcher.
 $LauncherStartedUtc = (Get-Process -Id $PID -ErrorAction SilentlyContinue).StartTime.ToUniversalTime().ToString("o")
 
-# Health status vocabulary (shared with scripts/watchdog.ps1):
+# Health status vocabulary (shared with recovery/watchdog.ps1):
 #   starting | healthy | degraded | recovering | failed
 $script:LastHealthStatus = "starting"
 $script:LastHealthDetail = "launcher initialising"
@@ -761,7 +761,7 @@ function Restart-FrontendService {
     # it from zero; that is what pinned the tray at "starting ... waiting for
     # services (gateway=True frontend=False)" through launcher attempt 189/450.
     # Budget must stay above the measured worst case, and above
-    # scripts/watchdog.ps1's FrontendHungThreshold (pinned by
+    # recovery/watchdog.ps1's FrontendHungThreshold (pinned by
     # backend/tests/test_launcher_watchdog_budget.py).
     $ok = Wait-ForHealthy -Port $FrontendPort -Path "/" -MaxWaitSeconds 1200
     if ($ok) {

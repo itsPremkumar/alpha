@@ -1,10 +1,10 @@
-# Alpha - Post-reboot autonomous recovery check (Layer 4 -> 3 -> 2 -> 1)
+﻿# Alpha - Post-reboot autonomous recovery check (Layer 4 -> 3 -> 2 -> 1)
 #
 # Run this AFTER logging in again following a reboot. It does not start
 # anything: it only OBSERVES whether Windows brought Alpha back on its own
 # through the scheduled tasks, and reports PASS/FAIL per layer.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\verify_reboot.ps1
+#   powershell -ExecutionPolicy Bypass -File recovery\verify_reboot.ps1
 #   ... -Wait 600     # keep waiting up to 600 s for the stack to come up
 #
 # Expected chain:  logon -> Alpha_Autostart task -> watchdog loop (-Once)
