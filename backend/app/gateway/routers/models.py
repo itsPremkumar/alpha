@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -34,6 +34,19 @@ class ModelResponse(BaseModel):
     description: str | None = Field(None, description="Model description")
     supports_thinking: bool = Field(default=False, description="Whether model supports thinking mode")
     supports_reasoning_effort: bool = Field(default=False, description="Whether model supports reasoning effort")
+    #: ``None`` means **not reported**, which is a different fact from ``false``.
+    #: The client renders the three states distinctly, so a capability nobody
+    #: measured is never shown as an absence. Configured entries carry the
+    #: operator's own declaration; augmented namespaces often have none.
+    supports_vision: bool | None = Field(default=None, description="Whether the model accepts image input; null = not reported")
+    #: Effective input window in tokens, or ``null`` when no namespace declared
+    #: one. Kept separate from a published model card on purpose: a gateway can
+    #: proxy an endpoint whose enforced window differs from the model's.
+    context_window: int | None = Field(default=None, description="Effective input context window in tokens; null = not reported")
+    #: USD per 1M tokens. Absent from either side means unknown, not zero; a
+    #: genuine free model reports ``0.0``.
+    input_price_per_million: float | None = Field(default=None, description="USD per 1M input tokens; null = not reported")
+    output_price_per_million: float | None = Field(default=None, description="USD per 1M output tokens; null = not reported")
     reasoning_efforts: list[str] = Field(
         default_factory=list,
         description=(
@@ -54,6 +67,37 @@ class TokenUsageResponse(BaseModel):
     """Token usage display configuration."""
 
     enabled: bool = Field(default=False, description="Whether token usage display is enabled")
+
+
+def _positive_int(value: Any) -> int | None:
+    """A positive int, or ``None``. Rejects bools and non-positive numbers."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value > 0 else None
+
+
+def _positive_float(value: Any) -> float | None:
+    """A non-negative float, or ``None``.
+
+    Zero is **kept** on purpose: a genuinely free model reports ``0.0``, and
+    that is a real price. Anything non-numeric is unknown, not free.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value >= 0 else None
+
+
+def _pricing_value(model: Any, key: str) -> Any:
+    """Read one price from a model's optional inline ``pricing`` block.
+
+    ``ModelConfig`` is ``extra="allow"``, so the block may be absent entirely or
+    carry a subset. Anything unreadable yields ``None`` (unknown) rather than a
+    fabricated zero, because a wrong price silently misreports run cost.
+    """
+    pricing = getattr(model, "pricing", None)
+    if not isinstance(pricing, dict):
+        return None
+    return pricing.get(key)
 
 
 class ModelsListResponse(BaseModel):
@@ -331,6 +375,13 @@ async def list_models(
                 supports_reasoning_effort=model.supports_reasoning_effort,
                 reasoning_efforts=effective_effort_support(model),
                 default_reasoning_effort=getattr(model, "default_reasoning_effort", None),
+                # `None` for "not declared" rather than a false default: the
+                # three states are rendered differently and a vision flag this
+                # entry never set is not evidence the model cannot see images.
+                supports_vision=getattr(model, "supports_vision", None),
+                context_window=_positive_int(getattr(model, "context_window", None)),
+                input_price_per_million=_positive_float(_pricing_value(model, "input_per_million")),
+                output_price_per_million=_positive_float(_pricing_value(model, "output_per_million")),
                 provider=getattr(model, "provider", None) or ("free" if is_free_model else None),
                 is_free=is_free_model,
                 quota_type="keyless" if is_free_model else "paid",
@@ -352,7 +403,16 @@ async def list_models(
                         display_name=apm["display_name"],
                         description=apm["description"],
                         supports_thinking=apm["supports_thinking"],
-                        supports_reasoning_effort=False,
+                        # Read the augmented entry's own fields instead of
+                        # hardcoding no: the provider catalog can declare an
+                        # effort ladder, and asserting otherwise both hides a
+                        # real capability and manufactures drift against a
+                        # `models[]` entry of the same name.
+                        supports_reasoning_effort=bool(apm.get("supports_reasoning_effort")),
+                        reasoning_efforts=list(apm.get("reasoning_efforts") or []),
+                        default_reasoning_effort=apm.get("default_reasoning_effort"),
+                        supports_vision=apm.get("supports_vision"),
+                        context_window=_positive_int(apm.get("context_window")),
                         provider=apm.get("provider"),
                         is_free=apm.get("is_free", False),
                         quota_type=apm.get("quota_type"),
@@ -377,7 +437,15 @@ async def list_models(
                         display_name=fm["name"],
                         description=fm.get("description") or f"Keyless free model via {fm['provider']}",
                         supports_thinking=bool(fm.get("supports_thinking", False)),
-                        supports_reasoning_effort=False,
+                        # The router forwards whatever reasoning the serving
+                        # gateway returns and can send a rung, so the entry
+                        # says so; the ladder stays empty because the served
+                        # rungs depend on whichever gateway answers, which the
+                        # client must render as "no fixed ladder" rather than
+                        # inventing one.
+                        supports_reasoning_effort=bool(fm.get("supports_reasoning_effort")),
+                        supports_vision=fm.get("supports_vision"),
+                        context_window=_positive_int(fm.get("context_window")),
                         provider=fm.get("provider"),
                         is_free=True,
                         quota_type="keyless",
@@ -773,6 +841,10 @@ async def get_model(
                 if not allowed:
                     raise HTTPException(status_code=403, detail=f"Model '{model_name}' is not available for your role")
 
+    # The detail route returned six fields while the list route returned the
+    # declared effort ladder, so the same model read two ways disagreed: detail
+    # reported no ladder for `alpha-free` and the list reported
+    # `[low, medium, high]`. Both now project the same facts.
     return ModelResponse(
         name=model.name,
         model=model.model,
@@ -780,6 +852,12 @@ async def get_model(
         description=model.description,
         supports_thinking=model.supports_thinking,
         supports_reasoning_effort=model.supports_reasoning_effort,
+        reasoning_efforts=effective_effort_support(model),
+        default_reasoning_effort=getattr(model, "default_reasoning_effort", None),
+        supports_vision=getattr(model, "supports_vision", None),
+        context_window=_positive_int(getattr(model, "context_window", None)),
+        input_price_per_million=_positive_float(_pricing_value(model, "input_per_million")),
+        output_price_per_million=_positive_float(_pricing_value(model, "output_per_million")),
     )
 
 

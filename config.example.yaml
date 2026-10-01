@@ -313,8 +313,29 @@ models:
     request_timeout: 600.0
     max_retries: 2
     supports_vision: false
-    supports_thinking: false
-    supports_reasoning_effort: false
+    # `space-bunny-free` demonstrably reasons and accepts an effort rung. This
+    # entry used to declare both of these `false`, which described a *client*
+    # limitation rather than the model's: the router discarded
+    # `reasoning_content` on the way in and had no way to send `reasoning_effort`
+    # on the way out, so a reasoning gateway looked non-reasoning. Both are now
+    # fixed in `free_router` (see `chat_model.py` / `catalog.py` /
+    # `providers.py`), and the flags state the truth.
+    supports_thinking: true
+    # Implied by the ladder below; kept explicit because the picker reads it.
+    supports_reasoning_effort: true
+    # Verified served rungs for this endpoint. The ladder is a CEILING - an
+    # unlisted rung is clamped and logged, never sent - so it deliberately stops
+    # at `high`: `minimal` is accepted upstream but its effect was not measured,
+    # and listing an unverified rung would over-promise the picker.
+    reasoning_efforts: [low, medium, high]
+    # No `default_reasoning_effort`: omitting the key sends nothing and leaves
+    # the gateway's own default in place. Pinning a rung here would replace a
+    # provider default we cannot read with a guess.
+    # Stated explicitly rather than left to `auto`. `auto` already resolves to
+    # `openai` here (`alpha.models.free_router` is registered in
+    # `effort_translation._MODULE_STYLES`), so this is documentation of the wire
+    # shape these `openai_compat` gateways speak, not a fix for a misdetection.
+    reasoning_effort_style: openai
     fallbacks: []
 
   # Example: Volcengine (Doubao) model

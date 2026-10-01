@@ -104,8 +104,27 @@ export interface AIModel {
   rpm?: number;
   rpd?: number;
   reset_interval?: string;
-  supports_tools?: boolean;
-  supports_reasoning?: boolean;
+  /**
+   * Accepts image input. `null`/absent means *not reported*, which is not the
+   * same as `false` — see `lib/model-capabilities.ts`.
+   */
+  supports_vision?: boolean | null;
+  supports_tools?: boolean | null;
+  supports_reasoning?: boolean | null;
+  /** Server-declared acceptance of a reasoning-effort level. */
+  supports_reasoning_effort?: boolean | null;
+  /**
+   * Effective input window in tokens as this deployment configures it, or
+   * `null` when undeclared. The endpoint-enforced figure, when discovery
+   * reports one, wins over this in `modelCapabilities`.
+   */
+  context_window?: number | null;
+  /** Per-1M token prices in the deployment's configured currency. */
+  pricing?: {
+    currency?: string | null;
+    input_per_million?: number | null;
+    output_per_million?: number | null;
+  } | null;
   /**
    * Reasoning-effort rungs this model actually serves, weakest first, as
    * reported by the server. `null`/absent means the entry declared no ladder,

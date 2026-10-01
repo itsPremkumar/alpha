@@ -111,6 +111,7 @@ class FreeChatResult:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: dict[str, Any] | None = None
     latency_ms: float = 0.0
+    reasoning: str | None = None
 
 
 def _iso(epoch: float | None) -> str | None:
@@ -152,9 +153,7 @@ class FreeLLMRouter:
         self._refreshing = False
         self._loaded = False
         self._last_refresh: float = 0.0
-        self._states: dict[str, ProviderState] = {
-            name: ProviderState(name=name) for name in layer.PROVIDER_ORDER
-        }
+        self._states: dict[str, ProviderState] = {name: ProviderState(name=name) for name in layer.PROVIDER_ORDER}
         self._load_cache()
 
     # ------------------------------------------------------------------
@@ -239,10 +238,7 @@ class FreeLLMRouter:
         names = list(self._layer.PROVIDER_ORDER)
         results: dict[str, provider_layer.DiscoveryResult] = {}
         with ThreadPoolExecutor(max_workers=max(1, len(names))) as pool:
-            future_map = {
-                pool.submit(self._safe_discover, self._layer.PROVIDERS[name]): name
-                for name in names
-            }
+            future_map = {pool.submit(self._safe_discover, self._layer.PROVIDERS[name]): name for name in names}
             for future, name in future_map.items():
                 results[name] = future.result()
         self._merge_discovery(results)
@@ -427,12 +423,8 @@ class FreeLLMRouter:
                 retry_after_seconds=max(0.0, earliest - now),
             )
         if model and model != "auto":
-            raise FreeLLMUnavailableError(
-                f"model '{model}' is not offered by any reachable free provider"
-            )
-        raise FreeLLMUnavailableError(
-            "no free provider candidates: discovery has not succeeded for any provider yet"
-        )
+            raise FreeLLMUnavailableError(f"model '{model}' is not offered by any reachable free provider")
+        raise FreeLLMUnavailableError("no free provider candidates: discovery has not succeeded for any provider yet")
 
     # ------------------------------------------------------------------
     # Routed chat (per-provider failover with honest marks)
@@ -448,9 +440,20 @@ class FreeLLMRouter:
         max_tokens: int | None = None,
         timeout: float | None = None,
         extra: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
     ) -> FreeChatResult:
-        """Try eligible providers in ranked order; honest error if none serve."""
+        """Try eligible providers in ranked order; honest error if none serve.
+
+        ``reasoning_effort`` is merged into the request body as a top-level
+        ``reasoning_effort`` key (the Chat-Completions shape every
+        ``openai_compat`` gateway speaks). It is sent only when the caller
+        resolved a rung; leaving it ``None`` omits the key entirely so the
+        gateway's own default applies rather than one Alpha invented.
+        """
         pairs = self.candidates(model=model, target_provider=target_provider)
+        request_extra = dict(extra) if extra else {}
+        if reasoning_effort is not None:
+            request_extra["reasoning_effort"] = reasoning_effort
         attempts: list[tuple[str, str]] = []
         for spec, mid in pairs:
             start = time.perf_counter()
@@ -462,7 +465,7 @@ class FreeLLMRouter:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     timeout=timeout if timeout is not None else provider_layer.DEFAULT_TIMEOUT,
-                    extra_body=extra,
+                    extra_body=request_extra or None,
                 )
             except Exception as exc:  # noqa: BLE001 - classified below; BaseExceptions propagate
                 label = _failure_label(exc)
@@ -479,6 +482,7 @@ class FreeLLMRouter:
                 tool_calls=result.tool_calls,
                 usage=result.usage,
                 latency_ms=latency,
+                reasoning=result.reasoning,
             )
         cooling = [name for name, state in self._states.items() if state.cooldown_until > self._clock()]
         raise FreeLLMUnavailableError(
@@ -565,9 +569,7 @@ class FreeLLMRouter:
                         "model_count": len(state.models),
                         "models": state.models[:_MODELS_SHOWN_IN_API],
                         "models_truncated": len(state.models) > _MODELS_SHOWN_IN_API,
-                        "source_labels": sorted({str(m.get("source", "catalog")) for m in state.models})
-                        if state.models
-                        else [],
+                        "source_labels": sorted({str(m.get("source", "catalog")) for m in state.models}) if state.models else [],
                     }
                 )
         try:
@@ -576,15 +578,13 @@ class FreeLLMRouter:
             eligible = []
         return {
             "source": "alpha-free-llm-router",
-            "selection_method": "provider order ranked by tri-state health (true > unknown > false); "
-            "no quality scoring — free anonymous gateways only",
+            "selection_method": "provider order ranked by tri-state health (true > unknown > false); no quality scoring — free anonymous gateways only",
             "health_values": "true=call succeeded, false=chat call failed, null=unknown/inconclusive",
             "refreshed_at": _iso(self._last_refresh) if self._loaded else None,
             "ttl_seconds": self._ttl,
             "providers": providers_view,
             "eligible_candidates": eligible,
-            "disclaimer": "Reachability and free pricing on anonymous gateways change at any time; "
-            "no availability guarantee. Do not send secrets to anonymous endpoints.",
+            "disclaimer": "Reachability and free pricing on anonymous gateways change at any time; no availability guarantee. Do not send secrets to anonymous endpoints.",
         }
 
     def _candidates_unrefreshed(self) -> list[tuple[Any, str]]:
@@ -617,6 +617,18 @@ class FreeLLMRouter:
                 "quota_type": "none",
                 "supports_tools": True,
                 "supports_reasoning": True,
+                # The router forwards whatever reasoning the serving gateway
+                # returns and can send a `reasoning_effort` rung, so this entry
+                # genuinely supports both. Saying so here is what keeps
+                # `catalog_consistency` from reporting drift against the
+                # `alpha-free` entry in `models[]` (which declares both true).
+                "supports_thinking": True,
+                "supports_reasoning_effort": True,
+                # Undeclared rather than empty: the router is not pinned to one
+                # endpoint, so the set of rungs it can serve is whatever the
+                # serving gateway accepts. `None` means "undeclared" to the
+                # drift checker and is therefore not compared.
+                "reasoning_efforts": None,
             }
         ]
         with self._lock:
@@ -639,19 +651,21 @@ class FreeLLMRouter:
                         continue
                     seen_ids.add(full_id)
                     disp_name = f"✨ {name.capitalize()} - {mid}"
-                    models.append({
-                        "id": full_id,
-                        "model_id": mid,
-                        "name": disp_name,
-                        "provider": name,
-                        "description": f"Direct free model via {name} ({mid}). No API key required.",
-                        "is_free": True,
-                        "free_status": "no_key_free",
-                        "quota_type": "none",
-                        "supports_tools": True,
-                        "supports_reasoning": "reasoning" in mid.lower() or "coder" in mid.lower() or "nemotron" in mid.lower(),
-                        "is_healthy": is_healthy,
-                    })
+                    models.append(
+                        {
+                            "id": full_id,
+                            "model_id": mid,
+                            "name": disp_name,
+                            "provider": name,
+                            "description": f"Direct free model via {name} ({mid}). No API key required.",
+                            "is_free": True,
+                            "free_status": "no_key_free",
+                            "quota_type": "none",
+                            "supports_tools": True,
+                            "supports_reasoning": "reasoning" in mid.lower() or "coder" in mid.lower() or "nemotron" in mid.lower(),
+                            "is_healthy": is_healthy,
+                        }
+                    )
         return models
 
     def sync_daily_models(self, force_probe: bool = True) -> dict[str, Any]:
@@ -704,4 +718,3 @@ def reset_free_router() -> None:
 def available_free_models() -> list[dict[str, Any]]:
     """Return available free models via the process-wide router."""
     return get_free_router().available_free_models()
-

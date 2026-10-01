@@ -2623,6 +2623,14 @@ export default function ChatView() {
                     }
                     return m;
                   });
+                  // Persist so the choice survives a reload. The Settings path
+                  // already wrote this key, but a composer-only switch used to
+                  // be session-scoped and silently reverted on the next load.
+                  try {
+                    localStorage.setItem("alpha_selected_model", m);
+                  } catch {
+                    /* a full or blocked store must not fail the selection */
+                  }
                 }}
                 effort={reasoningEffort}
                 onEffortChange={(next) => {

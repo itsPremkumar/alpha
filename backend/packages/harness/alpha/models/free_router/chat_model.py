@@ -115,6 +115,13 @@ class ChatFreeLLM(BaseChatModel):
     temperature: float | None = None
     max_tokens: int | None = None
     request_timeout: float | None = None
+    #: Resolved reasoning rung (``low``/``medium``/``high``/...). Declared as a
+    #: real field rather than left to ``extra_body`` so ``apply_effort`` finds it
+    #: in ``model_fields`` and writes it here; it is forwarded as the
+    #: Chat-Completions top-level ``reasoning_effort`` key that every
+    #: ``openai_compat`` gateway accepts. ``None`` omits the key so the
+    #: gateway's own default applies.
+    reasoning_effort: str | None = None
     # Set by bind_tools (converted OpenAI schemas travel on the instance).
     bound_tools: list[dict[str, Any]] | None = None
     bound_tool_choice: str | dict[str, Any] | None = None
@@ -163,8 +170,17 @@ class ChatFreeLLM(BaseChatModel):
             # Never a bare "provider:" - a trailing colon is not a model name, and
             # it would create a bucket keyed on nothing.
             model_name = provider or model_id
+        # ``reasoning_content`` is the key every other reasoning provider in
+        # this package writes (``patched_mimo``, ``patched_deepseek``,
+        # ``openai_codex_provider``), so the UI, the transcript replay, and
+        # ``restore_reasoning_content`` all read one vocabulary. Absent rather
+        # than empty when the gateway sent no reasoning.
+        additional_kwargs: dict[str, Any] = {}
+        if result.reasoning:
+            additional_kwargs["reasoning_content"] = result.reasoning
         message = AIMessage(
             content=result.text,
+            additional_kwargs=additional_kwargs,
             tool_calls=tool_calls,
             invalid_tool_calls=invalid,
             usage_metadata=_usage_to_metadata(result.usage),
@@ -196,6 +212,7 @@ class ChatFreeLLM(BaseChatModel):
             max_tokens=self.max_tokens,
             timeout=self.request_timeout,
             extra=self._extra_body(stop),
+            reasoning_effort=self.reasoning_effort,
         )
         message = self._result_to_message(routed)
         return ChatResult(generations=[ChatGeneration(message=message)])

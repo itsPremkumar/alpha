@@ -560,12 +560,29 @@ export async function fetchModelCatalog(): Promise<ModelCatalog> {
         is_free: isFree,
         free_status: m.free_status || (isFree ? "no_key_free" : undefined),
         quota_type: m.quota_type || (isFree ? "keyless_free" : "paid"),
-        supports_tools: m.supports_tools,
-        supports_reasoning: m.supports_reasoning || m.supports_thinking,
+        // Read the capability fields the server actually sends. The previous
+        // mapping read `supports_tools`/`supports_reasoning`, which
+        // `ModelResponse` has never contained, so both stayed permanently
+        // `undefined` and every capability badge read as unknown.
+        supports_vision: m.supports_vision ?? null,
+        supports_tools: m.supports_tools ?? null,
+        supports_reasoning: m.supports_reasoning ?? m.supports_thinking ?? null,
+        supports_reasoning_effort: m.supports_reasoning_effort ?? null,
         // Absent stays absent: an entry that declared no ladder must keep
         // reading as "no effort control" rather than "declares zero levels".
         ...(Array.isArray(m.reasoning_efforts) ? { reasoning_efforts: m.reasoning_efforts } : {}),
         ...(m.default_reasoning_effort ? { default_reasoning_effort: m.default_reasoning_effort } : {}),
+        // `null` (not 0, not "") because these are "not reported" facts.
+        context_window: typeof m.context_window === "number" ? m.context_window : null,
+        ...(typeof m.input_price_per_million === "number" || typeof m.output_price_per_million === "number"
+          ? {
+              pricing: {
+                currency: "USD",
+                input_per_million: typeof m.input_price_per_million === "number" ? m.input_price_per_million : null,
+                output_per_million: typeof m.output_price_per_million === "number" ? m.output_price_per_million : null,
+              },
+            }
+          : {}),
       };
     });
     const seen = new Set(serverModels.map((m) => m.id));

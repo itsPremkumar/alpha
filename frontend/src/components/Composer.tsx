@@ -10,6 +10,7 @@ import { VoiceControls } from "@/components/VoiceControls";
 import { SlashCommand } from "@/lib/commands";
 import { branding } from "@/lib/branding";
 import { DEFAULT_EFFORT, FALLBACK_LABELS, FALLBACK_LADDER, type EffortChoice } from "@/lib/reasoning-effort";
+import { formatContextWindow, modelCapabilities } from "@/lib/model-capabilities";
 
 const DEFAULT_CORE_COMMANDS: SlashCommandInfo[] = [
   { command: "/goal", category: "mission", description: "Define and orchestrate autonomous goals", usage: "/goal <objective>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
@@ -213,6 +214,36 @@ export function Composer({
     }
     return { standardModels: standard, keylessModels: keyless, quotaModels: quota };
   }, [models]);
+
+  /**
+   * A compact capability hint appended to an option's label: image input,
+   * tools, and reasoning. A native `<option>` cannot render chips, so the
+   * signal has to ride in the text — and it is derived from the same tri-state
+   * resolver the Settings cards use, so a model nobody measured about shows
+   * nothing rather than a crossed-out "no".
+   */
+  const optionLabel = (m: AIModel): string => {
+    const c = modelCapabilities(m, null);
+    const marks: string[] = [];
+    if (c.vision === true) marks.push("👁");
+    if (c.tools === true) marks.push("🔧");
+    if (c.reasoningEffort === true) marks.push("🧠");
+    return marks.length ? `${m.name} ${marks.join("")}` : m.name;
+  };
+
+  /** Tooltip carrying the full detail, including "not reported" states. */
+  const modelOptionTitle = (m: AIModel): string => {
+    const c = modelCapabilities(m, null);
+    const parts: string[] = [m.name];
+    const label = (state: boolean | null, yes: string, no: string) =>
+      state === null ? `${yes}: not reported` : `${yes}: ${state ? "yes" : no}`;
+    parts.push(label(c.vision, "image input", "no"));
+    parts.push(label(c.tools, "tools", "no"));
+    parts.push(label(c.reasoningEffort, "reasoning effort", "no"));
+    const window = formatContextWindow(c.contextWindow);
+    if (window) parts.push(`context: ${window} tokens`);
+    return parts.join(" · ");
+  };
 
   useEffect(() => {
     if (input.startsWith("/")) {
@@ -490,8 +521,8 @@ export function Composer({
                 {keylessModels.length > 0 && (
                   <optgroup label="✨ Free Models (No API Key Needed)">
                     {keylessModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
+                      <option key={m.id} value={m.id} title={modelOptionTitle(m)}>
+                        {optionLabel(m)}
                       </option>
                     ))}
                   </optgroup>
@@ -499,8 +530,8 @@ export function Composer({
                 {quotaModels.length > 0 && (
                   <optgroup label="🎁 Free Tier / Gateway (Quota)">
                     {quotaModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
+                      <option key={m.id} value={m.id} title={modelOptionTitle(m)}>
+                        {optionLabel(m)}
                       </option>
                     ))}
                   </optgroup>
@@ -508,8 +539,8 @@ export function Composer({
                 {standardModels.length > 0 && (
                   <optgroup label="🚀 Standard & Custom Models">
                     {standardModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
+                      <option key={m.id} value={m.id} title={modelOptionTitle(m)}>
+                        {optionLabel(m)}
                       </option>
                     ))}
                   </optgroup>

@@ -39,6 +39,8 @@ import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags, fetchEvol
 import { probeAll, Probe } from "@/lib/system";
 import { applyThemeMode, isThemeMode, THEME_STORAGE_KEY } from "@/lib/theme";
 import { FALLBACK_LABELS, modelEffortLadder } from "@/lib/reasoning-effort";
+import { ModelCapabilityBadges } from "@/components/ModelCapabilityBadges";
+import { modelCapabilities } from "@/lib/model-capabilities";
 import { suggestionsEnabled } from "@/lib/assist";
 import { currentOperatorIdentity, writeOperatorName } from "@/lib/operator";
 
@@ -49,6 +51,14 @@ import { currentOperatorIdentity, writeOperatorName } from "@/lib/operator";
  * human name is known.
  */
 const EFFORT_LABELS = FALLBACK_LABELS;
+
+/**
+ * Capabilities for one entry, memo-free because the resolver is pure and the
+ * card list is short. `discovered` is `null` here: the live per-provider catalog
+ * is a separate, opt-in read (`GET /api/models/discovery`), and a failed or
+ * absent read must degrade detail without inventing any.
+ */
+const capabilitiesOf = (model: AIModel) => modelCapabilities(model, null);
 
 /** The declared effort ladder for a model entry, normalized. */
 const effortLadderOf = (model: AIModel): string[] => modelEffortLadder(model);
@@ -911,7 +921,7 @@ export function SettingsSection({
                               <a
                                 href={prov.portal_url}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
                               >
                                 Get Free API Key <ExternalLink className="size-2.5" />
@@ -1194,13 +1204,18 @@ export function SettingsSection({
                           )}
                         </div>
 
-                        <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px]">
+                        <div className="mt-3 pt-2 border-t border-border/40 flex flex-col gap-1.5 text-[10px]">
+                          {/* Capability chips: image input, tools, thinking,
+                              effort, generation modalities, context window and
+                              price. Each is tri-state — supported, explicitly
+                              unsupported, or not reported — because an
+                              unreported capability is not a missing one. */}
+                          <ModelCapabilityBadges capabilities={capabilitiesOf(m)} />
+                          {/* The declared effort ladder, spelled out. A model with none says so rather than
+                              implying a control exists — that is the same honesty rule the composer picker
+                              follows, and a badge that claims an "effort" nobody can choose is worse than
+                              no badge. */}
                           <div className="flex items-center gap-1 text-muted-foreground">
-                            {m.supports_reasoning && <span className="text-amber-500 font-semibold">🧠 Thinking</span>}
-                            {/* The declared effort ladder, spelled out. A model with none says so rather than
-                                implying a control exists — that is the same honesty rule the composer picker
-                                follows, and a badge that claims an "effort" nobody can choose is worse than
-                                no badge. */}
                             {effortLadderOf(m).length > 0 ? (
                               <span
                                 className="text-amber-600/80"
@@ -1211,7 +1226,7 @@ export function SettingsSection({
                                 • effort: {effortLadderOf(m).map((rung) => EFFORT_LABELS[rung] ?? rung).join(" / ")}
                               </span>
                             ) : (
-                              m.supports_reasoning && <span className="opacity-70">• effort fixed by provider</span>
+                              capabilitiesOf(m).thinking === true && <span className="opacity-70">• effort fixed by provider</span>
                             )}
                             <span>• {m.provider}</span>
                           </div>

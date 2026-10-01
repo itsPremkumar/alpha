@@ -11,7 +11,7 @@ export const branding = Object.freeze({
   // Project mark shown alongside the logo in the app's most prominent
   // surfaces (sidebar header and the chat landing hero).
   wordmark: "alpha",
-  logoAlt: "alpha logo",
+  logoAlt: "Alpha product mark - lion logo",
   // Browser/PWA icon set, served from `frontend/public/`. These are generated
   // from the same `assets/images/alpha.png` the in-app logo uses — see
   // `scripts/generate-brand-assets.mjs` — so the tab, the home screen and the

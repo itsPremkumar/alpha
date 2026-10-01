@@ -147,9 +147,15 @@ def check_model_catalog_consistency(app_config: Any, *, include_free_router: boo
                 entries.setdefault(
                     free_model["id"],
                     {
-                        "supports_thinking": bool(free_model.get("supports_thinking", False)),
+                        # Read each capability from what the entry actually
+                        # declares. Hardcoding `False` here made every
+                        # `models[]` entry that legitimately supports thinking
+                        # or an effort look like drift against this namespace,
+                        # which is the exact failure this module exists to
+                        # catch - so it must never invent a value either way.
+                        "supports_thinking": free_model.get("supports_thinking"),
                         "supports_vision": None,
-                        "supports_reasoning_effort": False,
+                        "supports_reasoning_effort": free_model.get("supports_reasoning_effort"),
                         "reasoning_efforts": free_model.get("reasoning_efforts"),
                         "context_window": free_model.get("context_window"),
                         "_source": "free_router catalog",

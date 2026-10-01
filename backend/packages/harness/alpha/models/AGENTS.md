@@ -54,11 +54,44 @@ UI then offers a control the factory rejects. This shipped: `union-alpha` was
 hand-copied frontend fallback.
 
 `check_model_catalog_consistency` compares `supports_thinking`,
-`supports_vision`, `supports_reasoning_effort` and `context_window` across the
-namespaces; `enforce_model_catalog_consistency(..., strict=True)` logs each
+`supports_vision`, `supports_reasoning_effort`, `reasoning_efforts` and
+`context_window` across the namespaces;
+`enforce_model_catalog_consistency(..., strict=True)` logs each
 disagreement at ERROR. A `None` on either side is *undeclared*, not drift. Run it
 on boot and keep `tests/test_model_catalog_consistency.py` green — a hand-typed
 capability table is the industry's most common source of this bug.
+
+**The checker may not invent a value in either direction.** It used to hardcode
+`supports_reasoning_effort: False` and coerce `supports_thinking` through
+`bool(...False)` for every auxiliary-namespace entry, so any model that
+legitimately supported thinking or an effort ladder looked like drift against
+`models[]`. That is the exact false positive this module exists to catch, and it
+fails the moment a truthful declaration lands. Read each capability from what the
+entry declares and let `None` stay `None`.
+
+### Free-router capability projection
+
+`free_router/catalog.py::available_free_models()` feeds three consumers that each
+used to re-derive capabilities differently. The entries now carry them:
+
+- The synthetic `alpha-free` router entry declares `supports_thinking: true` and
+  `supports_reasoning_effort: true` — the router forwards whatever
+  `reasoning_content` a gateway returns and can send a top-level
+  `reasoning_effort` — with `reasoning_efforts: None`, which is **undeclared**
+  because the served rungs depend on whichever gateway answers. Do not fill it
+  with a ladder; the client renders "no fixed ladder" and that is the truth.
+- `providers.py::_extract_openai_chat` parses `reasoning_content` (and the
+  string `reasoning` alias) into `ProviderChatResult.reasoning` →
+  `FreeChatResult.reasoning` → `AIMessage.additional_kwargs["reasoning_content"]`,
+  which is the key `patched_mimo`, `patched_deepseek`, and
+  `openai_codex_provider` already share. A Responses-API `reasoning` **object**
+  is ignored rather than stringified into the transcript, and an absent field
+  stays absent rather than becoming `""`.
+- `ChatFreeLLM` declares `reasoning_effort` as a real constructor field, not via
+  `extra_body` — the class builds its payload explicitly and drops the latter.
+  That is what lets `apply_effort` write the rung and `catalog.chat()` send it.
+
+Regression coverage: `tests/test_free_llm_reasoning.py`.
 
 ### Provider model discovery (`discovery.py`)
 

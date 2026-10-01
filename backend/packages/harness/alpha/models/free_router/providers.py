@@ -428,6 +428,25 @@ class ProviderChatResult:
     text: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: dict[str, Any] | None = None
+    #: Chain-of-thought the provider chose to return, if any. ``None`` means
+    #: the provider sent none, which is not the same as "this model cannot
+    #: reason" - a non-reasoning gateway omits the field entirely.
+    reasoning: str | None = None
+
+
+def _reasoning_to_text(message: dict[str, Any]) -> str | None:
+    """Read a provider's reasoning field, or ``None`` when it sent none.
+
+    Chat-Completions reasoning providers return ``reasoning_content``; the
+    ``reasoning`` alias is accepted only when it is a plain string, because the
+    Responses API sends ``reasoning`` as an object and an unparsed dict must not
+    be stringified into the transcript as if the model had written prose.
+    """
+    for key in ("reasoning_content", "reasoning"):
+        value = message.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
 
 
 def _content_to_text(content: Any) -> str:
@@ -465,7 +484,12 @@ def _extract_openai_chat(payload: dict[str, Any]) -> ProviderChatResult:
         raise ProviderError("response", "response contained no message content")
 
     usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else None
-    return ProviderChatResult(text=text, tool_calls=tool_calls, usage=usage)
+    return ProviderChatResult(
+        text=text,
+        tool_calls=tool_calls,
+        usage=usage,
+        reasoning=_reasoning_to_text(message),
+    )
 
 
 def _aihorde_prompt(messages: list[dict[str, Any]]) -> str:
