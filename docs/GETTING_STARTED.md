@@ -1,4 +1,4 @@
-﻿# Getting Started with Alpha
+# Getting Started with Alpha
 
 ## The short version (Windows)
 

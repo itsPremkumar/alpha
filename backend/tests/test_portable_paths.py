@@ -1,4 +1,4 @@
-﻿"""The Windows toolchain must be project-local and machine-independent.
+"""The Windows toolchain must be project-local and machine-independent.
 
 Alpha resolves three external tools at startup -- ``uv``, Node.js and pnpm --
 and every one of them has a default install/cache location that lives in the

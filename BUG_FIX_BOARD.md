@@ -1,4 +1,4 @@
-﻿# BUG FIX BOARD — shared coordination for concurrent agents
+# BUG FIX BOARD — shared coordination for concurrent agents
 
 > **Single source of truth for who is fixing what.** Multiple agents work the same
 > repo, same branch (`main`). This file is the only place coordination happens.

@@ -1,4 +1,4 @@
-﻿"""The launcher and the watchdog must agree on how long a component may boot.
+"""The launcher and the watchdog must agree on how long a component may boot.
 
 `start.ps1` is the process that actually starts the Gateway and the frontend and
 waits a bounded time for each to become healthy. `recovery/watchdog.ps1` runs

@@ -1,4 +1,4 @@
-﻿# Alpha Implementation Matrix (P1)
+# Alpha Implementation Matrix (P1)
 
 Living status matrix for the production-grade implementation plan. One row per
 subsystem, each linked to evidence. Status values:

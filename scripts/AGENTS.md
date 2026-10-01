@@ -1,4 +1,4 @@
-﻿## Guarded source updater
+## Guarded source updater
 
 `scripts/auto_update.py` is the portable entry point; `auto_update.sh` and
 `auto_update.ps1` are thin platform launchers. The updater is argv-only and

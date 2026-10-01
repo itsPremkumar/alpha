@@ -1,4 +1,4 @@
-﻿# Wiring audit: features that exist but are never called
+# Wiring audit: features that exist but are never called
 
 **Agent:** wiring audit. **Branch:** `agent/wiring`. **Worktree:** `alpha-wiring`.
 **Date:** 2026-09-29. **Base:** `origin/main` @ `7772995`.

@@ -1,4 +1,4 @@
-﻿"""The notification-area indicator must describe the *present*, not the past.
+"""The notification-area indicator must describe the *present*, not the past.
 
 Reproduced on this checkout before any of it was fixed:
 

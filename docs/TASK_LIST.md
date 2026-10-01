@@ -1,4 +1,4 @@
-﻿# Alpha — Master Task List
+# Alpha — Master Task List
 
 > Living document, maintained by the main agent and updated as work lands.
 > Nothing is marked done without evidence (commit SHA, test log tail, or

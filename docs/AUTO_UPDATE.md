@@ -1,4 +1,4 @@
-﻿# Alpha Auto-Update
+# Alpha Auto-Update
 
 Alpha can keep a **local source checkout** synchronized with GitHub without
 blindly replacing files in a running process. The updater is an explicit,

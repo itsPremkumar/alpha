@@ -1,4 +1,4 @@
-﻿"""The watchdog must reap EVERY live launcher, not just the one in the PID file.
+"""The watchdog must reap EVERY live launcher, not just the one in the PID file.
 
 `recovery/watchdog.ps1:Stop-StaleLauncher` used to read a single PID from
 `logs/alpha.pid` and kill that. A launcher that started before the file was last

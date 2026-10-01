@@ -1,4 +1,4 @@
-﻿# Frontend agent guide (`frontend/`)
+# Frontend agent guide (`frontend/`)
 
 Scope: this file covers everything under `frontend/`. Deeper, subsystem-specific
 rules live in `frontend/src/AGENTS.md` and win where they are stricter.

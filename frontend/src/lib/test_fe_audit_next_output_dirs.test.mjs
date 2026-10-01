@@ -1,4 +1,4 @@
-﻿// test_fe_audit_next_output_dirs.test.mjs — the dev server and the production
+// test_fe_audit_next_output_dirs.test.mjs — the dev server and the production
 // build must not share one output directory.
 //
 // MEASURED mechanism (Next 15.5.25, this checkout):
