@@ -1,3 +1,7 @@
+> **Working document.** Archived under `docs/.tmp/`, which the documentation
+> index generator skips (`SKIP_FILE_PATTERNS = ("*.tmp.md",)`). It is kept
+> for history and review, and is not part of the published `docs/` index.
+
 # ALPHA AI — AUDIT REPORT, PART IV: GIT / CODING AGENT + SYNTHESIS
 
 Companion to Parts I–III. **5 of 6 deep-dives complete.**

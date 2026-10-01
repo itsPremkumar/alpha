@@ -35,12 +35,33 @@ the record instead of fixing the code.
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
+from fnmatch import fnmatchcase
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_docs_index_generator() -> ModuleType:
+    """Load `scripts/generate_docs_index.py` as the authority on what counts.
+
+    Imported by path because it is a repository script, not an installed module.
+    The `sys.modules` registration is required: `DocumentSpec` is a dataclass and
+    dataclasses resolves annotations through `sys.modules[cls.__module__]`, so
+    without it the decorator raises AttributeError.
+    """
+    path = ROOT / "scripts" / "generate_docs_index.py"
+    spec = importlib.util.spec_from_file_location("alpha_docs_index_generator", path)
+    assert spec is not None and spec.loader is not None, "cannot load scripts/generate_docs_index.py"
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 # Pure text assertions over committed documents: no Gateway, no auto-created
 # operator, and nothing under `alpha.*` imported.
@@ -123,13 +144,32 @@ def test_docs_index_links_resolve_to_real_files() -> None:
 
 
 def test_index_covers_every_document_in_docs() -> None:
-    """The fail-closed index must not silently drop a document from the tree."""
+    """The fail-closed index must not silently drop a document from the tree.
+
+    "Document" is whatever `scripts/generate_docs_index.py` says it is, loaded
+    from the generator itself. This test previously hardcoded its own walk and so
+    disagreed with the tool it audits: the generator correctly skipped the
+    `docs/.tmp/*.tmp.md` working documents by name pattern and this test reported
+    that as a dropped document. Importing the authority keeps the invariant (a
+    real document is never silently dropped) and removes the second opinion.
+    """
     index = ROOT / "docs" / "INDEX.md"
     if not index.is_file():
         pytest.skip("docs/INDEX.md is missing")
+    generator = _load_docs_index_generator()
     listed = set(re.findall(r"\]\(([^)#]+\.md)\)", _read(index)))
     listed = {item for item in listed if not item.startswith(("http://", "https://"))}
-    on_disk = {str(path.relative_to(ROOT / "docs")) for path in (ROOT / "docs").rglob("*.md") if path.name != "INDEX.md"}
+
+    docs_root = ROOT / "docs"
+    on_disk: set[str] = set()
+    for path in docs_root.rglob("*.md"):
+        if path.name in generator.SKIP_FILE_NAMES:
+            continue
+        if any(fnmatchcase(path.name, pattern) for pattern in generator.SKIP_FILE_PATTERNS):
+            continue
+        if any(part in generator.SKIP_DIRECTORY_NAMES for part in path.relative_to(docs_root).parts[:-1]):
+            continue
+        on_disk.add(str(path.relative_to(docs_root)))
     # The generator may route some documents through FILE_OVERRIDES with a
     # different relative spelling; only report files that are not mentioned at
     # all by their basename.

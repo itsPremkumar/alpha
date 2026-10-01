@@ -1,3 +1,7 @@
+> **Working document.** Archived under `docs/.tmp/`, which the documentation
+> index generator skips (`SKIP_FILE_PATTERNS = ("*.tmp.md",)`). It is kept
+> for history and review, and is not part of the published `docs/` index.
+
 # ALPHA AI — END-TO-END AUDIT REPORT
 
 > **Status: IN PROGRESS.** This file is updated as findings land.
@@ -421,7 +425,7 @@ detector. The inconsistency is the finding, not the absence of skill.
 ## 5. SECTIONS AWAITING DEEP-DIVE
 
 > **Progress:** three of six deep-dives are complete and published in
-> **`ALPHA_AUDIT_REPORT_PART2.md`** — §5 agent harness (F-19…F-31), §6 persistence &
+> **`ALPHA_AUDIT_REPORT_PART2.tmp.md`** — §5 agent harness (F-19…F-31), §6 persistence &
 > recovery (F-32…F-40), §7 memory & observability (F-41…F-52), plus a cross-cutting
 > analysis in its §8. Read that file next; it supersedes this section's earlier
 > placeholder list for those areas.

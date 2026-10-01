@@ -1,3 +1,7 @@
+> **Working document.** Archived under `docs/.tmp/`, which the documentation
+> index generator skips (`SKIP_FILE_PATTERNS = ("*.tmp.md",)`). It is kept
+> for history and review, and is not part of the published `docs/` index.
+
 # SOTA 2026 Frontier Agentic Software Engineering Suite — Implementation Walkthrough
 
 ## Executive Summary

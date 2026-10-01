@@ -1,3 +1,7 @@
+> **Working document.** Archived under `docs/.tmp/`, which the documentation
+> index generator skips (`SKIP_FILE_PATTERNS = ("*.tmp.md",)`). It is kept
+> for history and review, and is not part of the published `docs/` index.
+
 docs: triage the AGI roadmap against measured reality
 
 The roadmap proposes a 56-package tree and ~30 phases. Measured against the

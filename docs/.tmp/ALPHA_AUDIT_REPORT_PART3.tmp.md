@@ -1,6 +1,10 @@
+> **Working document.** Archived under `docs/.tmp/`, which the documentation
+> index generator skips (`SKIP_FILE_PATTERNS = ("*.tmp.md",)`). It is kept
+> for history and review, and is not part of the published `docs/` index.
+
 # ALPHA AI — AUDIT REPORT, PART III: SECURITY & TOOL BOUNDARY
 
-Companion to `ALPHA_AUDIT_REPORT.md` (Part I) and `ALPHA_AUDIT_REPORT_PART2.md`
+Companion to `ALPHA_AUDIT_REPORT.tmp.md` (Part I) and `ALPHA_AUDIT_REPORT_PART2.tmp.md`
 (Part II: agent harness, persistence/recovery, memory/observability).
 
 **Verification discipline:** the deep-dive ran without a working `grep`. I

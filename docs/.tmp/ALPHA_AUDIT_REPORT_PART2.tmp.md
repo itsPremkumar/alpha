@@ -1,6 +1,10 @@
+> **Working document.** Archived under `docs/.tmp/`, which the documentation
+> index generator skips (`SKIP_FILE_PATTERNS = ("*.tmp.md",)`). It is kept
+> for history and review, and is not part of the published `docs/` index.
+
 # ALPHA AI — AUDIT REPORT, PART II: SUBSYSTEM DEEP-DIVES
 
-Companion to `ALPHA_AUDIT_REPORT.md` (Part I: architecture map, execution trace,
+Companion to `ALPHA_AUDIT_REPORT.tmp.md` (Part I: architecture map, execution trace,
 evidence ledger, findings F-01…F-18, testing/ops audit).
 
 **Verification discipline:** each subagent ran **without a working `grep`**, and each
