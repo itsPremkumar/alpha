@@ -42,8 +42,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from alpha.config.runtime_paths import project_root
-
 
 class WiringState(StrEnum):
     """The verdict for one claim."""
@@ -113,13 +111,31 @@ class WiringReport:
         }
 
 
+def repo_root() -> Path:
+    """The repository root, found by walking up from this file.
+
+    Deliberately not ``runtime_paths.project_root()``. That resolves
+    ``ALPHA_PROJECT_ROOT`` or the **process working directory**, so a test run
+    from ``backend/`` yields ``backend/`` and every source root below silently
+    resolves to ``backend/backend/...``. This audit must be anchored to the tree
+    it is auditing, so the root is located structurally: the nearest ancestor
+    containing both ``backend/`` and ``AGENTS.md``.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / "backend" / "packages").is_dir() and (candidate / "AGENTS.md").is_file():
+            return candidate
+    # Fall back to the harness package's known depth rather than the cwd, so a
+    # relocated checkout still audits something rather than nothing.
+    return Path(__file__).resolve().parents[4]
+
+
 def _source_roots(extra: tuple[str, ...] = ()) -> list[Path]:
     """Every tree a production call site could live in.
 
     Deliberately excludes ``tests/``: a test proves the unit works, which is the
     question that let every stub above pass review.
     """
-    root = project_root()
+    root = repo_root()
     candidates = [
         root / "backend" / "packages" / "harness" / "alpha",
         root / "backend" / "app",
@@ -128,7 +144,12 @@ def _source_roots(extra: tuple[str, ...] = ()) -> list[Path]:
         root / "electron",
     ]
     candidates.extend(root / item for item in extra)
-    return [p for p in candidates if p.is_dir()]
+    found = [p for p in candidates if p.is_dir()]
+    if not found:
+        # Never silently audit nothing: that is how this gate passed vacuously
+        # once already, when the cwd-anchored roots all missed.
+        raise FileNotFoundError("no source roots resolved; the advertised-vs-wired audit must not report an empty tree as healthy")
+    return found
 
 
 def _resolve_defining_module(module_path: str, roots: list[Path]) -> Path | None:
@@ -149,19 +170,27 @@ def _resolve_defining_module(module_path: str, roots: list[Path]) -> Path | None
 
 
 def _import_name(path: Path, roots: list[Path]) -> str | None:
-    """The dotted import name Alpha uses for *path*."""
+    """The dotted import name Alpha uses for *path*.
+
+    The search roots are the *contents* of a package (``harness/alpha``,
+    ``app``), but import names include the package itself: a module at
+    ``harness/alpha/runtime/side_effects`` is imported as
+    ``alpha.runtime.side_effects``. Dropping the prefix made every module-level
+    claim report UNWIRED, which is how this gate first failed.
+    """
     for base in roots:
         try:
             rel = path.relative_to(base)
         except ValueError:
             continue
         parts = [p for p in rel.with_suffix("").parts if p != "__init__"]
-        # Strip the package-root prefix (`harness/alpha`, `app`) so the result is
-        # the import name rather than a filesystem path.
-        if parts and parts[0] in {"alpha", "app"}:
-            parts = parts[1:]
-        if parts:
-            return ".".join(parts)
+        if not parts:
+            continue
+        # Re-attach the package name the root sits inside.
+        package = base.name
+        if package not in {"alpha", "app"}:
+            continue
+        return ".".join([package, *parts])
     return None
 
 
@@ -294,18 +323,29 @@ def check_claims(claims: list[Claim]) -> list[WiringReport]:
 AUDITED_CLAIMS: tuple[Claim, ...] = (
     Claim(
         capability_id="fleet_emergency_stop",
-        symbol="runtime/estop.py::EmergencyStopManager",
-        reason=("The emergency stop was documented as pausing 'all background tasks and subagents' while its only consumer was rsi/switchboard.py, which gates the recursive-self-improvement cycle and nothing else."),
+        symbol="runtime/estop.py::get_estop_manager",
+        reason=(
+            "The emergency stop was documented as pausing 'all background tasks and "
+            "subagents' while its only consumer was rsi/switchboard.py, which gates the "
+            "recursive-self-improvement cycle and nothing else. Claimed on the accessor "
+            "rather than the class, because the class is instantiated once inside its own "
+            "module by design and a caller never names it."
+        ),
     ),
     Claim(
         capability_id="agent_side_effect_ledger",
         symbol="runtime/side_effects",
-        reason=("The side-effect ledger is the mechanism that makes an announced effect recoverable. It must have a production writer, not only a dataclass."),
+        reason=("The side-effect ledger is the mechanism that makes an announced effect recoverable, so it needs a production writer in deps.py rather than only a dataclass and a unit test."),
     ),
     Claim(
-        capability_id="stream_bridge_recovery",
-        symbol="runtime/events",
-        reason=("The durable run-event feed is what an orphan-recovered run is reconciled against, so it needs a live consumer rather than a store alone."),
+        capability_id="durable_run_event_feed",
+        symbol="runtime/events/store",
+        reason=("The durable run-event feed is what an orphan-recovered run is reconciled against, so its store layer needs a live production consumer."),
+    ),
+    Claim(
+        capability_id="local_laya_decision_engine",
+        symbol="models/system_one.py::SystemOneClient",
+        reason=("Laya is documented as Alpha's free local System-1 decision engine. A model name in config plus a setup script is not a capability; the client must be constructed by production code."),
     ),
 )
 

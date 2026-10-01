@@ -20,7 +20,6 @@ from alpha.capabilities.honesty import (
     audit_registered_claims,
     find_consumers,
     unproven,
-    unwired,
 )
 
 
@@ -138,10 +137,43 @@ def test_audited_claims_are_all_wired():
     Every claim here was proven *unwired* during the audit. This asserts they now
     have production consumers, so removing a consumer turns CI red instead of
     quietly returning a capability to documentation-only.
+
+    Asserts ``WIRED`` specifically, not merely "not unwired". An earlier version
+    rejected only ``UNWIRED``, which meant the gate passed **vacuously** while
+    every claim reported ``UNPROVEN``: the source roots were anchored to the
+    process working directory, so a run from ``backend/`` resolved them to
+    ``backend/backend/...`` and searched one unrelated directory. A gate that
+    cannot fail is not a gate, so an undecided verdict is a failure too.
     """
     reports = audit_registered_claims()
-    broken = unwired(reports)
-    assert not broken, "capabilities documented but not wired:\n" + "\n".join(f"  - {r.capability_id}: {r.detail}" for r in broken)
+    not_wired = [r for r in reports if r.state is not WiringState.WIRED]
+    assert not not_wired, (
+        "advertised capabilities without a proven production consumer:\n"
+        + "\n".join(f"  - {r.capability_id}: {r.state.value} ({r.detail or r.reason})" for r in not_wired)
+        + "\n\nA claim reporting `unproven` means this audit could not decide. "
+        "Treat it as a failure until a human confirms it."
+    )
+
+
+def test_the_audit_resolves_real_source_roots():
+    """Guards the vacuous-pass bug directly.
+
+    The audit must be anchored to the tree it audits, not to wherever the process
+    happens to be running.
+    """
+    from alpha.capabilities.honesty import repo_root
+
+    root = repo_root()
+    assert (root / "backend" / "packages" / "harness" / "alpha").is_dir(), root
+    assert (root / "AGENTS.md").is_file(), root
+
+
+def test_source_roots_are_never_empty():
+    """An empty tree would report 'nothing is unwired', which reads as healthy."""
+    from alpha.capabilities.honesty import _source_roots
+
+    roots = _source_roots()
+    assert len(roots) >= 2, f"expected several source roots, got {roots}"
 
 
 def test_audited_claims_resolve_to_a_decided_state():

@@ -44,7 +44,11 @@ def test_features_reports_agents_api_enabled() -> None:
     with TestClient(_app_with_config(agents_api_enabled=True)) as client:
         response = client.get("/api/features")
     assert response.status_code == 200
-    assert response.json() == {
+    payload = response.json()
+    # The four feature flags are asserted exactly, as before. The wiring verdict
+    # is checked separately below because its contents are environment-derived,
+    # and folding it into this comparison would only relocate the brittleness.
+    for key, expected in {
         "agents_api": {"enabled": True},
         "browser_control": {"enabled": False},
         "mcp_tasks": {"enabled": False},
@@ -54,14 +58,16 @@ def test_features_reports_agents_api_enabled() -> None:
             "worker_running": False,
             "max_running": 3,
         },
-    }
+    }.items():
+        assert payload[key] == expected, key
 
 
 def test_features_reports_agents_api_disabled() -> None:
     with TestClient(_app_with_config(agents_api_enabled=False)) as client:
         response = client.get("/api/features")
     assert response.status_code == 200
-    assert response.json() == {
+    payload = response.json()
+    for key, expected in {
         "agents_api": {"enabled": False},
         "browser_control": {"enabled": False},
         "mcp_tasks": {"enabled": False},
@@ -71,7 +77,8 @@ def test_features_reports_agents_api_disabled() -> None:
             "worker_running": False,
             "max_running": 3,
         },
-    }
+    }.items():
+        assert payload[key] == expected, key
 
 
 def test_features_reports_mcp_tasks_startup_capability() -> None:
