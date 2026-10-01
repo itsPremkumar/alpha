@@ -17,7 +17,7 @@ from agent assembly paths that are themselves reachable from the config layer,
 so importing the shared config package from here would close a cycle
 (``alpha.tools.discovery.config`` -> ``alpha.config`` -> ``app_config`` ->
 ``alpha.tools``). The cycle is a known hazard in this repo, so this module
-resolves the runtime home itself from ``AGENT_WORKSPACE_HOME``.
+resolves the runtime home itself from ``ALPHA_HOME``, and the project root from ``ALPHA_PROJECT_ROOT``,
 
 The mirror is small (two lines) and is *pinned* by
 ``backend/tests/test_tool_discovery.py::test_runtime_home_mirror_matches_shared_resolver``,
@@ -128,9 +128,27 @@ def runtime_home() -> Path:
     Mirrors ``alpha.config.runtime_paths.runtime_home`` without importing
     ``alpha.config`` (see the module docstring). A test pins the agreement.
     """
-    if env_home := os.getenv("AGENT_WORKSPACE_HOME"):
+    if env_home := os.getenv("ALPHA_HOME"):
         return Path(env_home).resolve()
-    return Path.cwd().resolve() / ".agent-workspace"
+    return _project_root() / ".alpha"
+
+
+def _project_root() -> Path:
+    """Mirror of ``alpha.config.runtime_paths.project_root`` (see above).
+
+    Replicated rather than imported for the same cycle reason - and for a second
+    one: a mirror that handled only the home variable would agree with the shared
+    resolver on a default checkout and disagree the moment ``ALPHA_PROJECT_ROOT``
+    is set, which is exactly the drift the pinning test exists to prevent.
+    """
+    if env_root := os.getenv("ALPHA_PROJECT_ROOT"):
+        root = Path(env_root).resolve()
+        if not root.exists():
+            raise ValueError(f"ALPHA_PROJECT_ROOT is set to '{env_root}', but the resolved path '{root}' does not exist.")
+        if not root.is_dir():
+            raise ValueError(f"ALPHA_PROJECT_ROOT is set to '{env_root}', but the resolved path '{root}' is not a directory.")
+        return root
+    return Path.cwd().resolve()
 
 
 def config_path() -> Path:

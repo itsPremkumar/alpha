@@ -13,7 +13,7 @@ Hermeticity
 -----------
 No network, no real MCP server, no gateway import, no global singleton, and no
 sleep beyond the few hundred milliseconds the execution-gate test needs. Every
-runtime-home read is pinned to a fresh temp dir through the ``AGENT_WORKSPACE_HOME``
+runtime-home read is pinned to a fresh temp dir through the ``ALPHA_HOME``
 fixture, so nothing touches a developer's real workspace.
 """
 
@@ -57,11 +57,11 @@ from alpha.tools.mcp_metadata import tag_mcp_tool
 
 @pytest.fixture(autouse=True)
 def _fresh_runtime_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Pin ``AGENT_WORKSPACE_HOME`` to a fresh dir so config reads are hermetic."""
+    """Pin ``ALPHA_HOME`` to a fresh dir so config reads are hermetic."""
     home = tmp_path / "agent-workspace"
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.delenv("AGENT_TOOL_DISCOVERY_CONFIG", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     return home
 
 
@@ -92,7 +92,7 @@ def _make_tool(
     doc_lines = [description, "", "Args:"]
     for pname, _, pdesc, _default in declared:
         doc_lines.append(f"    {pname}: {pdesc}")
-    source = f"def {name}({', '.join(signature_parts)}):\n    \"\"\"{chr(10).join(doc_lines)}\n    \"\"\"\n    {body or f'return f{chr(34)}{name}-ok{chr(34)}'}\n"
+    source = f'def {name}({", ".join(signature_parts)}):\n    """{chr(10).join(doc_lines)}\n    """\n    {body or f"return f{chr(34)}{name}-ok{chr(34)}"}\n'
     exec(compile(source, f"<{name}>", "exec"), namespace)  # noqa: S102 - test fixture, not user input
     built = tool(name, parse_docstring=True)(namespace[name])
     if metadata:
