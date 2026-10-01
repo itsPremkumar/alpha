@@ -2,6 +2,32 @@
 
 Thank you for your interest in contributing to Alpha! This guide will help you set up your development environment and understand our development workflow.
 
+## Working with git worktrees (read this before you commit)
+
+This repository is large and, on Windows in particular, `git worktree add` can
+produce an **incomplete** working tree **with no error**: files present in the
+index/HEAD are missing on disk. Committing from such a tree is dangerous — a
+naive `git add <dir>` then stages **mass deletions** and can create a commit that
+removes thousands of files.
+
+Before you stage or commit in any worktree:
+
+```bash
+make verify-checkout          # fails loudly on a short checkout
+# or, directly:
+python scripts/verify_checkout.py
+git ls-files --deleted | wc -l   # must be 0
+```
+
+Rules:
+
+- **Verify the checkout first** (`make verify-checkout`).
+- **Never `git add <directory>`** — stage **explicit file paths** so a missing
+  file is never silently staged as a deletion.
+- If a worktree is short, repair it with `git checkout -- .` in that worktree
+  (or recreate it) before doing anything else.
+- On Windows, ensure `git config --global core.longpaths true`.
+
 ## Development Environment Setup
 
 We offer two development environments. **Docker is recommended** for the most consistent and hassle-free experience.

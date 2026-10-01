@@ -17,6 +17,7 @@ import { moduleUrl } from "./test-modules.mjs";
 const {
   ANONYMOUS_INITIALS,
   ANONYMOUS_LABEL,
+  ANONYMOUS_ROLE,
   OPERATOR_NAME_STORAGE_KEY,
   currentOperatorIdentity,
   landingGreeting,
@@ -127,6 +128,95 @@ test("no component hardcodes the developer's initials as an operator identity", 
     });
   }
   assert.deepEqual(offenders, [], `hardcoded operator identity: ${offenders.join(" | ")}`);
+});
+
+/**
+ * Strip comments so a pin can target *code* rather than the prose that
+ * documents the fix.
+ *
+ * This deliberately ignores comments, because the fix records the history of
+ * the defect ("this defaulted to `"MK"`") and a pin that flagged its own
+ * explanation would make that documentation undeletable.
+ *
+ * Handles all three comment forms this codebase uses: `/* ... *\/` blocks, the
+ * JSX form `{/* ... *\/}`, and trailing `// ...`. Blanking preserves line
+ * numbering so a failure still points at the right line.
+ */
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .split("\n")
+    .map((line) => {
+      // A `//` inside a string literal would confuse this, but the files under
+      // test are JSX/TSX with no `http://` outside comments or a quoted URL
+      // constant, and the check is a heuristic pin rather than a parser.
+      const cut = line.indexOf("//");
+      return cut === -1 ? line : line.slice(0, cut);
+    })
+    .join("\n");
+}
+
+/**
+ * A prop may legitimately be passed a *literal* name string, so that alone is
+ * not the defect. What must never appear is the specific developer's initials
+ * this codebase shipped.
+ */
+test("the developer's initials appear in no line of executable code", () => {
+  const rel = [
+    "components/chat-shell/ChatShellLanding.tsx",
+    "components/chat-shell/WorkspaceTopBar.tsx",
+    "components/ChatView.tsx",
+    "lib/operator.ts",
+  ];
+  const offenders = [];
+  for (const file of rel) {
+    stripComments(read(file))
+      .split("\n")
+      .forEach((line, i) => {
+        if (/"MK"|'MK'|>MK<|\bMK\b/.test(line)) {
+          offenders.push(`${file}:${i + 1} ${line.trim()}`);
+        }
+      });
+  }
+  assert.deepEqual(offenders, [], `the hardcoded initials are still in code: ${offenders.join(" | ")}`);
+});
+
+test("the comment stripper actually strips, so the pin above is not vacuous", () => {
+  // Guards the guard: if `stripComments` ever stopped removing comments, the
+  // initials pin would either pass for the wrong reason or start failing on
+  // its own documentation. This proves the two behaviours separately.
+  const sample = [
+    'const a = 1; // trailing "MK"',
+    '{/* jsx "MK" */}',
+    "/* block",
+    '   "MK" */',
+    'const b = "MK";',
+  ].join("\n");
+  const stripped = stripComments(sample);
+  assert.ok(!stripped.includes("MK //"), "trailing comment not stripped");
+  assert.ok(!stripped.includes("jsx"), "JSX block comment not stripped");
+  assert.ok(!stripped.includes('block'), "multi-line block comment not stripped");
+  // The real code line survives, which is what makes the pin meaningful.
+  assert.ok(stripped.includes('const b = "MK";'), "code was stripped along with the comments");
+});
+
+test("the operator name is never defaulted to a literal in a prop signature", () => {
+  // `userName = "anything"` in a destructuring default is the exact shape of
+  // the original defect: a visitor is named without ever choosing to be.
+  const offenders = [];
+  for (const file of [
+    "components/chat-shell/ChatShellLanding.tsx",
+    "components/chat-shell/WorkspaceTopBar.tsx",
+  ]) {
+    read(file)
+      .split("\n")
+      .forEach((line, i) => {
+        if (/userName\s*=\s*"|userInitials\s*=\s*"/.test(line)) {
+          offenders.push(`${file}:${i + 1} ${line.trim()}`);
+        }
+      });
+  }
+  assert.deepEqual(offenders, [], `a name is still defaulted to a literal: ${offenders.join(" | ")}`);
 });
 
 test("the landing page derives its greeting through the shared helper", () => {

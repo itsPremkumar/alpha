@@ -187,10 +187,13 @@ server is up, because only `next build` writes `.next`.
 
 ## Update control contract
 
-- `components/UpdateControl.tsx` is mounted in the `ChatView` header beside
-  `WorkspaceVitals`, so update state is always visible without opening
-  Settings. Settings → General keeps the fuller identity card; both read the
-  same client.
+- `components/UpdateControl.tsx` is mounted in `WorkspaceTopBar`
+  (`components/chat-shell/`), the one header every view renders, so update
+  state is visible without opening Settings — and is visible in the chat view
+  too. It previously sat beside `WorkspaceVitals` in the per-section header,
+  which only renders when `view !== "chat"`: the screen a user lives on was the
+  one that never showed it. Settings → General keeps the fuller identity card;
+  both read the same client. `evolution-update.test.mjs` pins the mount.
 - **Mount reads `getEvolutionUpdateState()` only** — a local file read. The
   GitHub-reaching `checkForEvolutionUpdate()` runs solely from the click
   handler. Never add an automatic check on load, on an interval, or on view

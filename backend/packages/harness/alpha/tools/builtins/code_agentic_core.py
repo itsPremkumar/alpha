@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
+import shlex
 import shutil
 import subprocess
 import sys
@@ -17,6 +19,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 from langchain.tools import tool
+
+from alpha.sandbox.workspace_boundary import (
+    WorkspaceBoundaryError,
+    resolve_workspace_file,
+    resolve_workspace_root,
+)
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 1. Repository Map Generator (Aider / Claude Code style)
@@ -108,9 +118,10 @@ def generate_repo_map(
         max_depth: Maximum directory recursion depth (default 3).
         include_symbols: Whether to parse AST and include top-level functions and classes (default True).
     """
-    root = Path(root_path).resolve()
-    if not root.exists():
-        return f"Error: Path '{root_path}' does not exist."
+    try:
+        root = resolve_workspace_root(root_path)
+    except WorkspaceBoundaryError as exc:
+        return f"Error: {exc}"
 
     output_lines: list[str] = [f"[DIR] {root.name}/"]
 
@@ -208,8 +219,10 @@ def auto_test_and_repair(
         root_path: Project root directory (default current working directory).
         timeout_seconds: Maximum test execution time in seconds (default 60).
     """
-    root = Path(root_path).resolve()
-    cmd = test_command.strip() or _detect_test_command(root)
+    root = resolve_workspace_root(root_path)
+    requested = test_command.strip()
+    detected = _detect_test_command(root)
+    cmd = requested or detected
 
     if not cmd:
         return json.dumps(
@@ -220,11 +233,37 @@ def auto_test_and_repair(
             indent=2,
         )
 
+    # A detected command is one Alpha chose from files it inspected, so it can be
+    # executed as an argv without a shell. A caller-supplied command is the model
+    # naming a host command, which is the same act `bash` performs and is therefore
+    # gated by the same operator opt-in.
+    if requested:
+        from alpha.sandbox.security import is_host_bash_allowed
+
+        if not is_host_bash_allowed():
+            return json.dumps(
+                {
+                    "status": "refused",
+                    "reason": "host_command_execution_not_permitted",
+                    "command": requested,
+                    "message": (
+                        "A caller-supplied test_command is host command execution and is refused "
+                        "because `sandbox.allow_host_bash` is false. Leave test_command empty to "
+                        "let Alpha detect and run the project's own harness, or use the `bash` "
+                        "tool, which is refused for the same reason."
+                    ),
+                },
+                indent=2,
+            )
+        use_shell = True
+    else:
+        use_shell = False
+
     start_time = time.time()
     try:
         res = subprocess.run(
-            cmd,
-            shell=True,
+            cmd if use_shell else shlex.split(cmd),
+            shell=use_shell,
             cwd=str(root),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -256,6 +295,7 @@ def auto_test_and_repair(
             {
                 "status": "passed" if passed else "failed",
                 "command": cmd,
+                "execution": "shell" if use_shell else "argv",
                 "exit_code": exit_code,
                 "duration_seconds": elapsed,
                 "failure_count": len(failures),
@@ -312,16 +352,30 @@ def create_shadow_checkpoint(
     label: str = "",
     root_path: str = ".",
     target_files: list[str] | None = None,
+    *,
+    root_is_trusted: bool = False,
 ) -> CodeCheckpoint:
-    """Programmatic API to create a lightweight workspace checkpoint."""
-    root = Path(root_path).resolve()
+    """Programmatic API to create a lightweight workspace checkpoint.
+
+    ``root_is_trusted`` is for a *server-owned* caller that has already
+    established containment over ``root_path`` by its own means (a sandbox
+    mapping table, a worktree registry, an explicit per-run workspace). It is
+    deliberately not a parameter of the `manage_code_checkpoint` tool: a model
+    must not be able to widen its own boundary, so this flag has no path from
+    the model-facing schema.
+    """
+    root = resolve_workspace_root(root_path, allow_outside_root=root_is_trusted)
     cid = f"chk_{uuid.uuid4().hex[:8]}"
     snap: dict[str, str] = {}
     git_ref = None
 
     if target_files:
         for tf in target_files:
-            fp = root / tf
+            try:
+                fp = resolve_workspace_file(root, tf)
+            except WorkspaceBoundaryError as exc:
+                logger.warning("checkpoint target rejected: %s", exc)
+                continue
             if fp.is_file():
                 snap[tf] = fp.read_text(encoding="utf-8", errors="ignore")
     else:
@@ -337,11 +391,18 @@ def create_shadow_checkpoint(
             if git_status.returncode == 0:
                 for line in git_status.stdout.splitlines():
                     parts = line.strip().split()
-                    if len(parts) >= 2:
-                        rel_path = parts[-1]
-                        fp = root / rel_path
-                        if fp.is_file():
-                            snap[rel_path] = fp.read_text(encoding="utf-8", errors="ignore")
+                    if len(parts) < 2:
+                        continue
+                    # A rename entry is `old -> new`; git status paths are relative
+                    # to the repository root, which need not be `root`.
+                    rel_path = parts[-1]
+                    try:
+                        fp = resolve_workspace_file(root, rel_path)
+                    except WorkspaceBoundaryError as exc:
+                        logger.warning("git-status snapshot target rejected: %s", exc)
+                        continue
+                    if fp.is_file():
+                        snap[rel_path] = fp.read_text(encoding="utf-8", errors="ignore")
                 # Record git shadow reference tag if inside git repo
                 ref_name = f"refs/alpha-checkpoints/{cid}"
                 try:
@@ -397,9 +458,13 @@ def get_all_checkpoints() -> list[dict]:
     ]
 
 
-def rollback_to_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict:
-    """Restore workspace files to the specified checkpoint state."""
-    root = Path(root_path).resolve()
+def rollback_to_checkpoint(checkpoint_id: str, root_path: str = ".", *, root_is_trusted: bool = False) -> dict:
+    """Restore workspace files to the specified checkpoint state.
+
+    See `create_shadow_checkpoint` for what `root_is_trusted` means and why it
+    is not reachable from the model-facing tool.
+    """
+    root = resolve_workspace_root(root_path, allow_outside_root=root_is_trusted)
     cp = _ACTIVE_CHECKPOINTS.get(checkpoint_id)
     if not cp:
         return {
@@ -408,8 +473,14 @@ def rollback_to_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict:
         }
 
     restored_files: list[str] = []
+    rejected: list[str] = []
     for rel_path, content in cp.files_snapshot.items():
-        target = root / rel_path
+        try:
+            target = resolve_workspace_file(root, rel_path)
+        except WorkspaceBoundaryError as exc:
+            logger.warning("rollback target rejected: %s", exc)
+            rejected.append(rel_path)
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         restored_files.append(rel_path)
@@ -420,22 +491,27 @@ def rollback_to_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict:
         "label": cp.label,
         "restored_files_count": len(restored_files),
         "restored_files": restored_files,
+        "rejected_paths": rejected,
         "git_ref": cp.git_ref,
     }
 
 
-def get_checkpoint_diff(checkpoint_id: str, root_path: str = ".") -> dict:
+def get_checkpoint_diff(checkpoint_id: str, root_path: str = ".", *, root_is_trusted: bool = False) -> dict:
     """Generate unified diff between checkpoint and current workspace files."""
     import difflib
 
-    root = Path(root_path).resolve()
+    root = resolve_workspace_root(root_path, allow_outside_root=root_is_trusted)
     cp = _ACTIVE_CHECKPOINTS.get(checkpoint_id)
     if not cp:
         return {"error": f"Checkpoint '{checkpoint_id}' not found."}
 
     diffs: dict[str, str] = {}
     for rel_path, old_content in cp.files_snapshot.items():
-        target = root / rel_path
+        try:
+            target = resolve_workspace_file(root, rel_path)
+        except WorkspaceBoundaryError as exc:
+            logger.warning("diff target rejected: %s", exc)
+            continue
         current_content = target.read_text(encoding="utf-8", errors="ignore") if target.exists() else ""
         file_diff = list(
             difflib.unified_diff(
@@ -475,52 +551,17 @@ def manage_code_checkpoint(
         target_files: Optional list of specific file paths to track (defaults to all modified git files).
         root_path: Project root path.
     """
-    root = Path(root_path).resolve()
+    root = resolve_workspace_root(root_path)
     act = action.strip().lower()
 
     if act == "create":
-        cid = f"chk_{uuid.uuid4().hex[:8]}"
-        snap: dict[str, str] = {}
-
-        if target_files:
-            for tf in target_files:
-                fp = root / tf
-                if fp.is_file():
-                    snap[tf] = fp.read_text(encoding="utf-8", errors="ignore")
-        else:
-            try:
-                git_status = subprocess.run(
-                    ["git", "status", "--porcelain"],
-                    cwd=str(root),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    timeout=5,
-                )
-                if git_status.returncode == 0:
-                    for line in git_status.stdout.splitlines():
-                        parts = line.strip().split()
-                        if len(parts) >= 2:
-                            rel_path = parts[-1]
-                            fp = root / rel_path
-                            if fp.is_file():
-                                snap[rel_path] = fp.read_text(encoding="utf-8", errors="ignore")
-            except Exception:
-                pass
-
-        cp = CodeCheckpoint(
-            checkpoint_id=cid,
-            label=label or "Manual checkpoint",
-            created_at=time.time(),
-            files_snapshot=snap,
-            root_path=str(root),
-        )
-        _ACTIVE_CHECKPOINTS[cid] = cp
+        cp = create_shadow_checkpoint(label=label, root_path=str(root), target_files=target_files)
+        snap = cp.files_snapshot
 
         return json.dumps(
             {
                 "status": "created",
-                "checkpoint_id": cid,
+                "checkpoint_id": cp.checkpoint_id,
                 "label": cp.label,
                 "captured_files_count": len(snap),
                 "captured_files": list(snap.keys()),
@@ -549,8 +590,14 @@ def manage_code_checkpoint(
             )
 
         restored_files: list[str] = []
+        rejected: list[str] = []
         for rel_path, content in cp.files_snapshot.items():
-            target = root / rel_path
+            try:
+                target = resolve_workspace_file(root, rel_path)
+            except WorkspaceBoundaryError as exc:
+                logger.warning("rollback target rejected: %s", exc)
+                rejected.append(rel_path)
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
             restored_files.append(rel_path)
@@ -562,6 +609,7 @@ def manage_code_checkpoint(
                 "label": cp.label,
                 "restored_files_count": len(restored_files),
                 "restored_files": restored_files,
+                "rejected_paths": rejected,
             },
             indent=2,
         )
@@ -581,8 +629,14 @@ def manage_code_checkpoint(
             return json.dumps({"status": "error", "error": "No checkpoints available to restore."})
 
         restored_files: list[str] = []
+        rejected: list[str] = []
         for rel_path, content in target_cp.files_snapshot.items():
-            target = root / rel_path
+            try:
+                target = resolve_workspace_file(root, rel_path)
+            except WorkspaceBoundaryError as exc:
+                logger.warning("auto-rollback target rejected: %s", exc)
+                rejected.append(rel_path)
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
             restored_files.append(rel_path)
@@ -594,6 +648,7 @@ def manage_code_checkpoint(
                 "label": target_cp.label,
                 "restored_files_count": len(restored_files),
                 "restored_files": restored_files,
+                "rejected_paths": rejected,
             },
             indent=2,
         )
@@ -641,9 +696,10 @@ def generate_personalized_repo_map(
     from alpha.coding.structural_intelligence.repo_map import RepoMapGenerator
     from alpha.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
 
-    root = Path(root_path).resolve()
-    if not root.is_dir():
-        return f"Error: '{root_path}' is not a valid directory."
+    try:
+        root = resolve_workspace_root(root_path)
+    except WorkspaceBoundaryError as exc:
+        return f"Error: {exc}"
 
     graph = SymbolDependencyGraph()
     graph.parse_directory(root, max_files=400)
@@ -672,7 +728,7 @@ def run_surgical_program_repair(
     """
     from alpha.selfrepair.surgical_apr import SurgicalProgramRepairEngine
 
-    root = Path(root_path).resolve()
+    root = resolve_workspace_root(root_path)
     engine = SurgicalProgramRepairEngine(workspace_root=root)
     result = engine.attempt_surgical_repair(
         test_output=test_output,
@@ -706,7 +762,7 @@ def execute_code_programmatic(
     """
     from alpha.tools.programmatic_calling import ProgrammaticCallingEngine
 
-    root = Path(root_path).resolve()
+    root = resolve_workspace_root(root_path)
     engine = ProgrammaticCallingEngine(workspace_root=root)
     result = engine.execute_script(script_code=script_code, timeout_seconds=timeout_seconds)
     return json.dumps(result.to_dict(), indent=2)

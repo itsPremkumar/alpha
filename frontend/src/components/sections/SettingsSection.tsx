@@ -1353,7 +1353,7 @@ export function SettingsSection({
                   {themeMode === "system" && <CheckCircle2 className="size-4 text-primary" />}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">Follows your OS light/dark preference - what applies when nothing is chosen</p>
-              </div>
+              </SelectableCard>
             </SelectableGroup>
 
             <div className="pt-2 border-t border-border/50 space-y-3">

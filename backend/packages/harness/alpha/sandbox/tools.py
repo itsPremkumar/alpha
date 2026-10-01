@@ -27,6 +27,7 @@ from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.runtime.secret_context import read_active_secrets
 from alpha.runtime.user_context import resolve_runtime_user_id
 from alpha.safety.ast_syntax_guard import validate_syntax_precommit
+from alpha.sandbox.git_push_guard import GIT_PUSH_GUARD_MESSAGE, GitPushVerdict
 from alpha.sandbox.exceptions import (
     SandboxError,
     SandboxNotFoundError,
@@ -2046,6 +2047,52 @@ def _lark_cli_env_from_runtime(runtime: Runtime, command: str, *, sandbox_paths:
         return None
 
 
+def _check_protected_git_push(command: str) -> GitPushVerdict | None:
+    """Return a verdict when *command* attempts an irreversible git push.
+
+    Returns ``None`` when the command is fine, or when the operator has set
+    ``sandbox.allow_protected_git_push: true``. The bare ``git push`` case has no
+    refspec to read the target from, so the current branch is resolved with a
+    short, bounded, read-only git call. A failure to resolve it is not a finding
+    — the guard then declines to guess, and the explicit-refspec and force-flag
+    cases still apply.
+    """
+    from alpha.config.app_config import get_app_config
+    from alpha.sandbox.git_push_guard import classify_git_push
+
+    try:
+        sandbox_cfg = get_app_config().sandbox
+        if sandbox_cfg is not None and getattr(sandbox_cfg, "allow_protected_git_push", False):
+            return None
+    except Exception:
+        # An unreadable config must not silently disable a destructive-operation
+        # guard; fall through and evaluate the command.
+        logger.warning("Could not read sandbox config for the git push guard; evaluating conservatively", exc_info=True)
+
+    current_branch = _current_git_branch()
+    return classify_git_push(command, current_branch=current_branch)
+
+
+def _current_git_branch() -> str | None:
+    """Best-effort current branch, for a bare ``git push`` with no refspec."""
+    import subprocess as _sp
+
+    try:
+        res = _sp.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stdout=_sp.PIPE,
+            stderr=_sp.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    if res.returncode != 0:
+        return None
+    branch = (res.stdout or "").strip()
+    return branch or None
+
+
 @tool("bash", parse_docstring=True)
 def bash_tool(runtime: Runtime, command: str, description: str = "") -> str:
     """Execute a bash command in the configured execution environment.
@@ -2069,6 +2116,20 @@ def bash_tool(runtime: Runtime, command: str, description: str = "") -> str:
         command: The bash command to execute. Always use absolute paths for files and directories.
         description: Optional short explanation of this command shown in the UI.
     """
+    # Irreversible git guard, before any sandbox is acquired. Force-pushing, or
+    # pushing straight to a protected branch, is work Alpha's autonomy guard already
+    # classifies as requiring human approval — but that classification had no production
+    # caller, so nothing stopped it here. Checked ahead of execution rather than inside
+    # the sandbox so the refusal is identical on every provider.
+    git_verdict = _check_protected_git_push(command)
+    if git_verdict is not None:
+        logger.warning(
+            "Blocked irreversible git command: force=%s target=%s matched=%r",
+            git_verdict.force,
+            git_verdict.target_branch,
+            git_verdict.matched,
+        )
+        return f"Error: {GIT_PUSH_GUARD_MESSAGE}\n\nReason: {git_verdict.reason}"
     try:
         sandbox = ensure_sandbox_initialized(runtime)
         # Request-scoped secrets resolved for the active skill (#3861), plus a
@@ -2626,10 +2687,7 @@ def write_file_tool(
                 except Exception as read_error:
                     return _format_write_file_error(
                         requested_path,
-                        RuntimeError(
-                            "append aborted: the current file content could not be read, "
-                            f"so the result could not be syntax-validated ({type(read_error).__name__}: {read_error})"
-                        ),
+                        RuntimeError(f"append aborted: the current file content could not be read, so the result could not be syntax-validated ({type(read_error).__name__}: {read_error})"),
                         runtime,
                     )
                 is_valid, err_msg = validate_syntax_precommit(requested_path, existing + content, bypass=False)

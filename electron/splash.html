@@ -122,7 +122,7 @@
           if (payload.message) statusEl.textContent = payload.message;
           detailEl.textContent = payload.detail || "";
         }
-        var api = window.alpha || window.alpha;
+        var api = window.alpha;
         if (api && api.onStatus) {
           api.onStatus(render);
           api.getStatus().then(render).catch(function () {});

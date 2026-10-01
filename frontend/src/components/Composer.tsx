@@ -346,7 +346,7 @@ export function Composer({
               <button
                 type="button"
                 onClick={() => setShowKeyPopover(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
                 aria-label="Close quick setup"
               >
                 <X className="size-3.5" />
@@ -524,7 +524,7 @@ export function Composer({
                   type="button"
                   onClick={onRefreshFree}
                   disabled={refreshingFree}
-                  className="p-1 rounded-lg text-amber-500 hover:text-amber-400 hover:bg-muted transition-colors disabled:opacity-40"
+                  className="p-1.5 rounded-lg text-amber-500 hover:text-amber-400 hover:bg-muted transition-colors disabled:opacity-40"
                   title="⚡ Find & Probe Today's Free Models (Live health probe and catalog refresh)"
                   aria-label="Find and probe today's free models"
                 >
@@ -534,7 +534,7 @@ export function Composer({
               <button
                 type="button"
                 onClick={() => setShowKeyPopover((v) => !v)}
-                className={`p-1 rounded-lg transition-colors ${
+                className={`p-1.5 rounded-lg transition-colors ${
                   showKeyPopover ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
                 title="🔑 Quick Configure Provider API Key"
@@ -546,7 +546,7 @@ export function Composer({
                 <button
                   type="button"
                   onClick={onOpenModelSettings}
-                  className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
                   title="⚙️ Open Full Model & API Key Configuration Page"
                   aria-label="Open model settings"
                 >

@@ -179,6 +179,42 @@ class SandboxConfig(BaseModel):
         default=False,
         description="Allow the bash tool to execute directly on the host when using LocalSandboxProvider. Dangerous; intended only for fully trusted local environments.",
     )
+    allow_in_process_repl: bool = Field(
+        default=False,
+        description=(
+            "Allow the python_repl tool, which executes Python via exec() inside the Gateway "
+            "process itself and therefore has no sandbox boundary at all. It is a distinct "
+            "switch from allow_host_bash because it is not a subprocess: it cannot be confined "
+            "by build_sandbox_env, and its namespace preloads `os`, so os.environ is readable "
+            "regardless of any env scrubbing. Defaults to False; without this key the tool was "
+            "reachable in the shipped default even while allow_host_bash was False, which made "
+            "allow_host_bash an incomplete kill switch. Dangerous; intended only for fully "
+            "trusted local environments."
+        ),
+    )
+    workspace_roots: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Additional directories code tools (generate_repo_map, auto_test_and_repair, "
+            "manage_code_checkpoint, ...) may treat as a workspace root, for deployments that "
+            "keep agent work outside the project directory (a git worktree tree, an evaluation "
+            "sandbox, a per-run scratch directory). The project root is always allowed and "
+            "needs no entry. Mirrors the workspace_roots contract in alpha.bots.survey: an "
+            "operator names an extra root explicitly, and nothing is scanned by default. "
+            "ALPHA_WORKSPACE_ROOTS (os.pathsep-separated) is the equivalent environment escape "
+            "hatch. This widens where a tool may look; it does not grant code execution."
+        ),
+    )
+    allow_protected_git_push: bool = Field(
+        default=False,
+        description=(
+            "Allow the bash tool to force-push or to push directly to a protected branch "
+            "(main/master/trunk/develop/release). Defaults to False. Alpha's autonomy guard "
+            "already classifies both as irreversible work that must clear a human approval gate, "
+            "but nothing enforced that classification until the bash guard was added, so an agent "
+            "could rewrite shared history unchallenged. Set this only on a branch you alone own."
+        ),
+    )
     image: str | None = Field(
         default=None,
         description="Sandbox image to use (Docker/AIO, BoxLite OCI, or OpenSandbox image)",

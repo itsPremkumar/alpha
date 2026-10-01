@@ -871,6 +871,30 @@ async def _await_task_stop_after_host_cancellation(
             deferred = _defer_finalization_interrupt(deferred, exc)
 
 
+def _admit_run_to_fleet(record: Any) -> Any | None:
+    """Admit this run to fleet control, or terminalize it and return ``None``.
+
+    A refused run is not left pending: it is terminalized with a real reason so a
+    client polling for completion sees the refusal instead of hanging on a run
+    that will never start. The refusal is surfaced rather than swallowed, because
+    "the fleet is stopped" and "the run failed" are different facts for whoever
+    is watching.
+    """
+    from alpha.runtime.control import FleetStopped, admitted
+
+    try:
+        return admitted(f"run {record.run_id}").__enter__()
+    except FleetStopped as exc:
+        logger.warning("Fleet control refused run %s: %s", record.run_id, exc)
+        try:
+            record.status = "error"
+            if hasattr(record, "error"):
+                record.error = str(exc)
+        except Exception:
+            logger.debug("Could not record fleet refusal on run %s", record.run_id, exc_info=True)
+        return None
+
+
 async def run_agent(
     bridge: StreamBridge,
     run_manager: RunManager,
@@ -886,6 +910,15 @@ async def run_agent(
     interrupt_after: list[str] | Literal["*"] | None = None,
 ) -> None:
     """Execute an agent in the background, publishing events to *bridge*."""
+
+    # Fleet control admission. `run_agent` is the single entry every lead run
+    # passes through, so this is where a stopped fleet stops admitting work. The
+    # ticket carries the generation this run was admitted under, so the streaming
+    # body below can revalidate before each step rather than trusting the check
+    # that happened once here.
+    fleet_ticket = _admit_run_to_fleet(record)
+    if fleet_ticket is None:
+        return
 
     # Unpack infrastructure dependencies from RunContext.
     checkpointer = ctx.checkpointer

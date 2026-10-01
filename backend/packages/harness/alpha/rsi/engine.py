@@ -76,9 +76,12 @@ class RSIEngine:
         evidence = [
             f"Bottleneck supplied: '{bottleneck}'",
             f"Proposed configuration: {candidate.modified_config}",
-            f"Simulated A/B scores: baseline={ab_test.baseline_score} -> candidate={ab_test.candidate_score}",
-            f"Simulated holdout score: {holdout.score}; no regression suite executed.",
+            "A/B: NOT MEASURED — no benchmark was executed, so there are no scores to report.",
+            "Holdout: NOT RUN — no hidden regression suite was executed, so no regression verdict exists.",
             "Promotion blocked: preview evidence is not release evidence; no runtime configuration was changed.",
+            "To obtain a real verdict, evaluate the candidate with alpha.rsi.holdout.run_holdout "
+            "(requires registered hidden suites) and route it through alpha.rsi.promotion.decide; "
+            "holdout_gate only passes on evidence_kind='measured'.",
         ]
         if force_promote:
             evidence.append("force_promote cannot bypass evidence or deployment requirements.")
@@ -124,31 +127,54 @@ class RSIEngine:
         )
 
     def _run_ab_test(self, candidate: RSICandidate) -> ABTestResult:
-        # Simulated empirical benchmark comparison
-        baseline = 0.72
-        candidate_score = 0.88
-        improved = candidate_score > baseline
+        """Report the A/B comparison as **not measured**.
+
+        This preview has no benchmark runner, no baseline capture and no
+        candidate execution, so there is nothing to compare. The scores are
+        therefore ``None``, not a plausible-looking constant: a fixed number
+        here would be indistinguishable from a measurement, would make
+        ``improved`` permanently ``True``, and would be quoted downstream as
+        evidence for a change that was never applied or benchmarked.
+        """
         return ABTestResult(
             candidate_id=candidate.id,
-            baseline_score=baseline,
-            candidate_score=candidate_score,
-            improved=improved,
-            confidence=0.92,
-            latency_delta_ms=-140.0,
+            baseline_score=None,
+            candidate_score=None,
+            improved=None,
+            confidence=None,
+            latency_delta_ms=None,
             evidence_kind="simulated",
+            not_measured_reason=(
+                "No A/B benchmark was executed: run_rsi_cycle has no baseline capture, "
+                "no candidate execution and no scoring harness. Scores are null, not zero."
+            ),
         )
 
     def _run_holdout_evaluation(self, candidate: RSICandidate, ab_test: ABTestResult) -> HoldoutResult:
-        baseline_holdout = 0.80
-        holdout_score = 0.89
+        """Report the holdout verdict as **not run**.
+
+        ``regressed`` is ``None`` rather than ``False``. ``False`` is a claim —
+        it asserts a regression suite ran and found nothing — and the previous
+        hardcoded ``False`` meant an unrun suite was indistinguishable from a
+        clean one. ``alpha.rsi.holdout.holdout_gate`` rejects any result whose
+        ``evidence_kind`` is not ``"measured"``, so this can never promote.
+        """
         return HoldoutResult(
             candidate_id=candidate.id,
-            improved=holdout_score > baseline_holdout,
-            regressed=False,
-            score=holdout_score,
-            baseline_score=baseline_holdout,
-            evidence=["Simulated holdout preview; no regression benchmarks were executed."],
+            improved=None,
+            regressed=None,
+            score=None,
+            baseline_score=None,
+            evidence=[
+                "Holdout NOT run: no hidden regression suite was executed against this candidate.",
+                "regressed is null rather than false, because 'not run' is not 'did not regress'.",
+            ],
             evidence_kind="simulated",
+            not_measured_reason=(
+                "run_holdout_evaluation is a preview stub with no BenchmarkRunner. "
+                "A real verdict comes from alpha.rsi.holdout.run_holdout, which requires "
+                "registered hidden suites and returns evidence_kind='measured'."
+            ),
         )
 
     def run_holdout_gate(self) -> dict[str, Any]:

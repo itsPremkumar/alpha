@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from alpha.config.runtime_paths import runtime_home
+
 logger = logging.getLogger(__name__)
 
 SENTINEL_NAME = "ESTOP"
@@ -16,15 +18,36 @@ SENTINEL_NAME = "ESTOP"
 def _get_runtime_home(root_dir: Path | str | None = None) -> Path:
     if root_dir is not None:
         return Path(root_dir)
-    return Path.cwd() / ".alpha"
+    # Previously `Path.cwd() / ".alpha"`, which diverged from every other runtime
+    # consumer: `alpha.config.runtime_paths.runtime_home()` honours
+    # `ALPHA_HOME`, and falls back to the *project* root rather than the
+    # process working directory. So the sentinel could be written somewhere the
+    # runtime never looked - and conversely, a process whose cwd was not the
+    # project root (uvicorn started from a subdirectory, a test runner, a worker)
+    # read a different path than the one it wrote. The stop sentinel must land in
+    # the same place the rest of the runtime state does.
+    return runtime_home()
 
 
 class EmergencyStopManager:
     """Manages the global pause/resume sentinel state for the agent runtime fleet."""
 
     def __init__(self, root_dir: Path | str | None = None):
-        self.home_dir = _get_runtime_home(root_dir)
-        self.sentinel_file = self.home_dir / SENTINEL_NAME
+        # An explicit root_dir is pinned; otherwise the directory is resolved
+        # lazily on each access. Pinning at construction was a real bug: the
+        # module-level `_global_estop` is built at import time, so an `ALPHA_HOME`
+        # set after import (a test, a worker started with a modified environment,
+        # an embedded client) was silently ignored and the manager wrote to a
+        # different directory than the runtime used.
+        self._explicit_root = Path(root_dir) if root_dir is not None else None
+
+    @property
+    def home_dir(self) -> Path:
+        return _get_runtime_home(self._explicit_root)
+
+    @property
+    def sentinel_file(self) -> Path:
+        return self.home_dir / SENTINEL_NAME
 
     def is_engaged(self) -> bool:
         """True if the ESTOP sentinel file exists; failsafe against runtime anomalies."""

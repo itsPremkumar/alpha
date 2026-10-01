@@ -6,7 +6,7 @@ import { Section, EmptyState, ErrorBox, Notice, Btn, Field, SkeletonList, inputC
 import { errMsg } from "@/lib/http";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
 
-export function AgentsSection(props: { enabled: boolean }) {
+export function AgentsSection(props: { enabled: boolean | null }) {
   const [agents, setAgents] = useState<CustomAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,9 +63,22 @@ export function AgentsSection(props: { enabled: boolean }) {
   if (!props.enabled) {
     return (
       <Section title="Custom agents" hint="Build your own persistent personas with their own instructions.">
+        {/* `enabled` is tri-state. A failed `/features` read used to arrive as
+            `false`, so an unreachable Gateway was described as "switched off"
+            with an instruction to edit config.yaml — a diagnosis the server
+            never made, aimed at a problem the operator may not have. "Not
+            reported" is the honest rendering of an unanswered question. */}
         <EmptyState
-          title="Agent management is switched off"
-          hint="Ask your administrator to set agents_api.enabled=true in config.yaml and restart the server — then this page unlocks."
+          title={
+            props.enabled === null
+              ? "Agent management status was not reported"
+              : "Agent management is switched off"
+          }
+          hint={
+            props.enabled === null
+              ? "The Gateway did not answer which capabilities are enabled, so Alpha cannot tell whether this is on or off. Check the Gateway connection, then reload."
+              : "Ask your administrator to set agents_api.enabled=true in config.yaml and restart the server — then this page unlocks."
+          }
         />
       </Section>
     );

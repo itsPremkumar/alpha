@@ -10,7 +10,12 @@
 # "runtime: Field required". Keeping annotations as real objects fixes that.
 from langchain.tools import tool
 
+from alpha.config import get_app_config
 from alpha.sandbox.repl.session import ReplTimeoutError, get_repl_session
+from alpha.sandbox.security import (
+    LOCAL_IN_PROCESS_REPL_DISABLED_MESSAGE,
+    is_in_process_repl_allowed,
+)
 from alpha.tools.types import Runtime
 
 
@@ -35,11 +40,24 @@ async def python_repl_tool(
     ``timeout`` interrupts the cell: the shell subprocesses it started are
     killed and the cell reports a timeout instead of hanging.
 
+    This tool runs ``exec()`` inside the Gateway process itself. It has no
+    sandbox boundary and is therefore disabled unless
+    ``sandbox.allow_in_process_repl`` is explicitly enabled.
+
     Args:
         code: Python code block to execute in the persistent session.
         timeout: Maximum execution timeout in seconds. Defaults to 30.0.
         session_id: Optional session identifier. When omitted, automatically binds to current thread_id.
     """
+    # Defence in depth. Assembly-time filtering (``_is_host_bash_tool`` and the
+    # built-in filter in ``tools.py``) already keeps this tool out of the model
+    # schema when the switch is off, so the model normally never sees it. This
+    # check is the second half: a tool that reached a runtime some other way —
+    # a direct call, a custom Agent tool list, a config path that bypassed
+    # assembly — still refuses rather than handing out process-level execution.
+    if not is_in_process_repl_allowed(get_app_config()):
+        return LOCAL_IN_PROCESS_REPL_DISABLED_MESSAGE
+
     effective_session_id = session_id
     if not effective_session_id and runtime and hasattr(runtime, "context") and isinstance(runtime.context, dict):
         effective_session_id = runtime.context.get("thread_id")

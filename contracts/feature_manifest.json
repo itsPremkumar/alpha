@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-29T01:00:16Z",
+ "generated_at": "2026-09-30T21:50:38Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1526,6 +1526,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.teams",
+   "module": "app.gateway.routers.teams",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.thread_runs",
    "module": "app.gateway.routers.thread_runs",
    "symbol": "router",
@@ -1959,6 +1967,11 @@
    "submodules": []
   },
   {
+   "id": "alpha.automations",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.avo",
    "kind": "package",
    "submodules": []
@@ -2064,6 +2077,11 @@
    ]
   },
   {
+   "id": "alpha.connectors",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.consequence",
    "kind": "package",
    "submodules": []
@@ -2082,6 +2100,11 @@
   },
   {
    "id": "alpha.critic",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.critique",
    "kind": "package",
    "submodules": []
   },
@@ -2107,6 +2130,11 @@
   },
   {
    "id": "alpha.editing",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.egress",
    "kind": "package",
    "submodules": []
   },
@@ -2148,6 +2176,11 @@
    "submodules": [
     "evidence"
    ]
+  },
+  {
+   "id": "alpha.experts",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.extensions",
@@ -2287,6 +2320,11 @@
    ]
   },
   {
+   "id": "alpha.modes",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.multimodal",
    "kind": "package",
    "submodules": [
@@ -2404,6 +2442,11 @@
    ]
   },
   {
+   "id": "alpha.routines",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.rsi",
    "kind": "package",
    "submodules": []
@@ -2456,6 +2499,11 @@
    "submodules": []
   },
   {
+   "id": "alpha.scorecard",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.script_bridge_child",
    "kind": "package",
    "submodules": []
@@ -2487,6 +2535,11 @@
     "storage",
     "triggers"
    ]
+  },
+  {
+   "id": "alpha.skills_market",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.state",
@@ -2586,6 +2639,11 @@
    "submodules": [
     "registry"
    ]
+  },
+  {
+   "id": "alpha.workspace",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.workspace_changes",

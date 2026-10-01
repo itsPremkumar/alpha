@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from alpha.sandbox.env_policy import build_sandbox_env
 from alpha.sandbox.repl.protocol import CellResult
 
 logger = logging.getLogger(__name__)
@@ -175,7 +176,21 @@ _capture = _OutputCapture()
 
 
 def _start_shell(command: str, *, cwd: str) -> subprocess.Popen[str]:
-    """Spawn a shell command in its own process group so it can be killed whole."""
+    """Spawn a shell command in its own process group so it can be killed whole.
+
+    The child is given ``build_sandbox_env()`` rather than inheriting the
+    Gateway's full environment. Without this, every ``bash()`` call from a REPL
+    cell read straight out of ``os.environ`` — platform API keys, DATABASE_URL,
+    the internal auth token — because ``subprocess`` inherits the parent
+    environment when ``env=`` is omitted. That is the same scrub every other
+    sandbox-backed tool gets (``sandbox/env_policy.py``); the REPL was the one
+    caller that skipped it, purely because it was written as a bare ``Popen``.
+
+    This narrows the blast radius of an enabled REPL. It is not a sandbox: the
+    cell still ``exec()``s in-process and can read ``os.environ`` directly. The
+    real boundary is ``sandbox.allow_in_process_repl``, which defaults to off.
+    """
+    env = build_sandbox_env()
     if os.name == "nt":
         # ``shell=True`` starts ``cmd.exe``; killing it leaves the real command
         # running and still holding the inherited pipe handles, so the group
@@ -188,6 +203,7 @@ def _start_shell(command: str, *, cwd: str) -> subprocess.Popen[str]:
             stderr=subprocess.PIPE,
             text=True,
             cwd=cwd,
+            env=env,
             creationflags=creationflags,
         )
     return subprocess.Popen(  # noqa: S602 - the REPL shell helper is a shell by design
@@ -197,6 +213,7 @@ def _start_shell(command: str, *, cwd: str) -> subprocess.Popen[str]:
         stderr=subprocess.PIPE,
         text=True,
         cwd=cwd,
+        env=env,
         start_new_session=True,
     )
 

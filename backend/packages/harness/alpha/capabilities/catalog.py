@@ -280,6 +280,71 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Opt-in node executors that perform real work through the model factory, the guarded tool bridge, and the subagent executor.",
         kind="engine",
     ),
+    # --- User-facing workspace layer --------------------------------------
+    # Pure-stdlib, dependency-free modules. Registering each gives it a
+    # production reference (so `test_no_orphan_modules` sees it wired) and
+    # surfaces it on `/api/ops/integration-health`. None is enabled by default:
+    # a capability id declares reachability, never that work happens.
+    "routine_capture": CapabilitySpec(
+        module="alpha.routines",
+        target="RoutineStore",
+        description="Demonstration-captured, parameterised, replayable routines with a durable store.",
+        kind="engine",
+    ),
+    "connector_marketplace": CapabilitySpec(
+        module="alpha.connectors",
+        target="ConnectorCatalog",
+        description="Curated connector marketplace catalog plus durable install/health state.",
+        kind="utility",
+    ),
+    "egress_policy": CapabilitySpec(
+        module="alpha.egress",
+        target="EgressPolicy",
+        description="Domain egress routing policy and browser-profile references (no secrets stored).",
+        kind="guard",
+    ),
+    "work_modes": CapabilitySpec(
+        module="alpha.modes",
+        target="WorkMode",
+        description="Ask/Plan/Craft/Coding work modes as an enforceable capability policy.",
+        kind="guard",
+    ),
+    "expert_catalog": CapabilitySpec(
+        module="alpha.experts",
+        target="ExpertCatalog",
+        description="Role-based Expert catalog and multi-expert Expert Group pipelines.",
+        kind="utility",
+    ),
+    "automation_scheduler": CapabilitySpec(
+        module="alpha.automations",
+        target="AutomationStore",
+        description="RRULE-style scheduled automations (once/daily/weekly/monthly/yearly) with a durable store.",
+        kind="engine",
+    ),
+    "skill_marketplace": CapabilitySpec(
+        module="alpha.skills_market",
+        target="SkillMarketCatalog",
+        description="Browsable Skill Marketplace listings plus durable install/enable state.",
+        kind="utility",
+    ),
+    "agent_workspace": CapabilitySpec(
+        module="alpha.workspace",
+        target="AgentWorkspace",
+        description="Unified workspace facade composing modes, experts, automations, connectors, egress, routines and the scorecard.",
+        kind="engine",
+    ),
+    "capability_scorecard": CapabilitySpec(
+        module="alpha.scorecard",
+        target="scan",
+        description="Frontier agent capability taxonomy scanner and coverage report.",
+        kind="utility",
+    ),
+    "code_critic": CapabilitySpec(
+        module="alpha.critique",
+        target="critique_path",
+        description="Deterministic AST code critic (8 rules) with a severity-ranked report.",
+        kind="utility",
+    ),
 }
 
 

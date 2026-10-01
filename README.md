@@ -4,8 +4,8 @@
 
 ### The Open-Source Autonomous Multi-Agent AI Operating System
 
-**Alpha is a self-hosted, local-first AI agent platform that plans, executes, and
-verifies long-horizon work.** It runs a LangGraph agent runtime behind a FastAPI
+**Alpha is a self-hosted, local-first AI agent platform that plans and executes
+long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
 research, multi-agent swarms, sandboxed code execution, persistent memory, 134 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
@@ -76,8 +76,9 @@ proprietary backend.
 ## What is Alpha?
 
 **Alpha is an open-source autonomous multi-agent AI operating system** — a
-self-hosted platform where LLM agents plan, execute, and verify long-horizon tasks
-against your real tools, files, and the web, instead of only answering a chat prompt.
+self-hosted platform where LLM agents plan and execute long-horizon tasks against
+your real tools, files, and the web — reporting honestly when a result is unverified
+— instead of only answering a chat prompt.
 
 It is **not** a chat wrapper and **not** a hosted SaaS. You run it on your own
 machine or your own server, bring your own model API keys, and every artifact
@@ -112,7 +113,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 61 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 62 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -124,7 +125,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 102 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 112 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -186,8 +187,8 @@ the parts that decide whether an autonomous agent is usable in production.
 | **The agent dies mid-task** | Durable Boulder checkpoints, worker-lease fencing, and automatic resume after a crash, expired lease, or model error. Browser refresh never cancels work. |
 | **It hallucinates that it finished** | A Goal Engine with verifiable completion criteria plus a finish-first evidence matrix. A run can complete and still be honestly reported as *unverified*. |
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
-| **It runs dangerous commands** | A risk-scoring approval gate, an emergency stop (Estop), a scoped credential vault, and per-thread sandbox isolation. |
-| **You can't tell what it did** | A trajectory flight recorder and end-to-end artifact lineage tracing — cryptographic provenance from prompt to output. |
+| **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
+| **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed and `X-Trace-Id` correlation on every log line. ⚠️ The trajectory flight recorder's writer is not installed in production, so span-level tracing is off by default and not reachable from `config.yaml`. |
 | **It can't use your tools** | 134 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
@@ -202,27 +203,75 @@ decision, not a gap in the docs.
 
 ## Alpha vs. other agent frameworks
 
-If you are evaluating agent frameworks, this is the section to read. Alpha is
-**not** a competitor to every row — it sits in the "finished, self-hostable agent
-product" column, and it is a *superset* of the orchestration column.
+If you are evaluating agent frameworks, this is the section to read.
 
-| | **Alpha** | LangGraph | AutoGen | CrewAI | OpenHands | Dify |
+**Read the ⚠️ column before you decide.** Alpha is unusually candid about its own
+limits, and a comparison table that only lists strengths is marketing. Every ⚠️
+below was established by reading the implementation, not the documentation — the
+sources are cited inline and the audit that produced them is
+`ALPHA_AUDIT_REPORT*.md` in the repository root.
+
+Comparison targets are grouped by what they actually are. **Harness** = a library
+you build an app with. **Agent** = a finished agent you install and run. **App
+platform** = a visual builder.
+
+### Self-hostable agents you install and run
+
+| | **Alpha** | **OpenClaw** | **Hermes Agent** |
+| :--- | :--- | :--- | :--- |
+| **What it is** | Multi-agent OS: runtime, UI, OS/desktop app, deploy | Self-hosted personal agent + local gateway | Self-hosted personal agent harness |
+| **Origin** | `itsPremkumar/alpha` | Peter Steinberger (PSPDFKit), MIT | Nous Research, MIT |
+| **Ready-to-run web UI** | ✅ Next.js 15 workspace | ✅ via its local gateway | ⚠️ terminal-first; no shipped workspace UI |
+| **Windows desktop app** | ✅ Electron, per-user one-click installer | ❌ | ⚠️ Windows via WSL2 per its own docs |
+| **Messaging channels** | ✅ 9 platforms (Feishu, Slack, Telegram, Discord, DingTalk, …) | ✅ 50+ channels, widest reach | ✅ Telegram, Discord, Slack, WhatsApp |
+| **Skill/plugin ecosystem** | ✅ 24 public skills + `alpha-harness` package | ✅ large third-party skill marketplace | ✅ first-party skills; can drive other harnesses as sub-agents |
+| **Local-model support** | ✅ Ollama / vLLM / LM Studio presets | ✅ Ollama | ✅ five backends: local, Docker, SSH, Singularity, Modal |
+| **Multi-agent swarms** | ✅ lease-fenced DAG, budgets, consensus | ⚠️ messaging/collab, not a leased DAG | ✅ delegates to other harnesses as sub-agents |
+| **Persistent memory** | ✅ owner-scoped tiers with provenance | ⚠️ context/memory files | ✅ tiered, designed to survive restarts |
+| **Code execution isolation** | ✅ Docker/AIO/K8s; ⚠️ the *local* provider is a path convention, **not** a security boundary | ⚠️ host-level tools | ✅ container hardening + namespace isolation |
+| **Durable long-running runs** | ✅ checkpoints + lease recovery; ⚠️ the message *event feed* defaults to volatile | ⚠️ not a documented run-durability model | ⚠️ long-running sessions, not a run journal |
+| **Autonomous coding → PR → merge** | ❌ **see Known gaps** — the worktree and PR libraries are built but unwired, nothing commits or merges | ⚠️ shell-driven | ⚠️ delegates to Claude Code / Codex / OpenCode |
+
+### Libraries and app platforms
+
+| | **Alpha** | **LangGraph** | **AutoGen** | **CrewAI** | **OpenHands** | **Dify** |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Shape** | Full agent OS / app | Low-level graph library | Actor/actor library | Agent + flow framework | Coding-agent product | Low-code LLM app platform |
 | **You get** | Running system, UI, deploy, docs | A graph primitive | Message-passing actors | Crews & Flows abstractions | A software-engineering agent | A visual builder + runtime |
-| **Ready-to-run web UI** | ✅ Next.js 15 workspace | ❌ | ❌ (Studio separate) | ❌ | ✅ | ✅ |
-| **Windows desktop app** | ✅ Electron, one-click installer | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Ready-to-run web UI** | ✅ | ❌ | ❌ (Studio separate) | ❌ | ✅ | ✅ |
+| **Windows desktop app** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **MCP client** | ✅ stdio / HTTP / SSE | Via LangChain | Community | ✅ | ✅ | ✅ |
-| **Multi-agent swarms** | ✅ Lease-fenced DAG, budgets, consensus | Build it yourself | ✅ Core primitive | ✅ Crews | Limited | Workflow nodes |
 | **Deep research with citation contract** | ✅ 5-pass built in | Build it | Build it | Build it | ❌ | ❌ |
-| **Sandboxed code execution** | ✅ local / Docker / K8s | ❌ | ❌ | ❌ | ✅ Docker | ❌ |
-| **Persistent memory + dreaming** | ✅ 9-tier memory plane | Basic checkpointer | Basic | Basic | Episodic | App memory |
-| **Messaging channels** | ✅ 9 platforms | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Durable long-running runs** | ✅ Boulder checkpoints + lease recovery | ✅ Durable execution | Partial | Partial | ✅ | Partial |
-| **Approval gate + emergency stop** | ✅ | Build it | Build it | Build it | ✅ | Partial |
-| **Audit / provenance trail** | ✅ Flight recorder + lineage | LangSmith (opt-in) | Logging | Logging | Event stream | Logs |
 | **Self-host without a cloud account** | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ optional tiers |
 | **Language** | Python + TypeScript | Python + JS/TS | Python (+ .NET) | Python | Python + TS | TypeScript + Python |
+
+> Sources for the OpenClaw and Hermes columns: their public project documentation
+> as of October 2026, cross-checked across several independent write-ups. Star
+> counts are deliberately omitted — they moved 3× in six months across the sources
+> I read, so a number in this table would be stale within weeks. Claims about
+> *their* internals are **not** source-audited the way Alpha's rows are; treat them
+> as vendor-described, and verify before depending on them.
+
+### ⚠️ Known gaps — what Alpha does not do
+
+This is the part most comparison tables omit. Each item is a verified finding, and
+none of it is hypothetical.
+
+| Area | Status | Evidence |
+| :--- | :--- | :--- |
+| **Autonomous code → PR → merge** | ❌ Not operational. `sandbox/worktrees.py` is 338 lines of correct, hardened code with **no tool, route, or caller**. The one production use drops the model's diff text into a `.patch` and never applies it. Nothing commits, reviews, or merges; the prompts tell the LLM to call `gh pr create` itself. | `swarm/worker.py:397-447`; no `git commit` in the codebase |
+| **Emergency stop (ESTOP)** | ❌ Advertised to the model as pausing "all background tasks and subagents"; in fact it gates **only** the RSI cycle. Nothing in the run worker, run manager, admission controller, or the 8 autonomy loops reads it. The tool returns *"Fleet execution paused."* | `rsi/switchboard.py:51` is the sole consumer; the repo's own test is named `test_estop_engagement_refuses_cycle` |
+| **PR checklist** | ❌ **Fixed** for the checklist. It printed `- [x] Automated unit and regression test suite passed` for every PR having run nothing; boxes are now derived from real evidence receipts, and required-but-missing evidence produces an explicit "this PR is not verified / must not be merged" callout. ⚠️ The *signatures* behind it are still a dict literal and three regexes. | `65464c1`; `projects/pr_synthesizer.py` |
+| **Concurrent subagent writes** | ❌ All subagents in a thread share one workspace directory. A per-path lock serialises writes but there is no shared version counter, so the second writer silently overwrites the first — and both report success. | `subagents/executor.py:1360-1363`; `file_operation_lock.py:20-27` |
+| **Goal hierarchy** | ⚠️ The run loop's goal is one flat objective string with no children. The versioned plan store that *does* model this has no run-loop caller. | `agents/goal_state.py:22-31`; `goals/` unimported by `runtime/` |
+| **Distribution tracing** | ⚠️ Off by default and **not reachable from `config.yaml` at all** — there is no `observability:`/`trace:` key in `AppConfig`. The run-event feed and `X-Trace-Id` correlation do work. | `observability/config.py:68`; `config/app_config.py:258-509` |
+| **Behavioural evaluation** | ❌ 26,933 tests, none of which asks whether the *agent* works. Loop-detection and duplicate-work guards have unit tests; plan success and tool-failure recovery have no behavioural eval. | `alpha/benchmarks/suites.py` evaluators are pure functions with fixtures |
+| **Mixture-of-Agents tool** | ❌ **Fixed.** It injected a `mock_worker` returning a fixed string and never called a model. It now resolves every named model through the real model factory: an unconfigured name is reported as a failed perspective, an all-failed round is an explicit refusal rather than a consensus, and a partial round reports `1/2 models answered`. | `65464c1`; `models/moa/workers.py` |
+| **In-process REPL** | ✅ Fixed. `python_repl` `exec()`s in the Gateway process and previously bypassed `allow_host_bash: false`. Now default-off behind `sandbox.allow_in_process_repl`. | `39416bf`, `tests/test_python_repl_boundary.py` |
+| **RSI preview honesty** | ✅ Fixed. `run_rsi_cycle` hardcoded `0.72 -> 0.88` and `0.80 -> 0.89`, so it always reported an improvement. Scores are now `null` with the reason disclosed, and `regressed` is `null` rather than `false` — an unrun suite is not a clean one. It still only *proposes*; a real verdict needs the hidden-suite harness. | `65464c1`, `rsi/engine.py` |
+| **Irreversible git** | ✅ Fixed. `force_push` and `git_push_protected` were already classified as approval-requiring by the autonomy guard, but `assert_requires_approval` had no production caller — so nothing stopped a force-push over `main`. The `bash` tool now refuses both, with `sandbox.allow_protected_git_push: true` to restore it. | `sandbox/git_push_guard.py` |
+| **Code-tool workspace escape** | ✅ Fixed. `auto_test_and_repair` ran a model-supplied string through `shell=True` with no gate while `bash` required `allow_host_bash`, and `manage_code_checkpoint` wrote `root / target_files[i]` after `mkdir(parents=True)`, so `../..` both read and wrote outside the workspace. Roots are bounded (`sandbox.workspace_roots`) and a caller-supplied `test_command` now needs the same opt-in `bash` does. | `sandbox/workspace_boundary.py` |
+| **Local sandbox as a boundary** | ⚠️ `LocalSandbox` is a path convention running at full user privilege; Windows has no Job Object. Real isolation requires AIO/E2B/BoxLite. The code says so itself. | `sandbox/AGENTS.md`: *"This is not a host filesystem security boundary."* |
 
 ### When to pick something else
 
@@ -230,8 +279,11 @@ Alpha is a large system. Choose a smaller tool when:
 
 - **You only need a graph primitive inside an existing app** → use LangGraph
   directly, and optionally lift Alpha's harness engines as a library.
-- **You want a low-code visual builder for non-engineers** → use Dify or Flowise.
-- **Your only job is autonomous code review / PR fixing** → OpenHands is leaner.
+- **You want the widest messaging reach with the least setup** → OpenClaw.
+- **You want a terminal-first personal agent with strong memory and container
+  hardening** → Hermes Agent.
+- **Your job is autonomous code review or PR fixing** → OpenHands is leaner, and
+  today it is genuinely leaner on exactly that axis (see Known gaps).
 - **You want a pure library with zero UI and zero services** → LangGraph, Pydantic
   AI, or Agno.
 
@@ -239,9 +291,12 @@ Alpha is a large system. Choose a smaller tool when:
 
 Pick Alpha when you need *several* of these at once, self-hosted, on your own
 infrastructure: long-horizon autonomous execution · deep research with verifiable
-citations · multi-agent delegation · sandboxed code · persistent memory across
-sessions · a real UI · messaging-platform reach · budget and safety controls you
-can audit.
+citations · multi-agent delegation with leased work and budgets · sandboxed code ·
+persistent memory with provenance · a real UI *and* a Windows desktop app ·
+messaging-platform reach · cost ceilings and safety controls you can audit.
+
+Pick something else if the thing you need most is **shipping code through a review
+and merge pipeline** — that is Alpha's largest honest gap, not a footnote.
 
 > Detailed, cited comparison: **[docs/COMPARISON.md](docs/COMPARISON.md)**.
 
@@ -485,9 +540,11 @@ exactly-once execution.
 
 - **Agentic Variation Operators (AVO)** — evolutionary prompt and strategy
   mutation driven by compiler-grounded feedback.
-- **Mixture of Agents (MoA)** — queries multiple heterogeneous LLMs in parallel
-  and synthesizes diverse perspectives into high-confidence conclusions.
-- **Theory of Mind (ToM) consult** — simulates user mental models, stakeholder
+- **Mixture of Agents (MoA)** - fans a question out to several models in parallel,
+  redacts PII and secrets on the way in and out, and aggregates the independent
+  answers. Every model named must exist in `config.yaml` -> `models[]`; one that
+  does not resolve is reported as a failed perspective rather than replaced by
+  invented text, and an all-failed round returns a refusal instead of a consensus.
   expectations, and downstream receiver perspectives.
 - **Epistemic belief evaluation** — checks claims against an empirical
   ground-truth base to flag unsubstantiated assumptions.
@@ -555,12 +612,19 @@ exactly-once execution.
   per tool, never handed to the model in the clear.
 - **Smart command approval gate** — risk scoring with explicit operator
   verification for high-impact terminal commands.
-- **Emergency stop (Estop)** — hard-stops runaway loops, subagents, and background
-  processes.
-- **Trajectory flight recorder** — cryptographically logs every reasoning step,
-  tool call, and state transition for forensic audit.
-- **Universal artifact lineage** — end-to-end cryptographic provenance of every
-  generated file, code, and document.
+- **Emergency stop (Estop)** — a global pause sentinel. ⚠️ **Scope is narrower than
+  the name suggests: today it gates the recursive-self-improvement cycle only.** It
+  does not stop the run worker, subagents, the admission controller, or the
+  background loops; see *Known gaps* above. It is a freeze switch for one
+  subsystem, not a fleet kill switch.
+- **Trajectory flight recorder** — the recorder, taxonomy and coverage table exist
+  (18 layers) and are exercised by tests, but ⚠️ **no writer is installed in
+  production**, so nothing is recorded by default. The run-event feed and
+  `X-Trace-Id` correlation *do* work; span-level tracing is off and not reachable
+  from `config.yaml`.
+- **Universal artifact lineage** — hash-linked provenance of every generated
+  file, code, and document (SHA-256 content digests, stored locally; not a
+  cryptographic attestation).
 - **Deterministic token budgeting & cost telemetry** — per-run ceilings and
   real-time spend with cache-aware pricing.
 
@@ -616,7 +680,7 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (102 harness engines)</b></summary>
+<summary><b>Full subsystem map (112 harness engines)</b></summary>
 
 Every directory under `backend/packages/harness/alpha/` (102 packages, counted by
 `backend/scripts/generate_feature_manifest.py`) is a dedicated engine:
@@ -775,7 +839,7 @@ it sees that.
 | [docs/USE_CASES.md](docs/USE_CASES.md) | End-to-end jobs and the subsystem behind each |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Runtime planes, middleware chain, engine map |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, resolved order, env vars |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 61 Gateway routers, SSE events, auth |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 62 Gateway routers, SSE events, auth |
 | [docs/SECURITY.md](docs/SECURITY.md) | Enclave, approvals, sandbox boundaries, threat model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Helm, Nginx, Windows installer |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Runbook, probes, `/api/ops/*`, disaster recovery |
@@ -847,7 +911,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Two contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 134 tools, 61 routers, 42 middlewares, and 8 supervisor loops. CI fails
+  pins all 134 tools, 62 routers, 42 middlewares, and 8 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

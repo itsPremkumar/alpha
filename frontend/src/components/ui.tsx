@@ -117,6 +117,12 @@ export function Btn(props: {
 export function Badge(props: {
   children: React.ReactNode;
   tone?: "green" | "amber" | "gray" | "blue" | "purple" | "cyan" | "red" | "indigo";
+  /**
+   * Native tooltip. Added so a status chip can carry the *reason* it is in that
+   * state — required for the honesty pattern where "not reported" must be
+   * distinguishable from "off", since a badge has no room to explain itself.
+   */
+  title?: string;
 }) {
   const tone =
     props.tone === "green"
@@ -135,7 +141,10 @@ export function Badge(props: {
                 ? "bg-red-500/10 text-red-600 dark:text-red-400"
                 : "bg-muted text-muted-foreground";
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${tone}`}>
+    <span
+      title={props.title}
+      className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${tone}`}
+    >
       {props.children}
     </span>
   );

@@ -36,8 +36,9 @@ personality, isolated system prompt, and private inbox. → [WORKFORCE.md](WORKF
 **Approval gate** — the risk-scoring command gate that requires explicit operator
 verification before a high-impact terminal command runs.
 
-**Artifact lineage** — end-to-end cryptographic provenance of every generated file,
-code, and document, from the originating prompt.
+**Artifact lineage** — end-to-end hash-linked provenance of every generated file,
+code, and document, from the originating prompt: SHA-256 content digests stored
+locally, not a cryptographic attestation.
 
 **Astra enclave** — the security plane providing credential scoping and process
 isolation, so the model never receives raw secrets. → [SECURITY.md](SECURITY.md)
@@ -209,7 +210,7 @@ brainstorm, challenge assumptions, and produce a unified deliverable.
 multi-line edit drift and merge conflicts.
 
 **Harness (alpha-harness)** — the importable agent framework package
-(import name `alpha.*`) containing 102 engine modules. Alpha the product is built on
+(import name `alpha.*`) containing 112 engine modules. Alpha the product is built on
 top of it. → [backend/AGENTS.md](../backend/AGENTS.md)
 
 **Handoff** — a recorded transfer of work between agents, part of the workforce

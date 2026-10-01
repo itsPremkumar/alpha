@@ -21,8 +21,17 @@ class TestAutopilotAndVerifier(unittest.TestCase):
     def setUp(self):
         self.autopilot = ExecutiveAutopilot()
         self.test_dir = tempfile.mkdtemp(prefix="alpha_ap_test_")
+        # `manage_code_checkpoint` bounds its root to the workspace. A temp dir
+        # outside the project therefore has to be declared, exactly as an operator
+        # would declare a real out-of-project workspace via sandbox.workspace_roots.
+        self._prev_roots = os.environ.get("ALPHA_WORKSPACE_ROOTS")
+        os.environ["ALPHA_WORKSPACE_ROOTS"] = self.test_dir
 
     def tearDown(self):
+        if self._prev_roots is None:
+            os.environ.pop("ALPHA_WORKSPACE_ROOTS", None)
+        else:
+            os.environ["ALPHA_WORKSPACE_ROOTS"] = self._prev_roots
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_autopilot_coding_intent(self):
@@ -97,22 +106,26 @@ class TestAutopilotAndVerifier(unittest.TestCase):
             f.write("def stable_fn(): return True\n")
 
         # Create baseline checkpoint
-        manage_code_checkpoint.invoke({
-            "action": "create",
-            "root_path": self.test_dir,
-            "target_files": ["lib.py"],
-            "label": "stable baseline",
-        })
+        manage_code_checkpoint.invoke(
+            {
+                "action": "create",
+                "root_path": self.test_dir,
+                "target_files": ["lib.py"],
+                "label": "stable baseline",
+            }
+        )
 
         # Mutate file into broken state
         with open(test_file, "w", encoding="utf-8") as f:
             f.write("def broken_syntax(:\n")
 
         # Execute auto_rollback_on_failure
-        res = manage_code_checkpoint.invoke({
-            "action": "auto_rollback_on_failure",
-            "root_path": self.test_dir,
-        })
+        res = manage_code_checkpoint.invoke(
+            {
+                "action": "auto_rollback_on_failure",
+                "root_path": self.test_dir,
+            }
+        )
         data = json.loads(res)
         self.assertEqual(data.get("status"), "rolled_back_to_passing")
 

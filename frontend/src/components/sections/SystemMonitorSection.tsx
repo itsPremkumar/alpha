@@ -133,7 +133,12 @@ function RamSparkline({ points }: { points: Array<{ timestamp: number; percent: 
     .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - 3 - ((p.percent - min) / span) * (h - 6)).toFixed(1)}`)
     .join(" ");
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="mt-2 w-full max-w-55" aria-hidden="true">
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="mt-2 w-full max-w-[13.75rem]" aria-hidden="true">
+      {/* `max-w-55` is not in Tailwind's spacing scale (it steps 48 -> 52 ->
+          56), so it generated no CSS and this sparkline had no width cap at
+          all - it silently rendered full-width.
+          `tailwind-class-guard.test.mjs` found this and now prevents the whole
+          class of defect. */}
       <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
     </svg>
   );
