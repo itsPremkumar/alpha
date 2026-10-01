@@ -27,6 +27,38 @@ from alpha.config.autonomy_config import AutonomyConfig, AutonomyLoopConfig
 logger = logging.getLogger(__name__)
 
 
+def _fleet_admits_tick(loop_id: str) -> bool:
+    """True when fleet control allows this loop to run a tick right now.
+
+    Fails closed: an unreadable control state, or one this process cannot
+    interpret, stops the loop rather than running it. A stop mechanism that
+    fails open is not a stop mechanism.
+    """
+    try:
+        from alpha.runtime.control import assert_admissible, read_state
+        from alpha.runtime.estop import get_estop_manager
+
+        # The pre-existing sentinel is honoured as well, so an operator who
+        # engaged either mechanism gets the same fleet-wide effect. Two sources
+        # because `alpha.bots.kill_switch` is in-memory and this sentinel is
+        # durable; both are consulted rather than one subsuming the other, and
+        # neither is removed.
+        if get_estop_manager().is_engaged():
+            logger.warning("Fleet ESTOP engaged; skipping autonomy loop tick %s", loop_id)
+            return False
+
+        state = read_state()
+        if state.mode.value != "run":
+            logger.warning("Fleet control is %s; skipping autonomy loop tick %s", state.mode.value, loop_id)
+            return False
+
+        assert_admissible(f"autonomy loop {loop_id}")
+        return True
+    except Exception as exc:
+        logger.error("Fleet control refused autonomy loop %s (fail-closed): %s", loop_id, exc)
+        return False
+
+
 @dataclass
 class LoopSpec:
     """Registration entry for one background loop."""
@@ -158,6 +190,14 @@ class AutonomySupervisor:
 
     async def _tick_once(self, loop_id: str, cfg: AutonomyLoopConfig, tick: Callable[[], Any], state: _LoopState) -> None:
         if state.running or state.parked:
+            return
+        # Fleet control is checked here because this is the single choke point all
+        # eight loops pass through. A tick that starts while the operator has
+        # engaged ESTOP must not run, and a tick admitted before the stop must not
+        # act on a superseded generation. This loop previously had no stop
+        # mechanism at all: `autonomy.loops.*` flags decide whether a loop is
+        # *registered*, not whether it is *allowed to run right now*.
+        if not _fleet_admits_tick(loop_id):
             return
         async with self._semaphores[loop_id]:
             if state.running or self._stopping:

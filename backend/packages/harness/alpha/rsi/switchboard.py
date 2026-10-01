@@ -59,6 +59,24 @@ def _estop_state() -> tuple[bool, str]:
     return True, "emergency stop engaged"
 
 
+def _fleet_control_state() -> tuple[bool, str]:
+    """Fleet-wide control probe (``alpha.runtime.control``).
+
+    The sentinel above is one *source* of a stop; fleet control is the authority
+    that also covers the run worker, run admission and the autonomy loops. It is
+    probed here so RSI honours a fleet stop without ``switchboard`` needing to
+    know which mechanism the operator used.
+    """
+    from alpha.runtime.control import ControlMode, read_state  # lazy import: startup stays import-light (§5.9)
+
+    state = read_state()
+    if state.mode is ControlMode.RUN:
+        return False, ""
+    if state.error:
+        return True, f"fleet control state unreadable: {state.error}"
+    return True, f"fleet control is {state.mode.value} (generation {state.generation}): {state.reason or 'unspecified'}"
+
+
 def _stop_file_state() -> tuple[bool, str]:
     """Local ``runtime_home()/rsi/STOP`` probe (existence only, spec §52)."""
     path = stop_file_path()
@@ -89,6 +107,7 @@ def rsi_frozen() -> tuple[bool, str]:
     probes: tuple[tuple[str, Callable[[], tuple[bool, str]]], ...] = (
         ("kill_switch", _kill_switch_state),
         ("estop", _estop_state),
+        ("fleet_control", _fleet_control_state),
         ("stop_file", _stop_file_state),
     )
     for label, probe in probes:
