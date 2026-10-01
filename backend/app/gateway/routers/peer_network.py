@@ -52,6 +52,13 @@ class TrustBody(BaseModel):
     trust: str = Field(..., pattern="^(discovered|blocked)$")
 
 
+class AutoReplyBody(BaseModel):
+    # Whether a paired peer may start a local Agent turn. This is an operator
+    # decision about model spend and local execution, so it is a strict bool
+    # rather than the loose "truthy" string parse the trust route uses.
+    enabled: bool
+
+
 class ReadBody(BaseModel):
     recipient_id: str | None = Field(default=None, max_length=128)
 
@@ -178,6 +185,24 @@ async def set_peer_trust(agent_id: str, body: TrustBody) -> dict[str, Any]:
     if peer is None:
         raise HTTPException(status_code=404, detail=f"Peer '{agent_id}' not found")
     return {"peer": peer}
+
+
+@router.patch("/peers/{agent_id}/auto-reply", summary="Allow or stop a paired peer from starting an Agent turn")
+@require_permission("threads", "write")
+async def set_peer_auto_reply(agent_id: str, body: AutoReplyBody, request: Request) -> dict[str, Any]:
+    # Admin-gated, like the other routes that change what the *inbound* plane may
+    # do to this installation. `threads:write` alone would let any authenticated
+    # low-privilege user hand a remote peer the ability to spend this
+    # installation's model budget and drive its tools. Revoking is admin-gated
+    # too, so a user cannot disable the control to hide a peer's activity.
+    await require_admin_user(
+        request,
+        detail="Admin role is required to let a peer start Agent turns.",
+    )
+    peer = await _call(_service().set_auto_reply(agent_id, body.enabled))
+    if peer is None:
+        raise HTTPException(status_code=404, detail=f"Peer '{agent_id}' not found")
+    return {"peer": peer, "auto_reply": bool(peer.get("auto_reply"))}
 
 
 @router.post("/conversations", status_code=201, summary="Create a typed peer conversation")

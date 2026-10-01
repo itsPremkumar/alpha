@@ -454,9 +454,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # without taking down the Gateway.
         try:
             from alpha.peer_network import get_peer_network_service
+            from alpha.peer_network.storage import NETWORK_OWNER
+
+            from app.gateway.services import peer_network_agent_dispatcher
 
             peer_network_service = get_peer_network_service()
             app.state.peer_network_service = peer_network_service
+            # Bind the run seam BEFORE start() so a peer that delivers during
+            # startup cannot race an unbound plane and silently skip its turn.
+            # Only an operator-granted per-peer `auto_reply` then lets a message
+            # actually reach a model.
+            peer_network_service.bind_agent_dispatcher(
+                peer_network_agent_dispatcher(app, owner_user_id=NETWORK_OWNER),
+            )
             await peer_network_service.start()
         except Exception:
             logger.exception("Alpha peer network failed to start (non-fatal)")

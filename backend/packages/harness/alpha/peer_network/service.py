@@ -14,6 +14,12 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from .agent_dispatch import (
+    AUTO_REPLY_KINDS,
+    PeerAgentDispatcher,
+    PeerTurnRequest,
+    build_peer_turn,
+)
 from .discovery import MdnsDiscovery, UdpDiscovery
 from .github import GitHubRendezvous, GitHubRendezvousError
 from .identity import LocalIdentity, prime_advertised_host
@@ -184,6 +190,25 @@ class PeerNetworkService:
         self._stop = asyncio.Event()
         self._last_error: str | None = None
         self._store_closed = False
+        # Inbound peer messages drive a local Agent turn only when BOTH this
+        # dispatcher is bound (the Gateway owns run admission) and the sending
+        # peer carries an operator-granted `auto_reply`. Unbound therefore means
+        # "no turn", not "a turn that failed".
+        self.agent_dispatcher: PeerAgentDispatcher | None = None
+        self._turn_tasks: set[asyncio.Task[None]] = set()
+
+    def bind_agent_dispatcher(self, dispatcher: PeerAgentDispatcher | None) -> None:
+        """Bind (or clear) the seam that runs an inbound peer turn.
+
+        The Gateway binds its run-admission adapter at startup and clears it on
+        shutdown. Passing ``None`` makes the plane honest again: messages are
+        still stored and shown, but no model is invoked.
+        """
+
+        self.agent_dispatcher = dispatcher
+
+    def unbind_agent_dispatcher(self) -> None:
+        self.agent_dispatcher = None
 
     @staticmethod
     def _build_pairing_throttle() -> PairingThrottle:
@@ -292,6 +317,16 @@ class PeerNetworkService:
         await self.udp.stop()
         with contextlib.suppress(Exception):
             await asyncio.to_thread(self.mdns.stop)
+        # Drain in-flight peer turns before the store closes. Cancelling the task
+        # stops this process from *starting* more work; the run itself, once
+        # admitted, is owned by RunManager and finishes (or is recovered) on its
+        # own terms.
+        for task in tuple(self._turn_tasks):
+            task.cancel()
+        if self._turn_tasks:
+            await asyncio.gather(*tuple(self._turn_tasks), return_exceptions=True)
+        self._turn_tasks.clear()
+        self.agent_dispatcher = None
         for queue in tuple(self._subscribers):
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait({"type": "network.stopped", "at": utc_now()})
@@ -388,6 +423,17 @@ class PeerNetworkService:
 
     async def get_peer(self, agent_id: str, *, include_secret: bool = False) -> dict[str, Any] | None:
         return await self._run_store(self.store.get_peer, agent_id, include_secret=include_secret)
+
+    async def set_auto_reply(self, agent_id: str, enabled: bool) -> dict[str, Any] | None:
+        """Grant or revoke one peer's ability to start a local Agent turn.
+
+        This is an operator decision about *spend and execution*, so it is not
+        reachable from the model-facing tool and not from any public route. It is
+        also independent of ``trust``: a peer can stay paired (and keep receiving
+        messages) with auto-reply off.
+        """
+
+        return await self._run_store(self.store.set_peer_auto_reply, agent_id, bool(enabled))
 
     async def get_peer_by_token(self, token: str, agent_id: str | None = None) -> dict[str, Any] | None:
         """Resolve a peer token for the inbound plane, or ``None``.
@@ -800,7 +846,58 @@ class PeerNetworkService:
             delivery_recipients=[self.identity.agent_id],
         )
         self._publish("message.inbound", message)
+        # Delivery is already committed above, so this can only ever add work. It
+        # is scheduled, never awaited: the sending peer must not hold its HTTP
+        # response open for a local model turn.
+        self._schedule_peer_turn(message, peer)
         return message  # type: ignore[return-value]
+
+    def _schedule_peer_turn(self, message: dict[str, Any], peer: dict[str, Any]) -> None:
+        """Start an inbound peer turn if this peer is opted in.
+
+        Every refusal here is silent *and* recorded on the event stream, because
+        "no turn ran" is the normal outcome for a paired peer the operator has not
+        granted auto-reply, and an operator debugging a silent peer needs to tell
+        that apart from a turn that ran and failed.
+        """
+
+        dispatcher = self.agent_dispatcher
+        if dispatcher is None:
+            return
+        if not peer.get("auto_reply"):
+            return
+        turn = build_peer_turn(
+            local_agent_id=self.identity.agent_id,
+            peer_agent_id=str(peer["agent_id"]),
+            conversation_id=str(message["conversation_id"]),
+            message_id=str(message["message_id"]),
+            kind=str(message.get("kind") or ""),
+            text=str(message.get("text") or ""),
+            peer_name=str(peer.get("name") or ""),
+        )
+        if turn is None:
+            self._publish(
+                "message.turn_skipped",
+                {"message_id": message.get("message_id"), "reason": "kind_or_body_not_actionable", "kind": message.get("kind")},
+            )
+            return
+        task = asyncio.create_task(self._run_peer_turn(dispatcher, turn))
+        self._turn_tasks.add(task)
+        task.add_done_callback(self._turn_tasks.discard)
+
+    async def _run_peer_turn(self, dispatcher: PeerAgentDispatcher, turn: PeerTurnRequest) -> None:
+        try:
+            run_id = await dispatcher(turn)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A failed turn is a failed *turn*, not a failed delivery: the message
+            # is stored and the peer already has its receipt. Surfacing this as a
+            # transport error would make the sender retry a message that arrived.
+            logger.exception("Inbound peer agent turn failed (delivery unaffected)")
+            self._publish("message.turn_failed", {"message_id": turn.message_id, "peer_id": turn.peer_agent_id})
+            return
+        self._publish("message.turn_started", {"message_id": turn.message_id, "peer_id": turn.peer_agent_id, "run_id": run_id})
 
     async def retry_pending(self) -> int:
         pending = await self._run_store(self.store.pending_messages)
@@ -891,6 +988,13 @@ class PeerNetworkService:
                 "enabled": self.enabled,
                 "ingress": "open" if self.enabled else "closed",
                 "throttle": self.pairing_throttle.snapshot(),
+            },
+            "agent_turns": {
+                "enabled": self.agent_dispatcher is not None,
+                "available": self.enabled and self.agent_dispatcher is not None,
+                "in_flight": len(self._turn_tasks),
+                "auto_reply_kinds": sorted(AUTO_REPLY_KINDS),
+                "last_error": None if self.agent_dispatcher is not None else "No Agent run dispatcher is bound to the peer network; inbound messages are stored and shown but do not start a turn.",
             },
         }
 

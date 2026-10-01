@@ -174,6 +174,23 @@ class PeerNetworkStore:
                     ON peers(trust, last_seen);
                 """
             )
+            self._ensure_column("peers", "auto_reply", "INTEGER NOT NULL DEFAULT 0")
+
+    def _ensure_column(self, table: str, column: str, ddl: str) -> None:
+        """Add one column to an existing on-disk database, idempotently.
+
+        ``CREATE TABLE IF NOT EXISTS`` silently does nothing for a database
+        created before this column existed, so an upgrade would otherwise reach
+        the first read of ``auto_reply`` and fail with ``no such column``. There
+        is no migration framework on this SQLite store (it is deliberately a
+        single-file, single-owner repository), so the additive step is guarded by
+        a PRAGMA probe and is a no-op on a fresh or already-migrated file.
+        """
+
+        with self._lock, self._conn:
+            existing = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     def close(self) -> None:
         with self._lock:
@@ -305,6 +322,9 @@ class PeerNetworkStore:
             "preferred_transport": row["preferred_transport"],
             "source": row["source"],
             "trust": row["trust"],
+            # Whether this peer may drive a local Agent turn. Orthogonal to
+            # `trust`: pairing authorises *delivery*, this authorises *spend*.
+            "auto_reply": bool(row["auto_reply"]),
             "first_seen": row["first_seen"],
             "last_seen": row["last_seen"],
             "paired_at": row["paired_at"],
@@ -336,6 +356,28 @@ class PeerNetworkStore:
             raise ValueError("trust must be discovered or blocked")
         with self._lock, self._conn:
             self._conn.execute("UPDATE peers SET trust = ? WHERE agent_id = ?", (trust, agent_id))
+        return self.get_peer(agent_id)
+
+    def set_peer_auto_reply(self, agent_id: str, enabled: bool) -> dict[str, Any] | None:
+        """Grant or revoke a peer's ability to drive a local Agent turn.
+
+        Requires the peer to already be ``paired``: auto-reply is a *widen* of an
+        existing delivery capability, so granting it to a merely-discovered peer
+        would let an unpaired advertisement start spending tokens. Blocking a
+        peer revokes it implicitly, because a blocked peer cannot deliver at all
+        and therefore can never reach the dispatch path.
+        """
+
+        with self._lock:
+            row = self._conn.execute("SELECT trust FROM peers WHERE agent_id = ?", (agent_id,)).fetchone()
+            if row is None:
+                return None
+            if enabled and row["trust"] != "paired":
+                raise ValueError("Only a paired peer can be granted auto-reply")
+            self._conn.execute(
+                "UPDATE peers SET auto_reply = ? WHERE agent_id = ?",
+                (1 if enabled else 0, agent_id),
+            )
         return self.get_peer(agent_id)
 
     def set_peer_token(self, agent_id: str, token: str) -> bool:

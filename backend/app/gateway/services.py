@@ -2058,6 +2058,109 @@ async def launch_mcp_task_notification_run(
     return {"run_id": record.run_id, "thread_id": record.thread_id}
 
 
+async def launch_peer_network_agent_turn(
+    *,
+    app: Any,
+    turn: Any,
+    owner_user_id: str,
+) -> dict[str, Any]:
+    """Launch the Agent turn for one inbound Alpha-to-Alpha peer message.
+
+    This is the only place a peer message becomes a run. It deliberately mirrors
+    ``launch_mcp_task_notification_run``: a synthetic internal request (the
+    inbound plane has no browser session), the shared ``start_run`` choke point so
+    run admission stays owned by ``RunManager``, a deterministic idempotency key
+    so a redelivered envelope cannot produce a second run, and one trace scope per
+    launch.
+
+    ``turn.prompt`` arrives already framed as untrusted user input by
+    ``alpha.peer_network.agent_dispatch.build_peer_turn``; nothing here re-wraps it
+    or interpolates remote text into system-owned text.
+
+    A missing thread is not an error: the peer conversation is not a pre-created
+    Gateway thread, so the thread is created on first inbound message and reused
+    for every later message from that peer.
+    """
+
+    thread_id = turn.thread_id
+    validate_thread_id(thread_id)
+    request = SimpleNamespace(
+        app=app,
+        headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},
+        state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
+        cookies={},
+    )
+    body = RunCreateRequest(
+        assistant_id=None,
+        input={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": turn.prompt,
+                    # Peer turns are operator-invisible background work; the
+                    # operator sees the run in the run list, not a chat bubble
+                    # they never typed.
+                    "additional_kwargs": {"hide_from_ui": True},
+                }
+            ]
+        },
+        command=None,
+        metadata={
+            "peer_network": {
+                "message_id": turn.message_id,
+                "conversation_id": turn.conversation_id,
+                "peer_agent_id": turn.peer_agent_id,
+                "kind": turn.kind,
+            }
+        },
+        config=None,
+        # `non_interactive` so a turn can never block on a clarification card that
+        # nobody is present to answer, and so a remote peer cannot park the local
+        # agent waiting for a human.
+        context={"non_interactive": True, "user_id": owner_user_id},
+        webhook=None,
+        checkpoint_id=None,
+        checkpoint=None,
+        interrupt_before=None,
+        interrupt_after=None,
+        stream_mode=None,
+        stream_subgraphs=False,
+        stream_resumable=None,
+        on_disconnect="continue",
+        on_completion=None,
+        multitask_strategy="reject",
+        after_seconds=None,
+        if_not_exists="create",
+        feedback_keys=None,
+    )
+    try:
+        with ensure_trace_context():
+            record = await start_run(body, thread_id, request, idempotency_key=turn.idempotency_key)
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise ConflictError(str(exc.detail)) from exc
+        raise
+    return {"run_id": record.run_id, "thread_id": record.thread_id}
+
+
+def peer_network_agent_dispatcher(app: Any, *, owner_user_id: str) -> Any:
+    """Build the ``PeerAgentDispatcher`` the peer network is bound with.
+
+    The peer plane is installation-scoped (see
+    ``alpha.peer_network.storage.NETWORK_OWNER``), so peer turns run in the
+    installation bucket rather than in whichever browser session happened to be
+    open. That keeps a remote peer's turns out of the operator's personal thread
+    list and memory, and keeps two operators' sessions from disagreeing about who
+    a peer conversation belongs to.
+    """
+
+    async def _dispatch(turn: Any) -> str:
+        result = await launch_peer_network_agent_turn(app=app, turn=turn, owner_user_id=owner_user_id)
+        return str(result["run_id"])
+
+    return _dispatch
+
+
 async def sse_consumer(
     bridge: StreamBridge,
     record: RunRecord,

@@ -250,6 +250,10 @@ class PeerStatus(BaseModel):
     # Credential-free pairing-ingress policy/state (throttle budget, breaker,
     # refused attempts). Never contains a pairing code, a token, or a key.
     pairing: dict[str, Any] = Field(default_factory=dict)
+    # Whether an inbound message can start a local Agent turn, and why not when
+    # it cannot. Reported so the UI never implies a turn ran, or will run, when
+    # no dispatcher is bound or no peer has been granted auto-reply.
+    agent_turns: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConversationCreateRequest(BaseModel):
