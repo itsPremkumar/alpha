@@ -68,7 +68,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
       {/* ΓöÇΓöÇ 1. Hero Avatar Icon with Subtle Glow ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />
-        {/* `size-[4.5rem]` is NOT in Tailwind's default spacing scale (it steps
+        {/* `size-18` is NOT in Tailwind's default spacing scale (it steps
             14 -> 16 -> 20) and `tailwind.config.cjs` extends only `colors` and
             `borderRadius`, so the class generated nothing at all. The circle
             silently collapsed to its content's size while the `blur-lg` glow
