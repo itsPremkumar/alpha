@@ -28,11 +28,13 @@ ASSIGNED_WORKER = "planner-assigned"
 
 @pytest.fixture(autouse=True)
 def _isolated(tmp_path, monkeypatch):
-    # ``AGENT_WORKSPACE_HOME`` isolates the handoff ledger; ``ALPHA_HOME``
-    # isolates the swarm coordinator, whose default storage dir is derived from
-    # it and would otherwise carry plans (and their non-unique ``task-map-N``
-    # ids) from other tests into this one.
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    # ``ALPHA_HOME`` isolates both artefacts. The handoff ledger lives under
+    # ``runtime_home()`` (escalation resolves it there, honouring ALPHA_HOME)
+    # and the swarm coordinator derives its storage dir from the same value, so
+    # without this the test would carry plans - and their non-unique
+    # ``task-map-N`` ids - over from other tests. The pre-rename
+    # ``AGENT_WORKSPACE_HOME`` line is gone: nothing reads it since 7557660, so
+    # it isolated the ledger only in the comment.
     monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "alpha"))
     monkeypatch.setattr(swarm_coordinator, "_GLOBAL_COORDINATOR", None)
     reset_ledger_caches()
