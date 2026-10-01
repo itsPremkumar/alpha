@@ -527,12 +527,39 @@ class RunJournal(BaseCallbackHandler):
     def _error_event(self, definition: Any, error: BaseException, *, retried: bool, swallowed: bool = False) -> None:
         """Emit the behaviour-trace form of a failure. Never raises.
 
-        ``stack_sha256`` is a digest of the formatted traceback rather than the
-        traceback itself: a traceback in a durable log is unbounded text whose
-        frames carry file paths and, routinely, an interpolated argument that is
-        precisely what the writer's redaction exists to keep out. A hash still
-        groups "every occurrence of this failure" — which is the question a
-        sentinel asks — without storing the stack.
+        **Which bytes become ``stack_sha256``.** The fingerprint is
+        ``sha256`` of the *concatenated* ``traceback.format_exception`` output for
+        this exception — the ``"Traceback (most recent call last):"`` header, every
+        frame's ``File "<path>", line N, in <name>`` line, the source line
+        :mod:`linecache` can still read, and the final ``"<Type>: <message>"`` line,
+        joined with no separator, encoded UTF-8 with ``errors="replace"``. Nothing
+        else feeds the digest: no run id, no thread id, no timestamp, no counter and
+        no process-specific salt. That is the whole point of the field, and it is
+        what makes the property testable rather than merely claimed — the same
+        failure raised in two separate processes digests to the same 64 hex
+        characters, so a deduplicated trace can be *proven* to be one failure
+        (``tests/test_stack_fingerprint_stability.py``).
+
+        Why a digest and not the traceback: a traceback in a durable log is
+        unbounded text whose frames carry file paths and, routinely, an interpolated
+        argument that is precisely what the writer's redaction exists to keep out. A
+        hash still groups "every occurrence of this failure" — which is the question
+        a sentinel asks — without storing the stack.
+
+        Two honest limits of the bytes above, both inherent to hashing the real
+        stack rather than a normalised subset of it:
+
+        * The digest covers the *message*, so two crashes differing only in a value
+          interpolated into that message (a timestamp, an object address) digest
+          differently. They are then two fingerprints, not one. Grouping them needs
+          the registry ``error_code`` beside the hash, which the same event carries.
+        * An exception that was never raised has no ``__traceback__``, and
+          ``format_exception`` then contributes only the ``"<Type>: <message>"``
+          line. LangChain always hands this callback a raised exception, so the
+          production path carries real frames; the degenerate case still produces a
+          real hash of the real (short) stack rather than a placeholder, because
+          "no stack" must never become "no fingerprint" — the alternative is a run
+          whose terminal error cannot be correlated with any other.
         """
         import traceback
 
