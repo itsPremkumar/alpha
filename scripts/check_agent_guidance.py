@@ -187,11 +187,29 @@ def _load_worktree_agents(repo_root: Path) -> dict[PurePosixPath, str]:
     return files
 
 
-def _load_ref_agents(repo_root: Path, ref: str | None) -> dict[PurePosixPath, str]:
+def _load_ref_agents(repo_root: Path, ref: str | None, *, tolerate_undecodable: bool = False) -> dict[PurePosixPath, str]:
     if not ref or set(ref) == {"0"}:
         return {}
     paths = guidance_paths(_parse_paths(_run_git(repo_root, ["ls-tree", "-r", "--name-only", "-z", ref])))
-    return {path: _run_git(repo_root, ["show", f"{ref}:{path.as_posix()}"]).decode("utf-8") for path in paths}
+    files: dict[PurePosixPath, str] = {}
+    for path in paths:
+        raw = _run_git(repo_root, ["show", f"{ref}:{path.as_posix()}"])
+        try:
+            files[path] = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            if not tolerate_undecodable:
+                raise
+            # History cannot be re-encoded: a guidance blob once written in a
+            # non-UTF-8 encoding (e.g. a PowerShell UTF-16 save) stays that way
+            # in every past commit forever, and letting it crash the loader
+            # would fail every push whose base predates the fix. The BASELINE
+            # copy only feeds growth comparison, so an undecodable one is
+            # skipped with a warning and treated as absent; the head/worktree
+            # copy stays strict, so shipping a mis-encoded guidance file still
+            # fails loudly.
+            print(f"WARNING AG000-baseline {ref}:{path.as_posix()} — {exc}; treating this file as absent from the baseline", file=sys.stderr)
+            continue
+    return files
 
 
 def _changed_paths(
@@ -245,7 +263,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if head_ref:
             head_files = _load_ref_agents(repo_root, head_ref)
-            base_files = _load_ref_agents(repo_root, base_ref)
+            base_files = _load_ref_agents(repo_root, base_ref, tolerate_undecodable=True)
         else:
             head_files = _load_worktree_agents(repo_root)
             base_files = {}
