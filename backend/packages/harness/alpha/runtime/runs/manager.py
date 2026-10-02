@@ -73,6 +73,43 @@ _UNIQUE_PGCODE = "23505"
 _SQLITE_UNIQUE_ERRORCODE = sqlite3.SQLITE_CONSTRAINT_UNIQUE
 
 
+#: Optional observer of the run lifecycle, installed by whoever owns a display
+#: that needs to distinguish "finished" from "died". `RunManager` stays the
+#: sole lifecycle owner; this is a read-only observer that can never change a
+#: transition, and every failure inside it is swallowed.
+#:
+#: Set once by the Gateway at startup (see `app/gateway/deps.py`). It is
+#: ``None`` everywhere else, so the cost is one module-global lookup per
+#: terminal transition and nothing else. Kept as a module-level hook rather
+#: than a constructor argument because a run record is threaded through dozens
+#: of call sites that would otherwise each have to thread the observer too.
+ActivityObserver = Callable[["RunRecord", str], None]
+_activity_observer: ActivityObserver | None = None
+
+
+def set_activity_observer(observer: ActivityObserver | None) -> None:
+    """Install (or clear) the run-lifecycle activity observer.
+
+    The observer receives ``(record, event_name)`` for every run start, every
+    terminal transition, and every ownership loss. It must not raise; anything
+    it does raise is logged and ignored, because a display bug must never be
+    able to fail a run.
+    """
+    global _activity_observer
+    _activity_observer = observer
+
+
+def _notify_activity(record: RunRecord, event: str) -> None:
+    """Fire the observer, swallowing everything it does."""
+    observer = _activity_observer
+    if observer is None:
+        return
+    try:
+        observer(record, event)
+    except Exception:
+        logger.debug("Run activity observer failed for %s (%s)", record.run_id, event, exc_info=True)
+
+
 def _generate_worker_id() -> str:
     """Generate a unique worker identifier: ``hostname:hex_uuid``."""
     return f"{socket.gethostname()}:{uuid.uuid4().hex}"
@@ -927,6 +964,7 @@ class RunManager:
                     record.status = RunStatus.running
                     record.updated_at = _now_iso()
                     logger.info("Run %s -> %s", run_id, RunStatus.running.value)
+                    self._publish_activity(record, "group.activity.started")
                     return RunStartOutcome.started
 
             if self._store is not None:
@@ -1026,6 +1064,21 @@ class RunManager:
         if record.ownership_lost:
             return
         logger.info("Run %s -> %s", run_id, status.value)
+        self._publish_activity(record, "group.activity.terminal")
+
+    def _publish_activity(self, record: RunRecord, event: str) -> None:
+        """Tell the optional activity observer that this run moved.
+
+        Called on every start, every terminal transition, every ownership loss,
+        and every orphaned-run recovery. The observer is what lets a room
+        display distinguish an agent that *finished* from an agent that *died* —
+        a distinction the run store already makes durable and which no display
+        previously read.
+
+        It cannot influence the transition: it is notified after the status has
+        been set and persisted, and `_notify_activity` swallows its failures.
+        """
+        _notify_activity(record, event)
 
     async def persist_current_status(self, run_id: str) -> bool:
         """Persist the status already staged on the in-memory run record."""
@@ -1937,6 +1990,11 @@ class RunManager:
                 # when its event store is unavailable.
                 await self._ensure_delivery_receipt(record)
                 recovered.append(record)
+                # An expired lease is the strongest crash evidence available:
+                # this row was active and its owner stopped renewing. Published
+                # after the atomic takeover, so the observer can never report a
+                # crash for a row that turned out to still be live.
+                self._publish_activity(record, "group.activity.orphan_recovered")
 
         if recovered:
             logger.warning("Recovered %d orphaned inflight run(s) as error", len(recovered))
@@ -2132,6 +2190,11 @@ class RunManager:
         if task_to_cancel is not None:
             task_to_cancel.cancel()
         logger.error("Run %s lost lease ownership; local execution was fenced: %s", record.run_id, reason)
+        # Losing the lease is a hard death signal for any activity display:
+        # this worker is no longer authorized to publish an outcome and a peer
+        # owns terminalization, which is exactly the evidence a crashed-vs-
+        # finished projection needs.
+        self._publish_activity(record, "group.activity.ownership_lost")
         return True
 
     async def start_heartbeat(self) -> None:
