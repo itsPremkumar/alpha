@@ -7,12 +7,14 @@ import {
   MESSAGE_KINDS, REACTION_EMOJI, OPERATOR, ChatMsg, DmThread, MemberPresence, PresenceState,
   listRoomMembers, editRoomMessage, deleteRoomMessage, reactToRoomMessage, forwardRoomMessage,
   groupTree, roomRoster, roomBreadcrumbs, createSubgroup, listChildren, mergeGroups, setMemberExcluded,
+  roomActivity, type RoomActivity,
   type Breadcrumb, type RoomRoster, type TreeNode,
 } from "@/lib/comm";
 import {
   breadcrumbText, membershipHeadline, rosterBuckets, acceptsSubgroups, buildTree, stateLabel, stateTone,
 } from "@/lib/groups-tree";
 import { GroupTreeSidebar, GroupBreadcrumbs, NewSubgroupForm } from "@/components/sections/GroupTreeSidebar";
+import { GroupActivityPanel } from "@/components/sections/GroupActivityPanel";
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
 import { runCouncil, CouncilStrategy } from "@/lib/deliberation";
@@ -97,6 +99,18 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
    */
   const [membersByRoom, setMembersByRoom] = useState<Record<string, MemberPresence[]>>({});
   const [membersError, setMembersError] = useState<Record<string, string>>({});
+  /**
+   * Live activity per room, kept apart from `membersByRoom` on purpose.
+   * Presence says "who is enrolled"; activity says "what are they doing, and
+   * did they die?". Merging them is what made a crashed agent indistinguishable
+   * from a finished one, because both resolved to `idle`.
+   *
+   * A key that is absent means "not read yet" — which the panel renders as
+   * *reading…*, never as an empty room. A failed read records its reason.
+   */
+  const [activityByRoom, setActivityByRoom] = useState<Record<string, RoomActivity>>({});
+  const [activityError, setActivityError] = useState<Record<string, string>>({});
+  const [activityBusy, setActivityBusy] = useState(false);
   const [events, setEvents] = useState<Array<Record<string, unknown>>>([]);
   // Per-list fetch-failure flags: every list surfaces its own failure instead
   // of collapsing into an empty list that reads as "you have nothing here".
@@ -238,6 +252,19 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, props.threadId]);
 
+  // Activity rides the existing 10s poll rather than starting its own timer:
+  // one cadence, one place, and no second interval to leak on unmount. A crash
+  // notice is therefore at most one poll late, which is the same latency the
+  // presence dots already have.
+  const activityRoom = sel?.kind === "group" ? sel.name : null;
+  useEffect(() => {
+    if (!activityRoom || !live) return;
+    void loadActivity(activityRoom);
+    const handle = window.setInterval(() => void loadActivity(activityRoom), 10000);
+    return () => window.clearInterval(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityRoom, live]);
+
   const openRoom = async (name: string) => {
     setSel({ kind: "group", name });
     setRoomRead({ name, state: "loading" });
@@ -258,9 +285,28 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     }
   };
 
+  /**
+   * Re-read one room's live activity. Deliberately a **third** state alongside
+   * the roster and the presence dots, because it settles separately: an older
+   * Gateway has no `/activity` route at all, and that must read as "this build
+   * does not have it" rather than as "nobody is working".
+   */
+  const loadActivity = async (name: string) => {
+    try {
+      const snapshot = await roomActivity(name);
+      setActivityByRoom((prev) => ({ ...prev, [name]: snapshot }));
+      setActivityError((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    } catch (e) {
+      setActivityError((prev) => ({ ...prev, [name]: errMsg(e) }));
+    }
+  };
+
   /** Re-read one room's roster. Success replaces the entry; failure records the reason. */
-  const loadMembers = async (name: string) => {
-    // Presence and the split roster are two different reads and settle
+  const loadMembers = async (name: string) => {    // Presence and the split roster are two different reads and settle
     // separately: a roster that names who is inherited can still fail while the
     // presence dots succeed.
     try {
@@ -463,7 +509,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
   /** Re-read the open room after a mutation, keeping the message list truthful. */
   const refreshRoom = async (name: string) => {
-    await Promise.all([openRoom(name), loadMembers(name)]);
+    await Promise.all([openRoom(name), loadMembers(name), loadActivity(name)]);
   };
 
   const send = async () => {
@@ -1192,6 +1238,18 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
             members={activeMembers}
             presence={activePresence}
             presenceError={activeMembersError}
+        activity={sel?.kind === "group" ? activityByRoom[sel.name] ?? null : null}
+        activityError={sel?.kind === "group" ? activityError[sel.name] ?? null : null}
+        activityBusy={activityBusy}
+        onRefreshActivity={async () => {
+          if (sel?.kind !== "group") return;
+          setActivityBusy(true);
+          try {
+            await loadActivity(sel.name);
+          } finally {
+            setActivityBusy(false);
+          }
+        }}
             roster={activeRoster}
             rosterError={activeRosterError}
             buckets={activeBuckets}
@@ -1340,6 +1398,17 @@ function DetailsPane(props: {
   presence: MemberPresence[];
   /** Why the roster could not be read, or null. Never conflated with empty. */
   presenceError: string | null;
+  /**
+   * Live activity, or null when it has not been read yet. `null` renders as
+   * *reading…*, never as an empty room — an unread read and a room with nobody
+   * working are opposite claims.
+   */
+  activity: RoomActivity | null;
+  /** Why the activity read failed, or null. Never conflated with empty. */
+  activityError: string | null;
+  /** Whether an activity refresh is in flight, so the control can disable itself. */
+  activityBusy: boolean;
+  onRefreshActivity: () => Promise<void>;
   /** The split roster (direct / inherited / rule-matched), or null. */
   roster: RoomRoster | null;
   rosterError: string | null;
@@ -1493,6 +1562,12 @@ function DetailsPane(props: {
             Members in this group
             <span className="font-normal text-muted-foreground">· {props.headline}</span>
           </p>
+            <GroupActivityPanel
+            snapshot={props.activity}
+            error={props.activityError}
+            busy={props.activityBusy}
+            onRefresh={() => void props.onRefreshActivity()}
+          />
           {props.rosterError && (
             <ErrorBox
               message={`Membership could not be read — who is here is unknown, not empty. (${props.rosterError})`}
