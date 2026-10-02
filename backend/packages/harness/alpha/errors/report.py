@@ -346,8 +346,15 @@ class ErrorReporter:
 
     All four sinks are optional but all four are *attempted*; a missing sink is
     not a failure, it is reported as ``<leg>_published=False`` so the gap is
-    visible. Tests bind recording callables; the Gateway binds its SSE sink once
-    at startup.
+    visible. Tests bind recording callables.
+
+    Honesty note: the Gateway currently binds *no* SSE sink — there is no
+    production ``configure_error_reporter`` caller, so this leg counts into
+    ``unbound_sse`` while the log, metric, and recovery legs fire. Run-scoped
+    failures still reach live clients through the terminal ``error`` frame the
+    gateway synthesizes (``gateway_terminal_error_payload``); what is missing
+    is fan-out for *non-run* reported errors, and binding that leg is
+    specified in ``docs/RELIABILITY_ROADMAP.md``.
     """
 
     log_sink: Callable[[ReportedError], None] | None = None
