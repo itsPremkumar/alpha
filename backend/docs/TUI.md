@@ -43,8 +43,9 @@ keeping truecolor foregrounds and selection highlights. Combine
 `--tui-transparent` with `--tui` when the UI also needs to be forced without a
 detected TTY.
 
-Headless runs use a recursion limit of `100` by default. Pass a positive
-`--recursion-limit` when a longer agent loop is expected. This is a LangGraph
+Headless runs use a recursion limit of `1000` by default, matching the
+Gateway's interactive budget. Pass a positive `--recursion-limit` when a
+longer agent loop is expected. This is a LangGraph
 super-step budget, so it can include model and tool-execution steps rather than
 mapping one-to-one to conversational turns. The `max_recursion_limit` setting
 is a Gateway safety ceiling for client-supplied values; it is not the default

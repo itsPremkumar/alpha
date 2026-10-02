@@ -470,7 +470,11 @@ class AlphaClient:
         }
         return RunnableConfig(
             configurable=configurable,
-            recursion_limit=overrides.get("recursion_limit", 100),
+            # Match the Gateway's interactive budget (_DEFAULT_RECURSION_LIMIT,
+            # app/gateway/services.py): the old embedded default of 100 died
+            # GRAPH_RECURSION_LIMIT at step=101 after ~8 tool cycles while the
+            # Gateway finished the same task at 1000.
+            recursion_limit=overrides.get("recursion_limit", 1000),
         )
 
     def _ensure_agent(self, config: RunnableConfig, *, context: Mapping[str, Any] | None = None):
