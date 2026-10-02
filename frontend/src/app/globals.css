@@ -28,6 +28,44 @@
        is a near-black slate, dark mode a lighter slate, because a pure black
        shadow is invisible against a 6%-luminance surface. */
     --shadow-color: 224 71% 4%;
+
+    /* Surface ladder.
+       A third elevation step does not exist as a colour. Every surface in the
+       app is one of these three, which is what lets the sidebar, the canvas and
+       the composer separate by luminance instead of each inventing a
+       `bg-card/60`. Values are lightness over the shared hue. */
+    --surface-1: 0 0% 100%; /* raised: cards, panels, popovers */
+    --surface-2: 220 20% 98%; /* the page itself */
+    --surface-3: 220 14% 96%; /* sunken: rails, headers, composer wells */
+
+    /* Elevation.
+       Two shadows each, not one: a tight contact shadow plus a wider ambient
+       one. A single shadow reads as a sticker at low elevation and as a flat
+       cutout at high elevation, because real depth has both. Consumed by
+       `.elev-1/.elev-2/.elev-3` below. */
+    --shadow-e1:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.06),
+      0 1px 3px 0 hsl(var(--shadow-color) / 0.05);
+    --shadow-e2:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.06),
+      0 4px 12px -2px hsl(var(--shadow-color) / 0.1);
+    --shadow-e3:
+      0 2px 4px -1px hsl(var(--shadow-color) / 0.07),
+      0 12px 32px -6px hsl(var(--shadow-color) / 0.16);
+
+    /* Motion.
+       Durations are a log-ish scale, not arbitrary values: instant is for state
+       flips that must not read as animation, fast for hover/press feedback,
+       slow for things that move a large distance or change a layout. */
+    --dur-instant: 0ms;
+    --dur-fast: 120ms;
+    --dur-slow: 220ms;
+
+    /* Standard is decelerate (fast start, gentle stop) because it follows a
+       pointer or a key press. Emphasised is symmetric and is reserved for
+       anything the user did not directly drive, such as a panel entering. */
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasised: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark {
@@ -51,6 +89,14 @@
     --input: 217 19% 18%;
     --ring: 224 76% 66%;
     --shadow-color: 217 30% 84%;
+
+    /* Dark mode inverts which end of the ladder is "raised". The card is still
+       the lighter surface, but it starts near the background's luminance
+       instead of at pure white, so the same three steps keep reading as
+       depth. */
+    --surface-1: 224 25% 9%;
+    --surface-2: 224 25% 6%;
+    --surface-3: 217 19% 16%;
   }
 
   html {
@@ -208,22 +254,19 @@
  * near-black surface, where a black shadow is invisible.
  */
 @layer components {
+  /* Each level delegates to a token rather than spelling out its own shadows.
+   * The indirection is what lets the geometry be retuned per theme without
+   * touching a component, and it keeps the ladder readable as a single list. */
   .elev-1 {
-    box-shadow:
-      0 1px 2px hsl(var(--shadow-color) / 0.06),
-      0 1px 3px hsl(var(--shadow-color) / 0.05);
+    box-shadow: var(--shadow-e1);
   }
 
   .elev-2 {
-    box-shadow:
-      0 2px 4px hsl(var(--shadow-color) / 0.07),
-      0 6px 16px hsl(var(--shadow-color) / 0.09);
+    box-shadow: var(--shadow-e2);
   }
 
   .elev-3 {
-    box-shadow:
-      0 8px 24px hsl(var(--shadow-color) / 0.14),
-      0 16px 48px hsl(var(--shadow-color) / 0.16);
+    box-shadow: var(--shadow-e3);
   }
 }
 
