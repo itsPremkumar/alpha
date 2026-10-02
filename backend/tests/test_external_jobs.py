@@ -116,6 +116,79 @@ async def test_job_tool_cannot_bypass_operator_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_job_tool_submit_discloses_operator_gate(monkeypatch):
+    """submit() must disclose the quarantine instead of pretending the job will run.
+
+    The model previously saw only ``job_submitted`` + ``job_id`` and then burned
+    tool calls polling a job the operator gate would never execute (live run
+    103b855b). The gate reason must be the *same* string the executor will
+    later record, so disclosure and failure cannot drift apart.
+    """
+    import importlib
+    import json
+
+    module = importlib.import_module("alpha.tools.builtins.job_tool")
+    queue = PersistentJobQueue()
+    runner = ExternalJobRunner(queue)
+    monkeypatch.setattr(module, "_GLOBAL_QUEUE", queue)
+    monkeypatch.setattr(module, "_GLOBAL_RUNNER", runner)
+    spawn = AsyncMock()
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", spawn)
+    finished = asyncio.Event()
+    queue.add_listener(lambda job_id, status: finished.set() if status == JobStatus.FAILED else None)
+
+    submitted = json.loads(job_tool.invoke({"action": "submit", "command": "must-not-run"}))
+    await asyncio.wait_for(finished.wait(), timeout=5)
+
+    # Pinned contract: the job is still enqueued and a job_id is still returned.
+    assert submitted["status"] == "job_submitted"
+    assert submitted["job_id"]
+    # Honesty contract: the gate is disclosed at submit time.
+    assert submitted["execution_blocked"] is True
+    assert submitted["gate_reason"] == "Authenticated operator permission is required for host jobs"
+    assert "will not execute" in submitted["note"]
+    # The disclosure names exactly the failure the queued job reaches.
+    assert queue.get_status(submitted["job_id"]).error == submitted["gate_reason"]
+    spawn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_job_tool_logs_surfaces_error(monkeypatch):
+    """logs() must include JobResult.error; ``exit_code: -1`` with no reason is a dead end.
+
+    In live run 103b855b the model read empty stdout/stderr and concluded the
+    job "failed with no output", then kept retrying. ``status`` already exposes
+    ``error`` via ``model_dump()``; ``logs`` must not drop it.
+    """
+    import importlib
+    import json
+
+    module = importlib.import_module("alpha.tools.builtins.job_tool")
+    queue = PersistentJobQueue()
+    runner = ExternalJobRunner(queue)
+    monkeypatch.setattr(module, "_GLOBAL_QUEUE", queue)
+    monkeypatch.setattr(module, "_GLOBAL_RUNNER", runner)
+    spawn = AsyncMock()
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", spawn)
+    finished = asyncio.Event()
+    queue.add_listener(lambda job_id, status: finished.set() if status == JobStatus.FAILED else None)
+
+    submitted = json.loads(job_tool.invoke({"action": "submit", "command": "must-not-run"}))
+    await asyncio.wait_for(finished.wait(), timeout=5)
+    job_id = submitted["job_id"]
+
+    logs = json.loads(job_tool.invoke({"action": "logs", "job_id": job_id}))
+    assert logs["status"] == "failed"
+    assert logs["exit_code"] == -1
+    assert logs["error"] == "Authenticated operator permission is required for host jobs"
+
+    # status keeps carrying the same reason (regression pin).
+    status = json.loads(job_tool.invoke({"action": "status", "job_id": job_id}))
+    assert status["error"] == "Authenticated operator permission is required for host jobs"
+    spawn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_runner_denies_host_execution_by_default(monkeypatch):
     spawn = AsyncMock()
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
