@@ -144,6 +144,9 @@ Content-Type: application/json
 - `messages-tuple`: Individual message chunks
 - `values`: Complete state snapshots
 - `custom`: Custom events (task_*, progress, etc.)
+- `heartbeat`: Named liveness frame emitted after 15 s (`SSE_HEARTBEAT_SECONDS`)
+  with no real event, so silence is distinguishable from a dead connection; it
+  carries no `id:` and reducers ignore it
 
 ### Create Run (Non-streaming)
 ```http
@@ -852,6 +855,7 @@ All endpoints return standard error format:
 | `messages-tuple` | `(message, metadata)` tuples for each message chunk |
 | `values` | Complete ThreadState snapshots |
 | `custom` | Custom events: `task_start`, `task_complete`, `task_error`, `progress` |
+| `heartbeat` | Liveness frame after 15 s with no real event; no `id:`, so the `Last-Event-ID` rejoin cursor never moves |
 
 ### Custom Event Payloads
 
