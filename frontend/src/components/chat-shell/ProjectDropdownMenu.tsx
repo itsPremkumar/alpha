@@ -38,6 +38,12 @@ export interface ProjectDropdownMenuProps {
   onOpenKnowledge?: () => void;
   onOpenSettings?: () => void;
   onOpenView?: (view: WorkspaceView) => void;
+  /**
+   * Classes for the custom `children` trigger wrapper. Supplied separately
+   * because the caller can no longer put them on an inner `<button>` — the
+   * wrapper itself is the control now.
+   */
+  triggerClassName?: string;
   children?: React.ReactNode;
 }
 
@@ -55,6 +61,7 @@ export function ProjectDropdownMenu({
   onOpenKnowledge,
   onOpenSettings,
   onOpenView,
+  triggerClassName,
   children,
 }: ProjectDropdownMenuProps) {
   const [open, setOpen] = useState(false);
@@ -86,7 +93,32 @@ export function ProjectDropdownMenu({
   return (
     <div ref={rootRef} className="relative inline-block text-left">
       {children ? (
-        <div onClick={() => setOpen((v) => !v)} className="cursor-pointer">
+        /* The custom trigger the rail passes in.
+         *
+         * This was a bare `<div onClick>`, which is not a control: it is not
+         * focusable, it cannot be opened from the keyboard, and a screen reader
+         * announces it as an unnamed group. The `else` branch below already does
+         * this correctly with a real `<button>` carrying `aria-haspopup` and
+         * `aria-expanded`, so the trigger now mirrors it.
+         *
+         * `role`/`tabIndex`/the key handler are what make Enter and Space work
+         * here; `aria-expanded` is what tells assistive technology the menu is
+         * currently closed, so this is not decoration. */
+        <div
+          role="button"
+          tabIndex={0}
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-label={`Project options for ${projectName}`}
+          onClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setOpen((v) => !v);
+            }
+          }}
+          className={`cursor-pointer inline-flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground opacity-60 group-hover:opacity-100 transition-opacity ${triggerClassName ?? ""}`}
+        >
           {children}
         </div>
       ) : (

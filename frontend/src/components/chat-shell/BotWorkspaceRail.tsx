@@ -561,14 +561,21 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                               onOpenView("projects");
                             }}
                             onOpenView={onOpenView}
+                            triggerClassName="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 opacity-60 group-hover:opacity-100 transition-opacity"
                           >
-                            <button
-                              type="button"
-                              className="p-1 rounded text-muted-foreground hover:text-foreground opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer"
-                              title={`Project options for ${project?.name || row.projectId}`}
-                            >
-                              <MoreHorizontal className="size-3" />
-                            </button>
+                            {/* The trigger is an icon, not text, so the
+                                accessible name has to be supplied here. The
+                                wrapper is a `role="button"` element, so this
+                                must NOT be a real button: nesting one inside
+                                another is invalid HTML, drops the inner one
+                                out of the accessibility tree in several
+                                screen readers, and makes activation
+                                ambiguous. `aria-hidden` keeps the glyph from
+                                being announced twice while the wrapper
+                                carries the name. Styling moved up to
+                                `triggerClassName`, since the element that used
+                                to own it is gone. */}
+                            <MoreHorizontal className="size-3" aria-hidden="true" />
                           </ProjectDropdownMenu>
                         </div>
                       </div>
