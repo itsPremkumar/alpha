@@ -226,6 +226,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "contributing",
         "SEO, GEO, and AEO strategy, surfaces, and maintenance checklist.",
     ),
+    "CONTINUAL_INTELLIGENCE.md": DocumentSpec(
+        "architecture",
+        "Continual-intelligence layer: replay reservoir, regression gates, plasticity, expert fabric, paging.",
+    ),
     "DYNAMIC_WORKFLOWS.md": DocumentSpec("architecture", "Typed, evidence-gated dynamic workflow runtime."),
     "EXTENSIONS.md": DocumentSpec("architecture", "Extension packages, hooks, services, and routers."),
     "FAQ.md": DocumentSpec(
