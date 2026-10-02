@@ -23,9 +23,9 @@ upgrades from SPECIFIED to FIXED.
 | 1 | Run `19f01090…` created its output file, then died mid-flight with `sqlite3.OperationalError: database is locked` | The LangGraph checkpointer was the only `alpha.db` writer still on the driver's 5 s default busy timeout (engine and sync stores already used 30 s) | **FIXED** — `6e49de3` |
 | 2 | Run `4565d275…` hung on an internal await and sat `status=running` for 20+ min: no heartbeat, no SSE frames, no error anywhere; only a manual cancel finalised it | Two gaps: the run hung inside a **sync tool call with no budget** (`tool.ainvoke → run_in_executor → self.invoke` blocked forever during a self-heal retry — discovery/MCP/sandbox each had their own timeout, the plain ToolNode path had none), and no stall detector existed: leases are renewed by a loop independent of the run task, so a live process with a dead task passed every existing check | **FIXED** — `3d4795b` (watchdog bounds detection: 900 s → terminal `error` + `stop_reason="stalled"`) + `tool_timeout` budget (§2.4 bounds the call itself: 600 s → retryable `tool_timeout` ToolMessage) |
 | 3 | A zombie run's SSE stream showed **zero observable events for 877 s** — the bridge's `: heartbeat` comment (15 s) was flowing but is invisible to browser JS *and* to spec-conformant SSE parsers (including this repo's own e2e parser), so a slow agent and a dead connection were indistinguishable; a consumer stalled before `subscribe` would stop even the comments | Liveness existed only as spec-comments: no client-actionable signal and no bound on total silence | **FIXED** — named `event: heartbeat` via `app/gateway/sse.py` on every run stream |
-| 4 | Idle Gateway process burned 1 442 s CPU doing nothing (starved the test box) | Under investigation during incident; treated as P1 (see §3.5) | **SPECIFIED** |
+| 4 | Idle Gateway process burned 1 442 s CPU doing nothing (starved the test box) | Not reproduced after the hardening work: on 2026-10-02 an idle Gateway (post-Task-2, zero traffic) measured **0.91 s CPU over 60 s wall** (≈1.5 %) with the stall watchdog, network monitor and 5 s system monitor all active; the original trigger is still unknown, so the 5-min <1 % acceptance and the regression guard in §3.3 remain open | **SPECIFIED** (evidence in §3.3) |
 | 5 | The four-legged error fan-out's SSE leg never fires: no production `configure_error_reporter` caller exists | Claimed-in-docstring wiring was never implemented; run-scoped errors still reach clients via `gateway_terminal_error_payload` | Honesty **FIXED** (docstring); binding **SPECIFIED** (§3.1) |
-| 6 | `e2e_real_task.py` Task 1 end-to-end: **green** (durable `success`, byte-exact artifact, delivery gate passed) | — | Evidence that the happy path works after Fixes 1 |
+| 6 | `e2e_real_task.py` end-to-end: **both tasks green** — Task 1 single-file (40 s) and Task 2 multi-file (172 s, the shape of the earlier zombie incident) each exit 0 with durable `status=success` and verified artifacts; Task 2's stream carried named `heartbeat` frames at 15 s cadence under a live parser | — | Evidence that the happy path works after Fixes 1–4 |
 
 ---
 
@@ -153,6 +153,13 @@ time (stall watchdog, network monitor, lease heartbeat, stream-bridge
 cleanup, tiktoken warm-up retry). **Acceptance:** idle gateway < 1 % CPU over
 5 min; regression guard test samples the loop's task counter.
 
+**Evidence (2026-10-02):** the 2 × 60 s reproduction was run on the
+post-hardening Gateway (`:8011`, after e2e Task 2, zero traffic): **0.91 s
+CPU over 60.4 s wall** (≈1.5 %) — the 1 442 s burn did not reappear across
+two full e2e sessions. That is above the <1 % target, so this stays open:
+the 5-min sample and the loop-counter regression guard are the remaining
+acceptance steps.
+
 ### 3.4 Retry adoption policy (do not flip defaults)
 The stack already provides: LLM middleware 3 attempts with decorrelated
 jitter (`retry_base_delay_ms=1000`, cap 8 s) × provider `max_retries` ×
@@ -262,7 +269,10 @@ health-checks 8002, old port never re-probed after success.
 | Streams cannot go silently mute | `test_sse_heartbeat.py` (10 tests incl. route-wiring pins) |
 | A hung tool call is bounded and classified `tool_timeout` | `test_tool_timeout_guard.py` (4 tests) |
 | DB-lock regression stays dead | `test_checkpointer_busy_timeout.py` + 91-test suite |
-| End-to-end task honestly completes | `scripts/e2e_real_task.py` exit 0: durable `status=success`, artifact byte-exact over HTTP, delivery gate passed |
+| Both end-to-end tasks honestly complete | `e2e_real_task.py` exit 0 × 2 (2026-10-02, Gateway `:8011`): durable `status=success`, terminal end frame, no error frames, artifacts verified (`e2e-task-1.md`; 3 × `e2e-task-2-*.md`), exact contents in the reply |
+| Named heartbeats reach a live parser mid-run | e2e Task 2 stream: `{"type": "heartbeat"}` frames at +31/+46/+61 s (15 s cadence) while the model was silent |
+| Idle Gateway CPU (incident #4 evidence) | 60 s sample post-Task-2: 0.91 s (≈1.5 %); no burn recurrence across both sessions; §3.3 5-min acceptance still open |
+| Pre-existing config-coupled suite failures fixed | `2251170`: honesty-suite kill-switch opt-in fixture + forced L1 chain gate — 11/11 green under both the shipped template and an operator `config.yaml` |
 | Cancel path finalises cleanly | live evidence: manual cancel → `CancelledError` → `interrupted` → finalized, gateway healthy |
 
 ---
