@@ -524,7 +524,12 @@ class AppConfig(BaseModel):
         ge=0,
         description=format_field_description(
             "tool_timeout",
-            field_doc="Wall-clock budget in seconds for a single tool call (async path). Exceeding it cancels the call and returns a retryable tool-timeout error ToolMessage instead of awaiting forever; set 0 to disable the budget (calls run unbounded). Defaults to 600, the same cap sandbox.bash_command_timeout gives a foreground command.",
+            field_doc=(
+                "Wall-clock budget in seconds for a single tool call (async path). Exceeding it "
+                "cancels the call and returns a retryable tool-timeout error ToolMessage instead "
+                "of awaiting forever; set 0 to disable the budget (calls run unbounded). Defaults "
+                "to 600, the same cap sandbox.bash_command_timeout gives a foreground command."
+            ),
         ),
     )
     network: NetworkResilienceConfig = Field(

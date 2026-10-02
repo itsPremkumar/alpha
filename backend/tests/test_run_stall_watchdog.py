@@ -34,8 +34,8 @@ from alpha.runtime.runs.schemas import RunStatus
 from alpha.runtime.runs.store.memory import MemoryRunStore
 from alpha.runtime.selfheal.run_stall import (
     STALL_STOP_REASON,
-    RunStallWatchdog,
     RunStallSettings,
+    RunStallWatchdog,
 )
 
 pytestmark = pytest.mark.anyio

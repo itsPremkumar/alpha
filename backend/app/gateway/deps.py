@@ -41,8 +41,8 @@ from alpha.runtime.network import (
     set_network_wait_service,
 )
 from alpha.runtime.runs.store.base import RunStore
-from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from alpha.runtime.selfheal.run_stall import RunStallWatchdog
+from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from alpha.runtime.side_effects import (
     SideEffectReclaimer,
     SideEffectRecorder,

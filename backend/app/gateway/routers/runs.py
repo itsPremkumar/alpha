@@ -12,6 +12,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from alpha.runtime import serialize_channel_values_for_api
+from alpha.utils.thread_id import resolve_thread_id
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.pagination import trim_run_message_page
@@ -23,8 +25,6 @@ from app.gateway.services import (
     wait_for_run_completion,
     with_stream_heartbeats,
 )
-from alpha.runtime import serialize_channel_values_for_api
-from alpha.utils.thread_id import resolve_thread_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])

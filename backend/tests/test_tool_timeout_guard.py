@@ -14,12 +14,12 @@ applies (``_drop_null_config_sections``).
 """
 
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
 from langgraph.prebuilt.tool_node import ToolCallRequest
-from unittest.mock import MagicMock
 
 pytestmark = pytest.mark.anyio
 

@@ -63,7 +63,7 @@ async def with_heartbeats(
         while True:
             try:
                 item = await asyncio.wait_for(queue.get(), timeout=interval)
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 yield heartbeat_frame
                 continue
             if item is _EOF:

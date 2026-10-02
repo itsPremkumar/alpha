@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from alpha.config.run_stall_config import RunStallSettings
 from alpha.runtime.runs.schemas import RunStatus
@@ -196,7 +197,7 @@ class RunStallWatchdog:
                 logger.warning("run stall watchdog: scan failed", exc_info=True)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=interval)
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 continue
 
     def start(self) -> None:
@@ -220,7 +221,7 @@ class RunStallWatchdog:
             stop.set()
         try:
             await asyncio.wait_for(task, timeout=timeout)
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             task.cancel()
             try:
                 await task
