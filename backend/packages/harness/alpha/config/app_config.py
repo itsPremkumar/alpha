@@ -72,6 +72,7 @@ from alpha.config.verification_config import VerificationConfig
 from alpha.config.voice_config import VoiceConfig
 from alpha.evolution.evidence.config import EvolutionEvidenceConfig
 from alpha.extensions.loader import ExtensionSpec
+from alpha.intelligence.config import IntelligenceConfig
 
 load_dotenv()
 
@@ -418,6 +419,17 @@ class AppConfig(BaseModel):
             "line. Hot-reloaded. A declaration grants nothing by itself: it feeds the Bot forge, the role "
             "permission rings and the approval gate, and it never bypasses them. Every field is leader-only "
             "in the bot_roster self-service sense, so a Bot cannot edit its own specialist entry."
+        ),
+    )
+    intelligence: IntelligenceConfig = Field(
+        default_factory=IntelligenceConfig,
+        description=(
+            "Continual-intelligence layer (alpha.intelligence): a sampling index over experience, a standing "
+            "regression suite with train/held-out separation, a tiered plasticity controller, a dynamic expert "
+            "fabric with stable identities and lineage, disk->RAM->resident paging, and bounded adaptive compute. "
+            "DEFAULT OFF with mode OBSERVE_ONLY: it reads real runtime state and writes nothing until an operator "
+            "opts in. It is additive and wires into the existing experience bank, RSI promotion gate and expert "
+            "catalog rather than replacing any of them."
         ),
     )
     auth: AuthAppConfig = Field(default_factory=AuthAppConfig, description="Authentication configuration (local + OIDC SSO)")

@@ -30,7 +30,7 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 57
+config_version: 58
 
 # ============================================================================
 # Logging
@@ -4881,3 +4881,105 @@ voice:
 #     allowlists that exact executable with SentinelGuard.set_launch_allowlist().
 #   * Every OS interaction runs behind a deadline (alpha.tools.builtins.
 #     os_computer_tool.OS_CALL_TIMEOUT_S / SCAN_TIMEOUT_S / SCREENSHOT_TIMEOUT_S).
+
+# ============================================================================
+# Continual-intelligence layer (see docs/CONTINUAL_INTELLIGENCE.md)
+# ============================================================================
+# This section does NOT add a second evolution engine, a second experience store,
+# a second memory, or a second model router. Alpha already has strong versions of
+# all four (`alpha.rsi`, `alpha.learning.experience`, `alpha.memory`,
+# `alpha.models`). What this section configures is the layer that was missing
+# between them: a way to SAMPLE experience for learning (rather than only store
+# it), a standing regression suite with train/held-out separation, a plasticity
+# dial, a dynamic expert fabric with stable identities and lineage, paging, and
+# bounded adaptive compute.
+#
+# DEFAULT OFF, and default posture is OBSERVE_ONLY: Alpha reads real runtime
+# state and writes nothing until you opt in. `mode` and `enabled` must agree -
+# declaring a mode above OBSERVE_ONLY with `enabled: false` is a config error,
+# because the write paths correctly refuse and the configuration must not
+# disagree with them.
+#
+# mode is a severity order, and each level implies the ones below it:
+#   OBSERVE_ONLY  compute what would happen; write no learned state
+#   DRY_RUN       additionally answer "what would change?" for given inputs
+#   EVALUATE_ONLY additionally run evaluations and regressions on a candidate
+#   TRIAL         additionally let candidate experts execute on real work
+#   LEARN         additionally record learning events and update learned state
+#   PROMOTE       the only mode that may advance a candidate into the active set
+intelligence:
+  enabled: false
+  mode: OBSERVE_ONLY
+
+  # -- replay reservoir (bounded, stratified experience sampling) ------------
+  # This is the piece Alpha genuinely lacked: the experience bank stored
+  # records, but nothing ever sampled them for learning, so the newest domain
+  # slowly erased older knowledge. Strata are separate so a burst of new `recent`
+  # items cannot consume the whole sampling budget.
+  replay:
+    enabled: true
+    capacity: 512
+    # Per-stratum sampling weights, normalised to sum to 1.0. Omitted keys keep
+    # their built-in default; an unrecognised name is preserved AND reported by
+    # GET /api/intelligence/replay as `unknown_configured_strata`.
+    strata: {}
+    # Half-life, not a cliff: an item one half-life old scores 0.5. A hard
+    # recent/not-recent boundary is what makes a reservoir forget everything the
+    # moment the domain changes.
+    recency_half_life_seconds: 604800.0   # 7 days
+    min_priority: 0.0
+
+  # -- plasticity controller -------------------------------------------------
+  # More self-modification is not more intelligence. Multipliers are per-tier
+  # and deliberately INCREASE with how little history a surface has, because
+  # catastrophic forgetting lands on the stable core.
+  plasticity:
+    enabled: false
+    core_multiplier: 0.05        # stable core: learns slowest
+    router_multiplier: 0.25      # routing: cheap to adapt, regressions are local
+    expert_multiplier: 0.6       # learned experts: have lineage, can be pruned back
+    new_expert_multiplier: 1.0   # trial experts: no history to forget
+    window: 5                    # observations per trend. One point has no slope.
+    rollback_regression_delta: 0.05   # regression worse than this forces ROLLBACK
+    forgetting_ratio: 0.15       # retention below this fraction of peak freezes learning
+
+  # -- standing regression suite --------------------------------------------
+  # The suite itself is code (alpha.intelligence.regression); this is its bar.
+  # `max_regression_delta: 0.0` means ANY regression rejects a candidate.
+  regression:
+    enabled: true
+    min_regression_score: 0.0
+    max_regression_delta: 0.0
+    min_heldout_score: 0.0
+    overfitting_gap: 0.2        # train-minus-heldout gap that flags overfitting
+    max_retries: 2              # bounded promotion attempts; 0 disables promotion
+
+  # -- dynamic expert fabric -------------------------------------------------
+  experts:
+    dynamic_growth: false       # allow a detected capability gap to propose an expert
+    dynamic_pruning: false      # allow prune candidates to be marked
+    max_experts: 64
+    trial_window: 5             # observations an expert must survive in TRIAL
+    trial_min_success_rate: 0.5
+    grace_period_seconds: 604800.0
+    exploration_bonus: 0.1      # maximum exploration credit; applied only when exploring
+    # Ids here can NEVER be pruned, whatever their score. A protected expert is
+    # reported as protected, not silently skipped.
+    protected: []
+    recent_window: 5
+
+  # -- disk -> RAM cache -> resident paging ----------------------------------
+  # `max_resident` must be <= `ram_cache_size`; the resident tier is a subset of
+  # the RAM cache, not a peer of it.
+  paging:
+    enabled: false
+    ram_cache_size: 32
+    max_resident: 4
+    policy: lru
+
+  # -- adaptive compute ------------------------------------------------------
+  # Difficulty-band boundaries as normalised 0..1 scores. Unmeasured signals are
+  # EXCLUDED from the mean and renormalised rather than defaulted to zero -
+  # treating "unknown" as "easy" is how a task with seven measured complexity
+  # dimensions and no failure history gets routed as trivial.
+  difficulty_thresholds: {}     # e.g. {easy: 0.25, medium: 0.5, hard: 0.75}

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-02T01:27:02Z",
+ "generated_at": "2026-10-02T10:44:19Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1334,6 +1334,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.intelligence",
+   "module": "app.gateway.routers.intelligence",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.jobs",
    "module": "app.gateway.routers.jobs",
    "symbol": "router",
@@ -2239,6 +2247,11 @@
   },
   {
    "id": "alpha.integrations",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.intelligence",
    "kind": "package",
    "submodules": []
   },

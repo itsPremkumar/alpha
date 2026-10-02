@@ -53,6 +53,7 @@ from app.gateway.routers import (
     groups,
     input_polish,
     integrations,
+    intelligence,
     jobs,
     mcp,
     mcp_tasks,
@@ -1238,6 +1239,11 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(council.router)
     app.include_router(benchmarks.router)
     app.include_router(evolution.router)
+    # Read-only introspection for the continual-intelligence layer. Mounted next
+    # to `evolution` because it projects the same subsystems; it exposes no
+    # mutation route, so promoting/pruning/snapshotting stay library calls behind
+    # the intelligence mode gate.
+    app.include_router(intelligence.router)
     app.include_router(evidence.router)
     app.include_router(checkpoints.router)
     app.include_router(skills_workshop.router)
