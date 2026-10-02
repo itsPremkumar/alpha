@@ -44,6 +44,7 @@ from alpha.config.reload_boundary import format_field_description
 from alpha.config.review_guard_config import ReviewGuardConfig
 from alpha.config.run_events_config import RunEventsConfig
 from alpha.config.run_ownership_config import RunOwnershipConfig
+from alpha.config.run_stall_config import RunStallSettings
 from alpha.config.runtime_paths import existing_project_file
 from alpha.config.safety_finish_reason_config import SafetyFinishReasonConfig
 from alpha.config.sandbox_config import SandboxConfig
@@ -502,6 +503,13 @@ class AppConfig(BaseModel):
         description=format_field_description(
             "run_ownership",
             field_doc="Run ownership, lease, and safe checkpoint auto-resume configuration for single- and multi-worker deployments.",
+        ),
+    )
+    run_stall: RunStallSettings = Field(
+        default_factory=RunStallSettings,
+        description=format_field_description(
+            "run_stall",
+            field_doc="Run stall watchdog: a running run with no progress heartbeat for timeout_seconds is cancelled and terminalised with an explanatory error, so a hung agent run can never sit in running forever.",
         ),
     )
     network: NetworkResilienceConfig = Field(
