@@ -6,11 +6,27 @@ from typing import Literal
 
 from langchain.tools import tool
 
-from alpha.sandbox.process_manager import START_SETTLE_SECONDS, get_process_manager
+from alpha.sandbox.process_manager import (
+    START_SETTLE_SECONDS,
+    elapsed_seconds,
+    get_process_manager,
+    host_shell_label,
+)
 
 
 def _handle_header(handle, command: str) -> str:
-    return f"Handle ID: {handle.handle_id}\nPID: {handle.pid}\nCommand: {command}\nUse process_handle(action='poll', handle_id='{handle.handle_id}') to check status."
+    # Disclosures the model must not have to guess: which shell will parse
+    # the command (shell=True is %COMSPEC%/cmd.exe on Windows and /bin/sh on
+    # POSIX, never bash), and how long the process actually ran (monotonic,
+    # frozen at the observed exit for a finished process).
+    return (
+        f"Handle ID: {handle.handle_id}\n"
+        f"PID: {handle.pid}\n"
+        f"Host shell: {host_shell_label()}\n"
+        f"Runtime: {elapsed_seconds(handle):.2f}s\n"
+        f"Command: {command}\n"
+        f"Use process_handle(action='poll', handle_id='{handle.handle_id}') to check status."
+    )
 
 
 @tool("process_handle", parse_docstring=True)
