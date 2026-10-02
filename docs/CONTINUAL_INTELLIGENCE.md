@@ -199,6 +199,14 @@ and a `REJECT`.
 and reports only their count. A candidate that can read the held-out case list
 can optimise against it.
 
+> **Scope note on "hidden".** The mechanism exists and is tested, but the 32
+> shipped cases declare **none** of themselves hidden. They are property checks
+> over Alpha's own invariants — the honest answer to "does Alpha still enforce
+> its own rules" — and a property check has nothing to hide, because the
+> implementation being checked is the answer. The genuinely hidden suite lives
+> in `alpha.rsi.holdout` and is unchanged. If you want task-level held-out cases,
+> declare them with `hidden=True`; `to_candidate_payload()` will withhold them.
+
 ---
 
 ## 6. Plasticity

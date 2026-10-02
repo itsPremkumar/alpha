@@ -132,7 +132,7 @@ expert counts and thresholds were **rejected**.
 | 6 | Experience sanitisation | **implemented** — 6 stages, one denylist | 11 tests |
 | 7 | Replay reservoir | **implemented** — bounded, 12 strata, half-life recency | 14 tests |
 | 8 | Regression harness | **implemented** — 32 cases, all 20 categories | `test_every_required_category_is_covered` |
-| 9 | Before/after evaluation | **implemented** — 7 axes + overfitting gap | 8 tests |
+| 9 | Before/after evaluation | **partial** - 7 axes + overfitting gap; but the shipped suite declares **no** hidden cases (it is property checks, not task evaluation - see 5.1) | 8 tests |
 | 10 | Promotion decisions | **implemented** — 6 named gates, first-refusal-wins | 8 tests |
 | 11 | Snapshot + rollback | **implemented** — bounded, raises when spent | 13 tests |
 | 12 | Plasticity controller | **implemented** — 5 outcomes, trend required | 14 tests |
@@ -159,6 +159,25 @@ expert counts and thresholds were **rejected**.
 | 64 | Version everything | **implemented** — schema_version on every doc | — |
 
 ### Partially implemented
+
+#### 5.1 The shipped suite contains no hidden cases
+
+`RegressionCase.hidden` and `EvaluationRun.heldout` exist and are tested — held-out
+ids are genuinely withheld from `to_candidate_payload()`. But **all 32 shipped
+cases declare `hidden=False`**, and that is deliberate rather than an omission.
+
+These are property checks over Alpha's own invariants: "an atomic write really
+is atomic", "a protected expert really is protected". There is nothing to hide,
+because the implementation being checked *is* the answer — a candidate cannot
+infer the answer by reading the case description. The genuinely hidden suite is
+`alpha.rsi.holdout`'s, and it is unchanged.
+
+So the **task-level held-out evaluation the brief describes is not built here.**
+What is built is a standing regression suite plus a comparison/gate over it. If
+you want held-out task cases, declare them `hidden=True` and the withholding
+path already works.
+
+#### Other partial items
 
 | Brief § | Requirement | What is missing |
 | --- | --- | --- |
