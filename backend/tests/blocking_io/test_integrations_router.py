@@ -17,9 +17,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.gateway.routers import integrations
 from alpha.config import paths as paths_module
 from alpha.integrations import lark_cli
+from app.gateway.routers import integrations
 
 pytestmark = pytest.mark.asyncio
 
@@ -37,7 +37,34 @@ def _build_lark_archive(archive: Path) -> None:
 
 
 def _write_stub_lark_cli(path: Path) -> None:
+    """Write an executable ``lark-cli`` stub for the probe to find.
+
+    Production resolves the CLI with ``shutil.which("lark-cli")``
+    (``_resolve_lark_cli_path``), and on Windows ``which`` only matches
+    PATHEXT suffixes (``.COM``/``.EXE``/``.BAT``/``.CMD``) — the POSIX shell
+    script below is invisible there, so the probe finds nothing and the route
+    answers 404 before the test's assertion. Windows therefore gets a
+    ``.cmd`` batch stub with the same branches and the same output; POSIX
+    behavior is unchanged.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        path.with_suffix(".cmd").write_text(
+            """@echo off
+if "%~1"=="--version" goto version
+if "%~1"=="auth" if "%~2"=="status" goto status
+echo {}
+exit /b 0
+:version
+echo v1.0.65
+exit /b 0
+:status
+echo {"identities":{"user":{"userName":"Alice"}}}
+exit /b 0
+""",
+            encoding="utf-8",
+        )
+        return
     path.write_text(
         """#!/bin/sh
 if [ "$1" = "--version" ]; then
