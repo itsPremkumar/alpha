@@ -320,6 +320,69 @@ class SelfKnowledgeService:
 
         return _safe("learning_now", read)
 
+    def investigations(self, *, limit: int = 5) -> dict[str, Any]:
+        """Phase G: what Alpha currently thinks is worth investigating.
+
+        Reads ranked proposals from the journal's ``investigation_proposed``
+        events and re-runs the selection through
+        :func:`alpha.intelligence.investigation.select_investigations`, so the
+        ranking shown here is the one the admission gate would apply rather than
+        a second opinion.
+
+        Admission is governed by ``intelligence.investigation_admission`` and is
+        **off by default**, so this is a read-only projection: it can never
+        commit budget.
+        """
+        from alpha.intelligence.budget_protocol import BudgetUnit
+        from alpha.intelligence.config import intelligence_config
+        from alpha.intelligence.investigation import GapKind, InvestigationProposal, select_investigations
+        from alpha.intelligence.journal import LearningJournal
+
+        entries, corrupt = LearningJournal().recent(kinds=("investigation_proposed",), limit=limit * 4)
+        proposals: list[InvestigationProposal] = []
+        skipped = 0
+        for entry in entries:
+            detail = entry.event.after
+            if not isinstance(detail, dict):
+                skipped += 1
+                continue
+            try:
+                proposals.append(
+                    InvestigationProposal(
+                        question=str(detail.get("question", "")),
+                        resolves_gap=GapKind(str(detail.get("resolves_gap", GapKind.OTHER.value))),
+                        expected_information_gain=float(detail.get("expected_information_gain", 0.0)),
+                        cost=BudgetUnit(
+                            attempts=int((detail.get("cost") or {}).get("attempts", 0)),
+                            tools=int((detail.get("cost") or {}).get("tools", 0)),
+                        ),
+                        falsifiable_by=str(detail.get("falsifiable_by", "")),
+                    )
+                )
+            except (TypeError, ValueError):
+                # A proposal that will not even construct is reported as skipped
+                # rather than dropped, so the count of unusable input is visible.
+                skipped += 1
+
+        section = intelligence_config()
+        selection = select_investigations(
+            proposals,
+            limit=limit,
+            min_information_gain=section.investigation_min_gain,
+            admission=section.investigation_admission,
+        )
+        return {
+            "admitted": [proposal.to_dict() for proposal in selection.admitted],
+            "admitted_count": len(selection.admitted),
+            "rejected_count": len(selection.rejected),
+            "skipped_malformed": skipped,
+            "corrupt_journal_lines": corrupt,
+            "admission_enabled": section.investigation_admission,
+            "min_information_gain": section.investigation_min_gain,
+            "reasons": list(selection.reasons),
+            "note": "admission is disabled by default; this projection ranks proposals and never commits budget",
+        }
+
     def snapshots(self, *, limit: int = 10) -> dict[str, Any]:
         """Stored intelligence snapshots, newest first."""
 
@@ -380,6 +443,7 @@ class SelfKnowledgeService:
                     "replay": self.replay(),
                     "plasticity": self.plasticity(),
                     "regression": self.regression(),
+                    "investigations": self.investigations(),
                 },
                 "journal": self.journal(limit=20),
                 "snapshots": self.snapshots(),

@@ -240,6 +240,20 @@ async def snapshots(limit: int = Query(default=10, ge=0, le=_MAX_LIMIT)) -> dict
     return await _read(get_self_knowledge().snapshots, limit=limit)
 
 
+@router.get("/investigations", summary="Phase G: ranked research proposals and their admissibility")
+async def investigations(limit: int = Query(default=5, ge=0, le=_MAX_LIMIT)) -> dict[str, Any]:
+    """What Alpha thinks is worth investigating, and why anything was refused.
+
+    A proposal must name a measurement that could refute it, and — when the Phase E
+    convergence check has a verdict — the selection itself must be converged before
+    budget may be spent. Admission is off by default, so this ranks without
+    committing anything.
+    """
+    from alpha.intelligence.self_knowledge import get_self_knowledge
+
+    return await _read(get_self_knowledge().investigations, limit=limit)
+
+
 @router.get("/paging", summary="Paging configuration and residency")
 async def paging() -> dict[str, Any]:
     """Paging tiers. ``resident_now`` is ``None`` when no manager is active, rather
