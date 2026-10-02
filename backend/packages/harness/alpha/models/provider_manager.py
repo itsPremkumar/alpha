@@ -162,7 +162,19 @@ def _provider_specs_from_catalog() -> list[ProviderDescriptor]:
 #: Lazily resolved from ``config.yaml`` on first use. Kept as a module-level
 #: name so existing importers keep working; call :func:`refresh_provider_specs`
 #: after editing the catalog in a long-lived process.
-PROVIDER_SPECS: list[ProviderDescriptor] = _provider_specs_from_catalog()
+#:
+#: No config file anywhere (a fresh clone, or CI running a gitignored-free
+#: checkout) is the ``[]`` case this module documents: nothing is declared, so
+#: the honest binding is the empty catalog — raising here made
+#: ``import alpha.models.provider_manager`` fatal at *collection* and took the
+#: whole backend suite down with it. Same treatment as ``alpha.mcp.cache``'s
+#: deliberate ``FileNotFoundError`` exception. A config file that exists but is
+#: invalid still fails closed, and a runtime :func:`refresh_provider_specs`
+#: still raises loudly.
+try:
+    PROVIDER_SPECS: list[ProviderDescriptor] = _provider_specs_from_catalog()
+except FileNotFoundError:
+    PROVIDER_SPECS = []
 
 
 def refresh_provider_specs() -> list[ProviderDescriptor]:

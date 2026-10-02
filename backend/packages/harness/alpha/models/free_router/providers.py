@@ -142,7 +142,19 @@ def _providers_from_config() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:
 
 #: Lazily resolved from ``config.yaml`` on first use. Call
 #: :func:`refresh_free_gateways` after editing the list in a long-lived process.
-PROVIDERS, PROVIDER_ORDER = _providers_from_config()
+#:
+#: No config file anywhere (a fresh clone, or CI running a gitignored-free
+#: checkout) is the ``({}, ())`` case this module documents: nothing is
+#: configured, so the honest binding is the empty registry — raising here made
+#: ``import alpha.models.free_router.providers`` fatal at *collection* and took
+#: the whole backend suite down with it. Same treatment as
+#: ``alpha.mcp.cache``'s deliberate ``FileNotFoundError`` exception. A config
+#: file that exists but is invalid still fails closed, and a runtime
+#: :func:`refresh_free_gateways` still raises loudly.
+try:
+    PROVIDERS, PROVIDER_ORDER = _providers_from_config()
+except FileNotFoundError:
+    PROVIDERS, PROVIDER_ORDER = {}, ()
 
 
 def refresh_free_gateways() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:

@@ -269,8 +269,15 @@ def test_cooldown_exponential_backoff_with_jitter_and_cap(tmp_path):
 
 
 def test_chat_fails_over_and_marks_providers(tmp_path, monkeypatch):
+    # Failover is judged against the *configured* order (config.yaml ->
+    # free_gateways), never a hardcoded gateway pair: prepending a gateway to
+    # that list is an operator change, not a reason for this test to rot.
+    assert len(PROVIDER_ORDER) >= 2, "free_gateways must declare at least two gateways"
+    first_name, second_name = PROVIDER_ORDER[0], PROVIDER_ORDER[1]
+    first = providers_mod.PROVIDERS[first_name]
+
     def chat_route(url, body):
-        if "vireonix.ai" in url:
+        if url.startswith(first.base_url):
             return chat_http_500()
         return chat_ok()
 
@@ -278,21 +285,26 @@ def test_chat_fails_over_and_marks_providers(tmp_path, monkeypatch):
     clock = [1_000_000.0]
     router = make_router(tmp_path, clock=clock)
 
+    def chat_calls(name: str) -> list[dict]:
+        """Observed chat attempts for one gateway (discovery excluded)."""
+        base = providers_mod.PROVIDERS[name].base_url
+        return [c for c in handler.calls if c["url"].startswith(base) and ("chat/completions" in c["url"] or c["url"].endswith("/openai") or "generate/text" in c["url"])]
+
     result = router.chat([{"role": "user", "content": "hi"}])
     assert result.text == "hello from free"
-    assert result.provider == "blockrun"  # vireonix failed, next in order served
-    assert result.model_id == "free-1"
+    assert result.provider == second_name  # first in order failed, next served
 
     view = {p["name"]: p for p in router.catalog_dict()["providers"]}
-    assert view["vireonix"]["healthy"] is False
-    assert view["vireonix"]["cooldown_until"] is not None  # cooling down now
-    assert view["vireonix"]["last_error"] == "ProviderError(status=500)"
-    assert view["blockrun"]["healthy"] is True
+    assert result.model_id in {m["id"] for m in view[second_name]["models"]}  # served from a real discovery entry
+    assert view[first_name]["healthy"] is False
+    assert view[first_name]["cooldown_until"] is not None  # cooling down now
+    assert view[first_name]["last_error"] == "ProviderError(status=500)"
+    assert view[second_name]["healthy"] is True
 
-    # Second chat: vireonix is cooling down and must not be attempted again.
+    # Second chat: the failed provider is cooling down and must not be retried.
     router.chat([{"role": "user", "content": "again"}])
-    assert handler.count("vireonix.ai/v1/chat/completions") == 1
-    assert handler.count("blockrun.ai/api/v1/chat/completions") == 2
+    assert len(chat_calls(first_name)) == 1
+    assert len(chat_calls(second_name)) == 2
 
 
 def test_all_fail_raises_retryable_honest_error_without_body_leak(tmp_path, monkeypatch):
@@ -419,7 +431,9 @@ def test_chatfreellm_invoke_returns_honest_message_and_usage(tmp_path, monkeypat
     message = model.invoke([SystemMessage(content="s"), HumanMessage(content="hi")])
 
     assert message.content == "hello from free"
-    assert message.response_metadata["free_llm_provider"] == "vireonix"
+    # the first *configured* gateway serves when every gateway is healthy —
+    # the shipped order changes with config.yaml, so no gateway is hardcoded
+    assert message.response_metadata["free_llm_provider"] == PROVIDER_ORDER[0]
     assert message.usage_metadata == {
         "input_tokens": 10,
         "output_tokens": 5,
@@ -450,9 +464,7 @@ def test_chatfreellm_parses_tool_calls_and_sends_bound_tools(tmp_path, monkeypat
     bound = _fresh_model().bind_tools(tools, tool_choice="auto")
     message = bound.invoke([HumanMessage(content="find alpha")])
 
-    assert message.tool_calls == [
-        {"name": "search", "args": {"query": "alpha"}, "id": "c1", "type": "tool_call"}
-    ]
+    assert message.tool_calls == [{"name": "search", "args": {"query": "alpha"}, "id": "c1", "type": "tool_call"}]
     chat_bodies = [c["json"] for c in handler.calls if "chat/completions" in c["url"] or c["url"].endswith("/openai")]
     assert chat_bodies, "no chat call observed"
     assert any(body and "tools" in body for body in chat_bodies)
@@ -462,9 +474,7 @@ def test_chatfreellm_parses_tool_calls_and_sends_bound_tools(tmp_path, monkeypat
 def test_chatfreellm_invalid_tool_call_is_not_crashed_or_dropped(tmp_path, monkeypatch):
     tool_response = chat_ok(
         text="",
-        tool_calls=[
-            {"id": "c1", "type": "function", "function": {"name": "search", "arguments": "{broken"}}
-        ],
+        tool_calls=[{"id": "c1", "type": "function", "function": {"name": "search", "arguments": "{broken"}}],
     )
     install(monkeypatch, chat=tool_response)
     message = _fresh_model().invoke([HumanMessage(content="hi")])
@@ -496,7 +506,7 @@ def test_chatfreellm_stream_single_chunk_fires_token_callback(tmp_path, monkeypa
     # token callback for its trailing empty metadata chunk — allow empties,
     # never allow duplicated or missing content.
     assert [t for t in collector.tokens if t] == ["streamed"]
-    assert chunks[0].response_metadata["free_llm_provider"] == "vireonix"
+    assert chunks[0].response_metadata["free_llm_provider"] == PROVIDER_ORDER[0]
 
 
 def test_chatfreellm_async_generate_and_stream(tmp_path, monkeypatch):
