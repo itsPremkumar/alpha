@@ -32,6 +32,7 @@ Two deliberate choices keep the assertions honest rather than machine-dependent:
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import shlex
 import subprocess
@@ -40,6 +41,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -47,6 +49,11 @@ from langgraph.prebuilt import ToolRuntime
 
 from alpha.sandbox.repl.session import ReplSession, ReplTimeoutError, get_repl_session
 from alpha.tools.builtins.python_repl_tool import python_repl_tool
+
+# ``alpha.tools.builtins`` re-exports the decorated tool object under the same
+# name as the submodule, shadowing it; import the module explicitly so tests
+# can patch its module-level ``get_app_config`` reference.
+_tool_module = importlib.import_module("alpha.tools.builtins.python_repl_tool")
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,16 +73,7 @@ def _blocking_cell_source() -> str:
     Sets ``finished`` on the way out -- including via ``finally`` -- so a test can
     tell "still running" from "already done" without relying on a clock.
     """
-    return (
-        "import time\n"
-        f"end = time.monotonic() + {_BLOCK_FOR_MAX_SECONDS}\n"
-        "try:\n"
-        "    while time.monotonic() < end and not release.is_set():\n"
-        "        time.sleep(0.05)\n"
-        "finally:\n"
-        "    finished.set()\n"
-        "'released'\n"
-    )
+    return f"import time\nend = time.monotonic() + {_BLOCK_FOR_MAX_SECONDS}\ntry:\n    while time.monotonic() < end and not release.is_set():\n        time.sleep(0.05)\nfinally:\n    finished.set()\n'released'\n"
 
 
 def _hanging_shell_command(pid_file: Path) -> str:
@@ -250,9 +248,7 @@ async def test_concurrent_cells_capture_their_own_output(sessions, cell_gate):
     quiet = sessions["quiet"]
     _arm(noisy, cell_gate)
 
-    slow_task = asyncio.create_task(
-        noisy.execute("import time\nprint('noisy-start')\nwhile not release.is_set():\n    time.sleep(0.02)\nprint('noisy-end')", timeout=_BLOCK_FOR_MAX_SECONDS)
-    )
+    slow_task = asyncio.create_task(noisy.execute("import time\nprint('noisy-start')\nwhile not release.is_set():\n    time.sleep(0.02)\nprint('noisy-end')", timeout=_BLOCK_FOR_MAX_SECONDS))
     await asyncio.sleep(0.3)
 
     try:
@@ -336,7 +332,7 @@ async def test_trailing_coroutine_is_awaited_and_bound(sessions):
     assert session.namespace["_"] == 7
 
 
-async def test_tool_reports_the_timeout_instead_of_hanging(sessions, cell_gate):
+async def test_tool_reports_the_timeout_instead_of_hanging(sessions, cell_gate, monkeypatch):
     """The tool surface turns the typed timeout into an agent-readable error."""
     session = sessions["tool"]
     _arm(session, cell_gate)
@@ -347,6 +343,17 @@ async def test_tool_reports_the_timeout_instead_of_hanging(sessions, cell_gate):
         stream_writer=lambda _: None,
         tool_call_id="tool-call-offloop",
         store=None,
+    )
+
+    # The in-process REPL switch is default-off and the operator's config.yaml
+    # must not decide this test, so enable it the way the boundary tests do:
+    # patch the tool's own config reference. The tool still dispatches that
+    # read through ``asyncio.to_thread`` (pinned independently by
+    # tests/test_python_repl_tool_config_off_loop.py).
+    monkeypatch.setattr(
+        _tool_module,
+        "get_app_config",
+        lambda: SimpleNamespace(sandbox=SimpleNamespace(allow_in_process_repl=True)),
     )
 
     started = time.monotonic()
