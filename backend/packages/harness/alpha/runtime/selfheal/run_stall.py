@@ -137,11 +137,7 @@ class RunStallWatchdog:
             )
             return False
 
-        message = (
-            f"Run stalled: no progress for {int(self._settings.timeout_seconds)}s "
-            f"(last progress {fresh.get('updated_at') or fresh.get('created_at')}); "
-            "the run stall watchdog cancelled the run."
-        )
+        message = f"Run stalled: no progress for {int(self._settings.timeout_seconds)}s (last progress {fresh.get('updated_at') or fresh.get('created_at')}); the run stall watchdog cancelled the run."
         await self._persist_stall_error(run_id, message)
         logger.warning(
             "run stall watchdog: cancelled run %s after %ss without progress",
@@ -172,9 +168,7 @@ class RunStallWatchdog:
             try:
                 row = await self._store.get(run_id)
             except Exception:
-                logger.warning(
-                    "run stall watchdog: could not verify terminal state for run %s", run_id, exc_info=True
-                )
+                logger.warning("run stall watchdog: could not verify terminal state for run %s", run_id, exc_info=True)
                 return
             if row is None or row.get("status") == RunStatus.error:
                 return

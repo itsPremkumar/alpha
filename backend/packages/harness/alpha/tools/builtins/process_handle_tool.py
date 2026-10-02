@@ -20,12 +20,7 @@ def _handle_header(handle, command: str) -> str:
     # POSIX, never bash), and how long the process actually ran (monotonic,
     # frozen at the observed exit for a finished process).
     return (
-        f"Handle ID: {handle.handle_id}\n"
-        f"PID: {handle.pid}\n"
-        f"Host shell: {host_shell_label()}\n"
-        f"Runtime: {elapsed_seconds(handle):.2f}s\n"
-        f"Command: {command}\n"
-        f"Use process_handle(action='poll', handle_id='{handle.handle_id}') to check status."
+        f"Handle ID: {handle.handle_id}\nPID: {handle.pid}\nHost shell: {host_shell_label()}\nRuntime: {elapsed_seconds(handle):.2f}s\nCommand: {command}\nUse process_handle(action='poll', handle_id='{handle.handle_id}') to check status."
     )
 
 

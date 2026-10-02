@@ -270,13 +270,15 @@ class ProcessManager:
                 code = handle.poll()
                 if code is not None and not getattr(handle, "_notice_emitted", False):
                     handle._notice_emitted = True
-                    notices.append({
-                        "handle_id": hid,
-                        "pid": handle.pid,
-                        "command": handle.command,
-                        "exit_code": code,
-                        "recent_output": handle.tail(10),
-                    })
+                    notices.append(
+                        {
+                            "handle_id": hid,
+                            "pid": handle.pid,
+                            "command": handle.command,
+                            "exit_code": code,
+                            "recent_output": handle.tail(10),
+                        }
+                    )
         return notices
 
 

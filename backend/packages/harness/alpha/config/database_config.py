@@ -174,10 +174,7 @@ class DatabaseConfig(BaseModel):
     postgres_url: str = Field(
         default="",
         description=(
-            "PostgreSQL connection URL, shared by checkpointer and app. "
-            "Use $DATABASE_URL in config.yaml to reference .env. "
-            "Example: postgresql://user:pass@host:5432/alpha "
-            "(the +asyncpg driver suffix is added automatically where needed)."
+            "PostgreSQL connection URL, shared by checkpointer and app. Use $DATABASE_URL in config.yaml to reference .env. Example: postgresql://user:pass@host:5432/alpha (the +asyncpg driver suffix is added automatically where needed)."
         ),
     )
     echo_sql: bool = Field(
