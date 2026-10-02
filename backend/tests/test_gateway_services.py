@@ -647,7 +647,12 @@ def test_build_run_config_basic():
 
     config = build_run_config("thread-1", None, None)
     assert config["configurable"]["thread_id"] == "thread-1"
-    assert config["recursion_limit"] == 100
+    # The Web UI sends no recursion_limit, so this default *is* the interactive
+    # budget. It must match ``max_recursion_limit`` (1000): at 100 a normal tool
+    # task died GRAPH_RECURSION_LIMIT at step=101 (~12.5 super-steps per model
+    # turn, so 100 was roughly 8 tool cycles per run) while the scheduler and any
+    # explicit client value already ran at 1000.
+    assert config["recursion_limit"] == 1000
 
 
 def test_build_run_config_with_overrides():
@@ -2678,8 +2683,11 @@ def test_launch_scheduled_thread_run_falls_back_when_config_unloadable(_stub_app
 
     caplog.set_level(logging.WARNING, logger="app.gateway.services")
     captured = asyncio.run(_scenario())
-    assert captured["config"] == {"recursion_limit": 100}
-    assert any("failed to load app config; falling back to recursion_limit=100" in r.message for r in caplog.records)
+    # The scheduled-run fallback mirrors the interactive default, so a config
+    # read failure degrades a scheduled run to the same budget the Web UI gets
+    # (1000), not to a fifth of it.
+    assert captured["config"] == {"recursion_limit": 1000}
+    assert any("failed to load app config; falling back to recursion_limit=1000" in r.message for r in caplog.records)
 
 
 def test_launch_scheduled_thread_run_rejects_legacy_auth_token():
@@ -2936,7 +2944,7 @@ def test_build_run_config_with_context():
     assert config["context"]["thread_id"] == "thread-1"
     # configurable carries thread_id for the checkpointer; user context stays in context.
     assert config["configurable"] == {"thread_id": "thread-1"}
-    assert config["recursion_limit"] == 100
+    assert config["recursion_limit"] == 1000
 
 
 def test_build_run_config_context_injects_thread_id():

@@ -1288,10 +1288,12 @@ curl -X POST http://localhost:2026/api/langgraph/threads/abc123/runs/stream \
   }'
 ```
 
-> The unified Gateway path defaults `config.recursion_limit` to 100 for
-> plan-mode and subagent-heavy runs. Clients may still set
-> `config.recursion_limit` explicitly — see the [Create Run](#create-run)
-> section for details. Scheduled-task launches use
+> The unified Gateway path defaults `config.recursion_limit` to 1000 — the
+> same budget as `max_recursion_limit` and `scheduler.recursion_limit`, and the
+> interactive budget the Web UI runs on (the frontend sends no
+> `recursion_limit` at all). Clients may still set `config.recursion_limit`
+> explicitly; values above `max_recursion_limit` are clamped — see the
+> [Create Run](#create-run) section for details. Scheduled-task launches use
 > `scheduler.recursion_limit` from `config.yaml` instead of a client body.
 
 ## Chat archive and restore

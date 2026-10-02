@@ -110,8 +110,9 @@ token_budget:
 # least one LLM call). The Gateway never trusts a client-supplied value
 # verbatim: any value above this ceiling is clamped down to it, preventing
 # runaway API cost / DoS. Invalid or non-positive client values fall back to
-# the server default of 100. Raise this only if you legitimately run very
-# deeply nested subagent graphs.
+# the server default of 1000 (the Web UI's interactive budget, which matches
+# this ceiling and the scheduler's default). Raise this only if you legitimately
+# run very deeply nested subagent graphs.
 max_recursion_limit: 1000
 
 # ============================================================================

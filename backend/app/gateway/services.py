@@ -841,9 +841,14 @@ def resolve_agent_factory(assistant_id: str | None):
 # client-supplied ``recursion_limit`` verbatim: an arbitrarily large value lets
 # a single run execute unbounded LangGraph super-steps (each at least one LLM
 # call), enabling runaway API cost / DoS. ``_DEFAULT_RECURSION_LIMIT`` is the
-# server default when the client sends nothing; the hard ceiling any client
-# value is clamped to is configurable via ``AppConfig.max_recursion_limit``.
-_DEFAULT_RECURSION_LIMIT = 100
+# server default when the client sends nothing — this is the Web UI's
+# interactive budget, because the frontend sends no ``recursion_limit`` at all,
+# so it matches ``_DEFAULT_MAX_RECURSION_LIMIT`` (and the scheduler's
+# ``recursion_limit: 1000``) rather than a fifth of it: at 100 a plain tool task
+# died GRAPH_RECURSION_LIMIT at step=101 (~12.5 super-steps per model turn, so
+# 100 bought roughly 8 tool cycles per run). The hard ceiling any client value
+# is clamped to is configurable via ``AppConfig.max_recursion_limit``.
+_DEFAULT_RECURSION_LIMIT = 1000
 _DEFAULT_MAX_RECURSION_LIMIT = 1000
 
 
@@ -936,7 +941,7 @@ def build_run_config(
     # Lead-agent recursion budget (LangGraph super-steps for the lead graph
     # only). Independent of subagent depth: a `task()` dispatch runs the whole
     # subagent inside ONE lead tools-node step, and subagents enforce their own
-    # limit via `subagents.max_turns`. Do not conflate this 100 with the
+    # limit via `subagents.max_turns`. Do not conflate this budget with the
     # general-purpose subagent's max_turns.
     config: dict[str, Any] = {"recursion_limit": _DEFAULT_RECURSION_LIMIT}
     if request_config:
