@@ -28,6 +28,17 @@ target-version = "py312"
 select = ["E", "F", "I", "UP"]
 ignore = []
 
+[lint.isort]
+# alpha/ and app/ are this repository's own packages and must group as
+# first-party in EVERY scope, not just backend/'s.  Ruff discovers a file's
+# settings by walking up from the file, but a single invocation whose paths
+# span two configuration scopes resolves the outer configuration for all of
+# them, so without this entry a mixed changed-file set (backend/ plus
+# scripts/) sorted backend imports under a policy that treats alpha/app as
+# third-party and I001-flagged correctly ordered files.  backend/ruff.toml
+# keeps the same entry for its own scope; keep the two values identical.
+known-first-party = ["alpha", "app"]
+
 [format]
 quote-style = "double"
 indent-style = "space"
