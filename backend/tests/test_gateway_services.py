@@ -3305,7 +3305,7 @@ async def test_run_agent_invalid_stream_mode_finalizes_run_before_graph_invocati
 
     from alpha.runtime.runs.manager import RunManager
     from alpha.runtime.runs.schemas import RunStatus
-    from alpha.runtime.runs.worker import RunContext, run_agent
+    from alpha.runtime.runs.worker import ERROR_CODE_RUN_EXCEPTION, RunContext, run_agent
 
     run_manager = RunManager()
     record = await run_manager.create("thread-invalid-stream-mode")
@@ -3331,14 +3331,24 @@ async def test_run_agent_invalid_stream_mode_finalizes_run_before_graph_invocati
     assert record.status == RunStatus.error
     assert record.error == "Unsupported stream mode(s): events"
     agent_factory.assert_not_called()
-    bridge.publish.assert_awaited_once_with(
-        record.run_id,
-        "error",
-        {
-            "message": "Unsupported stream mode(s): events",
-            "name": "UnsupportedStreamModeError",
-        },
-    )
+    # The terminal error frame is the coded, correlation-stamped envelope
+    # (``_publish_run_error_event`` — commit "stop five silent failure paths
+    # in the run worker from reporting success"), not the legacy raw
+    # ``{message, name}`` payload this test originally pinned. ``trace_id`` is
+    # server-issued per run, so assert its presence rather than a value.
+    bridge.publish.assert_awaited_once()
+    publish_args = bridge.publish.await_args.args
+    assert publish_args[0] == record.run_id
+    assert publish_args[1] == "error"
+    payload = publish_args[2]
+    assert payload["message"] == "Unsupported stream mode(s): events"
+    assert payload["name"] == "UnsupportedStreamModeError"
+    assert payload["code"] == ERROR_CODE_RUN_EXCEPTION
+    assert payload["status"] == RunStatus.error.value
+    assert payload["run_id"] == record.run_id
+    assert payload["thread_id"] == record.thread_id
+    assert payload["correlation_id"] == record.run_id
+    assert payload["trace_id"]
     bridge.publish_end.assert_awaited_once_with(record.run_id)
     bridge.cleanup.assert_awaited_once_with(record.run_id, delay=60)
     replacement = await run_manager.create_or_reject(record.thread_id)
