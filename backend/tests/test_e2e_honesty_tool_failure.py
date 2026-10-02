@@ -39,6 +39,7 @@ classifier and the *real* guard, and assert the claim the product makes
 
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -63,6 +64,36 @@ TOOL_NAME = "python_repl"
 
 #: The framework convention, verbatim from ``tool_result_meta._ERROR_PREFIX``.
 FRAMEWORK_ERROR_PREFIX = "Error:"
+
+
+@pytest.fixture(autouse=True)
+def _in_process_repl_allowed(monkeypatch):
+    """Open the ``sandbox.allow_in_process_repl`` kill switch for this module.
+
+    The gate added by ``dc06c42`` defaults off on purpose: the cell runs
+    ``exec()`` inside the Gateway process, so assembly-time filtering keeps the
+    tool out of the model schema unless the operator opts in — and the shipped
+    template (``config.example.yaml``, which ``conftest`` falls back to when no
+    ``config.yaml`` resolves) ships it ``false``. These tests bypass assembly
+    and drive the real tool directly to classify the body it really emits, so
+    they must opt in explicitly; otherwise every real-tool call below returns
+    the disabled message instead of the ``Error (Name): value`` convention the
+    module exists to pin.
+    """
+    from alpha.config.app_config import AppConfig
+    from alpha.config.sandbox_config import SandboxConfig
+
+    config = AppConfig(
+        sandbox=SandboxConfig(
+            use="alpha.sandbox.local:LocalSandboxProvider",
+            allow_in_process_repl=True,
+        )
+    )
+    # importlib, not a dotted string: ``alpha.tools.builtins.__init__`` re-exports
+    # the tool under the same name as its module, so ``setattr``-by-string would
+    # resolve ``alpha.tools.builtins.python_repl_tool`` to the StructuredTool.
+    tool_module = importlib.import_module("alpha.tools.builtins.python_repl_tool")
+    monkeypatch.setattr(tool_module, "get_app_config", lambda: config)
 
 
 def _runtime() -> ToolRuntime:

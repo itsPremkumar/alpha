@@ -899,8 +899,18 @@ def test_guardrail_default_off(mock_create_agent):
 # ---------------------------------------------------------------------------
 # 36. Full chain order matches make_lead_agent (all features on)
 # ---------------------------------------------------------------------------
+@patch("alpha.agents.memory.l1.gates.l1_enabled", return_value=True)
 @patch("alpha.agents.factory.create_agent")
-def test_full_chain_order(mock_create_agent):
+def test_full_chain_order(mock_create_agent, _mock_l1_enabled):
+    """Pin the full middleware order with every feature explicitly on.
+
+    ``l1_enabled`` is patched because it is a two-level *config* gate
+    (``memory.enabled`` + ``memory.l1.enabled``): under the shipped template it
+    is on, under older operator configs it is off, so an unpatched run would
+    assert a different chain depending on which ``config.yaml`` the developer
+    happens to have — the test would report the config, not the wiring. This
+    test claims "all features on", so it forces the gate on the way in.
+    """
     from langchain.agents.middleware import AgentMiddleware as AM
 
     mock_create_agent.return_value = MagicMock()
@@ -936,6 +946,7 @@ def test_full_chain_order(mock_create_agent):
         "TodoMiddleware",
         "TitleMiddleware",
         "MemoryMiddleware",
+        "L1MemoryMiddleware",
         "ViewImageMiddleware",
         "SubagentLimitMiddleware",
         "LoopDetectionMiddleware",
