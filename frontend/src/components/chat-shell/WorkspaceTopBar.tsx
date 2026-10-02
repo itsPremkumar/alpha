@@ -80,7 +80,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
   }, []);
 
   return (
-    <header className="h-14 border-b border-border/60 bg-card/60 backdrop-blur-md px-4 flex items-center justify-between gap-4 shrink-0 z-30 select-none">
+    <header data-dense-controls="" className="h-14 border-b border-border/60 bg-card/60 backdrop-blur-md px-4 flex items-center justify-between gap-4 shrink-0 z-30 select-none">
       {/* Brand logo & workspace label */}
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         <BrandLogo logoSize={28} textClassName="text-sm font-bold text-foreground tracking-tight" priority />

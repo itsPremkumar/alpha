@@ -478,10 +478,17 @@ export function Composer({
 
       {/* The lion companion reads this rect to stay off the composer. Without a
           marked keep-out region the pet's own hit area (`pointer-events: auto`)
-          can land on the input and swallow clicks aimed at it. */}
+          can land on the input and swallow clicks aimed at it.
+
+          `data-dense-controls` adds the invisible 24px hit-area floor to the
+          toolbar's icon buttons, which sit at `p-1.5` around a 14px glyph —
+          a 22x22 target, under the WCAG 2.5.8 minimum. `elev-2` replaces the
+          ad-hoc `shadow-sm` so the composer sits on the documented elevation
+          ladder with the sticky header and the popovers. */}
       <div
         data-lion-pet-keepout=""
-        className="rounded-2xl border border-border bg-card shadow-sm focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all p-2.5"
+        data-dense-controls=""
+        className="rounded-2xl border border-border bg-card elev-2 focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all p-2.5"
       >
         <textarea
           ref={textareaRef}
