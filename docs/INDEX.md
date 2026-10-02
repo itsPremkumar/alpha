@@ -80,6 +80,7 @@
 ## Plans & Roadmaps
 
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
+- [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.

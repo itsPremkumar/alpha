@@ -154,6 +154,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Free Alpha-to-Alpha peer network: pairing, transport, and deployment.",
     ),
+    "AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md": DocumentSpec(
+        "plans",
+        "Live agent activity ledger, work claims, and crash-honest status for group rooms.",
+    ),
     "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec("plans", "Unified local-only integration plan and sequencing for Alpha."),
     "AUTHORITY_MODEL.md": DocumentSpec(
         "operations",

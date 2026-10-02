@@ -257,7 +257,10 @@ a visibility parent — authority refines visibility rather than contradicting i
 | `packages/harness/alpha/groups/scope.py` | the forest: parents, authority, path, depth, lifecycle, relay planning |
 | `packages/harness/alpha/groups/roster.py` | membership by origin: direct, rule-matched, inherited, excluded, expired |
 | `packages/harness/alpha/groups/service.py` | `create_subgroup`, `move_room`, `promote_room`, `merge_children`, `tree`, `breadcrumbs`, `relay_all` |
-| `app/gateway/routers/groups.py` | `/tree`, `/subgroups`, `/children`, `/ancestors`, `/descendants`, `/roster`, `/members`, `/rules`, `/merge`, `/promote`, `/move`, `/policy`, `/lifecycle` |
+| `packages/harness/alpha/groups/activity.py` | the **live activity ledger**: what each agent is doing, and a `crashed` that is distinguishable from an `idle` |
+| `packages/harness/alpha/groups/claims.py` | advisory **work claims** (intent, never refusal) + soft-conflict detection that actually fires |
+| `packages/harness/alpha/groups/coordination.py` | room-level composition: the crash→orphaned seam and transcript signalling |
+| `app/gateway/routers/groups.py` | `/tree`, `/subgroups`, `/children`, `/ancestors`, `/descendants`, `/roster`, `/members`, `/rules`, `/merge`, `/promote`, `/move`, `/policy`, `/lifecycle`, `/activity`, `/claims` |
 | `frontend/src/lib/groups-tree.ts` | pure tree derivation, membership headline, roster bucketing |
 | `frontend/src/components/sections/GroupTreeSidebar.tsx` | the forest sidebar, subgroup form, breadcrumbs |
 

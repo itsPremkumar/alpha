@@ -220,6 +220,148 @@ surface is the **Deliberation** view
 (`frontend/src/components/sections/WarRoomRunsSection.tsx`), a *separate* view id
 from the pre-existing `warroom` view, which belongs to the enterprise platform.
 
+## Live activity and work claims (`groups/activity.py`, `groups/claims.py`, `groups/coordination.py`)
+
+`presence.py` answers **who is enrolled and what lifecycle word their registry
+row holds**. These three answer **what is each agent doing right now**, which is a
+different question and was previously unanswerable.
+
+### Why a crashed agent used to look idle
+
+`presence._resolve()` reads only BotRegistry `status` and `last_active`, plus
+attendance. **Neither is told a process died.** Trace a crashed agent:
+
+    registry status "active"          (nothing flips this on crash)
+      + last_active older than 90s
+      = MemberPresence(..., "idle", detail="no recent activity")
+
+`idle` is *also* what a **cleanly finished** agent looks like, so both rendered as
+the same grey dot. The evidence needed to separate them already existed, durably,
+and nothing read it: `RunManager` persists a named stop reason for every crash
+path (`RECOVERABLE_RUN_STOP_REASONS` = `orphan_recovered`, `gateway_shutdown`,
+`model_failure`, `network_waiting`) and `GroupRunService` rewrites an in-flight
+row to `interrupted` at load. `presence.py` never touches the run store.
+
+So this layer is a **projection of the run lifecycle**, not a second authority.
+
+### The rule: `working → idle` requires proof
+
+Either a terminal run event or an explicit release. A heartbeat that merely goes
+quiet is `unresponsive`, **never** `idle`. That single rule is the fix.
+
+### Two axes, never one enum
+
+`activity` (`working`/`idle`/`blocked`/`unresponsive`/`crashed`/`offline`/`unknown`)
+and `health` (the existing `alpha.bots.health` verdict) are separate fields. A bot
+can be `blocked` and `healthy` at once; collapsing them is how one word came to
+answer two questions.
+
+### `unresponsive` is not `crashed`
+
+Heartbeat silence is **evidence of a problem, not proof of death** — an agent
+inside a twenty-minute tool call is silent too. Only a named terminal reason (or
+loss of run ownership) earns `crashed`. A UI that paints both red re-creates the
+original lie one layer up, so `tone_for()` gives them different tones.
+
+### Precedence inside `derive_activity`, which is a contract not an implementation
+
+1. An administrative lifecycle word (`suspended`/`archived`) outranks everything. A
+   suspended bot was *told* to stop; that is not a death.
+2. A hard run fact outranks a stale heartbeat.
+3. An **explicit self-report outranks inferred liveness.** `blocked` and `idle`
+   claim the *absence* of effort, so silence confirms them; `working` claims live
+   effort, so silence retracts it into `unresponsive`.
+4. Only then does silence apply, and it applies as `unresponsive`.
+
+Every derived state carries `evidence{reason, detail, source, run}`. A state this
+module cannot explain does not exist in it.
+
+### Signals, and why they are event-driven
+
+The primary heartbeat is the **run lifecycle**, not agent self-reporting: a crashed
+agent cannot report its own crash, and a heartbeat costing a model call is one
+that gets skipped under load. `RunManager` gained a module-level read-only
+observer (`set_activity_observer`), notified at run start, every terminal
+transition, ownership loss, and orphaned-run recovery. It cannot change a
+transition and its exceptions are swallowed — a display bug must never fail a run.
+`app/gateway/deps.py` installs the binding; outside the Gateway it is `None` and
+costs one global lookup.
+
+`POST /{name}/activity/heartbeat` exists only for phase detail the run store cannot
+know ("refactoring the router").
+
+### Reconciliation is on read
+
+Matching `crew.ensure_crew()` and `LockManager.sweep_expired()`. No new supervisor
+loop, so **no capability count moves** — 134 tools / 63 routers / 42 middlewares /
+9 loops / 113 engines all stay correct.
+
+### Claims are a separate store from locks, on purpose
+
+| | Work claim | Resource lock |
+| --- | --- | --- |
+| guarantee | intent, visible to peers | exclusive ownership |
+| on overlap | soft conflict, nothing refused | `LockConflictError`, HTTP 423 |
+| lifetime | 120s, renewed by pulse | TTL 1800s |
+| holder crashes | `orphaned` — available to take | blocks until TTL lapses |
+
+Two guarantees, two stores; one store with a boolean would force one column to be
+a lie. **A claim never refuses** — enforcement stays in `locks.py`, where a wrong
+block already has a reviewed shape.
+
+This also fixes a live gap: `projects/conflicts.py::detect_lock_conflicts()` hunts
+for two live same-path locks from different owners, but `LockManager.acquire()`
+*raises* on exactly that, so the state is unreachable through the public API
+(`tests/test_projects_coordination.py` inserts the second lock into a private dict
+to simulate it). Claims are non-refusing, so the overlap is reachable and worth
+reporting.
+
+`normalise_subject()` collapses `./a.py`, `a.py` and `a.py` to one spelling.
+Neither store normalised before, so a claim and a lock could disagree about the
+same file. Dir-covers-children reuses `locks.py`'s exact rule.
+
+### The crash seam, and why a transfer is never automatic
+
+`coordination.crash_orphans()` moves a **hard-crashed** agent's claims from held to
+`orphaned`. Two rules:
+
+- Only a *hard* crash verdict triggers it. An `unresponsive` agent may be mid
+  tool-call, and taking its claims would hand live work to a second agent.
+- Nothing is transferred. **The crash is evidence; the transfer is a decision.**
+  Reclaiming is an explicit `POST /{name}/claims/{id}/reclaim`, and only an
+  *orphaned* claim may be reclaimed — a live one is a 409, never a silent steal.
+
+### Communication reuses the transcript
+
+Conflict and crash news post into the room using `MessageIntent` values that
+already exist (`status`, `warning`, `blocker`, `handoff`). This repository already
+has five inter-agent messaging mechanisms; a sixth would be worse than none.
+`post_message()` resolves next speakers, so a `@mention` in a conflict warning
+actually reaches the orchestrator.
+
+### Invariants this layer must not break
+
+- `GroupRoom.members` is **crew-owned**. Never write activity or claims there.
+  Membership is resolved through `effective_members()`.
+- `direct_count` and `effective_count` always travel together; `by_activity` is a
+  breakdown summing to `count` and is kept out of them.
+- Claims live beside rooms, never in the roster.
+- Attribution is disclosed: `explicit` (server-stamped) vs `roster_match`
+  (inferred from resolved membership). A run with neither binding is attributed to
+  no room.
+
+### Routes (declared above the `/{name}` catch-all)
+
+`GET /{name}/activity`, `GET /{name}/activity/{bot}`,
+`POST /{name}/activity/heartbeat`, `POST /{name}/activity/reconcile`,
+`GET|POST /{name}/claims`, `DELETE /{name}/claims/{id}`,
+`POST /{name}/claims/{id}/reclaim`. Refusal shapes stay distinct: a missing claim
+is 404, a live un-reclaimable claim is 409, a non-member is 404.
+
+Tests: `tests/test_group_activity.py`, `test_group_activity_ledger.py`,
+`test_group_claims.py`, `test_group_activity_routes.py`,
+`test_run_activity_observer.py`, `test_group_chat_actions.py`.
+
 ## Known gaps
 
 - The strategy plans do not **execute** the deliberation engines.
