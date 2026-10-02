@@ -45,7 +45,7 @@ async def test_async_checkpointer_sqlite_setup_does_not_block_event_loop(tmp_pat
     with (
         patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
         patch(
-            "alpha.runtime.checkpointer.async_provider.aiosqlite.connect",
+            "aiosqlite.connect",
             new=AsyncMock(return_value=mock_conn),
         ) as mock_connect,
     ):

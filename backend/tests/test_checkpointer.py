@@ -643,7 +643,7 @@ class TestAsyncCheckpointer:
             patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
             patch(
-                "alpha.runtime.checkpointer.async_provider.aiosqlite.connect",
+                "aiosqlite.connect",
                 new=AsyncMock(return_value=mock_conn),
             ) as mock_connect,
             patch(
@@ -797,7 +797,7 @@ class TestAsyncCheckpointer:
             patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
             patch(
-                "alpha.runtime.checkpointer.async_provider.aiosqlite.connect",
+                "aiosqlite.connect",
                 new=AsyncMock(return_value=mock_conn),
             ) as mock_connect,
             patch(

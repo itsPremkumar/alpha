@@ -21,8 +21,8 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
-import aiosqlite
 from langgraph.types import Checkpointer
 
 from alpha.config.app_config import AppConfig, get_app_config
@@ -38,6 +38,9 @@ from alpha.runtime.store._sqlite_utils import (
     ensure_sqlite_parent_dir,
     resolve_sqlite_conn_str,
 )
+
+if TYPE_CHECKING:
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +58,12 @@ async def _sqlite_checkpointer_saver(conn_str: str) -> AsyncIterator[AsyncSqlite
     that the engine listeners apply to their own connections, plus the same
     budget on the driver's connect timeout.
     """
-    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    import aiosqlite
+
+    try:
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    except ImportError as exc:
+        raise ImportError(SQLITE_INSTALL) from exc
 
     conn = await aiosqlite.connect(conn_str, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
     try:
@@ -144,11 +152,6 @@ async def _async_checkpointer(config) -> AsyncIterator[Checkpointer]:
         return
 
     if config.type == "sqlite":
-        try:
-            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-        except ImportError as exc:
-            raise ImportError(SQLITE_INSTALL) from exc
-
         conn_str = await asyncio.to_thread(_prepare_sqlite_checkpointer_path, config.connection_string or "store.db")
         async with _sqlite_checkpointer_saver(conn_str) as saver:
             await saver.setup()
@@ -186,11 +189,6 @@ async def _async_checkpointer_from_database(db_config) -> AsyncIterator[Checkpoi
         return
 
     if db_config.backend == "sqlite":
-        try:
-            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-        except ImportError as exc:
-            raise ImportError(SQLITE_INSTALL) from exc
-
         conn_str = await asyncio.to_thread(_prepare_database_sqlite_checkpointer_path, db_config)
         async with _sqlite_checkpointer_saver(conn_str) as saver:
             await saver.setup()
