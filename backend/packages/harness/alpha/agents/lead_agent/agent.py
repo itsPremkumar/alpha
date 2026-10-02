@@ -563,6 +563,16 @@ def build_middlewares(
 
     middlewares.append(DynamicContextMiddleware(agent_name=agent_name, app_config=resolved_app_config))
 
+    # Grounding layer -- the capability manifest the agent can read, plus the
+    # per-step deterministic-first gates. Registered unconditionally so the gates
+    # are live; `grounding.enabled=false` in config suppresses only the prompt
+    # injection, never a check. Placed beside DynamicContextMiddleware because
+    # both are `before_agent` context enrichment, and because a verification gate
+    # is not a feature that should disappear with a config flag.
+    from alpha.agents.middlewares.grounding_middleware import GroundingMiddleware
+
+    middlewares.append(GroundingMiddleware(app_config=resolved_app_config))
+
     # Continual Harness injection — learned directives, project memories and
     # failure rules from local + global harness state. Fail-open: disk or state
     # errors degrade to "no reminder" and never break agent assembly.
