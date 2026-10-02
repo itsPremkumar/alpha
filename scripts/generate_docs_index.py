@@ -154,9 +154,7 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Free Alpha-to-Alpha peer network: pairing, transport, and deployment.",
     ),
-    "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec(
-        "plans", "Unified local-only integration plan and sequencing for Alpha."
-    ),
+    "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec("plans", "Unified local-only integration plan and sequencing for Alpha."),
     "AUTHORITY_MODEL.md": DocumentSpec(
         "operations",
         "Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.",
@@ -205,18 +203,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Interop protocols: the MCP wire version Alpha speaks, A2A scope, and ACP naming.",
     ),
-    "API.md": DocumentSpec(
-        "api", "API entry point and environment/base URL reference."
-    ),
-    "API_REFERENCE.md": DocumentSpec(
-        "api", "Detailed HTTP API reference and endpoint contracts."
-    ),
-    "ARCHITECTURE.md": DocumentSpec(
-        "architecture", "System architecture and major runtime components."
-    ),
-    "AUTO_UPDATE.md": DocumentSpec(
-        "operations", "Local source auto-update behavior and operational controls."
-    ),
+    "API.md": DocumentSpec("api", "API entry point and environment/base URL reference."),
+    "API_REFERENCE.md": DocumentSpec("api", "Detailed HTTP API reference and endpoint contracts."),
+    "ARCHITECTURE.md": DocumentSpec("architecture", "System architecture and major runtime components."),
+    "AUTO_UPDATE.md": DocumentSpec("operations", "Local source auto-update behavior and operational controls."),
     "COGNITIVE_ENGINES.md": DocumentSpec(
         "reasoning",
         "Cognitive plane, reasoning engines, and optimization architecture.",
@@ -225,15 +215,9 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "contributing",
         "Alpha vs LangGraph, AutoGen, CrewAI, OpenHands, and Dify, with a selection guide.",
     ),
-    "CONFIGURATION.md": DocumentSpec(
-        "operations", "Configuration reference for files, settings, and environment."
-    ),
-    "DEEP_RESEARCH.md": DocumentSpec(
-        "reasoning", "Autonomous multi-hop research pipeline and evidence workflow."
-    ),
-    "DEPLOYMENT.md": DocumentSpec(
-        "operations", "Deployment models and deployment procedures."
-    ),
+    "CONFIGURATION.md": DocumentSpec("operations", "Configuration reference for files, settings, and environment."),
+    "DEEP_RESEARCH.md": DocumentSpec("reasoning", "Autonomous multi-hop research pipeline and evidence workflow."),
+    "DEPLOYMENT.md": DocumentSpec("operations", "Deployment models and deployment procedures."),
     "DEVELOPMENT.md": DocumentSpec(
         "contributing",
         "Development setup, conventions, testing, and contribution guidance.",
@@ -242,22 +226,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "contributing",
         "SEO, GEO, and AEO strategy, surfaces, and maintenance checklist.",
     ),
-    "DYNAMIC_WORKFLOWS.md": DocumentSpec(
-        "architecture", "Typed, evidence-gated dynamic workflow runtime."
-    ),
-    "EXTENSIONS.md": DocumentSpec(
-        "architecture", "Extension packages, hooks, services, and routers."
-    ),
+    "DYNAMIC_WORKFLOWS.md": DocumentSpec("architecture", "Typed, evidence-gated dynamic workflow runtime."),
+    "EXTENSIONS.md": DocumentSpec("architecture", "Extension packages, hooks, services, and routers."),
     "FAQ.md": DocumentSpec(
         "contributing",
         "Frequently asked questions and agent-friendly documentation pointers.",
     ),
-    "GLOSSARY.md": DocumentSpec(
-        "contributing", "Every Alpha term defined in one place, with caveats marked."
-    ),
-    "GETTING_STARTED.md": DocumentSpec(
-        "contributing", "Installation and first-run guide for Alpha."
-    ),
+    "GLOSSARY.md": DocumentSpec("contributing", "Every Alpha term defined in one place, with caveats marked."),
+    "GETTING_STARTED.md": DocumentSpec("contributing", "Installation and first-run guide for Alpha."),
     "HONESTY_SUITE.md": DocumentSpec(
         "contributing",
         "Offline regression suite pinning durable records against the answers the product gives.",
@@ -266,36 +242,16 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Windows installer: unattended bootstrap, measured footprint, uninstall and troubleshooting.",
     ),
-    "IMPLEMENTATION_MATRIX.md": DocumentSpec(
-        "plans", "Living implementation status matrix for production work."
-    ),
-    "LION_COMPANION.md": DocumentSpec(
-        "architecture", "Local-first lion companion behavior and presentation contract."
-    ),
-    "MEMORY.md": DocumentSpec(
-        "memory", "Layered memory architecture and access patterns."
-    ),
-    "MEMORY_FABRIC_PLAN.md": DocumentSpec(
-        "memory", "Memory fabric plan, boundaries, and deferred work."
-    ),
-    "MEMORY_TYPES.md": DocumentSpec(
-        "memory", "Canonical memory taxonomy and Alpha coverage."
-    ),
-    "MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md": DocumentSpec(
-        "plans", "Enhanced multi-agent project collaboration plan."
-    ),
-    "PRODUCTION.md": DocumentSpec(
-        "operations", "Production runbook for monitoring, incidents, and maintenance."
-    ),
-    "PRODUCTION_READINESS_INVENTORY.md": DocumentSpec(
-        "operations", "Production-readiness status, owners, and test evidence."
-    ),
-    "PRODUCTION_READINESS_TRANSFER_GUIDE.md": DocumentSpec(
-        "operations", "Production foundations and readiness transfer guidance."
-    ),
-    "README.md": DocumentSpec(
-        "contributing", "Documentation library entry point and navigation overview."
-    ),
+    "IMPLEMENTATION_MATRIX.md": DocumentSpec("plans", "Living implementation status matrix for production work."),
+    "LION_COMPANION.md": DocumentSpec("architecture", "Local-first lion companion behavior and presentation contract."),
+    "MEMORY.md": DocumentSpec("memory", "Layered memory architecture and access patterns."),
+    "MEMORY_FABRIC_PLAN.md": DocumentSpec("memory", "Memory fabric plan, boundaries, and deferred work."),
+    "MEMORY_TYPES.md": DocumentSpec("memory", "Canonical memory taxonomy and Alpha coverage."),
+    "MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md": DocumentSpec("plans", "Enhanced multi-agent project collaboration plan."),
+    "PRODUCTION.md": DocumentSpec("operations", "Production runbook for monitoring, incidents, and maintenance."),
+    "PRODUCTION_READINESS_INVENTORY.md": DocumentSpec("operations", "Production-readiness status, owners, and test evidence."),
+    "PRODUCTION_READINESS_TRANSFER_GUIDE.md": DocumentSpec("operations", "Production foundations and readiness transfer guidance."),
+    "README.md": DocumentSpec("contributing", "Documentation library entry point and navigation overview."),
     # Live-research dossiers on the external agent landscape, produced by agents
     # working in isolated worktrees with live fetches and per-claim citations.
     # Classified as plans for the same reason AGENT_LANDSCAPE_AND_ROADMAP.md is:
@@ -342,8 +298,7 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "AUTONOMY_TRUTH.md": DocumentSpec(
         "operations",
-        "Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure "
-        "classification, and bounded recovery briefs.",
+        "Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure classification, and bounded recovery briefs.",
     ),
     "REVERSIBLE_DELETE.md": DocumentSpec(
         "operations",
@@ -351,65 +306,32 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "SELF_DOCUMENTATION.md": DocumentSpec(
         "architecture",
-        "Offline, allowlist-scoped project documentation search with line ranges, SHA-256 "
-        "evidence, and digest-checked reads.",
+        "Offline, allowlist-scoped project documentation search with line ranges, SHA-256 evidence, and digest-checked reads.",
     ),
-    "RUN_RECOVERY.md": DocumentSpec(
-        "operations", "Safe recovery for durable runs and interrupted work."
-    ),
-    "SECURITY.md": DocumentSpec(
-        "operations", "Defense-in-depth security documentation."
-    ),
-    "SENTINEL_AUTONOMOUS_AGENT_PLAN.md": DocumentSpec(
-        "plans", "Autonomous monitor, diagnose, fix, verify, and commit plan."
-    ),
-    "SKILLS.md": DocumentSpec(
-        "architecture", "Skills packages, tools, workflows, and runtime integration."
-    ),
-    "SPECIALISTS.md": DocumentSpec(
-        "architecture", "Leader-authored specialist catalogue: schema, default team, and honest limits."
-    ),
+    "RUN_RECOVERY.md": DocumentSpec("operations", "Safe recovery for durable runs and interrupted work."),
+    "SECURITY.md": DocumentSpec("operations", "Defense-in-depth security documentation."),
+    "SENTINEL_AUTONOMOUS_AGENT_PLAN.md": DocumentSpec("plans", "Autonomous monitor, diagnose, fix, verify, and commit plan."),
+    "SKILLS.md": DocumentSpec("architecture", "Skills packages, tools, workflows, and runtime integration."),
+    "SPECIALISTS.md": DocumentSpec("architecture", "Leader-authored specialist catalogue: schema, default team, and honest limits."),
     "TEAM_RUNTIME.md": DocumentSpec(
         "architecture",
         "Composing a swarm plan into a team of declared specialists: assignment, honest failure, and the operator report.",
     ),
-    "SYSTEM_ONE.md": DocumentSpec(
-        "reasoning", "System One fast structured decision layer."
-    ),
-    "SYSTEM_ONE_AGENT_USE_CASES.md": DocumentSpec(
-        "reasoning", "Agentic use-case research for System One models."
-    ),
-    "SYSTEM_ONE_ALPHA_ROADMAP.md": DocumentSpec(
-        "plans", "System One implementation roadmap for Alpha."
-    ),
-    "SYSTEM_ONE_BROWSER_AGENT_EVAL.md": DocumentSpec(
-        "benchmarks", "Evaluation of the browser-use/jev-ultrafast agent."
-    ),
-    "SYSTEM_ONE_CALIBRATION.md": DocumentSpec(
-        "reasoning", "Calibration methodology and trust measurement for System One."
-    ),
-    "SYSTEM_ONE_LAPTOP_CONTROL_IDEAS.md": DocumentSpec(
-        "reasoning", "Laptop-control architecture ideas and Alpha fit."
-    ),
-    "TASK_LIST.md": DocumentSpec(
-        "plans", "Living master task list for project delivery."
-    ),
-    "THIRD_PARTY_MEMORY_NOTICES.md": DocumentSpec(
-        "memory", "Third-party notices for adapted memory subsystem code."
-    ),
-    "TROUBLESHOOTING.md": DocumentSpec(
-        "operations", "Diagnostic procedures and solutions for common issues."
-    ),
+    "SYSTEM_ONE.md": DocumentSpec("reasoning", "System One fast structured decision layer."),
+    "SYSTEM_ONE_AGENT_USE_CASES.md": DocumentSpec("reasoning", "Agentic use-case research for System One models."),
+    "SYSTEM_ONE_ALPHA_ROADMAP.md": DocumentSpec("plans", "System One implementation roadmap for Alpha."),
+    "SYSTEM_ONE_BROWSER_AGENT_EVAL.md": DocumentSpec("benchmarks", "Evaluation of the browser-use/jev-ultrafast agent."),
+    "SYSTEM_ONE_CALIBRATION.md": DocumentSpec("reasoning", "Calibration methodology and trust measurement for System One."),
+    "SYSTEM_ONE_LAPTOP_CONTROL_IDEAS.md": DocumentSpec("reasoning", "Laptop-control architecture ideas and Alpha fit."),
+    "TASK_LIST.md": DocumentSpec("plans", "Living master task list for project delivery."),
+    "THIRD_PARTY_MEMORY_NOTICES.md": DocumentSpec("memory", "Third-party notices for adapted memory subsystem code."),
+    "TROUBLESHOOTING.md": DocumentSpec("operations", "Diagnostic procedures and solutions for common issues."),
     "USE_CASES.md": DocumentSpec(
         "contributing",
         "End-to-end jobs mapped to the subsystem that delivers each one.",
     ),
-    "VOICE_CONVERSATION.md": DocumentSpec(
-        "architecture", "Real-time local voice conversation loop."
-    ),
-    "WORKFORCE.md": DocumentSpec(
-        "architecture", "Workforce layer for multi-agent collaboration and execution."
-    ),
+    "VOICE_CONVERSATION.md": DocumentSpec("architecture", "Real-time local voice conversation loop."),
+    "WORKFORCE.md": DocumentSpec("architecture", "Workforce layer for multi-agent collaboration and execution."),
 }
 
 # Skip rules are intentionally small and visible.  Skipped directory entries
@@ -431,16 +353,8 @@ def _validate_relative_key(value: str, label: str) -> None:
 def validate_configuration() -> None:
     """Validate the reviewable mapping before walking any input files."""
 
-    unknown_sections = {
-        section
-        for section in DIRECTORY_SECTIONS.values()
-        if section not in SECTION_TITLES
-    }
-    unknown_sections.update(
-        spec.section
-        for spec in FILE_OVERRIDES.values()
-        if spec.section not in SECTION_TITLES
-    )
+    unknown_sections = {section for section in DIRECTORY_SECTIONS.values() if section not in SECTION_TITLES}
+    unknown_sections.update(spec.section for spec in FILE_OVERRIDES.values() if spec.section not in SECTION_TITLES)
     if unknown_sections:
         names = ", ".join(sorted(unknown_sections))
         raise ConfigError(f"classification map references unknown sections: {names}")
@@ -448,16 +362,12 @@ def validate_configuration() -> None:
     for directory, section in DIRECTORY_SECTIONS.items():
         _validate_relative_key(directory, "directory classification")
         if section not in DIRECTORY_DESCRIPTIONS:
-            raise ConfigError(
-                f"directory classification {directory!r} has no description"
-            )
+            raise ConfigError(f"directory classification {directory!r} has no description")
 
     for path, spec in FILE_OVERRIDES.items():
         _validate_relative_key(path, "file override")
         if not spec.description or "\n" in spec.description or "\r" in spec.description:
-            raise ConfigError(
-                f"file override {path!r} must have a non-empty one-line description"
-            )
+            raise ConfigError(f"file override {path!r} must have a non-empty one-line description")
 
 
 def _normalise_relative(value: str | PurePosixPath) -> str:
@@ -491,9 +401,7 @@ def _walk_error(error: OSError) -> None:
     raise ConfigError(f"could not walk documentation tree: {error}") from error
 
 
-def scan_documents(
-    root: Path, output: Path, *, max_files: int = MAX_FILES
-) -> ScanResult:
+def scan_documents(root: Path, output: Path, *, max_files: int = MAX_FILES) -> ScanResult:
     """Walk ``root/docs`` once and classify every Markdown document."""
 
     if max_files < 1:
@@ -521,13 +429,9 @@ def scan_documents(
             directory_path = Path(current) / directory
             relative_directory = directory_path.relative_to(docs_root).as_posix()
             if directory in SKIP_DIRECTORY_NAMES:
-                skipped.append(
-                    SkippedPath(f"{relative_directory}/", f"directory:{directory}")
-                )
+                skipped.append(SkippedPath(f"{relative_directory}/", f"directory:{directory}"))
             elif directory_path.is_symlink():
-                skipped.append(
-                    SkippedPath(f"{relative_directory}/", "symlink-directory")
-                )
+                skipped.append(SkippedPath(f"{relative_directory}/", "symlink-directory"))
             else:
                 kept_directories.append(directory)
         directories[:] = kept_directories
@@ -535,10 +439,7 @@ def scan_documents(
         for filename in sorted(filenames):
             files_walked += 1
             if files_walked > max_files:
-                raise ConfigError(
-                    f"documentation walk exceeded the {max_files}-file safety limit; "
-                    "raise --max-files only after reviewing the tree"
-                )
+                raise ConfigError(f"documentation walk exceeded the {max_files}-file safety limit; raise --max-files only after reviewing the tree")
 
             path = Path(current) / filename
             relative = path.relative_to(docs_root).as_posix()
@@ -548,9 +449,7 @@ def scan_documents(
             try:
                 is_output = path.resolve() == output_resolved
             except OSError as exc:
-                raise ConfigError(
-                    f"could not resolve documentation path {relative!r}: {exc}"
-                ) from exc
+                raise ConfigError(f"could not resolve documentation path {relative!r}: {exc}") from exc
             if is_output:
                 skipped.append(SkippedPath(relative, "generator-output"))
                 continue
@@ -571,13 +470,9 @@ def scan_documents(
 
     if unclassified:
         listed = "\n".join(f"- {path}" for path in sorted(set(unclassified)))
-        raise ConfigError(
-            f"unclassified document(s); add a directory rule or file override:\n{listed}"
-        )
+        raise ConfigError(f"unclassified document(s); add a directory rule or file override:\n{listed}")
 
-    documents.sort(
-        key=lambda document: (SECTION_ORDER[document.section], document.path)
-    )
+    documents.sort(key=lambda document: (SECTION_ORDER[document.section], document.path))
     skipped.sort(key=lambda item: (item.path, item.reason))
     return ScanResult(tuple(documents), tuple(skipped), files_walked)
 
@@ -594,13 +489,9 @@ def render_index(documents: Sequence[Document]) -> str:
     seen_paths: set[str] = set()
     for document in documents:
         if document.section not in SECTION_TITLES:
-            raise ConfigError(
-                f"cannot render document {document.path!r} in unknown section {document.section!r}"
-            )
+            raise ConfigError(f"cannot render document {document.path!r} in unknown section {document.section!r}")
         if document.path in seen_paths:
-            raise ConfigError(
-                f"document appears more than once in the index: {document.path}"
-            )
+            raise ConfigError(f"document appears more than once in the index: {document.path}")
         seen_paths.add(document.path)
 
     lines = [
@@ -625,9 +516,7 @@ def render_index(documents: Sequence[Document]) -> str:
             lines.append("_No documents currently classified._")
             continue
         for document in section_documents:
-            lines.append(
-                f"- [{document.path}]({_link_target(document.path)}) — {document.description}"
-            )
+            lines.append(f"- [{document.path}]({_link_target(document.path)}) — {document.description}")
 
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -665,15 +554,11 @@ def resolve_commit(root: Path, requested: str | None) -> str:
             check=False,
         )
     except OSError as exc:
-        raise ConfigError(
-            f"could not read Git HEAD; pass --commit explicitly: {exc}"
-        ) from exc
+        raise ConfigError(f"could not read Git HEAD; pass --commit explicitly: {exc}") from exc
     value = result.stdout.strip()
     if result.returncode != 0 or not value:
         detail = result.stderr.strip() or "git rev-parse HEAD returned no revision"
-        raise ConfigError(
-            f"could not read Git HEAD; pass --commit explicitly: {detail}"
-        )
+        raise ConfigError(f"could not read Git HEAD; pass --commit explicitly: {detail}")
     return value
 
 
@@ -692,16 +577,12 @@ def _unified_diff(
 ) -> str:
     old_lines: list[str] = []
     if committed is not None:
-        old_lines = committed.decode("utf-8", errors="replace").splitlines(
-            keepends=True
-        )
+        old_lines = committed.decode("utf-8", errors="replace").splitlines(keepends=True)
     new_lines = generated.decode("utf-8").splitlines(keepends=True)
     diff = difflib.unified_diff(
         old_lines,
         new_lines,
-        fromfile=committed_label
-        if committed is not None
-        else f"{committed_label} (missing)",
+        fromfile=committed_label if committed is not None else f"{committed_label} (missing)",
         tofile="generated documentation index",
         n=3,
     )
@@ -712,13 +593,7 @@ def _unified_diff(
 
 
 def _print_scan_summary(scan: ScanResult, commit: str) -> None:
-    print(
-        "summary: "
-        f"documents={len(scan.documents)} "
-        f"skipped={len(scan.skipped)} "
-        f"files_walked={scan.files_walked} "
-        f"commit={commit}"
-    )
+    print(f"summary: documents={len(scan.documents)} skipped={len(scan.skipped)} files_walked={scan.files_walked} commit={commit}")
     for skipped in scan.skipped:
         print(f"skipped[{skipped.reason}]: {skipped.path}")
 
@@ -761,9 +636,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ConfigError(f"repository root does not exist: {root.name}")
         output = _resolve_output(root, args.output)
         if output.exists() and not output.is_file():
-            raise ConfigError(
-                f"output path is not a file: {_output_label(root, output)}"
-            )
+            raise ConfigError(f"output path is not a file: {_output_label(root, output)}")
         scan = scan_documents(root, output, max_files=args.max_files)
         commit = resolve_commit(root, args.commit)
         generated = render_index(scan.documents).encode("utf-8")
