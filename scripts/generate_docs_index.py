@@ -157,6 +157,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec(
         "plans", "Unified local-only integration plan and sequencing for Alpha."
     ),
+    "AUTHORITY_MODEL.md": DocumentSpec(
+        "operations",
+        "Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.",
+    ),
     "GIT_INTEGRATION_PLAN.md": DocumentSpec(
         "plans",
         "Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.",
