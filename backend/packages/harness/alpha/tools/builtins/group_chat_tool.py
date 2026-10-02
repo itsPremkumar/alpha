@@ -12,7 +12,7 @@ from alpha.groups.service import get_group_chat_service
 
 @tool("group_chat", parse_docstring=True)
 def group_chat_tool(
-    action: Literal["send", "create", "list", "history", "propose_vote", "cast_vote", "tally_vote", "status", "claim", "release"],
+    action: Literal["send", "create", "list", "history", "propose_vote", "cast_vote", "tally_vote", "status", "claim", "release", "declare_write_set"],
     room_name: str = "general",
     sender: str = "user",
     message: str = "",
@@ -24,6 +24,7 @@ def group_chat_tool(
     subject: str = "",
     kind: Literal["file", "dir", "symbol", "task", "artifact", "requirement"] = "file",
     claim_id: str = "",
+    subjects: str = "",
 ) -> str:
     """Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting.
 
@@ -50,6 +51,7 @@ def group_chat_tool(
         subject: File path, directory, symbol, or task id being claimed. Required for 'claim'.
         kind: What the subject is ('file', 'dir', 'symbol', 'task', 'artifact', 'requirement'). A 'dir' claim covers everything beneath it.
         claim_id: Which claim to release. Required for 'release'.
+        subjects: Comma-separated paths to claim as ONE declared intent. Required for 'declare_write_set'. Use this before a change that spans several files, so peers learn the whole scope at once instead of discovering it file by file.
     """
     service = get_group_chat_service()
 
@@ -168,5 +170,28 @@ def group_chat_tool(
         if not get_claim_store().release(claim_id, sender):
             return f"Error: claim '{claim_id}' was not found, is already released, or is not held by @{sender}."
         return f"Released claim '{claim_id}'."
+
+    elif action == "declare_write_set":
+        from alpha.groups.claims import get_claim_store
+
+        entries = [s.strip() for s in subjects.split(",") if s.strip()]
+        if not entries:
+            return "Error: 'subjects' is required for 'declare_write_set' (comma-separated)."
+        room = service.get_room(room_name)
+        if room is None:
+            return f"Room '{room_name}' does not exist."
+        try:
+            claims = get_claim_store().declare_write_set(
+                room_name,
+                sender,
+                entries,
+                project_id=getattr(room, "project_id", None),
+            )
+        except ValueError as exc:
+            return f"Error: {exc}"
+        return (
+            f"@{sender} declared a write set of {len(claims)} subject(s); the room was told the whole scope at once. "
+            "Peers should route around these until you release them."
+        )
 
     return f"Error: Unknown action '{action}'."

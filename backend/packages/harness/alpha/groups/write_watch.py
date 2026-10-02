@@ -178,6 +178,7 @@ def auto_claim_write(request: Any, path: str, *, tool_name: str = "") -> WriteCo
         from alpha.groups.coordination import announce_claim
 
         store = get_claim_store()
+        ledger = get_activity_ledger()
         clean = normalise_subject(path, "file")
         if not clean:
             return outcome
@@ -194,9 +195,8 @@ def auto_claim_write(request: Any, path: str, *, tool_name: str = "") -> WriteCo
             pid=_current_pid(),
         )
 
-        # Detect against the *other* holders first, so this write's own claim
-        # never shows up as its own conflict.
-        ledger = get_activity_ledger()
+        # Detect against the *other* holders, so this write's own claim never
+        # shows up as its own conflict.
         room_members = _room_members(context.room_name)
         states = {a.bot_name: a.activity for a in ledger.room_activity(context.room_name, room_members)}
 

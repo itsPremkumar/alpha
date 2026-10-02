@@ -68,6 +68,7 @@ import posixpath
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -88,6 +89,45 @@ DEFAULT_CLAIM_TTL_SECONDS = 120.0
 #: Ceilings so one agent cannot flood the room's claim list.
 MAX_CLAIMS_PER_BOT = 25
 MAX_CLAIMS_PER_ROOM = 400
+#: A write set is one declared intent, so it is bounded well below the per-bot
+#: ceiling — otherwise a single call could take every slot and lock the agent
+#: out of claiming anything afterwards.
+MAX_WRITE_SET_SUBJECTS = 20
+
+
+def _announce_write_set(room_name: str, holder: str, claims: list["WorkClaim"]) -> None:
+    """Announce a declared write scope as one message, not N.
+
+    Bounded on the rendered subject list rather than truncated mid-path: a peer
+    reading half a path list would draw the wrong conclusion, which is worse than
+    reading that the set is larger than the message shows.
+    """
+    try:
+        from alpha.groups.coordination import announce_conflict
+
+        subjects = sorted({c.subject for c in claims})
+        shown = subjects[:8]
+        more = len(subjects) - len(shown)
+        announce_conflict(
+            room_name,
+            {
+                "subject": ", ".join(shown) + (f" (+{more} more)" if more > 0 else ""),
+                "kind": "write_set",
+                "holders": [holder],
+                "claim_ids": [c.claim_id for c in claims],
+                "reasons": [c.intent for c in claims],
+                "states": {holder: "working"},
+                "reclaimable": False,
+                "dead_holder": None,
+                "detail": f"{holder} declared a write set of {len(subjects)} subject(s): {', '.join(shown)}"
+                + (f" (+{more} more)" if more > 0 else "")
+                + ". Route around this area until it is released.",
+            },
+        )
+    except Exception:
+        # A failed announcement must never be the thing that breaks the agent
+        # that declared the set; the claims are already recorded.
+        logger.warning("Write-set announcement failed for room %s", room_name, exc_info=True)
 
 
 def _now() -> float:
@@ -458,6 +498,68 @@ class ClaimStore:
             if moved:
                 self._save()
             return moved
+
+    def declare_write_set(
+        self,
+        room_name: str,
+        holder: str,
+        subjects: Sequence[str],
+        *,
+        kind: str = "file",
+        intent: str = "editing",
+        detail: str = "",
+        project_id: str | None = None,
+        run_id: str | None = None,
+        ttl_seconds: float = DEFAULT_CLAIM_TTL_SECONDS,
+    ) -> list[WorkClaim]:
+        """Claim a *set* of subjects in one call, as a single announced intent.
+
+        A refactor across twelve files would otherwise be twelve claims and up
+        to twelve room messages, and a peer polling between them sees a partial
+        picture — which is the worst moment to make a coordination decision from.
+
+        This declares the whole write scope up front, so the room learns the
+        shape of the work once. That is what turns "is agent X editing file Y"
+        into "is agent X working in this area", which is the question a peer
+        actually has before deciding whether to start.
+
+        Every subject is claimed on the same terms as `claim()` — advisory,
+        non-refusing, individually expiring — so a set declaration is exactly N
+        claims plus one announcement, not a weaker guarantee.
+
+        Duplicate subjects collapse, so declaring `src/` and `src/api.py` does
+        not produce two claims for one intent.
+        """
+        owner = holder.lower().strip()
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for raw in subjects:
+            clean = normalise_subject(raw, kind)
+            if not clean or clean in seen:
+                continue
+            seen.add(clean)
+            ordered.append(clean)
+        if not ordered:
+            raise ValueError("A write set needs at least one non-empty subject.")
+        if len(ordered) > MAX_WRITE_SET_SUBJECTS:
+            raise ValueError(f"A write set holds at most {MAX_WRITE_SET_SUBJECTS} subjects; declare the work in stages.")
+
+        claims = [
+            self.claim(
+                room_name,
+                owner,
+                kind,
+                subject,
+                intent=intent,
+                detail=detail,
+                project_id=project_id,
+                run_id=run_id,
+                ttl_seconds=ttl_seconds,
+            )
+            for subject in ordered
+        ]
+        _announce_write_set(room_name, owner, claims)
+        return claims
 
     def reclaim(self, claim_id: str, new_holder: str) -> WorkClaim | None:
         """Take over an orphaned claim.
