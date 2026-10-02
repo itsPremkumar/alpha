@@ -147,7 +147,7 @@ export function OmnisearchModal({
         role="dialog"
         aria-modal="true"
         aria-label="Search agents, projects and conversations"
-        className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col max-h-[75vh] animate-in zoom-in-95 duration-150"
+        className="w-full max-w-2xl rounded-2xl border border-border bg-card elev-3 overflow-hidden flex flex-col max-h-[75vh] animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search header input */}

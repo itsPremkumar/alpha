@@ -57,7 +57,7 @@ export function NewProjectDialog(props: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24" role="dialog" aria-modal="true" aria-label="New project">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-sm rounded-2xl border border-border bg-card p-4 shadow-2xl space-y-3">
+      <div className="relative w-full max-w-sm rounded-2xl border border-border bg-card p-4 elev-3 space-y-3">
         <div className="flex items-center gap-2">
           <Building2 className="size-4 text-primary" />
           <h2 className="text-sm font-semibold">New project</h2>

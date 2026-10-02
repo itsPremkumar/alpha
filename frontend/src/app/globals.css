@@ -253,22 +253,11 @@
  * Darkening with the theme keeps the shadow from reading as a grey halo on a
  * near-black surface, where a black shadow is invisible.
  */
-@layer components {
-  /* Each level delegates to a token rather than spelling out its own shadows.
-   * The indirection is what lets the geometry be retuned per theme without
-   * touching a component, and it keeps the ladder readable as a single list. */
-  .elev-1 {
-    box-shadow: var(--shadow-e1);
-  }
-
-  .elev-2 {
-    box-shadow: var(--shadow-e2);
-  }
-
-  .elev-3 {
-    box-shadow: var(--shadow-e3);
-  }
-}
+/* The elevation ladder itself lives in `tailwind.config.cjs` under
+ * `theme.extend.boxShadow`, not here, so that `hover:elev-2` and
+ * `max-md:elev-3` resolve. Only the token values are declared in this file.
+ * See the comment on `boxShadow.elev` in that config for why that split exists.
+ */
 
 ::selection {
   background: hsl(var(--primary) / 0.22);

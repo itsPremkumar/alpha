@@ -233,7 +233,7 @@ export function NavTabs(props: {
             onClick={() => props.onChange(t.id)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
               active
-                ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/30"
+                ? "bg-primary text-primary-foreground elev-1 ring-1 ring-primary/30"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-muted/30"
             }`}
           >
@@ -303,7 +303,7 @@ export function NavTabs(props: {
               // Positioned in a layout effect before paint, so never seen.
               visibility: panel ? undefined : "hidden",
             }}
-            className="z-[100] overflow-y-auto overscroll-contain rounded-2xl border border-border/80 bg-card shadow-xl p-2 space-y-2 focus:outline-none animate-in fade-in zoom-in-95 duration-100"
+            className="z-[100] overflow-y-auto overscroll-contain rounded-2xl border border-border/80 bg-card elev-3 p-2 space-y-2 focus:outline-none animate-in fade-in zoom-in-95 duration-100"
           >
             {SECONDARY_GROUPS.map((group, index) => (
               <div key={group.category} className={index === 0 ? undefined : "pt-1 border-t border-border/50"}>

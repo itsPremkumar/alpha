@@ -383,7 +383,7 @@ function CardEditor(props: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Edit task">
       <div className="absolute inset-0 bg-black/50" onClick={props.onClose} />
-      <div className="relative w-full max-w-2xl max-h-[88vh] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative w-full max-w-2xl max-h-[88vh] bg-card border border-border rounded-2xl elev-3 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-border/60 flex items-center gap-2">
           <p className="text-sm font-bold flex-1">Task details</p>
           {c.serverId && <Badge tone="blue">synced with server</Badge>}

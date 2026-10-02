@@ -48,6 +48,23 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // The elevation ladder is a Tailwind `boxShadow` entry rather than three
+      // classes hand-written in `@layer components`, for one concrete reason:
+      // only utilities get variants. As plain component classes, `hover:elev-2`
+      // on a card and `max-md:elev-3` on the mobile sidebar drawer were
+      // generated as dead classes that silently did nothing - the card never
+      // lifted, and the drawer kept its shadow after it became full-screen.
+      //
+      // The values stay in `globals.css` as `--shadow-e1..3` so the geometry
+      // remains themeable; `var()` here means a theme change re-tints all three
+      // without touching this file.
+      boxShadow: {
+        elev: {
+          1: "var(--shadow-e1)",
+          2: "var(--shadow-e2)",
+          3: "var(--shadow-e3)",
+        },
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

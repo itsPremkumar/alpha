@@ -126,9 +126,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
         isUser
           ? "bg-muted/30 ml-auto max-w-3xl"
           : isA2A
-            ? "bg-card border border-blue-500/40 shadow-sm shadow-blue-500/5 max-w-4xl"
+            ? "bg-card border border-blue-500/40 elev-1 shadow-blue-500/5 max-w-4xl"
             : isGroupChat
-              ? "bg-card border border-purple-500/40 shadow-sm shadow-purple-500/5 max-w-4xl"
+              ? "bg-card border border-purple-500/40 elev-1 shadow-purple-500/5 max-w-4xl"
               : "bg-card border border-border/50 max-w-4xl"
       }`}
     >

@@ -59,7 +59,7 @@ function BubbleAction(props: {
       type="button"
       onClick={props.onClick}
       title={props.title}
-      className={`p-1 rounded-full border border-border/70 bg-card shadow-sm hover:bg-muted ${
+      className={`p-1 rounded-full border border-border/70 bg-card elev-1 hover:bg-muted ${
         props.danger ? "text-destructive" : "text-muted-foreground"
       }`}
     >
@@ -914,7 +914,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
                           return (
                             <div className={`flex ${mine ? "justify-end" : "justify-start"} group/bubble`}>
-                              <div className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm relative ${
+                              <div className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-3 py-2 elev-1 relative ${
                                 mine
                                   ? "bg-emerald-600/90 text-white rounded-br-md"
                                   : isA2A
@@ -1472,7 +1472,7 @@ function DetailsPane(props: {
        something) and a normal column at `lg` and up (so the layout is
        unchanged where it worked). */
     <aside
-      className="w-72 shrink-0 border-l border-border bg-card/40 flex-col min-h-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl"
+      className="w-72 shrink-0 border-l border-border bg-card/40 flex-col min-h-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:elev-3"
       aria-label="Conversation details"
     >
       <div className="p-3 border-b border-border/60 flex items-center gap-2">

@@ -104,7 +104,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
           onOpenView={onOpenView}
         >
           <div className="flex items-center gap-3 p-1 rounded-2xl hover:bg-card/80 transition-colors cursor-pointer group">
-            <div className="size-10 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-blue-500/20 text-primary border border-primary/30 flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
+            <div className="size-10 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-blue-500/20 text-primary border border-primary/30 flex items-center justify-center font-bold text-sm elev-1 shrink-0">
               {bot?.avatar ? (
                 <span className="text-base">{bot.avatar}</span>
               ) : bot ? (
@@ -161,9 +161,9 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
             <button
               type="button"
               onClick={onToggleInspector}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all shadow-2xs cursor-pointer ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all elev-1 cursor-pointer ${
                 inspectorOpen
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  ? "bg-primary text-primary-foreground border-primary elev-1"
                   : "border-border/70 bg-card/60 hover:bg-muted text-muted-foreground hover:text-foreground"
               }`}
               title={inspectorOpen ? "Close Project Inspector" : "Open Project Inspector"}
@@ -178,7 +178,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
           <button
             type="button"
             onClick={onNewConversation}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border/70 bg-card/60 hover:bg-muted text-foreground text-xs font-medium transition-colors shadow-2xs cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border/70 bg-card/60 hover:bg-muted text-foreground text-xs font-medium transition-colors elev-1 cursor-pointer"
             title="Start new conversation"
           >
             <Plus className="size-3.5" />

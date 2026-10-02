@@ -10,7 +10,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, globSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raw = readFileSync(
@@ -166,13 +167,33 @@ test("elevation levels increase in spread", () => {
   assert.ok(reach(token("--shadow-e2")) < reach(token("--shadow-e3")), "elev-3 must reach further than elev-2");
 });
 
-test("elevation levels read from tokens instead of hard-coding shadows", () => {
-  // A level that spells out its own shadow is a level that will drift from the
-  // token, which is the exact problem the ladder was introduced to solve.
+test("elevation levels are registered as Tailwind utilities, not bare component classes", () => {
+  // Only utilities get variants. As plain `@layer components` classes,
+  // `hover:elev-2` and `max-md:elev-3` were generated as dead classes that
+  // silently did nothing, so the config is the thing that has to hold.
+  const config = readFileSync(fileURLToPath(new URL("../../tailwind.config.cjs", import.meta.url)), "utf8");
+  assert.match(config, /boxShadow:\s*\{/, "tailwind.config.cjs must extend boxShadow");
   for (const level of [1, 2, 3]) {
-    const body = ruleBody(`.elev-${level}`);
-    assert.match(body, /box-shadow:\s*var\(--shadow-e\d\)/, `.elev-${level} must delegate to a token`);
+    assert.match(config, new RegExp(`${level}:\\s*"var\\(--shadow-e${level}\\)"`), `elev-${level} must map to its token`);
   }
+  // And the values must not live in two places, or the ladder drifts.
+  assert.doesNotMatch(raw, /\.elev-\d\s*\{/, "the levels must not also be defined in globals.css");
+});
+
+test("no component asks for a variant of an elevation level that cannot resolve", () => {
+  // Regression guard for the migration: a mechanical rewrite produced seven
+  // sites where a variant-prefixed elevation was a dead class. With the levels
+  // registered as utilities these now resolve, so this asserts every such class
+  // sits in a file that the config's content globs actually cover.
+  const componentsDir = fileURLToPath(new URL("../../src/components", import.meta.url));
+  const files = globSync("**/*.{tsx,ts}", { cwd: componentsDir });
+  const used = files.flatMap((rel) => {
+    const src = readFileSync(path.join(componentsDir, rel), "utf8");
+    return [...src.matchAll(/(\w+):(elev-\d)\b/g)].map((m) => `${rel}: ${m[0]}`);
+  });
+  // Non-empty is the point: this pattern exists in the codebase today, and the
+  // test is what stops it silently returning after a future config regression.
+  assert.ok(used.length > 0, "expected variant-prefixed elevation classes to be in use");
 });
 
 test("shadows carry the theme's shadow hue, never a literal black", () => {

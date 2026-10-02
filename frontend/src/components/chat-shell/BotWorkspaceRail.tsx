@@ -223,7 +223,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
           onOpenSettings={() => onOpenView("bots")}
           onOpenView={onOpenView}
         >
-          <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 hover:bg-card hover:border-primary/40 transition-all cursor-pointer group shadow-2xs">
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 hover:bg-card hover:border-primary/40 transition-all cursor-pointer group elev-1">
             <div className="flex items-center gap-2.5 min-w-0">
               {activeBot ? (
                 <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 border border-primary/20">
@@ -314,7 +314,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                       onClick={() => onSelectThread(thread.thread_id)}
                       className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
                         isActive
-                          ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                          ? "bg-primary text-primary-foreground font-semibold elev-1"
                           : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -699,7 +699,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                   onClick={() => onSelectThread(thread.thread_id)}
                                   className={`w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded-md text-left text-[11px] transition-colors cursor-pointer ${
                                     isCurrent
-                                      ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                                      ? "bg-primary text-primary-foreground font-semibold elev-1"
                                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                   }`}
                                 >
