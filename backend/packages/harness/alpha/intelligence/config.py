@@ -57,6 +57,16 @@ class ReplayConfig(BaseModel):
     )
     recency_half_life_seconds: float = Field(default=604800.0, gt=0, description="Half-life for the recency component of an item's priority.")
     min_priority: float = Field(default=0.0, ge=0.0, description="Items scoring below this are evicted first when the reservoir is full.")
+    curiosity_cap: float = Field(
+        default=0.15,
+        ge=0.0,
+        description=(
+            "Hard ceiling on what intrinsic curiosity may contribute to a replay rank. Deliberately small: curiosity "
+            "is a tiebreaker between plausible targets, never a reason to attempt something Alpha has no evidence it "
+            "can do. Set 0 to disable curiosity-driven selection entirely."
+        ),
+    )
+    curiosity_enabled: bool = Field(default=False, description="Master switch for curiosity-driven replay selection. Off means items are sampled by stratum weight and priority only.")
 
 
 class PlasticityConfig(BaseModel):
@@ -86,6 +96,18 @@ class RegressionConfig(BaseModel):
     min_heldout_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Floor on the hidden holdout suite.")
     overfitting_gap: float = Field(default=0.2, gt=0, description="Train-minus-heldout gap above which a candidate is flagged as possibly overfitting.")
     max_retries: int = Field(default=2, ge=0, description="Bounded promotion attempts. 0 disables promotion entirely.")
+    #: Phase A/H. Whether an untrusted-source experience may reach the reservoir at
+    #: all. Off is the strict posture (refuse). Set True only if a separate,
+    #: real trust signal exists upstream that the sanitizer cannot see.
+    admit_untrusted: bool = Field(
+        default=True,
+        description=(
+            "Allow untrusted-source experiences through the trust stage. True (the default) preserves the pipeline's "
+            "existing contract for current callers, which supply evidence but no source attribution. False closes the "
+            "poisoning vector: web, tool-output and unknown-source records are refused, because a self-improving agent "
+            "that replays them equally will propagate its own untrustworthy inputs permanently."
+        ),
+    )
     #: Phase B. How many times the same candidate is re-evaluated to characterise
     #: the evaluator's own noise. 1 disables measurement entirely.
     repeats: int = Field(default=3, ge=1, le=20, description="Repeated identical-input evaluations used to measure evaluator noise.")

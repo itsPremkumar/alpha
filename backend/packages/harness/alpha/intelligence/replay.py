@@ -375,6 +375,18 @@ class ReplayReservoir:
             self._save()
             return {"stored": True, "experience_id": item.experience_id, "evicted": evicted_id}
 
+    def _rank(self, item: ReplayItem, moment: float, bonuses: dict[str, float] | None = None) -> float:
+        """Ordering score: composite priority plus any capped curiosity bonus.
+
+        Split out so every sort in :meth:`sample` uses the same definition. Three
+        separate sort keys built from slightly different expressions is how a
+        "required strata come first" guarantee silently stops holding.
+        """
+        base = item.priority(now=moment, half_life_seconds=self.half_life_seconds, weights=self._priority_weights)
+        if not bonuses:
+            return base
+        return base + bonuses.get(item.content_digest, 0.0)
+
     def _lowest_priority(self) -> ReplayItem | None:
         candidates = list(self._items.values())
         if not candidates:
@@ -452,6 +464,13 @@ class ReplayReservoir:
         strata: tuple[str, ...] = (),
         required_strata: tuple[str, ...] = (),
         now: float | None = None,
+        # `curiosity`: a CuriosityLedger (Phase H). When supplied, intrinsic
+        # value contributes a CAPPED, additive bonus to the ordering. It can
+        # break ties between plausible items but can never pull an unexplored,
+        # un-capable target above a proven one, because the ledger's degeneracy
+        # guard zeroes the bonus in exactly that case. Pass None to disable it.
+        curiosity: Any = None,
+        curiosity_cap: float | None = None,
     ) -> ReplayReport:
         """Draw up to ``n`` items, stratified by configured weight.
 
@@ -479,6 +498,24 @@ class ReplayReservoir:
         allowed = {s for s in strata if s} or set(self.stratum_weights)
         required = {s for s in required_strata if s}
 
+        # Phase H: a bounded, additive curiosity term. It is computed once per
+        # item and added to the priority used for ordering, so the strata quota
+        # arithmetic below is unchanged - curiosity reorders within a stratum, it
+        # cannot move an item between strata, which is what keeps required_strata
+        # guarantees intact.
+        cap = float(curiosity_cap) if curiosity_cap is not None else 0.0
+        bonuses: dict[str, float] = {}
+        if curiosity is not None and cap > 0.0:
+            with self._lock:
+                candidates = list(self._items.values())
+            for item in candidates:
+                target = curiosity.target_for(
+                    {"strata": sorted(item.strata), "importance": item.importance},
+                    competence=min(1.0, item.importance),
+                    attempts=item.reuse_count,
+                )
+                bonuses[item.content_digest] = target.bonus(cap=cap)
+
         with self._lock:
             pool: dict[str, list[ReplayItem]] = {}
             for item in self._items.values():
@@ -487,7 +524,7 @@ class ReplayReservoir:
                 for stratum in item.strata & allowed:
                     pool.setdefault(stratum, []).append(item)
             for entries in pool.values():
-                entries.sort(key=lambda item: (-item.priority(now=moment, half_life_seconds=self.half_life_seconds, weights=self._priority_weights), item.experience_id))
+                entries.sort(key=lambda item: (-self._rank(item, moment, bonuses), item.experience_id))
             if not pool:
                 return ReplayReport(
                     sampled=[],
@@ -543,7 +580,7 @@ class ReplayReservoir:
             if len(chosen) < n:
                 leftovers = sorted(
                     (item for entries in pool.values() for item in entries),
-                    key=lambda item: (-item.priority(now=moment, half_life_seconds=self.half_life_seconds, weights=self._priority_weights), item.experience_id),
+                    key=lambda item: (-self._rank(item, moment, bonuses), item.experience_id),
                 )
                 for item in leftovers:
                     if len(chosen) >= n:

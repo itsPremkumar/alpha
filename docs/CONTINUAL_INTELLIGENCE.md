@@ -463,7 +463,92 @@ journal tamper detection, bounded rollback.
 **Audit:** [`ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md`](../ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md)
 ---
 
-## 16. Phases A–G: is the loop actually working?
+## 16. Phase H: intrinsic curiosity, and the trust gate
+
+Added from a second research round (the SI-Agents survey taxonomy, 312 curated
+entries). Two findings drove it, both verified against the source rather than
+assumed.
+
+### Curiosity already existed — and was not doing anything
+
+`alpha.agency.curiosity.CuriosityScorer` computes novelty and prediction error.
+Two measured problems stopped it being useful:
+
+1. **It has zero production callers.** Exported, imported by
+   `agency_competence_tool`, never constructed.
+2. **Its novelty map is an in-memory dict.** After a restart every situation is
+   unfamiliar again, so novelty pins to `1.0` uniformly — a scorer that says
+   "everything is new" carries no information.
+
+`alpha.intelligence.curiosity` keeps the shape and fixes both, adding the third
+intrinsic signal the literature names:
+
+| Signal | Source |
+|---|---|
+| `novelty` | durable, content-keyed, survives restart |
+| `prediction_error` | predicted vs observed outcome |
+| `disagreement` | **verifier disagreement** — information the system already produced and discarded |
+
+Unmeasured signals are excluded and the mean renormalised, never defaulted to
+zero: "nobody disagreed" and "nobody checked" are different claims.
+
+### The degeneracy guard is the load-bearing part
+
+The literature warns that intrinsic reward "can fall into a degenerate"
+exploration regime. Concretely: **a pure novelty bonus rewards the strangest
+available thing, and strange is not the same as informative.**
+
+So a target with high curiosity and **zero competence evidence** is refused with
+`DegeneracyVerdict.EXPLORATION_WITHOUT_COMPETENCE` — a decision to *not* explore,
+which is the opposite of what the raw score would say. Ranking also breaks ties
+by **competence before curiosity**, so two equally-novel targets resolve in
+favour of the one Alpha can demonstrably do.
+
+Curiosity contributes a **capped** bonus (`replay.curiosity_cap`, default
+`0.15`) to the replay ordering. It reorders *within* a stratum, so
+`required_strata` guarantees are untouched.
+
+### The trust gate
+
+Memory-poisoning research (DrunkAgent, WWW 2026) makes this concrete for a
+self-improving agent: one poisoned write becomes permanent precisely *because*
+the system retains and replays it.
+
+`Stage.TRUST_VALIDATION` now asks a second provenance question — not "where did
+this come from" but **"do we trust where it came from"**. Recognised levels:
+
+- trusted: `user`, `operator`, `human_confirmed`, `alpha_verified`
+- untrusted: `web`, `tool_output`, `external`, `unverified`, `model_inferred`
+
+**Off by default** (`regression.admit_untrusted: true`). Every existing caller
+supplies `evidence` but no source attribution, so making the stage mandatory
+would have silently refused all of them — a breaking change this layer is not
+entitled to make. When disabled the stage still runs and reports `SKIPPED` with a
+reason, never `PASSED`, so the gap stays visible rather than reading as a clean
+bill of health.
+
+Set it to `false` to close the vector. An **unrecognised** level is then refused
+rather than assumed safe.
+
+### Not added, and why
+
+| Not added | Why |
+| --- | --- |
+| Memory-poisoning *defence* in `alpha.memory` | Already substantially covered — 56 provenance, 16 trust, 7 quarantine, plus `taint.py` and receipt tainting. I was wrong to suspect it; adding a second would duplicate |
+| Co-evolving evaluator (Red Queen Gödel Machine) | `alpha.avo.scorer_authority.SERVER_OWNED_SURFACE` already forbids a candidate from authoring its own fitness function. That is the *more conservative* stance and I left it alone |
+| Base-model training / RL loops | Nothing here changes Alpha's constraint, which is retrieval, routing and evidence rather than weights |
+| Novel-research generation from weights | Out of scope. Alpha should rank investigations it can falsify (Phase G), not invent ones it cannot |
+
+### Tests
+
+```bash
+cd backend
+uv run pytest tests/test_intelligence_curiosity.py -q
+```
+
+---
+
+## 17. Phases A–G: is the loop actually working?
 
 Added per [`ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md`](../ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md).
 These are **measurement** modules. The premise: more self-modification is not

@@ -166,6 +166,26 @@ research says agents are worst at.
 does not block (an unchecked mechanism is not a refusal). `diversity` is the
 **only** gate that can reject a candidate that scored better — deliberately.
 
+### Phase H — curiosity and the trust gate
+
+Added from the SI-Agents survey taxonomy. `alpha.agency.curiosity.CuriosityScorer`
+already existed but had **zero production callers** and an in-memory novelty map,
+so novelty reset to `1.0` on every restart. `curiosity.py` makes it durable,
+adds **verifier disagreement** as the third intrinsic signal, and wires it to the
+reservoir as a capped ordering term.
+
+**The degeneracy guard is load-bearing.** High curiosity + zero competence is
+refused with `EXPLORATION_WITHOUT_COMPETENCE` — a decision *not* to explore.
+Ranking breaks ties by **competence before curiosity**. The literature's warning
+is that a pure novelty bonus rewards the strangest available thing, and strange
+is not informative.
+
+**The trust gate is off by default.** `Stage.TRUST_VALIDATION` reports
+`SKIPPED` (never `PASSED`) while `admit_untrusted=True`, because every existing
+caller supplies `evidence` and no source attribution. Do not make it mandatory
+without migrating those callers first. When enabled, an unrecognised level is
+refused, not assumed safe.
+
 ## Tests
 
 ```bash

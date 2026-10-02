@@ -4928,6 +4928,20 @@ intelligence:
     # moment the domain changes.
     recency_half_life_seconds: 604800.0   # 7 days
     min_priority: 0.0
+    # ==========================================================================
+    # Phase H - intrinsic curiosity as a learning signal.
+    # ==========================================================================
+    # Alpha already had `alpha.agency.curiosity.CuriosityScorer` (novelty +
+    # prediction error) but it had ZERO production callers and its novelty map
+    # was in-memory, so novelty reset to 1.0 on every restart - the opposite of
+    # a novelty signal. This makes it durable, adds the third intrinsic signal
+    # the literature names (verifier disagreement), and wires it to the reservoir.
+    #
+    # The `curiosity_cap` is deliberately tiny. Curiosity is a tiebreaker
+    # between plausible targets, never a reason to attempt something Alpha has
+    # no evidence it can do - see DegeneracyVerdict.EXPLORATION_WITHOUT_COMPETENCE.
+    curiosity_enabled: false   # off by default: a default-off layer must not explore
+    curiosity_cap: 0.15
 
   # -- plasticity controller -------------------------------------------------
   # More self-modification is not more intelligence. Multipliers are per-tier
@@ -4969,6 +4983,13 @@ intelligence:
     # and refuse an UNEXPLAINED score gain (score up, mechanism unchanged).
     require_pathway_engaged: false
     reject_anomalous_improvement: true
+    # Phase H. The TRUST gate on experience intake. True (default) preserves the
+    # pipeline's existing contract for current callers, which supply evidence but
+    # no source attribution. Set false to close the poisoning vector: web,
+    # tool-output and unknown-source records are refused, because a
+    # self-improving agent that replays untrusted observations equally will
+    # propagate its own untrustworthy inputs permanently.
+    admit_untrusted: true
 
   # -- dynamic expert fabric -------------------------------------------------
   experts:
