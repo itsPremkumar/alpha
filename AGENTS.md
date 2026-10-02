@@ -88,15 +88,13 @@ alpha/
 
 **`config.yaml` — the one file for every model setting.** Every model name Alpha
 knows is configured in `config.yaml`, not in code and not in a second file:
-runtime-buildable `models[]`, shared `providers:` profiles, `model_routing`
-(intent category / cost tier -> ordered model names), `default_model`,
-`model_catalog:` (bring-your-own-provider offers), `free_gateways:` (keyless
-no-signup endpoints `alpha-free` may use), and `model_pricing:` (fallback
-per-1M prices). Every name declared under `model_routing:` is validated against
-`models[]` at load, so a typo is a startup error rather than a silent fallback to
-the default model. Model lists also refresh themselves from the provider
-(`GET /api/models/discovery`), so a daily-rotating catalog such as OpenRouter's
-`:free` set is fetched rather than hand-maintained.
+`models[]`, `providers:`, `model_routing`, `default_model`, `model_catalog:`,
+`free_gateways:` and `model_pricing:` — each namespace's semantics belong to the
+config guide linked below. Every name declared under `model_routing:` is
+validated against `models[]` at load, so a typo is a startup error rather than a
+silent fallback to the default model. Discovery (`GET /api/models/discovery`)
+refreshes daily-rotating catalogs such as OpenRouter's `:free` set instead of
+hand-maintaining them.
 
 There is **no second model file**: `models.example.yaml`, `alpha.config.models_catalog`,
 `backend/scripts/gen_models_example.py`, and `$ALPHA_MODELS_CONFIG_PATH` are all gone
@@ -107,9 +105,8 @@ and the hot-reload/honest-failure rules are in
 [backend/packages/harness/alpha/config/AGENTS.md](backend/packages/harness/alpha/config/AGENTS.md);
 discovery, cross-namespace drift detection, and the fail-closed routers are in
 [backend/packages/harness/alpha/models/AGENTS.md](backend/packages/harness/alpha/models/AGENTS.md).
-The incident that forced the removal (a fresh install advertising `alpha-free` with an
-empty provider list) is told in the `backend/tests/test_single_file_model_config.py`
-module docstring.
+The incident behind the removal is told in the
+`backend/tests/test_single_file_model_config.py` module docstring.
 
 Third-party extensions load from a top-level `plugins:` list in `config.yaml`
 (operator-controlled on purpose — that list causes code to be imported, so it is deliberately
@@ -160,18 +157,16 @@ The first model in `config.example.yaml` is `union-alpha`, using
 `openrouter/unbiased/pareto` as the OpenRouter API slug; the CLI-qualified form
 never is.
 
-**The Alpha-side name and the provider slug are separate things.** OpenRouter
-retired the earlier `stealth/union-alpha` slug, so the name stayed `union-alpha`
-and only the slug moved. Every namespace that carries a provider-side identifier
-for this model must therefore be moved together: `models[].model` and
+**The Alpha-side name and the provider slug are separate things.** The name
+stayed `union-alpha` when OpenRouter retired the earlier slug, so every namespace
+carrying a provider-side identifier must move together: `models[].model` and
 `model_catalog.models[].model_id` (`config.yaml` and `config.example.yaml`).
 `alpha.models.catalog_consistency` compares *capabilities* by name and never the
 slug, so a stale `model_id` in the catalog is not caught at boot — it is a
 runtime 404 on a picker entry. The slug is pinned in both namespaces by
-`backend/tests/test_model_config.py`. The provider is the only authority on
-whether a slug exists, so re-verify against the live catalog before pinning a new
-one; the current slug was confirmed answering on 2026-09-28 (the earlier
-`stealth/union-alpha` metadata check was 2026-09-17, when the slug was live).
+`backend/tests/test_model_config.py`, and the provider is the only authority on
+whether a slug exists: re-verify against the live catalog before pinning a new
+one (`backend/tests/test_e2e_honesty_model_slug.py` is the live pin).
 
 The frontend package declares `typecheck`, `lint` (an alias of `typecheck`),
 `test`, `test:branding`, `test:extra`, and `verify`; it declares no `format`
@@ -207,11 +202,10 @@ in an output file.
 (`alpha.ico` at 16/24/32/48/64/128/256, and `alpha-mark.png` at 512) and
 `frontend/public/` (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`,
 `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
-`icon-maskable-512.png`). This is deliberate: `electron/build/` is gitignored,
-so a package-time-generated icon was invisible to review and a fresh clone could
-easily ship whatever placeholder was lying around. A tracked asset is reviewable
-and a clone is correct by construction. Regenerate **and commit** them together
-when the poster changes.
+`icon-maskable-512.png`). These stay tracked because `electron/build/` is
+gitignored: a package-time icon would be invisible to review and a fresh clone
+could ship a placeholder. Regenerate **and commit** them together when the
+poster changes.
 
 **Naming a path is a two-sided edit.** `frontend/src/lib/branding.ts` -> `icons`
 is the only place a browser icon path is written, and

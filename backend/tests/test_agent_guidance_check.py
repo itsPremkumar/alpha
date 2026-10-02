@@ -151,10 +151,11 @@ def test_repository_has_the_approved_scoped_guidance_shape() -> None:
 # may shrink, may not grow) and the absolute remainder moved to the non-gating
 # agent-guidance-debt-report job. Each value is a recorded ceiling: the file may
 # shrink further but must never grow, which is exactly what CI enforces against the
-# base ref. Root lost 934 bytes of duplication before this baseline was taken; the
-# gateway guide still carries unique route contracts (7436 bytes of disclosed debt).
+# base ref. Root shed 1,438 bytes of duplication before this baseline was taken and
+# funds the runtime-guide additions in the same change set; the gateway guide still
+# carries unique route contracts (7,436 bytes of disclosed debt).
 DISCLOSED_LEGACY_OVERAGE_CEILING_BUDGETS = {
-    "AGENTS.md": 23486,
+    "AGENTS.md": 22982,
     "backend/app/gateway/AGENTS.md": 56588,
 }
 
