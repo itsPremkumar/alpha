@@ -205,6 +205,11 @@ class RunStallWatchdog:
             return
         self._stop = asyncio.Event()
         self._task = asyncio.create_task(self.run_forever(self._stop), name="run-stall-watchdog")
+        logger.info(
+            "run stall watchdog started: timeout=%.0fs interval=%.0fs",
+            self._settings.timeout_seconds,
+            self._settings.interval_seconds,
+        )
 
     async def stop(self, timeout: float = 5.0) -> None:
         """Signal the loop and wait for it to finish (idempotent)."""
