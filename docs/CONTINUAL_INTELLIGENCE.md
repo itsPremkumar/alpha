@@ -160,7 +160,7 @@ text in stored content is an attack surface on the replay path.
 
 ## 5. Regression, held-out, and the promotion gate
 
-The standing suite is 26 model-free property checks covering **all 20 required
+The standing suite is 32 model-free property checks covering **all 20 required
 capability categories** — atomic-write crash safety, protected-expert refusal,
 trial routing exclusion, pinned-expert eviction, held-out id concealment, and so
 on. `GET /api/intelligence/regressions` reports the coverage inventory.

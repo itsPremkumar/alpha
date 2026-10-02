@@ -98,37 +98,64 @@ class SelfKnowledgeService:
     # -- capabilities -------------------------------------------------------
 
     def tools(self) -> dict[str, Any]:
-        """Registered model-visible tool names, from the tool registry."""
+        """Model-visible tool names, from the real tool assembly.
+
+        Read through :func:`alpha.tools.get_available_tools`, the same function
+        that assembles a run's toolset — not a re-derivation of the registry. The
+        arguments mirror the ``standard`` agent preset so the reported set is the
+        one an ordinary run actually sees; the preset's own narrowing flags
+        (``include_mcp``) are left at their defaults, and MCP is reported
+        separately by :meth:`mcp_servers` rather than folded in here.
+        """
 
         def read() -> Any:
-            from alpha.tools import get_builtin_tools
+            from alpha.tools import get_available_tools
 
-            names = sorted(spec.name for spec in get_builtin_tools())
-            return {"count": len(names), "names": names}
+            specs = get_available_tools(groups=None, include_mcp=False, model_name=None, subagent_enabled=False)
+            names = sorted({str(getattr(spec, "name", spec)) for spec in specs})
+            return {"count": len(names), "names": names, "source": "alpha.tools.get_available_tools"}
 
         return _safe("tools", read)
 
     def skills(self) -> dict[str, Any]:
-        """Installed skills, from the skills subsystem."""
+        """Enabled skills, from the skills storage layer.
+
+        Reads :meth:`alpha.skills.storage.LocalSkillStorage.load_skills` with
+        ``enabled_only=True`` — the same call
+        ``alpha.skills.prompt`` makes when building the prompt block, so this
+        reports what an ordinary run actually sees rather than every skill that
+        happens to be installed. ``SkillCatalog`` is *not* used directly: it is a
+        search index that must be constructed from a skill list and has no
+        enumeration role of its own.
+        """
 
         def read() -> Any:
-            from alpha.skills import list_skills
+            from alpha.skills import get_or_new_skill_storage
 
-            entries = list_skills()
-            names = sorted(entry["name"] for entry in entries) if entries and isinstance(entries[0], dict) else sorted(str(entry) for entry in entries)
-            return {"count": len(names), "names": names}
+            storage = get_or_new_skill_storage()
+            names = sorted(str(getattr(skill, "name", skill)) for skill in storage.load_skills(enabled_only=True))
+            return {
+                "count": len(names),
+                "names": names,
+                "source": "alpha.skills.get_or_new_skill_storage().load_skills(enabled_only=True)",
+            }
 
         return _safe("skills", read)
 
     def mcp_servers(self) -> dict[str, Any]:
-        """Configured MCP servers, names and enabled state only. Never credentials."""
+        """Configured MCP servers, names only. Never credentials or tool schemas."""
 
         def read() -> Any:
-            from alpha.mcp.cache import get_cached_tools
+            from alpha.mcp.cache import get_cached_mcp_tools
 
-            tools = get_cached_tools()
-            servers = sorted({str(entry.get("server") or "unknown") for entry in tools if isinstance(entry, dict)})
-            return {"count": len(servers), "names": servers, "tool_count": len(tools)}
+            tools = get_cached_mcp_tools()
+            servers = sorted({str(getattr(spec, "server", None) or "unknown") for spec in tools or []})
+            return {
+                "count": len(servers),
+                "names": servers,
+                "tool_count": len(tools or []),
+                "note": "server names only; no credentials or schemas are exposed",
+            }
 
         return _safe("mcp_servers", read)
 

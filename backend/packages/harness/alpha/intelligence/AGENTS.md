@@ -1,0 +1,129 @@
+# `alpha.intelligence` — continual-intelligence layer
+
+**Scope.** The layer that lets Alpha get measurably better at something, prove
+it, and reverse it if it did not. It is **default-off** (`enabled: false`,
+`mode: OBSERVE_ONLY`) and **additive**.
+
+Operator guide: [`docs/CONTINUAL_INTELLIGENCE.md`](../../../../../docs/CONTINUAL_INTELLIGENCE.md).
+Audit: [`ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md`](../../../../../ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md).
+
+## What this package is not
+
+It is **not** a second evolution engine, a second experience store, a second
+memory, a second model router, or a second logging framework. Alpha already owns
+strong implementations of all five:
+
+| Do not build here | Already owned by |
+| --- | --- |
+| a promotion gate | `alpha.rsi.promotion`, `alpha.evolution.engine` |
+| a held-out suite | `alpha.rsi.holdout` |
+| an evidence/verdict bar | `alpha.evolution.evidence` |
+| an atomic writer | `alpha.persistence.storekit.atomic` |
+| an experience store | `alpha.learning.experience` |
+| capability-gap detection | `alpha.rsi.opportunity` |
+| budgets / cooldowns | `alpha.rsi.budgets`, `alpha.reasoning.budget` |
+| a capability router | `alpha.capabilities.eligibility` |
+| a benchmark runner | `alpha.benchmarks.runner` |
+
+What was genuinely missing was **composition**: ways to sample stored experience,
+compare a candidate against a held-out suite, hold a learned entity's identity,
+page a pool, and audit the decisions. If you are about to add one of the rows
+above, you are duplicating a subsystem, not filling a gap.
+
+## The three invariants
+
+Every module here obeys these. They are the reason the package is trustworthy.
+
+1. **Unmeasured is not zero, and unmeasured is not a pass.**
+   `ExpertMetrics.success_rate` is `None` before any observation.
+   `EvaluationRun` with no executed cases is `score=0.5,
+   evidence_kind="unverified"`. `Comparison.cost_delta` is `None`, never `0.0`,
+   because cost is not tracked on `CaseResult` — a zero would read as "this
+   change is free".
+
+2. **A skipped stage is not a passed stage.**
+   `SanitizerReport` distinguishes `PASSED` from `SKIPPED`. Deduplication with
+   no digest index reports `SKIPPED` with a reason, so "we screened for
+   duplicates" is never claimed for a check that did not run.
+
+3. **Every refusal names a reason and the clause that refused.**
+   `PruneDecision.reasons` reports all six clauses including the passing ones.
+   `RouteDecision.excluded` carries a per-expert reason.
+   `EvaluationOutcome.gates` names which gate declined. A boolean without a
+   reason is not an acceptable return value here.
+
+## Load-bearing details
+
+**Lifecycle edges are enumerated, not implied.** `ExpertRecord.transition`
+refuses any edge not in `_LEGAL_TRANSITIONS`, naming both states and the legal
+targets. A dynamic expert is born into `TRIAL`, never `ACTIVE` — the gate *is*
+the transition. `mark_trial_ready()` walks `PROPOSED → INITIALIZING → TRIAL`;
+do not add a direct `PROPOSED → TRIAL` edge or the `INITIALIZING` node becomes
+decorative.
+
+**One secret denylist.** `sanitizer.py` calls
+`alpha.learning.experience.store.find_secret_shape` directly. Do **not** add a
+second pattern list. Note the JSON-quoting gap the shared assignment patterns
+have (`password=hunter2` matches, `"password": "hunter2"` does not) — the
+metadata walk reconstructs the key/value pair to close it at the call site.
+
+**Exploration is structurally zero in production.** `exploration_bonus()` returns
+`0.0` for every candidate when `exploring=False`. Keep it a separate additive
+term rather than folding it into the utility score, so a reader can tell
+curiosity from competence.
+
+**A pinned expert is never evicted.** `PagingManager.hold()` owns the pin
+window. When every resident slot is pinned, admission is *refused with a reason*
+rather than evicting a running expert or deadlocking.
+
+**The journal is written even in `OBSERVE_ONLY`.** Observing is an event; a
+system that only journals its writes cannot be audited for the decisions it
+*declined*. `_tail()` reads only the last line so append stays O(1) in journal
+length; a corrupt final line starts a fresh segment (link → `GENESIS_HASH`) so
+the break stays *visible* to `verify_chain()` instead of being healed invisibly.
+
+**`run_with_rollback` raises.** On budget exhaustion it raises
+`RetryBudgetExhausted`. Returning `False` would leave a caller unable to
+distinguish "rolled back cleanly" from "gave up after twenty attempts".
+
+**`mode` and `enabled` must agree.** `IntelligenceConfig` refuses
+`mode > OBSERVE_ONLY` with `enabled: false` at load, because the write paths
+correctly refuse and a config whose halves disagree is the class of bug this
+repo's honesty rules exist to prevent.
+
+## Boundaries
+
+- **Read-only API.** `app/gateway/routers/intelligence.py` exposes **no**
+  mutation route. The brief's `POST intelligence/evaluate|promote|rollback` are
+  library calls behind the mode gate; wiring them to HTTP needs an authz + CSRF
+  decision that was not made.
+- **No background loop.** This package registers none. The supervisor still
+  declares the same 9 loops; a default-off layer must not add background work.
+- **Process-local.** The journal and reservoir hold an `RLock`, not a
+  cross-process lease. Same declared limitation as the swarm/workflow sinks.
+  Multi-worker deployments need these on the shared SQL event store.
+- **No real VRAM accounting.** Experts are prompt/policy records, not GPU
+  weights, so `max_resident` models "actively materialised". Wiring this to a
+  real accelerator is local to `paging.py`.
+- **No Sentinel integration yet.** Journal events are readable at
+  `GET /api/intelligence/journal`; no `Signal` kind is emitted. Emitting signals
+  from a default-off layer would create noise.
+
+## Tests
+
+```bash
+cd backend
+uv run pytest tests/test_intelligence_layer.py -q      # 168 tests
+```
+
+The class names map to the audit's "genuinely absent" list, so a failure names
+the gap it covers: `TestConfigContract`, `TestExpertFabric`,
+`TestPruningSafety`, `TestRouterAndScoring`, `TestPaging`,
+`TestReplayReservoir`, `TestSanitizer`, `TestRegressionAndGate`,
+`TestPlasticity`, `TestDifficulty`, `TestContinueDecision`,
+`TestJournalAndSnapshots`, `TestSelfKnowledge`, `TestExperienceTelemetry`.
+
+`test_capability_projections_read_live_state` is not decorative: the
+self-knowledge projections were originally written against three import paths
+that do not exist in this repository, and the honest-failure wrapper turned them
+into permanently-unavailable blocks. It pins the real accessors.
