@@ -56,9 +56,7 @@ async def test_every_typed_a2a_kind_is_accepted_by_the_post_route() -> None:
     """
     await groups.create_room(groups.RoomCreateRequest(name="kinds", members=["architect", "coder"]))
     for kind in ("decision", "handoff", "escalation", "blocker", "task_completion", "question", "answer"):
-        posted = await groups.post_room_message(
-            "kinds", groups.RoomMessageRequest(sender="operator", content=f"a {kind}", intent=kind)
-        )
+        posted = await groups.post_room_message("kinds", groups.RoomMessageRequest(sender="operator", content=f"a {kind}", intent=kind))
         assert posted["message"]["intent"] == kind
 
 
@@ -66,9 +64,7 @@ async def test_an_intent_outside_the_vocabulary_is_still_refused() -> None:
     """Widening the vocabulary must not make it accept anything."""
     await groups.create_room(groups.RoomCreateRequest(name="bad-kind", members=["architect"]))
     with pytest.raises(HTTPException) as excinfo:
-        await groups.post_room_message(
-            "bad-kind", groups.RoomMessageRequest(sender="operator", content="x", intent="nonsense")
-        )
+        await groups.post_room_message("bad-kind", groups.RoomMessageRequest(sender="operator", content="x", intent="nonsense"))
     assert excinfo.value.status_code == 422
 
 
@@ -265,9 +261,7 @@ async def test_forward_with_a_bad_target_intent_is_422() -> None:
 async def test_forward_of_an_unknown_message_is_404() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="fr-404", members=["architect"]))
     with pytest.raises(HTTPException) as excinfo:
-        await groups.forward_room_message(
-            "fr-404", "msg_missing", groups.ForwardRequest(sender="operator", target_room="fr-404-dst")
-        )
+        await groups.forward_room_message("fr-404", "msg_missing", groups.ForwardRequest(sender="operator", target_room="fr-404-dst"))
     assert excinfo.value.status_code == 404
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
+from alpha.groups.scope import MAX_HOP
 from app.gateway.app import create_app
 from app.gateway.routers import groups
 
@@ -99,9 +100,7 @@ async def test_many_subgroups_can_be_added_to_one_group() -> None:
 
 async def test_a_subgroup_can_start_empty() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="community", members=["architect"]))
-    child = await groups.create_subgroup(
-        "community", groups.SubgroupRequest(name="scout", inherit=False, members=["secops"])
-    )
+    child = await groups.create_subgroup("community", groups.SubgroupRequest(name="scout", inherit=False, members=["secops"]))
     assert child["members"] == ["secops"]
 
 
@@ -248,7 +247,13 @@ async def test_a_borrowed_member_records_its_source_and_expiry() -> None:
         groups.MemberRequest(bot_name="secops", from_room="platform", expires_at="2026-12-31T00:00:00+00:00"),
     )
     roster = await groups.get_roster("squad")
-    assert roster["effective"] == ["secops"]
+    # `secops` is borrowed in and `architect` is inherited, so both buckets are
+    # populated and both travel with the response.
+    assert roster["direct"] == ["secops"]
+    assert roster["inherited"] == ["architect"]
+    assert set(roster["effective"]) == {"architect", "secops"}
+    assert roster["direct_count"] == 1
+    assert roster["effective_count"] == 2
 
 
 async def test_removing_an_inherited_member_is_409_naming_the_reason() -> None:
@@ -292,9 +297,7 @@ async def test_adding_an_invalid_member_name_is_422() -> None:
 
 async def test_a_rule_reports_what_it_matches_on_creation() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="community", members=["architect"]))
-    rule = await groups.add_rule(
-        "community", groups.RuleRequest(field="role", op="eq", value="QA", label="all testers")
-    )
+    rule = await groups.add_rule("community", groups.RuleRequest(field="role", op="eq", value="QA", label="all testers"))
     assert rule["field"] == "role"
     assert "matches" in rule and "matched_names" in rule
 
@@ -383,8 +386,21 @@ async def test_policy_rejects_an_unknown_relay_direction() -> None:
 
 async def test_policy_rejects_an_out_of_range_hop_limit() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="community", members=["architect"]))
-    with pytest.raises(HTTPException):
-        await groups.set_policy("community", groups.RoomPolicyRequest(max_hop=99))
+    # Pydantic rejects `le=MAX_HOP` before the handler runs, so an out-of-range
+    # hop never reaches the service. Both bounds are pinned: the field ceiling
+    # and the value the service accepts.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        groups.RoomPolicyRequest(max_hop=MAX_HOP + 1)
+    assert groups.RoomPolicyRequest(max_hop=MAX_HOP).max_hop == MAX_HOP
+
+    # The service guard is reachable directly, bypassing the pydantic ceiling.
+    from alpha.groups.scope import ScopeError
+
+    svc = groups._service()
+    with pytest.raises(ScopeError, match="max_hop"):
+        svc.set_room_policy("community", max_hop=MAX_HOP + 1)
 
 
 async def test_move_reparents_a_group() -> None:

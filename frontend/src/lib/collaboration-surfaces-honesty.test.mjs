@@ -750,8 +750,16 @@ test("the presence dot no longer matches a status by substring", () => {
   const code = codeOnly(read("../components/sections/MessagesSection.tsx"));
   assert.doesNotMatch(code, /\/active\|working\|online\|idle\/i/,
     "the chained regex made `inactive` green (it contains 'active') and `idle` green too");
-  assert.match(code, /\["idle", "off", "offline", "unknown", "absent", "inactive", "stale"\]/,
-    "idle and inactive must be neutral, not the working colour");
+  // The dot is now selected from the server's resolved presence state rather
+  // than pattern-matched out of a raw status word, so there is no word list to
+  // keep in sync here. `unknown` is neutral and `offline` is destructive.
+  assert.match(code, /state === "online"/);
+  assert.match(code, /state === "busy"/);
+  assert.match(code, /state === "idle"/);
+  assert.match(code, /state === "offline"/);
+  assert.match(code, /state === "unknown"/);
+  // A state the server never reported renders as a neutral dot, not as green.
+  assert.match(code, /return "bg-muted-foreground\/40"/);
 });
 
 test("the details toggle is not inert below the lg breakpoint", () => {

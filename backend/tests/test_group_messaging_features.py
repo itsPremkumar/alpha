@@ -30,7 +30,6 @@ from alpha.groups.presence import (
 from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS, GroupMessage, GroupRoom
 from alpha.groups.service import GroupChatService
 
-
 # ---------------------------------------------------------------------------
 # Message model: backward compatibility
 # ---------------------------------------------------------------------------
@@ -421,9 +420,7 @@ def test_presence_survives_an_unreadable_registry() -> None:
 
 
 def test_member_presence_serializes_its_provenance() -> None:
-    payload = MemberPresence(
-        name="coder", state="busy", source="company_attendance", activity_at=None, detail="working now"
-    ).to_dict()
+    payload = MemberPresence(name="coder", state="busy", source="company_attendance", activity_at=None, detail="working now").to_dict()
     assert payload["state"] == "busy"
     assert payload["source"] == "company_attendance"
     assert payload["activity_at"] is None

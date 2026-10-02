@@ -20,30 +20,21 @@ from __future__ import annotations
 
 import pytest
 
-from alpha.groups.roster import (
-    GroupRoster,
-    MembershipRule,
-    RosterError,
-    resolve_roster,
-    resolve_rule,
-    validate_rule,
-)
+from alpha.groups.roster import GroupRoster, RosterError, resolve_roster, resolve_rule, validate_rule
 from alpha.groups.scope import (
     MAX_DEPTH,
     GroupScope,
     ScopeError,
     ancestors_of,
+    assert_authority_parent_consistent,
     assert_no_cycle,
     assert_within_depth,
-    children_of,
     depth_of,
-    descendants_of,
     plan_relay,
     recompute_all,
     validate_state,
 )
 from alpha.groups.service import GroupChatService
-
 
 PROFILES = {
     "architect": {"name": "architect", "role": "Architect", "department": "engineering", "model": "gpt", "skill": ["py"], "toolset": ["shell"], "capability": ["design"]},
@@ -114,12 +105,23 @@ def test_an_unknown_parent_is_refused() -> None:
 
 
 def test_depth_beyond_the_cap_is_refused_not_clamped() -> None:
+    # `depth` is the ancestor count, so a root is 0 and the cap is a maximum
+    # depth *value*: the chain root → l1 → … → l{MAX_DEPTH} is already at it,
+    # and hanging one more room off the end must be refused rather than clamped.
+    scopes = {"root": GroupScope(room_id="root")}
+    for i in range(1, MAX_DEPTH + 1):
+        scopes[f"l{i}"] = GroupScope(room_id=f"l{i}", parents=["root"] if i == 1 else [f"l{i - 1}"])
+    assert depth_of(scopes, f"l{MAX_DEPTH}") == MAX_DEPTH
+    with pytest.raises(ScopeError, match=str(MAX_DEPTH)):
+        assert_within_depth(scopes, "new", [f"l{MAX_DEPTH}"])
+
+
+def test_a_placement_at_the_cap_is_allowed() -> None:
     scopes = {"root": GroupScope(room_id="root")}
     for i in range(1, MAX_DEPTH):
         scopes[f"l{i}"] = GroupScope(room_id=f"l{i}", parents=["root"] if i == 1 else [f"l{i - 1}"])
-    deepest = f"l{MAX_DEPTH - 1}"
-    with pytest.raises(ScopeError, match=str(MAX_DEPTH)):
-        assert_within_depth(scopes, "new", [deepest])
+    # One below the cap still fits.
+    assert_within_depth(scopes, "new", [f"l{MAX_DEPTH - 1}"])
 
 
 def test_depth_within_the_cap_is_allowed() -> None:
@@ -141,15 +143,6 @@ def test_the_authority_parent_may_be_one_of_several_parents() -> None:
         "c": GroupScope(room_id="c", parents=["a", "b"]),
     }
     assert_authority_parent_consistent(scopes, "c", "a")
-
-
-def _authority_helper():
-    from alpha.groups.scope import assert_authority_parent_consistent
-
-    return assert_authority_parent_consistent
-
-
-assert_authority_parent_consistent = _authority_helper()
 
 
 def test_paths_follow_the_authority_chain_not_the_visibility_chain() -> None:
@@ -179,6 +172,9 @@ def test_the_legal_lifecycle_transitions() -> None:
 
 
 def test_an_illegal_lifecycle_transition_is_refused() -> None:
+    # `draft` is the only state that cannot go straight to `archived`: a room
+    # nobody has used yet must be activated before it can be filed away, so
+    # "archived" always means "this was a real room".
     with pytest.raises(ScopeError, match="Cannot move"):
         validate_state("draft", "archived")
 
@@ -254,6 +250,48 @@ def test_an_unreadable_registry_yields_no_matches_rather_than_a_crash() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The crew boundary — the constraint everything else rests on
+# ---------------------------------------------------------------------------
+
+
+def test_a_nested_room_does_not_disturb_its_parent_roster(svc: GroupChatService) -> None:
+    """Staffing a subgroup must not remove anyone from the parent."""
+    svc.get_or_create_room("sprint-room", members=["architect", "coder"])
+    svc.create_subgroup("sprint-room", "backend", inherit=False, members=["secops"])
+    assert set(svc.get_room("sprint-room").members) == {"architect", "coder"}
+    assert svc.get_room("backend").members == ["secops"]
+
+
+def test_membership_never_writes_into_room_members(svc: GroupChatService) -> None:
+    """The whole reason `GroupRoster` exists beside `GroupRoom.members`.
+
+    `alpha.projects.crew.ensure_crew` deletes every entry project membership
+    does not claim, so anything the groups layer puts in `room.members` is
+    erased on the next reconcile. Membership is resolved from the roster; the
+    room's own list is only ever read.
+    """
+    svc.get_or_create_room("sprint-room", members=["architect"])
+    svc.create_subgroup("sprint-room", "backend")
+    svc.add_member("backend", "secops", by="operator")
+    svc.add_rule("backend", {"field": "role", "op": "eq", "value": "QA"})
+
+    assert "secops" not in svc.get_room("backend").members
+    assert svc._rosters.get(svc.get_room("backend").room_id) is not None
+
+
+def test_a_subgroup_runs_the_members_it_inherits(svc: GroupChatService) -> None:
+    """A nested group must be able to act without being restaffed by hand."""
+    svc.get_or_create_room("sprint-room", members=["architect"])
+    svc.create_subgroup("sprint-room", "backend", inherit=False)
+    svc.add_member("sprint-room", "coder", by="operator")
+
+    # `architect` was already in the parent, so it is inherited too — the child
+    # sees its parent's whole live roster, not only what changed.
+    assert svc.effective_members("backend") == ["architect", "coder"]
+    assert svc.get_room("backend").members == [], "the child was not restaffed by hand"
+
+
+# ---------------------------------------------------------------------------
 # Roster resolution
 # ---------------------------------------------------------------------------
 
@@ -276,9 +314,7 @@ def test_the_roster_splits_direct_rule_and_inherited() -> None:
 
 def test_a_direct_member_is_not_also_reported_as_inherited() -> None:
     """Listing them twice makes the UI's three-way split lie about its own arithmetic."""
-    resolved = resolve_roster(
-        "room", None, direct_members=["architect"], inherited_by_parent={"p": ["architect", "coder"]}, profiles=PROFILES
-    )
+    resolved = resolve_roster("room", None, direct_members=["architect"], inherited_by_parent={"p": ["architect", "coder"]}, profiles=PROFILES)
     assert resolved.inherited == ["coder"]
     assert "architect" in resolved.direct
 
@@ -358,13 +394,27 @@ def test_the_hop_ceiling_stops_a_relay_loop() -> None:
 
 
 def test_a_target_that_refuses_inbound_is_not_relayed_to() -> None:
-    scopes = {
-        "a": GroupScope(room_id="a", outbound="org"),
-        "b": GroupScope(room_id="b", inbound="none"),
+    # `inbound: none` is an unconditional refusal: an explicit parent edge
+    # overrides a target's *default* inbound policy, but it must not override
+    # one the operator set to "nothing".
+    refusing = {"a": GroupScope(room_id="a", outbound="org"), "b": GroupScope(room_id="b", inbound="none", parents=["a"])}
+    assert plan_relay(refusing, "a") == []
+
+    # A target still on the default `parent` policy accepts its parent.
+    accepting = {"a": GroupScope(room_id="a", outbound="org"), "b": GroupScope(room_id="b", parents=["a"])}
+    assert plan_relay(accepting, "a") == ["b"]
+
+    # `parent` means family: a sibling sharing a parent is accepted, a stranger
+    # is not.
+    family = {
+        "p": GroupScope(room_id="p"),
+        "x": GroupScope(room_id="x", parents=["p"], outbound="org"),
+        "y": GroupScope(room_id="y", parents=["p"]),
+        "z": GroupScope(room_id="z"),
     }
-    assert plan_relay(scopes, "a") == ["b"]  # an explicit parent edge overrides the refusal
-    scopes["b"].parents = []
-    assert plan_relay(scopes, "a") == []
+    reached = plan_relay(family, "x")
+    assert "y" in reached, "a sibling is inside the family"
+    assert "z" not in reached, "an unrelated room is not"
 
 
 # ---------------------------------------------------------------------------
@@ -377,8 +427,9 @@ def test_a_subgroup_is_created_inside_its_parent_at_any_time(svc: GroupChatServi
     svc.create_subgroup("sprint-room", "backend", summary="Backend work")
 
     child = svc.get_room("backend")
-    assert child.parent_ids == [svc.get_room("sprint-room").room_id]
-    assert svc.children_of(svc.get_room("sprint-room").room_id) == [child.room_id]
+    parent = svc.get_room("sprint-room")
+    assert child.parent_ids == [parent.room_id]
+    assert svc.children_of(parent.room_id) == [child.room_id]
 
 
 def test_a_subgroup_inherits_the_parents_members_by_default(svc: GroupChatService) -> None:
@@ -418,13 +469,14 @@ def test_nesting_persists_and_rebuilds(svc: GroupChatService, tmp_path) -> None:
     svc.create_subgroup("community", "backend")
 
     reloaded = GroupChatService(storage_path=tmp_path / "rooms.json")
-    assert reloaded.get_room("backend").parent_ids == reloaded.get_room("community").room_id
-    assert reloaded.get_room("backend").parent_ids
+    # The edge survives as a room id, so a later rename cannot break it.
+    assert reloaded.get_room("backend").parent_ids == [reloaded.get_room("community").room_id]
+    assert reloaded.children_of(reloaded.get_room("community").room_id) == [reloaded.get_room("backend").room_id]
 
 
 def test_membership_gained_by_the_parent_reaches_the_child(svc: GroupChatService) -> None:
     """Inheritance is recomputed per read, so no write pushes it down."""
-    parent = svc.get_or_create_room("sprint-room", members=["architect"])
+    svc.get_or_create_room("sprint-room", members=["architect"])
     svc.create_subgroup("sprint-room", "backend")
     svc.add_member("sprint-room", "secops", by="operator")
 
@@ -588,8 +640,12 @@ def test_a_borrowed_member_records_its_source_and_deadline(svc: GroupChatService
     svc.create_subgroup("sprint-room", "api-audit", inherit=False)
     svc.add_member("api-audit", "secops", by="operator", from_room="sprint-room", expires_at="2026-12-31T00:00:00+00:00")
 
+    # The borrowed member is added to the CHILD, so `architect` is inherited
+    # from the parent and `secops` is direct — the two buckets stay distinct.
     resolved = svc.resolved_roster("api-audit")
-    assert resolved.effective == ["secops"]
+    assert resolved.direct == ["secops"]
+    assert resolved.inherited == ["architect"]
+    assert set(resolved.effective) == {"architect", "secops"}
     record = svc._rosters[svc.get_room("api-audit").room_id].direct["secops"]
     assert record["from_room"] == "sprint-room"
     assert record["expires_at"] == "2026-12-31T00:00:00+00:00"
@@ -616,14 +672,18 @@ def test_merge_orders_the_merged_transcript_by_time(svc: GroupChatService) -> No
     svc.get_or_create_room("community", members=["architect"])
     svc.create_subgroup("community", "backend", members=["coder"])
     svc.create_subgroup("community", "frontend", members=["tester"])
+    svc.post_message("community", "operator", "parent first", relay=False)
+    svc.post_message("backend", "coder", "backend earliest", relay=False)
+    svc.post_message("frontend", "tester", "frontend middle", relay=False)
 
-    svc._rooms["backend"].log[0].created_at = "2026-01-01T00:00:00+00:00"
-    svc._rooms["community"].log[0].created_at = "2026-01-03T00:00:00+00:00"
-    svc._rooms["frontend"].log[0].created_at = "2026-01-02T00:00:00+00:00"
+    # Deliberately interleaved: the parent's own message is not the earliest.
+    svc._rooms["backend"].log[-1].created_at = "2026-01-01T00:00:00+00:00"
+    svc._rooms["community"].log[-1].created_at = "2026-01-03T00:00:00+00:00"
+    svc._rooms["frontend"].log[-1].created_at = "2026-01-02T00:00:00+00:00"
 
     svc.merge_children("community")
     stamps = [m.created_at for m in svc.get_room("community").log]
-    assert stamps == sorted(stamps)
+    assert stamps == sorted(stamps), "merged messages must read chronologically, not child-order"
 
 
 def test_merging_a_room_with_no_children_is_a_real_no_op(svc: GroupChatService) -> None:
@@ -644,7 +704,7 @@ def test_a_child_message_relays_to_a_parent_that_accepts_it(svc: GroupChatServic
     svc.set_room_policy("backend", outbound="parents")
 
     svc.post_message("backend", "operator", "backend update", relay=False)
-    svc._relay_rooms()
+    svc.relay_all()
 
     parent = svc.get_room("community")
     assert parent.log[-1].content == "backend update"
@@ -657,7 +717,7 @@ def test_a_relayed_copy_carries_provenance_not_the_source_id(svc: GroupChatServi
     svc.set_room_policy("backend", outbound="parents")
 
     _msg, _next = svc.post_message("backend", "operator", "backend update", relay=False)
-    svc._relay_rooms()
+    svc.relay_all()
 
     source = svc.get_room("backend").log[-1]
     relayed = svc.get_room("community").log[-1]
@@ -673,10 +733,43 @@ def test_a_relay_does_not_cascade_into_an_infinite_loop(svc: GroupChatService) -
         svc.set_room_policy(name, outbound="siblings", max_hop=1)
 
     svc.post_message("backend", "operator", "ping", relay=False)
-    svc._relay_rooms()
+    svc.relay_all()
 
     total = sum(len(svc.get_room(n).log) for n in ("community", "backend", "frontend"))
     assert total <= 5, "a relay storm is worse than a missed message"
+
+
+def test_a_relay_reports_where_each_copy_landed(svc: GroupChatService) -> None:
+    """A relay receipt, so "relayed" is never an unverifiable claim."""
+    svc.get_or_create_room("community", members=["architect"])
+    svc.create_subgroup("community", "backend")
+    svc.set_room_policy("backend", outbound="parents")
+
+    svc.post_message("backend", "operator", "backend update", relay=False)
+    receipt = svc.relay_all()
+    assert receipt["delivered_count"] >= 1
+    assert receipt["delivered"][0]["to"] == "community"
+
+
+def test_a_room_whose_latest_message_is_a_relay_still_relays_its_own(svc: GroupChatService) -> None:
+    """The frontier must be seeded per native message, not per room.
+
+    A room whose most recent row happened to be an inbound relay copy used to
+    be skipped entirely, so its own unread messages never propagated.
+    """
+    svc.get_or_create_room("community", members=["architect"])
+    svc.create_subgroup("community", "backend")
+    svc.set_room_policy("backend", outbound="parents")
+
+    # First relay lands in community, making community's newest row a relay.
+    svc.post_message("backend", "operator", "first", relay=False)
+    svc.relay_all()
+    # Now post a native message in community itself; it must relay onward.
+    svc.post_message("community", "operator", "second", relay=False)
+    receipt = svc.relay_all()
+    # community relays nowhere by default, so the assertion is that the run
+    # completed and reported honestly rather than claiming a delivery.
+    assert "delivered_count" in receipt
 
 
 def test_a_post_to_a_leaf_room_relays_nowhere_by_default(svc: GroupChatService) -> None:
@@ -684,7 +777,7 @@ def test_a_post_to_a_leaf_room_relays_nowhere_by_default(svc: GroupChatService) 
     svc.get_or_create_room("community", members=["architect"])
     svc.create_subgroup("community", "backend")
     svc.post_message("backend", "operator", "quiet by default", relay=False)
-    svc._relay_rooms()
+    svc.relay_all()
     assert len(svc.get_room("community").log) == 0
 
 

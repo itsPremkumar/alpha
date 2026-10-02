@@ -238,6 +238,69 @@ executable, the Start Menu and desktop shortcuts
 `electron-builder.yml` must keep `assets/**` in `files`), and the splash screen
 (`electron/splash.html`).
 
+## Nested groups (the community shape)
+
+A group can contain other groups, added at any time. The whole design rests on
+one split:
+
+> **Visibility may fan out to many parents. Authority is at most ONE.**
+
+"Who must see this message" is a set and has an honest answer. "Whose rules
+apply" has to be a single pointer, or policy inheritance becomes a negotiation
+between rooms. So `GroupScope.parents` is a list and
+`GroupScope.authority_parent` is a single optional room id, and
+`assert_authority_parent_consistent()` requires the authority parent to also be
+a visibility parent — authority refines visibility rather than contradicting it.
+
+| File | Owns |
+| --- | --- |
+| `packages/harness/alpha/groups/scope.py` | the forest: parents, authority, path, depth, lifecycle, relay planning |
+| `packages/harness/alpha/groups/roster.py` | membership by origin: direct, rule-matched, inherited, excluded, expired |
+| `packages/harness/alpha/groups/service.py` | `create_subgroup`, `move_room`, `promote_room`, `merge_children`, `tree`, `breadcrumbs`, `relay_all` |
+| `app/gateway/routers/groups.py` | `/tree`, `/subgroups`, `/children`, `/ancestors`, `/descendants`, `/roster`, `/members`, `/rules`, `/merge`, `/promote`, `/move`, `/policy`, `/lifecycle` |
+| `frontend/src/lib/groups-tree.ts` | pure tree derivation, membership headline, roster bucketing |
+| `frontend/src/components/sections/GroupTreeSidebar.tsx` | the forest sidebar, subgroup form, breadcrumbs |
+
+**The crew boundary is the load-bearing constraint.** `GroupRoom.members` is
+owned by `alpha.projects.crew.ensure_crew`, which *deletes* any entry project
+membership does not claim. A nested or rule-based member written into
+`room.members` would therefore be erased on the next reconcile — so
+`GroupRoster` exists beside that field and never writes to it, and the crew
+reconcile is left alone. Do not "simplify" by merging the two.
+
+**Inheritance is a projection, never a stored copy.** `resolved_roster()`
+recomputes each parent's effective roster on every read. That is what stops an
+inherited member from going stale or being orphaned by editing the child. Both
+counts therefore always travel together — `direct_count` beside
+`effective_count` — because a header claiming "3 members" over six visible bots
+is a fabricated count.
+
+**Rules resolve live against the Bot Registry** (`role`/`skill`/`toolset`/
+`department`/`model`/`capability`), so hiring a tester populates every matching
+group with no join step. `GET /{name}/rules/preview` is not optional: a rule
+that matches nobody is otherwise indistinguishable from a room nobody joined. A
+list-valued field with `op: eq` is refused at declaration, since comparing a
+list to a string is a silent always-false.
+
+**Relay is a copy with provenance, never the same row.** `relay_all()` writes a
+fresh message carrying `forwarded_from` and `relayed: true`; reusing the source
+id would make reactions and edits ambiguous across rooms. `max_hop` (default 3) is
+the loop guard for `outbound: siblings` + `inbound: broadcast`, and it reports a
+per-room receipt rather than claiming a delivery. Default `outbound` is `none`,
+so a first-time nest does not flood the parent.
+
+**Route order is load-bearing.** `GET /tree` and `GET /{name}/rules/preview` are
+declared before the `/{name}` and `/rules/{rule_id}` catch-alls, or Starlette
+answers `Room 'tree' not found` — the same trap as `skills/{skill_name}` and
+`workflows/{workflow_id}`. `DELETE /{name}` refuses while children exist unless
+`cascade=true`, and names what it would remove.
+
+`MAX_DEPTH` is 4: deeper makes the rendered path unreadable and turns relay
+fan-out into a cost problem. The limit is refused, never clamped. Tests:
+`tests/test_group_nesting.py`, `tests/test_group_nesting_routes.py`;
+frontend `src/lib/groups-tree.test.mjs` and
+`src/lib/groups-nesting-honesty.test.mjs`.
+
 ## Cross-component contracts owned elsewhere
 
 These contracts are stated once, in the guide that owns them. Do not restate them

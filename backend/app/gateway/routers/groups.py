@@ -19,19 +19,11 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.deps import require_admin_user
-
 from alpha.groups.presence import resolve_room_presence
-from alpha.groups.roster import RosterError, VALID_RULE_FIELDS, VALID_RULE_OPS
 from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS
-from alpha.groups.scope import (
-    MAX_DEPTH,
-    MAX_HOP,
-    ROOM_STATES,
-    ScopeError,
-    VALID_INBOUND,
-    VALID_OUTBOUND,
-)
+from alpha.groups.roster import VALID_RULE_FIELDS, VALID_RULE_OPS, RosterError
+from alpha.groups.scope import MAX_DEPTH, MAX_HOP, ScopeError, children_of, descendants_of
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/groups", tags=["groups"])
@@ -265,9 +257,7 @@ async def create_subgroup(name: str, body: SubgroupRequest) -> dict:
     key = _validate_room_name(name)
 
     def _create():
-        return _service().create_subgroup(
-            key, child_name, topic=body.topic, members=members, summary=body.summary, inherit=body.inherit
-        )
+        return _service().create_subgroup(key, child_name, topic=body.topic, members=members, summary=body.summary, inherit=body.inherit)
 
     try:
         room = await asyncio.to_thread(_create)
@@ -287,13 +277,9 @@ async def list_children(name: str) -> dict:
         room = svc.get_room(key)
         if room is None:
             return None
-        from alpha.groups.scope import children_of
 
         ids = children_of(svc._scopes, room.room_id)
-        return [
-            _room_to_response(next((r for r in svc._rooms.values() if r.room_id == i), room))
-            for i in ids
-        ]
+        return [_room_to_response(next((r for r in svc._rooms.values() if r.room_id == i), room)) for i in ids]
 
     children = await asyncio.to_thread(_read)
     if children is None:
@@ -329,9 +315,7 @@ async def list_descendants(name: str) -> dict:
         from alpha.groups.scope import descendants_of
 
         ids = descendants_of(svc._scopes, room.room_id)
-        return [
-            _room_to_response(next((r for r in svc._rooms.values() if r.room_id == i), room)) for i in ids
-        ]
+        return [_room_to_response(next((r for r in svc._rooms.values() if r.room_id == i), room)) for i in ids]
 
     nodes = await asyncio.to_thread(_read)
     if nodes is None:
@@ -473,9 +457,7 @@ async def add_member(name: str, body: MemberRequest) -> dict:
         raise HTTPException(status_code=422, detail=f"Invalid member name '{body.bot_name}'.")
 
     def _add():
-        return _service().add_member(
-            key, member, by=OPERATOR_ID, from_room=body.from_room, expires_at=body.expires_at
-        )
+        return _service().add_member(key, member, by=OPERATOR_ID, from_room=body.from_room, expires_at=body.expires_at)
 
     try:
         roster = await asyncio.to_thread(_add)
@@ -553,6 +535,33 @@ async def add_rule(name: str, body: RuleRequest) -> dict:
     return rule
 
 
+# Declared BEFORE `/rules/{rule_id}`. Starlette matches in registration order,
+# so a literal segment after a parameterised sibling is unreachable — this is
+# the same ordering rule `skills/{skill_name}` and `workflows/{workflow_id}`
+# already carry in this repo. Different verbs make it harmless at runtime today,
+# but the route order is what a future GET on `{rule_id}` would break.
+@router.get("/{name}/rules/preview", summary="Who each rule matches right now")
+async def preview_roster_rules(name: str) -> dict:
+    """Every rule with its current match list.
+
+    Exists because a mistyped rule that matches nobody looks exactly like a
+    room nobody joined, and the operator cannot tell them apart otherwise.
+    """
+    key = _validate_room_name(name)
+
+    def _preview():
+        svc = _service()
+        if svc.get_room(key) is None:
+            raise KeyError(key)
+        return svc.preview_rules(key)
+
+    try:
+        rules = await asyncio.to_thread(_preview)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "rules": rules, "valid_fields": list(VALID_RULE_FIELDS), "valid_ops": list(VALID_RULE_OPS)}
+
+
 @router.delete("/{name}/rules/{rule_id}", summary="Remove a membership rule")
 async def remove_rule(name: str, rule_id: str) -> dict:
     key = _validate_room_name(name)
@@ -567,23 +576,6 @@ async def remove_rule(name: str, rule_id: str) -> dict:
     except RosterError as exc:
         raise _scope_error(exc, 404) from exc
     return roster.to_dict()
-
-
-@router.get("/{name}/rules/preview", summary="Who each rule matches right now")
-async def preview_roster_rules(name: str) -> dict:
-    key = _validate_room_name(name)
-
-    def _preview():
-        svc = _service()
-        if svc.get_room(key) is None:
-            raise KeyError(key)
-        return svc.preview_rules(key)
-
-    try:
-        rules = await asyncio.to_thread(_preview)
-    except KeyError as exc:
-        raise _scope_error(exc, 404) from exc
-    return {"room": key, "rules": rules, "valid_fields": list(VALID_RULE_FIELDS), "valid_ops": list(VALID_RULE_OPS)}
 
 
 class ProjectRoomRequest(BaseModel):
@@ -795,7 +787,10 @@ async def list_room_members(name: str) -> dict:
         room = svc.get_room(key)
         if room is None:
             return None
-        return list(room.members)
+        # **Effective** membership, not `room.members`: a nested room shows the
+        # bots it inherits and the bots its rules match, otherwise its roster
+        # would report only the members somebody typed into it.
+        return svc.effective_members(key)
 
     members = await asyncio.to_thread(_read)
     if members is None:
@@ -806,16 +801,16 @@ async def list_room_members(name: str) -> dict:
     for entry in presence:
         counts[entry.state] = counts.get(entry.state, 0) + 1
 
-    # Both membership counts travel together. A client that renders only
-    # `direct_count` would say "3 members" about a room with six visible bots.
+    # Both membership counts travel together, as top-level fields. A client that
+    # renders only `direct_count` would say "3 members" about a room with six
+    # visible bots. They are deliberately NOT mixed into `by_state`, which is a
+    # breakdown by presence state and must keep summing to `count`.
     direct_count = None
     effective = members
     try:
         roster = await asyncio.to_thread(_service().resolved_roster, key)
         direct_count = roster.direct_count
         effective = roster.effective
-        counts["_direct_count"] = roster.direct_count
-        counts["_effective_count"] = len(effective)
     except KeyError:
         pass
 
@@ -943,18 +938,28 @@ async def delete_room(name: str, request: Request, cascade: bool = False) -> Non
             from alpha.groups.scope import children_of
 
             kids = children_of(svc._scopes, room.room_id)
-            subtree = descendants_of(svc._scopes, room.room_id) if kids else []
+            # The whole subtree, not just direct children: `cascade=true` is
+            # named as removing "the branch", and stopping at depth one would
+            # leave orphaned grandchildren behind while reporting success.
+            subtree = descendants_of(svc._scopes, room.room_id)
             # Refuse rather than silently orphaning a subtree. `cascade=true` is
             # an explicit opt-in, and the response names what was removed.
             if kids and not cascade:
                 return False, [next((r.name for r in svc._rooms.values() if r.room_id == k), k) for k in kids], len(subtree)
-            removed = svc._rooms.pop(key.lower(), None)
-            if removed is None:
-                return False, [], 0
             targets = [room.room_id, *subtree] if cascade else [room.room_id]
+            # Every room in the branch goes, not just the scope records: leaving
+            # the descendant rooms behind would make the next `GET /tree` show
+            # them as orphans with a parent that no longer exists.
+            removed_names: list[str] = []
             for rid in targets:
+                for name, candidate in list(svc._rooms.items()):
+                    if candidate.room_id == rid:
+                        removed_names.append(name)
+                        del svc._rooms[name]
                 svc._scopes.pop(rid, None)
                 svc._rosters.pop(rid, None)
+            if not removed_names:
+                return False, [], 0
             svc._recompute_scope()
             svc._save()
             return True, [], len(subtree)
@@ -963,11 +968,7 @@ async def delete_room(name: str, request: Request, cascade: bool = False) -> Non
     if children:
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"Room '{key}' still contains {len(children)} group(s) ({', '.join(children)}). "
-                f"Merge them with POST /api/groups/{key}/merge, promote them, or repeat with ?cascade=true to delete "
-                f"{subtree_size + 1} rooms."
-            ),
+            detail=(f"Room '{key}' still contains {len(children)} group(s) ({', '.join(children)}). Merge them with POST /api/groups/{key}/merge, promote them, or repeat with ?cascade=true to delete {subtree_size + 1} rooms."),
         )
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Room '{key}' not found")

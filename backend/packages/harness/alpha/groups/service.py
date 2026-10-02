@@ -16,18 +16,18 @@ from alpha.groups.quorum import QuorumEngine
 from alpha.groups.room import GroupMessage, GroupRoom, OrchestrationMode, _now
 from alpha.groups.roster import (
     GroupRoster,
-    MembershipRule,
     ResolvedRoster,
     RosterError,
     resolve_roster,
+    resolve_rule,
     validate_rule,
 )
 from alpha.groups.scope import (
-    MAX_DEPTH,
-    GroupScope,
-    ScopeError,
+    MAX_HOP,
     VALID_INBOUND,
     VALID_OUTBOUND,
+    GroupScope,
+    ScopeError,
     ancestors_of,
     assert_authority_parent_consistent,
     assert_no_cycle,
@@ -69,7 +69,14 @@ class GroupChatService:
         self._rosters: dict[str, GroupRoster] = {}
         self.orchestrator = GroupOrchestrator()
         self.quorum = QuorumEngine()
-        self._lock = threading.Lock()
+        # Reentrant on purpose. The nesting methods compose each other — a
+        # mutation holds the lock and then calls a reader that takes it again
+        # (`_require_room` -> `get_room`, `resolved_roster` -> its parent) — and a
+        # plain `Lock` deadlocks on that first nested acquisition. Composing
+        # these operations is the whole point of the layer, so the lock is
+        # reentrant rather than each caller re-implementing a private unlocked
+        # path.
+        self._lock = threading.RLock()
         self._load()
 
     def _load(self) -> None:
@@ -184,6 +191,12 @@ class GroupChatService:
                 project_id=project_id,
             )
             self._rooms[key] = room
+            # Backfill the scope record for the new root. Structural readers
+            # (`move_room`, `tree`, `descendants_of`) resolve parents against
+            # `_scopes`, so a room created without one is invisible to them —
+            # and `assert_no_cycle` then refuses a legitimate move with
+            # "parent does not exist".
+            self._recompute_scope()
             self._save()
             return room
 
@@ -229,6 +242,26 @@ class GroupChatService:
         with self._lock:
             return list(self._rooms.values())
 
+    # ── Forest readers ──────────────────────────────────────────────────────
+    #
+    # Thin wrappers over the `scope` module so callers holding a room name never
+    # have to know whether they need a room id or the raw scope map.
+
+    def children_of(self, room_id: str) -> list[str]:
+        """Direct child room ids of `room_id`."""
+        with self._lock:
+            return children_of(self._scopes, room_id)
+
+    def descendants_of(self, room_id: str) -> list[str]:
+        """Every room id beneath `room_id`, breadth-first."""
+        with self._lock:
+            return descendants_of(self._scopes, room_id)
+
+    def ancestors_of(self, room_id: str) -> list[str]:
+        """Every room id above `room_id`, nearest first."""
+        with self._lock:
+            return ancestors_of(self._scopes, room_id)
+
     def post_message(
         self,
         room_name: str,
@@ -264,8 +297,7 @@ class GroupChatService:
         # that survives a restart but whose origin did not would show a message
         # in a room that never received it.
         if relay:
-            with self._lock:
-                self._relay_rooms()
+            self.relay_all()
         self._save()
 
         next_speakers = self.orchestrator.resolve_next_speakers(room, msg)
@@ -418,12 +450,12 @@ class GroupChatService:
             if key in self._rooms:
                 raise ScopeError(f"A group named '{name}' already exists.")
             clean_members: list[str] = []
-            for m in (list(parent.members) if inherit else list(members or [])):
+            for m in list(parent.members) if inherit else list(members or []):
                 clean = m.lower().strip()
                 if clean and clean not in clean_members:
                     get_bot_registry().get_or_create(clean)
                     clean_members.append(clean)
-            for m in (members or []):
+            for m in members or []:
                 clean = m.lower().strip()
                 if clean and clean not in clean_members:
                     get_bot_registry().get_or_create(clean)
@@ -540,7 +572,6 @@ class GroupChatService:
         the operator who created it.
         """
         with self._lock:
-            names = self._name_index()
             nodes: list[dict[str, Any]] = []
             for room in self._rooms.values():
                 scope = self._scope_for(room.room_id)
@@ -563,7 +594,7 @@ class GroupChatService:
                         "effective_count": resolved.effective_count,
                     }
                 )
-            nodes.sort(key=lambda n: (n["scope"]["depth"], n["path"]))
+            nodes.sort(key=lambda n: (n["scope"]["depth"], n["scope"]["path"]))
             return {"nodes": nodes, "count": len(nodes)}
 
     def breadcrumbs(self, name: str) -> list[dict[str, Any]]:
@@ -616,13 +647,9 @@ class GroupChatService:
             resolved = self.resolved_roster(room_name)
             clean = member.strip().lower()
             if clean in resolved.rule_matched and clean not in resolved.direct:
-                raise RosterError(
-                    f"'{clean}' is in this group by rule, not by hand. Remove the rule, or exclude the member instead."
-                )
+                raise RosterError(f"'{clean}' is in this group by rule, not by hand. Remove the rule, or exclude the member instead.")
             if clean in resolved.inherited:
-                raise RosterError(
-                    f"'{clean}' is inherited from a parent group. Exclude the member in this group instead."
-                )
+                raise RosterError(f"'{clean}' is inherited from a parent group. Exclude the member in this group instead.")
             self._roster_for(room.room_id).remove(clean)
             if clean in room.members:
                 room.members.remove(clean)
@@ -641,7 +668,12 @@ class GroupChatService:
             return self.resolved_roster(room_name)
 
     def add_rule(self, room_name: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Declare a membership rule and report what it matches right now."""
+        """Declare a membership rule and report what it matches right now.
+
+        The match list travels with the response because a rule that matches
+        nobody looks exactly like a room nobody joined, and the operator cannot
+        tell the two apart otherwise.
+        """
         with self._lock:
             room = self._require_room(room_name)
             roster = self._roster_for(room.room_id)
@@ -650,8 +682,14 @@ class GroupChatService:
                 rule.id = f"rule_{uuid4().hex[:8]}"
             roster.rules = [r for r in roster.rules if r.id != rule.id]
             roster.rules.append(rule)
+            matched = resolve_rule(rule)
             self._save()
-            return {**rule.to_dict(), "room": room.name}
+            return {
+                **rule.to_dict(),
+                "room": room.name,
+                "matches": len(matched),
+                "matched_names": matched,
+            }
 
     def remove_rule(self, room_name: str, rule_id: str) -> ResolvedRoster:
         with self._lock:
@@ -702,8 +740,25 @@ class GroupChatService:
 
         This is what a group run fans out to and what a presence count reports.
         The *direct* count is reported beside it, never in its place.
+
+        Returned in the room's own member order first, then rule-matched and
+        inherited names appended. `ResolvedRoster.effective` sorts, which is
+        right for a set comparison but wrong for a transcript: the ordering a
+        room was staffed in is information, and sorting it away makes the same
+        room read differently on every call.
         """
-        return self.resolved_roster(room_name).effective
+        resolved = self.resolved_roster(room_name)
+        room = self._require_room(room_name)
+        dead = set(resolved.excluded) | set(resolved.expired)
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for name in [*room.members, *resolved.direct, *resolved.rule_matched, *resolved.inherited]:
+            clean = (name or "").strip().lower()
+            if not clean or clean in seen or clean in dead:
+                continue
+            seen.add(clean)
+            ordered.append(clean)
+        return ordered
 
     # ── Relay ──────────────────────────────────────────────────────────────
 
@@ -729,26 +784,60 @@ class GroupChatService:
                 forwarded_from={"room": origin.name, "sender": origin.log[-1].sender, "message_id": origin.log[-1].id},
             )
 
-    def _relay_rooms(self, scope_map: dict[str, Any] | None = None) -> None:
-        """Propagate relayed copies through the forest, bounded by hop count.
+    def relay_all(self) -> dict[str, Any]:
+        """Deliver every unread native message to the rooms its policy names.
 
-        `max_hop` is what stops `outbound: siblings` + `inbound: broadcast`
-        from ping-ponging forever. A relay that exceeds it is dropped, not
-        silently retried.
+        A room is a frontier entry once **per message**, not once per room, so
+        relaying is bounded by the actual work: a room with three unread
+        messages contributes three hops, not one. Previously the frontier was
+        seeded from "the last message is not a relay", which silently skipped a
+        room whenever a relay copy happened to be its most recent row.
+
+        `max_hop` stops `outbound: siblings` + `inbound: broadcast` from
+        ping-ponging forever. The receipt reports how many copies landed and
+        where, because "relayed" as an unverifiable claim is exactly what this
+        layer exists to avoid.
         """
-        frontier: list[tuple[str, int]] = []
-        for room in self._rooms.values():
-            if room.log and room.log[-1].metadata.get("relayed"):
-                continue
-            frontier.append((room.room_id, 0))
-        guard = 0
-        while frontier and guard < 64:
-            guard += 1
-            room_id, hop = frontier.pop(0)
-            before = len(next((r for r in self._rooms.values() if r.room_id == room_id), GroupRoom("x", "x")).log)
-            self._relay_once(room_id, hop)
-            for target_id in plan_relay(self._scopes, room_id, hop=hop):
-                frontier.append((target_id, hop + 1))
+        with self._lock:
+            delivered: list[dict[str, str]] = []
+            # (room_id, hop) for each NATIVE message not yet relayed.
+            frontier: list[tuple[str, int]] = []
+            for room in self._rooms.values():
+                for msg in room.log:
+                    if msg.metadata.get("relayed"):
+                        continue
+                    frontier.append((room.room_id, 0))
+
+            seen: set[tuple[str, str, int]] = set()
+            guard = 0
+            while frontier and guard < 256:
+                guard += 1
+                room_id, hop = frontier.pop(0)
+                room = next((r for r in self._rooms.values() if r.room_id == room_id), None)
+                if room is None or not room.log:
+                    continue
+                msg = room.log[-1]
+                key = (room_id, msg.id, hop)
+                if key in seen:
+                    continue
+                seen.add(key)
+                for target_id in plan_relay(self._scopes, room_id, hop=hop):
+                    target = next((r for r in self._rooms.values() if r.room_id == target_id), None)
+                    if target is None:
+                        continue
+                    before = len(target.log)
+                    self._relay_once(room_id, hop)
+                    if len(target.log) > before:
+                        delivered.append({"to": target.name, "hop": str(hop + 1), "message_id": msg.id})
+                    frontier.append((target_id, hop + 1))
+                # A room whose policy relays nowhere still consumes its frontier
+                # entry so the loop cannot spin on it.
+                if not plan_relay(self._scopes, room_id, hop=hop):
+                    continue
+
+            if delivered:
+                self._save()
+            return {"delivered_count": len(delivered), "delivered": delivered}
 
     def merge_children(self, name: str) -> dict[str, Any]:
         """Fold every direct child into this room.

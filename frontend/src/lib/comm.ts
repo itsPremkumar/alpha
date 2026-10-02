@@ -358,7 +358,8 @@ function toScope(raw: Record<string, unknown>): RoomScope {
     inbound: String(pick(raw, ["inbound"], "parent")) as RoomScope["inbound"],
     outbound: String(pick(raw, ["outbound"], "none")) as RoomScope["outbound"],
     max_hop: Number(pick(raw, ["max_hop"], 3)) || 3,
-    mark_relayed: pick(raw, ["mark_relayed"], true) === true,
+    // An absent flag is not a disabled one; only a literal `false` turns it off.
+    mark_relayed: pick<boolean | undefined>(raw, ["mark_relayed"], undefined) !== false,
   };
 }
 
@@ -393,7 +394,7 @@ export async function roomRoster(name: string): Promise<RoomRoster> {
         field: String(pick(r, ["field"], "role")) as MembershipRule["field"],
         op: String(pick(r, ["op"], "eq")) as MembershipRule["op"],
         value: String(pick(r, ["value"], "")),
-        enabled: pick(r, ["enabled"], true) !== false,
+        enabled: pick<boolean | undefined>(r, ["enabled"], undefined) !== false,
         label: String(pick(r, ["label"], "")),
       }),
     ),
@@ -494,7 +495,7 @@ export async function addRoomRule(
     field: String(pick(d, ["field"], "role")) as MembershipRule["field"],
     op: String(pick(d, ["op"], "eq")) as MembershipRule["op"],
     value: String(pick(d, ["value"], "")),
-    enabled: pick(d, ["enabled"], true) !== false,
+    enabled: pick<boolean | undefined>(d, ["enabled"], undefined) !== false,
     label: String(pick(d, ["label"], "")),
     matches: Number(pick(d, ["matches"], 0)) || 0,
     matched_names: asNumberList(d.matched_names),
@@ -515,7 +516,7 @@ export async function previewRoomRules(name: string): Promise<{ rules: RulePrevi
         field: String(pick(r, ["field"], "role")) as MembershipRule["field"],
         op: String(pick(r, ["op"], "eq")) as MembershipRule["op"],
         value: String(pick(r, ["value"], "")),
-        enabled: pick(r, ["enabled"], true) !== false,
+        enabled: pick<boolean | undefined>(r, ["enabled"], undefined) !== false,
         label: String(pick(r, ["label"], "")),
         matches: Number(pick(r, ["matches"], 0)) || 0,
         matched_names: asNumberList(r.matched_names),

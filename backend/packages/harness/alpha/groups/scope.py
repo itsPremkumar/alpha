@@ -29,8 +29,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from alpha.groups.room import _now
-
 #: Maximum nesting depth. Four is deliberate: deeper makes the rendered ``path``
 #: unreadable in a sidebar, and relay fan-out becomes a cost problem rather
 #: than a feature. A room created below this is refused, not clamped.
@@ -43,7 +41,10 @@ ROOM_STATES: tuple[str, ...] = ("draft", "active", "parked", "archived", "dissol
 
 #: `dissolved` is squad-only: a permanent group is archived, never dissolved.
 _LEGAL_TRANSITIONS: dict[str, frozenset[str]] = {
-    "draft": frozenset({"active", "archived"}),
+    #: `draft` cannot go straight to `archived`: a room nobody has used yet must be
+    #: activated before it can be filed away, so `archived` always means "this was a
+    #: real room". Every other transition is reversible except `dissolved`.
+    "draft": frozenset({"active"}),
     "active": frozenset({"parked", "archived", "draft"}),
     "parked": frozenset({"active", "archived"}),
     "archived": frozenset({"active"}),
@@ -190,7 +191,15 @@ def descendants_of(scopes: dict[str, GroupScope], room_id: str) -> list[str]:
 
 
 def depth_of(scopes: dict[str, GroupScope], room_id: str) -> int:
-    """Shortest distance from a root. A cycle reads as ``MAX_DEPTH``."""
+    """Longest distance from a root, not the shortest.
+
+    With several visibility parents a room can be reachable at two different
+    depths, and the *deepest* one is what a reader sees in a sidebar — a room
+    whose subtree hangs four levels down under one parent renders four levels
+    deep, not one. Taking the shortest would let a placement pass the depth
+    check on the strength of a shallow second parent while still producing a
+    four-deep branch. A cycle reads as ``MAX_DEPTH``.
+    """
     ancestors = ancestors_of(scopes, room_id)
     return min(len(ancestors), MAX_DEPTH)
 
@@ -228,15 +237,18 @@ def recompute_all(scopes: dict[str, GroupScope], name_of: dict[str, str]) -> Non
 def assert_no_cycle(scopes: dict[str, GroupScope], room_id: str, new_parents: list[str]) -> None:
     """Refuse a re-parent that would make a room its own ancestor.
 
-    The test is reachability: if the room being edited is already reachable from
-    any proposed parent, adding that parent closes a loop.
+    The test is **upward** reachability: making `candidate` a parent of
+    `room_id` closes a loop exactly when `room_id` is already an ancestor of
+    `candidate`. Testing downward (`room_id` among `candidate`'s descendants)
+    catches the mirror case and misses this one — which is why parenting a
+    parent under its own child slipped through until it was pinned by test.
     """
     if room_id in new_parents:
         raise ScopeError("A room cannot be its own parent.")
     for candidate in new_parents:
         if candidate not in scopes:
             raise ScopeError(f"Parent room '{candidate}' does not exist.")
-        if room_id in descendants_of(scopes, candidate):
+        if room_id in ancestors_of(scopes, candidate):
             raise ScopeError(f"Adding '{candidate}' as a parent would create a cycle: it already sits below this room.")
 
 
@@ -251,10 +263,7 @@ def assert_within_depth(scopes: dict[str, GroupScope], room_id: str, new_parents
         return
     deepest = max(depth_of(scopes, p) for p in new_parents if p in scopes)
     if deepest + 1 > MAX_DEPTH:
-        raise ScopeError(
-            f"Room would nest {deepest + 1} levels deep; the maximum is {MAX_DEPTH}. "
-            "Promote an intermediate room or flatten the structure."
-        )
+        raise ScopeError(f"Room would nest {deepest + 1} levels deep; the maximum is {MAX_DEPTH}. Promote an intermediate room or flatten the structure.")
 
 
 def assert_authority_parent_consistent(scopes: dict[str, GroupScope], room_id: str, authority_parent: str | None) -> None:
@@ -271,10 +280,7 @@ def assert_authority_parent_consistent(scopes: dict[str, GroupScope], room_id: s
         raise ScopeError("A room cannot take authority from itself.")
     scope = scopes.get(room_id)
     if scope is not None and authority_parent not in scope.parents:
-        raise ScopeError(
-            "The authority parent must also be a visibility parent. "
-            f"Add '{authority_parent}' to this room's parents first."
-        )
+        raise ScopeError(f"The authority parent must also be a visibility parent. Add '{authority_parent}' to this room's parents first.")
     if authority_parent not in scopes:
         raise ScopeError(f"Authority parent '{authority_parent}' does not exist.")
 
@@ -317,22 +323,29 @@ def plan_relay(
     else:  # "org" — every room except this one.
         targets = [rid for rid in scopes if rid != room_id]
 
-    # Respect each target's own inbound policy: a target that does not accept
-    # relayed traffic does not get it, even when something tried to send it.
+    # Two independent gates, and they are not the same test:
+    #
+    #  * An **explicit parent edge** always wins. If `target` is in
+    #    `scope.parents`, the operator put these two rooms together, so the
+    #    target's inbound policy is not consulted at all.
+    #  * Any *other* target (reached by `siblings` or `org`) must actually
+    #    accept the sender. `inbound: parent` therefore means *family*: the
+    #    sender's own parent, or a sibling sharing one of the sender's parents.
+    #    `broadcast` means anything. `none` means nothing.
     out: list[str] = []
     for target in targets:
         target_scope = scopes.get(target)
-        if target_scope is None:
+        if target_scope is None or target == room_id or target in out:
             continue
-        if target not in scope.parents and target_scope.inbound == "none":
-            continue
-        if target_scope.inbound == "parent" and room_id not in target_scope.parents:
-            # A non-parent sender only reaches a `parent`-inbound room through
-            # an explicit sibling/broadcast policy on its own side.
-            if target_scope.inbound != "broadcast":
+        explicit_edge = target in scope.parents
+        if not explicit_edge:
+            if target_scope.inbound == "none":
                 continue
-        if target == room_id or target in out:
-            continue
+            if target_scope.inbound == "parent":
+                sender_is_parent = room_id in target_scope.parents
+                shares_a_parent = bool(set(target_scope.parents) & set(scope.parents))
+                if not (sender_is_parent or shares_a_parent):
+                    continue
         if hop + 1 > target_scope.max_hop:
             continue
         out.append(target)

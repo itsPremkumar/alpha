@@ -257,10 +257,7 @@ def preview_rules(
     rule that silently matches nobody looks exactly like a room nobody joined.
     """
     table = profiles if profiles is not None else _profiles()
-    return [
-        {**rule.to_dict(), "matches": len(resolve_rule(rule, table)), "matched_names": resolve_rule(rule, table)}
-        for rule in rules
-    ]
+    return [{**rule.to_dict(), "matches": len(resolve_rule(rule, table)), "matched_names": resolve_rule(rule, table)} for rule in rules]
 
 
 @dataclass
@@ -294,6 +291,20 @@ class ResolvedRoster:
         live = set(self.direct) | set(self.rule_matched) | set(self.inherited)
         return sorted(live - dead)
 
+    @property
+    def effective_count(self) -> int:
+        """How many members can actually take part: the live set's size."""
+        return len(self.effective)
+
+    @property
+    def direct_count(self) -> int:
+        """How many members were added to this room by hand.
+
+        Reported **beside** ``effective_count``, never in place of it: a header
+        claiming three members over six visible bots is a fabricated count.
+        """
+        return len(self.direct)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "room_id": self.room_id,
@@ -316,6 +327,7 @@ def resolve_roster(
     direct_members: list[str],
     inherited_by_parent: dict[str, list[str]] | None = None,
     profiles: dict[str, dict[str, Any]] | None = None,
+    now: str | None = None,
 ) -> ResolvedRoster:
     """Compute one room's membership from every source.
 
@@ -334,7 +346,7 @@ def resolve_roster(
 
     rule_matched: set[str] = set()
     rule_sources: dict[str, list[str]] = {}
-    for rule in (roster.rules if roster else []):
+    for rule in roster.rules if roster else []:
         matched = resolve_rule(rule, table)
         rule_sources[rule.id] = matched
         rule_matched.update(matched)
@@ -350,7 +362,7 @@ def resolve_roster(
     inherited -= set(all_direct)
 
     excluded = sorted(roster.excluded) if roster else []
-    expired = roster.expired() if roster else []
+    expired = roster.expired(now) if roster else []
 
     return ResolvedRoster(
         room_id=room_id,

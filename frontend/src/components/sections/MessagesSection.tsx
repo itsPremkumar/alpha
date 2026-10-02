@@ -6,7 +6,13 @@ import {
   listDmThreads, ensureRosterAgent, unreadCount, markSeen, senderColor, kindTone,
   MESSAGE_KINDS, REACTION_EMOJI, OPERATOR, ChatMsg, DmThread, MemberPresence, PresenceState,
   listRoomMembers, editRoomMessage, deleteRoomMessage, reactToRoomMessage, forwardRoomMessage,
+  groupTree, roomRoster, roomBreadcrumbs, createSubgroup, listChildren, mergeGroups, setMemberExcluded,
+  type Breadcrumb, type RoomRoster, type TreeNode,
 } from "@/lib/comm";
+import {
+  breadcrumbText, membershipHeadline, rosterBuckets, acceptsSubgroups, buildTree, stateLabel, stateTone,
+} from "@/lib/groups-tree";
+import { GroupTreeSidebar, GroupBreadcrumbs, NewSubgroupForm } from "@/components/sections/GroupTreeSidebar";
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
 import { runCouncil, CouncilStrategy } from "@/lib/deliberation";
@@ -17,7 +23,7 @@ import { errMsg } from "@/lib/http";
 import {
   Search, Users, User, Plus, Send, ArrowLeft, Info, X, Check, CheckCheck,
   Play, Ban, Trash2, Scale, RefreshCw, Pause, Reply, Pencil, Forward,
-  Smile, Copy, CornerUpLeft,
+  Smile, Copy, CornerUpLeft, FolderPlus, Layers, CornerUpRight,
 } from "lucide-react";
 
 type Filter = "all" | "unread" | "groups" | "direct" | "decisions" | "blockers";
@@ -138,6 +144,18 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   /** "Post as group decision" is in flight, so a double-click cannot double-post. */
   const [postingVerdict, setPostingVerdict] = useState(false);
   const [council, setCouncil] = useState<{ topic: string; strategy: CouncilStrategy; busy: boolean; result: string | null }>({ topic: "", strategy: "debate", busy: false, result: null });
+  /* ── Nested groups ── */
+  /** The whole forest. A failed read leaves it empty and sets `treeError`. */
+  const [tree, setTree] = useState<TreeNode[]>([]);
+  const [treeError, setTreeError] = useState<string | null>(null);
+  /** Per-room roster, kept apart from the flat room list. */
+  const [rosters, setRosters] = useState<Record<string, RoomRoster>>({});
+  const [rosterErrors, setRosterErrors] = useState<Record<string, string>>({});
+  /** Breadcrumb chain for the open group. */
+  const [crumbs, setCrumbs] = useState<Breadcrumb[]>([]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** Parent for the open "add a group inside this one" form. */
+  const [subgroupFor, setSubgroupFor] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
 
@@ -147,10 +165,20 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     try {
       // Each list settles independently: one failed fetch flags only that
       // list as unavailable — never a silent empty array.
-      const [roomsRes, eventsRes] = await Promise.allSettled([
+      const [roomsRes, eventsRes, treeRes] = await Promise.allSettled([
         listRooms(),
         orgEvents(15),
+        groupTree(),
       ]);
+      if (treeRes.status === "fulfilled") {
+        setTree(treeRes.value);
+        setTreeError(null);
+      } else {
+        // The forest is what makes subgroups visible at all, so a failed read
+        // is surfaced rather than leaving the sidebar looking like every group
+        // is a leaf.
+        setTreeError(errMsg(treeRes.reason));
+      }
       if (roomsRes.status === "fulfilled") {
         setRooms(roomsRes.value);
         setRoomsError(null);
@@ -232,6 +260,9 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
 
   /** Re-read one room's roster. Success replaces the entry; failure records the reason. */
   const loadMembers = async (name: string) => {
+    // Presence and the split roster are two different reads and settle
+    // separately: a roster that names who is inherited can still fail while the
+    // presence dots succeed.
     try {
       const members = await listRoomMembers(name);
       setMembersByRoom((prev) => ({ ...prev, [name]: members }));
@@ -242,6 +273,54 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
       });
     } catch (e) {
       setMembersError((prev) => ({ ...prev, [name]: errMsg(e) }));
+    }
+    try {
+      const roster = await roomRoster(name);
+      setRosters((prev) => ({ ...prev, [name]: roster }));
+      setRosterErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    } catch (e) {
+      setRosterErrors((prev) => ({ ...prev, [name]: errMsg(e) }));
+    }
+    try {
+      const chain = await roomBreadcrumbs(name);
+      setCrumbs(chain);
+    } catch (e) {
+      setCrumbs([]);
+      setError(errMsg(e));
+    }
+  };
+
+  const onCreateSubgroup = async (parentName: string, body: { name: string; topic: string; summary: string; inherit: boolean }) => {
+    await createSubgroup(parentName, body);
+    setSubgroupFor(null);
+    await load(true);
+  };
+
+  const onMergeSubgroups = async (roomName: string) => {
+    // The server reports which children merged and which did not; a partial
+    // merge must not be painted as a clean one.
+    if (!window.confirm(`Merge every subgroup of "${roomName}" into it? Messages and members move; the subgroups are removed.`)) {
+      return;
+    }
+    setSubgroupFor(null);
+    try {
+      const result = await mergeGroups(roomName);
+      const merged = Number(result.merged_count ?? 0);
+      const total = Number(result.children_total ?? 0);
+      const failed = Array.isArray(result.failed) ? result.failed.length : 0;
+      if (merged === 0 && total === 0) {
+        setError(`"${roomName}" has no subgroups to merge.`);
+      } else if (merged < total || failed > 0) {
+        setError(`Merged ${merged} of ${total} subgroups into "${roomName}"${failed ? `, ${failed} failed` : ""}.`);
+      }
+      await load(true);
+      if (sel?.kind === "group" && sel.name === roomName) await openRoom(roomName);
+    } catch (e) {
+      setError(errMsg(e));
     }
   };
 
@@ -354,6 +433,10 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
         ]
     : [];
   const activeMembersError = sel?.kind === "group" ? membersError[sel.name] ?? null : null;
+  /** The split roster for the open group: direct / inherited / rule-matched. */
+  const activeRoster = sel?.kind === "group" ? rosters[sel.name] ?? null : null;
+  const activeRosterError = sel?.kind === "group" ? rosterErrors[sel.name] ?? null : null;
+  const activeBuckets = rosterBuckets(activeRoster, (id) => tree.find((n) => n.room_id === id)?.name ?? id);
 
   const totalUnread = convs.reduce((n, c) => n + Math.min(c.unread, 99), 0);
 
@@ -580,6 +663,47 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                 <Plus className="size-3.5" /> New group
               </Btn>
             </div>
+
+            {/* Nested groups: add a group inside any existing one, at any time. */}
+            <div className="flex gap-2">
+              <Btn variant="ghost" onClick={() => setSubgroupFor(sel?.kind === "group" ? sel.name : null)} disabled={!sel || sel.kind !== "group"} title={sel?.kind === "group" ? `Add a group inside ${sel.name}` : "Open a group first"}>
+                <FolderPlus className="size-3.5" /> Add group inside
+              </Btn>
+            </div>
+            {subgroupFor && (
+              <NewSubgroupForm
+                parentName={subgroupFor}
+                onCreate={(body) => onCreateSubgroup(subgroupFor, body)}
+                onCancel={() => setSubgroupFor(null)}
+              />
+            )}
+
+            {/* The forest. Every group, with the groups nested inside it. */}
+            {treeError ? (
+              <ErrorBox message={`Group structure unavailable — subgroups could not be read, not empty. (${treeError})`} onRetry={() => load()} />
+            ) : tree.length > 0 ? (
+              <GroupTreeSidebar
+                nodes={tree}
+                busyByRoom={Object.fromEntries(
+                  Object.entries(membersByRoom).map(([name, list]) => [
+                    name,
+                    list.filter((m) => m.state === "busy" || m.state === "online").length,
+                  ]),
+                )}
+                errorsByRoom={membersError}
+                activeRoom={sel?.kind === "group" ? sel.name : null}
+                collapsed={collapsed}
+                onToggle={(id) => setCollapsed((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })}
+                onOpen={(name) => openRoom(name)}
+                onNewSubgroup={(name) => setSubgroupFor(name)}
+                onMerge={onMergeSubgroups}
+              />
+            ) : null}
             {showNewGroup && (
               <div className="rounded-xl border border-border/60 p-2.5 space-y-2 bg-card">
                 <Field label="Group name">
@@ -707,10 +831,13 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
                   {sel.kind === "group" ? <Users className="size-4" /> : activeTitle.slice(0, 2).toUpperCase()}
                 </span>
                 <div className="flex-1 min-w-0">
+                  {sel.kind === "group" && crumbs.length > 0 && (
+                    <GroupBreadcrumbs chain={crumbs} current={sel.name} onOpen={(name) => openRoom(name)} />
+                  )}
                   <p className="text-sm font-semibold truncate">{activeTitle}</p>
                   <p className="text-[11px] text-muted-foreground truncate">
                     {sel.kind === "group"
-                      ? `${activeMembers.length} participants — ${busySummary(activePresence)}`
+                      ? `${membershipHeadline(activeRoster, activeRosterError)} — ${busySummary(activePresence)}`
                       : "direct thread — private between you two"}
                   </p>
                 </div>
@@ -1065,8 +1192,29 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
             members={activeMembers}
             presence={activePresence}
             presenceError={activeMembersError}
+            roster={activeRoster}
+            rosterError={activeRosterError}
+            buckets={activeBuckets}
+            headline={membershipHeadline(activeRoster, activeRosterError)}
+            canNest={acceptsSubgroups(
+              buildTree(tree, {}).find((e) => e.node.name === (sel?.kind === "group" ? sel.name : null)) ?? null,
+            )}
+            crumbs={crumbs}
+            onOpenRoom={(name) => openRoom(name)}
+            onAddSubgroup={(name) => setSubgroupFor(name)}
+            tree={tree}
+            onRefreshRoster={() => (sel?.kind === "group" ? loadMembers(sel.name) : Promise.resolve())}
+            onExclude={async (bot, excluded) => {
+              if (sel?.kind !== "group") return;
+              try {
+                await setMemberExcluded(sel.name, bot, excluded);
+                await loadMembers(sel.name);
+              } catch (e) {
+                setError(errMsg(e));
+              }
+            }}
+            onRefreshTree={() => load(true)}
             messages={activeMsgs}
-            roster={roster}
             events={events}
             eventsError={eventsError}
             botNames={props.botNames}
@@ -1111,6 +1259,80 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   );
 }
 
+/** One member row in the roster: dot, name, optional role, and its state. */
+function MemberRow(props: {
+  name: string;
+  displayName?: string | null;
+  role?: string | null;
+  state: PresenceState | null;
+  dotClass: string;
+  detail: string;
+  title: string;
+  muted?: boolean;
+}) {
+  const mine = props.name === OPERATOR;
+  return (
+    <div
+      className={`flex items-center gap-2 text-[11px] rounded-lg px-1.5 py-1 hover:bg-muted/40 ${props.muted ? "opacity-80" : ""}`}
+      title={props.title}
+    >
+      <span className={`size-2 rounded-full shrink-0 ${props.dotClass}`} aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="font-semibold truncate block" style={{ color: mine ? undefined : senderColor(props.name) }}>
+          {mine ? "You (operator)" : props.displayName || props.name}
+        </span>
+        {props.role && <span className="text-[10px] text-muted-foreground truncate block">{props.role}</span>}
+      </span>
+      <span className="text-[10px] text-muted-foreground shrink-0 text-right">{props.detail}</span>
+    </div>
+  );
+}
+
+/** The groups nested directly under one room, with their own honest counts. */
+function SubgroupList(props: {
+  roomName: string;
+  tree: TreeNode[];
+  onOpen: (name: string) => void;
+}) {
+  const room = props.tree.find((n) => n.name === props.roomName);
+  // `parents` is the authoritative edge, so a child names this room directly.
+  const children = props.tree.filter((n) => (n.scope?.parents ?? []).includes(room?.room_id ?? ""));
+  if (!room || children.length === 0) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        No groups inside this one yet. Add one above — it starts with this group&rsquo;s members and inherits future
+        additions automatically.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1">
+      {children.map((child) => (
+        <button
+          key={child.room_id}
+          type="button"
+          onClick={() => props.onOpen(child.name)}
+          className="w-full flex items-center gap-2 text-[11px] rounded-lg bg-muted/40 px-2 py-1.5 hover:bg-muted text-left"
+        >
+          <CornerUpRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="font-semibold truncate flex-1">{child.name}</span>
+          {child.scope?.state && child.scope.state !== "active" && (
+            <span className="text-[9px] text-muted-foreground">{stateLabel(child.scope.state)}</span>
+          )}
+          {/* Both counts together, or nothing. */}
+          {child.direct_count !== null && child.effective_count !== null && (
+            <span className="text-[9px] text-muted-foreground tabular-nums">
+              {child.direct_count === child.effective_count
+                ? `${child.effective_count}`
+                : `${child.direct_count}/${child.effective_count}`}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DetailsPane(props: {
   sel: { kind: "group"; name: string } | { kind: "dm"; peer: string };
   members: string[];
@@ -1118,8 +1340,23 @@ function DetailsPane(props: {
   presence: MemberPresence[];
   /** Why the roster could not be read, or null. Never conflated with empty. */
   presenceError: string | null;
+  /** The split roster (direct / inherited / rule-matched), or null. */
+  roster: RoomRoster | null;
+  rosterError: string | null;
+  buckets: ReturnType<typeof rosterBuckets>;
+  /** Both membership counts as one honest headline. */
+  headline: string;
+  /** Whether this group can take subgroups at all. */
+  canNest: boolean;
+  crumbs: Breadcrumb[];
+  onOpenRoom: (name: string) => void;
+  onAddSubgroup: (name: string) => void;
+  onRefreshRoster: () => Promise<void>;
+  onExclude: (bot: string, excluded: boolean) => Promise<void>;
+  onRefreshTree: () => void;
+  /** The whole forest, so this pane can list the groups nested under itself. */
+  tree: TreeNode[];
   messages: ChatMsg[];
-  roster: Array<{ name: string; role: string; status: string }>;
   events: Array<Record<string, unknown>>;
   eventsError: string | null;
   botNames: string[];
@@ -1246,12 +1483,22 @@ function DetailsPane(props: {
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         {/* This roster is the reason the view exists: every bot in the group,
-            with the state the server actually measured. */}
+            with the state the server actually measured. Direct / inherited /
+            rule-matched are kept visually distinct because each has a
+            different owner and lifetime — flattening them is how a nested
+            roster stops making sense. */}
         <section>
           <p className="text-[11px] font-bold mb-1.5 flex items-center gap-1.5">
             <Users className="size-3" aria-hidden="true" />
-            Members in this group ({props.members.length})
+            Members in this group
+            <span className="font-normal text-muted-foreground">· {props.headline}</span>
           </p>
+          {props.rosterError && (
+            <ErrorBox
+              message={`Membership could not be read — who is here is unknown, not empty. (${props.rosterError})`}
+              onRetry={() => void props.onRefreshRoster()}
+            />
+          )}
           {props.presenceError ? (
             <ErrorBox
               message={`Group roster unavailable — failed to load, not empty. (${props.presenceError})`}
@@ -1265,38 +1512,102 @@ function DetailsPane(props: {
             </p>
           ) : (
             <div className="space-y-1">
-              {props.presence.map((entry) => {
-                const mine = entry.name === OPERATOR;
+              {props.presence.map((entry) => (
+                <MemberRow
+                  key={entry.name}
+                  name={entry.name}
+                  displayName={entry.displayName}
+                  role={entry.role}
+                  state={entry.state}
+                  dotClass={dot(entry.state)}
+                  detail={stateLabel(entry)}
+                  title={
+                    entry.source === "unresolved"
+                      ? `${entry.name}: no registry or attendance record`
+                      : `${entry.name} — ${stateLabel(entry)} (reported by ${entry.source.replace(/\+/g, " + ")})`
+                  }
+                  muted={false}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Inherited members: present here, owned by a parent. Never rendered
+              in the direct list, because they were not added to this group. */}
+          {props.buckets.inherited.length > 0 && (
+            <div className="space-y-1 mt-2">
+              <p className="text-[10px] font-bold text-muted-foreground">INHERITED ({props.buckets.inherited.length})</p>
+              {props.buckets.inherited.map((b) => (
+                <MemberRow
+                  key={`inh-${b.name}`}
+                  name={b.name}
+                  state={props.presence.find((p) => p.name === b.name)?.state ?? null}
+                  dotClass={dot(props.presence.find((p) => p.name === b.name)?.state ?? null)}
+                  detail={`via ${b.via}`}
+                  title={`${b.name} is in this group because ${b.via} includes them — not added here.`}
+                  muted
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Rule-matched members: the output of a declared rule, resolved live.
+              The rule that granted them is named so a room can be read. */}
+          {props.buckets.ruleMatched.length > 0 && (
+            <div className="space-y-1 mt-2">
+              <p className="text-[10px] font-bold text-muted-foreground">RULE MATCHED ({props.buckets.ruleMatched.length})</p>
+              {props.buckets.ruleMatched.map((b) => {
+                const rule = props.roster?.rules?.find((r) => r.id === b.rule);
                 return (
-                  <div
-                    key={entry.name}
-                    className="flex items-center gap-2 text-[11px] rounded-lg px-1.5 py-1 hover:bg-muted/40"
+                  <MemberRow
+                    key={`rule-${b.name}`}
+                    name={b.name}
+                    state={props.presence.find((p) => p.name === b.name)?.state ?? null}
+                    dotClass={dot(props.presence.find((p) => p.name === b.name)?.state ?? null)}
+                    detail={rule ? (rule.label || `${rule.field} ${rule.op} ${rule.value}`) : "matched a rule"}
                     title={
-                      entry.source === "unresolved"
-                        ? `${entry.name}: no registry or attendance record`
-                        : `${entry.name} — ${stateLabel(entry)} (reported by ${entry.source.replace(/\+/g, " + ")})`
+                      rule
+                        ? `${b.name} matches ${rule.field} ${rule.op} "${rule.value}" — remove the rule to change this.`
+                        : `${b.name} is present by a membership rule.`
                     }
-                  >
-                    <span className={`size-2 rounded-full shrink-0 ${dot(entry.state)}`} aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className="font-semibold truncate block"
-                        style={{ color: mine ? undefined : senderColor(entry.name) }}
-                      >
-                        {mine ? "You (operator)" : entry.displayName || entry.name}
-                      </span>
-                      {(entry.role || entry.state) && (
-                        <span className="text-[10px] text-muted-foreground truncate block">
-                          {entry.role || "role not reported"}
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground shrink-0 text-right">
-                      {stateLabel(entry)}
-                    </span>
-                  </div>
+                    muted
+                  />
                 );
               })}
+            </div>
+          )}
+
+          {/* Excluded members are named rather than silently absent: "in this
+              group but pulled out here" is a real state an operator made. */}
+          {props.buckets.excluded.length > 0 && (
+            <div className="space-y-1 mt-2">
+              <p className="text-[10px] font-bold text-muted-foreground">EXCLUDED ({props.buckets.excluded.length})</p>
+              {props.buckets.excluded.map((name) => (
+                <div key={`exc-${name}`} className="flex items-center gap-2 text-[11px] px-1.5 py-1 opacity-70">
+                  <span className="size-2 rounded-full shrink-0 bg-muted-foreground/30" aria-hidden="true" />
+                  <span className="flex-1 truncate font-semibold" style={{ color: senderColor(name) }}>
+                    {name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void props.onExclude(name, false)}
+                    className="text-[10px] text-primary hover:underline shrink-0"
+                  >
+                    Include again
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {props.buckets.expired.length > 0 && (
+            <div className="space-y-1 mt-2">
+              <p className="text-[10px] font-bold text-muted-foreground">EXPIRED ({props.buckets.expired.length})</p>
+              {props.buckets.expired.map((name) => (
+                <p key={`exp-${name}`} className="text-[10px] text-muted-foreground px-1.5 py-1">
+                  {name} — borrowed here and past its expiry, so no longer participating.
+                </p>
+              ))}
             </div>
           )}
           {/* A room can list a member the roster cannot resolve. Naming that
@@ -1342,6 +1653,23 @@ function DetailsPane(props: {
 
         {isGroup && (
           <>
+            {/* Groups nested inside this one — the WhatsApp-community shape. */}
+            <section className="rounded-xl border border-border/60 p-2.5 space-y-2">
+              <p className="text-[11px] font-bold flex items-center gap-1.5">
+                <Layers className="size-3.5 text-primary" aria-hidden="true" /> Groups inside this one
+              </p>
+              {props.canNest && (
+                <Btn variant="ghost" onClick={() => props.onAddSubgroup(props.sel.kind === "group" ? props.sel.name : "")}>
+                  <FolderPlus className="size-3.5" aria-hidden="true" /> Add a group inside
+                </Btn>
+              )}
+              <SubgroupList
+                roomName={props.sel.kind === "group" ? props.sel.name : ""}
+                tree={props.tree}
+                onOpen={props.onOpenRoom}
+              />
+            </section>
+
             <section className="rounded-xl border border-border/60 p-2.5 space-y-2">
               <p className="text-[11px] font-bold">Supervise the team</p>
               <div className="flex gap-2">
