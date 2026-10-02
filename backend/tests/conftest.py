@@ -7,6 +7,7 @@ issues when unit-testing lightweight config/registry code in isolation.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,6 +40,40 @@ _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
 sys.modules["alpha.subagents.executor"] = _executor_mock
+
+
+def ensure_config_path_for_tests() -> str | None:
+    """Fall back to the shipped template when no ``config.yaml`` resolves.
+
+    The suite must run in a fresh checkout with no operator config: the file
+    is gitignored and no CI workflow provisions one. Since the single-file
+    model config made module-scope registry bindings call ``get_app_config()``,
+    a configless run failed at *collection*, before a single test executed.
+
+    Precedence mirrors ``AppConfig.resolve_config_path`` exactly: an explicit
+    ``ALPHA_CONFIG_PATH`` is an operator assertion and is left untouched (a
+    missing file there must keep raising), an existing ``config.yaml`` still
+    wins so a developer's own config keeps driving their local runs, and only
+    the "nothing found" case points at ``config.example.yaml`` — so tests
+    exercise the shipped template instead of an empty registry. A checkout
+    missing that template keeps the original ``FileNotFoundError``; nothing is
+    ever silently replaced with defaults.
+    """
+    if os.environ.get("ALPHA_CONFIG_PATH"):
+        return None  # explicit assertion — never overridden
+    from alpha.config.app_config import AppConfig
+
+    try:
+        AppConfig.resolve_config_path()
+    except FileNotFoundError:
+        example = Path(__file__).resolve().parents[2] / "config.example.yaml"
+        if example.is_file():
+            os.environ["ALPHA_CONFIG_PATH"] = str(example)
+            return str(example)
+    return None
+
+
+ensure_config_path_for_tests()
 
 
 @pytest.fixture()
