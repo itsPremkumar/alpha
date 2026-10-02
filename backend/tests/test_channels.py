@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from alpha.skills.types import Skill, SkillCategory
 from app.channels.base import Channel
 from app.channels.message_bus import (
     PENDING_CLARIFICATION_METADATA_KEY,
@@ -24,7 +25,6 @@ from app.channels.message_bus import (
     ResolvedAttachment,
 )
 from app.channels.store import ChannelStore
-from alpha.skills.types import Skill, SkillCategory
 
 
 def test_known_channel_command_detection_only_matches_control_commands():
@@ -927,8 +927,8 @@ class TestChannelManager:
         _run(go())
 
     def test_ingest_inbound_files_uses_explicit_owner_bucket(self, tmp_path, monkeypatch):
-        from app.channels.manager import INBOUND_FILE_READERS, _ingest_inbound_files
         from alpha.config.paths import Paths
+        from app.channels.manager import INBOUND_FILE_READERS, _ingest_inbound_files
 
         paths = Paths(tmp_path)
         monkeypatch.setattr("alpha.uploads.manager.get_paths", lambda: paths)
@@ -3247,9 +3247,9 @@ class TestChannelManager:
         ``setdefault`` merge preserve a stale agent even though the command
         reports that the new agent was selected.
         """
+        from alpha.agents.lead_agent.agent import _get_runtime_config
         from app.channels.manager import ChannelManager
         from app.gateway.services import build_run_config, merge_run_context_overrides
-        from alpha.agents.lead_agent.agent import _get_runtime_config
 
         monkeypatch.setattr(
             "app.channels.manager.load_agent_config",
@@ -3362,9 +3362,9 @@ class TestChannelManager:
     @pytest.mark.parametrize("config_carrier", ["context", "configurable"])
     def test_agent_use_lead_agent_clears_every_gateway_config_carrier(self, config_carrier):
         """Resetting to lead_agent must remove every inherited custom-agent pin."""
+        from alpha.agents.lead_agent.agent import _get_runtime_config
         from app.channels.manager import ChannelManager
         from app.gateway.services import build_run_config, merge_run_context_overrides
-        from alpha.agents.lead_agent.agent import _get_runtime_config
 
         async def go():
             manager = ChannelManager(
@@ -3910,19 +3910,32 @@ class TestResolveRunParamsUserId:
         assert run_context["channel_user_id"] == "U-platform"
 
     def test_github_channel_gets_raised_recursion_limit(self):
-        """Autonomous GitHub coding runs (clone → edit → test → push → PR) need
-        more super-steps than an interactive chat turn. The default
-        ``recursion_limit`` of 100 is raised for the github channel only."""
+        """The github channel policy is a 250 *floor*, not the default budget.
+
+        Out of the box every channel run gets the shared session default
+        (1000, matching the Gateway's interactive budget and the scheduler),
+        because an interactive IM turn needs the same super-step budget the
+        Web UI does. The floor only binds when an operator lowers the session
+        below it: github is then raised to 250 while interactive channels keep
+        the operator's explicit value.
+        """
         manager = self._manager()
 
         gh_msg = InboundMessage(channel_name="github", chat_id="zhfeng/llm-gateway", user_id="zhfeng", text="hi")
         _, gh_config, _ = manager._resolve_run_params(gh_msg, "thread-1")
-        assert gh_config["recursion_limit"] >= 250
+        assert gh_config["recursion_limit"] == 1000
 
-        # Interactive channels keep the default ceiling.
         slack_msg = InboundMessage(channel_name="slack", chat_id="C1", user_id="u", text="hi")
         _, slack_config, _ = manager._resolve_run_params(slack_msg, "thread-1")
-        assert slack_config["recursion_limit"] == 100
+        assert slack_config["recursion_limit"] == 1000
+
+        # Operator lowers the session budget below the github floor: the floor
+        # binds for github only; slack keeps the operator's explicit value.
+        manager._default_session["config"] = {"recursion_limit": 100}
+        _, gh_low, _ = manager._resolve_run_params(gh_msg, "thread-1")
+        assert gh_low["recursion_limit"] == 250
+        _, slack_low, _ = manager._resolve_run_params(slack_msg, "thread-1")
+        assert slack_low["recursion_limit"] == 100
 
     def test_github_channel_recursion_limit_respects_higher_override(self):
         """An explicit higher recursion_limit in channel/user config must not be
@@ -4018,7 +4031,24 @@ class TestResolveRunParamsUserId:
                 metadata={"github": {"recursion_limit": bad}},
             )
             _, gh_config, _ = manager._resolve_run_params(gh_msg, "thread-1")
-            assert gh_config["recursion_limit"] == 250, f"bad value {bad!r} should fall back to 250"
+            assert gh_config["recursion_limit"] == 1000, f"bad value {bad!r} should fall back to the session default"
+
+    def test_github_channel_policy_tolerates_invalid_session_recursion_limit(self):
+        """A malformed session ``recursion_limit`` must not crash dispatch.
+
+        ``channels.session.config.recursion_limit: null`` (or a quoted number)
+        reaches ``_resolve_run_params`` as ``None``/``str``; the github floor
+        step previously did ``max(<invalid>, 250)``, which raises ``TypeError``
+        inside the channel dispatcher. Invalid values must degrade to the
+        session default the same way the Gateway clamps them.
+        """
+        manager = self._manager()
+
+        for bad in (None, "many", 3.5, True):
+            manager._default_session["config"] = {"recursion_limit": bad}
+            gh_msg = InboundMessage(channel_name="github", chat_id="zhfeng/llm-gateway", user_id="zhfeng", text="hi")
+            _, gh_config, _ = manager._resolve_run_params(gh_msg, "thread-1")
+            assert gh_config["recursion_limit"] == 1000, f"bad session value {bad!r} must degrade to the default"
 
     def test_auth_disabled_user_id_is_used_for_unbound_channel_messages(self, monkeypatch):
         from app.gateway.auth_disabled import AUTH_DISABLED_USER_ID
@@ -4787,8 +4817,8 @@ class TestGithubFollowupBuffer:
         from langgraph_sdk.errors import ConflictError
 
         import app.gateway.github.run_policy  # noqa: F401 — register policy
-        from app.channels.manager import FOLLOWUP_BLOCK_TAG, ChannelManager
         from alpha.runtime import MemoryStreamBridge
+        from app.channels.manager import FOLLOWUP_BLOCK_TAG, ChannelManager
 
         async def go():
             bus = MessageBus()
@@ -4861,8 +4891,8 @@ class TestGithubFollowupBuffer:
         left running as an orphaned task -- otherwise a run that ends AFTER
         shutdown would still fire a brand new runs.create() into a manager
         that has already been stopped."""
-        from app.channels.manager import ChannelManager
         from alpha.runtime import MemoryStreamBridge
+        from app.channels.manager import ChannelManager
 
         async def go():
             bus = MessageBus()
@@ -5503,9 +5533,9 @@ class TestChannelManagerBoundIdentityPolicy:
 
 class TestChannelManagerConnectionRouting:
     def test_connection_scoped_conversations_do_not_share_threads(self, tmp_path, monkeypatch):
+        from alpha.persistence.engine import close_engine
         from app.channels.manager import ChannelManager
         from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME
-        from alpha.persistence.engine import close_engine
 
         monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
@@ -5719,8 +5749,8 @@ class TestFormatArtifactText:
 
 class TestHandleChatWithArtifacts:
     def test_bound_owner_artifacts_resolve_from_owner_outputs_bucket(self, tmp_path, monkeypatch):
-        from app.channels.manager import ChannelManager
         from alpha.config.paths import Paths
+        from app.channels.manager import ChannelManager
 
         # Auth enabled (no auth-disabled owner): bound owner must win.
         monkeypatch.setattr("app.channels.manager._auth_disabled_owner_user_id", lambda: None)
@@ -7975,9 +8005,9 @@ class TestChannelService:
         monkeypatch,
         tmp_path,
     ):
-        from app.channels.service import ChannelService
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
+        from app.channels.service import ChannelService
 
         monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
@@ -8002,10 +8032,10 @@ class TestChannelService:
         monkeypatch,
         tmp_path,
     ):
-        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
-        from app.channels.service import ChannelService
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
+        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
+        from app.channels.service import ChannelService
 
         monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
@@ -8043,10 +8073,10 @@ class TestChannelService:
         assert service._config["discord"]["bot_token"] == "discord-bot-token"
 
     def test_from_app_config_loads_persisted_runtime_channel_config(self, monkeypatch, tmp_path):
-        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
-        from app.channels.service import ChannelService
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
+        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
+        from app.channels.service import ChannelService
 
         monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
@@ -8077,10 +8107,10 @@ class TestChannelService:
         }
 
     def test_from_app_config_runtime_disconnect_suppresses_file_channel_config(self, monkeypatch, tmp_path):
-        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
-        from app.channels.service import ChannelService
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
+        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
+        from app.channels.service import ChannelService
 
         monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
@@ -8330,10 +8360,10 @@ class TestChannelService:
     def test_restart_channel_reload_applies_runtime_store_overlay(self, monkeypatch, tmp_path):
         """An operator-triggered restart keeps UI runtime-store credentials for
         channels that have no config.yaml entry."""
-        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
-        from app.channels.service import ChannelService
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
+        from app.channels.runtime_config_store import ChannelRuntimeConfigStore
+        from app.channels.service import ChannelService
 
         monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)

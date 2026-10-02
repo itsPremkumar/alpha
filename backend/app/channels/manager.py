@@ -71,8 +71,11 @@ MAX_CHANNEL_AGENT_DESCRIPTION_CHARS = 120
 # This is independent of subagent depth: a `task()` dispatch runs the whole
 # subagent inside ONE lead tools-node step, and subagents enforce their own
 # limit via `subagents.max_turns` (see SubagentExecutor). Do not conflate this
-# 100 with the general-purpose subagent's max_turns.
-DEFAULT_RUN_CONFIG: dict[str, Any] = {"recursion_limit": 100}
+# budget with the general-purpose subagent's max_turns. It matches the
+# Gateway's server default (1000): an interactive IM turn needs the same
+# super-step budget the Web UI gets, and sending an explicit 100 used to
+# override that default for every channel run.
+DEFAULT_RUN_CONFIG: dict[str, Any] = {"recursion_limit": 1000}
 # ``thinking_enabled`` is deliberately ABSENT from this base layer.
 #
 # It used to be hardcoded ``True`` here, which made every IM-channel run
@@ -1549,7 +1552,15 @@ class ChannelManager:
             if isinstance(override, int) and override > 0:
                 run_config["recursion_limit"] = override
             else:
-                run_config["recursion_limit"] = max(run_config.get("recursion_limit", 100), policy.default_recursion_limit)
+                # A malformed session value (`channels.session.config.
+                # recursion_limit: null` or a quoted number) would otherwise
+                # reach max() and raise TypeError inside the dispatcher; the
+                # Gateway clamps the same value to the server default, so
+                # degrade here the same way instead of crashing the run.
+                current = run_config.get("recursion_limit")
+                if not (isinstance(current, int) and not isinstance(current, bool) and current > 0):
+                    current = DEFAULT_RUN_CONFIG["recursion_limit"]
+                run_config["recursion_limit"] = max(current, policy.default_recursion_limit)
 
         self._reconcile_thinking_support(run_context)
         self._reconcile_reasoning_effort(run_context)

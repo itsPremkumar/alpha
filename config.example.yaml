@@ -4107,7 +4107,9 @@ network:
 #   session:
 #     assistant_id: lead_agent  # or a custom agent name; custom agents route via lead_agent + agent_name
 #     config:
-#       recursion_limit: 100
+#       # Server default is 1000 (same as the Web UI and scheduler); only set
+#       # this to override it for every channel run.
+#       recursion_limit: 1000
 #     context:
 #       thinking_enabled: true
 #       is_plan_mode: false
