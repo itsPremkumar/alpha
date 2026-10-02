@@ -401,9 +401,7 @@ def test_every_mutating_call_site_is_reachable_only_through_the_dry_run_guard() 
     # the dispatcher, i.e. on a line that is lexically inside Invoke-InstallStep
     # or one of the step functions the dispatcher guards.
     guarded_functions = [
-        name
-        for name in ("Install-PinnedUv", "Install-PinnedPython", "Install-Repository", "Install-BackendDependencies", "Install-FrontendRuntime", "Initialize-UserConfiguration")
-        if re.search(r"function\s+" + re.escape(name), text)
+        name for name in ("Install-PinnedUv", "Install-PinnedPython", "Install-Repository", "Install-BackendDependencies", "Install-FrontendRuntime", "Initialize-UserConfiguration") if re.search(r"function\s+" + re.escape(name), text)
     ]
     assert len(guarded_functions) == 6, f"every mutating step function must exist; found {guarded_functions}"
 
@@ -480,7 +478,7 @@ def _tree(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
- # Behavioural: secrets are generated locally and user config is never clobbered
+# Behavioural: secrets are generated locally and user config is never clobbered
 # ---------------------------------------------------------------------------
 
 # Runs the real shipped functions from bootstrap.ps1 without executing its
@@ -821,6 +819,30 @@ def test_workflow_setup_uv_steps_pin_the_repository_uv_version() -> None:
         version = re.search(r"version:\s*['\"]?([0-9]+\.[0-9]+\.[0-9]+)", window)
         assert version is not None, f"the setup-uv step in {match.group(0)} must pin a version"
         assert version.group(1) == expected, f"setup-uv pins {version.group(1)} but the repo ships {expected}"
+
+
+def test_workflow_syncs_the_backend_env_before_the_no_sync_steps() -> None:
+    """A clean runner gets a real venv, and the uv steps run from ``backend/``.
+
+    Two defects are pinned here, both of which failed the job on every push:
+
+    * ``uv run --no-sync`` on a runner that has never synced ``backend/.venv``
+      creates an *empty* venv and then dies with ``No module named pytest`` —
+      an explicit sync step must run first;
+    * the contract-test and lint commands reference ``../installer/...`` and
+      ``../build/...``, which resolve only when the working directory is
+      ``backend/`` — GitHub's default is the workspace root, where neither
+      ``../`` path exists.
+    """
+    text = _read(WORKFLOW)
+    sync_match = re.search(r"^\s*run:\s+uv sync\b.*$", text, re.MULTILINE)
+    assert sync_match is not None, "the installer workflow must run an explicit `uv sync`: `uv run --no-sync` on a clean runner executes in an empty venv and fails with `No module named pytest`"
+    contract_index = text.index("- name: Installer contract tests")
+    assert sync_match.start() < contract_index, "`uv sync` must run before the contract-test step"
+    for step_name in ("Installer contract tests", "Lint the installer measurement tool"):
+        step = re.search(rf"- name: {re.escape(step_name)}\n(?P<body>(?:(?!\n      - ).*\n)*)", text)
+        assert step is not None, f"the workflow must declare the {step_name!r} step"
+        assert "working-directory: backend" in step.group("body"), f"{step_name!r} must run from backend/: its ../installer and ../build paths do not resolve from the workspace root GitHub defaults to"
 
 
 # ---------------------------------------------------------------------------
