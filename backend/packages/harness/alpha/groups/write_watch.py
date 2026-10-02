@@ -50,6 +50,7 @@ an unrelated room.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -182,6 +183,17 @@ def auto_claim_write(request: Any, path: str, *, tool_name: str = "") -> WriteCo
             return outcome
         outcome.subject = clean
 
+        # The writing process's pid, so a peer can tell "gone" from "silent"
+        # without waiting out a lease. Recording it is the fact; deciding what
+        # may be claimed from it is `derive_activity`'s job, not this one's.
+        ledger.record_heartbeat(
+            context.bot_name,
+            declared="working",
+            detail=f"writing {clean}",
+            room_name=context.room_name,
+            pid=_current_pid(),
+        )
+
         # Detect against the *other* holders first, so this write's own claim
         # never shows up as its own conflict.
         ledger = get_activity_ledger()
@@ -215,6 +227,20 @@ def auto_claim_write(request: Any, path: str, *, tool_name: str = "") -> WriteCo
     except Exception:
         logger.debug("Auto-claim failed for %s; continuing without coordination", path, exc_info=True)
         return outcome
+
+
+def _current_pid() -> int | None:
+    """This process's pid, or `None`.
+
+    `None` is the normal answer for a process that cannot report one, and it is
+    safe: liveness is corroborating evidence, so an absent pid degrades to the
+    lease-based reading rather than to a wrong one.
+    """
+    try:
+        pid = os.getpid()
+    except Exception:
+        return None
+    return pid if isinstance(pid, int) and pid > 0 else None
 
 
 def _room_members(room_name: str) -> list[str]:

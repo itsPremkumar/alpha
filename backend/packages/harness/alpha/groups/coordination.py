@@ -152,10 +152,18 @@ def crash_orphans(
 
     orphaned: list[dict[str, Any]] = []
     crashed: list[str] = []
+    gone: list[str] = []
     for name, entry in activities.items():
-        if entry.activity != "crashed":
+        # `crashed` needs a hard run fact. `unresponsive` is *not* enough on its
+        # own — an agent inside a long tool call is silent too — but when the
+        # silence is corroborated by a process that no longer exists, the work
+        # is genuinely abandoned and holding it helps nobody.
+        if entry.activity == "crashed":
+            crashed.append(name)
+        elif entry.activity == "unresponsive" and entry.evidence.reason == "process_gone":
+            gone.append(name)
+        else:
             continue
-        crashed.append(name)
         evidence = {
             "reason": entry.evidence.reason,
             "detail": entry.evidence.detail,
@@ -168,12 +176,18 @@ def crash_orphans(
     announced = 0
     if orphaned:
         try:
-            _announce(room_name, actor, orphaned, crashed)
+            _announce(room_name, actor, orphaned, crashed + gone)
             announced = len(orphaned)
         except Exception:
             logger.warning("Crash announcement failed for room %s", room_name, exc_info=True)
 
-    return {"room": room_name, "crashed": crashed, "orphaned": orphaned, "announced": announced}
+    return {
+        "room": room_name,
+        "crashed": crashed,
+        "process_gone": gone,
+        "orphaned": orphaned,
+        "announced": announced,
+    }
 
 
 def _announce(room_name: str, actor: str, orphaned: list[dict[str, Any]], crashed: list[str]) -> None:

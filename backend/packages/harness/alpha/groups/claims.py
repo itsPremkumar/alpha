@@ -512,18 +512,22 @@ class ClaimStore:
         return sorted(rows, key=lambda c: c.created_at)
 
     def claims_by_bot(self, room_name: str, *, now: float | None = None) -> dict[str, list[str]]:
-        with self._lock:
-            out: dict[str, list[str]] = {}
-            for claim in self.room_claims(room_name, live_only=True, now=now):
-                out.setdefault(claim.holder, []).append(claim.claim_id)
-            return out
+        # No outer `with self._lock`: `room_claims` takes the lock itself, and
+        # this used to nest a plain `Lock` around it — a self-deadlock that
+        # hung every `room_snapshot`, because the activity projection calls this
+        # on every read. `GroupChatService._lock` is an `RLock` for the same
+        # "composed calls" reason; rather than depend on that, the inner lock is
+        # simply the only one held.
+        out: dict[str, list[str]] = {}
+        for claim in self.room_claims(room_name, live_only=True, now=now):
+            out.setdefault(claim.holder, []).append(claim.claim_id)
+        return out
 
     def held_by_bot(self, room_name: str, *, now: float | None = None) -> dict[str, list[str]]:
-        with self._lock:
-            out: dict[str, list[str]] = {}
-            for claim in self.room_claims(room_name, live_only=True, now=now):
-                out.setdefault(claim.holder, []).append(claim.subject)
-            return out
+        out: dict[str, list[str]] = {}
+        for claim in self.room_claims(room_name, live_only=True, now=now):
+            out.setdefault(claim.holder, []).append(claim.subject)
+        return out
 
 
 _claims: ClaimStore | None = None

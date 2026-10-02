@@ -78,6 +78,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from alpha.groups.liveness import holder_is_gone
+
 logger = logging.getLogger(__name__)
 
 #: What an agent is *doing*. Deliberately not the presence vocabulary: `idle`
@@ -322,6 +324,8 @@ def derive_activity(
     health: str | None = None,
     registry_status: str | None = None,
     archived: bool = False,
+    pid: int | None = None,
+    last_seen_at: float | None = None,
 ) -> AgentActivity:
     """Resolve one member's activity from measured inputs.
 
@@ -458,6 +462,31 @@ def derive_activity(
             source="health",
             reason="health_" + health,
             detail=f"{bot_name} liveness is {health}",
+            run=run,
+            last_heartbeat_at=last_heartbeat_at,
+            seconds_since_heartbeat=None if age is None else round(age, 1),
+        )
+        return _build(bot_name, "unresponsive", evidence, now, run, health, last_heartbeat_at)
+
+    # 7. Process liveness, consulted LAST — it is the weakest signal here.
+    #
+    #    It sits below lifecycle (a decision), below a hard run fact (ground
+    #    truth), and below plain silence, because it is *corroboration* rather
+    #    than a cause: pids are recycled, so a gone pid plus a stale heartbeat
+    #    is good evidence the work was abandoned and weak evidence it "crashed".
+    #
+    #    Which is exactly why it lands here and yields `unresponsive` and never
+    #    `crashed`. It is also the one case the run store structurally cannot
+    #    see: when the process dies mid-write, the missing terminal event *is*
+    #    the crash.
+    #
+    #    Both signals are required, so a live process is never overridden and an
+    #    agent inside a long tool call — silent but alive — is never touched.
+    if holder_is_gone(pid=pid, last_seen_at=last_seen_at, now=now):
+        evidence = ActivityEvidence(
+            source="health",
+            reason="process_gone",
+            detail=f"{bot_name}'s process is gone and it stopped reporting",
             run=run,
             last_heartbeat_at=last_heartbeat_at,
             seconds_since_heartbeat=None if age is None else round(age, 1),
@@ -645,6 +674,7 @@ class ActivityLedger:
                 "detail": "",
                 "last_heartbeat_at": None,
                 "last_activity_at": None,
+                "pid": None,
                 "since": None,
                 "activity": None,
             },
@@ -658,6 +688,7 @@ class ActivityLedger:
         room_name: str | None = None,
         project_id: str | None = None,
         detail: str = "",
+        pid: int | None = None,
     ) -> dict[str, Any]:
         """A run began. `room_name` is a **server-assigned** binding only."""
         with self._lock:
@@ -671,6 +702,8 @@ class ActivityLedger:
                     "last_activity_at": _now(),
                 }
             )
+            if pid is not None:
+                row["pid"] = pid
             if room_name:
                 row["room_name"] = room_name
             if project_id:
@@ -724,6 +757,7 @@ class ActivityLedger:
         detail: str = "",
         room_name: str | None = None,
         claim_ids: list[str] | None = None,
+        pid: int | None = None,
     ) -> dict[str, Any]:
         """An agent published a pulse. This is the *only* self-report path."""
         if declared is not None and declared not in ACTIVITY_STATES:
@@ -732,6 +766,8 @@ class ActivityLedger:
             row = self._row(bot_name)
             row["last_heartbeat_at"] = _now()
             row["last_activity_at"] = row["last_heartbeat_at"]
+            if pid is not None:
+                row["pid"] = pid
             if declared:
                 row["declared"] = declared
                 row["since"] = row["last_heartbeat_at"]
@@ -804,6 +840,8 @@ class ActivityLedger:
             health=health,
             registry_status=registry.get("status"),
             archived=bool(registry.get("archived")),
+            pid=_as_pid(row.get("pid")),
+            last_seen_at=_parse_epoch(row.get("last_activity_at")) or _parse_epoch(row.get("last_heartbeat_at")),
         )
 
         activity.detail = row.get("detail") or activity.detail
@@ -851,6 +889,22 @@ class ActivityLedger:
                 activity.held_paths = list(held_by_bot[key])
             out.append(activity)
         return out
+
+
+def _as_pid(value: Any) -> int | None:
+    """Read a recorded pid, or `None`.
+
+    `None` is the answer for every record written before pids were captured, and
+    it must stay distinguishable from a measured-dead pid or the first sweep
+    would orphan the entire historical ledger.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        pid = int(value)
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
 
 
 def _run_from_row(row: dict[str, Any]) -> RunEvidence | None:
