@@ -24,6 +24,7 @@ from alpha.groups.claims import (
 )
 from alpha.groups.orchestration import GroupOrchestrator
 from alpha.groups.presence import MemberPresence, PresenceState, resolve_room_presence
+from alpha.groups.write_watch import WriteCoordination, auto_claim_write, write_coordination_context
 from alpha.groups.quorum import Proposal, QuorumEngine
 from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS, GroupMessage, GroupRoom, MessageIntent, OrchestrationMode
 from alpha.groups.roster import (
@@ -83,6 +84,10 @@ __all__ = [
     "detect_soft_conflicts",
     "get_claim_store",
     "normalise_subject",
+    # Automatic write-path claiming
+    "WriteCoordination",
+    "auto_claim_write",
+    "write_coordination_context",
     # Nesting / scope
     "GroupScope",
     "ScopeError",
