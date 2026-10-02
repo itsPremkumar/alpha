@@ -408,6 +408,27 @@ def test_two_factor_code_never_reaches_the_model():
     assert "delivered" in result
 
 
+def test_code_provider_falls_back_to_the_target_it_closed_over():
+    """`code_provider(owner=..., target=...)` binds the target, so the injector
+    may call it without repeating one.
+
+    The mangled `target or target` (the inner `_provide` parameter shadowing
+    the closure's `target`) made that fallback a no-op: a bare call looked up
+    `(owner, None)` and raised ``TwoFactorUnavailable`` instead of deriving the
+    code for the bound target.
+    """
+    auth = Authenticator()
+    auth.enrol(owner="u-1", target=TARGET, account="a", issuer="i")
+    provider = auth.code_provider(owner="u-1", target=TARGET)
+
+    code = provider()
+
+    assert len(code) == 6 and code.isdigit()
+    # The lookup is an exact (owner, target) tuple and this is the only
+    # enrolled key, so a successful return is necessarily its code.
+    assert auth.has_key(owner="u-1", target=TARGET) is True
+
+
 def test_a_model_supplied_two_factor_code_is_refused():
     vault = HandleVault()
     handle = vault.deposit(SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120)

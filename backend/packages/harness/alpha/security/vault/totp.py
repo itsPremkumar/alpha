@@ -178,15 +178,21 @@ class Authenticator:
 
     def code_provider(self, *, owner: str, target: str) -> Any:
         """A callable the injector can use; closes over the key, returns a code."""
+        bound_target = target  # the inner parameter shadows ``target``; bind first
 
         def _provide(*, target: str | None = None, **_: Any) -> str:
+            # Fall back to the target this provider was created for, so a bare
+            # call still derives the code for the bound target instead of
+            # looking up (owner, None). (A previous rename collapsed this into
+            # `target or target`, which the shadowing made a no-op.)
+            effective_target = target or bound_target
             with self._lock:
-                key = self._keys.get((owner, target or target))
+                key = self._keys.get((owner, effective_target))
             if key is None:
                 raise TwoFactorUnavailable(
                     "no stored authenticator key for this owner and target",
                     owner=owner,
-                    target=target,
+                    target=effective_target,
                 )
             return totp_at(key)
 
