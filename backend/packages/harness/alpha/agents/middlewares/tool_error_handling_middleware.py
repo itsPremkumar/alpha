@@ -1,5 +1,6 @@
 """Tool error handling middleware and shared runtime middleware builders."""
 
+import asyncio
 import logging
 import secrets
 from collections.abc import Awaitable, Callable
@@ -21,7 +22,7 @@ from alpha.agents.middlewares.tool_result_meta import (
     normalize_tool_result,
     stamp_exception_meta,
 )
-from alpha.config.app_config import AppConfig
+from alpha.config.app_config import DEFAULT_TOOL_TIMEOUT_SECONDS, AppConfig
 from alpha.config.summarization_config import DEFAULT_SKILL_FILE_READ_TOOL_NAMES
 from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.subagents.status_contract import (
@@ -40,6 +41,18 @@ _RECOVERY_HINT = "Continue with available context, or choose an alternative tool
 _AUTONOMY_RECOVERY_KEY = "alpha_autonomy_recovery"
 
 
+class ToolCallTimeoutError(TimeoutError):
+    """A tool call exceeded ``AppConfig.tool_timeout`` and was cancelled.
+
+    Subclass of ``TimeoutError`` whose *name* deliberately contains both
+    ``tool`` and ``timeout``: the recovery classifiers key off those
+    substrings (``recovery.policies`` routes to the ``tool_timeout``
+    RetryPolicy, ``autonomy_truth`` to its bounded retryable bucket), so an
+    over-budget call is recovered as a tool failure — never as a model
+    timeout or ``unknown``.
+    """
+
+
 def _stamp_task_exception_status(message: ToolMessage, *, tool_name: str, error: str) -> ToolMessage:
     """Stamp failed metadata on task exception wrappers produced here."""
     if tool_name != _TASK_TOOL_NAME:
@@ -55,7 +68,13 @@ def _stamp_task_exception_status(message: ToolMessage, *, tool_name: str, error:
 
 
 class ToolErrorHandlingMiddleware(AgentMiddleware[AgentState]):
-    """Convert tool exceptions into error ToolMessages so the run can continue."""
+    """Convert tool exceptions into error ToolMessages so the run can continue.
+
+    On the async path it additionally enforces ``AppConfig.tool_timeout``:
+    awaiting a hung call (e.g. a sync tool stuck in ``run_in_executor``) is
+    cancelled at the budget and reported as a ``ToolCallTimeoutError`` tool
+    error instead of leaving the run in ``running`` forever.
+    """
 
     def __init__(self, *, app_config: AppConfig | None = None) -> None:
         super().__init__()
@@ -63,9 +82,11 @@ class ToolErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         if app_config is None:
             self._skill_read_tool_names = frozenset(DEFAULT_SKILL_FILE_READ_TOOL_NAMES)
             self._skills_root = DEFAULT_SKILLS_CONTAINER_PATH
+            self._tool_timeout: float | None = DEFAULT_TOOL_TIMEOUT_SECONDS
         else:
             self._skill_read_tool_names = frozenset(app_config.summarization.skill_file_read_tool_names)
             self._skills_root = app_config.skills.container_path
+            self._tool_timeout = app_config.tool_timeout
 
     def _build_error_message(self, request: ToolCallRequest, exc: Exception) -> ToolMessage:
         tool_name = str(request.tool_call.get("name") or "unknown_tool")
@@ -161,10 +182,41 @@ class ToolErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
     ) -> ToolMessage | Command:
         try:
-            result = await handler(request)
+            if self._tool_timeout is None or self._tool_timeout <= 0:
+                result = await handler(request)
+            else:
+                result = await asyncio.wait_for(handler(request), timeout=self._tool_timeout)
         except GraphBubbleUp:
             # Preserve LangGraph control-flow signals (interrupt/pause/resume).
             raise
+        except TimeoutError as exc:
+            if str(exc).strip():
+                # An inner layer timed out with its own explanation (MCP read
+                # timeout, remote exec, ...): preserve the detail and let the
+                # normal error path classify it as-is.
+                logger.warning(
+                    "Tool call timed out inside the stack: name=%s id=%s detail=%s",
+                    request.tool_call.get("name"),
+                    request.tool_call.get("id"),
+                    str(exc)[:200],
+                )
+                return self._build_error_message(request, exc)
+            # asyncio.wait_for's own budget fired (bare TimeoutError): the
+            # call is abandoned at the wall-clock bound and reported as a
+            # retryable tool error. The abandoned executor thread cannot be
+            # killed by Python; the run is free, and the thread dies with
+            # the process.
+            name = str(request.tool_call.get("name") or "unknown_tool")
+            logger.warning(
+                "Tool call exceeded the %.1fs budget: name=%s id=%s",
+                self._tool_timeout,
+                name,
+                request.tool_call.get("id"),
+            )
+            return self._build_error_message(
+                request,
+                ToolCallTimeoutError(f"Tool '{name}' exceeded the {self._tool_timeout:g}s tool call budget and was cancelled"),
+            )
         except Exception as exc:
             logger.exception("Tool execution failed (async): name=%s id=%s", request.tool_call.get("name"), request.tool_call.get("id"))
             return self._build_error_message(request, exc)

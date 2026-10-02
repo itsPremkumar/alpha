@@ -257,6 +257,13 @@ def apply_logging_level(name: str | None) -> None:
             handler.setLevel(level)
 
 
+# The wall-clock budget for one tool call (AppConfig.tool_timeout). Matches
+# sandbox.bash_command_timeout so no tool call may outlive the cap the sandbox
+# already gives a foreground command; the plain ToolNode path previously had no
+# budget at all and a hung sync tool could sit in `running` forever.
+DEFAULT_TOOL_TIMEOUT_SECONDS = 600.0
+
+
 class AppConfig(BaseModel):
     """Config for the Alpha application"""
 
@@ -510,6 +517,14 @@ class AppConfig(BaseModel):
         description=format_field_description(
             "run_stall",
             field_doc="Run stall watchdog: a running run with no progress heartbeat for timeout_seconds is cancelled and terminalised with an explanatory error, so a hung agent run can never sit in running forever.",
+        ),
+    )
+    tool_timeout: float = Field(
+        default=DEFAULT_TOOL_TIMEOUT_SECONDS,
+        ge=0,
+        description=format_field_description(
+            "tool_timeout",
+            field_doc="Wall-clock budget in seconds for a single tool call (async path). Exceeding it cancels the call and returns a retryable tool-timeout error ToolMessage instead of awaiting forever; set 0 to disable the budget (calls run unbounded). Defaults to 600, the same cap sandbox.bash_command_timeout gives a foreground command.",
         ),
     )
     network: NetworkResilienceConfig = Field(

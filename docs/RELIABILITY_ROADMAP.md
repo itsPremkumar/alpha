@@ -21,7 +21,7 @@ upgrades from SPECIFIED to FIXED.
 | # | Symptom (observed live) | Root cause | Disposition |
 |---|---|---|---|
 | 1 | Run `19f01090…` created its output file, then died mid-flight with `sqlite3.OperationalError: database is locked` | The LangGraph checkpointer was the only `alpha.db` writer still on the driver's 5 s default busy timeout (engine and sync stores already used 30 s) | **FIXED** — `6e49de3` |
-| 2 | Run `4565d275…` hung on an internal await and sat `status=running` for 20+ min: no heartbeat, no SSE frames, no error anywhere; only a manual cancel finalised it | No stall detector existed: leases are renewed by a loop independent of the run task, so a live process with a dead task passes every existing check | **FIXED** — `3d4795b` (watchdog) + lifespan wiring |
+| 2 | Run `4565d275…` hung on an internal await and sat `status=running` for 20+ min: no heartbeat, no SSE frames, no error anywhere; only a manual cancel finalised it | Two gaps: the run hung inside a **sync tool call with no budget** (`tool.ainvoke → run_in_executor → self.invoke` blocked forever during a self-heal retry — discovery/MCP/sandbox each had their own timeout, the plain ToolNode path had none), and no stall detector existed: leases are renewed by a loop independent of the run task, so a live process with a dead task passed every existing check | **FIXED** — `3d4795b` (watchdog bounds detection: 900 s → terminal `error` + `stop_reason="stalled"`) + `tool_timeout` budget (§2.4 bounds the call itself: 600 s → retryable `tool_timeout` ToolMessage) |
 | 3 | A zombie run's SSE stream showed **zero observable events for 877 s** — the bridge's `: heartbeat` comment (15 s) was flowing but is invisible to browser JS *and* to spec-conformant SSE parsers (including this repo's own e2e parser), so a slow agent and a dead connection were indistinguishable; a consumer stalled before `subscribe` would stop even the comments | Liveness existed only as spec-comments: no client-actionable signal and no bound on total silence | **FIXED** — named `event: heartbeat` via `app/gateway/sse.py` on every run stream |
 | 4 | Idle Gateway process burned 1 442 s CPU doing nothing (starved the test box) | Under investigation during incident; treated as P1 (see §3.5) | **SPECIFIED** |
 | 5 | The four-legged error fan-out's SSE leg never fires: no production `configure_error_reporter` caller exists | Claimed-in-docstring wiring was never implemented; run-scoped errors still reach clients via `gateway_terminal_error_payload` | Honesty **FIXED** (docstring); binding **SPECIFIED** (§3.1) |
@@ -88,7 +88,33 @@ cancelled on close, no trailing heartbeat after completion, comment
 passthrough-without-suppression, and source-assertion wiring pins for all
 four routes plus the shared frame in `services.py`.
 
-### 2.4 Also in this change set
+### 2.4 Tool-call budget — a hung tool can no longer zombie a run
+Incident 2's hang lived inside `tool.ainvoke → run_in_executor →
+self.invoke`: the plain ToolNode path awaited a synchronous tool forever.
+Every other layer already had its own budget (discovery runtime 30 s, MCP
+`tool_call_timeout`, sandbox `bash_command_timeout` 600 s) — none covered a
+direct call. `ToolErrorHandlingMiddleware`, which already owns tool
+exceptions, now wraps the async path in `asyncio.wait_for`:
+
+- `AppConfig.tool_timeout` — default **600 s** (identical to the sandbox
+  command cap), `0` disables (a YAML `null` cannot: the loader drops nulls
+  so the default applies). Registered **startup-only**
+  (`reload_boundary`): the middleware stack captures the value when the
+  agent is compiled, and a config edit does not rebuild a live agent.
+- Overrun raises `ToolCallTimeoutError` → the existing exception path
+  builds an error `ToolMessage` whose text classifies `tool_timeout` under
+  `recovery.policies` (2 attempts, bounded backoff, replan) and which
+  `autonomy_truth` marks retryable — a hang becomes an ordinary, retryable
+  tool error the model/self-heal can react to instead of an eternal
+  `running`.
+- `GraphBubbleUp` (interrupt/pause) still bypasses the budget; the sync
+  `wrap_tool_call` path runs inline and cannot be preempted (ToolNode
+  executes through the async path). Cancelling the await cannot kill the
+  executor thread — it dies with the process, but the run is free.
+- Tests: `test_tool_timeout_guard.py` (4): bounded overrun + classification
+  contract, control-flow passthrough, disabled budget, default pin.
+
+### 2.5 Also in this change set
 - `5491134` recursion limit 100→1000 (`client.py` + `docs/TUI.md`).
 - `e494112` process-handle header discloses host shell + measured runtime.
 - `719df4e` replay fixture extended through the `present_files` delivery turn.
@@ -223,7 +249,7 @@ health-checks 8002, old port never re-probed after success.
 | Service-level | `recovery/watchdog.ps1` tiers: defer → restart component → start stack, backoff 30→300 s | shipped |
 | Crash-loop | `ProcessSupervisor` + `RestartLedger` | built, **unwired** (§3.5) |
 | Side-effect | ledger + reclaimer (SQL when session factory exists) | shipped, partial UI (durable-runtime doc) |
-| Tool-level | `asyncio.wait_for` call budget; MCP `tool_call_timeout` defaults to None | shipped, default documented |
+| Tool-level | **Tool-call budget**: `ToolErrorHandlingMiddleware` wraps every ToolNode call in `asyncio.wait_for` (`tool_timeout`, default 600 s — the same cap the sandbox gives `bash`); discovery runtime keeps its own 30 s default; MCP `tool_call_timeout` defaults to None (server-level budget) | shipped, default documented |
 
 ---
 
@@ -233,7 +259,8 @@ health-checks 8002, old port never re-probed after success.
 |---|---|
 | Hung runs are terminalised with a reason | `test_run_stall_watchdog.py` (12 tests) against real `RunManager`/`MemoryRunStore` |
 | Watchdog starts/stops with the Gateway | `TestGatewayLifespanWiring` source pins + single `ADMISSION_CLOSED` registration pin |
-| Streams cannot go silently mute | `test_sse_heartbeat.py` (6 tests) |
+| Streams cannot go silently mute | `test_sse_heartbeat.py` (10 tests incl. route-wiring pins) |
+| A hung tool call is bounded and classified `tool_timeout` | `test_tool_timeout_guard.py` (4 tests) |
 | DB-lock regression stays dead | `test_checkpointer_busy_timeout.py` + 91-test suite |
 | End-to-end task honestly completes | `scripts/e2e_real_task.py` exit 0: durable `status=success`, artifact byte-exact over HTTP, delivery gate passed |
 | Cancel path finalises cleanly | live evidence: manual cancel → `CancelledError` → `interrupted` → finalized, gateway healthy |
