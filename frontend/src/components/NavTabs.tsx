@@ -38,6 +38,7 @@ export type WorkspaceView =
   | "warroom"
   | "deliberation"
   | "bots"
+  | "company"
   | "messages"
   | "peers"
   | "kanban"
@@ -80,6 +81,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "deliberation", label: "Deliberation", icon: <Scale className="size-3.5" />, blurb: "Staged group deliberation: quorum, dissent and taint", category: "core" },
   { id: "bots", label: "Bots", icon: <Bot className="size-3.5" />, blurb: "Specialist profiles & team ops", category: "core", isPrimary: true },
   { id: "projects", label: "Projects", icon: <FolderKanban className="size-3.5" />, blurb: "Every project — solo crews and team crews, end to end", category: "core", isPrimary: true },
+  { id: "company", label: "Companies", icon: <Building2 className="size-3.5" />, blurb: "Autonomous organizations: charter, workforce, board, budget & loop", category: "core", isPrimary: true },
   { id: "kanban", label: "Board", icon: <SquareKanban className="size-3.5" />, blurb: "Full project kanban board", category: "core", isPrimary: true },
   { id: "messages", label: "Messages", icon: <MessagesSquare className="size-3.5" />, blurb: "Agent chats & group rooms", category: "collaboration", isPrimary: true },
   { id: "peers", label: "Alpha Network", icon: <Network className="size-3.5" />, blurb: "Discover, pair & message other Alpha installations", category: "collaboration" },

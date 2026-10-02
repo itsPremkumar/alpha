@@ -36,6 +36,18 @@ class CapabilitySpec(BaseModel):
 
 
 CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
+    "company_os": CapabilitySpec(
+        module="alpha.company_os.service",
+        target="CompanyService",
+        description="Durable multi-tenant Company OS: charter, org chart, workforce, portfolio and a bounded perpetual loop.",
+        kind="engine",
+    ),
+    "company_os_orchestrator": CapabilitySpec(
+        module="alpha.company_os.orchestrator",
+        target="step",
+        description="One bounded, model-free Company OS tick: gate, observe, plan, act, verify, ledger.",
+        kind="engine",
+    ),
     "teammate_mesh": CapabilitySpec(
         module="alpha.bots.teammate_mesh",
         target="AutonomousTeammateMesh",

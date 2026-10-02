@@ -112,6 +112,7 @@ const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").t
 const MessagesSection = lazy(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })));
 const PeerNetworkSection = lazy(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })));
 const KanbanSection = lazy(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })));
+const CompanySection = lazy(() => import("@/components/sections/CompanySection").then((m) => ({ default: m.CompanySection })));
 const RunsSection = lazy(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })));
 const RunInspectorSection = lazy(() => import("@/components/sections/RunInspectorSection").then((m) => ({ default: m.RunInspectorSection })));
 const FilesSection = lazy(() => import("@/components/sections/FilesSection").then((m) => ({ default: m.FilesSection })));
@@ -2191,6 +2192,10 @@ export default function ChatView() {
         ) : view === "kanban" ? (
           <Suspense fallback={<SectionFallback />}>
             <KanbanSection bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name, avatar: b.avatar }))} />
+          </Suspense>
+        ) : view === "company" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <CompanySection />
           </Suspense>
         ) : view === "runs" ? (
           <Suspense fallback={<SectionFallback />}>

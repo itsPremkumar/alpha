@@ -134,6 +134,24 @@ attestations, and the War Room surfaces — is described in
 [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md#6-autonomous-ai-software-enterprise-platform).
 Tests: `tests/test_enterprise_autonomous_software_company.py`.
 
+### Company OS (`packages/harness/alpha/company_os/`)
+
+Durable, multi-tenant autonomous organizations **indexed over** the real
+subsystems rather than duplicating them: employees are `alpha.bots` profiles,
+projects are `alpha.projects` rows, work items are `alpha.kanban` cards, rooms are
+`alpha.groups` rooms, and schedules are indexed but never fired by the loop. The
+owner is server-assigned; an ownerless read of another tenant's company is `None`,
+never a 403. Three properties decide every review question: **index never
+duplicate**, **measured or `None`** (`MeasurementBasis` travels beside every
+figure), and **a proposal is never an action**. The `company_operations`
+supervisor loop is **default off**, and its tick is model-free, so enabling it
+spends no tokens. Note the boundary: this package **cannot enumerate projects** —
+`get_project_repo` lives in `app.gateway.deps` and the harness must not import
+`app.*`, so the Gateway reads its repository and passes rows in. Full contract,
+the five loop breakers, and the durability rules:
+**[packages/harness/alpha/company_os/AGENTS.md](company_os/AGENTS.md)**. Tests:
+`tests/test_company_os_core.py`; frontend `frontend/src/lib/company.test.mjs`.
+
 ## Swarm v2 runtime contract
 
 `alpha.swarm` is the lifecycle owner for autonomous swarm plans. Plans are explicit

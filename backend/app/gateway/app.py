@@ -36,6 +36,7 @@ from app.gateway.routers import (
     checkpoints,
     commands,
     company,
+    companies,
     console,
     council,
     credentials,
@@ -1225,6 +1226,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(goal_integrity.router)
     app.include_router(a2a.router)
     app.include_router(company.router)
+    app.include_router(companies.router)
     app.include_router(enterprise.router)
     app.include_router(enterprise.gateway_router)
     app.include_router(commands.router)

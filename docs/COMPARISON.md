@@ -58,7 +58,7 @@ LangGraph is deliberately a **low-level** orchestration primitive: you get durab
 execution, checkpointing, and interrupts, and you build everything else. Alpha
 consumes that same primitive and adds:
 
-- a **Gateway** (62 routers) with auth, thread ownership, health probes, SSE, and
+- a **Gateway** (63 routers) with auth, thread ownership, health probes, SSE, and
   an OpenAI-compatible surface;
 - a **UI** — Next.js 15 workspace plus an Electron Windows app;
 - a **research engine** with an explicit citation contract;
@@ -75,7 +75,7 @@ persistence, and safety layers yourself.
 **Choose Alpha when** you want the whole system, self-hosted, on day one.
 
 Alpha also ships the harness as an importable package
-(`alpha-harness`, import name `alpha.*`) with 112 engine modules, so
+(`alpha-harness`, import name `alpha.*`) with 113 engine modules, so
 "LangGraph plus Alpha's engines, no Alpha UI" is a supported shape.
 
 → [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -230,7 +230,7 @@ Every Alpha figure in this document is generated, not hand-maintained:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-The manifest pins **134 tools, 62 routers, 42 middlewares, and 8 supervisor
+The manifest pins **134 tools, 63 routers, 42 middlewares, and 9 supervisor
 loops**, and `tests/test_feature_manifest_wiring.py` plus the generated-drift CI
 gate fail the build if the documentation and the live registries disagree.
 

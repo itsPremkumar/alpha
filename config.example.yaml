@@ -4543,7 +4543,8 @@ authorization:
 # ============================================================================
 # Single supervisor owns every background loop. Flags off = zero activity.
 # Per-loop ids: sentinel, perpetual, review_queue, skill_curator,
-# enterprise_heartbeat, self_update. A loop id absent from `loops` stays DISABLED.
+# enterprise_heartbeat, swarm_status, free_models_sync, company_operations,
+# self_update. A loop id absent from `loops` stays DISABLED.
 autonomy:
   enabled: true                 # master switch for the supervisor + event bus
   bus:
@@ -4566,6 +4567,14 @@ autonomy:
   #     enabled: true
   #     interval_seconds: 21600.0
   #     jitter_seconds: 300.0
+  #   company_operations:          # Company OS perpetual loop sweep (opt-in)
+  #     enabled: true
+  #     interval_seconds: 300.0
+  #
+  # The Company OS sweep itself gates per company: a company whose own policy is
+  # not `enabled` is skipped, and a company whose breaker refuses (paused, over
+  # its daily ceiling, no progress, kill switch) is reported rather than silently
+  # dropped. The tick is model-free, so enabling this loop spends no tokens.
 
 # ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it
