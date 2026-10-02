@@ -73,7 +73,7 @@ function lightness(body, name) {
  * what re-tints all three levels. Duplicating the shadow values per theme
  * would put the ladder in two places and let the two drift.
  */
-const COLOUR_TOKENS = ["--background", "--foreground", "--card", "--primary", "--border", "--ring", "--shadow-color", "--surface-1", "--surface-2", "--surface-3"];
+const COLOUR_TOKENS = ["--background", "--foreground", "--card", "--primary", "--border", "--ring", "--shadow-color", "--secondary"];
 
 test("every colour token is defined in both themes", () => {
   for (const name of COLOUR_TOKENS) {
@@ -95,34 +95,39 @@ test("the surface ladder has exactly three rungs", () => {
   // Three is deliberate. A ladder of one has no depth; more than three cannot
   // be told apart at the luminance deltas this theme uses, so extra steps get
   // invented ad hoc and the ladder stops describing reality.
-  for (const name of ["--surface-1", "--surface-2", "--surface-3"]) {
+  //
+  // The rungs are --card, --background and --secondary rather than a
+  // --surface-N set. Those were declared once with byte-identical values, which
+  // is two names for one colour: `bg-card` in one file and `bg-surface-1` in the
+  // next would resolve to the same white today and diverge the first time either
+  // was retuned. The names that already appear in every className win.
+  for (const name of ["--card", "--background", "--secondary"]) {
     assert.match(rootBody, new RegExp(`${name}\\s*:`), `light mode must define ${name}`);
     assert.match(darkBody, new RegExp(`${name}\\s*:`), `dark mode must define ${name}`);
   }
-  assert.doesNotMatch(rootBody, /--surface-4/, "a fourth rung is not distinguishable and reopens ad-hoc surfaces");
+  assert.doesNotMatch(css, /--surface-\d/, "the duplicated --surface-N set must not come back");
 });
 
 test("the three surface rungs are distinguishable, and raised is above the page", () => {
   // Light mode puts white on off-white. Dark mode inverts which end is raised,
   // because the page is already near-black, so the card has to go lighter to
   // read as raised at all. That inversion is why the assertion below is about
-  // the raised rung only: `--surface-3` is chrome (rails, headers, composer
-  // wells), which sits *below* the page in light mode and above it in dark, and
-  // pinning a single direction for it would be pinning an accident of the
-  // palette rather than a rule.
+  // the raised rung only: chrome (--secondary) sits *below* the page in light
+  // mode and above it in dark, and pinning a single direction for it would be
+  // pinning an accident of the palette rather than a rule.
   for (const [mode, body] of [["light", rootBody], ["dark", darkBody]]) {
     assert.ok(
-      lightness(body, "--surface-1") > lightness(body, "--surface-2"),
+      lightness(body, "--card") > lightness(body, "--background"),
       `${mode}: the raised surface must be lighter than the page, or cards stop reading as raised`,
     );
     assert.notEqual(
-      lightness(body, "--surface-3"),
-      lightness(body, "--surface-2"),
+      lightness(body, "--secondary"),
+      lightness(body, "--background"),
       `${mode}: chrome must be a distinct step from the page, not a second name for it`,
     );
     assert.notEqual(
-      lightness(body, "--surface-3"),
-      lightness(body, "--surface-1"),
+      lightness(body, "--secondary"),
+      lightness(body, "--card"),
       `${mode}: chrome must be a distinct step from the raised surface`,
     );
   }
@@ -238,6 +243,48 @@ test("the standard easing decelerates and the emphasised one is symmetric", () =
   assert.ok(emphasised, "light mode must define --ease-emphasised");
   const [ax, , cx] = emphasised.split(",").map((n) => Number(n.trim()));
   assert.ok(ax > 0 && cx > 0, "emphasised must be symmetric, so both ends share a control point");
+});
+
+test("the motion scale is reachable from a class name, not only from CSS", () => {
+  // Same reason as the elevation ladder: a token nothing can name is a comment.
+  // `transition-colors dur-fast` is reviewable because it names the intent -
+  // "this is hover feedback" - where `duration-150` is a number that happened
+  // to be near the right value.
+  const config = readFileSync(fileURLToPath(new URL("../../tailwind.config.cjs", import.meta.url)), "utf8");
+  assert.match(config, /transitionDuration:\s*\{/, "tailwind.config.cjs must extend transitionDuration");
+  assert.match(config, /transitionTimingFunction:\s*\{/, "tailwind.config.cjs must extend transitionTimingFunction");
+  for (const [util, token] of [
+    ["instant", "--dur-instant"],
+    ["fast", "--dur-fast"],
+    ["slow", "--dur-slow"],
+  ]) {
+    assert.match(config, new RegExp(`${util}:\\s*"var\\(${token}\\)"`), `dur-${util} must map to ${token}`);
+  }
+  for (const [util, token] of [
+    ["standard", "--ease-standard"],
+    ["emphasised", "--ease-emphasised"],
+  ]) {
+    assert.match(config, new RegExp(`${util}:\\s*"var\\(${token}\\)"`), `ease-${util} must map to ${token}`);
+  }
+});
+
+test("no component reaches for a duration outside the scale", () => {
+  // One literal survives on purpose: a 500ms determinate progress bar in
+  // WorkforceSection. That is not motion feedback, it is a measurement, and
+  // naming it `dur-slow` would imply the app has a slower step than it does.
+  // Anything else is a duration that was picked by feel.
+  const componentsDir = fileURLToPath(new URL("../../src/components", import.meta.url));
+  const offenders = [];
+  for (const rel of globSync("**/*.{tsx,ts}", { cwd: componentsDir })) {
+    const src = readFileSync(path.join(componentsDir, rel), "utf8");
+    for (const m of src.matchAll(/\bduration-(\d+)\b/g)) {
+      const line = src.slice(0, m.index).split("\n").length;
+      // A Tailwind `animate-in`/`duration-*` pair inside a plugin-provided
+      // class is not ours to police; a bare `duration-N` on any element is.
+      if (/^\d+$/.test(m[1]) && Number(m[1]) !== 500) offenders.push(`${rel}:${line} ${m[0]}`);
+    }
+  }
+  assert.deepEqual(offenders, [], `durations outside the scale: ${offenders.join(", ")}`);
 });
 
 test("motion is still suppressed for users who ask for less of it", () => {

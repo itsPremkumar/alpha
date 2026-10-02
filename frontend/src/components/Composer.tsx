@@ -313,7 +313,7 @@ export function Composer({
     <div className="w-full max-w-4xl mx-auto p-3 relative">
       {/* Slash Command Suggestions Palette */}
       {suggestions.length > 0 && (
-        <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl elev-3 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl elev-3 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 dur-fast">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Terminal className="size-3.5 text-primary" />

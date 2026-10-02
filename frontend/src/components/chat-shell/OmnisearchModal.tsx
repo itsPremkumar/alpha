@@ -139,7 +139,7 @@ export function OmnisearchModal({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-background/80 backdrop-blur-sm animate-in fade-in dur-fast"
       onClick={onClose}
     >
       <div
@@ -147,7 +147,7 @@ export function OmnisearchModal({
         role="dialog"
         aria-modal="true"
         aria-label="Search agents, projects and conversations"
-        className="w-full max-w-2xl rounded-2xl border border-border bg-card elev-3 overflow-hidden flex flex-col max-h-[75vh] animate-in zoom-in-95 duration-150"
+        className="w-full max-w-2xl rounded-2xl border border-border bg-card elev-3 overflow-hidden flex flex-col max-h-[75vh] animate-in zoom-in-95 dur-fast"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search header input */}

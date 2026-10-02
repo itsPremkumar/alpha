@@ -136,7 +136,7 @@ export function ProjectDropdownMenu({
             • {project ? `${threadCount} chats` : "No project"}
           </span>
           <ChevronDown
-            className={`size-3 text-muted-foreground transition-transform duration-200 ${
+            className={`size-3 text-muted-foreground transition-transform dur-fast ${
               open ? "rotate-180 text-foreground" : "group-hover:text-foreground"
             }`}
           />
@@ -147,7 +147,7 @@ export function ProjectDropdownMenu({
         <div
           role="menu"
           aria-label={`Menu for ${projectName}`}
-          className="absolute left-0 mt-1.5 w-80 rounded-2xl border border-border bg-card elev-3 p-2 z-50 animate-in fade-in zoom-in-95 duration-100 divide-y divide-border/40"
+          className="absolute left-0 mt-1.5 w-80 rounded-2xl border border-border bg-card elev-3 p-2 z-50 animate-in fade-in zoom-in-95 dur-fast divide-y divide-border/40"
         >
           {/* Active Project Summary Header */}
           <div className="px-2.5 py-2 flex items-center justify-between gap-2">

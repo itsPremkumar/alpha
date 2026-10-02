@@ -65,6 +65,25 @@ module.exports = {
           3: "var(--shadow-e3)",
         },
       },
+      // Motion, for the same reason as elevation: the scale is only real once it
+      // is reachable from a class name. `transition-colors dur-fast` means
+      // "hover feedback", which is a decision someone can read and review, where
+      // `duration-150` is a number that happens to be near the right value.
+      //
+      // The `duration-*` values that shipped alongside this all mapped to
+      // dur-fast, because every one of them was hover, press or entrance
+      // feedback on a control the user had just acted on. dur-slow has no
+      // consumer yet: nothing in the app currently animates a large move, and
+      // adding a fifth duration to fill the gap would mean inventing the need.
+      transitionDuration: {
+        instant: "var(--dur-instant)",
+        fast: "var(--dur-fast)",
+        slow: "var(--dur-slow)",
+      },
+      transitionTimingFunction: {
+        standard: "var(--ease-standard)",
+        emphasised: "var(--ease-emphasised)",
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

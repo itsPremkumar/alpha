@@ -30,19 +30,19 @@
     --shadow-color: 224 71% 4%;
 
     /* Surface ladder.
-       A third elevation step does not exist as a colour. Every surface in the
-       app is one of these three, which is what lets the sidebar, the canvas and
-       the composer separate by luminance instead of each inventing a
-       `bg-card/60`. Values are lightness over the shared hue. */
-    --surface-1: 0 0% 100%; /* raised: cards, panels, popovers */
-    --surface-2: 220 20% 98%; /* the page itself */
-    --surface-3: 220 14% 96%; /* sunken: rails, headers, composer wells */
+       Every surface in the app is one of three steps, which is what lets the
+       sidebar, the canvas and the composer separate by luminance instead of each
+       inventing a `bg-card/60`. They already exist as --card (raised),
+       --background (the page) and --secondary (sunken chrome); an earlier draft
+       added --surface-1/2/3 alongside them with byte-identical values, which is
+       two names for one colour and guarantees they drift apart. The names that
+       survived are the ones already in every className in the codebase. */
 
     /* Elevation.
        Two shadows each, not one: a tight contact shadow plus a wider ambient
        one. A single shadow reads as a sticker at low elevation and as a flat
        cutout at high elevation, because real depth has both. Consumed by
-       `.elev-1/.elev-2/.elev-3` below. */
+       the `elev-1/2/3` utilities in `tailwind.config.cjs`. */
     --shadow-e1:
       0 1px 2px 0 hsl(var(--shadow-color) / 0.06),
       0 1px 3px 0 hsl(var(--shadow-color) / 0.05);
@@ -90,13 +90,9 @@
     --ring: 224 76% 66%;
     --shadow-color: 217 30% 84%;
 
-    /* Dark mode inverts which end of the ladder is "raised". The card is still
-       the lighter surface, but it starts near the background's luminance
-       instead of at pure white, so the same three steps keep reading as
-       depth. */
-    --surface-1: 224 25% 9%;
-    --surface-2: 224 25% 6%;
-    --surface-3: 217 19% 16%;
+    /* Dark mode inverts which end of the ladder is "raised". --card is still
+       the lighter surface, but it starts near the background's luminance instead
+       of at pure white, so the same three steps keep reading as depth. */
   }
 
   html {

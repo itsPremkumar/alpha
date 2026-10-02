@@ -173,7 +173,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
           </button>
 
           {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-card elev-3 p-3 text-xs z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-card elev-3 p-3 text-xs z-50 animate-in fade-in zoom-in-95 dur-fast">
               <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-2">
                 <span className="font-semibold text-foreground text-xs">Notifications</span>
                 <span className="text-[10px] text-muted-foreground">
@@ -245,7 +245,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-border bg-card elev-3 p-2 text-xs z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-border bg-card elev-3 p-2 text-xs z-50 animate-in fade-in zoom-in-95 dur-fast">
               {/* Both lines used to be invented: the name was `"MK"`, and the
                   role read "Operator • Lead Administrator" as a flat string
                   regardless of whether anything had authorised anything. Alpha
