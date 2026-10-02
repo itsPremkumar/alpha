@@ -22,6 +22,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 
+import aiosqlite
 from langgraph.types import Checkpointer
 
 from alpha.config.app_config import AppConfig, get_app_config
@@ -31,9 +32,37 @@ from alpha.runtime.checkpointer.provider import (
     POSTGRES_INSTALL,
     SQLITE_INSTALL,
 )
-from alpha.runtime.store._sqlite_utils import ensure_sqlite_parent_dir, resolve_sqlite_conn_str
+from alpha.runtime.store._sqlite_utils import (
+    SQLITE_BUSY_TIMEOUT_MS,
+    apply_sqlite_connect_pragmas,
+    ensure_sqlite_parent_dir,
+    resolve_sqlite_conn_str,
+)
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.asynccontextmanager
+async def _sqlite_checkpointer_saver(conn_str: str) -> AsyncIterator[AsyncSqliteSaver]:
+    """Open the LangGraph SQLite saver on a connection that waits like every other writer.
+
+    ``AsyncSqliteSaver.from_conn_string`` connects with the sqlite driver's
+    5-second default while the app engine waits 30 seconds, so under sustained
+    writes (supervisor loops plus per-step checkpoints) the checkpointer was
+    the only writer on ``alpha.db`` that could starve out with
+    ``database is locked`` and fail a run mid-flight. The opened connection
+    gets the shared PRAGMA set (WAL / synchronous=NORMAL / busy_timeout=30s)
+    that the engine listeners apply to their own connections, plus the same
+    budget on the driver's connect timeout.
+    """
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+    conn = await aiosqlite.connect(conn_str, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
+    try:
+        await apply_sqlite_connect_pragmas(conn)
+        yield AsyncSqliteSaver(conn)
+    finally:
+        await conn.close()
 
 
 def _prepare_sqlite_checkpointer_path(raw: str) -> str:
@@ -121,7 +150,7 @@ async def _async_checkpointer(config) -> AsyncIterator[Checkpointer]:
             raise ImportError(SQLITE_INSTALL) from exc
 
         conn_str = await asyncio.to_thread(_prepare_sqlite_checkpointer_path, config.connection_string or "store.db")
-        async with AsyncSqliteSaver.from_conn_string(conn_str) as saver:
+        async with _sqlite_checkpointer_saver(conn_str) as saver:
             await saver.setup()
             yield saver
         return
@@ -163,7 +192,7 @@ async def _async_checkpointer_from_database(db_config) -> AsyncIterator[Checkpoi
             raise ImportError(SQLITE_INSTALL) from exc
 
         conn_str = await asyncio.to_thread(_prepare_database_sqlite_checkpointer_path, db_config)
-        async with AsyncSqliteSaver.from_conn_string(conn_str) as saver:
+        async with _sqlite_checkpointer_saver(conn_str) as saver:
             await saver.setup()
             yield saver
         return
