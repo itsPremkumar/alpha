@@ -389,6 +389,20 @@ def evaluate_gate(
     train: EvaluationRun | None = None,
     overfitting_gap: float = 0.2,
     require_improvement: bool = True,
+    # `pathway`: a PathwayReport (Phase A). None means *no pathway evidence was
+    # supplied*, which is NOT the same as "the pathway engaged" — an absent
+    # check does not block. When supplied, NOT_ENGAGED blocks and INCONCLUSIVE
+    # blocks; combined with the anomaly test below, an unexplained score gain is
+    # refused even when the pathway verdict itself is not a refusal.
+    pathway: Any = None,
+    # `diversity`: a DiversityReport (Phase C). This is the one gate that can
+    # reject a candidate that *scored better* — a narrowed agent holding the
+    # same score is worse than one that can still do something else, so
+    # collapsed=True overrides an improvement.
+    diversity: Any = None,
+    # `noise_floor`: the measured evaluator noise (Phase B). It can only RAISE
+    # the diversity bar, never lower it.
+    noise_floor: float | None = None,
 ) -> EvaluationOutcome:
     """Apply the promotion gate to a candidate (prompt §10).
 
@@ -464,6 +478,73 @@ def evaluate_gate(
             gates=gates,
         )
     gates["no_overfitting"] = True
+
+    # Phase A — pathway evidence. Placed after overfitting and before the
+    # improvement check, because the improvement check is what produces the
+    # `score_improved` signal the anomaly test needs.
+    if pathway is not None:
+        pathway_verdict = getattr(pathway, "verdict", None)
+        pathway_value = getattr(pathway_verdict, "value", pathway_verdict)
+        anomalous = bool(getattr(pathway, "is_anomalous_improvement", False))
+        if pathway_value == "INCONCLUSIVE":
+            gates["pathway_engaged"] = False
+            return EvaluationOutcome(
+                decision=Decision.REJECT,
+                reason=(f"pathway evidence is inconclusive, so the candidate's claimed mechanism could not be shown to have engaged: {getattr(pathway, 'reason', 'no reason recorded')}. A probe that could not run has not passed."),
+                comparison=comparison,
+                gates=gates,
+            )
+        if pathway_value == "NOT_ENGAGED":
+            if anomalous and require_improvement:
+                gates["pathway_engaged"] = False
+                gates["no_anomalous_improvement"] = False
+                return EvaluationOutcome(
+                    decision=Decision.REJECT,
+                    reason=(
+                        "anomalous improvement: the score improved but the mechanism the candidate claimed did NOT "
+                        f"engage ({getattr(pathway, 'reason', '')}). A number that went up for an unexplained reason "
+                        "is the condition that lets a broken loop look healthy."
+                    ),
+                    comparison=comparison,
+                    gates=gates,
+                )
+            gates["pathway_engaged"] = False
+            return EvaluationOutcome(
+                decision=Decision.REJECT,
+                reason=(f"the claimed mechanism did not engage: {getattr(pathway, 'reason', '')}. A candidate that claims to change a mechanism and did not is not a candidate for that mechanism."),
+                comparison=comparison,
+                gates=gates,
+            )
+        gates["pathway_engaged"] = True
+        if anomalous:
+            gates["no_anomalous_improvement"] = False
+            return EvaluationOutcome(
+                decision=Decision.REJECT,
+                reason=("anomalous improvement: the score improved while the claimed mechanism did not engage, so the gain is unexplained even though the pathway verdict is not itself a refusal"),
+                comparison=comparison,
+                gates=gates,
+            )
+        gates["no_anomalous_improvement"] = True
+
+    # Phase C — behavioural diversity. The only gate that overrides an
+    # improvement, and it runs last so it is reached only when everything else
+    # passed.
+    if diversity is not None:
+        collapsed = bool(getattr(diversity, "collapsed", False))
+        gates["no_behavior_collapse"] = not collapsed
+        if collapsed:
+            detail = "; ".join(getattr(diversity, "reasons", []) or []) or "behaviour coverage collapsed"
+            return EvaluationOutcome(
+                decision=Decision.REJECT,
+                reason=(
+                    f"behaviour collapse: {detail}. This overrides the score — an agent that narrowed its action "
+                    f"space while holding or improving its score is worse than one that can still do something else "
+                    f"(coverage {getattr(diversity, 'coverage_before', None)} -> "
+                    f"{getattr(diversity, 'coverage_after', None)})." + (f" Noise floor applied: {noise_floor:.4f}." if noise_floor else "")
+                ),
+                comparison=comparison,
+                gates=gates,
+            )
 
     if require_improvement and candidate.score <= baseline.score:
         gates["strictly_better"] = False

@@ -460,3 +460,83 @@ journal tamper detection, bounded rollback.
 **Tests:** `backend/tests/test_intelligence_layer.py`
 **Config:** the `intelligence:` block in `config.example.yaml`
 **Audit:** [`ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md`](../ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md)
+---
+
+## 16. Phases A–G: is the loop actually working?
+
+Added per [`ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md`](../ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md).
+These are **measurement** modules. The premise: more self-modification is not
+more intelligence; Alpha's deficit is not insufficient self-modification but
+insufficient measurement of whether it did what it claimed.
+
+| Phase | Module | The question it can now answer |
+| --- | --- | --- |
+| A | `pathway.py` | Did the change arrive *by the route it claimed*? |
+| B | `evaluator_stability.py` | How noisy is our own evaluator? |
+| C | `diversity.py` | Did the action space survive the change? |
+| D | `budget_protocol.py` | Can a cross-generation claim survive scrutiny? |
+| E | `evidence_ledger.py` | Do all six subsystems agree? |
+| F | `loop_health.py` | Is the loop improving, stable, or saturating? |
+| G | `investigation.py` | What is worth investigating, and can that be falsified? |
+
+### The three behaviours that matter most
+
+**An unexplained score gain is refused.** A candidate claiming to change routing
+whose routing decisions did not change, *whose score nevertheless rose*, is
+rejected as `anomalous improvement`. That is "the number went up and I cannot say
+why" — the condition that lets a broken loop look healthy indefinitely.
+
+**A behaviour collapse overrides a score improvement.** This is the only gate in
+the package that can reject a candidate that scored *better*. A narrowed agent
+holding the same score is worse than one that can still do something else.
+Detection needs **both** an absolute coverage floor and a material drop; either
+alone fires constantly.
+
+**An unmatched-budget comparison raises.** `compare_matched` refuses rather than
+returning "close enough", which is the only thing that makes "generation 7 beats
+generation 3" falsifiable — generation 7 may simply have had more attempts.
+
+### Endpoint
+
+`GET /api/intelligence/health` returns the regime, the bottleneck, and **one**
+recommended action:
+
+```json
+{
+  "regime": "insufficient_data",
+  "scored_attempts": 0,
+  "bottleneck": "not enough scored attempts to judge the loop",
+  "recommended_action": "collect at least 3 scored attempts before acting on any loop-health signal",
+  "required_subsystems": ["avo", "evolution_evidence", "rsi_promotion", "intelligence"]
+}
+```
+
+`insufficient_data` is a **first-class regime**, not an empty response: a loop
+with no scored attempts has not been measured, and reporting `stable` there would
+be fabricated reassurance.
+
+### Config
+
+```yaml
+intelligence:
+  regression:
+    repeats: 3                    # Phase B
+    noise_floor_source: max_of_both
+    diversity_floor: 0.5          # Phase C
+    diversity_min_drop: 0.1
+    require_pathway_engaged: false # Phase A
+    reject_anomalous_improvement: true
+  required_subsystems: ["avo", "evolution_evidence", "rsi_promotion", "intelligence"]  # Phase E
+  investigation_min_gain: 0.1     # Phase G
+  investigation_admission: false  # dry-run: rank, spend nothing
+```
+
+An entry in `required_subsystems` naming an unknown subsystem is a **load error**,
+because a typo would silently shorten the quorum and nothing would report it.
+
+### Tests
+
+```bash
+cd backend
+uv run pytest tests/test_intelligence_phases.py -q      # 116 tests
+```

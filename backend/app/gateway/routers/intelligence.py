@@ -171,13 +171,16 @@ async def get_expert_prune_eligibility(expert_id: str) -> dict[str, Any]:
     from alpha.intelligence.config import intelligence_config
     from alpha.intelligence.expert_fabric import ExpertFabricError, get_expert_fabric
 
-    grace = intelligence_config().experts.grace_period_seconds
+    def _evaluate(grace_period_seconds: float) -> dict[str, Any]:
+        return get_expert_fabric().evaluate_prune(expert_id, grace_period_seconds=grace_period_seconds).to_dict()
 
     try:
-        decision = await _read(get_expert_fabric().evaluate_prune, expert_id, grace_period_seconds=grace)
+        # Both the config parse and the fabric read are blocking, so they happen
+        # in the same worker thread rather than one on the event loop.
+        grace = await _read(lambda: intelligence_config().experts.grace_period_seconds)
+        return await _read(_evaluate, grace)
     except ExpertFabricError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return decision.to_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +247,82 @@ async def paging() -> dict[str, Any]:
     from alpha.intelligence.self_knowledge import get_self_knowledge
 
     return await _read(get_self_knowledge().paging)
+
+
+@router.get("/health", summary="Is the self-improvement loop actually working?")
+async def loop_health() -> dict[str, Any]:
+    """Regime, bottleneck, and the single recommended next action.
+
+    Composes Phases A–E and computes nothing new about capability: every field
+    is read from a subsystem that already owns it, so this endpoint cannot become
+    a seventh source of truth.
+
+    ``regime: "insufficient_data"`` is a first-class answer. A loop with no scored
+    attempts has not been measured, and reporting ``"stable"`` there would be
+    fabricated reassurance.
+    """
+    from alpha.intelligence.config import intelligence_config
+    from alpha.intelligence.evaluator_stability import NoiseFloor
+    from alpha.intelligence.evidence_ledger import Subsystem, get_evidence_ledger
+    from alpha.intelligence.journal import LearningJournal
+    from alpha.intelligence.loop_health import SaturationDetector, assess_loop_health
+    from alpha.intelligence.self_knowledge import get_self_knowledge
+
+    def build() -> Any:
+        # Synchronous on purpose: _read() runs it via asyncio.to_thread, so it
+        # must not itself be a coroutine. intelligence_config() parses a file, so
+        # it is read here in the worker thread rather than on the event loop. A
+        # config that will not parse must surface as a disclosed unavailability
+        # rather than a 500 that hides the health endpoint entirely.
+        try:
+            config = intelligence_config()
+        except Exception as exc:  # noqa: BLE001 - the disclosure IS the answer
+            return {
+                "report": {
+                    "regime": "insufficient_data",
+                    "reason": f"loop health could not be computed: {type(exc).__name__}: {exc}",
+                },
+                "required_subsystems": [],
+                "ledger": {},
+                "observed_events": 0,
+            }
+
+        ledger = get_evidence_ledger()
+        ledger.configure([Subsystem(name) for name in config.required_subsystems])
+        journal = LearningJournal()
+        entries, _corrupt = journal.recent(
+            kinds=("loop_observed", "pathway_verified", "noise_measured", "diversity_compared"),
+            limit=config.regression.max_retries * 4,
+        )
+        detector = SaturationDetector()
+        for entry in entries:
+            after = entry.event.after
+            if not isinstance(after, dict) or "improved" not in after:
+                continue
+            detector.observe(bool(after.get("improved")), gain=after.get("gain"))
+        report = assess_loop_health(
+            detector=detector,
+            noise=NoiseFloor(
+                metric="score",
+                floor=0.0,
+                samples=0,
+                observed=False,
+                reason="no stability probe has been run in this process yet; run measure_noise_floor() before trusting any delta",
+                source="unmeasured",
+            ),
+            convergence=None,
+            noise_floor_source=config.regression.noise_floor_source,
+        )
+        return {
+            "report": report.to_dict(),
+            "required_subsystems": list(config.required_subsystems),
+            "ledger": ledger.stats(),
+            "observed_events": len(entries),
+        }
+
+    result = await _read(build)
+    mode = await _read(get_self_knowledge().mode)
+    return {"mode": mode, **result}
 
 
 @router.get("/difficulty", summary="Estimate task difficulty and return the bounded compute plan")

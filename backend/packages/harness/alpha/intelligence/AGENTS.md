@@ -109,19 +109,80 @@ repo's honesty rules exist to prevent.
   `GET /api/intelligence/journal`; no `Signal` kind is emitted. Emitting signals
   from a default-off layer would create noise.
 
+## Phases A–G — measuring whether the loop works
+
+Added in `ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md`. These are **measurement**
+modules, not new capability. Each closes a gap that was a measured absence.
+
+| Phase | Module | Closes |
+| --- | --- | --- |
+| A | `pathway.py` | did the change arrive by the claimed route? |
+| B | `evaluator_stability.py` | measure the verifier's own noise |
+| C | `diversity.py` | did the action space survive? |
+| D | `budget_protocol.py` | are cross-generation claims falsifiable? |
+| E | `evidence_ledger.py` | six subsystems, one verdict |
+| F | `loop_health.py` | is the loop working? |
+| G | `investigation.py` | what is worth investigating? |
+
+### Phase-specific load-bearing rules
+
+**A — a probe that cannot run must never return `True`.** It returns
+`engaged=None` → `INCONCLUSIVE`, which blocks promotion. `NOT_ENGAGED` combined
+with an improved score is `is_anomalous_improvement` — "the number went up and I
+cannot say why" — and is the condition that lets a broken loop look healthy.
+
+**B — a noise floor estimated from one sample is not a floor.** Fewer than
+`min_repeats` observations, or all-identical observations, yield
+`observed=False`. `resolve_noise_floor(source="max_of_both")` (the default) can
+only make the gate **stricter**, so a measurement can never become a licence to
+accept a smaller improvement.
+
+**C — coverage is measured against the BASELINE**, not against the trace's own
+distinct set (that is `|S|/|S|` = 1.0, always). `normalize_action` reduces
+**per value**, not per key: keeping only keys would make `bash(cmd=ls)` and
+`bash(cmd=rm -rf)` the same behaviour, which is backwards for an action-space
+measure. Both clauses (below-floor **and** material-drop) are required.
+
+**D — `compare_matched` RAISES on a budget mismatch.** Returning a delta would
+reintroduce exactly the unfalsifiable claim this phase exists to prevent.
+`BudgetUnit.tokens` is `None` when uninstrumented, never `0.0`.
+
+**E — absence is not approval, and a rejection is not outvoted.** An unevaluated
+subsystem yields `PARTIAL`, never `PASS`. There is no averaging: subsystems are
+gates, not voters.
+
+**F — `insufficient_data` is a first-class regime.** Never report `stable` for a
+loop with no scored attempts. The bottleneck is chosen by **severity**, not
+iteration order, so identical inputs always name the same limiting factor.
+
+**G — `falsifiable_by` is required and must name a measurement.** A proposal
+failing it is an enthusiasm, not a research direction. Selection is itself gated
+by Phase E convergence, because choosing what to investigate is the judgment the
+research says agents are worst at.
+
+### Phase A and C reach the promotion gate
+
+`evaluate_gate(..., pathway=..., diversity=..., noise_floor=...)`. Absent evidence
+does not block (an unchecked mechanism is not a refusal). `diversity` is the
+**only** gate that can reject a candidate that scored better — deliberately.
+
 ## Tests
 
 ```bash
 cd backend
-uv run pytest tests/test_intelligence_layer.py -q      # 168 tests
+uv run pytest tests/test_intelligence_layer.py tests/test_intelligence_phases.py -q
+# 168 + 116 tests
 ```
 
-The class names map to the audit's "genuinely absent" list, so a failure names
-the gap it covers: `TestConfigContract`, `TestExpertFabric`,
-`TestPruningSafety`, `TestRouterAndScoring`, `TestPaging`,
+The class names map to the audit's "genuinely absent" list and then to the
+plan's phases, so a failure names the gap it covers: `TestConfigContract`,
+`TestExpertFabric`, `TestPruningSafety`, `TestRouterAndScoring`, `TestPaging`,
 `TestReplayReservoir`, `TestSanitizer`, `TestRegressionAndGate`,
 `TestPlasticity`, `TestDifficulty`, `TestContinueDecision`,
-`TestJournalAndSnapshots`, `TestSelfKnowledge`, `TestExperienceTelemetry`.
+`TestJournalAndSnapshots`, `TestSelfKnowledge`, `TestExperienceTelemetry`;
+then `TestPhaseAPathway`, `TestPhaseBEvaluatorStability`, `TestPhaseCDiversity`,
+`TestPhaseDBudgetProtocol`, `TestPhaseEEvidenceLedger`, `TestPhaseFLoopHealth`,
+`TestPhaseGInvestigation`, `TestGateIntegration`.
 
 `test_capability_projections_read_live_state` is not decorative: the
 self-knowledge projections were originally written against three import paths
