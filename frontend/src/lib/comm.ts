@@ -1,8 +1,10 @@
 import { get, send, asList, pick } from "./http";
 import { fetchRoster, fetchInbox, registerRosterAgent } from "./inbox";
 import type { Breadcrumb, MembershipRule, RoomRoster, RoomScope, RoomState, RulePreview, TreeNode } from "./groups-tree";
+import { toRoomActivity, type RoomActivity } from "./group-activity";
 
 export type { Breadcrumb, MembershipRule, RoomRoster, RoomScope, RoomState, RulePreview, TreeNode };
+export type { RoomActivity } from "./group-activity";
 
 export const OPERATOR = "operator";
 
@@ -314,6 +316,63 @@ export async function listRoomMembers(name: string): Promise<MemberPresence[]> {
 }
 
 /* ---------------- Nested groups: forest, roster, rules, lifecycle ------------- */
+
+/**
+ * Live activity for one room: who is working, on what, and who stopped.
+ *
+ * Rejects on error rather than resolving to an empty room, because an empty
+ * activity list must mean "the server said nobody is working" and not "the call
+ * failed" — those are opposite claims and the UI renders them differently.
+ */
+export async function roomActivity(name: string): Promise<RoomActivity> {
+  return toRoomActivity(await get<unknown>(`/groups/${encodeURIComponent(name)}/activity`));
+}
+
+/**
+ * Declare intent to work on a subject. Advisory: the server never refuses a
+ * claim, so this cannot lose work to a wrong record. It answers with the
+ * conflicts the caller's own claim now overlaps.
+ */
+export async function claimWork(
+  name: string,
+  botName: string,
+  subject: string,
+  opts: { kind?: string; intent?: string; detail?: string } = {},
+): Promise<{ claim: Record<string, unknown>; conflicts: unknown[] }> {
+  const body = {
+    bot_name: botName,
+    subject,
+    kind: opts.kind ?? "file",
+    intent: opts.intent ?? "editing",
+    detail: opts.detail ?? "",
+  };
+  const d = (await send(`/groups/${encodeURIComponent(name)}/claims`, "POST", body)) as Record<string, unknown>;
+  return { claim: (d?.claim as Record<string, unknown>) ?? {}, conflicts: asList(d, ["conflicts"]) };
+}
+
+export async function releaseClaim(name: string, claimId: string, requesterBot: string): Promise<void> {
+  await send(
+    `/groups/${encodeURIComponent(name)}/claims/${encodeURIComponent(claimId)}?requester_bot=${encodeURIComponent(requesterBot)}`,
+    "DELETE",
+  );
+}
+
+/** Take over a claim abandoned by a confirmed-dead agent. */
+export async function reclaimClaim(name: string, claimId: string, botName: string): Promise<void> {
+  await send(`/groups/${encodeURIComponent(name)}/claims/${encodeURIComponent(claimId)}/reclaim`, "POST", {
+    bot_name: botName,
+  });
+}
+
+/** Turn a crash verdict into available work. Idempotent on the server. */
+export async function reconcileActivity(name: string): Promise<{ crashed: string[]; orphaned: unknown[]; announced: number }> {
+  const d = (await send(`/groups/${encodeURIComponent(name)}/activity/reconcile`, "POST", {})) as Record<string, unknown>;
+  return {
+    crashed: asList(d, ["crashed"]).map((c) => String(c)),
+    orphaned: asList(d, ["orphaned"]),
+    announced: typeof d?.announced === "number" ? d.announced : 0,
+  };
+}
 
 export async function deleteRoomCascade(name: string, cascade: boolean): Promise<void> {
   await send(`/groups/${encodeURIComponent(name)}?cascade=${cascade ? "true" : "false"}`, "DELETE");
