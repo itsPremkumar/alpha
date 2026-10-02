@@ -189,10 +189,7 @@ def _announce(room_name: str, actor: str, orphaned: list[dict[str, Any]], crashe
         svc.post_message(
             room_name=room_name,
             sender=actor,
-            content=(
-                f"{len(crashed)} agent(s) stopped unexpectedly: {', '.join(sorted(crashed))}. "
-                "Their unfinished work is listed below and is available to pick up."
-            ),
+            content=(f"{len(crashed)} agent(s) stopped unexpectedly: {', '.join(sorted(crashed))}. Their unfinished work is listed below and is available to pick up."),
             intent=INTENT_CRASH,
             metadata={"crashed": sorted(crashed), "orchestration": "activity"},
         )
@@ -202,10 +199,7 @@ def _announce(room_name: str, actor: str, orphaned: list[dict[str, Any]], crashe
         svc.post_message(
             room_name=room_name,
             sender=actor,
-            content=(
-                f"{len(orphaned)} claim(s) released by {', '.join(holders)} are now unclaimed: "
-                f"{', '.join(subjects)}. Claim one before editing it."
-            ),
+            content=(f"{len(orphaned)} claim(s) released by {', '.join(holders)} are now unclaimed: {', '.join(subjects)}. Claim one before editing it."),
             intent=INTENT_ORPHAN,
             metadata={"subjects": subjects, "orchestration": "activity"},
         )

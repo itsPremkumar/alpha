@@ -16,9 +16,10 @@ import asyncio
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from alpha.groups.activity import RunEvidence
 from alpha.groups.presence import resolve_room_presence
 from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS
 from alpha.groups.roster import VALID_RULE_FIELDS, VALID_RULE_OPS, RosterError
@@ -90,6 +91,18 @@ def _service():
     from alpha.groups.service import get_group_chat_service
 
     return get_group_chat_service()
+
+
+def _coordination():
+    """The room-level activity/claim composition.
+
+    Imported lazily for the same reason `_service` is: keeping the import at
+    call time means reading one room does not pay for the whole group package's
+    import graph.
+    """
+    from alpha.groups import coordination
+
+    return coordination
 
 
 def _room_to_response(room) -> dict:
@@ -603,6 +616,345 @@ async def project_rooms(project_id: str) -> dict:
 
     rooms = await asyncio.to_thread(_list)
     return {"project_id": project_id, "rooms": rooms, "count": len(rooms)}
+
+
+# ── Activity & work coordination ────────────────────────────────────────────
+#
+# Declared above the `GET /{name}` catch-all for the reason this file already
+# documents for `/tree` and `/{name}/rules/preview`: Starlette matches in
+# registration order, and a literal path declared after a catch-all is answered
+# with "Room 'x' not found", which is indistinguishable from an absent route.
+
+
+def _run_manager(request: Request | None):
+    """The process RunManager, or `None` outside a Gateway request."""
+    if request is None:
+        return None
+    return getattr(request.app.state, "run_manager", None)
+
+
+async def _run_facts_for(members: list[str], manager) -> dict[str, RunEvidence]:
+    """Read the live run store for each member's current run.
+
+    The run store is owned by `app.gateway.deps`, so the harness cannot reach it
+    (`tests/test_harness_boundary.py` enforces that direction) and this route
+    supplies the facts instead.
+
+    A run id the ledger recorded but the store no longer holds comes back with
+    `absent=True`, which the derivation reports as `unresponsive` — never as a
+    fabricated terminal state. A store that raises is left unset so the
+    derivation falls back to the ledger's own record, because a store that
+    cannot answer is not evidence of anything.
+
+    `user_id=None` is deliberate: this is an operational read across every
+    member of a room, not a thread-owner-scoped request.
+    """
+    from alpha.groups.activity import get_activity_ledger
+
+    facts: dict[str, RunEvidence] = {}
+    if manager is None:
+        return facts
+    ledger = get_activity_ledger()
+    for name in members:
+        row = ledger.raw_row(name) or {}
+        run_id = row.get("run_id")
+        if not run_id:
+            continue
+        try:
+            record = await manager.get(str(run_id), user_id=None)
+        except Exception:
+            continue
+        if record is None:
+            facts[name] = RunEvidence(run_id=str(run_id), absent=True)
+            continue
+        facts[name] = RunEvidence(
+            run_id=str(run_id),
+            status=getattr(record.status, "value", record.status),
+            stop_reason=getattr(record, "stop_reason", None),
+            error=getattr(record, "error", None),
+        )
+    return facts
+
+
+@router.get("/{name}/activity", summary="Live per-agent activity and work claims")
+async def room_activity(name: str, request: Request) -> dict:
+    """Who is working, on what, since when — and what they are holding.
+
+    This is the display that makes a crashed agent legible. The previous
+    presence surface reported a single state word per member and resolved
+    silence to `idle`, which is also what a *finished* agent looks like, so a
+    crash and a clean finish rendered identically.
+
+    Every entry carries `evidence` (why this state, from which source) and
+    `attributed_by` (whether the room binding was server-assigned or inferred
+    from resolved membership). Both membership counts travel together, and
+    `by_activity` stays a breakdown summing to `count` rather than being mixed
+    into them — a client rendering only `direct_count` would say "3 members"
+    about a room with six visible bots.
+    """
+    key = _validate_room_name(name)
+
+    def _members():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return None
+        return svc.effective_members(key)
+
+    members = await asyncio.to_thread(_members)
+    if members is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+
+    facts = await _run_facts_for(members, _run_manager(request))
+    snapshot = await asyncio.to_thread(lambda: _coordination().room_snapshot(key, run_facts=facts))
+
+    roster = None
+    try:
+        roster = await asyncio.to_thread(_service().resolved_roster, key)
+    except KeyError:
+        pass
+
+    return {
+        **snapshot,
+        "members": [a["bot_name"] for a in snapshot["agents"]],
+        "direct_count": roster.direct_count if roster else None,
+        "effective_members": roster.effective if roster else members,
+        "effective_count": len(roster.effective) if roster else len(members),
+    }
+
+
+@router.get("/{name}/activity/{bot_name}", summary="One agent's activity with evidence")
+async def agent_activity(name: str, bot_name: str, request: Request) -> dict:
+    key = _validate_room_name(name)
+    if not _BOT_NAME_RE.match(bot_name):
+        raise HTTPException(status_code=422, detail=f"Invalid member name '{bot_name}'.")
+    clean = bot_name.lower().strip()
+
+    def _check():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return "no_room"
+        return "member" if clean in svc.effective_members(key) else "absent"
+
+    membership = await asyncio.to_thread(_check)
+    if membership == "no_room":
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    if membership != "member":
+        raise HTTPException(status_code=404, detail=f"'{clean}' is not a member of room '{key}'.")
+
+    facts = await _run_facts_for([clean], _run_manager(request))
+    snapshot = await asyncio.to_thread(lambda: _coordination().room_snapshot(key, run_facts=facts))
+    for entry in snapshot["agents"]:
+        if entry["bot_name"] == clean:
+            return {"room": key, **entry}
+    raise HTTPException(status_code=404, detail=f"'{clean}' is not a member of room '{key}'.")
+
+
+class ActivityHeartbeatRequest(BaseModel):
+    bot_name: str = Field(..., min_length=1, max_length=64)
+    activity: str | None = Field(default=None, max_length=16)
+    detail: str = Field(default="", max_length=500)
+    claim_ids: list[str] | None = Field(default=None, max_length=50)
+
+
+@router.post("/{name}/activity/heartbeat", summary="Report one agent's current activity")
+async def heartbeat_activity(name: str, body: ActivityHeartbeatRequest) -> dict:
+    """The optional self-report path.
+
+    Deliberately *optional*. The primary signal is the run lifecycle, because a
+    crashed agent cannot report its own crash and a heartbeat that costs a model
+    call is one that gets skipped under load. This exists so an agent can publish
+    phase detail ("refactoring the router") that the run store cannot know.
+    """
+    from alpha.groups.activity import ACTIVITY_STATES, get_activity_ledger
+
+    key = _validate_room_name(name)
+    clean = body.bot_name.lower().strip()
+    if body.activity is not None and body.activity not in ACTIVITY_STATES:
+        raise HTTPException(status_code=422, detail=f"activity must be one of {', '.join(ACTIVITY_STATES)}.")
+
+    def _do():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return "no_room"
+        if clean not in svc.effective_members(key):
+            return "absent"
+        get_activity_ledger().record_heartbeat(clean, declared=body.activity, detail=body.detail, room_name=key, claim_ids=body.claim_ids)
+        return "ok"
+
+    outcome = await asyncio.to_thread(_do)
+    if outcome == "no_room":
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    if outcome != "ok":
+        raise HTTPException(status_code=404, detail=f"'{clean}' is not a member of room '{key}'.")
+    return {"room": key, "recorded": True}
+
+
+@router.post("/{name}/activity/reconcile", summary="Orphan the claims of confirmed-crashed agents")
+async def reconcile_activity(name: str) -> dict:
+    """Turn a crash verdict into available work, and announce it.
+
+    Idempotent: a second call finds nothing new and returns an empty receipt
+    rather than re-announcing. Only a *hard* crash verdict triggers it — an
+    `unresponsive` agent may be inside a long tool call, and taking its claims
+    away would hand live work to a second agent.
+    """
+    key = _validate_room_name(name)
+
+    def _do():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return None
+        return _coordination().crash_orphans(key)
+
+    receipt = await asyncio.to_thread(_do)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    return receipt
+
+
+class ClaimRequest(BaseModel):
+    bot_name: str = Field(..., min_length=1, max_length=64)
+    kind: str = Field(default="file", max_length=16)
+    subject: str = Field(..., min_length=1, max_length=500)
+    intent: str = Field(default="editing", max_length=16)
+    detail: str = Field(default="", max_length=500)
+    run_id: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/{name}/claims", status_code=201, summary="Declare intent to work on something")
+async def create_claim(name: str, body: ClaimRequest) -> dict:
+    """Record intent. Advisory — this never refuses, by design.
+
+    A second agent claiming the same subject also succeeds; the overlap is
+    reported as a soft conflict rather than blocked. Enforcing here would mean
+    one store with two contradictory guarantees, and a wrong block becomes lost
+    work.
+    """
+    from alpha.groups.claims import CLAIM_INTENTS, CLAIM_KINDS, get_claim_store
+
+    key = _validate_room_name(name)
+    if body.kind not in CLAIM_KINDS:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {', '.join(CLAIM_KINDS)}")
+    if body.intent not in CLAIM_INTENTS:
+        raise HTTPException(status_code=422, detail=f"intent must be one of {', '.join(CLAIM_INTENTS)}")
+    clean = body.bot_name.lower().strip()
+
+    def _do():
+        svc = _service()
+        room = svc.get_room(key)
+        if room is None:
+            return ("no_room", None)
+        if clean not in svc.effective_members(key):
+            return ("absent", None)
+        claim = get_claim_store().claim(
+            key,
+            clean,
+            body.kind,
+            body.subject,
+            intent=body.intent,
+            detail=body.detail,
+            project_id=getattr(room, "project_id", None),
+            run_id=body.run_id,
+        )
+        return ("ok", claim)
+
+    outcome, claim = await asyncio.to_thread(_do)
+    if outcome == "no_room":
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    if outcome == "absent":
+        raise HTTPException(status_code=404, detail=f"'{clean}' is not a member of room '{key}'.")
+
+    await asyncio.to_thread(lambda: _coordination().announce_claim(key, claim.to_dict()))
+    snapshot = await asyncio.to_thread(lambda: _coordination().room_snapshot(key))
+    mine = [c for c in snapshot["conflicts"] if clean in c["holders"]]
+    return {"room": key, "claim": claim.to_dict(), "conflicts": mine}
+
+
+@router.get("/{name}/claims", summary="List claims and soft conflicts")
+async def list_claims(name: str) -> dict:
+    key = _validate_room_name(name)
+
+    def _do():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return None
+        return _coordination().room_snapshot(key)
+
+    snapshot = await asyncio.to_thread(_do)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    return {
+        "room": key,
+        "claims": snapshot["claims"],
+        "live_claim_count": snapshot["live_claim_count"],
+        "orphaned": snapshot["orphaned"],
+        "conflicts": snapshot["conflicts"],
+    }
+
+
+@router.delete("/{name}/claims/{claim_id}", summary="Release a claim")
+async def release_claim(name: str, claim_id: str, requester_bot: str = Query(...)) -> dict:
+    key = _validate_room_name(name)
+
+    def _do():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return None
+        from alpha.groups.claims import get_claim_store
+
+        return get_claim_store().release(claim_id, requester_bot)
+
+    ok = await asyncio.to_thread(_do)
+    if ok is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Claim not found, already released, or the requester does not hold it.")
+    return {"room": key, "released": True}
+
+
+class ReclaimRequest(BaseModel):
+    bot_name: str = Field(..., min_length=1, max_length=64)
+
+
+@router.post("/{name}/claims/{claim_id}/reclaim", summary="Take over an orphaned claim")
+async def reclaim_claim(name: str, claim_id: str, body: ReclaimRequest) -> dict:
+    """Take over work abandoned by a confirmed-dead agent.
+
+    Only an **orphaned** claim can be reclaimed. Reclaiming a live one would be
+    a silent steal, which is precisely the failure this layer exists to prevent
+    — a live conflict is answered by asking the holder or the moderator, not by
+    whoever called this first. A missing claim is 404 and a live one is 409, so
+    the two are never conflated.
+    """
+    key = _validate_room_name(name)
+    clean = body.bot_name.lower().strip()
+
+    def _do():
+        svc = _service()
+        if svc.get_room(key) is None:
+            return ("no_room", None)
+        if clean not in svc.effective_members(key):
+            return ("absent", None)
+        from alpha.groups.claims import get_claim_store
+
+        store = get_claim_store()
+        if store.get(claim_id) is None:
+            return ("no_claim", None)
+        return ("ok", store.reclaim(claim_id, clean))
+
+    outcome, claim = await asyncio.to_thread(_do)
+    if outcome == "no_room":
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    if outcome == "absent":
+        raise HTTPException(status_code=404, detail=f"'{clean}' is not a member of room '{key}'.")
+    if outcome == "no_claim":
+        raise HTTPException(status_code=404, detail=f"Claim '{claim_id}' not found.")
+    if claim is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Only an orphaned claim can be reclaimed; a live claim must be released by its holder or the supervisor.",
+        )
+    return {"room": key, "claim": claim.to_dict()}
 
 
 @router.get("/{name}", summary="Get room with recent messages")

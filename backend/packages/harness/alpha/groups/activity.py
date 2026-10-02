@@ -298,6 +298,7 @@ def tone_for(activity: str) -> ActivityTone:
 
 # ── The derivation table ────────────────────────────────────────────────────
 
+
 #: RunManager's four named crash reasons, plus the group-run equivalent.
 #: Imported rather than restated so the two vocabularies cannot drift; the
 #: fallback literal is only used when the runtime package cannot import (which
@@ -417,11 +418,7 @@ def derive_activity(
         evidence = ActivityEvidence(
             source="heartbeat",
             reason=("declared_blocked" if fresh else "declared_blocked_stale") if declared == "blocked" else ("declared_idle" if fresh else "declared_idle_stale"),
-            detail=(
-                f"{bot_name} reported itself {declared}"
-                if fresh
-                else f"{bot_name} last reported itself {declared}"
-            ),
+            detail=(f"{bot_name} reported itself {declared}" if fresh else f"{bot_name} last reported itself {declared}"),
             run=run,
             last_heartbeat_at=last_heartbeat_at,
             seconds_since_heartbeat=None if age is None else round(age, 1),
@@ -445,11 +442,7 @@ def derive_activity(
     #    working when it went quiet, and nothing here may call it finished.
     if age is not None and age > UNRESPONSIVE_AFTER_SECONDS:
         reason = "heartbeat_timeout" if (run is None or run.status in ("running", "pending")) else "run_ended_without_event"
-        detail = (
-            f"{bot_name} has not reported for {round(age)}s"
-            if reason == "heartbeat_timeout"
-            else f"{bot_name}'s work ended with no terminal event"
-        )
+        detail = f"{bot_name} has not reported for {round(age)}s" if reason == "heartbeat_timeout" else f"{bot_name}'s work ended with no terminal event"
         evidence = ActivityEvidence(
             source="health" if health else "heartbeat",
             reason=reason,

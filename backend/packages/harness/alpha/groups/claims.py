@@ -282,11 +282,7 @@ def detect_soft_conflicts(
                     states=states_for,
                     reclaimable=reclaimable,
                     dead_holder=dead[0] if reclaimable else None,
-                    detail=(
-                        f"{first.subject} and {second.subject} overlap; {dead[0]} is crashed so it is available to take"
-                        if reclaimable
-                        else f"{holders[0]} and {holders[1]} both claim {subject}"
-                    ),
+                    detail=(f"{first.subject} and {second.subject} overlap; {dead[0]} is crashed so it is available to take" if reclaimable else f"{holders[0]} and {holders[1]} both claim {subject}"),
                 )
             )
     return out
@@ -365,13 +361,7 @@ class ClaimStore:
         owner = holder.lower().strip()
         with self._lock:
             for existing in self._claims.values():
-                if (
-                    existing.live
-                    and existing.room_name == room_name
-                    and existing.holder == owner
-                    and existing.kind == kind
-                    and existing.subject == clean
-                ):
+                if existing.live and existing.room_name == room_name and existing.holder == owner and existing.kind == kind and existing.subject == clean:
                     existing.renewed_at = _now()
                     existing.expires_at = _now() + float(ttl_seconds)
                     if detail:
