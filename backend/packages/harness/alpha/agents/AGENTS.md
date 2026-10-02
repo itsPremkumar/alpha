@@ -4,6 +4,21 @@
 - Entry point: `make_lead_agent(config: RunnableConfig)` registered in `langgraph.json`.
   Its signature and bare-graph return type are a published ABI: LangGraph Server calls it
   directly, so neither may change.
+- **A dangling `agent_name` degrades, it does not kill the run.**
+  `_assemble_lead_agent` is the single chokepoint every path flows through
+  (Web runs, IM channels, and the state accessors that compile the same graph
+  for `GET /threads/{id}/state`), so a `FileNotFoundError` from
+  `load_agent_config` — a roster-bot bound as `assistant_id` (bots live in
+  `.alpha/bots/roster.json`, a namespace with no sync to
+  `users/{user}/agents/{name}/`), a deleted custom agent, or a stale channel
+  config — clears `agent_name` from `configurable`, `context` *and* the merged
+  runtime `cfg` (no reader may keep claiming an agent that does not exist:
+  `setup_agent` would target it, the prompt's self-update section would claim a
+  persisted SOUL.md/config.yaml) and logs the degradation. When the dangling
+  name is a roster bot, the identity is re-homed to `bot_name` in the same
+  carriers so the bot roster reminder still fires; a corrupt config
+  (`ValueError`) still fails loudly, and a roster-lookup failure never blocks
+  the run. Tests: `tests/test_agent_missing_fallback.py`.
 - `assemble_lead_agent(config, *, app_config=None) -> LeadAgentAssembly(graph, descriptor)`
   is the richer entry point the Gateway uses; `make_lead_agent` is a thin wrapper returning
   `.graph`. The descriptor is built by

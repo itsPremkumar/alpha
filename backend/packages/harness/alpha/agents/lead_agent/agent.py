@@ -1002,6 +1002,56 @@ def _complete_assembly(
     return LeadAgentAssembly(graph=graph, descriptor=descriptor, effective_model=effective_model)
 
 
+def _roster_bot_name(name: str) -> str | None:
+    """Return *name* when it names a roster bot; ``None`` otherwise.
+
+    Bots (``.alpha/bots/roster.json``) and custom agents
+    (``users/{user}/agents/{name}/``) are separate namespaces with no sync,
+    and the Web UI binds a bot's name as ``assistant_id`` on thread creation
+    and run streaming.  The lookup is advisory and never raises: an
+    unreadable roster degrades the identity to the default lead agent rather
+    than failing the run.
+    """
+    if not name:
+        return None
+    try:
+        from alpha.bots.registry import get_bot_registry
+
+        lowered = name.lower()
+        for bot in get_bot_registry().list_bots():
+            if str(getattr(bot, "name", "")).lower() == lowered:
+                return name
+    except Exception:  # noqa: BLE001 — roster is advisory on this path
+        return None
+    return None
+
+
+def _clear_dangling_agent_identity(requested: str, *, bot_name: str | None, config: RunnableConfig, cfg: dict) -> None:
+    """Remove a dangling ``agent_name`` from every runtime carrier.
+
+    ``build_run_config`` writes ``agent_name`` into ``configurable`` (legacy
+    readers), into ``context`` (``ToolRuntime.context``, e.g. ``setup_agent``)
+    and merges it into ``cfg`` via ``_get_runtime_config``.  All three must
+    agree that no custom agent is active — otherwise ``setup_agent`` would
+    still target the missing name and the prompt's self-update section would
+    still claim a persisted SOUL.md/config.yaml that does not exist.
+
+    When the dangling name is a roster bot, the identity is re-homed to
+    ``bot_name`` in the same carriers so the bot roster reminder still fires.
+    """
+    cfg.pop("agent_name", None)
+    for section in ("configurable", "context"):
+        container = config.get(section)
+        if isinstance(container, dict):
+            container.pop("agent_name", None)
+    if bot_name:
+        cfg["bot_name"] = bot_name
+        config.setdefault("context", {})["bot_name"] = bot_name
+        configurable = config.get("configurable")
+        if isinstance(configurable, dict):
+            configurable["bot_name"] = bot_name
+
+
 def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> LeadAgentAssembly:
     # Lazy import to avoid circular dependency
     from alpha.tools import get_available_tools
@@ -1045,7 +1095,29 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     prompt_hint = cfg.get("prompt") or cfg.get("user_input") or cfg.get("query")
     preset_name, preset = resolve_agent_preset(cfg.get("agent_preset"), presets=resolved_app_config.agent_presets, prompt=prompt_hint)
 
-    agent_config = load_agent_config(agent_name, user_id=resolved_user_id) if not is_bootstrap else None
+    # A dangling ``agent_name`` (roster-bot binding, deleted custom agent,
+    # stale channel config, old checkpoint) must not kill the run: assembly
+    # is the single chokepoint every path flows through — Web runs, IM
+    # channels, and the state accessors that compile this same graph for
+    # ``GET /threads/{id}/state``.  Degrade to the default lead agent (or
+    # re-home to ``bot_name``) and say so loudly; only a *corrupt* config
+    # (ValueError) keeps failing.  See tests/test_agent_missing_fallback.py.
+    agent_config = None
+    if agent_name and not is_bootstrap:
+        try:
+            agent_config = load_agent_config(agent_name, user_id=resolved_user_id)
+        except FileNotFoundError:
+            dangling_name = agent_name
+            bot_name = _roster_bot_name(dangling_name)
+            _clear_dangling_agent_identity(dangling_name, bot_name=bot_name, config=config, cfg=cfg)
+            log = logger.info if bot_name else logger.warning
+            log(
+                "Lead-agent assembly: custom agent %r not found (user=%r); %s. agent_name cleared so the run continues honestly.",
+                dangling_name,
+                resolved_user_id,
+                f"re-homed to bot context bot_name={bot_name!r}" if bot_name else "no roster bot matches this name; running as the default lead agent",
+            )
+            agent_name = None
     # Keep compatibility with lightweight AgentConfig-shaped objects used by
     # integrations that predate caller-level subagent restrictions.
     allowed_subagents = getattr(agent_config, "allowed_subagents", None) if agent_config is not None else None
