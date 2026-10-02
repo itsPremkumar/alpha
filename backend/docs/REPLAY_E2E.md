@@ -94,6 +94,36 @@ cd backend && uv run python scripts/build_fixture_from_jsonl.py \
 ALPHA_WRITE_GOLDEN=1 PYTHONPATH=. uv run pytest tests/test_replay_golden.py
 ```
 
+## Hand-extend a fixture (no key)
+
+When the recorded conversation predates a new run-finalization contract — for
+example the delivery gate (2026-09-26), which now requires produced outputs to
+be presented through `present_files` before a run may end `success` — the
+fixture needs one more model turn, not a full live re-record. Extend it in
+place:
+
+```bash
+# 1. edit only a turn whose *input* is unchanged: swap its stale output for the
+#    new tool call (same input_hash, new recorded output), then replay with the
+#    miss dump enabled
+ALPHA_REPLAY_MISS_DUMP=/tmp/replay-miss PYTHONPATH=. uv run pytest tests/test_replay_golden.py
+
+# 2. the loud miss writes /tmp/replay-miss/replay-miss-<key>.json carrying the
+#    exact caller, conversation_hash and input_hash for the missing follow-up
+#    turn — author that turn's output entry with those hashes (they come from
+#    the same code the recorder uses, so the entry is indistinguishable from a
+#    recorded one)
+
+# 3. regenerate the committed golden, then re-run clean to verify
+ALPHA_WRITE_GOLDEN=1 PYTHONPATH=. uv run pytest tests/test_replay_golden.py
+PYTHONPATH=. uv run pytest tests/test_replay_golden.py
+```
+
+The hand-authored assistant outputs are the only non-recorded bytes; every tool
+execution, both hashes, and the golden are produced by the real gateway. Prefer
+a real-key re-record instead when the system prompt or non-deterministic tool
+results changed upstream of the extension.
+
 ## Run (no key)
 
 ```bash
