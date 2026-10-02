@@ -412,6 +412,7 @@ filled in from a default that would read as a fact.
 | `GET /api/intelligence/journal` | tail + chain integrity |
 | `GET /api/intelligence/replay` | occupancy, strata, oldest age |
 | `GET /api/intelligence/regressions` | suite coverage |
+| `GET /api/intelligence/investigations` | ranked research proposals + refusals (Phase G) |
 | `GET /api/intelligence/snapshots` | stored snapshots |
 | `GET /api/intelligence/paging` | tiers and residency |
 | `GET /api/intelligence/difficulty` | estimate + compute plan |
@@ -514,6 +515,12 @@ recommended action:
 `insufficient_data` is a **first-class regime**, not an empty response: a loop
 with no scored attempts has not been measured, and reporting `stable` there would
 be fabricated reassurance.
+
+`GET /api/intelligence/investigations` completes the picture: what Alpha
+currently thinks is worth investigating, and why anything was refused. It ranks
+through the *same* `select_investigations()` the admission gate uses, so the
+ordering an operator sees is the ordering that would be applied. With
+`investigation_admission: false` (the default) it never commits budget.
 
 ### Config
 
