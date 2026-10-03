@@ -1332,5 +1332,14 @@ Definitions and runs are owner-scoped for real HTTP requests. The built-in
 keeps `acceptance_passed=false` until a real domain executor supplies evidence.
 Missing executors, compensation callbacks, registry connections, and verification
 are disclosed or fail closed. Recurring automation remains scheduler-owned.
+
+`POST /dynamic/execute` returns `metadata["verification"]` — the registered
+verifier count, whether an operator-bound `verification_executor` is present,
+and the ids of nodes that declared a check. It reports **posture only and
+asserts no verdict**; per-node outcomes are the durable `node_verification`
+events from `GET /api/workflows/runs/{run_id}/events`, where a declared check
+that could not run is `not_run` with `passed: false` rather than an absent
+record. A node kind the runtime measures itself does not execute a declared
+verifier, and that boundary is documented rather than implied.
 See [`docs/DYNAMIC_WORKFLOWS.md`](../../docs/DYNAMIC_WORKFLOWS.md) for the full
 contract and limitations.

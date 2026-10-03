@@ -63,6 +63,12 @@ from alpha.workflow.patch import WorkflowPatchEngine
 from alpha.workflow.replanner import RuntimeReplanner
 from alpha.workflow.router import DynamicRouter
 from alpha.workflow.scheduler import WorkflowScheduler
+from alpha.workflow.verification import (
+    VerificationOutcome,
+    VerificationStatus,
+    declared_command,
+    run_verification,
+)
 
 # Module-level node-runner seam: the single default executor binding shared by
 # every DynamicWorkflowEngine. ``None`` means NO executor is bound, and nodes
@@ -493,6 +499,53 @@ class DynamicWorkflowEngine:
         # single-Gateway (see ``alpha.workflow.leases``), so a pid is exactly
         # as specific as the guarantee this engine can actually make.
         self.worker_id = f"gateway-pid-{os.getpid()}"
+        # Verification seams, both host-bound and empty by default.
+        # ``verification_cmd`` is reachable from ``POST /api/workflows``
+        # (``body.graph``) and from ``update_node_config``, i.e. it is
+        # client-supplied input, so nothing here may spawn a subprocess on its
+        # own: a command runs only through a bound executor, and only a
+        # registered or ``alpha.``-prefixed verifier may be imported and called.
+        self.verifier_registry: dict[str, Callable[[], Any]] = {}
+        self.verification_executor: Callable[[str], Any] | None = None
+
+    # ---------------------------------------------------------- verification
+
+    def register_verifier(self, name: str, verifier: Callable[[], Any]) -> None:
+        """Expose a host-side verifier under ``name`` for ``verification_cmd``.
+
+        The registry is the only way a *short* symbolic declaration resolves,
+        and it is populated by the host rather than by a request, so a caller
+        cannot make the engine reach arbitrary code by naming it.
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("verifier name must be a non-empty string")
+        if not callable(verifier):
+            raise ValueError(f"verifier for {name.strip()!r} is not callable")
+        self.verifier_registry[name.strip()] = verifier
+
+    def _verify_attempt(self, node: WorkflowNode, run: WorkflowRun) -> VerificationOutcome:
+        """Resolve and run a node's declared ``verification_cmd``.
+
+        Called once per attempt, after the runner's evidence is accepted and
+        before any of it is folded into run state, so a verifier that refuses
+        cannot be recorded as a success.  Every declared outcome is journalled
+        as ``node_verification``; an undeclared node emits nothing at all.
+        """
+        outcome = run_verification(
+            declared_command(node.config),
+            registry=self.verifier_registry,
+            executor=self.verification_executor,
+        )
+        if outcome.status is VerificationStatus.NOT_DECLARED:
+            return outcome
+        self.events.emit(
+            "node_verification",
+            run.run_id,
+            node_id=node.id,
+            passed=outcome.status is VerificationStatus.PASSED,
+            **outcome.to_dict(),
+        )
+        return outcome
 
     # ----------------------------------------------------------------- leases
 
@@ -2232,7 +2285,27 @@ class DynamicWorkflowEngine:
                     # later, unverified attempt inherit a success marker.
                     if not evidence:
                         raise UnverifiedNodeCompletionError(f"Node '{nid}' completed without evidence.")
+                    # A declared verification_cmd gates THIS attempt before any
+                    # of its work reaches the run, so a verifier that refuses —
+                    # or one that names nothing that exists — can never be
+                    # folded into a success.  It runs outside ``self.state()``:
+                    # an operator-bound executor may block, and the process-wide
+                    # lock guards bookkeeping, not command execution.
+                    verification = self._verify_attempt(node, run)
+                    if verification.blocks_completion:
+                        self._fail_node(
+                            run,
+                            node,
+                            f"node '{nid}' verification {verification.status.value}: {verification.reason}",
+                            verification=verification.to_dict(),
+                        )
+                        return
                     node.evidence.append(evidence)
+                    if verification.evidence:
+                        # Only a real pass contributes evidence; a not_run is
+                        # already journalled as node_verification and must not
+                        # be mistaken for proof.
+                        node.evidence.append(verification.evidence)
                     node.output = output
                     if node.loop_policy:
                         stop_met = False

@@ -343,6 +343,44 @@ reporting the measured sleep), `EVENT_WAIT` (parks the run in `WAITING_EVENT`),
 run; only a `completed` child is adopted, self recursion refused) complete on a
 measurement the runtime takes itself.
 
+**Declared verification execution.** `alpha.workflow.verification` is the
+consumer of `WorkflowNode.config["verification_cmd"]` — a field the decomposer
+wrote onto every task and the bridge copied into the graph, and which nothing
+in the tree ever read, so a run could succeed while its own plan still named
+the check meant to prove that success. The declaration is **client-supplied
+input** (`POST /api/workflows` takes `body.graph` verbatim and
+`update_node_config` writes node config), so it resolves to exactly three
+things and never to a subprocess: a verifier the host registered
+(`DynamicWorkflowEngine.register_verifier`), a dotted path inside the
+allowlisted `alpha.` prefix, or a shell-style command handed to a **host-bound**
+`verification_executor` — absent by default, so such a command is `not_run`,
+never spawned. Every other dotted path (`os.system` included) is refused at
+resolution, *before* any import. The gate runs on the **default / agent / tool
+/ bot path** of `_execute_single_node`, after the lease verdict and the
+evidence check but before either is folded into run state, and outside
+`_STATE_LOCK`. Kinds the runtime measures itself — the executor-free list
+above plus `condition`, `router`, `map`, `reduce`, `race`, `quorum` and
+`compensation`, all of which return before that path — do **not** execute a
+declared verifier, so declare one on a runnable node kind; a test pins that
+boundary rather than leaving it implied. `failed` and `unresolved` **block**:
+the node fails through `_fail_node` carrying the verifier's own reason and a
+`verification` block, and the runner's evidence is discarded rather than
+recorded. `not_run` (no executor bound, the callable needs arguments, or an
+uninterpretable return) completes the node and is journalled as a
+`node_verification` event with `passed: false` — never as a pass — exactly as
+an unbound compensation callback reports `executed: False`. Only `passed`
+appends evidence, and a node with no declaration emits nothing at all.
+`DynamicExecutionResult.metadata["verification"]` reports the posture
+(registry size, executor bound, declared node ids) and asserts no verdict,
+because re-summarising per-node outcomes from a process-local buffer could
+report `0 verified` after an eviction; the per-node outcomes live in the
+durable `node_verification` events. The decomposer now emits `verification_cmd`
+only where it can resolve: the six names that pointed at functions existing
+nowhere in the tree are gone, with their intent kept in
+`verification_criteria`, and `pytest -q` is the one declaration that remains —
+it runs the moment a host binds an executor. Tests:
+`tests/test_workflow_verification.py`.
+
 **Waiting, signals, and suspension.** `signal_event` releases only nodes
 registered for that exact event and returns them to `READY` (the scheduler admits
 only `PENDING`/`READY`, so a node left `WAITING` could never re-dispatch); an
@@ -351,6 +389,19 @@ the measured age and then applies the same fail-closed policy a wave does, so a
 wait nobody satisfies cannot leave a run non-terminal. `suspend_run` /
 `resume_run` park and release without inventing a terminal outcome, and stepping
 a parked run returns its real status.
+
+**An `event_id` is an address, and an address that can repeat is not one.**
+`WorkflowEvent.event_id` was a bare microsecond timestamp, which is *not* unique:
+`node_attempt_started` and the `node_completed` emitted right after it are
+written back to back, so they routinely landed in the same microsecond and
+shared an id. Anything resolving a point in the log by id then took the first of
+several matches — a fork anchored on the wrong event, its prefix ended early, no
+completed work was inherited, and the fork **repeated a side effect it had
+reported as inherited**, which is precisely the outcome `time_travel` exists to
+prevent. Ids are now a sortable timestamp plus a process-local counter, and
+`_prefix_for_fork` refuses an ambiguous id *by name* rather than silently
+resolving it, so a log written before this fix fails loudly instead of
+mis-forking. Tests: `tests/test_workflow_event_identity.py`.
 
 **Fork, dry run, templates, proposals.** `alpha.workflow.time_travel` forks a
 new run from a point in an event history, inheriting completed work rather than

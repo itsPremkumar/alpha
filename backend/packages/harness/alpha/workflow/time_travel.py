@@ -162,10 +162,19 @@ def _prefix_for_fork(
     if at_event_id is not None and at_index is not None:
         raise ForkError("pass either at_event_id or at_index, not both")
     if at_event_id is not None:
-        for offset, event in enumerate(events):
-            if event.event_id == at_event_id:
-                return list(events[: offset + 1]), offset
-        raise ForkError(f"event id {at_event_id!r} is not in the source run's history")
+        # Resolve by id, but refuse an AMBIGUOUS one.  Older logs were written
+        # with a microsecond-resolution id that could repeat, and taking the
+        # first of several matches anchors the fork at the wrong event: the
+        # prefix silently ends early, completed work is not inherited, and the
+        # fork repeats a side effect it claimed to inherit.  A duplicated id is
+        # a corrupt address, so it is named and refused rather than resolved.
+        matches = [offset for offset, event in enumerate(events) if event.event_id == at_event_id]
+        if not matches:
+            raise ForkError(f"event id {at_event_id!r} is not in the source run's history")
+        if len(matches) > 1:
+            kinds = ", ".join(f"#{index + 1} {events[index].event_type}" for index in matches[:4])
+            raise ForkError(f"event id {at_event_id!r} is ambiguous in this run's history: {len(matches)} events share it ({kinds}); those event ids are not unique, so the fork point cannot be resolved safely")
+        return list(events[: matches[0] + 1]), matches[0]
     if at_index is not None:
         if at_index < 1 or at_index > len(events):
             raise ForkError(f"fork index {at_index} is outside the source run's history of {len(events)} event(s)")

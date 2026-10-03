@@ -144,6 +144,110 @@ Verified by four consecutive runs of the concurrency subset (12 passed each)
 plus `tests/test_workflow_runtime_correctness.py` +
 `tests/test_workflow_leases.py` together — **81 passed**.
 
+### Wave 4 — declared verification execution (`alpha.workflow.verification`)
+
+`WorkflowNode.config["verification_cmd"]` was written by the decomposer and
+copied by the bridge into every compiled graph, and **nothing in the tree ever
+read it** — so a run could succeed while its own plan still named the check
+meant to prove that success. This wave makes it execute, and makes it honest
+when it cannot.
+
+**Resolution never reaches a subprocess.** The declaration is client-supplied
+input (`POST /api/workflows` takes `body.graph` verbatim, and
+`update_node_config` writes node config), so it resolves to exactly three
+things in order: a verifier the host registered
+(`DynamicWorkflowEngine.register_verifier`), a dotted path inside the
+allowlisted `alpha.` prefix, or a shell-style command handed to a **host-bound**
+`verification_executor`. That executor is absent by default, so
+`pytest -q` — the one declaration the decomposer still emits — is `not_run`
+until a host binds one. Every other dotted path (`os.system` included) is
+refused at resolution *before* any import.
+
+**The verdict contract is deliberately narrow.** A zero-argument callable
+returning a bool; dict keys `passed`/`ok`/`success`/`verdict` and the pass/fail
+strings are coerced; **anything else — including `None` — is `not_run`**, never
+a guess. An exception is `not_run` carrying the real reason: not a pass, and
+not a failure either.
+
+**Semantics at the node gate:**
+
+| Verdict | Effect |
+| --- | --- |
+| `passed` | node completes; only this appends evidence |
+| `failed` / `unresolved` | **blocks** — `_fail_node` with the verifier's reason and a `verification` block; the runner's evidence is discarded |
+| `not_run` | node completes, journalled as `node_verification` with `passed: false` — never as a pass |
+| `not_declared` | no event at all |
+
+The gate runs on the default / agent / tool / bot path of
+`_execute_single_node`, after the lease verdict and the evidence check but
+*before* either is folded into run state, and outside `_STATE_LOCK`. Kinds the
+runtime measures itself — the seven executor-free kinds plus `condition`,
+`router`, `map`, `reduce`, `race`, `quorum` and `compensation`, all of which
+return before that path — do **not** execute a declared verifier. That is a
+disclosed scope boundary pinned by
+`test_a_structural_node_kind_does_not_execute_a_declared_verifier`, not an
+implied claim of coverage: declare a verifier on a runnable node kind.
+
+**Two honesty surfaces.** `GET /api/workflows/runs/{run_id}/events` carries
+every `node_verification` event, so per-node outcomes are durably readable and
+replayable. `DynamicExecutionResult.metadata["verification"]` reports the
+**posture** — registry size, executor bound, declared node ids — and asserts no
+verdict whatsoever, because re-summarising per-node outcomes from a
+process-local buffer could report `0 verified` after an eviction. Execution
+acceptance (`acceptance_passed`) and verification stay separate axes so a
+consumer cannot mistake one for the other.
+
+**The decomposer's fiction was removed, not papered over.** Six of its seven
+declarations named either functions existing nowhere in the tree
+(`verify_research_coverage`, `ping_mcp_servers`, `validate_bot_roster_health`,
+`verify_test_suite_and_orphans`, `verify_memory_persistence`) or a function that
+can never satisfy a zero-argument contract
+(`alpha.skills.authoring.validate_skill_draft`). With resolution now live each
+would have **failed every node it was attached to**, so they are gone and their
+intent lives in `verification_criteria`. `pytest -q` is the sole declaration
+remaining, and it is real.
+
+Tests: `tests/test_workflow_verification.py` — **55 passed**.
+
+### A silent fork defect found by the regression sweep
+
+The first combined regression run surfaced one failure —
+`test_workflow_time_travel.py::test_fork_inherits_completed_work_and_resumes_after_it`
+— and it was **not** caused by this change set's feature work. A control run of
+the same file set at `da27f7d` was green (479 passed), while the defect
+reproduces at `da27f7d` too, on its own.
+
+`WorkflowEvent.event_id` was `datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")` — a
+microsecond-resolution timestamp, which is **not unique**.
+`node_attempt_started` and the `node_completed` written immediately after it are
+emitted back to back, so they routinely land in the same microsecond. A probe
+against the base commit captured the collision happening on its own, under real
+event ids and no patching:
+
+```
+(3, 'node_attempt_started', '20261003164840744801')
+(4, 'node_completed',       '20261003164840744801')
+```
+
+`_prefix_for_fork` resolved a caller-quoted `event_id` with a **first-match**
+scan, so the fork anchored at index 3, its prefix ended before the completion,
+and `inherited_completed_nodes` came back empty — silently. This is not a
+cosmetic assertion failure. Forking exists so completed work is inherited
+*rather than repeated*, specifically because replaying a model call or a sandbox
+write doubles a real side effect; a silent collapse quietly made the dangerous
+behaviour the default one.
+
+Fixed in two parts:
+
+1. event ids are a sortable timestamp plus a process-local counter, so a
+   back-to-back pair can no longer collide; and
+2. `_prefix_for_fork` refuses an **ambiguous** id by name, naming the colliding
+   events, so a log written before this fix fails loudly instead of mis-forking.
+
+Tests: `tests/test_workflow_event_identity.py` — **5 passed**, including a
+frozen-clock test that makes the collision deterministic, a sortability test, and
+a fork test that pins the inherited work the defect destroyed.
+
 ## Still missing
 
 These are audit-confirmed gaps that this change set did **not** close. They are
@@ -157,8 +261,6 @@ listed rather than implied:
 - **Failure quarantine / dead-letter.** Exhausted nodes end `FAILED` and are
   reconciled, but there is no separate quarantine store holding them for
   operator replay.
-- **`verification_cmd` execution.** Declared but not executed as a real
-  gate.
 - **Connectivity wait state.** A node waiting on network reachability has no
   first-class wait state of its own.
 - **Goal-drift detection.** No detector compares a run's trajectory against its
@@ -186,6 +288,8 @@ listed rather than implied:
 | `test_workflow_graph_diff.py` | 26 passed |
 | `test_workflow_plan_diff_router.py` | 12 passed |
 | `test_workflow_durability_router.py` | 12 passed |
+| `test_workflow_verification.py` | 55 passed |
+| `test_workflow_event_identity.py` | 5 passed |
 | runtime + leases together | 81 passed |
 | concurrency subset × 4 repeats | 12 passed each |
 | `test_docs_index.py` + `test_docs_claim_honesty.py` + classification | 8 passed |

@@ -151,6 +151,14 @@ These are disclosed limitations, not bugs to silently "fix":
   owner-scoped route; it is not folded into `/hydrate`.
 - **A completed run is never a verified run**, and a dry run
   (`dry_run_simulation`) carries no acceptance verdict.
+- **A declared verifier is a gate only where one can run.** `verification_cmd`
+  executes on the default / agent / tool / bot path alone; node kinds the
+  runtime measures itself — the executor-free kinds plus `condition`, `router`,
+  `map`, `reduce`, `race`, `quorum` and `compensation` — return before that
+  path and do not execute it. Shell commands run only through an
+  operator-bound executor that is absent by default, so they report `not_run`:
+  never a pass, and never a spawn. `not_run` completes the node with
+  `passed: false` rather than hiding the fact that the check did not happen.
 
 ## Test suites
 
@@ -161,4 +169,6 @@ These are disclosed limitations, not bugs to silently "fix":
 | `tests/test_workflow_graph_diff.py` | structural vs runtime, determinism, bounding, redaction |
 | `tests/test_workflow_plan_diff_router.py` | the diff endpoint, owner scoping, 404s |
 | `tests/test_workflow_durability_router.py` | journal, projection, hydration refusal, and `/recover` |
+| `tests/test_workflow_event_identity.py` | event ids are unique, a fork inherits completed work, and an ambiguous id is refused |
+| `tests/test_workflow_verification.py` | resolution and its refusals, the verdict contract, node-gate blocking, the disclosed scope boundary, and the bridge posture |
 | `tests/test_workflow_runtime_correctness.py` | waves, concurrency, budgets, retries |

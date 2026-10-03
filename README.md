@@ -535,7 +535,13 @@ exactly-once execution.
   the journal back into a live run after a crash. Failures are classified into
   nineteen retry-decision classes that bridge onto the existing recovery and
   work-unit reason vocabularies, and `GET .../plans/{version}/diff?base={n}`
-  reports structural vs runtime changes between plan revisions. The built-in
+  reports structural vs runtime changes between plan revisions. A node's
+  declared `verification_cmd` now **executes** before its result reaches the
+  run: it resolves to a host-registered verifier or an allowlisted `alpha.`
+  path, a shell command runs only through an operator-bound executor (absent by
+  default, so it reports `not_run` rather than spawning anything), and a
+  `failed` or `unresolved` verdict blocks the node while `not_run` completes it
+  without ever being recorded as a pass. The built-in
   digest executor is deliberately a **local graph projection**, disclosed as
   `execution_label="local_digest_projection"` with `acceptance_passed=false`
   until a real executor is bound.

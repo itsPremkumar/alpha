@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import itertools
 import logging
 import re
 import threading
@@ -13,9 +14,31 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+_EVENT_ID_SEQUENCE = itertools.count()
+
+
+def _new_event_id() -> str:
+    """A unique, sortable, process-local event address.
+
+    The bare microsecond timestamp that used to be the whole id was not unique.
+    ``node_attempt_started`` and the ``node_completed`` that follows it are
+    emitted back to back, so they routinely landed in the same microsecond and
+    shared an id -- and an id that can repeat is not an address. Anything
+    resolving a point in the log by id then matched the wrong event: a fork
+    anchored on the earlier one, silently truncated its prefix, and reported no
+    inherited work, which would repeat a side effect it claimed to inherit.
+    The timestamp prefix keeps ids sortable and readable; ``next()`` on a
+    counter is atomic under CPython, and events are process-local anyway. The
+    counter is zero-padded to a width no real process reaches, because padding
+    is what makes string order match insertion order -- a counter that outgrows
+    its own padding would silently stop sorting, which is the same class of
+    defect as a non-unique id.
+    """
+    return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{next(_EVENT_ID_SEQUENCE):012d}"
+
 
 class WorkflowEvent(BaseModel):
-    event_id: str = Field(default_factory=lambda: datetime.now(UTC).strftime("%Y%m%d%H%M%S%f"))
+    event_id: str = Field(default_factory=_new_event_id)
     workflow_run_id: str
     event_type: str
     timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())

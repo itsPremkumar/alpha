@@ -161,7 +161,11 @@ class DynamicDecomposer:
                     depends_on=[],
                     inputs={"query": prompt, "primary_domain": intent.primary_domain},
                     expected_outputs=["research_summary", "candidate_repos", "reference_patterns"],
-                    verification_cmd="verify_research_coverage",
+                    # Deliberately NOT declared. ``verification_cmd`` now has an
+                    # executor (alpha.workflow.verification), and a name that
+                    # resolves to nothing FAILS the node — so the decomposer
+                    # may only emit a command it can actually resolve. The
+                    # intent lives in ``verification_criteria`` below.
                     verification_criteria=["At least 2 relevant patterns or references identified", "No obsolete dependencies"],
                     node_type=CATEGORY_NODE_TYPES["research"],
                     write_scope=["research"],
@@ -189,7 +193,10 @@ class DynamicDecomposer:
                     depends_on=list(prev_dep),
                     inputs={"domain": intent.primary_domain, "intent": intent.intent_type.value},
                     expected_outputs=["active_skills", "authored_skill_drafts"],
-                    verification_cmd="alpha.skills.authoring.validate_skill_draft",
+                    # Not declared: ``validate_skill_draft`` takes
+                    # (name, description, markdown), so it can never satisfy
+                    # the zero-argument verifier contract. Emitting it would
+                    # guarantee ``not_run`` on every skills task forever.
                     verification_criteria=["Authored skills pass AST security scanner", "Skill frontmatter and verification commands validated"],
                     compensation=comp,
                     node_type=CATEGORY_NODE_TYPES["skills"],
@@ -218,7 +225,6 @@ class DynamicDecomposer:
                     depends_on=list(prev_dep),
                     inputs={"required_protocols": [intent.primary_domain, "system_tools"]},
                     expected_outputs=["active_mcp_servers", "negotiated_tools"],
-                    verification_cmd="ping_mcp_servers",
                     verification_criteria=["All required MCP endpoints respond with healthy status within 5s"],
                     compensation=comp,
                     node_type=CATEGORY_NODE_TYPES["mcp"],
@@ -247,7 +253,6 @@ class DynamicDecomposer:
                     depends_on=list(prev_dep),
                     inputs={"domain": intent.primary_domain, "execution_tier": intent.execution_tier.value},
                     expected_outputs=["provisioned_bots", "swarm_membership", "soul_directives"],
-                    verification_cmd="validate_bot_roster_health",
                     verification_criteria=["Bot profiles validated in registry with non-empty SOUL and isolated memory_scope"],
                     compensation=comp,
                     node_type=CATEGORY_NODE_TYPES["bots"],
@@ -295,7 +300,6 @@ class DynamicDecomposer:
                 depends_on=[core_task_id],
                 inputs={"target_task": core_task_id},
                 expected_outputs=["test_results", "quality_report", "verified_status"],
-                verification_cmd="verify_test_suite_and_orphans",
                 verification_criteria=["100% green tests", "Zero orphan modules detected", "No security or type errors"],
                 node_type=CATEGORY_NODE_TYPES["verification"],
                 write_scope=["qa"],
@@ -315,7 +319,6 @@ class DynamicDecomposer:
                     depends_on=[qa_task_id],
                     inputs={"execution_history": goal_id},
                     expected_outputs=["episodic_snapshot", "strategy_memory_stat", "evolved_bot_profiles"],
-                    verification_cmd="verify_memory_persistence",
                     verification_criteria=["Memory snapshot persisted to user scope", "StrategyMemory updated with honesty doctrine"],
                     node_type=CATEGORY_NODE_TYPES["learning"],
                     write_scope=["memory", "rsi"],
