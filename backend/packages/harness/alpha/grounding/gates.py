@@ -144,6 +144,12 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "edit_file": SideEffectClass.REVERSIBLE_WRITE,
     "str_replace": SideEffectClass.REVERSIBLE_WRITE,
     "multi_edit": SideEffectClass.REVERSIBLE_WRITE,
+    # Presenting already-produced outputs to the session user is local and
+    # re-runnable: it registers files the agent wrote for delivery, it publishes
+    # nothing outside the session, and calling it again simply re-presents.
+    # This is also the mandated final step of every task (see the lead prompt's
+    # deliverable rule), so leaving it unclassified would gate every delivery.
+    "present_files": SideEffectClass.REVERSIBLE_WRITE,
     "execute_command": SideEffectClass.IRREVERSIBLE,
     "bash": SideEffectClass.IRREVERSIBLE,
     "send_email": SideEffectClass.IRREVERSIBLE,

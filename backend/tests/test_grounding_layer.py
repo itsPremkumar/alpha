@@ -59,6 +59,7 @@ from alpha.grounding import (
     screen_text,
 )
 from alpha.grounding.effort import LADDER
+from alpha.grounding.gates import DEFAULT_SIDE_EFFECTS, SideEffectClass
 from alpha.grounding.manifest import Availability, CapabilityEntry, CapabilityManifest, CapabilityProbe, EntrySource
 
 # ---------------------------------------------------------------------------
@@ -411,6 +412,19 @@ class TestGates:
 
     def test_read_only_passes(self) -> None:
         assert check_side_effect(GateSubject(tool_calls=("read_file",))).blocked is False
+
+    def test_present_files_is_classified_as_reversible(self) -> None:
+        """`present_files` is the mandated delivery tool, not a side effect.
+
+        The lead prompt tells the agent that final deliverables must be copied
+        to the outputs directory and presented with `present_files`, so leaving
+        it unclassified would refuse the last step of every completed task. It
+        was observed breaking the recorded replay scenario (`write_read_file`),
+        whose final turn is exactly this call: the gate's refusal replaces the
+        recorded result, the transcript diverges, and the replay hash misses.
+        """
+        assert DEFAULT_SIDE_EFFECTS["present_files"] is SideEffectClass.REVERSIBLE_WRITE
+        assert check_side_effect(GateSubject(tool_calls=("present_files",))).blocked is False
 
     def test_unplanned_irreversible_is_refused_when_confirmation_allowed(self) -> None:
         result = check_side_effect(GateSubject(tool_calls=("bash",), planned_tools=(), forbid_unconfirmed_side_effects=False))
