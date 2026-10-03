@@ -4928,6 +4928,20 @@ intelligence:
     # moment the domain changes.
     recency_half_life_seconds: 604800.0   # 7 days
     min_priority: 0.0
+    # ==========================================================================
+    # Phase H - intrinsic curiosity as a learning signal.
+    # ==========================================================================
+    # Alpha already had `alpha.agency.curiosity.CuriosityScorer` (novelty +
+    # prediction error) but it had ZERO production callers and its novelty map
+    # was in-memory, so novelty reset to 1.0 on every restart - the opposite of
+    # a novelty signal. This makes it durable, adds the third intrinsic signal
+    # the literature names (verifier disagreement), and wires it to the reservoir.
+    #
+    # The `curiosity_cap` is deliberately tiny. Curiosity is a tiebreaker
+    # between plausible targets, never a reason to attempt something Alpha has
+    # no evidence it can do - see DegeneracyVerdict.EXPLORATION_WITHOUT_COMPETENCE.
+    curiosity_enabled: false   # off by default: a default-off layer must not explore
+    curiosity_cap: 0.15
 
   # -- plasticity controller -------------------------------------------------
   # More self-modification is not more intelligence. Multipliers are per-tier
@@ -4953,6 +4967,29 @@ intelligence:
     min_heldout_score: 0.0
     overfitting_gap: 0.2        # train-minus-heldout gap that flags overfitting
     max_retries: 2              # bounded promotion attempts; 0 disables promotion
+    # Phase B. Characterise the evaluator's own noise before trusting a delta.
+    # A floor is a declared CONSTANT until it is measured. `max_of_both` (default)
+    # can only make the gate STRICTER than the declared value, never looser, so a
+    # measurement can never be used to justify accepting a smaller improvement.
+    repeats: 3
+    noise_floor_source: max_of_both   # measured | declared | max_of_both
+    # Phase C. Behaviour-collapse detection. BOTH conditions are required:
+    # coverage below the floor AND a drop at or beyond the minimum material drop.
+    # Either alone produces constant false alarms. This is the one gate that can
+    # reject a candidate that scored BETTER.
+    diversity_floor: 0.5
+    diversity_min_drop: 0.1
+    # Phase A. Refuse a candidate whose claimed mechanism provably did not engage,
+    # and refuse an UNEXPLAINED score gain (score up, mechanism unchanged).
+    require_pathway_engaged: false
+    reject_anomalous_improvement: true
+    # Phase H. The TRUST gate on experience intake. True (default) preserves the
+    # pipeline's existing contract for current callers, which supply evidence but
+    # no source attribution. Set false to close the poisoning vector: web,
+    # tool-output and unknown-source records are refused, because a
+    # self-improving agent that replays untrusted observations equally will
+    # propagate its own untrustworthy inputs permanently.
+    admit_untrusted: true
 
   # -- dynamic expert fabric -------------------------------------------------
   experts:
@@ -4983,3 +5020,29 @@ intelligence:
   # treating "unknown" as "easy" is how a task with seven measured complexity
   # dimensions and no failure history gets routed as trivial.
   difficulty_thresholds: {}     # e.g. {easy: 0.25, medium: 0.5, hard: 0.75}
+
+  # ==========================================================================
+  # Phases A-G: measurement of whether the loop is actually working.
+  # ==========================================================================
+  # The premise of these settings is that MORE self-modification is not more
+  # intelligence. Alpha's deficit is not insufficient self-modification - it has
+  # six subsystems and one of them forbids candidates from authoring their own
+  # scorer - but insufficient measurement of whether that self-modification did
+  # what it claimed. Each setting below buys one more way to catch a loop that
+  # looks healthy while getting worse.
+
+  # Phase E. Subsystems that must record a verdict before a promotion is
+  # approvable. A subsystem NOT listed here is not part of the quorum, so its
+  # absence does not produce an unreconciled verdict - that is the difference
+  # between "not applicable here" and "we forgot to ask". An entry naming an
+  # unknown subsystem is a load error, because a typo would silently shorten the
+  # quorum.
+  required_subsystems: ["avo", "evolution_evidence", "rsi_promotion", "intelligence"]
+
+  # Phase G. Research-proposal admission. `investigation_admission: false` is the
+  # dry-run mode: proposals are ranked and reported, nothing consumes budget. A
+  # proposal must also name a falsification condition and pass the Phase E
+  # convergence check, which is what keeps "choose what to investigate" from
+  # becoming a novelty generator.
+  investigation_min_gain: 0.1
+  investigation_admission: false

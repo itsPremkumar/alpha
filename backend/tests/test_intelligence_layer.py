@@ -1438,6 +1438,34 @@ class TestSelfKnowledge:
         assert data["resident_now"] is None
         assert "no PagingManager" in data["note"]
 
+    @pytest.mark.parametrize("projection", ["tools", "skills", "mcp_servers", "models"])
+    def test_capability_projections_read_live_state(self, projection: str) -> None:
+        """Each capability inventory must resolve its real subsystem.
+
+        These four were originally written against names that do not exist in
+        this repository (``alpha.tools.get_builtin_tools``,
+        ``alpha.skills.list_skills``, ``alpha.mcp.cache.get_cached_tools``). The
+        honest-failure wrapper turned all three into a permanently-``False``
+        block, which is exactly the "capability exists but is always unavailable"
+        reading this service exists to prevent. Pinning them keeps the imports
+        pointing at the real accessors.
+        """
+        from alpha.intelligence.self_knowledge import get_self_knowledge
+
+        block = getattr(get_self_knowledge(), projection)()
+        assert block["available"] is True, f"{projection} is unavailable: {block['reason']}"
+        data = block["data"]
+        assert isinstance(data, dict)
+        assert data["count"] is not None
+        assert isinstance(data["names"], list)
+
+    def test_mcp_projection_never_exposes_schemas_or_credentials(self) -> None:
+        from alpha.intelligence.self_knowledge import get_self_knowledge
+
+        data = get_self_knowledge().mcp_servers()["data"]
+        assert "no credentials or schemas" in data["note"]
+        assert set(data) == {"count", "names", "tool_count", "note"}
+
 
 class TestRecordHelpers:
     def test_identity_rejects_self_parent(self) -> None:

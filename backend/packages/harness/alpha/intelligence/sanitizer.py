@@ -140,6 +140,9 @@ __all__ = [
     "ExperienceSanitizer",
     "default_sanitizer",
     "prose_text",
+    "TRUSTED_SOURCES",
+    "UNTRUSTED_SOURCES",
+    "DEFAULT_TRUST_LEVEL",
     "MIN_PROVENANCE_FIELDS",
     "MIN_QUALITY_CHARS",
 ]
@@ -150,6 +153,23 @@ __all__ = [
 #: (proposed/executed/verified/criticized/human_confirmed) and any subset
 #: satisfying this minimum is accepted.
 MIN_PROVENANCE_FIELDS: tuple[str, ...] = ("source_task", "created_by")
+
+#: Provenance trust levels an experience may carry, most to least trusted.
+#:
+#: The distinction is *whose observation* this is, not whether it is
+#: well-formed. A web page the agent read, a tool's stdout, and a user's own
+#: correction are all structurally valid experiences with entirely different
+#: reliability — and a self-improving agent that replays them equally will
+#: faithfully propagate its own untrustworthy inputs forever. This is the lesson
+#: of memory-poisoning work (e.g. DrunkAgent, WWW 2026): one poisoned write
+#: becomes permanent precisely because the system retains and replays it.
+#:
+#: Unknown levels are treated as untrusted rather than trusted, because the safe
+#: default for "we do not know where this came from" is not to trust it.
+TRUSTED_SOURCES: frozenset[str] = frozenset({"user", "operator", "human_confirmed", "alpha_verified"})
+UNTRUSTED_SOURCES: frozenset[str] = frozenset({"web", "tool_output", "external", "unverified", "model_inferred"})
+
+DEFAULT_TRUST_LEVEL = "unverified"
 
 #: Shortest acceptable textual content. Below this an experience cannot carry a
 #: lesson, and storing it only adds noise to the reservoir.
@@ -163,6 +183,7 @@ class Stage(StrEnum):
     SENSITIVE_FILTER = "sensitive_filter"
     INJECTION_DETECTION = "injection_detection"
     PROVENANCE_VALIDATION = "provenance_validation"
+    TRUST_VALIDATION = "trust_validation"
     QUALITY_VALIDATION = "quality_validation"
     DEDUPLICATION = "deduplication"
 
@@ -248,6 +269,7 @@ class ExperienceSanitizer:
         min_quality_chars: int = MIN_QUALITY_CHARS,
         injection_patterns: tuple[tuple[re.Pattern[str], str], ...] | None = None,
         max_metadata_nodes: int = 500,
+        admit_untrusted: bool = True,
     ) -> None:
         self.seen_digests = dict(seen_digests) if seen_digests is not None else None
         if min_quality_chars < 0:
@@ -257,6 +279,7 @@ class ExperienceSanitizer:
         # Bound the metadata walk so a large or deeply nested metadata dict
         #: cannot make sanitisation an unbounded cost on the write path.
         self.max_metadata_nodes = max_metadata_nodes
+        self.admit_untrusted = bool(admit_untrusted)
         self._denylist = SECRET_PATTERNS
 
     # -- individual stages --------------------------------------------------
@@ -406,6 +429,7 @@ class ExperienceSanitizer:
             (Stage.SENSITIVE_FILTER, lambda: self.check_sensitive(record)),
             (Stage.INJECTION_DETECTION, lambda: self.check_injection(record)),
             (Stage.PROVENANCE_VALIDATION, lambda: self.check_provenance(record)),
+            (Stage.TRUST_VALIDATION, lambda: self.check_trust(record)),
             (Stage.QUALITY_VALIDATION, lambda: self.check_quality(record)),
             (Stage.DEDUPLICATION, lambda: self.check_duplicate(record, digest or _content_digest(record))),
         )
@@ -427,6 +451,59 @@ class ExperienceSanitizer:
         # dedup did not actually run rather than assuming it did.
         return SanitizerReport(accepted=True, stages=stages)
 
+    def check_trust(self, record: ExperienceRecord) -> StageResult:
+        """Refuse experience from an untrusted source.
+
+        Runs **after** provenance validation, because "we know where this came
+        from" and "we trust where it came from" are different questions, and
+        only the second one decides whether it may be learned from.
+
+        **Off by default.** ``admit_untrusted=True`` is the default because
+        every existing caller constructs records carrying only ``evidence`` and
+        no source attribution; making this stage mandatory would silently refuse
+        every one of them, which is a breaking change this layer is not entitled
+        to make on an operator's behalf. The stage still *runs* and reports
+        ``SKIPPED`` with a reason rather than ``PASSED`` — skipped is not passed,
+        so the gap stays visible instead of reading as a clean bill of health.
+
+        Set ``admit_untrusted=False`` (or
+        ``config.yaml -> intelligence.regression.admit_untrusted: false``) to
+        close the poisoning vector. An unrecognised trust level is then treated
+        as untrusted, because "we do not know where this came from" must not be
+        silently promoted to "trust it by default".
+        """
+        level = record.metadata.get("trust_level", record.metadata.get("source", DEFAULT_TRUST_LEVEL))
+        if self.admit_untrusted:
+            return StageResult(
+                stage=Stage.TRUST_VALIDATION,
+                outcome=Outcome.SKIPPED,
+                reason=("the trust gate is disabled (intelligence.regression.admit_untrusted), so an untrusted source is not refused. Set it to false to close the poisoning vector; until then this stage is not evidence of trust."),
+                detail={"level": str(level), "gate": "disabled"},
+            )
+        if not isinstance(level, str):
+            return StageResult(
+                stage=Stage.TRUST_VALIDATION,
+                outcome=Outcome.REFUSED,
+                reason=(f"trust level {level!r} is not a string; an experience whose trust cannot be read cannot be trusted, so it is refused rather than assumed safe"),
+                detail={"level": repr(level)},
+            )
+        key = level.strip().lower()
+        if key in TRUSTED_SOURCES:
+            return StageResult(stage=Stage.TRUST_VALIDATION, outcome=Outcome.PASSED, detail={"level": key, "trusted": True})
+        if key in UNTRUSTED_SOURCES:
+            return StageResult(
+                stage=Stage.TRUST_VALIDATION,
+                outcome=Outcome.REFUSED,
+                reason=(f"source {key!r} is untrusted. A self-improving agent that replays untrusted observations equally will propagate them permanently, so an untrusted experience is not admitted to the replay reservoir"),
+                detail={"level": key, "trusted": False},
+            )
+        return StageResult(
+            stage=Stage.TRUST_VALIDATION,
+            outcome=Outcome.REFUSED,
+            reason=(f"unknown trust level {key!r}; recognised trusted levels are {sorted(TRUSTED_SOURCES)} and recognised untrusted levels are {sorted(UNTRUSTED_SOURCES)}. An unrecognised level is refused rather than assumed safe."),
+            detail={"level": key, "trusted": False, "unknown": True},
+        )
+
 
 def _content_digest(record: ExperienceRecord) -> str:
     import hashlib
@@ -446,6 +523,10 @@ def _content_digest(record: ExperienceRecord) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def default_sanitizer(seen_digests: Mapping[str, str] | None = None) -> ExperienceSanitizer:
-    """The shipped sanitiser."""
-    return ExperienceSanitizer(seen_digests=seen_digests)
+def default_sanitizer(seen_digests: Mapping[str, str] | None = None, *, admit_untrusted: bool = True) -> ExperienceSanitizer:
+    """The shipped sanitiser.
+
+    ``admit_untrusted`` defaults to ``True`` to preserve the pipeline's existing
+    contract for every current caller. Pass ``False`` for the strict posture.
+    """
+    return ExperienceSanitizer(seen_digests=seen_digests, admit_untrusted=admit_untrusted)

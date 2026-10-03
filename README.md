@@ -114,7 +114,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 63 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 65 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -691,7 +691,7 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (113 harness engines)</b></summary>
+<summary><b>Full subsystem map (114 harness engines)</b></summary>
 
 Every directory under `backend/packages/harness/alpha/` (102 packages, counted by
 `backend/scripts/generate_feature_manifest.py`) is a dedicated engine:
@@ -922,7 +922,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Two contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 134 tools, 63 routers, 43 middlewares, and 9 supervisor loops. CI fails
+  pins all 134 tools, 65 routers, 43 middlewares, and 9 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

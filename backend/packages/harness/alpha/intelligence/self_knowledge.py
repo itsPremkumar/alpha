@@ -98,37 +98,64 @@ class SelfKnowledgeService:
     # -- capabilities -------------------------------------------------------
 
     def tools(self) -> dict[str, Any]:
-        """Registered model-visible tool names, from the tool registry."""
+        """Model-visible tool names, from the real tool assembly.
+
+        Read through :func:`alpha.tools.get_available_tools`, the same function
+        that assembles a run's toolset — not a re-derivation of the registry. The
+        arguments mirror the ``standard`` agent preset so the reported set is the
+        one an ordinary run actually sees; the preset's own narrowing flags
+        (``include_mcp``) are left at their defaults, and MCP is reported
+        separately by :meth:`mcp_servers` rather than folded in here.
+        """
 
         def read() -> Any:
-            from alpha.tools import get_builtin_tools
+            from alpha.tools import get_available_tools
 
-            names = sorted(spec.name for spec in get_builtin_tools())
-            return {"count": len(names), "names": names}
+            specs = get_available_tools(groups=None, include_mcp=False, model_name=None, subagent_enabled=False)
+            names = sorted({str(getattr(spec, "name", spec)) for spec in specs})
+            return {"count": len(names), "names": names, "source": "alpha.tools.get_available_tools"}
 
         return _safe("tools", read)
 
     def skills(self) -> dict[str, Any]:
-        """Installed skills, from the skills subsystem."""
+        """Enabled skills, from the skills storage layer.
+
+        Reads :meth:`alpha.skills.storage.LocalSkillStorage.load_skills` with
+        ``enabled_only=True`` — the same call
+        ``alpha.skills.prompt`` makes when building the prompt block, so this
+        reports what an ordinary run actually sees rather than every skill that
+        happens to be installed. ``SkillCatalog`` is *not* used directly: it is a
+        search index that must be constructed from a skill list and has no
+        enumeration role of its own.
+        """
 
         def read() -> Any:
-            from alpha.skills import list_skills
+            from alpha.skills import get_or_new_skill_storage
 
-            entries = list_skills()
-            names = sorted(entry["name"] for entry in entries) if entries and isinstance(entries[0], dict) else sorted(str(entry) for entry in entries)
-            return {"count": len(names), "names": names}
+            storage = get_or_new_skill_storage()
+            names = sorted(str(getattr(skill, "name", skill)) for skill in storage.load_skills(enabled_only=True))
+            return {
+                "count": len(names),
+                "names": names,
+                "source": "alpha.skills.get_or_new_skill_storage().load_skills(enabled_only=True)",
+            }
 
         return _safe("skills", read)
 
     def mcp_servers(self) -> dict[str, Any]:
-        """Configured MCP servers, names and enabled state only. Never credentials."""
+        """Configured MCP servers, names only. Never credentials or tool schemas."""
 
         def read() -> Any:
-            from alpha.mcp.cache import get_cached_tools
+            from alpha.mcp.cache import get_cached_mcp_tools
 
-            tools = get_cached_tools()
-            servers = sorted({str(entry.get("server") or "unknown") for entry in tools if isinstance(entry, dict)})
-            return {"count": len(servers), "names": servers, "tool_count": len(tools)}
+            tools = get_cached_mcp_tools()
+            servers = sorted({str(getattr(spec, "server", None) or "unknown") for spec in tools or []})
+            return {
+                "count": len(servers),
+                "names": servers,
+                "tool_count": len(tools or []),
+                "note": "server names only; no credentials or schemas are exposed",
+            }
 
         return _safe("mcp_servers", read)
 
@@ -293,6 +320,69 @@ class SelfKnowledgeService:
 
         return _safe("learning_now", read)
 
+    def investigations(self, *, limit: int = 5) -> dict[str, Any]:
+        """Phase G: what Alpha currently thinks is worth investigating.
+
+        Reads ranked proposals from the journal's ``investigation_proposed``
+        events and re-runs the selection through
+        :func:`alpha.intelligence.investigation.select_investigations`, so the
+        ranking shown here is the one the admission gate would apply rather than
+        a second opinion.
+
+        Admission is governed by ``intelligence.investigation_admission`` and is
+        **off by default**, so this is a read-only projection: it can never
+        commit budget.
+        """
+        from alpha.intelligence.budget_protocol import BudgetUnit
+        from alpha.intelligence.config import intelligence_config
+        from alpha.intelligence.investigation import GapKind, InvestigationProposal, select_investigations
+        from alpha.intelligence.journal import LearningJournal
+
+        entries, corrupt = LearningJournal().recent(kinds=("investigation_proposed",), limit=limit * 4)
+        proposals: list[InvestigationProposal] = []
+        skipped = 0
+        for entry in entries:
+            detail = entry.event.after
+            if not isinstance(detail, dict):
+                skipped += 1
+                continue
+            try:
+                proposals.append(
+                    InvestigationProposal(
+                        question=str(detail.get("question", "")),
+                        resolves_gap=GapKind(str(detail.get("resolves_gap", GapKind.OTHER.value))),
+                        expected_information_gain=float(detail.get("expected_information_gain", 0.0)),
+                        cost=BudgetUnit(
+                            attempts=int((detail.get("cost") or {}).get("attempts", 0)),
+                            tools=int((detail.get("cost") or {}).get("tools", 0)),
+                        ),
+                        falsifiable_by=str(detail.get("falsifiable_by", "")),
+                    )
+                )
+            except (TypeError, ValueError):
+                # A proposal that will not even construct is reported as skipped
+                # rather than dropped, so the count of unusable input is visible.
+                skipped += 1
+
+        section = intelligence_config()
+        selection = select_investigations(
+            proposals,
+            limit=limit,
+            min_information_gain=section.investigation_min_gain,
+            admission=section.investigation_admission,
+        )
+        return {
+            "admitted": [proposal.to_dict() for proposal in selection.admitted],
+            "admitted_count": len(selection.admitted),
+            "rejected_count": len(selection.rejected),
+            "skipped_malformed": skipped,
+            "corrupt_journal_lines": corrupt,
+            "admission_enabled": section.investigation_admission,
+            "min_information_gain": section.investigation_min_gain,
+            "reasons": list(selection.reasons),
+            "note": "admission is disabled by default; this projection ranks proposals and never commits budget",
+        }
+
     def snapshots(self, *, limit: int = 10) -> dict[str, Any]:
         """Stored intelligence snapshots, newest first."""
 
@@ -353,6 +443,7 @@ class SelfKnowledgeService:
                     "replay": self.replay(),
                     "plasticity": self.plasticity(),
                     "regression": self.regression(),
+                    "investigations": self.investigations(),
                 },
                 "journal": self.journal(limit=20),
                 "snapshots": self.snapshots(),

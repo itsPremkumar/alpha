@@ -57,6 +57,16 @@ class ReplayConfig(BaseModel):
     )
     recency_half_life_seconds: float = Field(default=604800.0, gt=0, description="Half-life for the recency component of an item's priority.")
     min_priority: float = Field(default=0.0, ge=0.0, description="Items scoring below this are evicted first when the reservoir is full.")
+    curiosity_cap: float = Field(
+        default=0.15,
+        ge=0.0,
+        description=(
+            "Hard ceiling on what intrinsic curiosity may contribute to a replay rank. Deliberately small: curiosity "
+            "is a tiebreaker between plausible targets, never a reason to attempt something Alpha has no evidence it "
+            "can do. Set 0 to disable curiosity-driven selection entirely."
+        ),
+    )
+    curiosity_enabled: bool = Field(default=False, description="Master switch for curiosity-driven replay selection. Off means items are sampled by stratum weight and priority only.")
 
 
 class PlasticityConfig(BaseModel):
@@ -86,6 +96,45 @@ class RegressionConfig(BaseModel):
     min_heldout_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Floor on the hidden holdout suite.")
     overfitting_gap: float = Field(default=0.2, gt=0, description="Train-minus-heldout gap above which a candidate is flagged as possibly overfitting.")
     max_retries: int = Field(default=2, ge=0, description="Bounded promotion attempts. 0 disables promotion entirely.")
+    #: Phase A/H. Whether an untrusted-source experience may reach the reservoir at
+    #: all. Off is the strict posture (refuse). Set True only if a separate,
+    #: real trust signal exists upstream that the sanitizer cannot see.
+    admit_untrusted: bool = Field(
+        default=True,
+        description=(
+            "Allow untrusted-source experiences through the trust stage. True (the default) preserves the pipeline's "
+            "existing contract for current callers, which supply evidence but no source attribution. False closes the "
+            "poisoning vector: web, tool-output and unknown-source records are refused, because a self-improving agent "
+            "that replays them equally will propagate its own untrustworthy inputs permanently."
+        ),
+    )
+    #: Phase B. How many times the same candidate is re-evaluated to characterise
+    #: the evaluator's own noise. 1 disables measurement entirely.
+    repeats: int = Field(default=3, ge=1, le=20, description="Repeated identical-input evaluations used to measure evaluator noise.")
+    noise_floor_source: str = Field(
+        default="max_of_both",
+        description=(
+            "How the effective noise floor combines the measured and declared values. `max_of_both` (default) can only "
+            "make the gate STRICTER than the declared constant, never looser, so a measurement can never be used to "
+            "justify accepting a smaller improvement than the configuration already forbids."
+        ),
+    )
+
+    def _known_noise_floor_source(self) -> RegressionConfig:
+        if self.noise_floor_source not in {"measured", "declared", "max_of_both"}:
+            raise ValueError(f"intelligence.regression.noise_floor_source {self.noise_floor_source!r} is not one of: measured, declared, max_of_both")
+        return self
+
+    #: Phase C. Behaviour-collapse detection. Coverage floor plus a minimum
+    #: material drop; both are required, because either alone produces constant
+    #: false alarms.
+    diversity_floor: float = Field(default=0.5, ge=0.0, le=1.0, description="Absolute behaviour-coverage floor. Below this the action space is treated as collapsed.")
+    diversity_min_drop: float = Field(default=0.1, ge=0.0, le=1.0, description="Minimum coverage drop that counts as material, before the measured noise floor is added to it.")
+
+    #: Phase A. Whether an engaged pathway is required, and whether an
+    #: unexplained score gain alone is disqualifying.
+    require_pathway_engaged: bool = Field(default=False, description="Refuse promotion when a candidate's claimed mechanism provably did not engage.")
+    reject_anomalous_improvement: bool = Field(default=True, description="Refuse promotion when the score improved but the claimed mechanism did NOT engage. This is the 'the number went up and I cannot say why' case.")
 
 
 class ExpertConfig(BaseModel):
@@ -143,6 +192,17 @@ class IntelligenceConfig(BaseModel):
         default_factory=dict,
         description="Difficulty band boundaries as normalised 0..1 scores. Unknown keys fall back to DIFFICULTY_BANDS.",
     )
+    #: Phase E. Which subsystems form the required quorum. A subsystem not listed
+    #: does not have to have an opinion, so its absence produces PARTIAL=False
+    #: rather than an unreconciled verdict.
+    required_subsystems: list[str] = Field(
+        default_factory=lambda: ["avo", "evolution_evidence", "rsi_promotion", "intelligence"],
+        description="Subsystems that must record a verdict before a promotion is approvable. Names come from alpha.intelligence.evidence_ledger.Subsystem.",
+    )
+    #: Phase G. The floor on expected information gain for an investigation, and
+    #: whether admission is on by default.
+    investigation_min_gain: float = Field(default=0.1, ge=0.0, le=1.0, description="Floor on expected information gain for a research proposal.")
+    investigation_admission: bool = Field(default=False, description="Whether investigations may consume budget. Off = rank only, which is the dry-run mode.")
 
     @model_validator(mode="after")
     def _mode_requires_master_switch(self) -> IntelligenceConfig:
@@ -155,6 +215,28 @@ class IntelligenceConfig(BaseModel):
         """
         if self.mode is not LearningMode.OBSERVE_ONLY and not self.enabled:
             raise ValueError(f"intelligence.mode is {self.mode.value!r} but intelligence.enabled is false. The mode and the master switch must agree: set intelligence.enabled: true, or set mode: OBSERVE_ONLY.")
+        return self
+
+    @model_validator(mode="after")
+    def _known_subsystem_names(self) -> IntelligenceConfig:
+        """Every ``required_subsystems`` entry must name a real subsystem.
+
+        A typo would otherwise become a silently-omitted gate: the quorum would
+        be one member short and nothing would ever report it, which is exactly
+        the "absence is not approval" failure :mod:`alpha.intelligence.
+        evidence_ledger` exists to prevent.
+
+        An empty list is refused for the same reason — it would make every
+        promotion approvable with zero evidence.
+        """
+        from alpha.intelligence.evidence_ledger import Subsystem
+
+        known = {subsystem.value for subsystem in Subsystem}
+        unknown = [name for name in self.required_subsystems if name not in known]
+        if unknown:
+            raise ValueError(f"intelligence.required_subsystems contains unknown subsystem(s): {', '.join(sorted(unknown))}. Expected one of: {', '.join(sorted(known))}")
+        if not self.required_subsystems:
+            raise ValueError("intelligence.required_subsystems is empty, which would make every promotion approvable on zero evidence. List the subsystems that must record a verdict, or disable the layer.")
         return self
 
     def allows(self, required: LearningMode) -> bool:

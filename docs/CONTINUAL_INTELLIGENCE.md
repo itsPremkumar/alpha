@@ -160,7 +160,7 @@ text in stored content is an attack surface on the replay path.
 
 ## 5. Regression, held-out, and the promotion gate
 
-The standing suite is 26 model-free property checks covering **all 20 required
+The standing suite is 32 model-free property checks covering **all 20 required
 capability categories** — atomic-write crash safety, protected-expert refusal,
 trial routing exclusion, pinned-expert eviction, held-out id concealment, and so
 on. `GET /api/intelligence/regressions` reports the coverage inventory.
@@ -198,6 +198,14 @@ and a `REJECT`.
 **Held-out ids never leak.** `to_candidate_payload()` withholds hidden case ids
 and reports only their count. A candidate that can read the held-out case list
 can optimise against it.
+
+> **Scope note on "hidden".** The mechanism exists and is tested, but the 32
+> shipped cases declare **none** of themselves hidden. They are property checks
+> over Alpha's own invariants — the honest answer to "does Alpha still enforce
+> its own rules" — and a property check has nothing to hide, because the
+> implementation being checked is the answer. The genuinely hidden suite lives
+> in `alpha.rsi.holdout` and is unchanged. If you want task-level held-out cases,
+> declare them with `hidden=True`; `to_candidate_payload()` will withhold them.
 
 ---
 
@@ -404,6 +412,7 @@ filled in from a default that would read as a fact.
 | `GET /api/intelligence/journal` | tail + chain integrity |
 | `GET /api/intelligence/replay` | occupancy, strata, oldest age |
 | `GET /api/intelligence/regressions` | suite coverage |
+| `GET /api/intelligence/investigations` | ranked research proposals + refusals (Phase G) |
 | `GET /api/intelligence/snapshots` | stored snapshots |
 | `GET /api/intelligence/paging` | tiers and residency |
 | `GET /api/intelligence/difficulty` | estimate + compute plan |
@@ -431,6 +440,7 @@ about itself.
 | Cross-process journal | process-local, same as the swarm/workflow sinks — declared, not implied |
 | HTTP mutation routes | see §13 |
 | RSI promotion-path wiring | the evidence gate's own docstring marks this as unlanded; kept out of this change |
+| Frontend section | `pnpm test` globs `src/lib/*.test.mjs` only; a section without its own script + CI step silently never runs. The API is complete; the UI is not built. |
 
 ---
 
@@ -451,3 +461,174 @@ journal tamper detection, bounded rollback.
 **Tests:** `backend/tests/test_intelligence_layer.py`
 **Config:** the `intelligence:` block in `config.example.yaml`
 **Audit:** [`ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md`](../ALPHA_CONTINUAL_INTELLIGENCE_AUDIT.md)
+---
+
+## 16. Phase H: intrinsic curiosity, and the trust gate
+
+Added from a second research round (the SI-Agents survey taxonomy, 312 curated
+entries). Two findings drove it, both verified against the source rather than
+assumed.
+
+### Curiosity already existed — and was not doing anything
+
+`alpha.agency.curiosity.CuriosityScorer` computes novelty and prediction error.
+Two measured problems stopped it being useful:
+
+1. **It has zero production callers.** Exported, imported by
+   `agency_competence_tool`, never constructed.
+2. **Its novelty map is an in-memory dict.** After a restart every situation is
+   unfamiliar again, so novelty pins to `1.0` uniformly — a scorer that says
+   "everything is new" carries no information.
+
+`alpha.intelligence.curiosity` keeps the shape and fixes both, adding the third
+intrinsic signal the literature names:
+
+| Signal | Source |
+|---|---|
+| `novelty` | durable, content-keyed, survives restart |
+| `prediction_error` | predicted vs observed outcome |
+| `disagreement` | **verifier disagreement** — information the system already produced and discarded |
+
+Unmeasured signals are excluded and the mean renormalised, never defaulted to
+zero: "nobody disagreed" and "nobody checked" are different claims.
+
+### The degeneracy guard is the load-bearing part
+
+The literature warns that intrinsic reward "can fall into a degenerate"
+exploration regime. Concretely: **a pure novelty bonus rewards the strangest
+available thing, and strange is not the same as informative.**
+
+So a target with high curiosity and **zero competence evidence** is refused with
+`DegeneracyVerdict.EXPLORATION_WITHOUT_COMPETENCE` — a decision to *not* explore,
+which is the opposite of what the raw score would say. Ranking also breaks ties
+by **competence before curiosity**, so two equally-novel targets resolve in
+favour of the one Alpha can demonstrably do.
+
+Curiosity contributes a **capped** bonus (`replay.curiosity_cap`, default
+`0.15`) to the replay ordering. It reorders *within* a stratum, so
+`required_strata` guarantees are untouched.
+
+### The trust gate
+
+Memory-poisoning research (DrunkAgent, WWW 2026) makes this concrete for a
+self-improving agent: one poisoned write becomes permanent precisely *because*
+the system retains and replays it.
+
+`Stage.TRUST_VALIDATION` now asks a second provenance question — not "where did
+this come from" but **"do we trust where it came from"**. Recognised levels:
+
+- trusted: `user`, `operator`, `human_confirmed`, `alpha_verified`
+- untrusted: `web`, `tool_output`, `external`, `unverified`, `model_inferred`
+
+**Off by default** (`regression.admit_untrusted: true`). Every existing caller
+supplies `evidence` but no source attribution, so making the stage mandatory
+would have silently refused all of them — a breaking change this layer is not
+entitled to make. When disabled the stage still runs and reports `SKIPPED` with a
+reason, never `PASSED`, so the gap stays visible rather than reading as a clean
+bill of health.
+
+Set it to `false` to close the vector. An **unrecognised** level is then refused
+rather than assumed safe.
+
+### Not added, and why
+
+| Not added | Why |
+| --- | --- |
+| Memory-poisoning *defence* in `alpha.memory` | Already substantially covered — 56 provenance, 16 trust, 7 quarantine, plus `taint.py` and receipt tainting. I was wrong to suspect it; adding a second would duplicate |
+| Co-evolving evaluator (Red Queen Gödel Machine) | `alpha.avo.scorer_authority.SERVER_OWNED_SURFACE` already forbids a candidate from authoring its own fitness function. That is the *more conservative* stance and I left it alone |
+| Base-model training / RL loops | Nothing here changes Alpha's constraint, which is retrieval, routing and evidence rather than weights |
+| Novel-research generation from weights | Out of scope. Alpha should rank investigations it can falsify (Phase G), not invent ones it cannot |
+
+### Tests
+
+```bash
+cd backend
+uv run pytest tests/test_intelligence_curiosity.py -q
+```
+
+---
+
+## 17. Phases A–G: is the loop actually working?
+
+Added per [`ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md`](../ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md).
+These are **measurement** modules. The premise: more self-modification is not
+more intelligence; Alpha's deficit is not insufficient self-modification but
+insufficient measurement of whether it did what it claimed.
+
+| Phase | Module | The question it can now answer |
+| --- | --- | --- |
+| A | `pathway.py` | Did the change arrive *by the route it claimed*? |
+| B | `evaluator_stability.py` | How noisy is our own evaluator? |
+| C | `diversity.py` | Did the action space survive the change? |
+| D | `budget_protocol.py` | Can a cross-generation claim survive scrutiny? |
+| E | `evidence_ledger.py` | Do all six subsystems agree? |
+| F | `loop_health.py` | Is the loop improving, stable, or saturating? |
+| G | `investigation.py` | What is worth investigating, and can that be falsified? |
+
+### The three behaviours that matter most
+
+**An unexplained score gain is refused.** A candidate claiming to change routing
+whose routing decisions did not change, *whose score nevertheless rose*, is
+rejected as `anomalous improvement`. That is "the number went up and I cannot say
+why" — the condition that lets a broken loop look healthy indefinitely.
+
+**A behaviour collapse overrides a score improvement.** This is the only gate in
+the package that can reject a candidate that scored *better*. A narrowed agent
+holding the same score is worse than one that can still do something else.
+Detection needs **both** an absolute coverage floor and a material drop; either
+alone fires constantly.
+
+**An unmatched-budget comparison raises.** `compare_matched` refuses rather than
+returning "close enough", which is the only thing that makes "generation 7 beats
+generation 3" falsifiable — generation 7 may simply have had more attempts.
+
+### Endpoint
+
+`GET /api/intelligence/health` returns the regime, the bottleneck, and **one**
+recommended action:
+
+```json
+{
+  "regime": "insufficient_data",
+  "scored_attempts": 0,
+  "bottleneck": "not enough scored attempts to judge the loop",
+  "recommended_action": "collect at least 3 scored attempts before acting on any loop-health signal",
+  "required_subsystems": ["avo", "evolution_evidence", "rsi_promotion", "intelligence"]
+}
+```
+
+`insufficient_data` is a **first-class regime**, not an empty response: a loop
+with no scored attempts has not been measured, and reporting `stable` there would
+be fabricated reassurance.
+
+`GET /api/intelligence/investigations` completes the picture: what Alpha
+currently thinks is worth investigating, and why anything was refused. It ranks
+through the *same* `select_investigations()` the admission gate uses, so the
+ordering an operator sees is the ordering that would be applied. With
+`investigation_admission: false` (the default) it never commits budget.
+
+### Config
+
+```yaml
+intelligence:
+  regression:
+    repeats: 3                    # Phase B
+    noise_floor_source: max_of_both
+    diversity_floor: 0.5          # Phase C
+    diversity_min_drop: 0.1
+    require_pathway_engaged: false # Phase A
+    reject_anomalous_improvement: true
+  required_subsystems: ["avo", "evolution_evidence", "rsi_promotion", "intelligence"]  # Phase E
+  investigation_min_gain: 0.1     # Phase G
+  investigation_admission: false  # dry-run: rank, spend nothing
+```
+
+An entry in `required_subsystems` naming an unknown subsystem is a **load error**,
+because a typo would silently shorten the quorum and nothing would report it.
+
+### Tests
+
+```bash
+cd backend
+uv run pytest tests/test_intelligence_phases.py -q      # 116 tests
+```
