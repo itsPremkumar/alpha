@@ -202,3 +202,195 @@ class TestWarningBounded:
 
     def test_an_empty_outcome_produces_no_text(self):
         assert warning_text(WriteCoordination()) == ""
+
+
+# -------------------------------------------------- strict-policy enforcement
+
+
+def _crew_config(monkeypatch, lock_policy):
+    import alpha.projects.crew as crew_mod
+
+    class _FakeCrew:
+        def get_collaboration(self, _project_id):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(lock_policy=lock_policy)
+
+    monkeypatch.setattr(crew_mod, "get_crew_service", lambda *a, **k: _FakeCrew())
+
+
+def _activity(monkeypatch, entries=()):
+    import alpha.groups.activity as activity_mod
+
+    class _FakeActivity:
+        def record_heartbeat(self, *_args, **_kwargs):
+            return None
+
+        def room_activity(self, _room_name, _members):
+            return list(entries)
+
+    monkeypatch.setattr(activity_mod, "get_activity_ledger", lambda: _FakeActivity())
+
+
+def _enforce_request(bot="coder", room="crew", project_id="p1"):
+    return _Request(
+        context={"bot_name": bot, "room_name": room, "project_id": project_id},
+        state={"configurable": {}},
+    )
+
+
+class TestEnforceWrite:
+    def test_advisory_policy_allows_despite_a_live_claim(self, monkeypatch):
+        from alpha.groups.claims import get_claim_store
+        from alpha.groups.write_watch import enforce_write
+
+        _room()
+        _crew_config(monkeypatch, "advisory")
+        _activity(monkeypatch)
+        get_claim_store().claim("crew", "reviewer", "file", "src/api.py")
+        decision = enforce_write(_enforce_request(bot="coder"), "src/api.py")
+        assert decision.allowed is True
+        assert decision.reason == "advisory_policy"
+
+    def test_strict_policy_refuses_a_live_claim(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from alpha.groups.claims import get_claim_store
+        from alpha.groups.write_watch import enforce_write
+
+        _room()
+        _crew_config(monkeypatch, "strict")
+        _activity(monkeypatch, [SimpleNamespace(bot_name="reviewer", activity="working")])
+        get_claim_store().claim("crew", "reviewer", "file", "src/api.py")
+        decision = enforce_write(_enforce_request(bot="coder"), "src/api.py")
+        assert decision.allowed is False
+        assert decision.reason == "live_claim"
+        assert decision.holder == "reviewer"
+
+    def test_strict_policy_allows_a_confirmed_dead_holder(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from alpha.groups.claims import get_claim_store
+        from alpha.groups.write_watch import enforce_write
+
+        _room()
+        _crew_config(monkeypatch, "strict")
+        _activity(monkeypatch, [SimpleNamespace(bot_name="reviewer", activity="crashed")])
+        get_claim_store().claim("crew", "reviewer", "file", "src/api.py")
+        decision = enforce_write(_enforce_request(bot="coder"), "src/api.py")
+        assert decision.allowed is True
+        assert decision.reason == "holder_gone"
+
+    def test_strict_policy_allows_your_own_claim(self, monkeypatch):
+        from alpha.groups.claims import get_claim_store
+        from alpha.groups.write_watch import enforce_write
+
+        _room()
+        _crew_config(monkeypatch, "strict")
+        _activity(monkeypatch)
+        get_claim_store().claim("crew", "coder", "file", "src/api.py")
+        decision = enforce_write(_enforce_request(bot="coder"), "src/api.py")
+        assert decision.allowed is True
+
+    def test_no_project_id_stays_advisory(self, monkeypatch):
+        from alpha.groups.claims import get_claim_store
+        from alpha.groups.write_watch import enforce_write
+
+        _room()
+        _crew_config(monkeypatch, "strict")
+        _activity(monkeypatch)
+        get_claim_store().claim("crew", "reviewer", "file", "src/api.py")
+        request = _Request(context={"bot_name": "coder", "room_name": "crew"}, state={"configurable": {}})
+        decision = enforce_write(request, "src/api.py")
+        assert decision.allowed is True
+        assert decision.reason == "advisory_policy"
+
+    def test_no_room_binding_is_a_silent_no_op(self):
+        from alpha.groups.write_watch import enforce_write
+
+        decision = enforce_write(_Request(), "src/api.py")
+        assert decision.allowed is True
+        assert decision.reason == "no_room_binding"
+
+    def test_a_coordination_store_error_fails_open(self, monkeypatch):
+        import alpha.groups.activity as activity_mod
+        from alpha.groups.write_watch import enforce_write
+
+        _room()
+        _crew_config(monkeypatch, "strict")
+
+        def _boom():
+            raise RuntimeError("store unreadable")
+
+        monkeypatch.setattr(activity_mod, "get_activity_ledger", _boom)
+        decision = enforce_write(_enforce_request(), "src/api.py")
+        assert decision.allowed is True
+        assert decision.reason == "enforcement_unavailable"
+
+
+class TestStrictBlocksTheWritePath:
+    def _request(self):
+        from unittest.mock import MagicMock
+
+        from langgraph.prebuilt.tool_node import ToolCallRequest
+
+        runtime = MagicMock()
+        runtime.context = {"bot_name": "coder", "room_name": "crew", "project_id": "p1", "thread_id": "t1"}
+        return ToolCallRequest(
+            tool_call={"name": "write_file", "args": {"path": "src/api.py"}, "id": "call-1"},
+            tool=None,
+            state={"messages": []},
+            runtime=runtime,
+        )
+
+    def _middleware(self):
+        from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+
+        def reader(_runtime, path):
+            raise FileNotFoundError(path)
+
+        return ReadBeforeWriteMiddleware(content_reader=reader)
+
+    def test_strict_refuses_before_the_handler_runs(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from langchain_core.messages import ToolMessage
+
+        from alpha.groups.claims import get_claim_store
+
+        _room()
+        _crew_config(monkeypatch, "strict")
+        _activity(monkeypatch, [SimpleNamespace(bot_name="reviewer", activity="working")])
+        get_claim_store().claim("crew", "reviewer", "file", "src/api.py")
+
+        ran = []
+
+        def handler(req):
+            ran.append(req)
+            return ToolMessage(content="written", tool_call_id="call-1", name="write_file")
+
+        result = self._middleware().wrap_tool_call(self._request(), handler)
+        assert ran == [], "the write must not run against a live strict claim"
+        assert result.status == "error"
+        assert "live_claim" in result.content
+        assert result.additional_kwargs["alpha_write_block"]["tool"] == "write_file"
+
+    def test_advisory_still_lets_the_write_through(self, monkeypatch):
+        from langchain_core.messages import ToolMessage
+
+        from alpha.groups.claims import get_claim_store
+
+        _room()
+        _crew_config(monkeypatch, "advisory")
+        _activity(monkeypatch)
+        get_claim_store().claim("crew", "reviewer", "file", "src/api.py")
+
+        ran = []
+
+        def handler(req):
+            ran.append(req)
+            return ToolMessage(content="written", tool_call_id="call-1", name="write_file")
+
+        result = self._middleware().wrap_tool_call(self._request(), handler)
+        assert len(ran) == 1, "advisory must remain warn-only"
+        assert "written" in result.content

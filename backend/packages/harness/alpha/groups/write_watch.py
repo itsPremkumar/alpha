@@ -25,14 +25,20 @@ insertion point — one place, both tools, no new interception layer.
 
 ## Three properties this must keep
 
-**Warn, never block.** A claim is *intent*; `projects/locks.py` owns refusal,
-where a wrong block already has a reviewed shape (HTTP 423 + holder). Blocking
-here would mean the mechanism that draws a status dot could also lose work, and a
-bad heartbeat would then read as a lost edit.
+**Warn by default; refuse only under strict policy.** A claim is *intent*, and
+`projects/locks.py` owns refusal-shaped errors for resource conflicts. In an
+`advisory` room (the default, and every room nobody configured) this module
+warns and never blocks — blocking here would mean the mechanism that draws a
+status dot could also lose work. In a `lock_policy: "strict"` room (read from
+the linked project's collaboration config) the same write is refused before
+the handler runs, by `enforce_write()`'s verdict; the refusal carries the
+holder's name and the room's policy reason, and a confirmed-dead holder never
+refuses. Refusal is an opt-in the operator configured, not a coordination
+side effect.
 
 **Fail open, silently.** No room binding, no bot identity, or any store error
-means exactly today's behaviour. A coordination feature that can fail a write is
-worse than no coordination feature.
+means exactly today's (advisory) behaviour. A coordination feature that can
+fail a write is worse than no coordination feature.
 
 **Announce nothing to the model that did not happen.** The warning is appended to
 the result of the call that actually ran, so a model reading its transcript sees
@@ -53,6 +59,8 @@ import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
+
+from alpha.groups.enforcement import EnforcementDecision, StrictEnforcer
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +235,38 @@ def auto_claim_write(request: Any, path: str, *, tool_name: str = "") -> WriteCo
     except Exception:
         logger.debug("Auto-claim failed for %s; continuing without coordination", path, exc_info=True)
         return outcome
+
+
+def enforce_write(request: Any, path: str) -> EnforcementDecision:
+    """The strict-policy verdict for one write, before the write runs.
+
+    Advisory rooms keep exactly today's behaviour: the write proceeds, and a
+    peer conflict only warns. Under ``lock_policy: "strict"`` (read from the
+    linked project's collaboration config), a live claim held by somebody else
+    refuses the write outright. Never raises — every failure defers to the
+    advisory path, because coordination must never be the reason a write
+    fails. A plain room with no project, and a room nobody configured, both
+    resolve to advisory, so nothing starts refusing on a misread.
+    """
+    context = write_coordination_context(request)
+    if context is None or not path:
+        return EnforcementDecision(allowed=True, reason="no_room_binding")
+    try:
+        from alpha.groups.activity import get_activity_ledger
+
+        ledger = get_activity_ledger()
+        members = _room_members(context.room_name)
+        states = {a.bot_name: a.activity for a in ledger.room_activity(context.room_name, members)}
+
+        return StrictEnforcer(context.room_name).check(
+            path,
+            context.bot_name,
+            holder_states=states,
+            project_id=context.project_id,
+        )
+    except Exception:
+        logger.debug("Write enforcement check failed for %s; advisory behaviour retained", path, exc_info=True)
+        return EnforcementDecision(allowed=True, reason="enforcement_unavailable")
 
 
 def _current_pid() -> int | None:

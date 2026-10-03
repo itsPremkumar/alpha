@@ -277,7 +277,16 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
         write. With no room binding and no bot identity it is a no-op, which is
         the correct behaviour for an ordinary single-agent run.
         """
-        from alpha.groups.write_watch import auto_claim_write, warning_text
+        from alpha.groups.write_watch import auto_claim_write, enforce_write, warning_text
+
+        try:
+            decision = enforce_write(request, path)
+        except Exception:
+            # enforce_write never raises by contract; fail open if it ever does.
+            logger.debug("Write enforcement unavailable for %s; continuing", path, exc_info=True)
+            decision = None
+        if decision is not None and not decision.allowed:
+            return self._strict_blocked_result(request, path, tool_name, decision)
 
         try:
             outcome = auto_claim_write(request, path, tool_name=tool_name)
@@ -298,7 +307,15 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
     ) -> ToolMessage | Command:
         """Async twin of `_with_coordination`; both claim-store calls are sync file IO."""
-        from alpha.groups.write_watch import auto_claim_write, warning_text
+        from alpha.groups.write_watch import auto_claim_write, enforce_write, warning_text
+
+        try:
+            decision = enforce_write(request, path)
+        except Exception:
+            logger.debug("Write enforcement unavailable for %s; continuing", path, exc_info=True)
+            decision = None
+        if decision is not None and not decision.allowed:
+            return self._strict_blocked_result(request, path, tool_name, decision)
 
         try:
             outcome = await asyncio.to_thread(auto_claim_write, request, path, tool_name=tool_name)
@@ -326,6 +343,33 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
         if not isinstance(content, str):
             return result
         return result.model_copy(update={"content": f"{content}\n\n{note}"})
+
+    @staticmethod
+    def _strict_blocked_result(request: ToolCallRequest, path: str, tool_name: str, decision: Any) -> ToolMessage:
+        """Refuse a write under the room's strict coordination policy.
+
+        The handler never runs. The result is stamped like every other gate
+        block (``WRITE_BLOCK_KEY``) so the model-bound request elides the
+        dead payload, and carries the enforcer's own verdict for audit.
+        """
+        norm_path = _normalize_mark_path(path)
+        holder = decision.holder or "another agent"
+        detail = decision.detail or f"{holder} holds {path}"
+        return ToolMessage(
+            content=(f"Error: write refused by this room's strict coordination policy. {detail} (reason: {decision.reason}). Ask @{holder} to release the claim, or take over that work explicitly if the holder is confirmed gone."),
+            tool_call_id=str(request.tool_call.get("id", "")),
+            name=tool_name,
+            status="error",
+            additional_kwargs={
+                WRITE_BLOCK_KEY: {"path": norm_path, "tool": tool_name},
+                "alpha_strict_enforcement": {
+                    "reason": decision.reason,
+                    "holder": decision.holder,
+                    "holder_state": decision.holder_state,
+                    "claim_ids": list(decision.claim_ids),
+                },
+            },
+        )
 
     # -- locking ---------------------------------------------------------
 
