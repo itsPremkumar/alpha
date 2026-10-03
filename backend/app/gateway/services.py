@@ -88,6 +88,7 @@ from app.gateway.internal_auth import (
     get_trusted_internal_owner_user_id,
 )
 from app.gateway.run_models import RunCreateRequest
+from app.gateway.sse import with_heartbeats
 from app.gateway.utils import sanitize_log_param
 from app.mcp_tasks.errors import PermanentNotificationError
 
@@ -162,6 +163,30 @@ def format_sse(event: str, data: Any, *, event_id: str | None = None) -> str:
     parts.append("")
     parts.append("")
     return "\n".join(parts)
+
+
+#: SSE liveness bound: a run stream may not stay silent (no *real* event)
+#: longer than this. The stream bridge's ``: heartbeat`` comment already
+#: proves byte-level liveness to proxies, but comments are invisible to
+#: browser JS, so this named frame is what a client can observe and use to
+#: distinguish "slow agent" from "dead connection". Keep it comfortably below
+#: common proxy/browser idle timeouts (60-300 s).
+SSE_HEARTBEAT_SECONDS = 15.0
+
+#: Pre-formatted once: deliberately carries no ``id:`` — an event id here
+#: would advance the client's Last-Event-ID cursor and break stream rejoin.
+SSE_HEARTBEAT_FRAME = format_sse("heartbeat", {"type": "heartbeat"})
+
+
+def with_stream_heartbeats(source: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Bound silence on a run-stream response (design: ``app.gateway.sse``).
+
+    Wrap the ``sse_consumer`` generator passed to ``StreamingResponse``:
+    comments pass through, real events reset the clock, and once
+    ``SSE_HEARTBEAT_SECONDS`` pass without one, ``SSE_HEARTBEAT_FRAME`` goes
+    out instead of the client seeing nothing at all.
+    """
+    return with_heartbeats(source, interval=SSE_HEARTBEAT_SECONDS, heartbeat_frame=SSE_HEARTBEAT_FRAME)  # type: ignore[arg-type]
 
 
 def _run_is_terminal(record: RunRecord) -> bool:

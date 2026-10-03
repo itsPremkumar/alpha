@@ -7,9 +7,11 @@ configures one backend; the system handles physical separation details.
 SQLite mode: checkpointer and app share a single .db file
 ({sqlite_dir}/alpha.db) with WAL journal mode enabled on every
 connection. WAL allows concurrent readers and a single writer without
-blocking, making a unified file safe for both workloads.  Writers
-that contend for the lock wait via the default 5-second sqlite3
-busy timeout rather than failing immediately.
+blocking, making a unified file safe for both workloads. Writers that
+contend for the lock wait via a 30-second busy timeout applied on every
+connection path (app ORM engine, sync agents store, and the LangGraph
+checkpointer) rather than failing immediately; the sqlite driver's
+5-second default is too thin for a file with this many writers.
 
 Postgres mode: both use the same database URL but maintain independent
 connection pools with different lifecycles.
@@ -172,10 +174,7 @@ class DatabaseConfig(BaseModel):
     postgres_url: str = Field(
         default="",
         description=(
-            "PostgreSQL connection URL, shared by checkpointer and app. "
-            "Use $DATABASE_URL in config.yaml to reference .env. "
-            "Example: postgresql://user:pass@host:5432/alpha "
-            "(the +asyncpg driver suffix is added automatically where needed)."
+            "PostgreSQL connection URL, shared by checkpointer and app. Use $DATABASE_URL in config.yaml to reference .env. Example: postgresql://user:pass@host:5432/alpha (the +asyncpg driver suffix is added automatically where needed)."
         ),
     )
     echo_sql: bool = Field(

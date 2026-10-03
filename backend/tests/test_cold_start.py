@@ -985,14 +985,8 @@ BACKEND_MAKEFILE = REPO_ROOT / "backend" / "Makefile"
 #: ``@pytest.mark.skip``, or an xfail would all be silent losses of coverage
 #: that a green suite would not surface.
 LIVE_TEST_NAME = "test_live_cold_start_measurement"
-_DECORATORS = [
-    node
-    for node in THIS_FILE.read_text(encoding="utf-8").splitlines()
-    if node.lstrip().startswith("@pytest.mark.")
-]
-_SKIP_DECORATORS = [
-    line for line in _DECORATORS if any(mark in line for mark in ("skip", "xfail"))
-]
+_DECORATORS = [node for node in THIS_FILE.read_text(encoding="utf-8").splitlines() if node.lstrip().startswith("@pytest.mark.")]
+_SKIP_DECORATORS = [line for line in _DECORATORS if any(mark in line for mark in ("skip", "xfail"))]
 
 
 def _live_test_function() -> Any:
@@ -1119,17 +1113,31 @@ class TestTheLiveSkipIsOptInAndCannotGoPermanent:
     def test_the_suite_never_runs_live_tests_by_default(self, recipe: str) -> None:
         """`make test` / `make test-shard` deselect them, so CI is never charged."""
         body = _make_recipe_body(recipe)
-        assert '-m "not live"' in body, f"`make {recipe % ':'}` does not exclude live tests"
+        assert '-m "not live"' in body, f"`make {recipe.removesuffix(':')}` does not exclude live tests"
+
+
+#: Column-0 Makefile directives that may wrap recipe lines without opening a
+#: new target. GNU make conditionals are written at column 0 even when they
+#: surround a recipe line, so a scan that stops at *any* column-0 line reads
+#: the ``test-shard:`` recipe as empty and fails on an assertion whose own
+#: message would then raise -- two bugs hiding one.
+_RECIPE_CONTINUATION_PREFIXES = ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif", "define", "endef")
 
 
 def _make_recipe_body(recipe: str) -> str:
-    """The lines of a backend/Makefile recipe, up to the next target."""
+    """The lines of a backend/Makefile recipe, up to the next target.
+
+    Column-0 conditional directives (``ifeq``/``endif``/...) interleaved with
+    the recipe's lines continue it; only a line that is neither indented nor a
+    directive ends the scan.
+    """
     lines = BACKEND_MAKEFILE.read_text(encoding="utf-8").splitlines()
     start = next(index for index, line in enumerate(lines) if line.startswith(recipe))
     body: list[str] = []
     for line in lines[start + 1 :]:
         if line and not line[0].isspace() and not line.startswith("\t"):
-            break
+            if line.split(maxsplit=1)[0].removesuffix(":") not in _RECIPE_CONTINUATION_PREFIXES:
+                break
         body.append(line)
     return "\n".join(body)
 
@@ -1165,10 +1173,7 @@ def test_the_cold_start_gate_is_referenced_by_a_workflow_at_all() -> None:
     Whether it blocks is a measurement question answered in the job comments;
     being unreferenced is not a defensible state for either half.
     """
-    references = {
-        path.name: path.read_text(encoding="utf-8")
-        for path in sorted(WORKFLOWS.glob("*.y*ml"))
-    }
+    references = {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.y*ml"))}
     wall_clock = [name for name, text in references.items() if "check_cold_start_budget.py" in text]
     assert wall_clock, "no workflow runs scripts/check_cold_start_budget.py"
     assert COLD_START_WORKFLOW in wall_clock
@@ -1225,12 +1230,8 @@ class TestColdStartWorkflowWiring:
         not have crept onto the pull-request path.
         """
         blocking = _runs(COLD_START_WORKFLOW, "cold-start-imports")
-        assert "check_cold_start_budget.py --json" not in blocking, (
-            "the 42-launch wall-clock measurement must not block a pull request"
-        )
-        assert "--validate" in blocking, (
-            "the baseline's *configuration* is deterministic and must block"
-        )
+        assert "check_cold_start_budget.py --json" not in blocking, "the 42-launch wall-clock measurement must not block a pull request"
+        assert "--validate" in blocking, "the baseline's *configuration* is deterministic and must block"
         nightly = _runs("nightly.yaml", "cold-start-budget")
         assert "python scripts/check_cold_start_budget.py --json" in nightly
         assert "python scripts/check_cold_start_budget.py --validate" in nightly
@@ -1262,4 +1263,3 @@ class TestColdStartWorkflowWiring:
         """Two budgets, two files, both on disk. Neither is generated at run time."""
         assert BASELINE_PATH.exists(), f"missing {BASELINE_PATH}"
         assert IMPORT_BUDGET_PATH.exists(), f"missing {IMPORT_BUDGET_PATH}"
-

@@ -134,11 +134,19 @@ Recovery is fail-closed around side effects. It requires a real compiled graph s
 
 Memory and Redis bridges take their default idle heartbeat cadence from the startup-only `stream_bridge.heartbeat_interval_seconds` setting. Keep the default on the bridge instance so SSE, `/wait`, and internal subscribers stay aligned; an explicit `subscribe(..., heartbeat_interval=...)` remains a per-subscription override.
 
+The bridge sentinel is invisible to browsers (`: heartbeat` SSE comment), so the client-facing signal is `app/gateway/sse.py::with_heartbeats`: after `SSE_HEARTBEAT_SECONDS` (15 s) with no real event it emits a named `event: heartbeat` on the four run-stream mounts. Bridge comments pass through without resetting that clock, and the frame carries no `id:` so the `Last-Event-ID` rejoin cursor never moves. Tests: `tests/test_sse_heartbeat.py`.
+
+### Run Stall Watchdog (`runtime/selfheal/run_stall.py`)
+
+Inflight `status=running` rows whose `updated_at` (bumped by every progress snapshot) lags `run_stall.timeout_seconds` (default 900 s; scanned every 30 s) are cancelled through the one universal primitive (`RunManager.cancel`) and persisted as terminal `error` with `stop_reason="stalled"`; a double-read lets late progress win. Built from `config.run_stall` in `app/gateway/deps.py`, stopped first inside the composed `close_admission()` step; startup-only in `config/reload_boundary.py`. Tests: `tests/test_run_stall_watchdog.py`.
+
 ### Token Meter (`runtime/token_meter.py`)
 
 Process-local cumulative token ledger (DeepSeek-Harness-style `ctx.tokenMeter`): `TokenMeter.record()` accumulates per `(user_id, thread_id, model)` scope with a bounded scope cap (oldest-inserted evicted), `snapshot()` aggregates over wildcard filters, `check_budget()` compares against a token budget (non-positive budgets fail closed), and `reset()` clears scopes. `TokenUsageMiddleware` feeds the process-global meter from every response carrying `usage_metadata` totals (side-effect only; injectable per-instance for tests). Per-run enforcement stays in `TokenBudgetMiddleware`; durable reporting stays in `runs.token_usage_by_model` + the console `/usage` route — the meter is for in-process budgets and live guards, never billing. Tests: `tests/test_token_meter.py`.
 
 ### Checkpoint Channel Modes (`full` / `delta`)
+
+**SQLite write contention fails bounded.** The checkpointer's connection opener applies the shared `SQLITE_BUSY_TIMEOUT_MS` (30 000) and `SQLITE_CONNECT_PRAGMAS` from `runtime/store/_sqlite_utils.py`, so a contended database errors instead of hanging a run. Tests: `tests/test_checkpointer_busy_timeout.py`.
 
 Checkpointer storage runs in one of two channel modes, selected by `checkpoint_channel_mode` in `config.yaml` (default `full`). `delta` mode adopts LangGraph 1.2's `DeltaChannel` for `messages`: checkpoints store a sentinel + per-step writes instead of the full message list, so storage/serde grows O(N) instead of O(N²) in turns. All checkpointer backends (memory/sqlite/postgres) serve both modes unchanged — the semantics live in the compiled graph's channel table, not in the saver.
 

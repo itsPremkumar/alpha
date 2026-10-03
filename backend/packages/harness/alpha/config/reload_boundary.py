@@ -84,6 +84,14 @@ STARTUP_ONLY_FIELDS: dict[str, str] = {
         "RunOwnershipConfig is captured once into RunManager at langgraph_runtime() startup; the lease heartbeat background task is created and "
         "started there, and heartbeat_enabled / lease_seconds / grace_seconds are not re-read on config.yaml edits."
     ),
+    "run_stall": (
+        "RunStallWatchdog is constructed and its scan task started once during Gateway lifespan startup; timeout_seconds and interval_seconds "
+        "are captured into the watchdog instance and are not re-read on config.yaml edits, so changing either requires a Gateway restart."
+    ),
+    "tool_timeout": (
+        "ToolErrorHandlingMiddleware reads the budget when the middleware stack is compiled into the agent (lazily, then cached until reset_agent() "
+        "or a Gateway restart); a config.yaml edit does not rebuild a live agent, so the new value applies only to an agent created afterwards."
+    ),
     "dedupe_storage": (
         "make_inbound_dedupe_store() resolves the inbound dedupe store once when ChannelService is constructed at startup; the store "
         "(in-process memory or shared Postgres) is captured onto ChannelManager and is not rebuilt on config.yaml edits."

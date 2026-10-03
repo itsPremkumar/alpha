@@ -44,6 +44,33 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def host_shell_label() -> str:
+    """Label the shell that ``subprocess.Popen(shell=True)`` actually runs.
+
+    ``shell=True`` is not "bash": Windows runs ``%COMSPEC%`` (normally
+    ``cmd.exe``) and POSIX hardcodes ``/bin/sh`` regardless of ``$SHELL``.
+    The label is read from the same sources the spawn uses so a disclosure
+    can never drift from what the command is really executed by.
+    """
+    if os.name == "nt":
+        comspec = os.environ.get("COMSPEC")
+        name = Path(comspec).name if comspec else "cmd.exe"
+        return f"{name} (Windows)"
+    return "/bin/sh (POSIX)"
+
+
+def elapsed_seconds(handle: ProcessHandle) -> float:
+    """Seconds from spawn to now, or to the observed exit for a finished run.
+
+    Measured on the monotonic clock, so a wall-clock correction cannot inflate
+    or shrink it, and frozen at the first observation of a terminal state so
+    time passing after a process ends is never published as runtime.
+    """
+    handle.poll()  # observe a completion that happened but was not recorded yet
+    end = handle._completed_monotonic if handle._completed_monotonic is not None else time.monotonic()
+    return max(0.0, end - handle._created_monotonic)
+
+
 class ProcessHandle:
     """A live handle to an asynchronous background command."""
 
@@ -61,6 +88,10 @@ class ProcessHandle:
         self.pid = process.pid
         self.created_at = _now()
         self.completed_at: str | None = None
+        # Monotonic stamps so runtime measurement survives wall-clock jumps
+        # and can be frozen at the observed exit instead of ticking forever.
+        self._created_monotonic: float = time.monotonic()
+        self._completed_monotonic: float | None = None
         self._exit_code: int | None = None
         self._output_lines: collections.deque[str] = collections.deque(maxlen=2000)
         self._reader_thread: threading.Thread | None = None
@@ -86,6 +117,7 @@ class ProcessHandle:
         if ret is not None:
             self._exit_code = ret
             self.completed_at = _now()
+            self._completed_monotonic = time.monotonic()
         return ret
 
     def is_running(self) -> bool:
@@ -238,13 +270,15 @@ class ProcessManager:
                 code = handle.poll()
                 if code is not None and not getattr(handle, "_notice_emitted", False):
                     handle._notice_emitted = True
-                    notices.append({
-                        "handle_id": hid,
-                        "pid": handle.pid,
-                        "command": handle.command,
-                        "exit_code": code,
-                        "recent_output": handle.tail(10),
-                    })
+                    notices.append(
+                        {
+                            "handle_id": hid,
+                            "pid": handle.pid,
+                            "command": handle.command,
+                            "exit_code": code,
+                            "recent_output": handle.tail(10),
+                        }
+                    )
         return notices
 
 

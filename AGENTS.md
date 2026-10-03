@@ -18,7 +18,7 @@ User-facing and agent-facing content is a first-class deliverable, not a follow-
 The strategy and its maintenance checklist live in
 **[docs/DISCOVERABILITY.md](docs/DISCOVERABILITY.md)** — read it before adding or
 restructuring user-facing content. The non-negotiable constraints, all enforced
-there: `README.md` stays **answer-first** (exhaustive catalogs such as the 102 engines
+there: `README.md` stays **answer-first** (exhaustive catalogs such as the 115 engines
 and 24 skills live inside `<details>`); `/llms.txt`, `/llms-full.txt`, and
 `docs/llms.txt` follow the [llmstxt.org](https://llmstxt.org/) shape, use absolute
 `https://github.com/itsPremkumar/alpha/blob/main/...` URLs, and are updated together
@@ -62,15 +62,12 @@ The full topology map is in
 
 Both compose files publish that entry as `"${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"`
 — **loopback by default**; a bare `"${PORT}:2026"` binds `0.0.0.0`. The root `PORT` is
-Docker ingress config only; local orchestration pins Next.js to `3000` so loading `.env`
-cannot make `make dev` wait on the wrong port. Nginx (`default_server`, IPv4+IPv6) and
-the Gateway (`0.0.0.0:8001`) bind inside the container on purpose: the published nginx
-port is the whole external surface, so any new published port needs an explicit bind
-address. `backend/tests/test_compose_default_bind_host.py` pins this for every service in
-both compose files. The Windows launcher (`start.ps1`) rules — direct Next.js CLI
-invocation, `uv run --no-sync`, `/health/ready` plus frontend HTTP 200 as the readiness
-gate, the `Get-NetTCPConnection` + `netstat.exe` port fallback, and the regression tests
-that pin them — are consolidated in
+Docker ingress config only. The published nginx port is the whole external surface, so
+any new published port needs an explicit bind address;
+`backend/tests/test_compose_default_bind_host.py` pins this for every service in both
+compose files. Windows launcher (`start.ps1`) rules — the Next.js CLI, `uv run
+--no-sync`, the `/health/ready` + frontend HTTP 200 gate, and the `Get-NetTCPConnection`
+/ `netstat.exe` port fallback — are consolidated in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#agent-guidance-reference-windows-launcher-startps1).
 
 ## Repository map
@@ -91,34 +88,25 @@ alpha/
 
 **`config.yaml` — the one file for every model setting.** Every model name Alpha
 knows is configured in `config.yaml`, not in code and not in a second file:
-runtime-buildable `models[]`, shared `providers:` profiles, `model_routing`
-(intent category / cost tier -> ordered model names), `default_model`,
-`model_catalog:` (bring-your-own-provider offers), `free_gateways:` (keyless
-no-signup endpoints `alpha-free` may use), and `model_pricing:` (fallback
-per-1M prices). Every name declared under `model_routing:` is validated against
-`models[]` at load, so a typo is a startup error rather than a silent fallback to
-the default model. Model lists also refresh themselves from the provider
-(`GET /api/models/discovery`), so a daily-rotating catalog such as OpenRouter's
-`:free` set is fetched rather than hand-maintained.
+`models[]`, `providers:`, `model_routing`, `default_model`, `model_catalog:`,
+`free_gateways:` and `model_pricing:` — each namespace's semantics belong to the
+config guide linked below. Every name declared under `model_routing:` is
+validated against `models[]` at load, so a typo is a startup error rather than a
+silent fallback to the default model. Discovery (`GET /api/models/discovery`)
+refreshes daily-rotating catalogs such as OpenRouter's `:free` set instead of
+hand-maintaining them.
 
-There is **no second model file**, and the loader for one was removed rather than
-deprecated. The three catalog-only sections used to live in a `models.yaml` read
-*exclusively* through `get_models_catalog()`, which returns an empty catalog when
-the file is absent, and **no first-run step created one** — `make setup` never
-did while `make config` did, so the two documented setup paths disagreed. A fresh
-install therefore had an empty keyless-gateway list: every `alpha-free` run failed
-with "no free provider candidates: discovery has not succeeded for any provider
-yet" while the model was still advertised in the picker and
-`POST /api/models/free/probe` answered HTTP 200 with `{"probes": {}}`. A
-deprecation window would have left that failure reachable for anyone who deleted
-the wrong file, so `models.example.yaml`, `alpha.config.models_catalog`,
-`backend/scripts/gen_models_example.py`, and `$ALPHA_MODELS_CONFIG_PATH` are all
-gone. A duplicate gateway or provider id is now a config error rather than
-something to arbitrate between two files. Config schema, precedence, and the
-hot-reload/honest-failure rules are in
+There is **no second model file**: `models.example.yaml`, `alpha.config.models_catalog`,
+`backend/scripts/gen_models_example.py`, and `$ALPHA_MODELS_CONFIG_PATH` are all gone
+(removed rather than deprecated — a deprecation window would have kept the broken
+fresh-install path reachable), and a duplicate gateway or provider id is now a config
+error rather than something to arbitrate between two files. Config schema, precedence,
+and the hot-reload/honest-failure rules are in
 [backend/packages/harness/alpha/config/AGENTS.md](backend/packages/harness/alpha/config/AGENTS.md);
 discovery, cross-namespace drift detection, and the fail-closed routers are in
 [backend/packages/harness/alpha/models/AGENTS.md](backend/packages/harness/alpha/models/AGENTS.md).
+The incident behind the removal is told in the
+`backend/tests/test_single_file_model_config.py` module docstring.
 
 Third-party extensions load from a top-level `plugins:` list in `config.yaml`
 (operator-controlled on purpose — that list causes code to be imported, so it is deliberately
@@ -169,18 +157,16 @@ The first model in `config.example.yaml` is `union-alpha`, using
 `openrouter/unbiased/pareto` as the OpenRouter API slug; the CLI-qualified form
 never is.
 
-**The Alpha-side name and the provider slug are separate things.** OpenRouter
-retired the earlier `stealth/union-alpha` slug, so the name stayed `union-alpha`
-and only the slug moved. Every namespace that carries a provider-side identifier
-for this model must therefore be moved together: `models[].model` and
+**The Alpha-side name and the provider slug are separate things.** The name
+stayed `union-alpha` when OpenRouter retired the earlier slug, so every namespace
+carrying a provider-side identifier must move together: `models[].model` and
 `model_catalog.models[].model_id` (`config.yaml` and `config.example.yaml`).
 `alpha.models.catalog_consistency` compares *capabilities* by name and never the
 slug, so a stale `model_id` in the catalog is not caught at boot — it is a
 runtime 404 on a picker entry. The slug is pinned in both namespaces by
-`backend/tests/test_model_config.py`. The provider is the only authority on
-whether a slug exists, so re-verify against the live catalog before pinning a new
-one; the current slug was confirmed answering on 2026-09-28 (the earlier
-`stealth/union-alpha` metadata check was 2026-09-17, when the slug was live).
+`backend/tests/test_model_config.py`, and the provider is the only authority on
+whether a slug exists: re-verify against the live catalog before pinning a new
+one (`backend/tests/test_e2e_honesty_model_slug.py` is the live pin).
 
 The frontend package declares `typecheck`, `lint` (an alias of `typecheck`),
 `test`, `test:branding`, `test:extra`, and `verify`; it declares no `format`
@@ -216,11 +202,10 @@ in an output file.
 (`alpha.ico` at 16/24/32/48/64/128/256, and `alpha-mark.png` at 512) and
 `frontend/public/` (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`,
 `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
-`icon-maskable-512.png`). This is deliberate: `electron/build/` is gitignored,
-so a package-time-generated icon was invisible to review and a fresh clone could
-easily ship whatever placeholder was lying around. A tracked asset is reviewable
-and a clone is correct by construction. Regenerate **and commit** them together
-when the poster changes.
+`icon-maskable-512.png`). These stay tracked because `electron/build/` is
+gitignored: a package-time icon would be invisible to review and a fresh clone
+could ship a placeholder. Regenerate **and commit** them together when the
+poster changes.
 
 **Naming a path is a two-sided edit.** `frontend/src/lib/branding.ts` -> `icons`
 is the only place a browser icon path is written, and
@@ -257,10 +242,7 @@ a visibility parent — authority refines visibility rather than contradicting i
 | `packages/harness/alpha/groups/scope.py` | the forest: parents, authority, path, depth, lifecycle, relay planning |
 | `packages/harness/alpha/groups/roster.py` | membership by origin: direct, rule-matched, inherited, excluded, expired |
 | `packages/harness/alpha/groups/service.py` | `create_subgroup`, `move_room`, `promote_room`, `merge_children`, `tree`, `breadcrumbs`, `relay_all` |
-| `packages/harness/alpha/groups/activity.py` | the **live activity ledger**: what each agent is doing, and a `crashed` that is distinguishable from an `idle` |
-| `packages/harness/alpha/groups/claims.py` | advisory **work claims** (intent, never refusal) + soft-conflict detection that actually fires |
-| `packages/harness/alpha/groups/coordination.py` | room-level composition: the crash→orphaned seam and transcript signalling |
-| `app/gateway/routers/groups.py` | `/tree`, `/subgroups`, `/children`, `/ancestors`, `/descendants`, `/roster`, `/members`, `/rules`, `/merge`, `/promote`, `/move`, `/policy`, `/lifecycle`, `/activity`, `/claims` |
+| `app/gateway/routers/groups.py` | `/tree`, `/subgroups`, `/children`, `/ancestors`, `/descendants`, `/roster`, `/members`, `/rules`, `/merge`, `/promote`, `/move`, `/policy`, `/lifecycle` |
 | `frontend/src/lib/groups-tree.ts` | pure tree derivation, membership headline, roster bucketing |
 | `frontend/src/components/sections/GroupTreeSidebar.tsx` | the forest sidebar, subgroup form, breadcrumbs |
 
@@ -313,10 +295,9 @@ in another layer; follow the pointer.
   orphan-module scan, `@tool` signature rules, and the background-loop lifecycle
   owner: **[backend/AGENTS.md](backend/AGENTS.md#integration-health--autonomy-ownership)**.
   **Capability counts are generated, never hand-typed.**
-  `contracts/feature_manifest.json` — generated by
-  `backend/scripts/generate_feature_manifest.py`; proves all 134 tools, 65
-  routers, 43 middlewares, 9 supervisor loops and 115 engine modules are wired.
-  If you change a
+  `contracts/feature_manifest.json` is produced by
+  `backend/scripts/generate_feature_manifest.py` and proves every tool, router,
+  middleware, supervisor loop and engine module is wired; if you change a
   registry, regenerate the manifest *and* fix the numbers in `README.md`,
   `llms.txt`, `llms-full.txt`, `docs/FAQ.md`, and `docs/COMPARISON.md` in the same
   change set. `GET /api/ops/integration-health` exposes live coverage +
@@ -328,11 +309,9 @@ in another layer; follow the pointer.
   public Agent Card/pair/inbound routes are exact-path public surfaces with their
   own token checks while local management routes keep Gateway auth and
   `threads:read/write`; public/model callers cannot self-assert a sender id and the
-  model tool strips endpoints, cards, pairing codes, and credentials; the free path
-  is LAN UDP + HTTP/WebSocket + SQLite with optional `zeroconf` mDNS and opt-in
-  GitHub Agent Card rendezvous (not a mailbox); libp2p must report unavailable until
-  a real authenticated adapter is wired; and installation-scoped SQLite is never
-  described as cross-process exactly-once.
+  model tool strips endpoints, cards, pairing codes, and credentials; libp2p must
+  report unavailable until a real authenticated adapter is wired; and
+  installation-scoped SQLite is never described as cross-process exactly-once.
 - **Cognitive memory** — server-resolved owner, per-owner/per-directory process
   cache, atomic fsync-backed snapshots, and fail-closed owner/corrupt-state
   handling are owned by
@@ -346,11 +325,10 @@ in another layer; follow the pointer.
   or Windows restart must not become a task failure" true. It is **additive**:
   `RunManager` stays the sole lifecycle owner and `SafeRunRecoveryService` stays
   the only safe-continuation authority, so nothing here is a second execution
-  path. It adds what was genuinely missing — an explicit session lifecycle
-  vocabulary (`runtime/sessions/`), connectivity as a first-class state
-  (`runtime/network/`), a per-effect `UNKNOWN` + reconciliation ledger
-  (`runtime/side_effects/`), a crash-loop-bounded process supervisor
-  (`runtime/supervisor/`), and an ordered, honestly-reported shutdown
+  path. It adds what was genuinely missing — session lifecycle (`runtime/sessions/`),
+  connectivity as a first-class state (`runtime/network/`), a per-effect `UNKNOWN`
+  + reconciliation ledger (`runtime/side_effects/`), a crash-loop-bounded process
+  supervisor (`runtime/supervisor/`), and an ordered, honestly-reported shutdown
   (`runtime/shutdown.py`, which the Gateway lifespan drain runs through). Map and
   the explicit **not-yet-implemented** list:
   **[docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md)**;

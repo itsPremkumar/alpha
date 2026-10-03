@@ -19,6 +19,7 @@ this host takes to boot a Python interpreter.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import time
@@ -29,7 +30,9 @@ from alpha.sandbox.process_manager import (
     START_SETTLE_SECONDS,
     ProcessManager,
     ProcessSpawnError,
+    elapsed_seconds,
     get_process_manager,
+    host_shell_label,
 )
 from alpha.tools.builtins.process_handle_tool import process_handle_tool
 
@@ -271,3 +274,86 @@ def test_global_manager_is_the_one_the_tool_uses() -> None:
     start_out = _start("exit 0")
     handle_id = _handle_id(start_out)
     assert get_process_manager().get(handle_id) is not None
+
+
+# ---------------------------------------------------------------------------
+# Disclosures: which shell runs the command, and how long it has run
+# ---------------------------------------------------------------------------
+#
+# ``Popen(shell=True)`` means "%COMSPEC% on Windows, /bin/sh on POSIX" --
+# never "bash" and never $SHELL. A model writing ``export``/arrays/pipes
+# against an unlabelled command is guessing at a fact the runtime already
+# knows. Likewise a start report with no runtime figure cannot distinguish
+# an immediate-exit outcome from a long build at a glance, and elapsed wall
+# time after an exit must never be published as runtime. Both facts belong
+# in the header, derived from the same sources the spawn itself uses.
+
+
+def test_host_shell_label_names_the_shell_the_spawn_actually_uses() -> None:
+    label = host_shell_label()
+    assert label
+    if sys.platform == "win32":
+        # Windows shell=True runs %COMSPEC%.
+        assert "cmd" in label.lower() or "comspec" in label.lower(), label
+        assert "Windows" in label
+    else:
+        # POSIX shell=True hardcodes /bin/sh regardless of $SHELL.
+        assert label.startswith("/bin/sh"), label
+
+
+def test_host_shell_label_reads_comspec_not_a_guess(monkeypatch: pytest.MonkeyPatch) -> None:
+    if sys.platform != "win32":
+        pytest.skip("COMSPEC is a Windows-only fact")
+    monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
+    assert "cmd.exe" in host_shell_label().lower()
+
+
+def test_elapsed_seconds_measures_live_runtime_monotonically() -> None:
+    handle = ProcessManager().start_background(f'"{sys.executable}" -c "import time; time.sleep(30)"')
+    try:
+        first = elapsed_seconds(handle)
+        time.sleep(0.25)
+        second = elapsed_seconds(handle)
+        assert 0.0 <= first < second
+        assert second - first >= 0.15, (first, second)
+        assert second < 60.0, second  # measured, not fabricated
+    finally:
+        handle.kill()
+
+
+def test_elapsed_seconds_freezes_at_the_observed_exit() -> None:
+    handle = ProcessManager().start_background("exit 0")
+    deadline = time.monotonic() + 60.0
+    while handle.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert handle.poll() is not None
+    at_exit = elapsed_seconds(handle)
+    time.sleep(0.3)
+    later = elapsed_seconds(handle)
+    # Time passing after the process ended must never read as runtime.
+    assert later == pytest.approx(at_exit), (at_exit, later)
+    assert at_exit >= 0.0
+
+
+def test_handle_header_discloses_host_shell_and_runtime() -> None:
+    start_out = _start(f'"{sys.executable}" -c "import time; time.sleep(60)"')
+    try:
+        assert f"Host shell: {host_shell_label()}" in start_out, start_out
+        match = re.search(r"Runtime: ([0-9]+\.[0-9]+)s", start_out)
+        assert match, start_out
+        assert float(match.group(1)) >= 0.0
+    finally:
+        for line in start_out.splitlines():
+            if line.startswith("Handle ID:"):
+                process_handle_tool.invoke({"action": "kill", "handle_id": line.split(":", 1)[1].strip()})
+                break
+
+
+def test_completed_process_header_reports_its_measured_runtime() -> None:
+    start_out = _start("exit 0")
+    assert "completed successfully" in start_out, start_out
+    match = re.search(r"Runtime: ([0-9]+\.[0-9]+)s", start_out)
+    assert match, start_out
+    # A fast builtin finishes well under the settle window; the figure is the
+    # measured run, never the settle timeout.
+    assert float(match.group(1)) < START_SETTLE_SECONDS, start_out

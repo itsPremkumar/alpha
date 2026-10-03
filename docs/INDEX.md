@@ -60,6 +60,7 @@
 - [PRODUCTION_READINESS_INVENTORY.md](PRODUCTION_READINESS_INVENTORY.md) — Production-readiness status, owners, and test evidence.
 - [PRODUCTION_READINESS_TRANSFER_GUIDE.md](PRODUCTION_READINESS_TRANSFER_GUIDE.md) — Production foundations and readiness transfer guidance.
 - [PROTOCOLS.md](PROTOCOLS.md) — Interop protocols: the MCP wire version Alpha speaks, A2A scope, and ACP naming.
+- [RELIABILITY_ROADMAP.md](RELIABILITY_ROADMAP.md) — Production reliability plan: incident evidence, shipped fixes, specified retry/port/self-heal work, and the operational budget table.
 - [REVERSIBLE_DELETE.md](REVERSIBLE_DELETE.md) — Recoverable delete: how a destructive mutation is staged, bounded, and restored.
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.

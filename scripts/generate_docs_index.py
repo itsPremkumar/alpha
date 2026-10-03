@@ -179,6 +179,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "What Alpha guarantees with one worker, with N workers, and with none of them.",
     ),
+    "RELIABILITY_ROADMAP.md": DocumentSpec(
+        "operations",
+        "Production reliability plan: incident evidence, shipped fixes, specified retry/port/self-heal work, and the operational budget table.",
+    ),
     "CHAT_SHELL_DESIGN.md": DocumentSpec(
         "architecture",
         "Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.",

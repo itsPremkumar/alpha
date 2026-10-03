@@ -42,6 +42,7 @@ from alpha.runtime.network import (
 )
 from alpha.runtime.runs.manager import set_activity_observer
 from alpha.runtime.runs.store.base import RunStore
+from alpha.runtime.selfheal.run_stall import RunStallWatchdog
 from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from alpha.runtime.side_effects import (
     SideEffectReclaimer,
@@ -778,6 +779,22 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # Start the lease heartbeat if enabled (multi-worker deployments).
         await app.state.run_manager.start_heartbeat()
 
+        # Run stall watchdog: a running run whose progress heartbeat goes
+        # silent is cancelled and terminalised with an explanatory error, so a
+        # hung run can never sit in running forever (the 2026-10-02 incident
+        # run sat in `running` for 20+ minutes with nothing watching it).
+        # Budgets come from config's run_stall section; the watchdog is a pure
+        # consumer of RunStore/RunManager public APIs and stops at admission
+        # close below.
+        stall_settings = getattr(config, "run_stall", None)
+        stall_watchdog = RunStallWatchdog(
+            run_manager=app.state.run_manager,
+            run_store=app.state.run_store,
+            settings=stall_settings,
+        )
+        stall_watchdog.start()
+        app.state.run_stall_watchdog = stall_watchdog
+
         # Connectivity monitoring, plus the durable record of parked sessions.
         #
         # Two independent concerns, deliberately wired together because they
@@ -861,6 +878,16 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # the network services were never stopped and the harness accessor
             # kept pointing at a dead service. Compose instead.
             async def close_admission() -> None:
+                # The stall watchdog first: it is a claimer -- a scan firing
+                # while admission closes would cancel runs the drain is about
+                # to finish -- and it owns nothing but a timer, so nothing is
+                # lost by stopping it before everything else.
+                stall_watchdog = getattr(app.state, "run_stall_watchdog", None)
+                if stall_watchdog is not None:
+                    try:
+                        await stall_watchdog.stop(timeout=1.0)
+                    finally:
+                        app.state.run_stall_watchdog = None
                 # Recovery first: it is the component that launches new
                 # continuations, so nothing new may start while it drains.
                 if recovery_service is not None:
@@ -902,7 +929,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             drain.register(
                 ShutdownPhase.ADMISSION_CLOSED,
                 close_admission,
-                description="stop the safe-recovery service, the parked-session registry, the connectivity monitor, and the side-effect reclaimer",
+                description="stop the run stall watchdog, the safe-recovery service, the parked-session registry, the connectivity monitor, and the side-effect reclaimer",
             )
             if run_manager is not None:
 

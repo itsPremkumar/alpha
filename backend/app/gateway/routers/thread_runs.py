@@ -64,7 +64,14 @@ from app.gateway.routers.console import (
     _token_cost,
 )
 from app.gateway.run_models import RunCreateRequest
-from app.gateway.services import abuild_checkpoint_state_accessor, build_thread_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
+from app.gateway.services import (
+    abuild_checkpoint_state_accessor,
+    build_thread_checkpoint_state_accessor,
+    sse_consumer,
+    start_run,
+    wait_for_run_completion,
+    with_stream_heartbeats,
+)
 from app.gateway.utils import sanitize_log_param
 
 logger = logging.getLogger(__name__)
@@ -1063,12 +1070,14 @@ async def stream_run(
         )
 
     return StreamingResponse(
-        sse_consumer(
-            bridge,
-            record,
-            request,
-            run_mgr,
-            emit_gap_on_missing_stream=record.idempotency_reused,
+        with_stream_heartbeats(
+            sse_consumer(
+                bridge,
+                record,
+                request,
+                run_mgr,
+                emit_gap_on_missing_stream=record.idempotency_reused,
+            )
         ),
         media_type="text/event-stream",
         headers={
@@ -1388,7 +1397,7 @@ async def join_run(thread_id: ThreadId, run_id: str, request: Request) -> Stream
     return StreamingResponse(
         # Joins are read-only observation: the creator's cancel-on-disconnect
         # policy must not fire because an observer closed their connection.
-        sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False),
+        with_stream_heartbeats(sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1476,7 +1485,7 @@ async def _stream_existing_run(
         # require_cancel_permission_when_action), and an action-less join is
         # read-only observation — the creator's cancel-on-disconnect policy
         # must not fire because a joiner closed their connection.
-        sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False),
+        with_stream_heartbeats(sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

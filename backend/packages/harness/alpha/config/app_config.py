@@ -44,6 +44,7 @@ from alpha.config.reload_boundary import format_field_description
 from alpha.config.review_guard_config import ReviewGuardConfig
 from alpha.config.run_events_config import RunEventsConfig
 from alpha.config.run_ownership_config import RunOwnershipConfig
+from alpha.config.run_stall_config import RunStallSettings
 from alpha.config.runtime_paths import existing_project_file
 from alpha.config.safety_finish_reason_config import SafetyFinishReasonConfig
 from alpha.config.sandbox_config import SandboxConfig
@@ -254,6 +255,13 @@ def apply_logging_level(name: str | None) -> None:
     for handler in logging.root.handlers:
         if level < handler.level:
             handler.setLevel(level)
+
+
+# The wall-clock budget for one tool call (AppConfig.tool_timeout). Matches
+# sandbox.bash_command_timeout so no tool call may outlive the cap the sandbox
+# already gives a foreground command; the plain ToolNode path previously had no
+# budget at all and a hung sync tool could sit in `running` forever.
+DEFAULT_TOOL_TIMEOUT_SECONDS = 600.0
 
 
 class AppConfig(BaseModel):
@@ -502,6 +510,26 @@ class AppConfig(BaseModel):
         description=format_field_description(
             "run_ownership",
             field_doc="Run ownership, lease, and safe checkpoint auto-resume configuration for single- and multi-worker deployments.",
+        ),
+    )
+    run_stall: RunStallSettings = Field(
+        default_factory=RunStallSettings,
+        description=format_field_description(
+            "run_stall",
+            field_doc="Run stall watchdog: a running run with no progress heartbeat for timeout_seconds is cancelled and terminalised with an explanatory error, so a hung agent run can never sit in running forever.",
+        ),
+    )
+    tool_timeout: float = Field(
+        default=DEFAULT_TOOL_TIMEOUT_SECONDS,
+        ge=0,
+        description=format_field_description(
+            "tool_timeout",
+            field_doc=(
+                "Wall-clock budget in seconds for a single tool call (async path). Exceeding it "
+                "cancels the call and returns a retryable tool-timeout error ToolMessage instead "
+                "of awaiting forever; set 0 to disable the budget (calls run unbounded). Defaults "
+                "to 600, the same cap sandbox.bash_command_timeout gives a foreground command."
+            ),
         ),
     )
     network: NetworkResilienceConfig = Field(
