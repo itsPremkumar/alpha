@@ -214,7 +214,7 @@ export function TaskList({
             <div className="px-3 pt-2.5">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" role="presentation">
                 <div
-                  className="h-full rounded-full bg-success transition-[width] duration-300"
+                  className="h-full rounded-full bg-success transition-[width] duration-500"
                   style={{ width: `${fraction * 100}%` }}
                   data-testid="task-list-bar"
                 />
