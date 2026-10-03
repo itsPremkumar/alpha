@@ -2,20 +2,21 @@
 #
 # Build order on Windows (run from the `electron/` directory):
 #   1. npm install            # installs electron + electron-builder
-#   2. npm run build:frontend # standalone Next.js production build
-#   3. npm run dist            # rebuilds frontend, then produces the NSIS installer
+#   2. npm run verify         # asserts the build inputs actually exist
+#   3. npm run dist           # fetch-runtime → build:frontend → NSIS installer
 #
 # The installer bundles:
 #   - the Electron shell (main.js / preload.js / splash.html)
 #   - the Next.js standalone server  -> <resources>/frontend-standalone
 #   - the Python backend sources      -> <resources>/backend
 #   - config templates                -> <resources>/config-templates
+#   - a portable Node.js and `uv`     -> <resources>/runtime
 #
 # At runtime the app spawns the backend via `uv` and the frontend via `node`.
-# Both come from the bundled runtime below (build/runtime), so end-user machines
-# need nothing pre-installed — uv additionally provisions CPython on first
-# launch. The backend venv is created on first launch inside the installed
-# backend directory.
+# Both come from the bundled runtime, so end-user machines need nothing
+# pre-installed — uv additionally provisions CPython on first launch, and the
+# venv lands in the writable user-data folder, never under the install
+# directory (a per-machine install lives in Program Files and is read-only).
 
 appId: ai.alpha.desktop
 productName: Alpha
@@ -23,9 +24,20 @@ copyright: Copyright © 2026 Prem Kumar
 
 directories:
   output: dist
+  # Build intermediates (installer icon scaffolding, unpacked trees) land here
+  # rather than being written next to the sources.
+  buildResources: build
+
+# Reproducible dependency resolution: electron-builder must install the app's own
+# production dependencies rather than relying on whatever is in node_modules.
+npmRebuild: false
+
+asar: true
 
 files:
   - main.js
+  # Every lib/ module ships: the tests in tests/ point at these, and a missing
+  # module is a crash at startup rather than a degraded feature.
   - lib/**/*.js
   - preload.js
   - pet-preload.js
@@ -40,7 +52,8 @@ files:
 
 extraResources:
   # Self-contained runtime so end-user machines need nothing pre-installed.
-  # Produced by `npm run fetch-runtime` (see scripts/fetch-runtime.mjs).
+  # Produced by `npm run fetch-runtime` (see scripts/fetch-runtime.mjs), and
+  # asserted by `npm run verify` before a build starts.
   - from: build/runtime
     to: runtime
   - from: ../frontend/.next/standalone
@@ -76,8 +89,10 @@ extraResources:
       - "!docs/**"
       - "!sandbox/**"
       - "!**/.alpha/**"
-      - "!**/.alpha/**"
       - "!.vscode/**"
+      - "!.pytest_cache/**"
+      - "!.ruff_cache/**"
+      - "!**/*.log"
       - "!Dockerfile*"
   - from: ../config.example.yaml
     to: config-templates/config.example.yaml
@@ -95,13 +110,59 @@ win:
   # executable, the Start Menu entry and the taskbar all pick a legible size
   # instead of one scaled-down raster.
   icon: assets/alpha.ico
+  # asInvoker: the app never needs elevation, and an elevated desktop app writes
+  # its user-data into a different profile than the one the user sees. Paired
+  # with `nsis.allowElevation: false` below so the installer cannot hand back an
+  # install the app itself cannot write to.
   requestedExecutionLevel: asInvoker
+  # Verify the installer and the uninstaller are signed before packaging. Set to
+  # false only for a local unsigned build; CI has no certificate, so this is
+  # opt-in via CSC_LINK/CSC_KEY_PASSWORD (see scripts/verify-build.mjs).
+  verifyUpdateCodeSignature: false
 
 nsis:
+  # A wizard, not a silent one-click: the first launch downloads a Python
+  # runtime and ~200 wheels, so the user is told what they are installing and
+  # gets a choice of install directory.
   oneClick: false
   perMachine: false
+  # No elevation. The app writes only to its own userData folder, so an
+  # elevated install would put the app's data somewhere the unelevated app
+  # process cannot see it.
+  allowElevation: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Alpha
-  artifactName: Alpha-Setup-${version}.exe
+  # Shown in Windows Settings -> Apps rather than as a bare product name.
+  uninstallDisplayName: Alpha Desktop
+  menuCategory: false
+  # Run the app when the install finishes. The user asked for an installer, and
+  # the first launch is also the slow one (Python provisioning), so hiding it
+  # would be the wrong default.
+  runAfterFinish: true
+  # Differential packages make an update download only the changed blocks rather
+  # than the whole ~200 MB installer. This is the half of auto-update the `publish`
+  # block cannot provide on its own.
+  differentialPackage: true
+  artifactName: Alpha-Setup-${version}-${arch}.exe
+
+# ---------------------------------------------------------------------------
+# Auto-update feed
+# ---------------------------------------------------------------------------
+# `electron-updater` needs BOTH a `publish` target (so electron-builder emits
+# latest.yml, which is the file the client actually reads) and an NSIS
+# differential package (so an update does not re-download the whole installer).
+# Neither existed before, so `electron-updater` had nothing to consume and
+# auto-update could not have worked no matter how it was wired in main.js.
+#
+# `provider: github` with `owner`/`repo` matches the public release workflow in
+# .github/workflows/windows-installer.yml, which attaches the installer to the
+# Release on a `v*` tag. `electron/main.js` reads the same repo from
+# desktop-config.json -> updateFeed, so the feed is defined once in code and
+# referenced here.
+publish:
+  provider: github
+  owner: itsPremkumar
+  repo: alpha
+  releaseType: release

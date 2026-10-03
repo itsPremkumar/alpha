@@ -176,8 +176,13 @@ test('desktop media permission handles singular mediaType and fails closed when 
 
 test('the Electron main process wires native request and check handlers', () => {
   const source = fs.readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(source, /configureDesktopMediaPermissions\(mainWindow\.webContents, targetUrl\)/);
+  // The function was renamed `configurePermissions` and now also routes every
+  // NON-media permission through the allowlist in lib/window-policy.js, instead
+  // of the previous `callback(true)` for anything unrecognized.
+  assert.match(source, /configurePermissions\(mainWindow\.webContents, targetUrl\)/);
   assert.match(source, /setPermissionRequestHandler/);
   assert.match(source, /setPermissionCheckHandler/);
   assert.match(source, /permission === 'camera'/);
+  // The allowlist is consulted, not just the camera/media branches.
+  assert.match(source, /evaluatePermission\(permission/);
 });
