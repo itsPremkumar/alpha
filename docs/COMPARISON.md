@@ -75,7 +75,7 @@ persistence, and safety layers yourself.
 **Choose Alpha when** you want the whole system, self-hosted, on day one.
 
 Alpha also ships the harness as an importable package
-(`alpha-harness`, import name `alpha.*`) with 113 engine modules, so
+(`alpha-harness`, import name `alpha.*`) with 115 engine modules, so
 "LangGraph plus Alpha's engines, no Alpha UI" is a supported shape.
 
 → [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -230,7 +230,7 @@ Every Alpha figure in this document is generated, not hand-maintained:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-The manifest pins **134 tools, 63 routers, 42 middlewares, and 9 supervisor
+The manifest pins **134 tools, 63 routers, 43 middlewares, and 9 supervisor
 loops**, and `tests/test_feature_manifest_wiring.py` plus the generated-drift CI
 gate fail the build if the documentation and the live registries disagree.
 

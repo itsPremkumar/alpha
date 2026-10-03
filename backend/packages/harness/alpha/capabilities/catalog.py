@@ -357,6 +357,29 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Deterministic AST code critic (8 rules) with a severity-ranked report.",
         kind="utility",
     ),
+    # --- Grounding layer -------------------------------------------------
+    # Claim ledger, solvability gate, capability manifest, and the per-step
+    # deterministic-first gates. Wired on the agent path by
+    # `agents/middlewares/grounding_middleware.py`, which the lead middleware
+    # chain appends -- so this id declares reachability *and* has a live consumer.
+    # Not default-enabled because manifest injection changes every prompt's shape;
+    # the per-step gates are unconditional in code and stay on either way.
+    "grounding": CapabilitySpec(
+        module="alpha.grounding.service",
+        target="GroundingService",
+        description=(
+            "Grounding layer: a live capability manifest the agent reads, a claim ledger with support status and "
+            "blast radius, a solvability gate that names the way out, deterministic-first per-step verification "
+            "gates, and a bounded effort brake."
+        ),
+        kind="engine",
+    ),
+    "grounding_manifest": CapabilitySpec(
+        module="alpha.grounding.manifest",
+        target="build_manifest",
+        description=("Task-filtered capability manifest projected from live registries, gated by the static wired/unwired audit so a documented-but-uncalled subsystem is disclosed as unwired instead of advertised."),
+        kind="utility",
+    ),
 }
 
 
