@@ -15,9 +15,11 @@ of being persisted into graph state as a normal user-visible message.
 
 from __future__ import annotations
 
+import inspect
+import logging
 import threading
 from collections.abc import Awaitable, Callable
-from typing import Any, override
+from typing import Any, get_type_hints, override
 
 from langchain.agents.middleware import TodoListMiddleware
 from langchain.agents.middleware.todo import Todo
@@ -26,6 +28,50 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
 from alpha.agents.thread_state import ThreadState
+from alpha.agents.todo_events import build_todo_event, normalize_todos
+from alpha.utils.custom_events import emit_custom_event
+
+logger = logging.getLogger(__name__)
+
+
+def _adopt_signature(wrapper: Callable[..., Any], original: Callable[..., Any]) -> None:
+    """Copy the original callable's identity onto a ``*args, **kwargs`` wrapper.
+
+    LangChain reads the tool function object *directly* rather than going
+    through :func:`inspect.signature`, and ``ToolNode`` computes which arguments
+    are runtime-injected once, at construction time, from that function's
+    signature and type hints. A plain ``functools.wraps`` copy is not enough:
+    it sets ``__wrapped__``, which some code paths unwrap and some do not, and
+    the ``*args, **kwargs`` wrapper's own signature still advertises no
+    ``runtime`` parameter. The result was a hard ``TypeError: _write_todos()
+    missing 1 required positional argument: 'runtime'`` on every single real
+    call.
+
+    Copying ``__signature__`` explicitly makes the wrapper indistinguishable
+    from the original for every consumer that inspects it.
+
+    This regression was found by the real-agent-graph integration tests, not by
+    reading the code: the unit tests called the wrapped function directly and
+    never went through ``ToolNode``.
+    """
+    try:
+        original_sig = inspect.signature(original)
+    except (TypeError, ValueError):
+        return
+    try:
+        original_hints = get_type_hints(original)
+    except Exception:  # pragma: no cover - exotic/unresolvable annotations
+        original_hints = {}
+    wrapper.__name__ = getattr(original, "__name__", wrapper.__name__)
+    wrapper.__qualname__ = getattr(original, "__qualname__", wrapper.__name__)
+    wrapper.__doc__ = getattr(original, "__doc__", None)
+    wrapper.__dict__.update(getattr(original, "__dict__", {}))
+    wrapper.__annotations__ = dict(original_hints or getattr(original, "__annotations__", {}))
+    wrapper.__signature__ = original_sig  # type: ignore[attr-defined]
+    try:
+        wrapper.__type_params__ = getattr(original, "__type_params__", ())  # type: ignore[attr-defined]
+    except AttributeError:
+        pass
 
 
 def _todos_in_messages(messages: list[Any]) -> bool:
@@ -181,6 +227,92 @@ class TodoMiddleware(TodoListMiddleware):
         self._completion_reminder_counts: dict[tuple[str, str], int] = {}
         self._completion_reminder_touch_order: dict[tuple[str, str], int] = {}
         self._completion_reminder_next_order = 0
+        # The plan has to reach the browser, and `after_model` is the wrong
+        # hook for it: that runs *before* the tools node commits its Command,
+        # so `state["todos"]` there still holds the previous list and every
+        # update would lag exactly one model turn. Wrapping the tool itself
+        # fires on the exact payload at the exact moment of the write.
+        self._wrap_todo_tool_for_streaming()
+
+    def _wrap_todo_tool_for_streaming(self) -> None:
+        """Make every ``write_todos`` call publish the plan on the custom stream.
+
+        ``write_todos`` already writes to the ``todos`` state channel, but the
+        Gateway never emitted that channel and the frontend never read it, so
+        the plan existed in graph state and vanished at the boundary. Rather
+        than open a second execution path, this wraps the *existing* tool so
+        the authoritative payload is republished the moment it is committed.
+
+        Publishing must never break the tool. A missing stream writer (unit
+        tests, background runs) and a serialization failure are both logged and
+        swallowed: a UI enhancement is not worth failing a run over.
+        """
+        for tool in getattr(self, "tools", []) or []:
+            # Middleware instances are rebuilt on config reload, and `tools` may
+            # be a shared list. Without this guard a second wrap would publish
+            # every write twice.
+            if getattr(tool, "_alpha_todo_events", False):
+                continue
+            original_func = getattr(tool, "func", None)
+            original_coroutine = getattr(tool, "coroutine", None)
+
+            @staticmethod
+            def _find_todos(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+                """Locate the todos payload regardless of how the tool was called.
+
+                LangGraph passes the injected ``runtime`` first and then either
+                the list positionally or the ``todos`` keyword, and the two
+                paths differ between the sync and async tools. Guessing wrong
+                would publish an empty plan, which reads in the UI as "the
+                agent has no plan" -- the exact failure this feature exists to
+                remove. So check the keyword first, then fall back to the last
+                positional argument.
+                """
+                value = kwargs.get("todos")
+                if value is None and args:
+                    value = args[-1]
+                return value
+
+            def _publish(todos: Any) -> None:
+                try:
+                    from langgraph.config import get_stream_writer
+
+                    writer = get_stream_writer()
+                except Exception:
+                    writer = None
+                try:
+                    emit_custom_event(build_todo_event(todos), writer=writer)
+                except Exception:
+                    logger.warning("failed to publish the todo plan to the stream", exc_info=True)
+
+            if original_func is not None:
+
+                def wrapped_func(*args: Any, **kwargs: Any) -> Any:
+                    _publish(_find_todos(args, kwargs))
+                    return original_func(*args, **kwargs)
+
+                _adopt_signature(wrapped_func, original_func)
+                tool.func = wrapped_func  # type: ignore[attr-defined]
+
+            if original_coroutine is not None:
+
+                async def wrapped_coroutine(*args: Any, **kwargs: Any) -> Any:
+                    _publish(_find_todos(args, kwargs))
+                    return await original_coroutine(*args, **kwargs)
+
+                _adopt_signature(wrapped_coroutine, original_coroutine)
+                tool.coroutine = wrapped_coroutine  # type: ignore[attr-defined]
+
+            try:
+                tool._alpha_todo_events = True  # type: ignore[attr-defined]
+            except AttributeError:
+                # Frozen/slotted tool objects simply go unwrapped rather than
+                # taking down middleware construction for a UI feature.
+                logger.debug("todo tool does not accept an idempotency marker")
+
+    def todo_snapshot(self, state: ThreadState) -> Any:
+        """Project the current plan for callers that read state, not the stream."""
+        return normalize_todos(state.get("todos") or [])
 
     @staticmethod
     def _get_thread_id(runtime: Runtime) -> str:

@@ -1,4 +1,4 @@
-import type { TodoItem, TodoProgress, TodoStatus, ToolCall, ToolCallStatus, ToolCallVerdict } from "../types/chat";
+import type { TodoItem, TodoProgress, ToolCall, ToolCallStatus, ToolCallVerdict } from "../types/chat";
 
 export type SseFrame = { event: string; data: unknown; id?: string };
 export type ReplayGapEvent = { type: "replay-gap"; runId?: string; lastEventId?: string; eventId?: string };
@@ -54,19 +54,30 @@ export type SseState = {
    */
   tasks: SubagentTask[];
   /**
-   * The live execution plan folded from `todos_updated` custom events.
+   * The agent's own execution plan, folded from `todos_updated` custom events.
    *
-   * A frozen object rather than an array so the reference is stable across
-   * frames that carried no plan news, exactly as `tasks` is. It is also not
-   * part of the `seen`/replay machinery: see `withTodoEvent`.
+   * Mirrors `tasks`: a stable object reference across frames that carry no
+   * plan news, so the live panel is not re-rendered by ordinary text deltas.
    */
   todos: TodoPlan;
-  /**
-   * Event id of the frame that produced `todos`. A plan is a whole-list
-   * replacement, so an out-of-order frame would visibly rewind the user's plan;
-   * remembering the id lets a stale one be refused. Absent = no plan yet.
-   */
-  todoEventId?: string;
+};
+
+/**
+ * The live execution plan as the UI consumes it.
+ *
+ * `reportedAtAll` exists because "the agent has not published a plan yet" and
+ * "the agent published an empty plan" are different facts, and a UI that
+ * collapses them either shows an empty panel forever or hides a real (if very
+ * short) plan. Rendering is gated on this flag, not on length.
+ */
+export type TodoPlan = {
+  items: TodoItem[];
+  progress: TodoProgress;
+  /** How many items the run said it had, which may exceed `items.length`. */
+  reported: number;
+  /** True when items were dropped for size or cap reasons and must be stated. */
+  truncated: boolean;
+  reportedAtAll: boolean;
 };
 
 /* ── Wire contract for tool verdicts (see types/chat.ts ToolCallVerdict) ──── */
@@ -97,10 +108,14 @@ const MAX_ERROR_MESSAGE_CHARS = 1000;
 const MAX_SUBAGENT_TASKS = 128;
 /** Ceiling on per-task step/error text carried into the live view. */
 const MAX_TASK_TEXT_CHARS = 2000;
-/** Mirrors `MAX_TODO_ITEMS` in `todo_events.py`. */
-const MAX_TODO_ITEMS = 200;
-/** Mirrors `MAX_TODO_CONTENT_CHARS` in `todo_events.py`. */
+/** Ceiling on the live plan; a deeper plan is a pathological run, not a feature. */
+const MAX_STREAM_TODOS = 200;
+/** Per-item text cap, matching the backend projection so both sides clip alike. */
 const MAX_TODO_CONTENT_CHARS = 500;
+/** Backend stamp: `alpha.agents.todo_events.TODO_EVENT_TYPE`. */
+const TODO_EVENT_TYPE = "todos_updated";
+/** Mirrors `todo_events.TODO_STATUSES`; the wire is the only authority. */
+const TODO_STATUSES: ReadonlySet<string> = new Set(["pending", "in_progress", "completed", "cancelled"]);
 
 /* ── Subagent progress: `task_*` custom events on the root namespace ─────── */
 
@@ -175,44 +190,8 @@ function taskUsage(value: unknown): SubagentUsage | undefined {
 }
 
 export function createSseState(runId?: string): SseState {
-  return { runId, messages: new Map(), seen: new Set(), pending: [], ended: false, toolResults: new Map(), toolOwners: new Map(), channels: {}, tasks: [], todos: EMPTY_TODO_PLAN };
+  return { runId, messages: new Map(), seen: new Set(), pending: [], ended: false, toolResults: new Map(), toolOwners: new Map(), channels: {}, tasks: [], todos: emptyTodoPlan() };
 }
-
-/**
- * One normalized plan item, as the backend normalized it.
- *
- * Re-exported from `types/chat.ts` rather than redeclared: the item shape is a
- * wire contract, and a second declaration here would be a place for the two to
- * drift without a type error catching it.
- */
-export type { TodoItem, TodoProgress } from "../types/chat";
-
-/**
- * A whole plan, plus the counters needed to render it honestly.
- *
- * `reportedAtAll` is the field that keeps "the run has not written a plan yet"
- * distinct from "the run wrote an empty plan". Without it the two states are
- * indistinguishable, and a caller cannot tell whether to draw a panel at all.
- */
-export type TodoPlan = {
-  items: TodoItem[];
-  progress: TodoProgress;
-  /** Items the model actually sent, before any cap. */
-  reported: number;
-  /** True when `reported` exceeded what we are willing to render. */
-  truncated: boolean;
-  /** False until the run emits its first `todos_updated`. */
-  reportedAtAll: boolean;
-};
-
-/** The plan a run that has never written one is allowed to look like. */
-export const EMPTY_TODO_PLAN: TodoPlan = {
-  items: [],
-  progress: { total: 0, completed: 0, in_progress: 0, pending: 0, cancelled: 0, settled: 0 },
-  reported: 0,
-  truncated: false,
-  reportedAtAll: false,
-};
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -434,81 +413,120 @@ function withTaskEvent(state: SseState, data: Record<string, unknown>): SseState
   return { ...state, tasks };
 }
 
-function withTodoEvent(state: SseState, data: Record<string, unknown>, eventId?: string): SseState {
-  if (data.type !== "todos_updated") return state;
-  // A plan frame with no event id cannot be ordered against the one on screen.
-  // `write_todos` replaces the whole list, so applying an unordered frame could
-  // visibly rewind the plan the user is watching. Refusing is the honest option:
-  // the plan simply does not advance until an ordered frame arrives.
-  if (!eventId) return state;
-  if (state.todoEventId && compareIds(eventId, state.todoEventId) <= 0) return state;
+/* ── Execution plan: `todos_updated` custom events ──────────────────────── */
 
-  const raw = Array.isArray(data.todos) ? data.todos : [];
-  const reported = typeof data.reported === "number" && Number.isSafeInteger(data.reported) && data.reported >= 0 ? data.reported : raw.length;
-  const items: TodoItem[] = [];
-  for (const entry of raw) {
-    if (items.length >= MAX_TODO_ITEMS) break;
-    const item = record(entry);
-    const content = typeof item.content === "string" ? item.content.trim() : "";
-    // An item with no text is not an observable task. Rendering an empty
-    // checkbox the user cannot read or act on is worse than omitting it, and the
-    // drop is not truncation — the model never wrote a step there.
-    if (!content) continue;
-    items.push({
-      id: identifier(item.id) ?? `${items.length}`,
-      content: truncate(content, MAX_TODO_CONTENT_CHARS),
-      status: todoStatus(item.status),
-      index: typeof item.index === "number" && Number.isSafeInteger(item.index) && item.index >= 0 ? item.index : items.length,
-    });
+/** A plan that has never been reported. Distinct from a reported empty plan. */
+export function emptyTodoPlan(): TodoPlan {
+  return { items: [], progress: { total: 0, completed: 0, in_progress: 0, pending: 0, cancelled: 0, settled: 0 }, reported: 0, truncated: false, reportedAtAll: false };
+}
+
+function boundedTodoText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  // A step with no text is not a step the user can read. Dropping it is better
+  // than rendering a checkbox with nothing beside it.
+  if (!trimmed) return "";
+  return trimmed.length > MAX_TODO_CONTENT_CHARS ? `${trimmed.slice(0, MAX_TODO_CONTENT_CHARS - 1).trimEnd()}…` : trimmed;
+}
+
+/**
+ * Fold one reported plan item, or reject it.
+ *
+ * An unrecognized status degrades to `pending` rather than being dropped: the
+ * run told us a step exists, and hiding it would make the plan read as more
+ * finished than the agent said it was.
+ */
+function todoItemFrom(value: unknown, fallbackIndex: number): TodoItem | null {
+  const raw = record(value);
+  const content = boundedTodoText(raw.content ?? raw.title);
+  if (!content) return null;
+  const status = typeof raw.status === "string" && TODO_STATUSES.has(raw.status) ? raw.status as TodoItem["status"] : "pending";
+  const id = identifier(raw.id) ?? `todo-${fallbackIndex}`;
+  const index = typeof raw.index === "number" && Number.isSafeInteger(raw.index) && raw.index >= 0 ? raw.index : fallbackIndex;
+  return { id, content, status, index };
+}
+
+/**
+ * Trust the server's counters when it sent them, and only fall back to counting
+ * the items we actually hold when it did not.
+ *
+ * `settled` counts completed *and* cancelled: both are outcomes the agent chose
+ * rather than work left undone, and a plan of six steps where two were dropped
+ * is finished, not 33% done.
+ */
+function todoProgressFrom(value: unknown, items: TodoItem[]): TodoProgress {
+  const raw = record(value);
+  const read = (key: string): number | undefined => {
+    const candidate = raw[key];
+    return typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 ? Math.floor(candidate) : undefined;
+  };
+  if (items.length === 0) {
+    const empty = { total: 0, completed: 0, in_progress: 0, pending: 0, cancelled: 0, settled: 0 };
+    const total = read("total");
+    return total === undefined ? empty : { ...empty, total };
   }
-  // The backend's own counts are preferred when present: they were computed over
-  // exactly the items it chose to send, which may be fewer than we render. A
-  // count we derive here could disagree with the list beside it.
-  const progress = todoProgress(data.progress, items);
-  const plan: TodoPlan = {
-    items,
-    progress,
-    reported: Math.max(reported, items.length),
-    truncated: data.truncated === true || reported > items.length,
-    reportedAtAll: true,
-  };
-  // An identical re-projection keeps the previous reference so React can bail.
-  if (state.todoEventId === eventId) return state;
-  return { ...state, todos: plan, todoEventId: eventId };
-}
-
-/** Coerce a model-reported status to a known one; never invent a fifth state. */
-function todoStatus(value: unknown): TodoStatus {
-  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
-  // An unrecognized status becomes `pending`, matching the backend: the item
-  // genuinely exists and is genuinely not done, so `pending` is the only claim
-  // that cannot overstate progress.
-  return raw === "in_progress" || raw === "completed" || raw === "cancelled" ? raw : "pending";
-}
-
-function todoProgress(value: unknown, items: TodoItem[]): TodoProgress {
-  const reported = record(value);
-  const count = (key: string): number | undefined => {
-    const raw = reported[key];
-    return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined;
-  };
-  const derived = { total: items.length, completed: 0, in_progress: 0, pending: 0, cancelled: 0 };
-  for (const item of items) derived[item.status] += 1;
-  const completed = count("completed") ?? derived.completed;
-  const inProgress = count("in_progress") ?? derived.in_progress;
-  const pending = count("pending") ?? derived.pending;
-  const cancelled = count("cancelled") ?? derived.cancelled;
+  const counted = items.reduce((acc, item) => {
+    acc[item.status] += 1;
+    return acc;
+  }, { pending: 0, in_progress: 0, completed: 0, cancelled: 0 } as Record<TodoItem["status"], number>);
+  const total = read("total") ?? items.length;
   return {
-    total: count("total") ?? derived.total,
-    completed,
-    in_progress: inProgress,
-    pending,
-    cancelled,
-    // `settled` counts completed *and* cancelled: both are outcomes the run
-    // reached. Deriving it rather than trusting it keeps the bar honest even if
-    // a hand-rolled payload disagrees with its own counts.
-    settled: completed + cancelled,
+    total,
+    completed: read("completed") ?? counted.completed,
+    in_progress: read("in_progress") ?? counted.in_progress,
+    pending: read("pending") ?? counted.pending,
+    cancelled: read("cancelled") ?? counted.cancelled,
+    settled: read("settled") ?? counted.completed + counted.cancelled,
   };
+}
+
+/**
+ * Fold a `todos_updated` frame into the live plan.
+ *
+ * The newest report REPLACES the plan. `write_todos` rewrites the whole list
+ * and its contract forbids re-editing completed steps, so merging would
+ * resurrect items the model deliberately dropped and present abandoned work as
+ * still outstanding. Only the two counters that must never go backwards are
+ * enforced: a replayed or reordered frame must not make a finished run look
+ * unfinished.
+ */
+function withTodoEvent(state: SseState, data: Record<string, unknown>): SseState {
+  if (data.type !== TODO_EVENT_TYPE) return state;
+
+  const rawItems = Array.isArray(data.todos) ? data.todos : [];
+  const items: TodoItem[] = [];
+  for (const entry of rawItems.slice(0, MAX_STREAM_TODOS)) {
+    const item = todoItemFrom(entry, items.length);
+    if (item) items.push(item);
+  }
+  const progress = todoProgressFrom(data.progress, items);
+  const reported = typeof data.reported === "number" && Number.isFinite(data.reported) && data.reported >= 0
+    ? Math.floor(data.reported)
+    : rawItems.length;
+  const truncated = data.truncated === true || reported > items.length;
+  const previous = state.todos;
+
+  // Floor the two counters that must never move backwards. A replayed or
+  // reordered frame that reports LESS progress than is already on screen would
+  // otherwise un-finish work the run already said was finished -- the single
+  // most damaging thing this reducer could do, because the user watches it
+  // happen to a run that is actually succeeding.
+  const settled = Math.max(progress.settled, previous.progress.settled);
+  const total = Math.max(progress.total, previous.progress.total);
+  const nextProgress: TodoProgress = settled === progress.settled && total === progress.total
+    ? progress
+    : { ...progress, settled, total };
+
+  if (previous.reportedAtAll) {
+    const unchanged = previous.items.length === items.length
+      && previous.reported === reported
+      && previous.truncated === truncated
+      && items.every((item, i) => item.id === previous.items[i]?.id && item.status === previous.items[i]?.status);
+    // A frame that cannot move the plan forward is dropped wholesale, so the
+    // reference stays stable and React skips the re-render.
+    if (unchanged && nextProgress === progress && settled === previous.progress.settled && total === previous.progress.total) return state;
+  }
+  return { ...state, todos: { items, progress: nextProgress, reported, truncated, reportedAtAll: true } };
 }
 
 function structuredContent(message: Record<string, unknown>): { toolCalls: ToolPart[]; thinking: string } {
@@ -661,13 +679,11 @@ export function reduceSse(state: SseState, frame: SseFrame): SseState {
   // only the root channel of each non-message mode is retained.
   if (CHANNEL_EVENTS.has(frame.event)) {
     const channeled = withChannel(next, frame.event as SseChannelEvent, frame.data, eventId);
-    // Subagent progress and the execution plan ride root-namespace custom events.
-    // Keep the bounded raw frame for diagnostics AND fold it into the list the UI
-    // actually renders. `withTodoEvent` returns `channeled` untouched for any
-    // other custom event, so this stays one call on the hot path.
+    // Subagent progress and the execution plan both ride root-namespace
+    // custom events. Keep the bounded raw frame for diagnostics AND fold it
+    // into the lists the UI actually renders.
     if (frame.event !== "custom") return channeled;
-    const tasked = withTaskEvent(channeled, data);
-    return withTodoEvent(tasked, data, eventId);
+    return withTodoEvent(withTaskEvent(channeled, data), data);
   }
   if (frame.event === "values" && data.__interrupt__) return { ...next, failure: "interrupted" };
   let incoming: unknown[];
@@ -739,10 +755,9 @@ export function streamTasks(state: SseState): SubagentTask[] {
 /**
  * The live execution plan for this run.
  *
- * `reportedAtAll: false` means the run has not written a plan yet, which is
- * different from an empty plan — a caller must not render a panel for the
- * first. The reference is stable across frames carrying no plan news, so it can
- * be handed straight to `setState`.
+ * The object reference only changes when a `todos_updated` frame actually
+ * landed, so consumers can hand it straight to `setState` and React will bail
+ * out on frames that carried no plan news.
  */
 export function streamTodos(state: SseState): TodoPlan {
   return state.todos;
