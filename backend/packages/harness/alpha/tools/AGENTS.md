@@ -1,5 +1,32 @@
 ### Tool System (`packages/harness/alpha/tools/`)
 
+**Tool governance** (`tools/governance.py`, the registry the discovery
+catalog previously stated was missing): every tool can declare a risk
+class (`read`/`write`/`execute`/`external`/`destructive`), permissions,
+side effects, reversibility, timeout, a **bounded** retry policy, a
+verification method, and an AUTO/ASK/BLOCK confirmation policy. Trust
+rules: an operator entry in `config.yaml -> tool_governance` wins over
+every tool-side declaration; an MCP/client-supplied tool never classifies
+itself (its self-declared `governance_*` metadata is untrusted input and
+is ignored in favour of the elevated `write`/`ask`/`unknown` default);
+a tool that declares nothing keeps the pre-registry `read`/`auto`/
+`reversible` default exactly. Every malformed declaration raises
+`GovernanceError` — a typo is a startup error, never a silent fallback
+to `low`. `alpha.tools.discovery.catalog.resolve_risk_level` maps a
+declared `governance_risk_class` onto the catalog's
+`low`…`critical` disclosure scale (governed class takes precedence over
+the legacy `discovery_risk_level`). **Enforcement half:**
+`alpha.guardrails.governance.GovernanceGuardrailProvider` consults the
+same registry at call time through the existing fail-closed
+`GuardrailMiddleware` (`guardrails.enabled` +
+`guardrails.provider.use: alpha.guardrails.governance:GovernanceGuardrailProvider`);
+the operator's top-level `tool_governance` section is injected into the
+provider at assembly, so one declaration drives both disclosure and
+enforcement. Ask is fail-closed (denied unless server-internal dispatch);
+a malformed declaration fails agent assembly. Tests:
+`tests/test_tool_governance.py`,
+`tests/test_governance_guardrail.py`.
+
 `get_available_tools(groups, include_mcp, model_name, subagent_enabled)` assembles:
 1. **Config-defined tools** - Resolved from `config.yaml` via `resolve_variable()`
 2. **MCP tools** - From enabled MCP servers (lazy initialized, cached with resolved-path + content-signature invalidation)
@@ -49,7 +76,7 @@ E2B output sync records remote file versions and actual host file metadata in a 
 **Ralph loop** (`ralph_loop` tool, `tools/builtins/ralph_loop_tool.py`):
 - Bounded self-improvement over delegations (DeepSeek-Harness-style `tool-ralph`): runs a task through a subagent, evaluates the deterministic acceptance checklist for the `completion_promise`, and retries with only the proven shortfall until the promise holds or `max_rounds` (default 3, hard cap 8) is exhausted. Exhaustion reports gaps honestly (goal stand-down language), never papers over.
 - Each round reuses the `task` delegation machinery (`SubagentExecutor`, parent tool-group inheritance, skill-allowlist merge, identity propagation, receipt + acceptance evaluation); the promise rides as round acceptance criteria. Completion rule: finished run + nothing checkable proven unmet (all-hold, all-unchecked, or checker outage fail-open; checked-and-failing always retries).
-- Denied to subagents via `SubagentConfig.disallowed_tools` default (no nested loops). Emits `ralph_started` / `ralph_round_end` / `ralph_completed` / `ralph_capped` custom events.
+- Denied to subagents via `SubagentConfig.disallowed_tools` default (no nested loops). Emits `ralph_started` / `ralph_round_end` / `ralph_completed` / `ralph_capped` custom events. Each round records its measured verdict into `alpha.reasoning_bank` (`success` only when the acceptance verdict fully holds); round 1 of a later loop is seeded with the bank's bounded top match.
 
 ## Alpha peer-network tool
 

@@ -46,13 +46,31 @@ Declared per-tool metadata (optional, read by this module)
 ``discovery_output_schema``                   trusted JSON output schema
 ``discovery_client_provided``                 marks a client-supplied tool
 ``discovery_plugin``                          plugin name for the source
+``governance_risk_class``                     see :mod:`alpha.tools.governance`
+``governance_permissions``                    see :mod:`alpha.tools.governance`
+``governance_side_effects``                   see :mod:`alpha.tools.governance`
+``governance_reversibility``                  see :mod:`alpha.tools.governance`
+``governance_timeout_seconds``                see :mod:`alpha.tools.governance`
+``governance_retry_policy``                   see :mod:`alpha.tools.governance`
+``governance_verification_method``            see :mod:`alpha.tools.governance`
+``governance_confirmation``                   see :mod:`alpha.tools.governance`
 ============================================  ==========================
 
-Alpha has no per-tool risk/permission registry today, so these default
-honestly rather than being invented here: risk ``low``, no required
-permissions, ``catalog-eligible``, ``parallel``. Declaring them is how a tool
-opts into stricter handling, and the defaults are what every unannotated tool
-gets.
+Per-tool risk/permission governance lives in
+:mod:`alpha.tools.governance`. A tool that declares a
+``governance_risk_class`` is mapped onto this scale by that
+module (``read`` -> ``low`` … ``destructive`` -> ``critical``);
+a tool that declares only ``discovery_risk_level`` keeps the
+legacy coarse value; a tool that declares neither defaults
+honestly to risk ``low``, no required permissions,
+``catalog-eligible``, ``parallel``. Declaring them is how a
+tool opts into stricter handling, and the defaults are what
+every unannotated tool gets. An operator classifies any tool
+by name through ``config.yaml -> tool_governance``; that entry
+wins over every tool-side declaration, and an MCP/client-supplied
+tool never classifies itself (its self-declared governance
+metadata is untrusted input, ignored in favour of the elevated
+default).
 """
 
 from __future__ import annotations
@@ -68,6 +86,7 @@ from langchain.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_function
 
 from alpha.tools.discovery.telemetry import compute_counter_scope
+from alpha.tools.governance import risk_level_for_tool
 from alpha.tools.mcp_metadata import get_mcp_source, is_mcp_tool
 
 #: Bound on a rendered input signature, in characters. Keeps a pathological
@@ -160,7 +179,16 @@ def resolve_execution_mode(tool: BaseTool) -> ExecutionMode:
 
 
 def resolve_risk_level(tool: BaseTool) -> str:
-    """Declared risk level, or the honest ``low`` default."""
+    """Governed risk class, declared risk level, or the honest ``low`` default.
+
+    Precedence: the tool's declared ``governance_risk_class`` (mapped onto
+    this scale by :mod:`alpha.tools.governance` — the precise, newer
+    declaration), then the legacy ``discovery_risk_level``, then ``low``.
+    A tool that declares neither keeps the pre-registry behaviour exactly.
+    """
+    governed = risk_level_for_tool(tool)
+    if governed is not None:
+        return governed
     declared = _metadata(tool).get("discovery_risk_level")
     if isinstance(declared, str) and declared.strip().lower() in VALID_RISK_LEVELS:
         return declared.strip().lower()

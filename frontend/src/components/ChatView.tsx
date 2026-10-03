@@ -56,7 +56,9 @@ import {
 import { uploadFiles, listUploads } from "@/lib/files";
 import { fetchGoal, setGoal, clearGoal, compactThread, fetchTokenUsage, TokenUsage, moveThread, deleteThread } from "@/lib/threads-ext";
 import { listProjects, Project } from "@/lib/projects";
-import { fetchFreeCatalog } from "@/lib/freeModels";
+import { fetchFreeCatalog, type FreeProviderHealth } from "@/lib/freeModels";
+import { freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
+import { FreeCatalogMenu } from "@/components/FreeCatalogMenu";
 import { BotGallery } from "@/components/bots/BotGallery";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
@@ -76,38 +78,13 @@ import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
 /**
  * Health of the keyless free-model catalog, as the header should draw it.
  *
- * `unknown` is a real state, not a default to be optimised away: the server
- * reports `healthy: null` for a provider it has not probed, and a failed catalog
- * read leaves every provider unmeasured. Painting either of those green is an
- * optimistic success for something the server did not confirm.
+ * The derivation and its colour table live in `lib/freeCatalogTone.ts`, shared
+ * with `FreeCatalogMenu` — the provider list behind this dot. They were defined
+ * here as a self-contained block and are re-exported so existing importers keep
+ * working; a second copy would let the trigger's dot disagree with the per-
+ * provider dots it is a summary of.
  */
-export type FreeCatalogTone = "good" | "partial" | "bad" | "unknown";
-
-/** Dot colour per tone. Muted for `unknown` so it never reads as healthy. */
-export const FREE_TONE_DOT: Record<FreeCatalogTone, string> = {
-  good: "bg-emerald-500",
-  partial: "bg-amber-500",
-  bad: "bg-red-500",
-  unknown: "bg-muted-foreground/40",
-};
-
-/**
- * Derive the header tone from the server's per-provider `healthy` flags.
- *
- * Exported and pure so the honesty test can drive it with the exact payload the
- * Gateway returns — including the "1/10 healthy" and "all null" cases that the
- * old hardcoded green dot could not represent.
- */
-export function freeCatalogTone(
-  providers: Array<{ healthy: boolean | null }>,
-): FreeCatalogTone {
-  const measured = providers.filter((p) => p.healthy !== null);
-  // Nobody was measured: unknown, which must not wear a success colour.
-  if (measured.length === 0) return "unknown";
-  const healthy = measured.filter((p) => p.healthy === true).length;
-  if (healthy === 0) return "bad";
-  return healthy === measured.length ? "good" : "partial";
-}
+export { FREE_TONE_DOT, freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
 
 // Sections load on demand so the first paint stays light.
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
@@ -467,6 +444,24 @@ export default function ChatView() {
   const [freeNote, setFreeNote] = useState<string | null>(null);
   const [freeRefreshing, setFreeRefreshing] = useState(false);
   /**
+   * The per-provider rows behind the header sentence. `Free models: 8/10
+   * healthy` is a claim with no evidence attached; `FreeCatalogMenu` renders
+   * these, so the counts a reader can open are the same numbers that produced
+   * the sentence. Retained across a failed read on purpose: the previous list
+   * stays visible instead of being replaced by an empty one that would read as
+   * "the server reported no providers".
+   */
+  const [freeProviders, setFreeProviders] = useState<FreeProviderHealth[]>([]);
+  /**
+   * Server-side read failure reason, `null` while the last read succeeded. This
+   * is what lets the menu tell "no providers" apart from "nobody answered" —
+   * two opposite claims that an empty list alone cannot distinguish.
+   */
+  const [freeReadError, setFreeReadError] = useState<string | null>(null);
+  /** Verbatim server prose about candidate selection and its disclaimer. */
+  const [freeSelectionMethod, setFreeSelectionMethod] = useState<string | null>(null);
+  const [freeDisclaimer, setFreeDisclaimer] = useState<string | null>(null);
+  /**
    * Health of the keyless catalog, derived from the server's own per-provider
    * `healthy` flags. `unknown` is a first-class state: the server has not
    * measured any provider, which is neither healthy nor sick. This exists
@@ -610,11 +605,16 @@ export default function ChatView() {
   const refreshFreeCatalog = async () => {
     setFreeRefreshing(true);
     try {
-      const [{ providers, updatedAt }, mList] = await Promise.all([
+      const [catalog, mList] = await Promise.all([
         fetchFreeCatalog({ refresh: true, probe: true }),
         fetchAvailableModels(),
       ]);
+      const { providers, updatedAt } = catalog;
       setModels(mList);
+      setFreeProviders(providers);
+      setFreeSelectionMethod(catalog.selectionMethod ?? null);
+      setFreeDisclaimer(catalog.disclaimer ?? null);
+      setFreeReadError(null);
       const healthy = providers.filter((p) => p.healthy === true).length;
       const eligible = providers.filter((p) => p.eligible).length;
       setFreeNote(
@@ -625,7 +625,11 @@ export default function ChatView() {
       // Same rule as the mount read: the dot follows the server's count.
       setFreeTone(freeCatalogTone(providers));
       flash(providers.length === 0 ? "Free catalog refreshed: no providers." : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`);
-    } catch {
+    } catch (error) {
+      // The server's reason, not a generic failure, and the previous rows stay
+      // on screen — replacing them with an empty list here would present a
+      // broken read as a catalog that has no providers.
+      setFreeReadError(errMsg(error));
       setFreeNote("Free catalog refresh failed — keyless router may be down.");
       setFreeTone("unknown");
       flash("Free catalog refresh failed.");
@@ -771,9 +775,21 @@ export default function ChatView() {
       // solid green dot — an optimistic success for something nobody confirmed.
       // `null` health (the server did not measure a provider) is its own state
       // and gets the muted dot, because "unmeasured" is neither healthy nor sick.
-      const renderFree = (providers: { name: string; healthy: boolean | null; eligible: boolean }[], updatedAt?: string | null) => {
+      const renderFree = (catalog: {
+        providers: { name: string; healthy: boolean | null; eligible: boolean }[];
+        updatedAt?: string | null;
+        selectionMethod?: string | null;
+        disclaimer?: string | null;
+      }) => {
+        const { providers, updatedAt } = catalog;
         const healthy = providers.filter((p) => p.healthy === true).length;
         const eligible = providers.filter((p) => p.eligible).length;
+        // Retain the rows so the dropdown can show *which* providers produced
+        // these counts, not just how many there were.
+        setFreeProviders(providers as FreeProviderHealth[]);
+        setFreeSelectionMethod(catalog.selectionMethod ?? null);
+        setFreeDisclaimer(catalog.disclaimer ?? null);
+        setFreeReadError(null);
         setFreeNote(
           providers.length === 0
             ? "Free catalog empty — the keyless router has no providers right now."
@@ -784,8 +800,9 @@ export default function ChatView() {
         setFreeTone(freeCatalogTone(providers));
       };
       fetchFreeCatalog()
-        .then(({ providers, updatedAt }) => renderFree(providers, updatedAt))
-        .catch(() => {
+        .then((catalog) => renderFree(catalog))
+        .catch((error) => {
+          setFreeReadError(errMsg(error));
           setFreeNote("Free catalog unreachable — keyless router may be down.");
           // A failed read is not a healthy catalog. The old code left the
           // previous green dot in place through this catch.
@@ -2034,18 +2051,26 @@ export default function ChatView() {
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <WorkspaceVitals />
               <div className="flex items-center gap-1.5 ml-auto">
-                <button
-                  type="button"
-                  onClick={refreshFreeCatalog}
-                  disabled={freeRefreshing}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors disabled:opacity-40"
-                  title={freeNote || "Free keyless models — click to refresh live catalog"}
-                  aria-label={freeNote || "Free keyless models — not read yet. Click to refresh the live catalog."}
-                >
-                  <span className={`size-1.5 rounded-full ${FREE_TONE_DOT[freeTone]}`} aria-hidden="true" />
-                  <span className="hidden lg:inline">{freeRefreshing ? "Refreshing free…" : freeNote ? freeNote.split(".")[0] : "Free models"}</span>
-                  <span className="lg:hidden">Free</span>
-                </button>
+                {/*
+                  Clicking the control now opens the provider list rather than
+                  re-probing on every click, and the refresh moved inside the
+                  panel. Opening a list of what the router currently sees costs
+                  no network call, so the old behaviour — a probe triggered by
+                  someone reading the numbers — is strictly worse: it was slow,
+                  and it mutated the very health state it was reporting. The
+                  dot, the sentence and the per-provider rows behind them all
+                  read the same state via `freeCatalogTone`.
+                */}
+                <FreeCatalogMenu
+                  providers={freeProviders}
+                  note={freeNote}
+                  tone={freeTone}
+                  refreshing={freeRefreshing}
+                  onRefresh={() => void refreshFreeCatalog()}
+                  error={freeReadError}
+                  selectionMethod={freeSelectionMethod}
+                  disclaimer={freeDisclaimer}
+                />
                 <button
                   type="button"
                   onClick={() => setView("settings")}

@@ -120,3 +120,132 @@ test("a failed catalog request rejects instead of returning an empty healthy vie
   setCatalog({}, { ok: false, status: 503 });
   await assert.rejects(() => fetchFreeCatalog(), /HTTP 503/);
 });
+
+/* ══ Per-provider model disclosure (the dropdown's list) ═══════════════════ */
+
+/**
+ * The real `catalog_dict()` shape from
+ * `alpha/models/free_router/catalog.py`: `models` is a list of descriptor
+ * objects each carrying an `id`, `model_count` is the provider's true total,
+ * and `models_truncated` flags the server's 25-per-provider bound.
+ */
+const REAL_SHAPE = {
+  providers: [
+    {
+      name: "openrouter",
+      healthy: true,
+      discovery_ok: true,
+      models: [{ id: "a/free-one" }, { id: "b/free-two" }],
+      model_count: 2,
+      models_truncated: false,
+      latency_ms: 812.5,
+      consecutive_failures: 0,
+      source_labels: ["catalog", "discovery"],
+    },
+    {
+      name: "siliconflow",
+      healthy: false,
+      last_error: "chat call failed: 502",
+      models: Array.from({ length: 25 }, (_, i) => ({ id: `sf/model-${i}` })),
+      model_count: 61,
+      models_truncated: true,
+      latency_ms: null,
+      consecutive_failures: 4,
+      cooldown_until: 1780000000,
+    },
+  ],
+  eligible_candidates: ["openrouter:a/free-one"],
+  refreshed_at: "2026-10-03T09:00:00+00:00",
+  selection_method: "provider order ranked by tri-state health",
+  disclaimer: "Reachability on anonymous gateways is never guaranteed.",
+};
+
+test("model IDs are read from the server's descriptor objects", async () => {
+  setCatalog(REAL_SHAPE);
+  const { providers } = await fetchFreeCatalog();
+  assert.deepEqual(providers[0].modelIds, ["a/free-one", "b/free-two"]);
+  assert.equal(providers[0].modelCount, 2);
+  assert.equal(providers[0].modelsTruncated, false);
+  assert.deepEqual(providers[0].sourceLabels, ["catalog", "discovery"]);
+});
+
+test("a truncated provider keeps the server's true total, not the length of the cut list", async () => {
+  // The list the server sent has 25 entries and `model_count` is 61. Reading the
+  // count off the array would make a bounded prefix look like a whole catalog.
+  setCatalog(REAL_SHAPE);
+  const { providers } = await fetchFreeCatalog();
+  assert.equal(providers[1].modelIds.length, 25);
+  assert.equal(providers[1].modelCount, 61);
+  assert.equal(providers[1].modelsTruncated, true);
+});
+
+test("an unmeasured latency stays null and is never coerced to zero", async () => {
+  // `null` means nothing answered; `0` is the fastest possible round-trip and
+  // would read as an instant gateway.
+  setCatalog(REAL_SHAPE);
+  const { providers } = await fetchFreeCatalog();
+  assert.equal(providers[1].latencyMs, null);
+  assert.equal(providers[0].latencyMs, 812.5);
+});
+
+test("an epoch cooldown_until is disclosed as an ISO instant, absent stays null", async () => {
+  setCatalog(REAL_SHAPE);
+  const { providers } = await fetchFreeCatalog();
+  assert.equal(providers[1].cooldownUntil, new Date(1780000000 * 1000).toISOString());
+  assert.equal(providers[0].cooldownUntil, null);
+});
+
+test("a malformed models entry is skipped, never rendered as [object Object]", async () => {
+  setCatalog({
+    providers: [
+      { name: "a", healthy: null, models: [{ id: "good" }, null, 42, {}, { id: "" }] },
+    ],
+  });
+  const { providers } = await fetchFreeCatalog();
+  assert.deepEqual(providers[0].modelIds, ["good"]);
+  // The server sent no total, so this is unreported rather than "1 model".
+  assert.equal(providers[0].modelCount, null);
+  assert.equal(providers[0].modelsTruncated, false);
+});
+
+test("a provider with no models array reports none, not an empty success", async () => {
+  setCatalog({ providers: [{ name: "a", healthy: null }] });
+  const { providers } = await fetchFreeCatalog();
+  assert.deepEqual(providers[0].modelIds, []);
+  assert.equal(providers[0].modelCount, null);
+});
+
+test("refreshed_at is read, so the header can show when the catalog was last seen", async () => {
+  // The endpoint publishes `refreshed_at`; `updated_at` is only the cache-file
+  // key. Reading the latter alone is why the header never showed a time.
+  setCatalog(REAL_SHAPE);
+  const view = await fetchFreeCatalog();
+  assert.equal(view.refreshedAt, "2026-10-03T09:00:00+00:00");
+  assert.equal(view.updatedAt, "2026-10-03T09:00:00+00:00");
+  assert.equal(view.selectionMethod, "provider order ranked by tri-state health");
+  assert.equal(view.disclaimer, "Reachability on anonymous gateways is never guaranteed.");
+});
+
+test("an explicit updated_at still wins, and an absent one is null rather than a fabricated time", async () => {
+  setCatalog({ providers: [], updated_at: "2026-01-01T00:00:00+00:00" });
+  const first = await fetchFreeCatalog();
+  assert.equal(first.updatedAt, "2026-01-01T00:00:00+00:00");
+  setCatalog({ providers: [] });
+  const second = await fetchFreeCatalog();
+  assert.equal(second.updatedAt, null);
+  assert.equal(second.refreshedAt, null);
+});
+
+test("health is per provider and never copied onto the model IDs", async () => {
+  // A model listed under a healthy gateway has not itself been probed. If this
+  // ever becomes true, the dropdown's per-model rows would be claiming a
+  // measurement that only ever happened at the provider level.
+  setCatalog(REAL_SHAPE);
+  const { providers } = await fetchFreeCatalog();
+  for (const id of providers[0].modelIds) {
+    assert.equal(Object.hasOwn(id, "healthy"), false);
+  }
+  assert.equal(Object.hasOwn(providers[0], "healthy"), true);
+  assert.equal(providers[0].healthy, true);
+  assert.equal(providers[1].healthy, false);
+});

@@ -989,21 +989,15 @@ test("Runs keeps its own honest empty and error states", () => {
 
 const chatViewSource = read("../components/ChatView.tsx");
 
-// `freeCatalogTone` is a pure exported function; load just it rather than the
-// whole 2000-line view, which would drag in every section and browser global.
-//
-// `\r?\n`, not `\n`: `ChatView.tsx` is CRLF on this checkout, and `^}\n` can
-// never match when the byte after `}` is `\r`. A bare `\n` made this assertion
-// unsatisfiable on Windows, so the module-level `assert.ok` rejected AFTER the
-// 34 already-registered tests had finished. `node:test` then reported it as a
-// file-level `'test failed'` with no assertion detail, and the six `test()`
-// calls below never registered at all - silently skipped tests that read as
-// coverage. The same class of bug is fixed at the `matchAll` above.
-const toneSource = chatViewSource.match(
-  /export type FreeCatalogTone[\s\S]*?^}\r?\n/ms,
+// `freeCatalogTone` moved out of `ChatView.tsx` into `lib/freeCatalogTone.ts`
+// when the provider list became a dropdown: the trigger's dot and the
+// per-provider dots it summarises must be the same derivation, so one copy lives
+// in `lib/` and both surfaces import it. It used to be recovered by scraping a
+// regex block out of the view's source, which meant this suite asserted against
+// whatever prose happened to sit between two braces; it is now the real module.
+const { freeCatalogTone, FREE_TONE_DOT } = await load(
+  transpile(read("./freeCatalogTone.ts")),
 );
-assert.ok(toneSource, "expected the exported FreeCatalogTone helpers in ChatView.tsx");
-const { freeCatalogTone, FREE_TONE_DOT } = await load(transpile(toneSource[0]));
 
 test("a catalog the server calls 1/10 healthy is not drawn green", () => {
   // The live capture: `Free models: 1/10 healthy, 8 eligible.` behind a
@@ -1084,10 +1078,21 @@ function stripComments(source) {
 }
 
 test("the free-models control has an accessible name and a state-derived dot", () => {
-  const button = chatViewSource.match(/<button[\s\S]{0,600}?Free keyless models[\s\S]{0,900}?<\/button>/);
-  assert.ok(button, "expected the free-models button");
+  // The control moved into `FreeCatalogMenu` when it became a dropdown: the
+  // trigger and the panel share open state, the trigger ref and the portalled
+  // click-outside test, so splitting them across two files would mean lifting
+  // that state into a 2000-line view for no benefit. The assertions are
+  // unchanged — only the file they read moved. `free-catalog-view.test.mjs`
+  // covers the panel this one now points away from.
+  const source = read("../components/FreeCatalogMenu.tsx");
+  const button = source.match(/<button[\s\S]{0,600}?Free keyless models[\s\S]{0,900}?<\/button>/);
+  assert.ok(button, "expected the free-models trigger button");
   assert.match(button[0], /aria-label=/, "a 6px dot plus a truncated word needs an accessible name");
-  assert.match(button[0], /FREE_TONE_DOT\[freeTone\]/);
+  assert.match(button[0], /FREE_TONE_DOT\[tone\]/, "the dot must come from the measured tone, not a literal colour");
+  // It opens a dialog rather than firing a probe: clicking to read the numbers
+  // must not mutate the health state the numbers report.
+  assert.match(button[0], /aria-expanded=\{open\}/);
+  assert.match(button[0], /onClick=\{\(\) => \(open \? close\(\) : setOpen\(true\)\)\}/);
 });
 
 /**
