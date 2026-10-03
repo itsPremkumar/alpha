@@ -55,22 +55,28 @@ def test_verify_assets_reports_independent_readiness(monkeypatch, tmp_path: Path
         (stt / name).write_bytes(b"x")
 
     statuses = setup_voice.verify_assets(stt_model="base")
-    assert statuses[0].name == "faster-whisper"
-    assert statuses[0].ready is True
-    assert statuses[1].name == "piper"
-    assert statuses[1].ready is False
-    assert "make voice-setup" in statuses[1].detail
+    # Looked up by name, not position: each engine reports independently and
+    # adding an engine must not silently re-point another engine's assertion.
+    by_name = {status.name: status for status in statuses}
+    assert by_name["faster-whisper"].ready is True, "present STT assets must report ready"
+    assert by_name["piper"].ready is False, "absent Piper assets must not report ready"
+    assert by_name["kokoro"].ready is False, "absent Kokoro assets must not report ready"
+    assert "make voice-setup" in by_name["piper"].detail
 
 
 def test_verify_assets_requires_optional_dependencies(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(setup_voice, "runtime_home", lambda: tmp_path)
     monkeypatch.setattr(setup_voice, "_stt_assets_ready", lambda _path: True)
     monkeypatch.setattr(setup_voice, "_tts_assets_ready", lambda _path: True)
+    monkeypatch.setattr(setup_voice, "_kokoro_assets_ready", lambda _model, _voices: True)
     monkeypatch.setattr(setup_voice, "_module_available", lambda _name: False)
 
     statuses = setup_voice.verify_assets(stt_model="small")
 
-    assert [status.ready for status in statuses] == [False, False]
+    # One row per engine: Whisper, Kokoro, Piper. Every one is dependency-blocked
+    # here, so no engine may report ready and none may be dropped from the report.
+    assert [status.name for status in statuses] == ["faster-whisper", "kokoro", "piper"]
+    assert [status.ready for status in statuses] == [False, False, False]
     assert all("dependency missing" in status.detail for status in statuses)
 
 
@@ -82,9 +88,14 @@ def test_manifest_pins_revisions_and_is_utf8(monkeypatch, tmp_path: Path):
 
     assert payload["schema_version"] == 1
     assert payload["stt"]["revision"] == setup_voice.STT_REVISIONS["small"]
-    assert payload["tts"]["revision"] == setup_voice.PIPER_VOICES_REVISION
-    assert payload["tts"]["voice"] == setup_voice.DEFAULT_TTS_VOICE
-    assert payload["tts"]["sha256"]["en_US-lessac-medium.onnx"] == setup_voice.PIPER_VOICE_SHA256["en_US-lessac-medium.onnx"]
+    # Piper is the real-time default engine, so the pinned voice is recorded under
+    # tts_piper; the natural-voice engine has its own pinned Kokoro release.
+    assert payload["tts"]["engine"] == "piper"
+    assert payload["tts_piper"]["revision"] == setup_voice.PIPER_VOICES_REVISION
+    assert payload["tts_piper"]["voice"] == setup_voice.DEFAULT_TTS_VOICE
+    assert payload["tts_piper"]["sha256"]["en_US-lessac-medium.onnx"] == setup_voice.PIPER_VOICE_SHA256["en_US-lessac-medium.onnx"]
+    assert payload["tts_kokoro"]["engine"] == "kokoro"
+    assert payload["tts_kokoro"]["sizes"][setup_voice.KOKORO_MODEL_FILE] == setup_voice.KOKORO_MODEL_SIZE
     assert not manifest.with_suffix(".json.part").exists()
 
 
