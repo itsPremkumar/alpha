@@ -8,7 +8,7 @@ import { ChatMessage } from "@/types/chat";
 import { branding } from "@/lib/branding";
 import { absoluteStamp, clockTime } from "@/lib/time";
 import { ToolGroup } from "./ToolGroup";
-import { TodoBlock } from "./TodoBlock";
+import { TaskList } from "./TaskList";
 import { HumanApprovalCard } from "./HumanApprovalCard";
 import { Volume2, Loader2, AlertCircle } from "lucide-react";
 import { enqueueSpeech, isSpeechCancellation } from "@/lib/speech";
@@ -381,8 +381,12 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
               </div>
             )}
 
+            {/* `message.todos` is the plan as it stood when this message was
+                persisted, not the plan right now. A run still in flight updates
+                the live panel above the composer; this is the historical copy,
+                so it renders collapsed rather than competing with it. */}
             {message.todos && message.todos.length > 0 && (
-              <TodoBlock todos={message.todos} />
+              <TaskList todos={message.todos} variant="inline" defaultOpen={false} title="Plan for this answer" />
             )}
 
             {message.approvalRequest && onApprovalDecision && (

@@ -238,6 +238,41 @@
           }
         }
       }
+    },
+    {
+      "caller": "lead_agent",
+      "conversation_hash": "b05575b134040837983b29e15bf39f94ae4382f12fec88d42a3e9e6e0c69b18a",
+      "input_hash": "b5a3a0fc58777bc82bc59485403d99a66ac266ebb5527d613ed03cc32526db2f",
+      "output": {
+        "type": "ai",
+        "data": {
+          "content": "hi from replay.",
+          "additional_kwargs": {},
+          "response_metadata": {
+            "finish_reason": "stop",
+            "model_name": "sre/gpt-5",
+            "model_provider": "openai"
+          },
+          "type": "ai",
+          "name": null,
+          "id": "lc_run--019ea645-2c10-4fa9-8e77-6b31c0d9a512",
+          "tool_calls": [],
+          "invalid_tool_calls": [],
+          "usage_metadata": {
+            "input_tokens": 4012,
+            "output_tokens": 8,
+            "total_tokens": 4020,
+            "input_token_details": {
+              "audio": 0,
+              "cache_read": 3840
+            },
+            "output_token_details": {
+              "audio": 0,
+              "reasoning": 0
+            }
+          }
+        }
+      }
     }
   ]
 }

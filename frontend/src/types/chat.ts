@@ -38,10 +38,52 @@ export interface ToolCall {
   status?: ToolCallStatus;
 }
 
+/**
+ * One item of the live execution plan, as the model reported it.
+ *
+ * The wire shape is fixed by `alpha.agents.todo_events.TodoItem` (`id`,
+ * `content`, `status`, `index`) and is normalized on the backend before it is
+ * emitted, so the UI never has to guess at a field. `content` rather than
+ * `title` is the model's own field name on `LangChain`'s `Todo`, and the id is
+ * a hash of that content rather than a list index: `write_todos` replaces the
+ * whole list on every call, so an index key would renumber every item after an
+ * insertion and visibly rewrite an unrelated task's status.
+ *
+ * `cancelled` is Alpha's addition to the model's three statuses. The tool
+ * contract explicitly lets the model drop items that are "no longer relevant",
+ * and a UI that cannot say "dropped" will keep showing abandoned work as
+ * permanently pending — which reads as a stuck agent.
+ *
+ * There is deliberately no `failed` here. The model never reports that a plan
+ * step failed; only `cancelled` is an observable outcome, and inventing a fifth
+ * state would put a claim on screen that no run ever reported.
+ */
+export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
 export interface TodoItem {
   id: string;
-  title: string;
-  status: "pending" | "in_progress" | "completed" | "failed";
+  /** Verbatim step text as the model wrote it. */
+  content: string;
+  status: TodoStatus;
+  /** Position in the plan, as sent by the backend. Not used as a React key. */
+  index: number;
+}
+
+/**
+ * Counters for a plan, computed on the backend over exactly the items that were
+ * sent. `reported` and `truncated` travel with the list so the UI can say
+ * "showing 200 of 340" rather than presenting a clipped plan as complete.
+ *
+ * `settled` counts completed *and* cancelled: both are outcomes the run
+ * reached, which is what a user waiting on a long task actually needs to know.
+ */
+export interface TodoProgress {
+  total: number;
+  completed: number;
+  in_progress: number;
+  pending: number;
+  cancelled: number;
+  settled: number;
 }
 
 export interface ArtifactItem {

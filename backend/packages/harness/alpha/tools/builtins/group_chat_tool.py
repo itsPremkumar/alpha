@@ -6,13 +6,25 @@ from typing import Literal
 
 from langchain.tools import tool
 
+from alpha.groups.claims import get_claim_store
 from alpha.groups.room import OrchestrationMode
 from alpha.groups.service import get_group_chat_service
 
 
 @tool("group_chat", parse_docstring=True)
 def group_chat_tool(
-    action: Literal["send", "create", "list", "history", "propose_vote", "cast_vote", "tally_vote"],
+    action: Literal[
+        "send",
+        "create",
+        "list",
+        "history",
+        "propose_vote",
+        "cast_vote",
+        "tally_vote",
+        "status",
+        "claim",
+        "release",
+    ],
     room_name: str = "general",
     sender: str = "user",
     message: str = "",
@@ -21,6 +33,8 @@ def group_chat_tool(
     proposal_id: str = "",
     question: str = "",
     vote: Literal["agree", "disagree", "amend"] | None = None,
+    subject: str = "",
+    claim_id: str = "",
 ) -> str:
     """Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting.
 
@@ -28,7 +42,7 @@ def group_chat_tool(
     moderated, quorum, parallel, round_robin) and real-time room auto-provisioning.
 
     Args:
-        action: Operation ('send', 'create', 'list', 'history', 'propose_vote', 'cast_vote', 'tally_vote').
+        action: Operation ('send', 'create', 'list', 'history', 'propose_vote', 'cast_vote', 'tally_vote', 'status', 'claim', 'release').
         room_name: Group room name (e.g. 'core-team', 'arch-review'). Auto-created if missing. Defaults to 'general'.
         sender: Sending bot handle or 'user'. Defaults to 'user'.
         message: Message text to post. Supports @bot, @everyone, and (pass). Required for 'send'.
@@ -37,6 +51,8 @@ def group_chat_tool(
         proposal_id: Proposal identifier (for 'cast_vote' and 'tally_vote').
         question: Question/proposal for consensus voting (required for 'propose_vote').
         vote: Vote choice ('agree', 'disagree', 'amend'). Required for 'cast_vote'.
+        subject: Work subject for 'claim' and 'release' actions.
+        claim_id: Claim identifier for 'release'.
     """
     service = get_group_chat_service()
 
@@ -73,6 +89,49 @@ def group_chat_tool(
         for m in room.log[-10:]:
             out.append(f"[{m.created_at[:19]}] **{m.sender}**: {m.content}")
         return "\n".join(out)
+
+    elif action == "status":
+        room = service.get_room(room_name)
+        if room is None:
+            return f"Room '{room_name}' does not exist yet."
+        claims_store = get_claim_store()
+        claims = claims_store.room_claims(room_name, live_only=True)
+        if not claims:
+            return f"Room '{room_name}' is active. Members: {', '.join(room.members) if room.members else '(none)'}"
+        lines = [
+            f"Room '{room_name}' status",
+            f"- Members: {', '.join(room.members) if room.members else '(none)'}",
+            "- Active claims:",
+        ]
+        for claim in claims:
+            lines.append(f"  - {claim.holder}: {claim.subject} ({claim.intent})")
+        return "\n".join(lines)
+
+    elif action == "claim":
+        if not subject.strip():
+            return "Error: 'subject' is required for 'claim'."
+        room = service.get_or_create_room(name=room_name)
+        claims_store = get_claim_store()
+        claim = claims_store.claim(room_name, sender, "file", subject.strip(), intent="editing", detail=f"Claimed by {sender}")
+        return f"Claim recorded for '{room.name}': {claim.subject} (claim_id={claim.claim_id})"
+
+    elif action == "release":
+        if claim_id.strip():
+            released = get_claim_store().release(claim_id.strip(), sender)
+            if released:
+                return f"Claim {claim_id} released by {sender}."
+            return f"Error: claim {claim_id} is not releasable by {sender}."
+        if not subject.strip():
+            return "Error: 'subject' or 'claim_id' is required for 'release'."
+        claims_store = get_claim_store()
+        room_claims = claims_store.room_claims(room_name, live_only=True)
+        for claim in room_claims:
+            if claim.holder == sender.lower().strip() and claim.subject == subject.strip():
+                released = claims_store.release(claim.claim_id, sender)
+                if released:
+                    return f"Claim released for '{subject}' in room '{room_name}'."
+                return f"Error: claim for '{subject}' could not be released."
+        return f"Error: no active claim for '{subject}' by {sender} in room '{room_name}'."
 
     elif action == "propose_vote":
         if not question:

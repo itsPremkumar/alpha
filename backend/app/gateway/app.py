@@ -50,6 +50,7 @@ from app.gateway.routers import (
     github_webhooks,
     goal_contracts,
     goal_integrity,
+    group_coordination,
     groups,
     input_polish,
     integrations,
@@ -1203,6 +1204,13 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # bots/groups/messaging modules real system parts with Gateway auth,
     # validation, and blocking-IO offload.
     app.include_router(bots.router)
+    # Mounted BEFORE `groups.router` on purpose. These routes share the
+    # `/api/groups` prefix but are two segments long (`/{name}/coordination`),
+    # and Starlette matches in registration order: mounted after, they would
+    # still resolve — but `groups.py`'s own literal-first discipline means the
+    # ordering has to be stated rather than assumed. `groups.py` declares
+    # `GET /tree` before `GET /{name}` for exactly this reason.
+    app.include_router(group_coordination.router)
     app.include_router(groups.router)
     app.include_router(agent_messages.router)
     # Cross-instance Alpha network: local management routes plus the explicitly

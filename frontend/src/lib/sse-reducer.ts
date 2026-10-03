@@ -1,4 +1,4 @@
-import type { ToolCall, ToolCallStatus, ToolCallVerdict } from "../types/chat";
+import type { TodoItem, TodoProgress, TodoStatus, ToolCall, ToolCallStatus, ToolCallVerdict } from "../types/chat";
 
 export type SseFrame = { event: string; data: unknown; id?: string };
 export type ReplayGapEvent = { type: "replay-gap"; runId?: string; lastEventId?: string; eventId?: string };
@@ -53,6 +53,20 @@ export type SseState = {
    * list on every ordinary message delta. Bounded by `MAX_SUBAGENT_TASKS`.
    */
   tasks: SubagentTask[];
+  /**
+   * The live execution plan folded from `todos_updated` custom events.
+   *
+   * A frozen object rather than an array so the reference is stable across
+   * frames that carried no plan news, exactly as `tasks` is. It is also not
+   * part of the `seen`/replay machinery: see `withTodoEvent`.
+   */
+  todos: TodoPlan;
+  /**
+   * Event id of the frame that produced `todos`. A plan is a whole-list
+   * replacement, so an out-of-order frame would visibly rewind the user's plan;
+   * remembering the id lets a stale one be refused. Absent = no plan yet.
+   */
+  todoEventId?: string;
 };
 
 /* ── Wire contract for tool verdicts (see types/chat.ts ToolCallVerdict) ──── */
@@ -83,6 +97,10 @@ const MAX_ERROR_MESSAGE_CHARS = 1000;
 const MAX_SUBAGENT_TASKS = 128;
 /** Ceiling on per-task step/error text carried into the live view. */
 const MAX_TASK_TEXT_CHARS = 2000;
+/** Mirrors `MAX_TODO_ITEMS` in `todo_events.py`. */
+const MAX_TODO_ITEMS = 200;
+/** Mirrors `MAX_TODO_CONTENT_CHARS` in `todo_events.py`. */
+const MAX_TODO_CONTENT_CHARS = 500;
 
 /* ── Subagent progress: `task_*` custom events on the root namespace ─────── */
 
@@ -157,8 +175,44 @@ function taskUsage(value: unknown): SubagentUsage | undefined {
 }
 
 export function createSseState(runId?: string): SseState {
-  return { runId, messages: new Map(), seen: new Set(), pending: [], ended: false, toolResults: new Map(), toolOwners: new Map(), channels: {}, tasks: [] };
+  return { runId, messages: new Map(), seen: new Set(), pending: [], ended: false, toolResults: new Map(), toolOwners: new Map(), channels: {}, tasks: [], todos: EMPTY_TODO_PLAN };
 }
+
+/**
+ * One normalized plan item, as the backend normalized it.
+ *
+ * Re-exported from `types/chat.ts` rather than redeclared: the item shape is a
+ * wire contract, and a second declaration here would be a place for the two to
+ * drift without a type error catching it.
+ */
+export type { TodoItem, TodoProgress } from "../types/chat";
+
+/**
+ * A whole plan, plus the counters needed to render it honestly.
+ *
+ * `reportedAtAll` is the field that keeps "the run has not written a plan yet"
+ * distinct from "the run wrote an empty plan". Without it the two states are
+ * indistinguishable, and a caller cannot tell whether to draw a panel at all.
+ */
+export type TodoPlan = {
+  items: TodoItem[];
+  progress: TodoProgress;
+  /** Items the model actually sent, before any cap. */
+  reported: number;
+  /** True when `reported` exceeded what we are willing to render. */
+  truncated: boolean;
+  /** False until the run emits its first `todos_updated`. */
+  reportedAtAll: boolean;
+};
+
+/** The plan a run that has never written one is allowed to look like. */
+export const EMPTY_TODO_PLAN: TodoPlan = {
+  items: [],
+  progress: { total: 0, completed: 0, in_progress: 0, pending: 0, cancelled: 0, settled: 0 },
+  reported: 0,
+  truncated: false,
+  reportedAtAll: false,
+};
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -380,6 +434,83 @@ function withTaskEvent(state: SseState, data: Record<string, unknown>): SseState
   return { ...state, tasks };
 }
 
+function withTodoEvent(state: SseState, data: Record<string, unknown>, eventId?: string): SseState {
+  if (data.type !== "todos_updated") return state;
+  // A plan frame with no event id cannot be ordered against the one on screen.
+  // `write_todos` replaces the whole list, so applying an unordered frame could
+  // visibly rewind the plan the user is watching. Refusing is the honest option:
+  // the plan simply does not advance until an ordered frame arrives.
+  if (!eventId) return state;
+  if (state.todoEventId && compareIds(eventId, state.todoEventId) <= 0) return state;
+
+  const raw = Array.isArray(data.todos) ? data.todos : [];
+  const reported = typeof data.reported === "number" && Number.isSafeInteger(data.reported) && data.reported >= 0 ? data.reported : raw.length;
+  const items: TodoItem[] = [];
+  for (const entry of raw) {
+    if (items.length >= MAX_TODO_ITEMS) break;
+    const item = record(entry);
+    const content = typeof item.content === "string" ? item.content.trim() : "";
+    // An item with no text is not an observable task. Rendering an empty
+    // checkbox the user cannot read or act on is worse than omitting it, and the
+    // drop is not truncation — the model never wrote a step there.
+    if (!content) continue;
+    items.push({
+      id: identifier(item.id) ?? `${items.length}`,
+      content: truncate(content, MAX_TODO_CONTENT_CHARS),
+      status: todoStatus(item.status),
+      index: typeof item.index === "number" && Number.isSafeInteger(item.index) && item.index >= 0 ? item.index : items.length,
+    });
+  }
+  // The backend's own counts are preferred when present: they were computed over
+  // exactly the items it chose to send, which may be fewer than we render. A
+  // count we derive here could disagree with the list beside it.
+  const progress = todoProgress(data.progress, items);
+  const plan: TodoPlan = {
+    items,
+    progress,
+    reported: Math.max(reported, items.length),
+    truncated: data.truncated === true || reported > items.length,
+    reportedAtAll: true,
+  };
+  // An identical re-projection keeps the previous reference so React can bail.
+  if (state.todoEventId === eventId) return state;
+  return { ...state, todos: plan, todoEventId: eventId };
+}
+
+/** Coerce a model-reported status to a known one; never invent a fifth state. */
+function todoStatus(value: unknown): TodoStatus {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  // An unrecognized status becomes `pending`, matching the backend: the item
+  // genuinely exists and is genuinely not done, so `pending` is the only claim
+  // that cannot overstate progress.
+  return raw === "in_progress" || raw === "completed" || raw === "cancelled" ? raw : "pending";
+}
+
+function todoProgress(value: unknown, items: TodoItem[]): TodoProgress {
+  const reported = record(value);
+  const count = (key: string): number | undefined => {
+    const raw = reported[key];
+    return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined;
+  };
+  const derived = { total: items.length, completed: 0, in_progress: 0, pending: 0, cancelled: 0 };
+  for (const item of items) derived[item.status] += 1;
+  const completed = count("completed") ?? derived.completed;
+  const inProgress = count("in_progress") ?? derived.in_progress;
+  const pending = count("pending") ?? derived.pending;
+  const cancelled = count("cancelled") ?? derived.cancelled;
+  return {
+    total: count("total") ?? derived.total,
+    completed,
+    in_progress: inProgress,
+    pending,
+    cancelled,
+    // `settled` counts completed *and* cancelled: both are outcomes the run
+    // reached. Deriving it rather than trusting it keeps the bar honest even if
+    // a hand-rolled payload disagrees with its own counts.
+    settled: completed + cancelled,
+  };
+}
+
 function structuredContent(message: Record<string, unknown>): { toolCalls: ToolPart[]; thinking: string } {
   const blocks = Array.isArray(message.content) ? message.content.map(record) : [];
   const additional = record(message.additional_kwargs);
@@ -530,10 +661,13 @@ export function reduceSse(state: SseState, frame: SseFrame): SseState {
   // only the root channel of each non-message mode is retained.
   if (CHANNEL_EVENTS.has(frame.event)) {
     const channeled = withChannel(next, frame.event as SseChannelEvent, frame.data, eventId);
-    // Subagent progress rides root-namespace `task_*` on the `custom` channel.
-    // Keep the bounded raw frame for diagnostics AND fold it into the list the
-    // UI actually renders.
-    return frame.event === "custom" ? withTaskEvent(channeled, data) : channeled;
+    // Subagent progress and the execution plan ride root-namespace custom events.
+    // Keep the bounded raw frame for diagnostics AND fold it into the list the UI
+    // actually renders. `withTodoEvent` returns `channeled` untouched for any
+    // other custom event, so this stays one call on the hot path.
+    if (frame.event !== "custom") return channeled;
+    const tasked = withTaskEvent(channeled, data);
+    return withTodoEvent(tasked, data, eventId);
   }
   if (frame.event === "values" && data.__interrupt__) return { ...next, failure: "interrupted" };
   let incoming: unknown[];
@@ -600,6 +734,18 @@ export function streamMessages(state: SseState): StreamMessage[] {
  */
 export function streamTasks(state: SseState): SubagentTask[] {
   return state.tasks;
+}
+
+/**
+ * The live execution plan for this run.
+ *
+ * `reportedAtAll: false` means the run has not written a plan yet, which is
+ * different from an empty plan — a caller must not render a panel for the
+ * first. The reference is stable across frames carrying no plan news, so it can
+ * be handed straight to `setState`.
+ */
+export function streamTodos(state: SseState): TodoPlan {
+  return state.todos;
 }
 
 export function runIdFromLocation(location: string | null | undefined, threadId: string): string | undefined {

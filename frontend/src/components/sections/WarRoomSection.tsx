@@ -25,6 +25,7 @@ import {
   evaluateRFCGating,
 } from "@/lib/enterprise";
 import { Section, EmptyState, ErrorBox, StatCard, Btn, Badge, SkeletonList } from "@/components/ui";
+import { GroupCoordinationPanel } from "@/components/sections/GroupCoordinationPanel";
 import { errMsg } from "@/lib/http";
 import {
   Activity,
@@ -48,7 +49,15 @@ import {
 } from "lucide-react";
 
 export function WarRoomSection() {
-  const [subTab, setSubTab] = useState<"org_chart" | "rfcs" | "treasury" | "missions" | "council">("org_chart");
+  // `coordination` is the default because it is the only tab that reports
+  // measured execution. Everything below it is synthetic preview telemetry, so
+  // landing on it first would put the least honest number in the header slot.
+  const [subTab, setSubTab] = useState<"coordination" | "org_chart" | "rfcs" | "treasury" | "missions" | "council">(
+    "coordination",
+  );
+  // The live room the coordination panel watches. Separate from the synthetic
+  // enterprise views above, which have no room of their own.
+  const [liveRoom, setLiveRoom] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +256,7 @@ export function WarRoomSection() {
       {/* War Room Sub-Navigation Tabs */}
       <div className="flex gap-1 border-b border-border/60 pb-2 overflow-x-auto">
         {[
+          { id: "coordination", label: "Live Coordination", icon: <Users className="size-3.5" /> },
           { id: "org_chart", label: "C-Suite & Org Tree", icon: <Building className="size-3.5" /> },
           { id: "rfcs", label: "Blackboard & RFCs", icon: <FileCode className="size-3.5" /> },
           { id: "treasury", label: "Fiscal Treasury", icon: <Coins className="size-3.5" /> },
@@ -269,9 +279,11 @@ export function WarRoomSection() {
         ))}
       </div>
 
-      {loading && !hierarchy ? (
+      {subTab === "coordination" && <GroupCoordinationPanel room={liveRoom} onRoomChange={setLiveRoom} />}
+
+      {subTab !== "coordination" && loading && !hierarchy ? (
         <SkeletonList rows={6} />
-      ) : (
+      ) : subTab !== "coordination" ? (
         <>
           {/* TAB 1: C-Suite & Org Tree */}
           {subTab === "org_chart" && hierarchy && (
@@ -829,7 +841,7 @@ export function WarRoomSection() {
             </div>
           )}
         </>
-      )}
+      ) : null}
     </Section>
   );
 }
