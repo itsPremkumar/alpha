@@ -179,6 +179,29 @@ A server-produced run-context key must be gated on both client-writable feeds:
 `configurable`. Trust and destination are separate axes, so a new key needs both
 decisions — and `disable_clarification` is no milder than `non_interactive`.
 
+### Event-loop discipline
+
+Anything reachable from an `async` Gateway entry point runs on the event loop, so
+a blocking call there stalls every other run in the process — and the strict
+Blockbuster gate (`make test-blocking-io`) fails the build for it. Two shapes
+have bitten us, and both are now pinned by tests:
+
+- **Fleet admission** (`runtime/runs/worker.py::run_agent`) resolves the project
+  root through `os.getcwd()` and reads `.alpha` control state from disk; it runs
+  in a worker thread via `asyncio.to_thread`.
+- **Config reads** (`tools/builtins/python_repl_tool.py`) go through
+  `get_app_config()`, which stats the config file on *every* call to detect
+  edits. Resolve it off-loop the same way.
+
+When you put a synchronous filesystem/path/config helper behind an `async` entry
+point, offload it with `asyncio.to_thread` (see
+`alpha/runtime/events/store/jsonl.py`, `alpha/utils/assembly_io.py`) instead of
+calling it inline. Note also that these tests need generous synchronization
+bounds, not tight ones: under the detector on a loaded host `threading.Thread.start()`
+alone can block for >10s, so a sub-second gate expires before the run it is
+waiting on has even started, and the failure looks like the bug it is meant to
+catch.
+
 ## Development Workflow
 
 ### Test-Driven Development (TDD) — MANDATORY
