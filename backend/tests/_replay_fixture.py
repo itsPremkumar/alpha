@@ -1,8 +1,8 @@
-"""Shared config + gateway-drive helpers for the record/replay e2e.
+﻿"""Shared config + gateway-drive helpers for the record/replay e2e.
 
 Record (``scripts/record_gateway.py`` + ``scripts/build_fixture_from_jsonl.py``)
 and replay (``tests/test_replay_golden.py``)
-MUST drive the gateway through an identical, prompt-affecting config — otherwise
+MUST drive the gateway through an identical, prompt-affecting config â€” otherwise
 the system prompt differs and the recorded input hashes never match on replay.
 Centralising the config builder + drive loop here makes that identity hold by
 construction; only the ``models[].use`` block differs (real model vs
@@ -51,16 +51,18 @@ def build_config_yaml(*, model_block: str, home: Path) -> str:
 
     Everything that shapes the system prompt is pinned so record, replay, and CI
     produce byte-identical prompts regardless of the machine:
-    - sandbox / tool_groups / tools — fixed here
-    - skills — pointed at an empty ``<home>/skills`` so filesystem skills (incl.
+    - sandbox / tool_groups / tools â€” fixed here
+    - skills â€” pointed at an empty ``<home>/skills`` so filesystem skills (incl.
       gitignored custom skills present only on a dev box) never leak into the
       prompt. Pair with an empty ``extensions_config.json`` (no MCP) via
       :func:`prepare_hermetic_extras`.
     - memory / summarization - disabled (background, non-deterministic timing)
     - grounding - manifest injection off: it is prompt content added after the
       recording era, and the whole point of this config is that record, replay,
-      and CI see byte-identical prompts. The step gates stay enforced with
-      ``enabled: false`` (a gate is a correctness check, not a feature).
+      and CI see byte-identical prompts. The manifest itself stays live so the
+      tool set resolves and the deterministic gates still run over every call;
+      the reuse probe alone is pinned off, because its only satisfaction path
+      is the injected reminder and the scenario predates the probe.
     """
     return f"""\
 log_level: warning
@@ -95,8 +97,13 @@ summarization:
   enabled: false
 grounding:
   # See the docstring: injection off to keep the prompt byte-identical to the
-  # recording; the deterministic gates still run over every tool call.
-  enabled: false
+  # recording. The manifest stays built (the gates resolve the tool set from
+  # it), so the deterministic gates still run over every tool call. The reuse
+  # probe is pinned off because its only satisfaction path is the injected
+  # reminder itself - with injection pinned off above, requiring it would refuse
+  # every write in a scenario recorded before the probe existed.
+  inject_manifest: false
+  require_reuse_probe: false
 agents_api:
   enabled: true
 database:
