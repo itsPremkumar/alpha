@@ -202,16 +202,16 @@ keeps byte-identical outputs; the structural layers are added on top, never
 substituted for it.
 
 **The plan and its recorded strategy must agree.** `plan.metrics["strategy"]` is
-written for *every* plan, and `plan.mode` must equal `strategy["mode"]`. The
-first pass cannot see structure — there is no plan yet — so it routes on goal
-text alone; that estimate then *builds* a graph, and the graph's own shape can
-route elsewhere (a text heuristic picking `parallel` for a phased goal still
-produces a research/architect/review chain, which measures as `hierarchical`).
+written for *every* plan and `plan.mode` must equal `strategy["mode"]`. The
+first pass cannot see structure — no plan exists yet — so it routes on goal text;
+that estimate then *builds* a graph whose own shape can route elsewhere (a
+heuristic picking `parallel` for a phased goal still produces a
+research/architect/review chain, which measures as `hierarchical`).
 `SwarmTaskDecomposer._settle` therefore rebuilds the plan from the measured
-route. The loop is bounded, and because each rebuild adopts the mode just
-resolved, the pair agrees by construction on exit. Do not "optimize" this away:
-recording the second answer without rebuilding is exactly the bug that leaves a
-plan labelled `parallel` while its own metrics say `hierarchical`.
+route: bounded, and each rebuild adopts the mode just resolved, so the pair
+agrees by construction on exit. Never "optimize" this away — recording the
+second answer without rebuilding leaves a plan labelled `parallel` while its own
+metrics say `hierarchical`.
 
 - `topology.route_topology` never reads goal text and never infers
   `ENSEMBLE`/`DEBATE` from shape — redundancy is a claim about *intent*, which a
