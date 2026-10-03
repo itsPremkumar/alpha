@@ -13,6 +13,7 @@ from alpha.tools.builtins import (
     a2a_tool,
     agent_message_tool,
     agent_observe_tool,
+    alpha_capability,
     alpha_peer_network_tool,
     analyze_semantic_git_delta,
     ask_clarification_tool,
@@ -284,6 +285,12 @@ BUILTIN_TOOLS = [
     # Knowledge, Benchmark & Performance Evaluation:
     query_knowledge_graph,
     search_project_docs,
+    # Self-knowledge: one bounded call reports the whole capability inventory
+    # (tools, skills, MCP, models, bots, commands, engines, wiring, identity)
+    # and its configuration gaps. Keep this adjacent to search_project_docs —
+    # both answer "what is true about this system", from registries and from docs
+    # respectively, and a reader looking for one should see the other.
+    alpha_capability,
     autonomy_control,
     run_task_evaluation_benchmark,
     manage_model_performance_registry,

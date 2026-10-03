@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-03T00:45:34Z",
+ "generated_at": "2026-10-03T14:23:31Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -735,6 +735,14 @@
    "id": "search_project_docs",
    "module": "alpha.tools.builtins.self_documentation_tool",
    "symbol": "search_project_docs",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha_capability",
+   "module": "alpha.tools.builtins.alpha_capability_tool",
+   "symbol": "alpha_capability",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"

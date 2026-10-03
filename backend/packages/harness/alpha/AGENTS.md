@@ -103,6 +103,67 @@ resolved preset is recorded in run metadata (`agent_preset`) and the assembly
 descriptor (`effective_policies["agent_preset"]`). The bootstrap agent keeps its own
 fixed minimal graph and ignores presets. Tests: `tests/test_agent_presets.py`.
 
+### Self-inventory (`workflow/registry/`, `intelligence/self_inventory.py`, `knowledge/code_index.py`, `ops/config_diagnosis.py`)
+
+Eleven read-only registries behind one `list` / `describe` / `health` protocol:
+`identity`, `tools`, `skills`, `mcp`, `models`, `bots`, `commands`,
+`capabilities`, `engines`, `wiring`, `memory`. **One source of truth per fact,
+never a re-derivation.** `engines` and `wiring` read the generated
+`contracts/feature_manifest.json` through the single `manifest_source` loader;
+`models` reads the live `AppConfig`. A registry that recomputed any of those
+counts itself would be a second, unreviewed answer to a question
+`scripts/check_generated_drift.py` already settles — the drift class this repo has
+paid for five times (89 → 97 → 99 engines, 127 → 130 → 134 tools, 55 → 57 → 60 → 61
+routers, 8 → 9 loops).
+
+- **Availability is what the source declares; health is what we probed.** A
+  *declared* model is `available` with `health="unverified"`; an *enabled* MCP
+  server likewise. Nothing here executes what it lists, so `health` is
+  `unverified` on every descriptor and `version` is `None` unless a source declares
+  one (only the runtime identity row does). Collapsing "configured" into "working"
+  is how a status line ends up asserting something nobody checked.
+- **A broken source must not read as an empty one.** `list()`/`describe()` raise
+  `RegistryUnavailable` with the real exception text; the inventory converts that
+  into `status="unavailable"` with `count: null` — **never `0`**. "I could not
+  look" and "I looked and found nothing" lead to opposite decisions.
+- **Availability is per-entry, not per-registry.** `CommandRegistry` gates on
+  `has_handler`, because a catalog row with no handler returns
+  `UNIMPLEMENTED_STATUS`, never `success` — 461 registered commands and 54
+  dispatchable ones are different claims. `BotProfileRegistry` passes
+  `include_archived=False` **explicitly**: `list_bots` defaults it to `True` (right
+  for a roster view, wrong here), and `retire_bot` is a soft delete, so listing an
+  archived Bot advertises a worker that is gone.
+- **`EngineRegistry` falls back to a declared submodule.** A namespace has no
+  `__init__.py` of its own, so `find_spec("alpha.x")` returns `None` for a healthy
+  namespace. Probing only the id would report every namespace as unavailable.
+- **`WiringRegistry` namespaces ids per class** (`router:` / `middleware:` /
+  `loop:`) because the three sections can legitimately contain the same token, and
+  a flat id space lets one class shadow another.
+- **The symbol lookup is query-driven, not a prebuilt index.** A whole-repo index
+  was built first and was unusable: 195s to build, and its cap truncated
+  *alphabetically* inside `alpha/swarm/` so `get_available_tools` returned zero
+  results from an index reporting itself healthy. Completeness now depends only on
+  whether the query string occurs in a file — bytes prefilter, then AST-parse only
+  real hits — and every response carries a `coverage` block. It returns
+  names/signatures/`path:line` but **never a body** (67.8% reuse from an interface
+  map vs 29.2% from a source dump); TypeScript rows are `extraction="regex"` and
+  say so.
+- **`config_diagnosis` is read-only and has no `apply`.** `config.yaml` and
+  `extensions_config.json` are already API-writable under the dual write locks; a
+  model-writable path would be a fourth writer holding the agent's authority rather
+  than the operator's — the same property as "a Bot may configure itself, but may not
+  widen itself". A missing API key reports the **variable name only**. A disabled
+  capability is `info`, because a deliberate operator choice must not train
+  operators to ignore warnings.
+
+The model surface is the single `alpha_capability` tool; it is a **lead-agent**
+tool and is deliberately absent from `SUBAGENT_TOOLS`. HTTP: `GET
+/api/intelligence/inventory`, `GET /api/intelligence/inventory/status`, and the
+widened `GET /api/workflows/system/registries` (whose old bare `[:100]` slice
+silently truncated `commands`/`engines` and now reports `returned` + `truncated`).
+Tests: `backend/tests/test_self_inventory_plane.py`; operations:
+[docs/SELF_AWARENESS.md](../../../docs/SELF_AWARENESS.md).
+
 ### Invariant Registry (`diagnostics/invariants.py`)
 
 Fail-loud runtime self-checks: `InvariantRegistry` runs named `InvariantCheck`s and

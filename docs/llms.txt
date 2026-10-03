@@ -2,7 +2,7 @@
 
 > Technical documentation for **Alpha**, the open-source autonomous multi-agent AI
 > operating system. A LangGraph agent runtime behind a FastAPI Gateway, with a
-> Next.js 15 workspace and an Electron Windows desktop app. 134 native tools, MCP
+> Next.js 15 workspace and an Electron Windows desktop app. 135 native tools, MCP
 > extensions, 24 public skills, sandboxed execution, persistent memory, and nine
 > messaging channels. Self-hosted, MIT licensed.
 

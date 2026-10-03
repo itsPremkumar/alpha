@@ -320,6 +320,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "architecture",
         "Offline, allowlist-scoped project documentation search with line ranges, SHA-256 evidence, and digest-checked reads.",
     ),
+    "SELF_AWARENESS.md": DocumentSpec(
+        "architecture",
+        "Self-inventory plane: one bounded call reports every registry kind, the public repository identity, and read-only configuration diagnosis.",
+    ),
     "RUN_RECOVERY.md": DocumentSpec("operations", "Safe recovery for durable runs and interrupted work."),
     "SECURITY.md": DocumentSpec("operations", "Defense-in-depth security documentation."),
     "SENTINEL_AUTONOMOUS_AGENT_PLAN.md": DocumentSpec("plans", "Autonomous monitor, diagnose, fix, verify, and commit plan."),

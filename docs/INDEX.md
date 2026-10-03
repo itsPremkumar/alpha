@@ -14,6 +14,7 @@
 - [DYNAMIC_WORKFLOWS.md](DYNAMIC_WORKFLOWS.md) — Typed, evidence-gated dynamic workflow runtime.
 - [EXTENSIONS.md](EXTENSIONS.md) — Extension packages, hooks, services, and routers.
 - [LION_COMPANION.md](LION_COMPANION.md) — Local-first lion companion behavior and presentation contract.
+- [SELF_AWARENESS.md](SELF_AWARENESS.md) — Self-inventory plane: one bounded call reports every registry kind, the public repository identity, and read-only configuration diagnosis.
 - [SELF_DOCUMENTATION.md](SELF_DOCUMENTATION.md) — Offline, allowlist-scoped project documentation search with line ranges, SHA-256 evidence, and digest-checked reads.
 - [SKILLS.md](SKILLS.md) — Skills packages, tools, workflows, and runtime integration.
 - [SPECIALISTS.md](SPECIALISTS.md) — Leader-authored specialist catalogue: schema, default team, and honest limits.
