@@ -207,3 +207,7 @@ charts/
 
 
 logs/
+# Analysis battery outputs
+analysis-reports/
+.hypothesis/
+
