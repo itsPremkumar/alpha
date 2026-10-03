@@ -338,11 +338,18 @@ def _build_runtime_middlewares(
         # Pass framework hint if the provider accepts it (e.g. for config discovery).
         # Built-in providers like AllowlistProvider don't need it, so only inject
         # when the constructor accepts 'framework' or '**kwargs'.
+        # The top-level tool_governance section is handed to providers that
+        # consume it (e.g. GovernanceGuardrailProvider), so one declaration
+        # drives both catalog disclosure and call-time enforcement.
         if "framework" not in provider_kwargs:
             try:
                 sig = inspect.signature(provider_cls.__init__)
-                if "framework" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                accepts_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                if "framework" in sig.parameters or accepts_var_keyword:
                     provider_kwargs["framework"] = "alpha"
+                if "tool_governance" in sig.parameters or accepts_var_keyword:
+                    if "tool_governance" not in provider_kwargs:
+                        provider_kwargs["tool_governance"] = getattr(app_config, "tool_governance", None)
             except (ValueError, TypeError):
                 pass
         provider = provider_cls(**provider_kwargs)

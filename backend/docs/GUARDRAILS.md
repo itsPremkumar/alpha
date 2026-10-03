@@ -78,7 +78,7 @@ The `GuardrailMiddleware` implements `wrap_tool_call` / `awrap_tool_call` (the s
 5. If **provider error** and `fail_closed=true` (default): blocks the call
 6. `GraphBubbleUp` exceptions (LangGraph control signals) are always propagated, never caught
 
-## Three Provider Options
+## Provider Options
 
 ### Option 1: Built-in AllowlistProvider (Zero Dependencies)
 
@@ -431,6 +431,56 @@ rules:
 defaults:
   action: allow
 ```
+
+### Option 5: GovernanceGuardrailProvider (Tool Governance)
+
+Enforces the operator's per-tool `tool_governance` policy at call time through the same fail-closed `GuardrailMiddleware` used by every other gate.
+
+```yaml
+guardrails:
+  enabled: true
+  provider:
+    use: alpha.guardrails.governance:GovernanceGuardrailProvider
+
+tool_governance:
+  bash:
+    risk_class: execute
+    side_effects: [filesystem_read, shell_exec]
+    reversibility: partial
+    confirmation: ask
+  web_fetch:
+    risk_class: external
+    confirmation: auto
+  rm_tool:
+    risk_class: destructive
+    reversibility: irreversible
+    confirmation: block
+```
+
+Decision semantics:
+
+- `confirmation: block` -> always denied (`governance.blocked`).
+- `confirmation: ask` -> denied with `governance.requires_confirmation` unless
+  the call arrives through server-internal dispatch (`is_internal`). There is
+  no interactive approval channel yet, so `ask` is fail-closed by design —
+  an operator who wants live `bash` sets `confirmation: auto`. The only
+  approval authority that exists today is server-side.
+- `confirmation: auto` -> allowed; the governed class is recorded in the
+  decision metadata (`risk_class`, `reversibility`, `confirmation`), which
+  the RunJournal audit record and the authorization-outcome publication
+  carry.
+- No operator entry -> allowed and reported `unclassified`. Capability
+  filtering (Layer-1 authorization) and skill policy have already gated the
+  toolset; this layer enforces only the explicit operator policy.
+
+Authority model: the middleware hands providers only the tool *name*, never
+the tool object, so a tool cannot widen itself via its declared metadata.
+The top-level `tool_governance` section is injected into the provider at
+assembly time (the same `framework`-hint mechanism), so one declaration
+drives both the discovery catalog's risk level and the call-time decision.
+`guardrails.provider.config.spec` entries win per tool name. A malformed
+declaration raises `GovernanceError` at agent assembly — a typo in policy is
+a startup error, never a mid-run surprise.
 
 ## Implementing a Provider
 
