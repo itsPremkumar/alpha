@@ -1178,7 +1178,7 @@ export function SettingsSection({
                         // active LLM - the most consequential control in the
                         // product - was mouse-only. The selected/unselected
                         // classes are carried over verbatim via baseClassName.
-                        baseClassName={isSelected ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm" : "border-border/60 bg-muted/20 hover:bg-muted/50 hover:border-primary/40"}
+                        baseClassName={isSelected ? "border-primary bg-primary/5 ring-1 ring-primary elev-1" : "border-border/60 bg-muted/20 hover:bg-muted/50 hover:border-primary/40"}
                         className="flex flex-col justify-between"
                       >
                         <div>

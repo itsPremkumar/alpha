@@ -68,7 +68,7 @@ export function BotDetailPanel({ bot, onClose, onChat, onProjectCreated }: BotDe
       aria-label={botDisplayName(bot)}
     >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="relative w-full max-w-md h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden">
+      <aside className="relative w-full max-w-md h-full bg-card border-l border-border elev-3 flex flex-col overflow-hidden">
         <div className="p-5 border-b border-border/60 flex items-start gap-3">
           <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-xl font-bold shrink-0">
             {bot.avatar ? <span>{bot.avatar}</span> : <span>{botInitials(bot)}</span>}

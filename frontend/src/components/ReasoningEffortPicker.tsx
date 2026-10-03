@@ -169,7 +169,7 @@ export function ReasoningEffortPicker({
           role="listbox"
           tabIndex={-1}
           aria-label="Reasoning effort"
-          className="absolute bottom-full right-0 z-50 mb-2 min-w-64 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg focus:outline-none"
+          className="absolute bottom-full right-0 z-50 mb-2 min-w-64 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground elev-3 focus:outline-none"
         >
           {options.map((option, index) => {
             const isSelected = option.value === effort;

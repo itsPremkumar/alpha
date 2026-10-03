@@ -204,7 +204,7 @@ export function UpdateControl() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-80 rounded-2xl border border-border/80 bg-card shadow-xl z-50 p-3 space-y-2.5 text-left">
+        <div className="absolute right-0 top-full mt-1.5 w-80 rounded-2xl border border-border/80 bg-card elev-3 z-50 p-3 space-y-2.5 text-left">
           <div>
             <p className="text-[11px] font-semibold">Software update</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">

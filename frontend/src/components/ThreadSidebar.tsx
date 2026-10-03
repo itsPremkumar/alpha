@@ -193,7 +193,7 @@ export function ThreadSidebar({
     return (
       <div
         key={t.thread_id}
-        className={`group relative rounded-lg transition-all ${isActive ? "bg-muted text-foreground shadow-2xs" : "hover:bg-muted/50"}`}
+        className={`group relative rounded-lg transition-all ${isActive ? "bg-muted text-foreground elev-1" : "hover:bg-muted/50"}`}
       >
         <div className="flex items-center gap-1 pl-3 pr-1 py-1">
           <button
@@ -243,7 +243,7 @@ export function ThreadSidebar({
           )}
         </div>
         {menuOpen && (
-          <div className="mx-2 mb-2 rounded-xl border border-border bg-card shadow-lg p-1 text-xs z-10">
+          <div className="mx-2 mb-2 rounded-xl border border-border bg-card elev-3 p-1 text-xs z-10">
             <MenuBtn icon={<Pencil className="size-3.5" />} label="Rename" onClick={() => { setRenaming({ id: t.thread_id, title: threadTitle(t as unknown as Record<string, unknown>) }); setMenuFor(null); }} />
             <MenuBtn icon={<GitBranch className="size-3.5" />} label="Branch off (safe copy)" onClick={() => doBranch(t.thread_id)} />
             {moving === t.thread_id ? (
@@ -382,7 +382,12 @@ export function ThreadSidebar({
           className="hidden max-md:block fixed inset-0 z-30 bg-black/40"
         />
       )}
-      <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-full shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl">
+      {/* `data-dense-controls` puts the invisible 24px hit-area floor on this
+          panel's icon buttons (globals.css). Measured on the running app, 39 of
+          the app's 43 undersized targets lived here — group expanders at
+          16x16, the project action dots at 20x20 — and they are the most
+          frequently clicked controls in the product. */}
+      <aside data-dense-controls="" className="w-64 border-r border-border bg-card/40 flex flex-col h-full shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:elev-3">
       {/* Top Header */}
       <div className="p-3 border-b border-border/60 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -513,6 +518,7 @@ export function ThreadSidebar({
                     <button
                       key={id}
                       type="button"
+                      data-hit-row=""
                       onClick={() => onSelectThread(id)}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all"
                     >
@@ -527,6 +533,7 @@ export function ThreadSidebar({
                     <div key={group.key} className="space-y-0.5">
                       <button
                         type="button"
+                        data-hit-row=""
                         onClick={() => toggleGroup(group.key)}
                         aria-expanded={!isCollapsed}
                         className="w-full flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"

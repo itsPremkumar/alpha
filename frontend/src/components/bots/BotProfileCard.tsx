@@ -75,7 +75,7 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
 
   return (
     <div
-      className={`group rounded-2xl border bg-card p-4 flex flex-col gap-3 transition-all hover:shadow-md cursor-pointer ${
+      className={`group rounded-2xl border bg-card p-4 flex flex-col gap-3 transition-all hover:elev-2 cursor-pointer ${
         isActive ? "border-primary ring-1 ring-primary/40" : "border-border/60 hover:border-primary/40"
       }`}
       onClick={() => onSelect(bot)}

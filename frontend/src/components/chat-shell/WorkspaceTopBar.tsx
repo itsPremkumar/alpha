@@ -80,7 +80,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
   }, []);
 
   return (
-    <header className="h-14 border-b border-border/60 bg-card/60 backdrop-blur-md px-4 flex items-center justify-between gap-4 shrink-0 z-30 select-none">
+    <header data-dense-controls="" className="h-14 border-b border-border/60 bg-card/60 backdrop-blur-md px-4 flex items-center justify-between gap-4 shrink-0 z-30 select-none">
       {/* Brand logo & workspace label */}
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         <BrandLogo logoSize={28} textClassName="text-sm font-bold text-foreground tracking-tight" priority />
@@ -109,7 +109,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
       <button
         type="button"
         onClick={onOpenSearch}
-        className="flex-1 max-w-lg mx-auto flex items-center justify-between gap-3 px-3.5 py-1.5 rounded-xl border border-border/70 bg-muted/40 hover:bg-muted/70 text-muted-foreground hover:text-foreground text-xs transition-all shadow-2xs group cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40"
+        className="flex-1 max-w-lg mx-auto flex items-center justify-between gap-3 px-3.5 py-1.5 rounded-xl border border-border/70 bg-muted/40 hover:bg-muted/70 text-muted-foreground hover:text-foreground text-xs transition-all elev-1 group cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40"
         aria-label="Search agents, projects, conversations"
         title="Search agents, projects, conversations (Ctrl + K)"
       >
@@ -173,7 +173,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
           </button>
 
           {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-card shadow-xl p-3 text-xs z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-card elev-3 p-3 text-xs z-50 animate-in fade-in zoom-in-95 dur-fast">
               <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-2">
                 <span className="font-semibold text-foreground text-xs">Notifications</span>
                 <span className="text-[10px] text-muted-foreground">
@@ -237,7 +237,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
           <button
             type="button"
             onClick={() => setProfileOpen((v) => !v)}
-            className="size-8 rounded-full bg-primary text-primary-foreground font-bold text-xs flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity ring-2 ring-background focus:outline-none"
+            className="size-8 rounded-full bg-primary text-primary-foreground font-bold text-xs flex items-center justify-center elev-1 hover:opacity-90 transition-opacity ring-2 ring-background focus:outline-none"
             title={userName ? `Operator: ${userName}` : `${ANONYMOUS_LABEL} — no name configured`}
             aria-label={userName ? `Operator profile: ${userName}` : "Operator profile menu"}
           >
@@ -245,7 +245,7 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-border bg-card shadow-xl p-2 text-xs z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-border bg-card elev-3 p-2 text-xs z-50 animate-in fade-in zoom-in-95 dur-fast">
               {/* Both lines used to be invented: the name was `"MK"`, and the
                   role read "Operator • Lead Administrator" as a flat string
                   regardless of whether anything had authorised anything. Alpha
