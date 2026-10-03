@@ -309,6 +309,38 @@ only lightweight `viewed_images` metadata, client-chosen IDs survive, and the
 middleware sweeps its message out of every request before rebuilding it — a
 payload stranded in an older checkpoint by an interrupted run stops being resent.
 
+### Per-bot model configuration
+
+`config.yaml` `models[]` stays the only place a model is *declared*; a bot
+profile only ever **names** them. `packages/harness/alpha/bots/model_config.py`
+owns the whole seam:
+
+- **Fail-closed validation collects every error.** `validate_bot_model_config`
+  takes the known-name set explicitly and reports all issues at once with
+  `{code, field, message, severity}` — one save, one full list.
+- **Resolution decides precedence exactly once.**
+  `resolve_model_plan()` is pure: `request > bot.model_config > bot.model >
+  custom_agent > default`, and every value travels with its `*_source`.
+  A bot-declared chain *replaces* the primary's own chain (appending would make
+  the effective order depend on a declaration nobody can see), and a chain that
+  loops back to the primary raises a cycle instead of silently deduping — the
+  override walk runs inside the primary's own frame.
+- **An invalid block degrades loudly, never half-applies.** The lead agent sets
+  `bot_model_config = BotModelConfig()` — an *empty* config, deliberately not
+  `None`, which would re-read the raw dict tolerantly — and logs every issue at
+  ERROR, so plain `bot.model` applies.
+- **The Gateway route is the only write path.** `PUT /{name}/model-config`
+  stores the canonical `cfg.to_dict()`; `model_config` is not writable through
+  the generic `PATCH /{name}` (Pydantic reserves `model_config` as a class
+  attribute, and a generic write would bypass the validation).
+- Bounds are refused with the bound named, never clamped: fallbacks 5,
+  mixture references 8, counsel members 5, counsel rounds 5, mixture workers 8,
+  strategies `parallel|sequential`; `sampling` is an allowlist that rejects
+  credential-shaped and metadata keys.
+
+Contract: [docs/BOT_MODEL_CONFIG.md](../docs/BOT_MODEL_CONFIG.md). Tests:
+`tests/test_bot_model_config.py`, `tests/test_bot_model_config_wiring.py`.
+
 ### Alpha-to-Alpha peer network
 
 `packages/harness/alpha/peer_network/` is the harness-owned, installation-scoped

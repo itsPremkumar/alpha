@@ -187,6 +187,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "architecture",
         "Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.",
     ),
+    "BOT_MODEL_CONFIG.md": DocumentSpec(
+        "architecture",
+        "Per-bot model configuration: primary, fallback chain, counselling and mixture, plus the one precedence ladder.",
+    ),
     "CHAT_SHELL_UX.md": DocumentSpec(
         "architecture",
         "Chat shell UX implementation notes: the component set, how the rail is wired into the existing sidebar, and the additive-change discipline it followed.",

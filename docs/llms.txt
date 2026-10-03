@@ -30,6 +30,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
 - [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).
 - [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, and Kanban.
+- [Per-bot model configuration](BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling and mixture panels, named only from `config.yaml` `models[]`.
 - [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
 - [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
 - [Peer network](ALPHA_PEER_NETWORK.md): Alpha-to-Alpha discovery, explicit pairing, and direct delivery.

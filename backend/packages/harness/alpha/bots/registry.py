@@ -6,6 +6,7 @@ is messaged or @mentioned.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import threading
@@ -388,9 +389,11 @@ class BotRegistry:
     ) -> BotProfile:
         """Create a bot from another profile (inventory #24).
 
-        Copies configuration, skills, SOUL, and avatar — but never memory:
-        clones start with a fresh identity. Raises ``KeyError`` when the
-        source is missing and ``ValueError`` when the target name is taken.
+        Copies configuration, skills, SOUL, avatar and the per-bot model
+        config — but never memory: clones start with a fresh identity. The
+        model config is deep-copied so editing the clone cannot mutate the
+        source profile's dict. Raises ``KeyError`` when the source is missing
+        and ``ValueError`` when the target name is taken.
         """
         source_key = source.lower().strip()
         key = name.lower().strip()
@@ -414,6 +417,7 @@ class BotRegistry:
                 responsibilities=list(template.responsibilities),
                 capabilities=list(template.capabilities),
                 succession_fallback=template.succession_fallback,
+                model_config=copy.deepcopy(template.model_config) if isinstance(template.model_config, dict) else {},
             )
             self._bots[key] = bot
             self._save()
@@ -449,8 +453,14 @@ class BotRegistry:
         reputation_score: float | None = None,
         task_stats: dict[str, Any] | None = None,
         routines: list[dict[str, Any]] | None = None,
+        model_config: dict[str, Any] | None = None,
         bump_version: bool = True,
     ) -> BotProfile | None:
+        """Update a bot's fields. ``model_config``: ``None`` leaves it alone,
+        ``{}`` clears it — the same "None means unset" convention every other
+        field here follows. Validation is the caller's job (the Gateway routes
+        run ``validate_bot_model_config`` first); this stores what it is given.
+        """
         key = name.lower().strip()
         if status is not None and status not in BOT_STATUSES:
             raise ValueError(f"Invalid bot status '{status}'. Expected one of {list(BOT_STATUSES)}.")
@@ -494,6 +504,8 @@ class BotRegistry:
                 bot.task_stats = task_stats
             if routines is not None:
                 bot.routines = routines
+            if model_config is not None:
+                bot.model_config = copy.deepcopy(model_config)
             if bump_version:
                 bot.version += 1
             bot.updated_at = _now()

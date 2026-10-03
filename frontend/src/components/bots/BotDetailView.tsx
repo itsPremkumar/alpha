@@ -35,6 +35,7 @@ import {
   fetchBotDetail,
 } from "@/lib/bot-detail";
 import type { BotProfile } from "@/types/bots";
+import { BotModelConfigPanel } from "./BotModelConfigPanel";
 
 const KNOWN_STATUSES = ["active", "paused", "disabled"] as const;
 
@@ -394,6 +395,9 @@ export function BotDetailView({ name }: { name: string }) {
           }}
         </Section>
       </div>
+
+      {/* ---- Model configuration (its own read, its own failure state) ---- */}
+      <BotModelConfigPanel name={name} botModel={bot?.model ?? null} />
 
       <p className="flex items-center gap-1.5 pt-2 text-[11px] text-muted-foreground">
         <Building2 className="size-3" />

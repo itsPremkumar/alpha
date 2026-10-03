@@ -8,6 +8,7 @@
 ## Architecture
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and major runtime components.
+- [BOT_MODEL_CONFIG.md](BOT_MODEL_CONFIG.md) — Per-bot model configuration: primary, fallback chain, counselling and mixture, plus the one precedence ladder.
 - [CHAT_SHELL_DESIGN.md](CHAT_SHELL_DESIGN.md) — Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.
 - [CHAT_SHELL_UX.md](CHAT_SHELL_UX.md) — Chat shell UX implementation notes: the component set, how the rail is wired into the existing sidebar, and the additive-change discipline it followed.
 - [CONTINUAL_INTELLIGENCE.md](CONTINUAL_INTELLIGENCE.md) — Continual-intelligence layer: replay reservoir, regression gates, plasticity, expert fabric, paging.

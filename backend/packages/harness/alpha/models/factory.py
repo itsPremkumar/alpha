@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 
 from langchain.chat_models import BaseChatModel
 from langchain_openai.chat_models.base import BaseChatOpenAI
@@ -252,19 +253,26 @@ _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS = frozenset(
 _NON_CONSTRUCTOR_MODEL_KEYS = (frozenset(ModelConfig.model_fields) - _MODEL_CONFIG_PROVIDER_PASSTHROUGH) | _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS
 
 
-def _resolve_chain_configs(name: str, config: AppConfig) -> list[ModelConfig]:
-    """Resolve a primary model plus its transitive fallback chain.
+def _resolve_chain_configs(name: str, config: AppConfig, fallbacks: Sequence[str] | None = None) -> list[ModelConfig]:
+    """Resolve a primary model plus its fallback chain.
 
     Order is depth-first (primary, first fallback, its fallbacks, ...),
     duplicates collapse to first occurrence, and reference cycles raise a
     fail-closed error naming the loop. Unknown names raise an actionable
     error identifying the referencing entry.
+
+    ``fallbacks`` is a caller-supplied replacement chain (a bot profile's
+    ``model_config.fallbacks``): it *replaces* the primary's own declared
+    chain rather than appending to it, so the effective order never depends
+    on a declaration nobody can see from the UI. Each override member still
+    expands its own declared fallbacks transitively, and cycle/unknown checks
+    are the same ones a config-declared chain gets.
     """
     resolved: list[ModelConfig] = []
     seen: set[str] = set()
     stack: list[str] = []
 
-    def visit(current: str, parent: str | None) -> None:
+    def visit(current: str, parent: str | None, *, chain_override: Sequence[str] | None = None) -> None:
         if current in stack:
             raise ValueError(f"Fallback cycle detected: {' -> '.join([*stack, current])}. Fallback chains must be acyclic.")
         if current in seen:
@@ -277,11 +285,22 @@ def _resolve_chain_configs(name: str, config: AppConfig) -> list[ModelConfig]:
         stack.append(current)
         seen.add(current)
         resolved.append(model_config)
-        for fallback_name in model_config.fallbacks or []:
+        # ``chain_override`` replaces THIS node's declared chain (the root's
+        # override call), and the walk stays inside the root's stack frame —
+        # so an override member whose own chain points back at the primary is
+        # reported as a cycle, exactly as a config-declared loop is, instead
+        # of being silently deduped after the primary already popped.
+        chain = model_config.fallbacks or [] if chain_override is None else chain_override
+        for fallback_name in chain:
             visit(fallback_name, current)
         stack.pop()
 
-    visit(name, None)
+    if fallbacks:
+        # Primary first (its own declared chain is replaced, not appended to),
+        # then each override member with normal transitive expansion.
+        visit(name, None, chain_override=fallbacks)
+    else:
+        visit(name, None)
     return resolved
 
 
@@ -326,6 +345,7 @@ def create_chat_model(
     attach_tracing: bool = True,
     model_overrides: dict | None = None,
     retries_orchestrated: bool = False,
+    fallbacks: Sequence[str] | None = None,
     **kwargs,
 ) -> BaseChatModel:
     """Create a chat model instance from the config.
@@ -367,6 +387,11 @@ def create_chat_model(
             multiply (see :func:`_pin_provider_retries_when_orchestrated`).
             Leave it False for standalone one-shot callers that invoke the model
             directly and rely on the SDK's internal retries.
+        fallbacks: Ordered replacement chain for the primary's own
+            ``models[].fallbacks`` declaration (a bot profile's
+            ``model_config.fallbacks``). ``None``/empty keeps the declared
+            chain. Unknown names and cycles fail closed exactly as a
+            config-declared chain does.
 
     Returns:
         A chat model instance. When the resolved chain has a single member
@@ -379,7 +404,7 @@ def create_chat_model(
         name = config.default_model_name
     if name is None:
         raise ValueError("No models are configured. Add at least one entry under `models:` in config.yaml.") from None
-    chain = _resolve_chain_configs(name, config)
+    chain = _resolve_chain_configs(name, config, fallbacks)
     if thinking_enabled:
         supported = [member for member in chain if member.supports_thinking]
         if not supported:

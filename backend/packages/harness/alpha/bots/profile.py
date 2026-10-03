@@ -10,7 +10,10 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # pragma: no cover - typing only; the runtime import stays lazy
+    from alpha.bots.model_config import BotModelConfig
 
 
 def _now() -> str:
@@ -76,6 +79,13 @@ class BotProfile:
     """MCP servers this bot may use. Empty means no additional restriction."""
     agent_preset: str | None = None
     """Named agent preset (see ``agent_presets`` in config). None = default."""
+    model_config: dict[str, Any] = field(default_factory=dict)
+    """Per-bot LLM model configuration: primary, fallback chain, counsel panel,
+    mixture panel and sampling overrides. Stored as a raw dict so ``from_dict``
+    stays tolerant of legacy profiles; read it through
+    :meth:`resolved_model_config`, which validates shape, never straight.
+    Every name in here refers to a ``config.yaml`` ``models[]`` entry — this
+    field never declares a model. See ``alpha.bots.model_config``."""
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
@@ -186,6 +196,23 @@ class BotProfile:
         safe = safe.strip("-.")
         return safe or "bot"
 
+    def resolved_model_config(self) -> BotModelConfig:
+        """Typed, tolerant read of this bot's ``model_config`` block.
+
+        Never raises: a malformed stored block degrades to an empty config so
+        a read path (detail view, epoch computation) cannot be crashed by
+        data written before validation existed. Strict validation for writes
+        lives in ``alpha.bots.model_config.validate_bot_model_config``.
+        """
+        from alpha.bots.model_config import BotModelConfig
+
+        if not isinstance(self.model_config, dict):
+            return BotModelConfig()
+        try:
+            return BotModelConfig.from_dict(self.model_config)
+        except (TypeError, ValueError):
+            return BotModelConfig()
+
     def effective_memory_settings(self) -> dict[str, Any]:
         """Only the memory fields this bot actually overrides.
 
@@ -262,6 +289,11 @@ class BotProfile:
         the MCP server list. Memory and MCP are part of the capability surface:
         changing what a bot can remember or which servers it can reach is a real
         capability change, so the epoch must move with it.
+
+        ``model_config`` joins the surface **only when non-empty**: an existing
+        profile with no per-bot model settings must hash byte-identically to
+        what it hashed before this field existed, or every epoch in the roster
+        churns for no capability change.
         """
         surface = {
             "name": self.name.lower().strip(),
@@ -276,6 +308,11 @@ class BotProfile:
             "agent_preset": self.agent_preset or "default",
             "mcp_servers": sorted(self.mcp_servers),
         }
+        from alpha.bots.model_config import fingerprint_surface
+
+        model_surface = fingerprint_surface(self.resolved_model_config())
+        if model_surface is not None:
+            surface["model_config"] = model_surface
         raw_json = json.dumps(surface, sort_keys=True)
         return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()[:12]
 
@@ -291,6 +328,11 @@ class BotProfile:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BotProfile:
         filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        # ``model_config`` is stored raw and read through
+        # ``resolved_model_config``; a non-dict left by an older writer or a
+        # hand-edited file is normalised here so the field's type holds.
+        if "model_config" in filtered and not isinstance(filtered["model_config"], dict):
+            filtered["model_config"] = {}
         return cls(**filtered)
 
 

@@ -1036,6 +1036,34 @@ def _roster_bot_name(name: str) -> str | None:
     return None
 
 
+def _resolve_bot_profile(cfg: dict) -> Any | None:
+    """Look up the roster bot this run is bound to, or ``None``.
+
+    Advisory by design: a run must not die because the roster is unreadable,
+    so every failure degrades to "no bot model config" (global defaults) and
+    is logged rather than raised. ``cfg["bot_name"]`` is set by the Gateway
+    when a bot binds a thread, and by :func:`_clear_dangling_agent_identity`
+    when an ``assistant_id`` names a roster bot.
+    """
+    bot_name = _opt_str_runtime(cfg.get("bot_name"))
+    if not bot_name:
+        return None
+    try:
+        from alpha.bots.registry import get_bot_registry
+
+        return get_bot_registry().get_bot(bot_name)
+    except Exception:  # noqa: BLE001 — advisory lookup, never fatal to the run
+        logger.warning("Bot profile %r could not be loaded; its model_config is ignored for this run.", bot_name, exc_info=True)
+        return None
+
+
+def _opt_str_runtime(value: Any) -> str | None:
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _clear_dangling_agent_identity(requested: str, *, bot_name: str | None, config: RunnableConfig, cfg: dict) -> None:
     """Remove a dangling ``agent_name`` from every runtime carrier.
 
@@ -1142,9 +1170,51 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     # Custom agent model from agent config (if any), or None to let _resolve_model_name pick the default
     agent_model_name = agent_config.model if agent_config and agent_config.model else None
 
-    # thinking / reasoning precedence: request > custom agent default > runtime
-    # default (issue #4336). See ``_resolve_runtime_option`` for the falsy-vs-unset
-    # handling.
+    # Per-bot model configuration (``alpha.bots.model_config``). Precedence is
+    # decided once, in ``resolve_model_plan``: request > bot.model_config >
+    # bot.model > custom agent > global default — the same ladder the UI shows
+    # in the bot detail panel, so the two can never disagree about which model
+    # a bot runs. The roster lookup is advisory: an unreadable roster degrades
+    # to "no bot overrides" (logged), it never kills the run.
+    from alpha.bots.model_config import BotModelConfig, BotModelConfigError, resolve_model_plan, validate_bot_model_config
+
+    bot_profile = _resolve_bot_profile(cfg)
+    bot_model_config = None
+    if bot_profile is not None and getattr(bot_profile, "model_config", None):
+        try:
+            bot_model_config = validate_bot_model_config(
+                bot_profile.model_config,
+                known_models={m.name for m in resolved_app_config.models},
+                field_prefix=f"bots[{bot_profile.name}].model_config",
+            )
+        except BotModelConfigError as exc:
+            # Written before validation existed, or config.yaml lost a model
+            # since. Loud, and the bot's plain ``model`` still applies below —
+            # never silently pretend the block was empty (the ERROR names every
+            # issue), but do not let an unvalidated block steer the run either:
+            # passing ``None`` would make ``resolve_model_plan`` re-read the raw
+            # dict tolerantly and route an unknown model name into the plan.
+            bot_model_config = BotModelConfig()
+            logger.error(
+                "Bot '%s' declares an invalid model_config (%s); ignoring the block for this run. Fix it in the bot detail panel.",
+                bot_profile.name,
+                "; ".join(f"{i.field}: {i.message}" for i in exc.issues),
+            )
+    model_plan = resolve_model_plan(
+        request_model=requested_model_name,
+        bot=bot_profile,
+        custom_agent_model=agent_model_name,
+        bot_model_config=bot_model_config,
+    )
+    # Bot-declared sampling, split so the effort rung travels through the
+    # dedicated ``reasoning_effort`` path (one resolution owner for the wire
+    # value) rather than through the constructor-override merge.
+    bot_sampling = dict(model_plan.sampling) if model_plan.sampling_source == "bot.model_config" else {}
+    bot_effort = bot_sampling.pop("reasoning_effort", None) or bot_sampling.pop("effort", None)
+
+    # thinking / reasoning precedence: request > bot model_config > custom
+    # agent default > runtime default (issue #4336). See
+    # ``_resolve_runtime_option`` for the falsy-vs-unset handling.
     agent_thinking = getattr(agent_config, "thinking_enabled", None) if agent_config else None
     agent_reasoning = getattr(agent_config, "reasoning_effort", None) if agent_config else None
     thinking_enabled = bool(_resolve_runtime_option(cfg, "thinking_enabled", agent_thinking, True))
@@ -1153,7 +1223,7 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     # that names no rung is dropped rather than forwarded: the factory applies
     # the model entry's own default, and recording the garbage value in metadata
     # would make the trace claim a level the run never used.
-    requested_effort = _resolve_runtime_option(cfg, "reasoning_effort", agent_reasoning, None)
+    requested_effort = _resolve_runtime_option(cfg, "reasoning_effort", bot_effort or agent_reasoning, None)
     reasoning_effort = normalize_effort(requested_effort)
     if reasoning_effort is None and requested_effort:
         logger.warning("Create Agent(%s): ignoring unrecognized reasoning_effort %r.", agent_name or "default", requested_effort)
@@ -1168,8 +1238,14 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     agent_model_settings = getattr(agent_config, "model_settings", None) if agent_config else None
     agent_model_overrides = agent_model_settings.model_dump(exclude_none=True) if agent_model_settings else None
 
-    # Final model name resolution: request → agent config → global default, with fallback for unknown names
-    model_name = _resolve_model_name(requested_model_name or agent_model_name, app_config=resolved_app_config)
+    # Bot-declared sampling wins over the custom agent's own (same precedence
+    # as the model itself); ``bot_effort`` already took the rung out above.
+    if bot_sampling:
+        agent_model_overrides = {**(agent_model_overrides or {}), **bot_sampling}
+
+    # Final model name resolution: request → bot.model_config → bot.model →
+    # agent config → global default, with fallback for unknown names
+    model_name = _resolve_model_name(model_plan.primary, app_config=resolved_app_config)
 
     # Phase 3: enforce model:use authorization. On deny, fall back to the first
     # allowed model (graceful) rather than crashing the run (RFC §9).
@@ -1204,6 +1280,12 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
         {
             "agent_name": agent_name or "default",
             "model_name": model_name or "default",
+            # Where the resolved model came from (request / bot.model_config /
+            # bot.model / custom_agent / default) plus the fallback chain's
+            # source — so a trace can answer "why this model?" honestly.
+            "model_source": model_plan.primary_source,
+            "model_fallbacks": list(model_plan.fallbacks),
+            "model_fallbacks_source": model_plan.fallbacks_source,
             "thinking_enabled": thinking_enabled,
             "reasoning_effort": reasoning_effort,
             "is_plan_mode": is_plan_mode,
@@ -1423,7 +1505,16 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
         subagent_execution_capacity=subagent_execution_capacity,
     )
     graph = create_agent(
-        model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort, app_config=resolved_app_config, attach_tracing=False, model_overrides=agent_model_overrides, retries_orchestrated=True),
+        model=create_chat_model(
+            name=model_name,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+            app_config=resolved_app_config,
+            attach_tracing=False,
+            model_overrides=agent_model_overrides,
+            retries_orchestrated=True,
+            fallbacks=model_plan.fallbacks or None,
+        ),
         tools=final_tools,
         middleware=normalize_middleware_state_schemas(middlewares, mode),
         system_prompt=system_prompt,
@@ -1462,5 +1553,8 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
                 "catalog_hash": setup.catalog_hash,
             },
             "deferred_skills": skill_search_enabled,
+            # Full-detail provenance for the assembly descriptor: where the
+            # model, its chain and its sampling came from, in one block.
+            "model_plan": model_plan.to_dict(),
         },
     )

@@ -100,6 +100,15 @@ cd frontend && pnpm test              # unit tests only
   and both build hooks and extension code execute with Gateway privileges.
 - Background autonomy loops are gated by `config.yaml -> autonomy.loops`. An
   absent id means disabled; all flags off means zero tasks.
+- Per-bot model settings are **not** a second model file. Each bot profile may
+  carry a `model_config` block (primary, ordered fallbacks, sampling, a
+  counselling panel and a mixture panel) that only *names* models declared
+  under `models[]`; an undeclared name is refused with every other problem in
+  the block. Surface: `GET`/`PUT`/`DELETE /api/bots/{name}/model-config` and
+  `POST /api/bots/{name}/model-config/preview` (which never saves). Precedence
+  is one ladder — `request > bot.model_config > bot.model > custom_agent >
+  default` — decided in one place and reported per value with its source.
+  `docs/BOT_MODEL_CONFIG.md`.
 
 ## 5. Core capabilities
 
