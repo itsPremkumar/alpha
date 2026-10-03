@@ -237,8 +237,10 @@ POST /api/compat/openai/chat/completions
 
 Browser microphone streaming, local Whisper interim and final transcription,
 voice-activity turn endpointing, the normal SSE agent stream, sentence-level local
-Piper playback while the rest of the answer is still generating, and hands-free
-resume. The only component that may cost money is your model provider.
+Piper playback (with a more natural Kokoro voice available on faster hosts)
+while the rest of the answer is still generating, and hands-free resume. An
+on-device openWakeWord wake word can arm the mic on a spoken phrase. The only
+component that may cost money is your model provider.
 
 → [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md)
 

@@ -223,11 +223,13 @@ install:
 # Free local speech: packages plus pinned model assets. Runtime never calls a
 # paid speech API and never downloads model weights implicitly.
 voice-setup:
-	@cd backend && uv sync --locked --extra voice
+	@cd backend && uv sync --locked --all-packages --extra voice
 	@cd backend && uv run --no-sync python scripts/setup_voice.py
 
 voice-verify:
 	@cd backend && uv run --no-sync python scripts/setup_voice.py --verify-only --skip-warmup
+	@echo ""
+	@echo "  Requires UV_EXTRAS=voice so restarts keep the speech packages."
 
 # Laya is intentionally installed in an ignored, project-local environment so its
 # PyTorch/Transformers stack never becomes a mandatory Alpha dependency.

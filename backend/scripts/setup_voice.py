@@ -47,6 +47,13 @@ PIPER_FILE_SIZES = {
     "en_US-lessac-medium.onnx.json": 4_885,
 }
 
+# Kokoro ONNX TTS (natural, Apache-2.0) — pinned GitHub release assets.
+KOKORO_RELEASE_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+KOKORO_MODEL_FILE = "kokoro-v1.0.int8.onnx"
+KOKORO_VOICES_FILE = "voices-v1.0.bin"
+KOKORO_MODEL_SIZE = 92_361_271
+KOKORO_VOICES_SIZE = 28_214_398
+
 
 @dataclass(frozen=True, slots=True)
 class AssetStatus:
@@ -71,6 +78,14 @@ def tts_voice_path(voice_id: str = DEFAULT_TTS_VOICE) -> Path:
 
 def tts_config_path(voice_id: str = DEFAULT_TTS_VOICE) -> Path:
     return models_dir() / "piper" / f"{voice_id}.onnx.json"
+
+
+def kokoro_model_path() -> Path:
+    return models_dir() / "kokoro" / KOKORO_MODEL_FILE
+
+
+def kokoro_voices_path() -> Path:
+    return models_dir() / "kokoro" / KOKORO_VOICES_FILE
 
 
 def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
@@ -152,6 +167,41 @@ def download_tts_voice(voice_id: str = DEFAULT_TTS_VOICE) -> Path:
     return model_path
 
 
+def _kokoro_assets_ready(model_path: Path, voices_path: Path) -> bool:
+    return model_path.is_file() and model_path.stat().st_size == KOKORO_MODEL_SIZE and voices_path.is_file() and voices_path.stat().st_size == KOKORO_VOICES_SIZE
+
+
+def _download_with_size(url: str, destination: Path, expected_size: int) -> None:
+    """Download *url* to *destination* and verify the exact byte size."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_file() and destination.stat().st_size == expected_size:
+        return
+    fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".part", dir=destination.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as output, urllib.request.urlopen(url, timeout=120) as response:
+            shutil.copyfileobj(response, output, length=1024 * 1024)
+        actual_size = temp_path.stat().st_size
+        if actual_size != expected_size:
+            raise RuntimeError(f"unexpected size for {destination.name}: expected {expected_size}, got {actual_size}")
+        os.replace(temp_path, destination)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def download_kokoro() -> tuple[Path, Path]:
+    """Download the pinned Kokoro ONNX model and voices (one-time, no API key)."""
+    model_path = kokoro_model_path()
+    voices_path = kokoro_voices_path()
+    if _kokoro_assets_ready(model_path, voices_path):
+        return model_path, voices_path
+    _download_with_size(f"{KOKORO_RELEASE_BASE}/{KOKORO_VOICES_FILE}", voices_path, KOKORO_VOICES_SIZE)
+    _download_with_size(f"{KOKORO_RELEASE_BASE}/{KOKORO_MODEL_FILE}", model_path, KOKORO_MODEL_SIZE)
+    if not _kokoro_assets_ready(model_path, voices_path):
+        raise RuntimeError("Kokoro download did not produce usable model assets")
+    return model_path, voices_path
+
+
 def _stt_assets_ready(path: Path) -> bool:
     return all((path / filename).is_file() and (path / filename).stat().st_size > 0 for filename in STT_REQUIRED_FILES)
 
@@ -198,18 +248,29 @@ def verify_assets(
 ) -> list[AssetStatus]:
     stt = stt_model_path(stt_model)
     tts = tts_voice_path(tts_voice)
+    kokoro_model = kokoro_model_path()
+    kokoro_voices = kokoro_voices_path()
     stt_dependency = _module_available("faster_whisper")
     tts_dependency = _module_available("piper")
+    kokoro_dependency = _module_available("kokoro_onnx")
     stt_assets = _stt_assets_ready(stt)
     tts_assets = _tts_assets_ready(tts)
+    kokoro_assets = _kokoro_assets_ready(kokoro_model, kokoro_voices)
     stt_ready = stt_dependency and stt_assets
     tts_ready = tts_dependency and tts_assets
+    kokoro_ready = kokoro_dependency and kokoro_assets
     return [
         AssetStatus(
             name="faster-whisper",
             path=str(stt),
             ready=stt_ready,
             detail=("dependency installed; model files present" if stt_ready else "dependency missing or model files absent; run `make voice-setup`"),
+        ),
+        AssetStatus(
+            name="kokoro",
+            path=str(kokoro_model),
+            ready=kokoro_ready,
+            detail=("dependency installed; model files present" if kokoro_ready else "dependency missing or model files absent; run `make voice-setup`"),
         ),
         AssetStatus(
             name="piper",
@@ -235,6 +296,19 @@ def write_manifest(*, stt_model: str, tts_voice: str) -> Path:
             "path": str(stt_model_path(stt_model)),
         },
         "tts": {
+            "engine": "piper",
+            "note": "piper is the real-time default; kokoro is the optional natural voice (see docs/VOICE_CONVERSATION.md)",
+        },
+        "tts_kokoro": {
+            "engine": "kokoro",
+            "voice": "af_bella",
+            "repository": "thewh1teagle/kokoro-onnx",
+            "release": "model-files-v1.0",
+            "model_path": str(kokoro_model_path()),
+            "voices_path": str(kokoro_voices_path()),
+            "sizes": {KOKORO_MODEL_FILE: KOKORO_MODEL_SIZE, KOKORO_VOICES_FILE: KOKORO_VOICES_SIZE},
+        },
+        "tts_piper": {
             "engine": "piper",
             "voice": tts_voice,
             "repository": "rhasspy/piper-voices",
@@ -264,9 +338,28 @@ def warm_up(*, stt_model: str, tts_voice: str, loader: Callable[[], None] | None
     if not hasattr(voice, "synthesize_wav"):
         raise RuntimeError("Piper warm-up returned an invalid voice")
 
+    # Warm the optional natural-voice engine too, so a deployment that selects it
+    # does not pay ONNX session construction on its first spoken turn. Piper stays
+    # the warm real-time default.
+    try:
+        from kokoro_onnx import Kokoro
+
+        Kokoro(str(kokoro_model_path()), str(kokoro_voices_path()))
+    except Exception as exc:  # noqa: BLE001 - optional engine; Piper fallback remains
+        print(f"Kokoro warm-up skipped: {type(exc).__name__}: {exc}")
+
+    # openWakeWord downloads its pretrained weights on first load, then caches
+    # them on disk. Pre-fetching here keeps the first real wake word silent-free.
+    try:
+        from openwakeword.utils import download_models
+
+        download_models(model_names=["hey_jarvis"])
+    except Exception as exc:  # noqa: BLE001 - optional engine; wake word degrades honestly
+        print(f"openWakeWord warm-up skipped: {type(exc).__name__}: {exc}")
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install Alpha's local Whisper + Piper voice assets")
+    parser = argparse.ArgumentParser(description="Install Alpha's local Whisper + Piper + Kokoro voice assets")
     parser.add_argument("--stt-model", choices=sorted(STT_REVISIONS), default=DEFAULT_STT_MODEL)
     parser.add_argument("--verify-only", action="store_true", help="verify existing files without downloading")
     parser.add_argument("--skip-warmup", action="store_true", help="download/verify without loading model weights")
@@ -279,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.verify_only:
             print(f"Downloading faster-whisper {args.stt_model} (one-time, no API key)...")
             download_stt_model(args.stt_model)
+            print("Downloading Kokoro TTS model (one-time, no API key)...")
+            download_kokoro()
             print(f"Downloading Piper voice {DEFAULT_TTS_VOICE} (one-time, no API key)...")
             download_tts_voice(DEFAULT_TTS_VOICE)
 

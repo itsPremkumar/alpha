@@ -102,15 +102,23 @@ browser = ["playwright>=1.40"]
 # Optional Chinese tokenization for the FTS5 memory retrieval adapter.
 memory-zh = ["jieba>=0.42.1"]
 # Fully local speech + OCR runtime. Model weights are installed separately under
-# runtime_home()/voice/models; requests never download them. Legacy wake-word,
-# edge-tts, and other optional/manual engines are intentionally not required here.
+# runtime_home()/voice/models; requests never download them. Kokoro (natural TTS)
+# ships in the extra so a default install has the real-time voice stack; edge-tts
+# and other optional/manual engines are intentionally not required here.
 voice = [
     "faster-whisper>=1.2.1,<2",
     "piper-tts>=1.8.0,<2",
+    "kokoro-onnx>=0.6.1,<0.7",
+    "openwakeword>=0.6,<0.7",
     "rapidocr-onnxruntime>=1.4.4,<2",
     "tokenizers>=0.21,<1",
     "webrtcvad-wheels>=2.0.11,<3",
 ]
+
+# Wake-word engine alias. openWakeWord is ALSO in `voice` so `make voice-setup`
+# gives a default install the complete real-time voice stack; this alias exists
+# for deployments that want to install the wake engine on its own.
+wake = ["openwakeword>=0.6,<0.7"]
 
 [build-system]
 requires = ["hatchling"]

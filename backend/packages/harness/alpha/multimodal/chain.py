@@ -332,6 +332,24 @@ def _tts_asset_observer() -> tuple[str, str]:
     return "not_configured", "piper dependency can be installed, but required voice model assets are not present"
 
 
+def _kokoro_asset_observer() -> tuple[str, str]:
+    from alpha.multimodal.local_models import resolve_kokoro_model_path
+
+    tts = getattr(_voice_config(), "tts", None)
+    try:
+        spec = resolve_kokoro_model_path(
+            str(getattr(tts, "kokoro_voice", "af_bella")),
+            getattr(tts, "kokoro_model_path", None),
+            getattr(tts, "voices_path", None),
+        )
+        present = spec.model_path.is_file() and spec.voices_path.is_file()
+    except (OSError, ValueError):
+        return "not_configured", "local Kokoro model path is invalid or inaccessible (path withheld)"
+    if present:
+        return "available", "required Kokoro ONNX model and voices assets are present; weights were not loaded"
+    return "not_configured", "kokoro-onnx dependency can be installed, but required model assets are not present"
+
+
 def _wake_word_dependency_observer() -> tuple[str, str]:
     try:
         from openwakeword import Model as _OpenWakeWordModel  # noqa: F401
@@ -404,7 +422,10 @@ def _t2_specs(capability: Capability) -> list[tuple[str, Callable[[], tuple[str,
 
 def _t3_specs(capability: Capability) -> list[tuple[str, Callable[[], tuple[str, str]]]]:
     if capability is Capability.TTS:
-        return [("piper", _local_speech_observer("piper", _tts_asset_observer))]
+        return [
+            ("kokoro", _local_speech_observer("kokoro_onnx", _kokoro_asset_observer)),
+            ("piper", _local_speech_observer("piper", _tts_asset_observer)),
+        ]
     if capability is Capability.STT:
         return [("faster-whisper", _local_speech_observer("faster_whisper", _stt_asset_observer))]
     if capability is Capability.OCR:

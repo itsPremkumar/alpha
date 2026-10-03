@@ -60,7 +60,7 @@ make start            # production mode locally (SKIP_FRONTEND_BUILD=1 reuses th
 make up / make down   # production Docker stack; browser at http://localhost:2026
 make stop             # stop local services
 make support-bundle   # redacted troubleshooting summary
-make voice-setup      # optional: local Whisper + Piper speech models (~550 MB)
+make voice-setup      # optional: local Whisper + Kokoro + Piper + openWakeWord (~640 MB)
 make voice-verify     # verify those models
 make help             # full target list
 ```
@@ -174,8 +174,10 @@ Electron Windows desktop app (one-click NSIS installer, per-user, no admin);
 Next.js 15 workspace with Chat, Overview, Workforce, Projects, Kanban, Skills,
 Peers, and Settings; an uncapped on-device IndexedDB chat archive with honest
 degraded states and JSON backup/restore; bot-led multi-bot projects; free local
-real-time voice (local Whisper + local Piper, sentence-level streaming, no paid
-speech API); the Milo lion companion; guarded GitHub source auto-update (disabled
+real-time voice (local Whisper + local Piper speech, an optional more natural
+Kokoro voice on faster hosts, + local openWakeWord wake word, sentence-level
+streaming, no paid speech API); the Milo lion companion; guarded GitHub source
+auto-update (disabled
 by default); and an interactive canvas with generative UI, live SVG, KaTeX, and
 data tables.
 

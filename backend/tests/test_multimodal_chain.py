@@ -573,7 +573,9 @@ def test_probe_specs_name_expected_engines_per_capability():
     assert [engine for engine, _ in chain._t2_specs(Capability.TTS)] == ["edge-tts"]
     assert [engine for engine, _ in chain._t2_specs(Capability.IMAGE_GEN)] == ["aihorde-anonymous"]
     assert [engine for engine, _ in chain._t2_specs(Capability.STT)] == ["(none)"]
-    assert [engine for engine, _ in chain._t3_specs(Capability.TTS)] == ["piper"]
+    # Kokoro is the default natural-voice engine; Piper stays as the fallback row.
+    # Both speech engines are reported so neither one's availability depends on the other.
+    assert [engine for engine, _ in chain._t3_specs(Capability.TTS)] == ["kokoro", "piper"]
     assert [engine for engine, _ in chain._t3_specs(Capability.STT)] == ["faster-whisper"]
     assert [engine for engine, _ in chain._t3_specs(Capability.OCR)] == ["rapidocr", "tesseract"]
     assert [engine for engine, _ in chain._t3_specs(Capability.WAKE_WORD)] == ["openwakeword"]

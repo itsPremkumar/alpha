@@ -56,6 +56,11 @@ ollama = ["alpha-harness[ollama]"]
 browser = ["alpha-harness[browser]"]
 memory-zh = ["alpha-harness[memory-zh]"]
 voice = ["alpha-harness[voice]"]
+# openWakeWord ships separately from `voice`: it pulls a Linux-only
+# tflite-runtime dependency with no cp312+ wheel, which would make the
+# universal lock unsatisfiable. Alpha uses only its ONNX path.
+# See docs/VOICE_CONVERSATION.md.
+wake = ["alpha-harness[wake]"]
 peer-discovery = ["zeroconf>=0.145.0"]
 # Alpha's own behaviour-trace substrate (alpha.observability.trace).
 #
@@ -120,7 +125,16 @@ default-groups = ["dev", "extensions"]
 # it before. Remove once langgraph-sdk relaxes the pin upstream. Note: enabling
 # the `openai[realtime]` or `slack-sdk[optional]` extras would conflict (they
 # also cap websockets<16).
-override-dependencies = ["websockets==16.0"]
+#
+# tflite-runtime: openWakeWord (the `wake` extra) declares
+# `tflite-runtime; platform_system == "Linux"`, and tflite-runtime publishes
+# cp38-cp311 wheels only. Unconstrained, that makes the workspace unresolvable
+# on Linux/Python 3.12+ even though Alpha never touches tflite — the wake-word
+# session pins openWakeWord to `inference_framework="onnx"`
+# (`alpha/multimodal/wakeword.py`), and onnxruntime is already required by the
+# `voice` extra. Constraining the transitive requirement to the interpreters
+# that actually have wheels keeps one lock usable on every platform.
+override-dependencies = ["websockets==16.0", "tflite-runtime>=2.8.0; python_full_version < '3.12'"]
 
 [tool.uv.workspace]
 members = ["packages/harness", "packages/extension-api"]

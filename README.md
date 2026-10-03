@@ -317,7 +317,7 @@ subsystem.
 | **Scheduled / recurring agents** | Cron scheduler with wake gates, blueprints, incident tracking, and auto-pause; GitHub webhook triggers | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | **A support/ops agent on chat** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal | [docs/API.md](docs/API.md) |
 | **An OpenAI-compatible endpoint** | Drop-in `POST /api/compat/openai/chat/completions` for your own clients | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
-| **Hands-free voice** | Local Whisper transcription + local Piper speech, sentence-level streaming, no paid speech API | [docs/VOICE_CONVERSATION.md](docs/VOICE_CONVERSATION.md) |
+| **Hands-free voice** | Local Whisper transcription + local Piper speech (Kokoro natural voice on faster hosts) + openWakeWord wake word, sentence-level streaming, no paid speech API | [docs/VOICE_CONVERSATION.md](docs/VOICE_CONVERSATION.md) |
 | **A local-first agent mesh** | Alpha-to-Alpha peer network: LAN UDP discovery, explicit pairing, HTTP/WebSocket delivery, SQLite conversations | [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) |
 | **Literature reviews & papers** | PRISMA-compliant systematic review and academic peer-review skills | [skills/public/](skills/public/) |
 | **Data and chart work** | Sandboxed Python/REPL, data-analysis skill, chart-visualization skill | [skills/public/](skills/public/) |
@@ -675,7 +675,9 @@ exactly-once execution.
   unknown rather than showing as zero.
 - **Free local real-time voice** — browser mic streaming, local Whisper interim +
   final transcription, VAD turn endpointing, normal SSE agent streaming,
-  sentence-level local Piper playback, hands-free resume, and no paid speech API.
+  sentence-level local Piper playback, an optional more natural Kokoro voice on
+  faster hosts, on-device openWakeWord wake word, hands-free resume, and no
+  paid speech API.
 - **Milo the lion companion** — a local inline-SVG companion with articulated
   animation, bounded roaming, petting, and an optional always-on-top desktop
   window that forwards no prompt or conversation data.

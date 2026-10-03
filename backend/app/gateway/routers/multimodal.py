@@ -148,13 +148,17 @@ async def tts(body: TtsRequest, request: Request, config: AppConfig = Depends(ge
         raise HTTPException(status_code=422, detail=f"text exceeds {MAX_TTS_CHARS} characters")
 
     tts = config.voice.tts
+    engine = body.engine or tts.engine
+    is_kokoro = engine == "kokoro"
     payload: dict[str, Any] = {
         "text": text,
-        "voice": body.voice or tts.voice,
-        "engine": body.engine or tts.engine,
-        "model_path": tts.model_path,
+        "voice": body.voice or (tts.kokoro_voice if is_kokoro else tts.voice),
+        "engine": engine,
+        "model_path": tts.kokoro_model_path if is_kokoro else tts.model_path,
+        "voices_path": tts.voices_path,
         "length_scale": tts.length_scale,
         "noise_scale": tts.noise_scale,
+        "speed": tts.speed,
         "volume": tts.volume,
     }
     try:

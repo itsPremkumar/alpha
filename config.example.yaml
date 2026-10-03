@@ -30,7 +30,7 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 58
+config_version: 59
 
 # ============================================================================
 # Logging
@@ -4291,6 +4291,40 @@ network:
 #       #     verdict: ask
 #       #     reason: "recursive delete; confirm the target path."
 
+# --- Option 5: GovernanceGuardrailProvider (tool_governance policy) ---
+# Enforces the operator's per-tool policy at call time. The middleware hands
+# only the tool NAME to providers, so enforcement authority is operator
+# configuration alone: a tool cannot widen itself via metadata.
+#
+# config.yaml:
+# guardrails:
+#   enabled: true
+#   provider:
+#     use: alpha.guardrails.governance:GovernanceGuardrailProvider
+# # Top-level declaration drives BOTH the discovery catalog risk level and the
+# # call-time enforcement decision (injected into the provider at assembly).
+# tool_governance:
+#   bash:
+#     risk_class: execute
+#     side_effects: [filesystem_read, shell_exec]
+#     reversibility: partial
+#     confirmation: ask        # ask calls are denied unless server-internal
+#   web_fetch:
+#     risk_class: external
+#     side_effects: [http_request]
+#     reversibility: reversible
+#     confirmation: auto
+#   rm_tool:
+#     risk_class: destructive
+#     reversibility: irreversible
+#     confirmation: block
+#
+# confirmation: block -> always denied (governance.blocked)
+# confirmation: ask  -> denied unless server-internal dispatch
+# (governance.requires_confirmation otherwise); no interactive approval
+# channel exists yet, so ask is fail-closed by design
+# confirmation: auto -> allowed, governed class recorded in decision metadata
+
 # ============================================================================
 # Shell Hooks Bridge Configuration
 # ============================================================================
@@ -4819,11 +4853,15 @@ specialists:
 # the leader is a Bot (alpha/bots/alpha_leader.py), not a specialist.
 
 # ============================================================================
-# Voice & multimodal (fully local realtime voice; legacy wake word optional)
+# Voice & multimodal (fully local realtime voice + wake word)
 # ============================================================================
 # All fields are hot-reloadable and bounded. TTS/STT default to local_only, so
 # missing local packages/assets fail honestly and never fall through to a cloud
 # speech service. Model paths are operator-owned; browser voice values are safe IDs.
+#
+# Every asset below is free and offline: Whisper (STT), Kokoro (natural TTS),
+# Piper (fast TTS fallback) and openWakeWord. `make voice-setup` installs the
+# packages and downloads the pinned model weights once.
 voice:
   enabled: true                     # master switch for TTS, STT, PTT, and realtime conversation
   # Privacy: the default speech route is local-only, so T1 (a configured model over
@@ -4832,17 +4870,25 @@ voice:
   # always discloses the effective route and which tiers are policy-disabled.
   routing:
     mode: local_only                # local_only (default) | automatic (allows T1 -> T2 speech)
-  wake_word:                        # optional/manual compatibility control; not in the default voice extra
+  wake_word:                        # optional/manual control; ships in the default voice extra
     engine: openwakeword
     threshold: 0.5
-    armed_default: false
+    armed_default: false            # true starts wake-armed (mic capture begins immediately)
   tts:
     autoplay: true
-    engine: piper
-    voice: en_US-lessac-medium      # safe ID, never a path
-    model_path: null                # null -> runtime_home()/voice/models/piper/<voice>.onnx
-    length_scale: 1.0
-    noise_scale: 0.667
+    # piper  = real-time speech on CPU; the default, and the only engine measured
+#          keeping up with a conversation on a modest host.
+    # kokoro = natural neural voice (Apache-2.0, 54 voices, 8 languages) that needs
+    #          a much faster CPU or a GPU; see docs/VOICE_CONVERSATION.md.
+    engine: piper                  # piper (real-time default) | kokoro (natural, slower)
+    voice: en_US-lessac-medium      # Piper safe ID, never a path (used when engine=piper)
+    kokoro_voice: af_bella           # Kokoro safe voice name (af_bella, af_sarah, am_adam, ...)
+    model_path: null                # Piper: null -> runtime_home()/voice/models/piper/<voice>.onnx
+    kokoro_model_path: null         # null -> runtime_home()/voice/models/kokoro/kokoro-v1.0.int8.onnx
+    voices_path: null               # null -> runtime_home()/voice/models/kokoro/voices-v1.0.bin
+    length_scale: 1.0               # Piper speaking-time scale; lower is faster
+    noise_scale: 0.667              # Piper phoneme-duration noise scale
+    speed: 1.0                      # Kokoro speaking-speed multiplier
     volume: 0.9
   stt:
     model_size: small               # setup installs this under the deployment-local model tree

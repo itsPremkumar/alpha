@@ -256,13 +256,42 @@ shell must explicitly grant microphone-only capture to the exact local Alpha ori
 deny camera or mixed audio/video requests through both permission request/check handlers.
 
 `alpha.multimodal.chain` remains the single T1→T2→T3 capability seam. Runtime speech models
-are process-cached and bounded: `faster-whisper` and Piper assets live under
+are process-cached and bounded: `faster-whisper`, Kokoro, and Piper assets live under
 `Paths`/`runtime_home()`'s `voice/models` tree, are installed by `make voice-setup`, and
 are never downloaded implicitly by a request. Client TTS input is a safe voice ID, never
 an arbitrary model path. `voice.enabled=false`, WebSocket authentication/origin checks,
 `runs:create`, session/frame/utterance limits, and stale-partial suppression apply to every
 speech operation including direct PTT transcription; PTT, wake-word, and real-time
 conversation may share the socket only through explicit state transitions.
+
+**TTS engine selection.** `voice.tts.engine` is `piper` (the real-time default) or
+`kokoro` (more natural, much slower on CPU), and `run_t3` dispatches on that field. Measured
+on a 16-core CPU-only host, the same ~3.5 s sentence took Piper **1.7 s** and Kokoro
+**~70 s** (~18x slower than real time), and Kokoro's ONNX decoder did not improve from 2 to
+16 threads. The default is therefore Piper — a conversation loop that cannot keep up with
+its own speech is not a conversation — and the docs state the measurement instead of
+calling Kokoro "CPU real time". Never re-default to Kokoro without re-measuring on the
+deployment host. The two engines have
+**disjoint voice-ID namespaces** — Kokoro names (`af_bella`) and Piper ids
+(`en_US-lessac-medium`) are both `^[A-Za-z0-9_-]{1,64}$`, so only the engine choice keeps
+them apart. The router therefore resolves the voice *and* the model path from the engine:
+`engine: kokoro` serves `tts.kokoro_voice` + `tts.kokoro_model_path`, `engine: piper` serves
+`tts.voice` + `tts.model_path`. Never let a Piper id reach Kokoro or a Kokoro name reach
+Piper; a resolution failure must surface as an honest skip row, not a silent cross-engine
+fallback. `GET /api/multimodal/capabilities` lists **both** engines as separate T3 rows so
+one being unavailable is visible without disabling the other.
+
+**Wake word.** openWakeWord ships in the `voice` extra and runs on-device through its ONNX
+path only. It declares a Linux-only `tflite-runtime` dependency with no cp312+ wheel; the
+workspace `override-dependencies` in `backend/pyproject.toml` constrains that transitive
+requirement to interpreters that have wheels, so one lock resolves on every platform.
+Remove that override and Linux deployments on Python 3.12+ stop resolving at all. `armed`
+is true only once frames have actually flowed — a silent session is never reported as
+wake-armed, and a missing engine reports `not_installed` instead of a faked armed state.
+
+`make dev` runs a plain `uv sync` unless `UV_EXTRAS=voice` is set, which silently *removes*
+every speech package on restart; the setup and docs own that instruction, and
+`make voice-verify` restates it.
 
 The public nginx configurations must forward Upgrade/Connection for
 `/api/multimodal/voice` before their generic `/api/` locations. Frontend tests must pin

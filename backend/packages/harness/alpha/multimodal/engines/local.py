@@ -72,6 +72,47 @@ def piper_tts(
     return audio
 
 
+def kokoro_tts(
+    text: str,
+    voice: str,
+    *,
+    model_path: str | None = None,
+    voices_path: str | None = None,
+    speed: float = 1.0,
+    volume: float = 0.9,
+) -> bytes:
+    """Local offline TTS through the Kokoro ONNX engine (more natural than Piper).
+
+    The *voice* argument is a validated safe id (e.g. ``af_bella``). Filesystem
+    selection comes only from trusted config/env and is never taken from a client
+    request. Falls back to Piper when Kokoro is unavailable.
+    """
+    from alpha.multimodal.chain import SKIP_NOT_CONFIGURED, SKIP_NOT_INSTALLED, TIER_T3, TierExhausted, TierSkip, failure_row, skip_row
+    from alpha.multimodal.local_models import resolve_kokoro_model_path, synthesize_with_cached_kokoro
+
+    try:
+        spec = resolve_kokoro_model_path(voice, model_path, voices_path)
+    except ValueError as exc:
+        raise TierSkip(SKIP_NOT_CONFIGURED, str(exc), rows=[skip_row(TIER_T3, "kokoro", SKIP_NOT_CONFIGURED, str(exc))]) from exc
+    try:
+        import kokoro_onnx  # noqa: F401
+    except Exception as exc:  # noqa: BLE001 - broken optional native import is unavailable
+        detail = f"kokoro-onnx is not installed (voice extra): {exc}"
+        raise TierSkip(SKIP_NOT_INSTALLED, detail, rows=[skip_row(TIER_T3, "kokoro", SKIP_NOT_INSTALLED, detail)]) from exc
+    try:
+        audio = synthesize_with_cached_kokoro(text, spec, speed=speed, volume=volume)
+    except ImportError as exc:
+        detail = f"kokoro-onnx is not installed (voice extra): {exc}"
+        raise TierSkip(SKIP_NOT_INSTALLED, detail, rows=[skip_row(TIER_T3, "kokoro", SKIP_NOT_INSTALLED, detail)]) from exc
+    except Exception as exc:
+        logger.warning("Local Kokoro synthesis failed", exc_info=True)
+        safe_error = RuntimeError("kokoro synthesis failed")
+        raise TierExhausted([failure_row(TIER_T3, "kokoro", safe_error)]) from exc
+    if not audio:
+        raise TierExhausted([failure_row(TIER_T3, "kokoro", RuntimeError("kokoro returned 0 audio bytes"))])
+    return audio
+
+
 def stt_local(
     audio: bytes,
     suffix: str,
@@ -227,6 +268,24 @@ def run_t3(capability: Capability, payload: dict[str, Any], attempts: list[dict[
 
     if cap is Capability.TTS:
         text = str(payload.get("text") or "")
+        engine = str(payload.get("engine") or "piper")
+        if engine == "kokoro":
+            # TierSkip propagates from kokoro_tts (not_installed / not_configured).
+            audio = kokoro_tts(
+                text,
+                str(payload.get("voice") or "af_bella"),
+                model_path=payload.get("model_path"),
+                voices_path=payload.get("voices_path"),
+                speed=float(payload.get("speed", 1.0)),
+                volume=float(payload.get("volume", 0.9)),
+            )
+            return CapabilityResult(
+                ok=True,
+                capability=str(cap),
+                engine="kokoro",
+                data={"audio": audio, "media_type": "audio/wav"},
+                note="synthesized offline by kokoro (T3)",
+            )
         # TierSkip propagates from piper_tts (not_installed / not_configured).
         audio = piper_tts(
             text,

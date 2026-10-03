@@ -55,20 +55,36 @@ class WakeWordConfig(BaseModel):
 
 
 class TtsConfig(BaseModel):
-    """Local Piper text-to-speech defaults."""
+    """Local text-to-speech defaults (Piper and Kokoro engines)."""
 
     autoplay: bool = Field(default=True, description="Autoplay assistant speech after each completed answer.")
-    engine: Literal["piper"] = Field(default="piper", description="Local TTS engine. Piper is the only supported runtime engine.")
+    engine: Literal["piper", "kokoro"] = Field(
+        default="piper",
+        description=("Local TTS engine. Piper is the default because it is the only engine measured real-time on CPU here; Kokoro is far more natural but needs a much faster host (see docs/VOICE_CONVERSATION.md)."),
+    )
     voice: VoiceId = Field(
         default="en_US-lessac-medium",
         description="Safe Piper voice id used as the default model filename; never a filesystem path.",
+    )
+    kokoro_voice: VoiceId = Field(
+        default="af_bella",
+        description="Safe Kokoro voice name (e.g. af_bella, af_sarah, am_adam); never a filesystem path.",
     )
     model_path: str | Path | None = Field(
         default=None,
         description="Operator-owned Piper .onnx path. Null uses runtime_home()/voice/models/piper/<voice>.onnx.",
     )
+    voices_path: str | Path | None = Field(
+        default=None,
+        description="Operator-owned Kokoro voices file. Null uses runtime_home()/voice/models/kokoro/voices-v1.0.bin.",
+    )
+    kokoro_model_path: str | Path | None = Field(
+        default=None,
+        description="Operator-owned Kokoro ONNX model. Null uses runtime_home()/voice/models/kokoro/kokoro-v1.0.int8.onnx.",
+    )
     length_scale: float = Field(default=1.0, ge=0.25, le=4.0, description="Piper speaking-time scale; lower is faster.")
     noise_scale: float = Field(default=0.667, ge=0.0, le=2.0, description="Piper phoneme-duration noise scale.")
+    speed: float = Field(default=1.0, ge=0.5, le=2.0, description="Kokoro speaking-speed multiplier.")
     volume: float = Field(default=0.9, ge=0.0, le=2.0, description="Post-synthesis linear PCM volume multiplier.")
 
     @field_validator("voice", mode="before")

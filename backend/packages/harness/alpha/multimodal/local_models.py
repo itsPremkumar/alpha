@@ -303,6 +303,149 @@ def synthesize_with_cached_piper(text: str, spec: PiperModelSpec) -> bytes:
     return _PIPER_CACHE.synthesize(text, spec)
 
 
+def _create_kokoro_session(model_path: Path, voices_path: Path) -> Any:
+    """Build the ONNX session with bounded threads, then wrap it in Kokoro.
+
+    onnxruntime's defaults matter here and are not cosmetic: with no explicit
+    options it starts an intra-op spinning thread pool sized to *every* core and
+    keeps those threads spinning between runs. Inside the Gateway — a process
+    already running agent workers, the run bridge, and event-loop threads — that
+    oversubscribes the CPU; measured here, a two-second sentence took 105
+    seconds. Bounding intra-op threads to a small fixed count and turning
+    spinning off makes synthesis bounded and returns the threads to the rest of
+    the process.
+    """
+    import onnxruntime as rt
+    from kokoro_onnx import Kokoro
+
+    options = rt.SessionOptions()
+    # 2 is well past the point where more threads help an 82M model on CPU, and
+    # it leaves cores for the agent runtime. Disabling spinning removes the
+    # busy-wait between sentences, which is the larger win in a busy process.
+    options.intra_op_num_threads = 2
+    options.inter_op_num_threads = 1
+    options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL
+    options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    session = rt.InferenceSession(str(model_path), sess_options=options, providers=resolve_onnx_providers())
+    return Kokoro.from_session(session, voices_path=str(voices_path))
+
+
+def resolve_onnx_providers() -> list[str]:
+    """ONNX execution providers for Kokoro, honouring an operator override."""
+    import logging
+    import os
+
+    import onnxruntime as rt
+
+    log = logging.getLogger(__name__)
+    available = rt.get_available_providers()
+    requested = os.getenv("ALPHA_ONNX_PROVIDERS", "").strip()
+    if requested:
+        wanted = [name.strip() for name in requested.split(",") if name.strip()]
+        chosen = [name for name in wanted if name in available]
+        if chosen:
+            return chosen
+        log.warning("ALPHA_ONNX_PROVIDERS=%s matched no available provider %s; using CPU", requested, available)
+    if any(name in available for name in ("CUDAExecutionProvider", "DmlExecutionProvider")):
+        return [name for name in ("CUDAExecutionProvider", "DmlExecutionProvider", "CPUExecutionProvider") if name in available]
+    return ["CPUExecutionProvider"]
+
+
+@dataclass(frozen=True, slots=True)
+class KokoroModelSpec:
+    """Effective identity/settings for one cached Kokoro ONNX model."""
+
+    model_path: Path
+    voices_path: Path
+    voice: str
+    speed: float = 1.0
+    volume: float = 0.9
+
+    def __post_init__(self) -> None:
+        if self.speed <= 0 or self.volume < 0:
+            raise ValueError("Kokoro speed must be positive and volume non-negative")
+
+    @property
+    def cache_key(self) -> tuple[str, int, int, str]:
+        path = self.model_path.resolve()
+        try:
+            stat = path.stat()
+        except OSError:
+            return (str(path), 0, 0, self.voice)
+        return (str(path), stat.st_mtime_ns, stat.st_size, self.voice)
+
+
+def resolve_kokoro_model_path(
+    voice: str,
+    configured_path: str | Path | None,
+    voices_path: str | Path | None,
+    *,
+    home: Path | None = None,
+) -> KokoroModelSpec:
+    """Resolve trusted Kokoro ONNX model + voices paths (never client-supplied)."""
+    if not is_valid_voice_id(voice):
+        raise ValueError("Kokoro voice id must match ^[A-Za-z0-9_-]{1,64}$")
+    root = (home or runtime_home()).resolve()
+    model_path = _operator_path(configured_path, home=home) if configured_path else root / "voice" / "models" / "kokoro" / "kokoro-v1.0.int8.onnx"
+    voices = _operator_path(voices_path, home=home) if voices_path else root / "voice" / "models" / "kokoro" / "voices-v1.0.bin"
+    return KokoroModelSpec(model_path=model_path, voices_path=voices, voice=voice)
+
+
+class KokoroModelCache:
+    """Process-local cached Kokoro ONNX model (one active model, serialized)."""
+
+    _instance: KokoroModelCache | None = None
+
+    def __new__(cls) -> KokoroModelCache:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._kokoro = None
+            cls._instance._key: tuple[str, int, int, str] | None = None
+        return cls._instance
+
+    def get(self, spec: KokoroModelSpec) -> Any:
+        key = spec.cache_key
+        if self._kokoro is not None and self._key == key:
+            return self._kokoro
+        self._kokoro = _create_kokoro_session(spec.model_path, spec.voices_path)
+        self._key = key
+        return self._kokoro
+
+    def synthesize(self, text: str, spec: KokoroModelSpec) -> bytes:
+        import numpy as np
+
+        kokoro = self.get(spec)
+        audio, sample_rate = kokoro.create(text, voice=spec.voice, speed=spec.speed)
+        if spec.volume != 1.0:
+            audio = audio * spec.volume
+        pcm = (audio * 32767).clip(-32768, 32767).astype(np.int16)
+        buf = BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm.tobytes())
+        return buf.getvalue()
+
+    def clear_for_test(self) -> None:
+        self._kokoro = None
+        self._key = None
+
+
+_KOKORO_CACHE = KokoroModelCache()
+
+
+def synthesize_with_cached_kokoro(text: str, spec: KokoroModelSpec, *, speed: float = 1.0, volume: float = 0.9) -> bytes:
+    resolved = KokoroModelSpec(
+        model_path=spec.model_path,
+        voices_path=spec.voices_path,
+        voice=spec.voice,
+        speed=speed,
+        volume=volume,
+    )
+    return _KOKORO_CACHE.synthesize(text, resolved)
+
+
 def clear_whisper_model_cache_for_test() -> None:
     """Clear the active Whisper reference without loading weights."""
 

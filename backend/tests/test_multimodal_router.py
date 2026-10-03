@@ -195,8 +195,10 @@ def test_tts_returns_audio_bytes_with_engine_headers_and_forwards_payload(monkey
         "voice",
         "engine",
         "model_path",
+        "voices_path",
         "length_scale",
         "noise_scale",
+        "speed",
         "volume",
     }
 
@@ -205,7 +207,9 @@ def test_tts_uses_config_default_voice_unless_request_overrides(monkeypatch):
     calls: list[tuple[str, dict]] = []
     result = CapabilityResult(ok=True, capability="tts", tier="T3", engine="piper", data={"audio": b"RIFF", "media_type": "audio/wav"}, attempts=[], note="")
     _stub_invoke(monkeypatch, result=result, calls=calls)
-    voice = VoiceConfig(tts=TtsConfig(voice="config-voice"))
+    # engine=piper keeps `voice` the field that serves the request: the Kokoro
+    # route reads kokoro_voice instead, so this pins the Piper path explicitly.
+    voice = VoiceConfig(tts=TtsConfig(engine="piper", voice="config-voice"))
 
     with TestClient(_app(voice)) as client:
         client.post("/api/multimodal/tts", json={"text": "hi"})
@@ -214,6 +218,28 @@ def test_tts_uses_config_default_voice_unless_request_overrides(monkeypatch):
     assert calls[0][1]["voice"] == "config-voice"
     assert calls[1][1]["voice"] == "req-voice"
     assert calls[1][1]["engine"] == "hinted"
+
+
+def test_tts_kokoro_engine_serves_the_kokoro_voice_and_its_own_paths(monkeypatch):
+    """A kokoro request must carry kokoro_voice, never the Piper voice id."""
+    calls: list[tuple[str, dict]] = []
+    result = CapabilityResult(ok=True, capability="tts", tier="T3", engine="kokoro", data={"audio": b"RIFF", "media_type": "audio/wav"}, attempts=[], note="")
+    _stub_invoke(monkeypatch, result=result, calls=calls)
+    voice = VoiceConfig(tts=TtsConfig(engine="kokoro", voice="en_US-lessac-medium", kokoro_voice="af_sarah"))
+
+    with TestClient(_app(voice)) as client:
+        client.post("/api/multimodal/tts", json={"text": "hi"})
+
+    payload = calls[0][1]
+    assert payload["engine"] == "kokoro"
+    assert payload["voice"] == "af_sarah", "the Piper voice id must not leak into a Kokoro synthesis request"
+    assert payload["speed"] == 1.0
+
+    # An explicit request voice still wins for the selected engine.
+    with TestClient(_app(voice)) as client:
+        client.post("/api/multimodal/tts", json={"text": "hi", "voice": "am_adam"})
+
+    assert calls[1][1]["voice"] == "am_adam"
 
 
 def test_tts_exhaustion_is_503_with_nested_attempts_detail(monkeypatch):
