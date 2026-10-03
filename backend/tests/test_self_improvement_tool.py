@@ -112,8 +112,18 @@ class _FakeExecutor:
 
 
 @pytest.fixture(autouse=True)
-def _reset_fake_executor():
+def _reset_fake_executor(tmp_path, monkeypatch):
     _FakeExecutor.instances.clear()
+    # Isolate the reasoning-bank singleton so ralph rounds never write to the
+    # real runtime-home store during these tests.
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / ".alpha"))
+    try:
+        import alpha.reasoning_bank.bank as _bank_mod
+
+        monkeypatch.setattr(_bank_mod, "_bank", None, raising=False)
+        monkeypatch.setattr(_bank_mod, "_bank_path", None, raising=False)
+    except Exception:
+        pass
     yield
     _FakeExecutor.instances.clear()
 

@@ -73,9 +73,11 @@ RALPH_HARD_MAX_ROUNDS = 8
 _RALPH_POLL_INTERVAL_SECONDS = 5.0
 
 
-def _round_prompt(task: str, promise: str, round_no: int, previous_shortfall: str | None) -> str:
+def _round_prompt(task: str, promise: str, round_no: int, previous_shortfall: str | None, *, hints: str | None = None) -> str:
     """Build the round prompt. Later rounds carry only the shortfall, never a full retry."""
     base = f"{task}\n\nCompletion promise (the run is done only when this holds): {promise}\nAddress the promise point by point in your final report."
+    if round_no == 1 and hints:
+        return f"{base}\n\nPrevious similar tasks (measured past strategies — none imply success independently):\n{hints}"
     if round_no > 1 and previous_shortfall:
         return f"{base}\n\nPrevious attempt fell short:\n{previous_shortfall}\nFix ONLY what is missing; reuse unaffected outputs. Do not repeat unchanged work."
     return base
@@ -319,9 +321,16 @@ async def ralph_loop_tool(
     last_verdict: dict | None = None
     last_reason = ""
     rounds_used = 0
+    seed_hints = ""
+    try:
+        from alpha.reasoning_bank import get_reasoning_bank
+
+        seed_hints = get_reasoning_bank().render(f"{task[:200]} {completion_promise}", scope="ralph", limit=1, max_chars=600)
+    except Exception:
+        logger.debug("reasoning-bank seed render failed; starting without hints", exc_info=True)
     for round_no in range(1, max_rounds + 1):
         rounds_used = round_no
-        round_prompt = _round_prompt(task, completion_promise, round_no, previous_shortfall)
+        round_prompt = _round_prompt(task, completion_promise, round_no, previous_shortfall, hints=seed_hints or None)
         executor = SubagentExecutor(
             config=config,
             tools=tools,
@@ -376,6 +385,20 @@ async def ralph_loop_tool(
         logger.info(f"[trace={trace_id}] Ralph {tool_call_id} round {round_no}/{max_rounds}: {result.status.value} — {reason}")
         cleanup_background_task(execution_id)
         last_result, last_verdict, last_reason = result, verdict, reason
+        try:
+            from alpha.reasoning_bank import get_reasoning_bank
+
+            bank_verdict = "success" if complete and verdict is not None and verdict.get("all_hold") is True else ("partial" if complete else "failure")
+            get_reasoning_bank().record(
+                "ralph",
+                trigger=completion_promise[:240],
+                strategy=(_shortfall_summary(result, verdict, reason) if not complete else f"promise held after {round_no} round(s): {reason}")[:1600],
+                verdict=bank_verdict,
+                evidence_ref=f"ralph:{tool_call_id}:r{round_no}",
+                tags=[subagent_type],
+            )
+        except Exception:
+            logger.debug("reasoning-bank record failed; round result unchanged", exc_info=True)
         if complete:
             await aemit_custom_event({"type": "ralph_completed", "task_id": tool_call_id, "rounds_used": round_no, "reason": reason}, writer=writer)
             receipts = getattr(result, "tool_receipts", None)

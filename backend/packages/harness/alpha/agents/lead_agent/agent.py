@@ -719,6 +719,13 @@ def build_middlewares(
     if model_config is not None and model_config.supports_vision:
         middlewares.append(ViewImageMiddleware())
 
+    # Project the first relevant ReasoningBank recall into the model request
+    # (one hidden HumanMessage per call, bounded; a no-op while the bank is
+    # empty, so byte-identical behavior until a ralph round records anything).
+    from alpha.agents.middlewares.reasoning_bank_context_middleware import ReasoningBankContextMiddleware
+
+    middlewares.append(ReasoningBankContextMiddleware(app_config=resolved_app_config))
+
     # Auto-promote deferred MCP schemas from PR1 routing metadata before the
     # deferred filter decides which schemas to hide for this model call.
     if mcp_routing_middleware is not None:
