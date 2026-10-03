@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.gateway import services
 from alpha.runtime.runs.manager import RunManager
 from alpha.runtime.runs.worker import RunContext, run_agent
+from app.gateway import services
 
 
 class _Agent:
@@ -26,6 +26,28 @@ def _bridge() -> SimpleNamespace:
 pytestmark = pytest.mark.asyncio
 
 
+#: How long the releaser waits for the run to *reach* agent assembly. This is a
+#: gate, not the discriminator, so it must cover the whole pre-assembly phase
+#: plus thread scheduling. Under the strict blocking-IO detector on a loaded box
+#: that is seconds, not milliseconds -- ``threading.Thread.start()`` alone has
+#: been observed to block for >10s there. A too-tight bound makes the releaser
+#: give up before the factory is ever called, sets ``release_factory`` early, and
+#: the heartbeat below becomes unobservable: a spurious failure that has nothing
+#: to do with where assembly actually ran.
+_FACTORY_START_TIMEOUT_SECONDS = 60.0
+
+#: How long the releaser waits to observe a loop heartbeat once assembly has
+#: started. This IS the discriminator: off-loop assembly leaves the loop free to
+#: tick, on-loop assembly starves it.
+_HEARTBEAT_TIMEOUT_SECONDS = 10.0
+
+#: How long the factory blocks before giving up. It must outlast
+#: ``_HEARTBEAT_TIMEOUT_SECONDS``: if assembly ran on the loop, this block is
+#: what starves the ticker, so releasing it early would let the loop recover and
+#: mask the very bug this test exists to catch.
+_FACTORY_BLOCK_TIMEOUT_SECONDS = 30.0
+
+
 async def _assert_factory_runs_off_the_event_loop(invoke) -> None:
     """The release waits for an event-loop heartbeat while assembly is blocked."""
     factory_started = threading.Event()
@@ -37,12 +59,13 @@ async def _assert_factory_runs_off_the_event_loop(invoke) -> None:
     def agent_factory(*, config):
         factory_thread_ids.append(threading.get_ident())
         factory_started.set()
-        release_factory.wait(timeout=1)
+        release_factory.wait(timeout=_FACTORY_BLOCK_TIMEOUT_SECONDS)
         return _Agent()
 
     def release_after_factory_starts() -> None:
-        factory_started.wait(timeout=1)
-        heartbeat_during_factory.wait(timeout=1)
+        if not factory_started.wait(timeout=_FACTORY_START_TIMEOUT_SECONDS):
+            return
+        heartbeat_during_factory.wait(timeout=_HEARTBEAT_TIMEOUT_SECONDS)
         release_factory.set()
 
     async def ticker() -> None:
@@ -83,6 +106,45 @@ async def test_gateway_agent_factory_runs_off_the_event_loop() -> None:
         )
 
     await _assert_factory_runs_off_the_event_loop(invoke)
+
+
+async def test_fleet_admission_reads_control_state_off_the_event_loop() -> None:
+    """Fleet admission resolves paths and reads control state off the loop.
+
+    ``admitted()`` resolves the project root through ``os.getcwd()`` and reads
+    the ``.alpha`` control-state file; both are blocking. ``run_agent`` is async
+    and runs on Gateway's event loop, so admission must be offloaded to a worker
+    thread instead of running inline -- otherwise every run stalls the loop on a
+    disk read before any agent work starts (#5172 family).
+    """
+    run_manager = RunManager()
+    record = await run_manager.create("thread-fleet-admission")
+    import alpha.runtime.control as control
+
+    loop_thread_id = threading.get_ident()
+    observed_thread_ids: list[int] = []
+    real_read_state = control.read_state
+
+    def recording_read_state(root_dir=None):
+        observed_thread_ids.append(threading.get_ident())
+        return real_read_state(root_dir)
+
+    def agent_factory(*, config):
+        return _Agent()
+
+    with patch.object(control, "read_state", recording_read_state):
+        await run_agent(
+            _bridge(),
+            run_manager,
+            record,
+            ctx=RunContext(checkpointer=None),
+            agent_factory=agent_factory,
+            graph_input={},
+            config={},
+        )
+
+    assert observed_thread_ids, "fleet admission must read control state"
+    assert observed_thread_ids[0] != loop_thread_id, "fleet admission must not read control state on the event loop"
 
 
 async def test_gateway_checkpoint_state_factory_runs_off_the_event_loop() -> None:

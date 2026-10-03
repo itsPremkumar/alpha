@@ -916,7 +916,14 @@ async def run_agent(
     # ticket carries the generation this run was admitted under, so the streaming
     # body below can revalidate before each step rather than trusting the check
     # that happened once here.
-    fleet_ticket = _admit_run_to_fleet(record)
+    #
+    # Admission is blocking: it resolves the project root through
+    # ``os.getcwd()`` and reads ``.alpha`` control state from disk. `run_agent`
+    # is an async entry point running on Gateway's event loop, so that work goes
+    # to a worker thread -- the same treatment ``alpha.runtime.events.store.jsonl``
+    # gives its file I/O. Leaving it inline stalled the loop on a disk read for
+    # every run and tripped the strict blocking-IO gate.
+    fleet_ticket = await asyncio.to_thread(_admit_run_to_fleet, record)
     if fleet_ticket is None:
         return
 

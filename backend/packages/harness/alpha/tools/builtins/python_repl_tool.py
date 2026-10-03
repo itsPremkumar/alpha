@@ -8,6 +8,8 @@
 # ``args_schema`` as a required field, and any call that does not go through
 # ToolNode (which injects by the parameter *name*) fails validation with
 # "runtime: Field required". Keeping annotations as real objects fixes that.
+import asyncio
+
 from langchain.tools import tool
 
 from alpha.config import get_app_config
@@ -55,7 +57,12 @@ async def python_repl_tool(
     # check is the second half: a tool that reached a runtime some other way —
     # a direct call, a custom Agent tool list, a config path that bypassed
     # assembly — still refuses rather than handing out process-level execution.
-    if not is_in_process_repl_allowed(get_app_config()):
+    #
+    # ``get_app_config()`` stats the config file on every call to detect edits,
+    # which is blocking; this tool body runs on the event loop, so resolve it in
+    # a worker thread (same treatment as ``alpha.runtime.context_compaction``).
+    app_config = await asyncio.to_thread(get_app_config)
+    if not is_in_process_repl_allowed(app_config):
         return LOCAL_IN_PROCESS_REPL_DISABLED_MESSAGE
 
     effective_session_id = session_id

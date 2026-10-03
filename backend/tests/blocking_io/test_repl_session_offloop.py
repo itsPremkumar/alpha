@@ -32,6 +32,7 @@ Two deliberate choices keep the assertions honest rather than machine-dependent:
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import shlex
 import subprocess
@@ -40,6 +41,8 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -47,6 +50,12 @@ from langgraph.prebuilt import ToolRuntime
 
 from alpha.sandbox.repl.session import ReplSession, ReplTimeoutError, get_repl_session
 from alpha.tools.builtins.python_repl_tool import python_repl_tool
+
+#: The *module* object, not the re-exported ``StructuredTool`` that
+#: ``alpha.tools.builtins`` shadows the submodule name with -- patching
+#: ``get_app_config`` needs the module, and the attribute form resolves to the
+#: tool. ``sys.modules`` always holds the real one.
+repl_module = importlib.import_module("alpha.tools.builtins.python_repl_tool")
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,16 +75,7 @@ def _blocking_cell_source() -> str:
     Sets ``finished`` on the way out -- including via ``finally`` -- so a test can
     tell "still running" from "already done" without relying on a clock.
     """
-    return (
-        "import time\n"
-        f"end = time.monotonic() + {_BLOCK_FOR_MAX_SECONDS}\n"
-        "try:\n"
-        "    while time.monotonic() < end and not release.is_set():\n"
-        "        time.sleep(0.05)\n"
-        "finally:\n"
-        "    finished.set()\n"
-        "'released'\n"
-    )
+    return f"import time\nend = time.monotonic() + {_BLOCK_FOR_MAX_SECONDS}\ntry:\n    while time.monotonic() < end and not release.is_set():\n        time.sleep(0.05)\nfinally:\n    finished.set()\n'released'\n"
 
 
 def _hanging_shell_command(pid_file: Path) -> str:
@@ -250,9 +250,7 @@ async def test_concurrent_cells_capture_their_own_output(sessions, cell_gate):
     quiet = sessions["quiet"]
     _arm(noisy, cell_gate)
 
-    slow_task = asyncio.create_task(
-        noisy.execute("import time\nprint('noisy-start')\nwhile not release.is_set():\n    time.sleep(0.02)\nprint('noisy-end')", timeout=_BLOCK_FOR_MAX_SECONDS)
-    )
+    slow_task = asyncio.create_task(noisy.execute("import time\nprint('noisy-start')\nwhile not release.is_set():\n    time.sleep(0.02)\nprint('noisy-end')", timeout=_BLOCK_FOR_MAX_SECONDS))
     await asyncio.sleep(0.3)
 
     try:
@@ -336,6 +334,16 @@ async def test_trailing_coroutine_is_awaited_and_bound(sessions):
     assert session.namespace["_"] == 7
 
 
+def _repl_config(*, allow_in_process_repl: bool) -> SimpleNamespace:
+    """Minimal config stub: only the switch ``is_in_process_repl_allowed`` reads.
+
+    The shipped config sets ``sandbox.allow_in_process_repl: false`` on purpose,
+    so the switch has to be turned on explicitly for tests that exercise the
+    REPL's own behaviour rather than the gate.
+    """
+    return SimpleNamespace(sandbox=SimpleNamespace(allow_in_process_repl=allow_in_process_repl))
+
+
 async def test_tool_reports_the_timeout_instead_of_hanging(sessions, cell_gate):
     """The tool surface turns the typed timeout into an agent-readable error."""
     session = sessions["tool"]
@@ -351,16 +359,48 @@ async def test_tool_reports_the_timeout_instead_of_hanging(sessions, cell_gate):
 
     started = time.monotonic()
     try:
-        output = await python_repl_tool.ainvoke(
-            {
-                "code": _blocking_cell_source(),
-                "timeout": 0.5,
-                "runtime": runtime,
-            }
-        )
+        with patch.object(repl_module, "get_app_config", return_value=_repl_config(allow_in_process_repl=True)):
+            output = await python_repl_tool.ainvoke(
+                {
+                    "code": _blocking_cell_source(),
+                    "timeout": 0.5,
+                    "runtime": runtime,
+                }
+            )
     finally:
         cell_gate["release"].set()
 
     assert time.monotonic() - started < _BLOCK_FOR_MAX_SECONDS / 2
     assert not cell_gate["finished"].is_set(), "the tool reported a timeout only after the cell had finished"
     assert output.startswith("Error: Python execution timed out after 0.5 seconds")
+
+
+async def test_tool_resolves_config_off_the_event_loop(sessions):
+    """``get_app_config()`` stats the config file; it must not run on the loop.
+
+    This is the regression anchor for the gate itself: the switch read used to
+    happen inline in the tool body, so the blocking ``os.stat`` behind
+    ``resolve_config_path()`` fired on Gateway's event loop on every call.
+    """
+    session = sessions["tool"]
+    runtime = ToolRuntime(
+        state={},
+        context={"thread_id": session.session_id},
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="tool-call-config-offloop",
+        store=None,
+    )
+    loop_thread_id = threading.get_ident()
+    observed_thread_ids: list[int] = []
+    real_get_app_config = repl_module.get_app_config
+
+    def recording_get_app_config():
+        observed_thread_ids.append(threading.get_ident())
+        return real_get_app_config()
+
+    with patch.object(repl_module, "get_app_config", recording_get_app_config):
+        await python_repl_tool.ainvoke({"code": "'ok'", "timeout": _BLOCK_FOR_MAX_SECONDS, "runtime": runtime})
+
+    assert observed_thread_ids, "the tool must consult the in-process REPL switch"
+    assert observed_thread_ids[0] != loop_thread_id, "the config lookup must not run on the event loop"

@@ -919,7 +919,7 @@ python scripts/generate_docs_index.py --check   # docs index drift
 bash scripts/verify_versions.sh                 # version lockstep gate
 ```
 
-Two contracts are worth calling out because they are unusual and load-bearing:
+Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
   pins all 134 tools, 63 routers, 42 middlewares, and 9 supervisor loops. CI fails
@@ -929,6 +929,11 @@ Two contracts are worth calling out because they are unusual and load-bearing:
   `Runtime | None = None` makes pydantic schema-generate `ToolRuntime`'s
   `Callable` fields and breaks the entire tool list for the model. Run
   `check_tool_schemas.py` after any tool signature change.
+- **Event-loop discipline** — Gateway entry points are `async`, so a synchronous
+  filesystem or config read on that path stalls every concurrent run in the
+  process. `make test-blocking-io` is the strict gate that fails the build for it;
+  offload such work with `asyncio.to_thread` (see `backend/AGENTS.md` →
+  *Event-loop discipline*).
 
 → [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
 
