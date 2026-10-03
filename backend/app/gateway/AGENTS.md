@@ -266,12 +266,14 @@ conversation may share the socket only through explicit state transitions.
 
 **TTS engine selection.** `voice.tts.engine` is `piper` (the real-time default) or
 `kokoro` (more natural, much slower on CPU), and `run_t3` dispatches on that field. Measured
-on a 16-core CPU-only host, the same ~3.5 s sentence took Piper **1.7 s** and Kokoro
+on the CPU-only host this was developed on (8 physical cores, no GPU provider), the same
+~3.5 s sentence took Piper **1.7 s idle / ~4.3 s under memory pressure** and Kokoro
 **~70 s** (~18x slower than real time), and Kokoro's ONNX decoder did not improve from 2 to
 16 threads. The default is therefore Piper — a conversation loop that cannot keep up with
 its own speech is not a conversation — and the docs state the measurement instead of
 calling Kokoro "CPU real time". Never re-default to Kokoro without re-measuring on the
-deployment host. The two engines have
+deployment host, and never quote a latency number without the host it came from: the same
+build varied 2.5x purely from memory pressure. The two engines have
 **disjoint voice-ID namespaces** — Kokoro names (`af_bella`) and Piper ids
 (`en_US-lessac-medium`) are both `^[A-Za-z0-9_-]{1,64}$`, so only the engine choice keeps
 them apart. The router therefore resolves the voice *and* the model path from the engine:

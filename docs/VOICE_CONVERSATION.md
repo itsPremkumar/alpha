@@ -27,13 +27,19 @@ Both speech engines are installed by one command, so switching is one config lin
 ### Choosing a voice
 
 Kokoro is markedly more natural than Piper, but "natural" is not the constraint that
-matters for a conversation loop — latency is. Measured on a 16-core CPU-only Windows
-host, the same ~3.5-second sentence took:
+matters for a conversation loop — latency is. Measured on the CPU-only host this was
+developed on (AMD Ryzen 7 5800H, 8 physical cores / 16 logical, 5.9 GB RAM, no GPU
+provider), the same ~3.5-second sentence took:
 
 | Engine | Load | Per sentence | Audio produced | Verdict |
 | --- | --- | --- | --- | --- |
-| Piper | ~2 s | **1.7 s** | 3.4 s | Real time, comfortably |
+| Piper | ~2 s | **1.7-4.3 s** | 3.4 s | Real time to ~1.6x audio |
 | Kokoro (int8) | ~15 s | **~70 s** | 3.9 s | ~18x slower than real time |
+
+Piper's spread is host load: an idle machine measured 1.7 s, and the same build under
+heavy memory pressure (0.2 GB RAM free) measured 4.3 s. That is the number to expect
+on a busy or memory-constrained machine, and the reason Whisper `small` is the stage
+that actually sets turn latency here.
 
 Kokoro's cost is the ONNX decoder, not phonemization (phonemization is ~2.5 s of it),
 and it does not improve with more threads on this class of hardware — 2 threads and 16
@@ -291,10 +297,10 @@ latching, corrupt-frame survival, disclosed scores), `tests/test_kokoro_tts_engi
 `tests/test_multimodal_router.py`.
 
 Measured on the CPU-only host this was developed on: Piper synthesis is
-conversational (~1.7-3.6 s for a sentence), and Whisper `small` transcription is
-the slow stage. Neither is a claim about your hardware — measure it on the host
-that will run it, and switch `stt.model_size` to `base` if you need faster
-turns.
+conversational (~1.7 s idle to ~4.3 s under memory pressure), and Whisper
+`small` transcription is the stage that sets turn latency (RTF ~2.8-3.6).
+Neither is a claim about your hardware — measure it on the host that will run it,
+and switch `stt.model_size` to `base` if you need faster turns.
 
 ## Troubleshooting
 
