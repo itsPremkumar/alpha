@@ -2,7 +2,7 @@
 
 Record (``scripts/record_gateway.py`` + ``scripts/build_fixture_from_jsonl.py``)
 and replay (``tests/test_replay_golden.py``)
-MUST drive the gateway through an identical, prompt-affecting config â€” otherwise
+MUST drive the gateway through an identical, prompt-affecting config — otherwise
 the system prompt differs and the recorded input hashes never match on replay.
 Centralising the config builder + drive loop here makes that identity hold by
 construction; only the ``models[].use`` block differs (real model vs
@@ -51,8 +51,8 @@ def build_config_yaml(*, model_block: str, home: Path) -> str:
 
     Everything that shapes the system prompt is pinned so record, replay, and CI
     produce byte-identical prompts regardless of the machine:
-    - sandbox / tool_groups / tools â€” fixed here
-    - skills â€” pointed at an empty ``<home>/skills`` so filesystem skills (incl.
+    - sandbox / tool_groups / tools — fixed here
+    - skills — pointed at an empty ``<home>/skills`` so filesystem skills (incl.
       gitignored custom skills present only on a dev box) never leak into the
       prompt. Pair with an empty ``extensions_config.json`` (no MCP) via
       :func:`prepare_hermetic_extras`.
