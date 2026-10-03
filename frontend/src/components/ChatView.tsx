@@ -5,7 +5,9 @@ import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { ActivityStatus } from "@/components/ActivityStatus";
 import { SubagentList } from "@/components/SubagentList";
+import { TaskList } from "@/components/TaskList";
 import type { SubagentTask } from "@/lib/sse-reducer";
+import { emptyTodoPlan, type TodoPlan } from "@/lib/sse-reducer";
 import { currentTurn, deriveActivity, silenceNotice } from "@/lib/activity";
 import { Composer } from "@/components/Composer";
 import { NavTabs, WorkspaceView } from "@/components/NavTabs";
@@ -349,6 +351,12 @@ export default function ChatView() {
   // tasks stay on screen as the receipt for the answer that follows them.
   const [subagentTasks, setSubagentTasks] = useState<SubagentTask[]>([]);
 
+  // The agent's own execution plan, folded from `todos_updated` custom events.
+  // Same lifecycle as `subagentTasks`: reset when a new run begins, and left
+  // standing after the run so the finished plan reads as the receipt for the
+  // answer rather than disappearing the moment the text settles.
+  const [livePlan, setLivePlan] = useState<TodoPlan>(() => emptyTodoPlan());
+
   useEffect(() => {
     if (!isLoading) {
       runStartedAtRef.current = null;
@@ -584,6 +592,10 @@ export default function ChatView() {
     // Subagent progress is per-turn UI state; a receipt from the thread the
     // user just left must not appear under the one they opened.
     setSubagentTasks([]);
+    // The execution plan is per-turn for the same reason the task receipt is:
+    // a plan belonging to the thread the user just left must not appear under
+    // the one they opened.
+    setLivePlan(emptyTodoPlan());
     if (voiceTurnRef.current) abortRef.current?.abort();
     voiceTurnGenerationRef.current += 1;
     voiceTurnRef.current = false;
@@ -1109,6 +1121,9 @@ export default function ChatView() {
     // A new run starts from zero subagent tasks; the previous turn's receipt
     // must not be read as live work for this one.
     setSubagentTasks([]);
+    // Same reason: the previous turn's finished plan is not this run's plan.
+    // Leaving it up would claim work is outstanding when nothing is running.
+    setLivePlan(emptyTodoPlan());
     // Fresh silence baseline: a dead byte counter from the previous turn would
     // announce a stall before this run has had a chance to speak.
     lastByteAtRef.current = Date.now();
@@ -1340,6 +1355,12 @@ export default function ChatView() {
           if (!runIsCurrent()) return;
           setSubagentTasks(tasks);
         },
+        onTodos: (plan) => {
+          // Same guard, same reason: a stale run's plan must not overwrite the
+          // plan the current run is publishing.
+          if (!runIsCurrent()) return;
+          setLivePlan(plan);
+        },
         onActivity: () => {
           // Same guard: a stale run's bytes must not keep a newer run's
           // silence clock looking fresh.
@@ -1518,6 +1539,7 @@ export default function ChatView() {
     setInput("");
     setIsLoading(true);
     setSubagentTasks([]);
+    setLivePlan(emptyTodoPlan());
     updateLion("working", "Running that shortcut...");
     const reply = async (content: string) => {
       const assistantMsg: ChatMessage = {
@@ -2528,7 +2550,25 @@ export default function ChatView() {
                   </div>
                 )}
 
-                {/* Subagent progress survives the run that produced it, so the
+                {/* The agent's own plan, live. It sits ABOVE the transcript because a plan is
+                    read while the run is happening, not after: the user is
+                    watching to see what is left. The task receipt below stays
+                    where it is because it is read afterwards. */}
+                {livePlan.reportedAtAll && (
+                  <div className="max-w-4xl mx-auto">
+                    <TaskList
+                      todos={livePlan.items}
+                      progress={livePlan.progress}
+                      reported={livePlan.reported}
+                      truncated={livePlan.truncated}
+                      reportedAtAll={livePlan.reportedAtAll}
+                      variant="panel"
+                      title={isLoading ? "Working through this" : "Plan for this answer"}
+                    />
+                  </div>
+                )}
+
+{/* Subagent progress survives the run that produced it, so the
                     answer lands next to the receipt of the work behind it, and
                     only the next prompt clears it. */}
                 {subagentTasks.length > 0 && (

@@ -1,4 +1,7 @@
-import { ChatMessage, Thread, AIModel, SlashCommandInfo, SlashCommandResult, AutonomousDetection } from "@/types/chat";
+import { ChatMessage, Thread, AIModel, SlashCommandInfo, SlashCommandResult, AutonomousDetection, TodoItem } from "@/types/chat";
+
+/** Mirrors `sse-reducer.TODO_STATUSES` and the backend projection. */
+const TODO_STATUSES: ReadonlySet<string> = new Set(["pending", "in_progress", "completed", "cancelled"]);
 
 import { apiFetch, ApiClientError } from "./api-client";
 
@@ -238,12 +241,18 @@ function messageFromRow(message: any, index: number, toolStatuses?: Map<string, 
     if (!text && messageType === "tool") return [];
     const feedback = message.feedback as { rating?: unknown } | null | undefined;
     const rating = feedback?.rating === 1 || feedback?.rating === -1 ? feedback.rating : undefined;
+    // The plan is read back off the stored message so a reloaded thread still
+    // shows the steps that produced its answer. Absent simply means the run
+    // never published one -- never an empty list, which would render as an
+    // agent that planned nothing rather than one that never said.
+    const storedTodos = todosFromStored(inner.additional_kwargs?.todos ?? message.todos);
     return [
       {
         id: String(inner.id || (message.seq !== undefined ? `seq-${message.seq}` : `msg-${index}`)),
         role,
         content: text,
         thinking: inner.additional_kwargs?.thinking || "",
+        ...(storedTodos && storedTodos.length ? { todos: storedTodos } : {}),
         toolCalls: [
           ...((inner.tool_calls || []) as any[]).map((toolCall: any) => ({
             id: toolCall.id,
@@ -275,12 +284,14 @@ function messageFromRow(message: any, index: number, toolStatuses?: Map<string, 
   }
 
   // Legacy LangChain message shape (kept for cached/offline data).
+  const legacyTodos = todosFromStored(message.additional_kwargs?.todos);
   return [
     {
       id: message.id || `msg-${index}`,
       role: message.type === "human" || message.role === "user" ? "user" : "assistant",
       content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
       thinking: message.additional_kwargs?.thinking || "",
+      ...(legacyTodos && legacyTodos.length ? { todos: legacyTodos } : {}),
       toolCalls: (message.tool_calls || []).map((toolCall: any) => ({
         id: toolCall.id,
         name: toolCall.name,
@@ -291,6 +302,33 @@ function messageFromRow(message: any, index: number, toolStatuses?: Map<string, 
       raw: message,
     } as ChatMessage,
   ];
+}
+
+/**
+ * Read a stored plan back off a message row.
+ *
+ * Accepts both the wire shape (`{content, status}`) and the older `title`
+ * spelling, and rejects anything without usable text so a malformed row
+ * degrades to "no plan" instead of rendering empty checkboxes.
+ */
+function todosFromStored(value: unknown): TodoItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items: TodoItem[] = [];
+  for (const entry of value.slice(0, 200)) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    const content = typeof raw.content === "string" ? raw.content : typeof raw.title === "string" ? raw.title : "";
+    const trimmed = content.trim();
+    if (!trimmed) continue;
+    const status = typeof raw.status === "string" && TODO_STATUSES.has(raw.status) ? raw.status as TodoItem["status"] : "pending";
+    items.push({
+      id: typeof raw.id === "string" && raw.id ? raw.id : `todo-${items.length}`,
+      content: trimmed.length > 500 ? `${trimmed.slice(0, 499).trimEnd()}…` : trimmed,
+      status,
+      index: items.length,
+    });
+  }
+  return items;
 }
 
 /**

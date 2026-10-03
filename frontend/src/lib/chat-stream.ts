@@ -1,5 +1,5 @@
 import { apiFetch, ApiClientError } from "./api-client";
-import { createSseDecoder, createSseState, reduceSse, runIdFromLocation, streamMessages, streamTasks, StreamMessage, SubagentTask, ReplayGapEvent } from "./sse-reducer";
+import { createSseDecoder, createSseState, reduceSse, runIdFromLocation, streamMessages, streamTasks, streamTodos, StreamMessage, SubagentTask, ReplayGapEvent, TodoPlan } from "./sse-reducer";
 
 function waitForReconnect(delay: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -39,10 +39,18 @@ export async function consumeChatStream(
      * `setState` does not re-render.
      */
     onTasks?: (tasks: SubagentTask[]) => void;
+    /**
+     * The live execution plan folded from `todos_updated` custom events. Like
+     * `onTasks`, the reference is stable across frames with no plan news, so it
+     * can be handed straight to `setState`. `reportedAtAll: false` means the run
+     * has not written a plan *yet* — which is different from an empty plan, and
+     * the caller must not render a panel for it.
+     */
+    onTodos?: (plan: TodoPlan) => void;
     onEvent?: (event: ReplayGapEvent) => void;
     reconnect?: typeof apiFetch;
   },
-): Promise<{ messages: StreamMessage[]; tasks: SubagentTask[]; runId?: string; sse: boolean }> {
+): Promise<{ messages: StreamMessage[]; tasks: SubagentTask[]; todos: TodoPlan; runId?: string; sse: boolean }> {
   const contentType = response.headers?.get("Content-Type")?.split(";")[0].trim().toLowerCase();
   if (contentType && contentType !== "text/event-stream" && contentType !== "text/plain") {
     throw new ApiClientError("response");
@@ -54,7 +62,7 @@ export async function consumeChatStream(
   let retryDelay = 0;
   for (;;) {
     const reader = response.body?.getReader();
-    if (!reader) return { messages: [], tasks: streamTasks(state), runId: state.runId, sse };
+    if (!reader) return { messages: [], tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
     const decoder = new TextDecoder();
     const parser = createSseDecoder((frame) => {
       const previousGap = state.replayGap;
@@ -62,6 +70,7 @@ export async function consumeChatStream(
       if (state.replayGap && state.replayGap !== previousGap) options.onEvent?.(state.replayGap);
       options.onUpdate(streamMessages(state), state.runId);
       options.onTasks?.(streamTasks(state));
+      options.onTodos?.(streamTodos(state));
       if (state.failure) throw new ApiClientError("response");
     }, (delay) => { retryDelay = delay; });
     let transportFailed = false;
@@ -102,10 +111,10 @@ export async function consumeChatStream(
     if (options.signal.aborted) throw new ApiClientError("stopped");
     if (!sse) {
       if (transportFailed) throw new ApiClientError("network");
-      return { messages: text.trim() ? [{ id: "plain", runId: state.runId || "", content: text }] : [], tasks: streamTasks(state), runId: state.runId, sse };
+      return { messages: text.trim() ? [{ id: "plain", runId: state.runId || "", content: text }] : [], tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
     }
     if (state.failure) throw new ApiClientError("response");
-    if (state.ended) return { messages: streamMessages(state), tasks: streamTasks(state), runId: state.runId, sse };
+    if (state.ended) return { messages: streamMessages(state), tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
     if (!state.runId || !state.lastEventId || attempts++ >= 2) throw new ApiClientError("response");
     await waitForReconnect(retryDelay, options.signal);
     if (options.signal.aborted) throw new ApiClientError("stopped");
