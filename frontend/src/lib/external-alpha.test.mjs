@@ -59,6 +59,87 @@ function fixture(respond) {
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+// ── advanced surface: search, analytics, trace ──────────────────────────────
+
+test("search sends the query and preserves the FTS-availability flag", async () => {
+  const { calls, alpha } = fixture(async () =>
+    json({ query: "deploy", entries: [{ entry_id: "e1", role: "peer_message", side: "peer", text: "deploy log" }], count: 1, fts_available: false, empty_query: false }),
+  );
+  const result = await alpha.searchTranscripts({ q: "deploy" });
+  assert.match(calls[0].url, /\/api\/peer-network\/transcripts\/search\?q=deploy/);
+  assert.equal(result.count, 1);
+  // False means a substring scan ran; the UI must be able to say so.
+  assert.equal(result.fts_available, false);
+  assert.equal(result.entries[0].role, "peer_message");
+});
+
+test("an empty query is still sent, so the Gateway decides what empty means", async () => {
+  const { calls, alpha } = fixture(async () => json({ query: "", entries: [], count: 0, fts_available: true, empty_query: true }));
+  const result = await alpha.searchTranscripts({ q: "" });
+  assert.match(calls[0].url, /q=/);
+  assert.equal(result.empty_query, true);
+  assert.deepEqual(result.entries, []);
+});
+
+test("search filters are only sent when meaningful", async () => {
+  const { calls, alpha } = fixture(async () => json({ entries: [], count: 0, fts_available: true, empty_query: false }));
+  await alpha.searchTranscripts({ q: "x", conversation_id: "conv 1", direction: "inbound" });
+  assert.match(calls[0].url, /conversation_id=conv\+1/);
+  assert.match(calls[0].url, /direction=inbound/);
+
+  await alpha.searchTranscripts({ q: "x", direction: "sideways" });
+  assert.ok(!calls[1].url.includes("direction"), "an unsupported direction must not be forwarded");
+});
+
+test("search limit is clamped to the Gateway's ceiling", async () => {
+  const { calls, alpha } = fixture(async () => json({ entries: [], count: 0, fts_available: true, empty_query: false }));
+  await alpha.searchTranscripts({ q: "x", limit: 99999 });
+  assert.match(calls[0].url, /limit=200/);
+});
+
+test("analytics maps every histogram and survives a non-object payload", async () => {
+  const { calls, alpha } = fixture(async () =>
+    json({ totals: { messages: 12, peers: 2 }, conversations: 3, modes: { direct: 3 }, kinds: null, directions: { inbound: 7 }, statuses: { delivered: 12 }, fts_available: true, retention_days: 90 }),
+  );
+  const analytics = await alpha.getTranscriptAnalytics();
+  assert.equal(calls[0].url, "/api/peer-network/transcripts/analytics");
+  assert.equal(analytics.totals.messages, 12);
+  assert.equal(analytics.conversations, 3);
+  // A null histogram becomes {}, never undefined — the UI must not have to tell
+  // "no data" apart from "field missing".
+  assert.deepEqual(analytics.kinds, {});
+  assert.deepEqual(analytics.directions, { inbound: 7 });
+  assert.equal(analytics.retention_days, 90);
+});
+
+test("analytics drops non-numeric counts instead of rendering NaN", async () => {
+  const { alpha } = fixture(async () => json({ totals: { messages: "lots" }, kinds: { chat: "many" }, conversations: 2 }));
+  const analytics = await alpha.getTranscriptAnalytics();
+  assert.equal(analytics.totals.messages, undefined);
+  assert.deepEqual(analytics.kinds, {});
+});
+
+test("the turn trace route is read and its honesty note preserved", async () => {
+  const { calls, alpha } = fixture(async () =>
+    json({ conversation_id: "c1", run_id: "r1", traces: [{ event_id: "e1", severity: "error", event_type: "tool.failed" }], count: 1, scanned: 3, has_more: false, after_seq: 9, note: "An empty list is not proof the turn did no work." }),
+  );
+  const trace = await alpha.getTurnTrace("c1", "r1");
+  assert.equal(calls[0].url, "/api/peer-network/transcripts/c1/turns/r1/trace");
+  assert.equal(trace.count, 1);
+  assert.equal(trace.traces[0].severity, "error");
+  assert.equal(trace.after_seq, 9);
+  // The Gateway's caveat is carried to the UI verbatim.
+  assert.match(trace.note, /not proof/);
+});
+
+test("an empty trace still carries the note rather than a bare list", async () => {
+  const { alpha } = fixture(async () => json({ conversation_id: "c1", run_id: "r1", traces: [], count: 0, has_more: false, note: "only runs whose writer emitted them" }));
+  const trace = await alpha.getTurnTrace("c1", "r1");
+  assert.deepEqual(trace.traces, []);
+  assert.equal(trace.count, 0);
+  assert.ok(trace.note.length > 0);
+});
+
 // ── routes and verbs ────────────────────────────────────────────────────────
 
 test("the transcript index reads the list route", async () => {
@@ -245,9 +326,45 @@ test("the live stream goes through apiFetch, not a bare endpoint string", () => 
 test("contract pin: the Gateway really declares the transcript routes", () => {
   const read = (rel) => readFileSync(new URL(`../../../${rel}`, import.meta.url), "utf8");
   const router = read("backend/app/gateway/routers/peer_network.py");
-  for (const path of ["/transcripts", "/transcripts/{conversation_id}", "/transcripts/{conversation_id}/turns/{run_id}", "/transcripts/{conversation_id}/export"]) {
+  for (const path of [
+    "/transcripts",
+    "/transcripts/search",
+    "/transcripts/analytics",
+    "/transcripts/{conversation_id}",
+    "/transcripts/{conversation_id}/turns/{run_id}",
+    "/transcripts/{conversation_id}/turns/{run_id}/trace",
+    "/transcripts/{conversation_id}/export",
+  ]) {
     assert.ok(router.includes(path), `peer_network.py no longer declares ${path}`);
   }
+});
+
+test("contract pin: literal sub-paths are declared before the parameterised route", () => {
+  // Starlette matches in declaration order. If `/transcripts/{conversation_id}`
+  // came first it would swallow `/transcripts/search` and answer
+  // "Conversation 'search' not found", making search unreachable from the UI.
+  const read = (rel) => readFileSync(new URL(`../../../${rel}`, import.meta.url), "utf8");
+  const router = read("backend/app/gateway/routers/peer_network.py");
+  const searchAt = router.indexOf('@router.get("/transcripts/search"');
+  const analyticsAt = router.indexOf('@router.get("/transcripts/analytics"');
+  const catchAllAt = router.indexOf('@router.get("/transcripts/{conversation_id}"');
+  assert.ok(searchAt > 0 && analyticsAt > 0 && catchAllAt > 0, "a transcript route is missing");
+  assert.ok(searchAt < catchAllAt, "/transcripts/search must precede the {conversation_id} catch-all");
+  assert.ok(analyticsAt < catchAllAt, "/transcripts/analytics must precede the {conversation_id} catch-all");
+});
+
+test("contract pin: the FTS index keeps itself current rather than trusting a count", () => {
+  const read = (rel) => readFileSync(new URL(`../../../${rel}`, import.meta.url), "utf8");
+  const storage = read("backend/packages/harness/alpha/peer_network/storage.py");
+  // External-content FTS tables are not self-populating.
+  for (const trigger of ["messages_fts_ai", "messages_fts_ad", "messages_fts_au"]) {
+    assert.ok(storage.includes(trigger), `missing ${trigger} — an external-content index would never update`);
+  }
+  assert.match(storage, /'rebuild'/);
+  // The backfill guard must not be a count: count(*) on an external-content FTS
+  // table reads the shadow tables and reports a plausible number for an empty
+  // live index, so search would silently break.
+  assert.ok(!/count\(\*\)\s*FROM messages_fts/.test(storage), "the backfill guard must not count FTS rows");
 });
 
 test("contract pin: the transcript projection is an allowlist over peer fields", () => {

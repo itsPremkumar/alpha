@@ -37,24 +37,33 @@ import { Badge, Btn, EmptyState, ErrorBox, Notice, Section, SkeletonList, inputC
 import {
   exportTranscript,
   getTranscript,
+  getTranscriptAnalytics,
   getTurnForensics,
+  getTurnTrace,
   isTranscriptEvent,
   listTranscripts,
+  searchTranscripts,
   subscribePeerEvents,
   transcriptRoleLabel,
   type PeerStreamEvent,
+  type TraceEnvelope,
   type Transcript,
+  type TranscriptAnalytics,
   type TranscriptEntry,
   type TranscriptIndexEntry,
+  type TranscriptSearchResult,
   type TranscriptTurnDetail,
+  type TurnTrace,
 } from "@/lib/external-alpha";
 import { errMsg } from "@/lib/http";
 import { clockTime, hasTime } from "@/lib/time";
 
-type SubTab = "conversations" | "timeline" | "forensics";
+type SubTab = "conversations" | "search" | "timeline" | "forensics" | "overview";
 
 const SUB_TABS: Array<{ id: SubTab; label: string }> = [
+  { id: "overview", label: "Overview" },
   { id: "conversations", label: "Conversations" },
+  { id: "search", label: "Search" },
   { id: "timeline", label: "Live timeline" },
   { id: "forensics", label: "Forensics" },
 ];
@@ -280,6 +289,91 @@ function TurnForensics({ conversationId, runId }: { conversationId: string; runI
   );
 }
 
+/** Counted-by-server histogram. Renders nothing for an empty map rather than a blank card. */
+function Histogram({ title, data }: { title: string; data: Record<string, number> }) {
+  const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    return (
+      <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{title}</div>
+        <div className="text-[11px] text-muted-foreground italic">Nothing recorded.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{title}</div>
+      <div className="space-y-0.5">
+        {entries.map(([key, count]) => (
+          <div key={key} className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="font-mono truncate">{key}</span>
+            <span className="text-muted-foreground shrink-0">{count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TracePanel({ conversationId, runId }: { conversationId: string; runId: string }) {
+  const [data, setData] = useState<TurnTrace | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await getTurnTrace(conversationId, runId));
+      setError(null);
+    } catch (cause) {
+      setError(errMsg(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId, runId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) return <SkeletonList rows={2} />;
+  if (error) return <ErrorBox message={`Behaviour trace: ${error}`} onRetry={() => void load()} />;
+  if (!data) return null;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-semibold">Behaviour trace</span>
+        <Badge tone="gray">{data.count} envelopes</Badge>
+        {data.has_more && <Badge tone="amber">more available</Badge>}
+      </div>
+      {/* The Gateway's own note is shown rather than an invented empty state: an
+          empty trace list is not proof the turn did nothing. */}
+      {data.count === 0 ? (
+        <EmptyState title="No behaviour traces recorded" hint={data.note} />
+      ) : (
+        <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+          {data.traces.map((trace) => (
+            <div key={trace.event_id ?? `${trace.seq}`} className="rounded-lg border border-border/60 bg-card/30 px-2 py-1.5">
+              <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                <Badge tone={(trace.severity === "error" || trace.severity === "fatal") ? "red" : "gray"}>{trace.severity ?? "not reported"}</Badge>
+                <span className="font-mono">{trace.event_type ?? "unknown"}</span>
+                {trace.agent_name && <span className="text-muted-foreground">{trace.agent_name}</span>}
+                {trace.node && <span className="text-muted-foreground font-mono">{trace.node}</span>}
+                {trace.seq != null && <span className="text-muted-foreground ml-auto">#{trace.seq}</span>}
+              </div>
+              <div className="text-[10px] font-mono text-muted-foreground mt-0.5 break-words">
+                {trace.payload_bytes != null ? `${trace.payload_bytes} B` : ""}
+                {trace.payload_sha256 ? ` sha256:${trace.payload_sha256.slice(0, 12)}` : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ExternalAlphaSection() {
   const [tab, setTab] = useState<SubTab>("conversations");
   const [index, setIndex] = useState<TranscriptIndexEntry[]>([]);
@@ -295,6 +389,13 @@ export function ExternalAlphaSection() {
   const [events, setEvents] = useState<PeerStreamEvent[]>([]);
   const [gaps, setGaps] = useState<string[]>([]);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const [analytics, setAnalytics] = useState<TranscriptAnalytics | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchDirection, setSearchDirection] = useState<"inbound" | "outbound" | "">("");
+  const [searchResults, setSearchResults] = useState<TranscriptSearchResult | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setRefreshing(true);
@@ -330,6 +431,45 @@ export function ExternalAlphaSection() {
     }, 10000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  // Analytics is loaded lazily on first use of the Overview tab, so opening the
+  // tab does not pay for counts nobody is looking at.
+  useEffect(() => {
+    if (tab !== "overview" || analytics) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await getTranscriptAnalytics();
+        if (!cancelled) {
+          setAnalytics(next);
+          setAnalyticsError(null);
+        }
+      } catch (cause) {
+        if (!cancelled) setAnalyticsError(errMsg(cause));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, analytics]);
+
+  const runSearch = useCallback(async () => {
+    setSearching(true);
+    try {
+      setSearchResults(
+        await searchTranscripts({
+          q: searchQuery,
+          direction: searchDirection === "" ? null : searchDirection,
+          conversation_id: selectedId,
+        }),
+      );
+      setSearchError(null);
+    } catch (cause) {
+      setSearchError(errMsg(cause));
+    } finally {
+      setSearching(false);
+    }
+  }, [searchQuery, searchDirection, selectedId]);
 
   useEffect(() => {
     if (selectedId) void loadTranscript(selectedId);
@@ -423,6 +563,108 @@ export function ExternalAlphaSection() {
           </button>
         ))}
       </div>
+
+      {tab === "overview" && (
+        <div className="space-y-3">
+          {analyticsError && <ErrorBox message={`Overview: ${analyticsError}`} />}
+          {!analytics && !analyticsError && <SkeletonList rows={4} />}
+          {analytics && (
+            <>
+              <div className="grid gap-2 md:grid-cols-4">
+                <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Messages stored</div>
+                  <div className="text-[15px] font-semibold">{analytics.totals.messages ?? 0}</div>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Conversations</div>
+                  <div className="text-[15px] font-semibold">{analytics.conversations}</div>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Peers known</div>
+                  <div className="text-[15px] font-semibold">{analytics.totals.peers ?? 0}</div>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">History retained</div>
+                  <div className="text-[15px] font-semibold">{analytics.retention_days}d</div>
+                </div>
+              </div>
+              {!analytics.fts_available && (
+                <Notice message="This Python build has no FTS5, so search falls back to a bounded substring scan. Search still works but is not ranked and matches whole words only." />
+              )}
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                <Histogram title="By direction" data={analytics.directions} />
+                <Histogram title="By status" data={analytics.statuses} />
+                <Histogram title="By topology" data={analytics.modes} />
+                <Histogram title="By kind" data={analytics.kinds} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === "search" && (
+        <div className="space-y-2">
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="flex-1 min-w-[16rem]">
+              <label className="block text-[11px] font-semibold mb-1" htmlFor="peer-transcript-search">
+                Search all peer conversations
+              </label>
+              <div className="relative">
+                <Search className="size-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                <input
+                  id="peer-transcript-search"
+                  className={`${inputCls} pl-8`}
+                  placeholder="word, phrase, or any message body"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void runSearch();
+                  }}
+                />
+              </div>
+            </div>
+            <select
+              className={inputCls}
+              value={searchDirection}
+              onChange={(event) => setSearchDirection(event.target.value as "inbound" | "outbound" | "")}
+              aria-label="Filter search by direction"
+            >
+              <option value="">Both directions</option>
+              <option value="inbound">From peers</option>
+              <option value="outbound">Sent by this Alpha</option>
+            </select>
+            <Btn onClick={() => void runSearch()} disabled={searching}>
+              Search
+            </Btn>
+          </div>
+          {selectedId && <div className="text-[10px] text-muted-foreground">Scoped to the selected conversation.</div>}
+          {searchError && <ErrorBox message={`Search: ${searchError}`} onRetry={() => void runSearch()} />}
+          {searchResults && (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge tone="gray">{searchResults.count} results</Badge>
+                {/* Ranked FTS and a substring scan are different quality, so the
+                    UI names which one ran rather than calling both "search". */}
+                <Badge tone={searchResults.fts_available ? "green" : "amber"}>
+                  {searchResults.fts_available ? "ranked full-text" : "substring scan"}
+                </Badge>
+              </div>
+              {searchResults.count === 0 ? (
+                <EmptyState
+                  title={searchResults.empty_query ? "Type something to search" : "No messages matched"}
+                  hint="A miss is not proof the message was never sent. Retention prunes delivered history after the reported window."
+                />
+              ) : (
+                <div className="space-y-1.5 max-h-[30rem] overflow-y-auto pr-1">
+                  {searchResults.entries.map((entry) => (
+                    <TranscriptRow key={entry.entry_id} entry={entry} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {tab === "conversations" && (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
@@ -562,6 +804,9 @@ export function ExternalAlphaSection() {
                 <div key={runId} className="space-y-1">
                   <div className="text-[10px] font-mono text-muted-foreground">{runId}</div>
                   <TurnForensics conversationId={selectedId} runId={runId} />
+                  {/* The deeper layer: per-span behaviour, tool outcomes and
+                      error codes, which the conversation feed does not carry. */}
+                  <TracePanel conversationId={selectedId} runId={runId} />
                 </div>
               ))}
             </>

@@ -28,6 +28,7 @@ from alpha.peer_network.transcript import (
     MAX_TRANSCRIPT_ENTRIES,
     MAX_TURN_EVENTS,
     interleave,
+    peer_message_entry,
     peer_run_metadata,
     public_peer_summary,
     runs_for_conversation,
@@ -444,6 +445,44 @@ def _record_to_row(record: Any) -> dict[str, Any]:
     }
 
 
+@router.get("/transcripts/search", summary="Full-text search across all peer conversation history")
+@require_permission("threads", "read")
+async def search_transcripts(
+    request: Request,
+    q: str = "",
+    limit: int = 50,
+    conversation_id: str | None = None,
+    direction: str | None = None,
+) -> dict[str, Any]:
+    await _assert_peer_network_scope(request)
+    service = _service()
+    messages = await _call(
+        service.search_messages(
+            q,
+            limit=max(1, min(int(limit), 200)),
+            conversation_id=conversation_id,
+            direction=direction if direction in {"inbound", "outbound"} else None,
+        )
+    )
+    entries = [peer_message_entry(message) for message in messages]
+    return {
+        "query": q,
+        "entries": entries,
+        "count": len(entries),
+        # Reported so the UI can say "ranked search" vs "substring scan" rather
+        # than implying the same quality either way.
+        "fts_available": bool(service.store.fts_available),
+        "empty_query": not (q or "").strip(),
+    }
+
+
+@router.get("/transcripts/analytics", summary="Measured traffic analytics for the peer plane")
+@require_permission("threads", "read")
+async def transcript_analytics(request: Request) -> dict[str, Any]:
+    await _assert_peer_network_scope(request)
+    return await _call(_service().analytics())
+
+
 @router.get("/transcripts", summary="List cross-installation conversations with measured counts")
 @require_permission("threads", "read")
 async def list_transcripts(request: Request, limit: int = 50) -> dict[str, Any]:
@@ -498,6 +537,46 @@ async def get_transcript(conversation_id: str, request: Request, limit: int = 10
         "truncated": len(entries) < (len(messages) + len(turns)),
         "counts": {"messages": len(messages), "turns": len(turns)},
     }
+
+
+@router.get("/transcripts/{conversation_id}/turns/{run_id}/trace", summary="Behaviour-trace envelopes for one peer turn")
+@require_permission("threads", "read")
+async def get_turn_trace(conversation_id: str, run_id: str, request: Request, limit: int = 200) -> dict[str, Any]:
+    """Return the behaviour-trace rows for one peer turn.
+
+    The run-events feed is what a conversation shows; the behaviour trace is the
+    deeper layer -- per-layer spans, tool outcomes, error codes, subagent
+    attribution. It is a separate route because it is a different audience and a
+    different volume.
+
+    Trace payloads are already redacted by the writer
+    (`alpha.observability.trace.redaction`), so they pass through unchanged
+    rather than being re-projected here.
+    """
+
+    from alpha.observability.trace.query import TraceFilter, envelopes_from_run_events
+    from alpha.observability.trace.query import query as query_trace
+
+    await _assert_peer_network_scope(request)
+    turns = await _peer_runs_for_conversation(request, conversation_id)
+    for row in turns:
+        if row.get("run_id") != run_id:
+            continue
+        envelopes = envelopes_from_run_events(row.get("events") or [])
+        page = query_trace(envelopes, TraceFilter(), limit=max(1, min(int(limit), 500)))
+        return {
+            "conversation_id": conversation_id,
+            "run_id": run_id,
+            "traces": [envelope.to_record() for envelope in page.events],
+            "count": len(page.events),
+            "scanned": page.scanned,
+            "has_more": page.has_more,
+            "after_seq": page.after_seq,
+            # A row that is not a trace row produces no envelope. Saying so is
+            # more useful than an empty list that reads as "no behaviour".
+            "note": "Behaviour traces exist only for runs whose writer emitted them. An empty list is not proof the turn did no work.",
+        }
+    raise HTTPException(status_code=404, detail=f"Peer turn '{run_id}' not found in conversation '{conversation_id}'")
 
 
 @router.get("/transcripts/{conversation_id}/turns/{run_id}", summary="Read one peer turn in full: events, tools, tokens")

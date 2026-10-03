@@ -56,10 +56,46 @@ test("the section is exported both ways ChatView consumes it", () => {
   assert.match(section, /export default ExternalAlphaSection/);
 });
 
-test("the section has all three sub-tabs", () => {
-  for (const tab of ["conversations", "timeline", "forensics"]) {
+test("the section has every sub-tab", () => {
+  for (const tab of ["overview", "conversations", "search", "timeline", "forensics"]) {
     assert.match(section, new RegExp(`id: "${tab}"`));
   }
+});
+
+// ── the advanced surface ───────────────────────────────────────────────────
+
+test("search and analytics are wired to the Gateway, not faked locally", () => {
+  assert.match(section, /searchTranscripts/);
+  assert.match(section, /getTranscriptAnalytics/);
+});
+
+test("a search miss is not presented as proof nothing was sent", () => {
+  // Retention prunes history, so "no results" has at least two causes and the UI
+  // must not pick the reassuring one.
+  assert.match(section, /not proof the message was never sent/);
+});
+
+test("search quality is named rather than implied", () => {
+  // Ranked FTS and a substring scan are different; calling both "search" would
+  // overstate the fallback.
+  assert.match(section, /ranked full-text/);
+  assert.match(section, /substring scan/);
+});
+
+test("the behaviour-trace empty state keeps the Gateway's caveat", () => {
+  // An empty trace list means "the writer emitted none", not "nothing happened".
+  assert.match(section, /hint=\{data\.note\}/);
+  assert.match(section, /No behaviour traces recorded/);
+});
+
+test("an unavailable FTS5 build is stated, not silently degraded", () => {
+  assert.match(section, /no FTS5/);
+  assert.match(section, /analytics\.fts_available/);
+});
+
+test("analytics numbers are server-measured, not summed client-side", () => {
+  // Rendering a locally-counted total would let a partial page look complete.
+  assert.match(section, /analytics\.totals\.messages/);
 });
 
 // ── honesty guarantees the tab must not lose ────────────────────────────────

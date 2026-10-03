@@ -367,15 +367,81 @@ prompt.
 
 ```text
 GET    /api/peer-network/transcripts
+GET    /api/peer-network/transcripts/search?q=&limit=&conversation_id=&direction=
+GET    /api/peer-network/transcripts/analytics
 GET    /api/peer-network/transcripts/{conversation_id}
 GET    /api/peer-network/transcripts/{conversation_id}/turns/{run_id}
+GET    /api/peer-network/transcripts/{conversation_id}/turns/{run_id}/trace
 GET    /api/peer-network/transcripts/{conversation_id}/export
 ```
+
+`search` and `analytics` are declared **before** the `{conversation_id}`
+catch-all. Unlike the existing `/conversations/{conversation_id}` route, these two
+literals share a path segment with a parameterised route, so Starlette would
+answer them with "Conversation 'search' not found" if the order slipped — the same
+trap as `skills/{skill_name}` and `workflows/{workflow_id}`.
 
 Read-only. The only write routes in this plane stay where they were, and the
 admin gates on `auto-reply`, `pair/rotate` and `github/publish` are unchanged —
 a peer still cannot grant itself the ability to spend this installation's
 budget.
+
+### Search (FTS5, free)
+
+Peer message bodies are searchable across the whole installation's history using
+SQLite's built-in FTS5 — no external search service, no extra dependency.
+
+| Property | Behaviour |
+|---|---|
+| Index type | `fts5`, external-content over `messages.rowid`, `unicode61 remove_diacritics 2` |
+| Storage | No second copy of the body; the index resolves through `messages` |
+| Ranking | `bm25`, most relevant first |
+| Fallback | A bounded, escaped `LIKE` scan when the interpreter has no FTS5 |
+
+Four mechanisms make this correct, and each one is load-bearing:
+
+- **Triggers.** An external-content FTS table is *not* self-populating. A fresh
+  `CREATE VIRTUAL TABLE` over an existing table searches nothing, and later
+  `INSERT`s are equally invisible — so without insert/update/delete triggers
+  search would return nothing forever while looking completely healthy.
+- **A one-time rebuild.** Triggers only cover rows written after they exist, so a
+  database that already has messages needs one `rebuild` pass.
+- **That rebuild commits on its own.** `rebuild` is not ordinary DML: it populates
+  an in-memory index that only joins the transaction once it is read, so a
+  rollback leaves the shadow table reporting a correct row count while `MATCH`
+  finds nothing.
+- **The backfill guard asks a question rather than counting.** `SELECT count(*)`
+  on an external-content FTS table reads the *shadow* tables, so it reports a
+  plausible number for an empty live index. The guard instead runs a probe
+  `MATCH`; no hits means nothing is indexed, so the rebuild fires. That also makes
+  startup self-healing for a damaged index.
+
+Diacritics fold, so a peer writing `résumé` is findable by an operator typing
+`resume`. Malformed FTS expressions (an unbalanced quote, a bare operator) fall
+back to the scan rather than raising, and `%`/`_` are escaped in that fallback
+so a wildcard cannot return the whole mailbox.
+
+When FTS5 is unavailable the response carries `fts_available: false` and the UI
+says "substring scan" rather than implying ranked full-text search.
+
+### Analytics
+
+`GET /transcripts/analytics` returns counted histograms — by direction, status,
+topology and kind — plus the effective retention window and FTS availability.
+Every number is counted in SQL from the rows that exist. Nothing is inferred from
+a peer's *declared* card: a peer advertising fifty kinds of work is counted only
+against what actually arrived.
+
+### Behaviour-trace drill-down
+
+`GET /transcripts/{id}/turns/{run_id}/trace` returns the
+`alpha.observability` envelopes for one turn — per-layer spans, tool outcomes,
+error codes and subagent attribution. Trace payloads are already redacted by the
+writer, so they pass through unchanged.
+
+The response carries an explicit `note`, because an empty trace list has a benign
+cause: a turn whose writer emitted no envelopes. The UI renders that note instead
+of an invented "nothing happened".
 
 ### Live events
 

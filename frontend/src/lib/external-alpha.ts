@@ -293,6 +293,124 @@ function toIndexEntry(raw: unknown): TranscriptIndexEntry {
   };
 }
 
+export interface TranscriptSearchResult {
+  query: string;
+  entries: TranscriptEntry[];
+  count: number;
+  /**
+   * Whether the Gateway used FTS5 ranking. When false it fell back to a bounded
+   * substring scan, which finds fewer things — so the UI says "substring
+   * match" rather than implying ranked full-text search either way.
+   */
+  fts_available: boolean;
+  empty_query: boolean;
+}
+
+export interface TranscriptAnalytics {
+  totals: Record<string, number>;
+  conversations: number;
+  modes: Record<string, number>;
+  kinds: Record<string, number>;
+  directions: Record<string, number>;
+  statuses: Record<string, number>;
+  fts_available: boolean;
+  retention_days: number;
+}
+
+export interface TraceEnvelope {
+  schema_version?: number;
+  event_id?: string | null;
+  seq?: number | null;
+  event_type?: string | null;
+  trace_id?: string | null;
+  agent_name?: string | null;
+  agent_depth?: number | null;
+  node?: string | null;
+  layer?: number | null;
+  severity?: string | null;
+  ts_wall?: string | null;
+  payload_bytes?: number | null;
+  payload_sha256?: string | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface TurnTrace {
+  conversation_id: string;
+  run_id: string;
+  traces: TraceEnvelope[];
+  count: number;
+  scanned: number;
+  has_more: boolean;
+  after_seq: number | null;
+  note: string;
+}
+
+export async function searchTranscripts(options: {
+  q: string;
+  limit?: number;
+  conversation_id?: string | null;
+  direction?: "inbound" | "outbound" | null;
+}): Promise<TranscriptSearchResult> {
+  const query = new URLSearchParams();
+  // An empty q is sent rather than short-circuited, so the Gateway stays the
+  // authority on "no query means no results".
+  query.set("q", options.q);
+  query.set("limit", String(Math.max(1, Math.min(options.limit ?? 50, 200))));
+  if (options.conversation_id) query.set("conversation_id", options.conversation_id);
+  if (options.direction === "inbound" || options.direction === "outbound") query.set("direction", options.direction);
+  const body = await get<Record<string, unknown>>(`/peer-network/transcripts/search?${query.toString()}`);
+  return {
+    query: str(body, "query", options.q),
+    entries: asList(body, ["entries"]).map(toEntry),
+    count: num(body, "count"),
+    fts_available: body.fts_available === true,
+    empty_query: body.empty_query === true,
+  };
+}
+
+export async function getTranscriptAnalytics(): Promise<TranscriptAnalytics> {
+  const body = await get<Record<string, unknown>>("/peer-network/transcripts/analytics");
+  return {
+    totals: Object.fromEntries(
+      Object.entries(record(body.totals)).flatMap(([key, value]) =>
+        typeof value === "number" && Number.isFinite(value) ? [[key, value] as [string, number]] : [],
+      ),
+    ),
+    conversations: num(body, "conversations"),
+    modes: countMap(body.modes),
+    kinds: countMap(body.kinds),
+    directions: countMap(body.directions),
+    statuses: countMap(body.statuses),
+    fts_available: body.fts_available === true,
+    retention_days: num(body, "retention_days"),
+  };
+}
+
+export async function getTurnTrace(conversationId: string, runId: string): Promise<TurnTrace> {
+  const body = await get<Record<string, unknown>>(
+    `/peer-network/transcripts/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(runId)}/trace`,
+  );
+  return {
+    conversation_id: str(body, "conversation_id", conversationId),
+    run_id: str(body, "run_id", runId),
+    traces: asList(body, ["traces"]).map((raw) => record(raw)),
+    count: num(body, "count"),
+    scanned: num(body, "scanned"),
+    has_more: body.has_more === true,
+    after_seq: typeof body.after_seq === "number" ? body.after_seq : null,
+    note: str(body, "note"),
+  };
+}
+
+/** Coerce a `{key: count}` histogram; a non-object becomes an empty map, never `{}`-vs-missing ambiguity. */
+function countMap(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(record(value)).flatMap(([key, count]) =>
+      typeof count === "number" && Number.isFinite(count) ? [[key, count] as [string, number]] : [],
+    ),
+  );
+}
+
 export async function listTranscripts(options: { limit?: number } = {}): Promise<TranscriptIndex> {
   const limit = Math.max(1, Math.min(options.limit ?? 50, 200));
   const body = await get<Record<string, unknown>>(`/peer-network/transcripts?limit=${limit}`);

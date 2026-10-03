@@ -764,6 +764,51 @@ class PeerNetworkService:
     async def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
         return await self._run_store(self.store.get_conversation, conversation_id)
 
+    async def search_messages(
+        self,
+        needle: str,
+        *,
+        limit: int = 50,
+        conversation_id: str | None = None,
+        direction: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Full-text search across the installation's whole peer history.
+
+        Returns the stored rows unchanged; projecting them for a response is
+        `alpha.peer_network.transcript`'s job, so a search result cannot leak a
+        field that the transcript view deliberately withholds.
+        """
+
+        return await self._run_store(
+            self.store.search_messages,
+            needle,
+            limit=limit,
+            conversation_id=conversation_id,
+            direction=direction,
+        )
+
+    async def analytics(self) -> dict[str, Any]:
+        """Aggregate measured traffic facts for the External Alpha overview.
+
+        Every number here is counted from the rows that exist. In particular
+        nothing is inferred from a peer's *declared* card: a peer that says it
+        can do 50 kinds of work is counted against what actually arrived.
+        """
+
+        conversations = await self.list_conversations()
+        totals = await self._run_store(self.store.counts)
+        rows = await self._run_store(self.store.message_stats)
+        return {
+            "totals": totals,
+            "conversations": len(conversations),
+            "modes": rows.get("modes") or {},
+            "kinds": rows.get("kinds") or {},
+            "directions": rows.get("directions") or {},
+            "statuses": rows.get("statuses") or {},
+            "fts_available": bool(self.store.fts_available),
+            "retention_days": self.retention_days,
+        }
+
     async def get_messages(self, conversation_id: str, limit: int = 200) -> list[dict[str, Any]]:
         if await self.get_conversation(conversation_id) is None:
             raise KeyError(conversation_id)

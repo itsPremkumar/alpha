@@ -56,6 +56,16 @@ Retention prunes delivered/read history only, floored at 7 days
 messages or conversations, and it rides the existing retry loop rather than
 adding a background task.
 
+## Search (`storage.py`)
+
+Message bodies are searchable via SQLite FTS5 — free, in stdlib, no service. Read
+`_ensure_fts_index`'s docstring before touching it: an external-content FTS table
+is not self-populating, its `rebuild` is not ordinary DML, and `count(*)` on it
+reads the shadow tables rather than the live index. All three are load-bearing
+and each has a regression test in `tests/test_external_alpha_fts.py`. FTS5
+availability is a property of the interpreter, so it is detected, reported as
+`fts_available`, and degrades to a bounded escaped `LIKE` scan.
+
 Regression coverage: `backend/tests/test_peer_network.py`,
 `backend/tests/test_bots_dm.py`, `backend/tests/test_external_alpha_*.py`, and
 the frontend `external-alpha*.test.mjs` contract pins. Full operations and
