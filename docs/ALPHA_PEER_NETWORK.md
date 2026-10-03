@@ -177,6 +177,7 @@ POST   /api/peer-network/github/publish (admin-only)
 POST   /api/peer-network/pair
 POST   /api/peer-network/pair/rotate
 PATCH  /api/peer-network/peers/{agent_id}/trust
+PATCH  /api/peer-network/peers/{agent_id}/auto-reply (admin-only)
 POST   /api/peer-network/conversations
 GET    /api/peer-network/conversations
 GET    /api/peer-network/conversations/{id}
@@ -184,7 +185,11 @@ GET    /api/peer-network/conversations/{id}/messages
 POST   /api/peer-network/conversations/{id}/messages
 POST   /api/peer-network/messages
 POST   /api/peer-network/messages/{id}/read
-GET    /api/peer-network/events       (bounded SSE event stream)
+GET    /api/peer-network/transcripts
+GET    /api/peer-network/transcripts/{id}
+GET    /api/peer-network/transcripts/{id}/turns/{run_id}
+GET    /api/peer-network/transcripts/{id}/export
+GET    /api/peer-network/events       (SSE stream; `Last-Event-ID` replay)
 ```
 
 Narrow public routes:
@@ -282,3 +287,124 @@ pnpm test
 The UI is a separate **Alpha Network** workspace tab. It has honest loading,
 empty, error, provider-state, pairing, topology, and per-recipient delivery
 states. It does not turn a failed Gateway request into an empty peer list.
+
+A second workspace tab, **External Alpha**, reads the cross-installation
+*history* that Alpha Network does not show. See
+[External Alpha transcripts](#external-alpha-transcripts) below.
+
+## External Alpha transcripts
+
+Alpha Network is the control surface (discover, pair, send). **External Alpha**
+is the read surface: every conversation this installation exchanged with another
+Alpha, including the local Agent turn that answered each remote message.
+
+### Why a second tab
+
+The two sides of a cross-installation conversation live in two stores that have
+no join key the UI can use:
+
+| Side | Stored by | Contains |
+| --- | --- | --- |
+| Remote envelope | `peer_network/network.sqlite3` | what a peer sent, per-recipient receipts |
+| Local Agent turn | the run event store | what this installation replied, tool calls, timings, tokens |
+
+`RunCreateRequest.metadata.peer_network` stamps `message_id` /
+`conversation_id` / `peer_agent_id` on the run, so the join exists;
+`alpha.peer_network.transcript` owns the projection and the Gateway exposes it
+under `/api/peer-network/transcripts/*`.
+
+### The local reply is already durable
+
+A peer turn is dispatched with `hide_from_ui` on its triggering human message
+(`app.gateway.services.launch_peer_network_agent_turn`), which keeps the framed
+untrusted prompt out of the ordinary chat feed. That flag does **not** suppress
+the run's events: `RunJournal.on_llm_end` persists AI replies and tool results
+unconditionally. The local half of every peer turn is therefore already stored,
+and this feature only has to find and project it.
+
+### Why these routes omit `owner_check`
+
+The transcript routes use `@require_permission("threads", "read")` **without**
+`owner_check=True`, which would otherwise be mandatory for a run-detail route.
+A peer turn runs on `peer_thread_id(peer_agent_id)` owned by
+`NETWORK_OWNER = "installation"` — a constant, never a session user id — so
+`owner_check` resolves the caller against a thread they do not own and would
+404 the operator who owns this very installation, making the history permanently
+unreadable.
+
+`_assert_peer_network_scope` is the deliberate substitute: an explicit allow-check
+that admits an authenticated local caller with `threads:read` or the internal
+system role, and refuses anything else. It fails closed. This is documented at
+the call site so the missing decorator reads as a decision rather than an
+oversight.
+
+### What is never exposed
+
+Responses are built by an **allowlist**, not a filter — the peer row is readable
+with `url`, `websocket_url`, `outbound_token`, `token_hash` and the full Agent
+Card, and none of them reach a response body. An allowlist means a field added to
+the peer row later cannot leak by omission. This mirrors
+`_public_peer` in `alpha.tools.builtins.peer_network_tool`.
+
+Peer text is untrusted data from another machine. It is rendered as escaped text
+and is never injected as raw HTML, never executed, and never promoted into a
+prompt.
+
+### Honesty rules the tab enforces
+
+- **Two sides, never merged.** A `peer_message` entry and a `local_reply` entry
+  render and label differently. A merged stream would let a reader believe a
+  remote peer said something the local Agent said.
+- **"Disabled" is not "no traffic".** The plane defaults **off**
+  (`ALPHA_PEER_NETWORK_ENABLED`); an off plane says so instead of showing an
+  empty list.
+- **Bounded is not complete.** `truncated` and `events_truncated` are rendered as
+  warnings, and delivery receipts stay per-recipient so a partial fan-out never
+  renders as a successful group send.
+- **A failed request is never an empty list.**
+
+### API surface
+
+```text
+GET    /api/peer-network/transcripts
+GET    /api/peer-network/transcripts/{conversation_id}
+GET    /api/peer-network/transcripts/{conversation_id}/turns/{run_id}
+GET    /api/peer-network/transcripts/{conversation_id}/export
+```
+
+Read-only. The only write routes in this plane stay where they were, and the
+admin gates on `auto-reply`, `pair/rotate` and `github/publish` are unchanged —
+a peer still cannot grant itself the ability to spend this installation's
+budget.
+
+### Live events
+
+`GET /api/peer-network/events` now carries a monotonic SSE `id` per event and
+honours `Last-Event-ID` on reconnect (header or `?last_event_id=`). A
+reconnecting client whose cursor predates the retained ring receives an explicit
+`stream.reset` telling it to re-fetch the REST snapshot, and a subscriber that
+falls behind receives `stream.overflow` with the dropped count. A silent
+dropped event would render a continuous timeline the client never received.
+
+The replay ring is **process-local and bounded** (last 500 events). It is a
+reconnect convenience, not a durable event log — the SQLite store is the
+authority. This is the same single-process honesty the rest of this plane keeps.
+
+### Retention
+
+Delivered/read history is pruned after
+`ALPHA_PEER_NETWORK_RETENTION_DAYS` (default **90**, floored at **7**). The floor
+is a safety floor: `0` would otherwise delete an operator's entire
+cross-installation transcript on the next tick.
+
+Two things are deliberately **not** pruned:
+
+- **Undelivered messages.** A `queued` or `failed` outbound row is still awaiting
+  delivery by the retry loop; deleting it would silently drop a message the
+  operator believes was sent.
+- **Conversations.** An empty conversation still records which peers ever talked,
+  so removing it would erase history instead of bounding it.
+
+Delivery receipts cascade with their message, so a receipt can never outlive the
+message it describes. The prune runs on the existing retry loop's cadence rather
+than adding a second background task.

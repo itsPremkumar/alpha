@@ -299,9 +299,7 @@ class PeerNetworkStore:
         if remaining >= cap:
             # Nothing left to evict: every row is a paired or blocked peer. The
             # ceiling is the boundary here, not availability.
-            raise PeerRegistryFullError(
-                "The bounded peer registry is full of paired peers; remove a peer before pairing another"
-            )
+            raise PeerRegistryFullError("The bounded peer registry is full of paired peers; remove a peer before pairing another")
 
     def get_peer(self, agent_id: str, *, include_secret: bool = False) -> dict[str, Any] | None:
         with self._lock:
@@ -651,6 +649,27 @@ class PeerNetworkStore:
                 (max(1, min(int(limit), 1000)),),
             ).fetchall()
         return [message for message in (self.get_message(row["message_id"]) for row in rows) if message]
+
+    def prune_messages(self, older_than_iso: str) -> int:
+        """Delete messages created before ``older_than_iso`` and return the count.
+
+        The delivery receipts cascade (``ON DELETE CASCADE`` on
+        ``deliveries.message_id``), so one delete removes the receipts too and a
+        receipt can never outlive the message it describes. Conversations are
+        deliberately **not** removed: an empty conversation still records which
+        peers ever talked, and dropping it would erase that history instead of
+        bounding it.
+
+        Only ``delivered`` and ``read`` messages are eligible. A ``queued`` or
+        ``failed`` outbound row is still awaiting delivery by the retry loop, and
+        deleting it would silently drop a message the operator believes was sent.
+        """
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                "DELETE FROM messages WHERE created_at < ? AND status IN ('delivered', 'read')",
+                (older_than_iso,),
+            )
+        return max(0, int(cursor.rowcount or 0))
 
     def counts(self) -> dict[str, int]:
         with self._lock:

@@ -10,7 +10,11 @@ import logging
 import math
 import os
 import secrets
+import threading
+from collections import deque
 from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +85,35 @@ _MAX_RECIPIENTS = 50
 # operator opts in with ALPHA_PEER_NETWORK_ENABLED=1. See the module docstring
 # of `ratelimit.py` for the ingress throttle that bounds the open plane.
 _DEFAULT_ENABLED = False
+
+# Retention for delivered/read peer history. The floor is a safety floor, not a
+# preference: `ALPHA_PEER_NETWORK_RETENTION_DAYS=0` would otherwise delete the
+# entire cross-installation transcript on the next retry tick.
+_DEFAULT_RETENTION_DAYS = 90
+_MIN_RETENTION_DAYS = 7
+_MAX_RETENTION_DAYS = 3650
+
+# Bounded per-subscriber event queue, and the bounded replay ring kept for
+# reconnects. Both are deliberately finite: an unbounded queue would let one
+# slow SSE client grow the process's memory without limit, and an unbounded
+# replay buffer would turn a convenience into a second, non-durable event log.
+_EVENT_QUEUE_SIZE = 256
+_EVENT_BUFFER_SIZE = 500
+
+
+@dataclass(frozen=True)
+class ReplayWindow:
+    """One SSE reconnect's replay, with its continuity verdict attached.
+
+    ``gap`` is what stops a partial replay from being read as a complete one:
+    it is true whenever the client's cursor predates the retained ring, so the
+    caller must tell the client to re-fetch rather than simply continue.
+    """
+
+    events: list[dict[str, Any]]
+    requested: int | None
+    earliest_retained: int | None
+    gap: bool
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -167,12 +200,16 @@ class PeerNetworkService:
         # Safe by default: an inbound plane is opt-in, not opt-out.
         self.enabled = _env_bool("ALPHA_PEER_NETWORK_ENABLED", _DEFAULT_ENABLED) if enabled is None else enabled
         self.identity = LocalIdentity.load_or_create(self.home, version=version)
-        self.max_peers = _env_int(
-            "ALPHA_PEER_NETWORK_MAX_PEERS",
-            DEFAULT_MAX_PEERS,
-            minimum=1,
-            maximum=MAX_PEERS_CEILING,
-        ) if max_peers is None else max(1, min(int(max_peers), MAX_PEERS_CEILING))
+        self.max_peers = (
+            _env_int(
+                "ALPHA_PEER_NETWORK_MAX_PEERS",
+                DEFAULT_MAX_PEERS,
+                minimum=1,
+                maximum=MAX_PEERS_CEILING,
+            )
+            if max_peers is None
+            else max(1, min(int(max_peers), MAX_PEERS_CEILING))
+        )
         self.store = PeerNetworkStore(self.home / "network.sqlite3")
         self.pairing_throttle = pairing_throttle if pairing_throttle is not None else self._build_pairing_throttle()
         self.transport = PeerTransport(timeout_seconds=transport_timeout_seconds if transport_timeout_seconds is not None else float(os.getenv("ALPHA_PEER_NETWORK_TIMEOUT_SECONDS", "8")))
@@ -183,8 +220,19 @@ class PeerNetworkService:
             bind_host=os.getenv("ALPHA_PEER_NETWORK_BIND_HOST", "0.0.0.0"),
         )
         self.mdns = MdnsDiscovery(self, port=_env_int("ALPHA_PEER_NETWORK_HTTP_PORT", 8001, minimum=1, maximum=65535))
+        self.retention_days = _env_int(
+            "ALPHA_PEER_NETWORK_RETENTION_DAYS",
+            _DEFAULT_RETENTION_DAYS,
+            minimum=_MIN_RETENTION_DAYS,
+            maximum=_MAX_RETENTION_DAYS,
+        )
         self.github = GitHubRendezvous.from_env()
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
+        # Replay ring for SSE reconnects. Process-local on purpose: SQLite is the
+        # authority for history, so this is a convenience, not a durable log.
+        self._event_buffer: deque[dict[str, Any]] = deque(maxlen=_EVENT_BUFFER_SIZE)
+        self._event_buffer_lock = threading.Lock()
+        self._event_seq = 0
         self._retry_task: asyncio.Task[None] | None = None
         self._started = False
         self._stop = asyncio.Event()
@@ -337,21 +385,82 @@ class PeerNetworkService:
         self._started = False
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=256)
+        """Register a bounded queue and return it.
+
+        The queue stays at 256: a subscriber that cannot keep up must lose the
+        oldest event rather than grow the process's memory. That loss is made
+        *visible* by ``_publish`` below, which emits an explicit overflow event
+        instead of dropping silently.
+        """
+
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_EVENT_QUEUE_SIZE)
         self._subscribers.add(queue)
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         self._subscribers.discard(queue)
 
+    def replay_since(self, last_event_id: int | None) -> ReplayWindow:
+        """Return buffered events after ``last_event_id``, flagging any gap.
+
+        The gap flag is the point. A reconnecting client whose cursor is older
+        than the retained ring would otherwise receive a *partial* replay that
+        looks like continuity: events 2-25 silently absent while 26+ arrive. So
+        ``gap`` is true whenever the requested cursor predates the oldest
+        retained event, whether or not anything is replayed, and the caller is
+        expected to tell the client to re-fetch the authoritative REST snapshot.
+
+        This is deliberately a named result rather than a loose tuple: the
+        "did I miss something" decision is the one that must not be got wrong by
+        a caller reading the wrong element.
+
+        The buffer is process-local by design, matching this plane's existing
+        single-process honesty: it is a reconnect convenience, not a durable
+        event log. The SQLite store is the authority.
+        """
+
+        with self._event_buffer_lock:
+            events = list(self._event_buffer)
+        earliest = int(events[0].get("seq") or 0) if events else None
+        if last_event_id is None:
+            return ReplayWindow(events=[], requested=None, earliest_retained=earliest, gap=False)
+        retained = [event for event in events if int(event.get("seq") or 0) > last_event_id]
+        gap = earliest is not None and last_event_id < earliest
+        return ReplayWindow(events=retained, requested=last_event_id, earliest_retained=earliest, gap=gap)
+
     def _publish(self, event_type: str, payload: dict[str, Any] | None = None) -> None:
         event = {"type": event_type, "at": utc_now(), "data": payload or {}}
+        with self._event_buffer_lock:
+            self._event_seq += 1
+            event["seq"] = self._event_seq
+            self._event_buffer.append(event)
+            # Bounded ring: the oldest event is dropped to make room, and the
+            # drop is reported to subscribers rather than being invisible.
+            while len(self._event_buffer) > _EVENT_BUFFER_SIZE:
+                self._event_buffer.pop(0)
+        overflowed: list[int] = []
         for queue in tuple(self._subscribers):
             if queue.full():
                 with contextlib.suppress(asyncio.QueueEmpty):
                     queue.get_nowait()
+                    overflowed.append(1)
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(event)
+        if overflowed:
+            # Explicit gap signal. A client that dropped events and says nothing
+            # renders a continuous timeline it never received.
+            gap = {
+                "type": "stream.overflow",
+                "at": utc_now(),
+                "data": {"dropped_subscribers": len(overflowed), "retained_from": event["seq"]},
+                "seq": event["seq"],
+            }
+            for queue in tuple(self._subscribers):
+                if queue.full():
+                    with contextlib.suppress(asyncio.QueueEmpty):
+                        queue.get_nowait()
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(gap)
 
     async def _run_store(self, fn: Any, *args: Any, **kwargs: Any) -> Any:
         return await asyncio.to_thread(fn, *args, **kwargs)
@@ -819,9 +928,7 @@ class PeerNetworkService:
                 # and past the documented participant limit. Cap it here, where
                 # the limit lives, instead of trusting the repository.
                 if len(conversation["participants"]) >= _MAX_PARTICIPANTS:
-                    raise PeerTransportError(
-                        f"The peer inbox already holds the maximum of {_MAX_PARTICIPANTS} participants"
-                    )
+                    raise PeerTransportError(f"The peer inbox already holds the maximum of {_MAX_PARTICIPANTS} participants")
                 await self._run_store(self.store.add_participant, conversation_id, envelope.sender_id)
                 conversation = await self.get_conversation(conversation_id)
                 if conversation is None:
@@ -931,6 +1038,19 @@ class PeerNetworkService:
                     await self._run_store(self.store.update_delivery, message["message_id"], recipient, status="queued", transport="offline", error=str(exc))
         return attempted
 
+    async def prune_history(self) -> int:
+        """Delete delivered/read peer history past the retention window.
+
+        Retention rides the existing retry loop's cadence rather than adding a
+        second background task: this plane is single-owner and a new loop would
+        need its own lifecycle ownership for no added guarantee. The window is
+        floored at ``_MIN_RETENTION_DAYS`` so a misconfigured ``0`` cannot wipe
+        an operator's whole cross-installation history on the next tick.
+        """
+
+        cutoff = datetime.now(UTC) - timedelta(days=self.retention_days)
+        return await self._run_store(self.store.prune_messages, cutoff.isoformat())
+
     async def _retry_loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -940,6 +1060,10 @@ class PeerNetworkService:
                     await self.retry_pending()
                 except Exception:
                     logger.warning("Alpha peer delivery retry failed", exc_info=True)
+                try:
+                    await self.prune_history()
+                except Exception:
+                    logger.warning("Alpha peer history prune failed", exc_info=True)
 
     def _status_snapshot(self) -> dict[str, Any]:
         return {
@@ -970,6 +1094,15 @@ class PeerNetworkService:
                 "sqlite": {"enabled": True, "free": True, "server_required": False},
             },
             "persistence": {"backend": "sqlite", "path": str(self.store.path), "durable": True},
+            "retention": {
+                # Reported as the effective clamped value, not the configured
+                # one: a UI that showed the raw config would promise a shorter
+                # window than the service will actually honour.
+                "days": self.retention_days,
+                "min_days": _MIN_RETENTION_DAYS,
+                "prunes_delivered_history": True,
+                "keeps_undelivered_history": True,
+            },
             "limits": {
                 "max_participants": _MAX_PARTICIPANTS,
                 "max_recipients": _MAX_RECIPIENTS,

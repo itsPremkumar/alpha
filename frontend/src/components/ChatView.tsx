@@ -113,6 +113,7 @@ export function freeCatalogTone(
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
 const MessagesSection = lazy(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })));
 const PeerNetworkSection = lazy(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })));
+const ExternalAlphaSection = lazy(() => import("@/components/sections/ExternalAlphaSection").then((m) => ({ default: m.ExternalAlphaSection })));
 const KanbanSection = lazy(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })));
 const CompanySection = lazy(() => import("@/components/sections/CompanySection").then((m) => ({ default: m.CompanySection })));
 const RunsSection = lazy(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })));
@@ -2210,6 +2211,10 @@ export default function ChatView() {
         ) : view === "peers" ? (
           <Suspense fallback={<SectionFallback />}>
             <PeerNetworkSection />
+          </Suspense>
+        ) : view === "external-alpha" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ExternalAlphaSection />
           </Suspense>
         ) : view === "kanban" ? (
           <Suspense fallback={<SectionFallback />}>
