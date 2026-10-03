@@ -24,7 +24,6 @@ from alpha.groups.claims import (
 )
 from alpha.groups.orchestration import GroupOrchestrator
 from alpha.groups.presence import MemberPresence, PresenceState, resolve_room_presence
-from alpha.groups.write_watch import WriteCoordination, auto_claim_write, write_coordination_context
 from alpha.groups.quorum import Proposal, QuorumEngine
 from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS, GroupMessage, GroupRoom, MessageIntent, OrchestrationMode
 from alpha.groups.roster import (
@@ -48,6 +47,7 @@ from alpha.groups.scope import (
     validate_state,
 )
 from alpha.groups.service import GroupChatService, get_group_chat_service
+from alpha.groups.write_watch import WriteCoordination, auto_claim_write, write_coordination_context
 
 __all__ = [
     "GroupMessage",

@@ -268,13 +268,5 @@ def warning_text(outcome: WriteCoordination, *, holder: str = "") -> str:
     others = outcome.conflict_holders[:_MAX_WARNINGS]
     named = holder or ", ".join(f"@{h}" for h in others)
     if outcome.reclaimable and outcome.dead_holder:
-        return (
-            f"[coordination] {outcome.subject} was also claimed by @{outcome.dead_holder}, "
-            "who is confirmed crashed. That claim is available to take over; "
-            "check their unfinished work before assuming it is intact."
-        )
-    return (
-        f"[coordination] {outcome.subject} is also claimed by {named}. "
-        "Your write went through, but the two of you may be overwriting each other - "
-        "read the file first, and consider telling the other agent what you changed."
-    )
+        return f"[coordination] {outcome.subject} was also claimed by @{outcome.dead_holder}, who is confirmed crashed. That claim is available to take over; check their unfinished work before assuming it is intact."
+    return f"[coordination] {outcome.subject} is also claimed by {named}. Your write went through, but the two of you may be overwriting each other - read the file first, and consider telling the other agent what you changed."

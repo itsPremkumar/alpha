@@ -217,28 +217,20 @@ async def test_a_claim_is_never_refused_for_contested_work() -> None:
 
 async def test_an_empty_or_unknown_claim_is_a_422_naming_the_cause() -> None:
     with pytest.raises(HTTPException) as bad_kind:
-        await group_coordination.create_claim(
-            "warroom", group_coordination.ClaimRequest(holder="architect", kind="nonsense", subject="a.py")
-        )
+        await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", kind="nonsense", subject="a.py"))
     assert bad_kind.value.status_code == 422
     assert "kind must be one of" in str(bad_kind.value.detail)
 
     with pytest.raises(HTTPException) as bad_intent:
-        await group_coordination.create_claim(
-            "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py", intent="yelling")
-        )
+        await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py", intent="yelling"))
     assert bad_intent.value.status_code == 422
     assert "intent must be one of" in str(bad_intent.value.detail)
 
 
 async def test_reclaiming_the_same_subject_renews_rather_than_duplicates() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
-    first = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
-    second = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    first = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
+    second = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     assert first["claim"]["claim_id"] == second["claim"]["claim_id"]
 
     result = await group_coordination.get_room_coordination("warroom", _FakeRequest(_FakeManager({})))
@@ -247,47 +239,33 @@ async def test_reclaiming_the_same_subject_renews_rather_than_duplicates() -> No
 
 async def test_release_refuses_a_non_holder_and_says_so() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
-    taken = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    taken = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     claim_id = taken["claim"]["claim_id"]
 
     with pytest.raises(HTTPException) as denied:
-        await group_coordination.release_claim(
-            "warroom", claim_id, group_coordination.ReleaseRequest(holder="auditor")
-        )
+        await group_coordination.release_claim("warroom", claim_id, group_coordination.ReleaseRequest(holder="auditor"))
     assert denied.value.status_code == 409
 
-    released = await group_coordination.release_claim(
-        "warroom", claim_id, group_coordination.ReleaseRequest(holder="architect")
-    )
+    released = await group_coordination.release_claim("warroom", claim_id, group_coordination.ReleaseRequest(holder="architect"))
     assert released["released"] is True
 
 
 async def test_an_operator_release_is_reported_as_an_operator_release() -> None:
     """Forced and voluntary hand-backs are different events in room history."""
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
-    taken = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    taken = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     claim_id = taken["claim"]["claim_id"]
 
-    released = await group_coordination.release_claim(
-        "warroom", claim_id, group_coordination.ReleaseRequest(force=True)
-    )
+    released = await group_coordination.release_claim("warroom", claim_id, group_coordination.ReleaseRequest(force=True))
     assert released["by"] == "operator"
     assert released["owner_was"] == "architect"
 
 
 async def test_releasing_a_claim_in_another_room_is_a_404() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
-    taken = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    taken = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     with pytest.raises(HTTPException) as missing:
-        await group_coordination.release_claim(
-            "other", taken["claim"]["claim_id"], group_coordination.ReleaseRequest(holder="architect")
-        )
+        await group_coordination.release_claim("other", taken["claim"]["claim_id"], group_coordination.ReleaseRequest(holder="architect"))
     assert missing.value.status_code == 404
 
 
@@ -305,9 +283,7 @@ async def test_a_traversing_claim_id_is_refused_rather_than_sanitised() -> None:
 async def test_reclaiming_a_live_claim_is_refused_even_when_the_holder_crashed() -> None:
     """A crash is evidence; a hand-off is a decision. They are two routes."""
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
-    taken = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    taken = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     claim_id = taken["claim"]["claim_id"]
 
     from alpha.groups.activity import get_activity_ledger
@@ -317,9 +293,7 @@ async def test_reclaiming_a_live_claim_is_refused_even_when_the_holder_crashed()
     ledger.record_run_terminal("architect", run_id="run-crash", status="error", error="boom")
 
     with pytest.raises(HTTPException) as refused:
-        await group_coordination.reclaim_claim(
-            "warroom", claim_id, group_coordination.ReclaimRequest(holder="auditor")
-        )
+        await group_coordination.reclaim_claim("warroom", claim_id, group_coordination.ReclaimRequest(holder="auditor"))
     assert refused.value.status_code == 409
     assert "reconcile" in str(refused.value.detail)
 
@@ -328,9 +302,7 @@ async def test_an_unresponsive_holder_keeps_its_claim() -> None:
     """The load-bearing refusal. A slow agent may be mid-tool-call, and
     handing its work to a peer loses work rather than saving it."""
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
-    taken = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    taken = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     claim_id = taken["claim"]["claim_id"]
 
     from alpha.groups.claims import get_claim_store
@@ -339,18 +311,14 @@ async def test_an_unresponsive_holder_keeps_its_claim() -> None:
     get_claim_store().orphan_for_bot("warroom", "architect", evidence={"reason": "test"})
 
     with pytest.raises(HTTPException) as refused:
-        await group_coordination.reclaim_claim(
-            "warroom", claim_id, group_coordination.ReclaimRequest(holder="auditor")
-        )
+        await group_coordination.reclaim_claim("warroom", claim_id, group_coordination.ReclaimRequest(holder="auditor"))
     assert refused.value.status_code == 409
     assert "not crashed" in str(refused.value.detail)
 
 
 async def test_reconcile_then_reclaim_hands_the_work_over() -> None:
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect", "auditor"]))
-    taken = await group_coordination.create_claim(
-        "warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py")
-    )
+    taken = await group_coordination.create_claim("warroom", group_coordination.ClaimRequest(holder="architect", subject="a.py"))
     claim_id = taken["claim"]["claim_id"]
 
     from alpha.groups.activity import get_activity_ledger
@@ -366,9 +334,7 @@ async def test_reconcile_then_reclaim_hands_the_work_over() -> None:
     # "delivered" on a claim about delivery.
     assert receipt["announced"] >= 0
 
-    moved = await group_coordination.reclaim_claim(
-        "warroom", claim_id, group_coordination.ReclaimRequest(holder="auditor")
-    )
+    moved = await group_coordination.reclaim_claim("warroom", claim_id, group_coordination.ReclaimRequest(holder="auditor"))
     assert moved["reclaimed"] is True
     assert moved["from"] == "architect"
     assert moved["to"] == "auditor"
@@ -376,7 +342,7 @@ async def test_reconcile_then_reclaim_hands_the_work_over() -> None:
 
 
 async def test_reconcile_with_nothing_to_do_is_an_empty_receipt() -> None:
-    """"Reconciled" as a silent success is the claim this layer exists to avoid."""
+    """ "Reconciled" as a silent success is the claim this layer exists to avoid."""
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
     receipt = await group_coordination.reconcile_room("warroom", group_coordination.ReconcileRequest())
     assert receipt["crashed"] == []

@@ -255,17 +255,21 @@ async def create_claim(name: str, body: ClaimRequest) -> dict:
     def _take() -> dict[str, Any]:
         from alpha.groups.claims import get_claim_store
 
-        return get_claim_store().claim(
-            key,
-            body.holder,
-            kind,
-            body.subject,
-            intent=intent,
-            detail=body.detail,
-            project_id=body.project_id,
-            run_id=body.run_id,
-            ttl_seconds=body.ttl_seconds,
-        ).to_dict()
+        return (
+            get_claim_store()
+            .claim(
+                key,
+                body.holder,
+                kind,
+                body.subject,
+                intent=intent,
+                detail=body.detail,
+                project_id=body.project_id,
+                run_id=body.run_id,
+                ttl_seconds=body.ttl_seconds,
+            )
+            .to_dict()
+        )
 
     try:
         claim = await asyncio.to_thread(_take)
@@ -340,10 +344,7 @@ async def reclaim_claim(name: str, claim_id: str, body: ReclaimRequest) -> dict:
             return {
                 "reclaimed": False,
                 "code": 409,
-                "detail": (
-                    f"claim is '{claim.state}', not orphaned; run reconcile first so the "
-                    "hand-off is recorded rather than assumed"
-                ),
+                "detail": (f"claim is '{claim.state}', not orphaned; run reconcile first so the hand-off is recorded rather than assumed"),
             }
         state = get_activity_ledger().resolve(holder, room_name=key).activity
         if state != "crashed":
