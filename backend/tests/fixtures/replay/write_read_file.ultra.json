@@ -144,22 +144,31 @@
       "output": {
         "type": "ai",
         "data": {
-          "content": "hi from replay.",
+          "content": "",
           "additional_kwargs": {},
           "response_metadata": {
-            "finish_reason": "stop",
+            "finish_reason": "tool_calls",
             "model_name": "sre/gpt-5",
             "model_provider": "openai"
           },
           "type": "ai",
           "name": null,
-          "id": "lc_run--019ea641-ff38-7751-9c2b-cc648811883b",
-          "tool_calls": [],
+          "id": "lc_run--019ea643-7a41-4b6e-9d02-0eac78f1a506",
+          "tool_calls": [
+            {
+              "name": "present_files",
+              "args": {
+                "filepaths": ["/mnt/user-data/outputs/note.txt"]
+              },
+              "id": "call_presentfiles0note0txt",
+              "type": "tool_call"
+            }
+          ],
           "invalid_tool_calls": [],
           "usage_metadata": {
             "input_tokens": 3768,
-            "output_tokens": 8,
-            "total_tokens": 3776,
+            "output_tokens": 28,
+            "total_tokens": 3796,
             "input_token_details": {
               "audio": 0,
               "cache_read": 3584
@@ -234,6 +243,41 @@
             "output_token_details": {
               "audio": 0,
               "reasoning": 832
+            }
+          }
+        }
+      }
+    },
+    {
+      "caller": "lead_agent",
+      "conversation_hash": "b05575b134040837983b29e15bf39f94ae4382f12fec88d42a3e9e6e0c69b18a",
+      "input_hash": "b5a3a0fc58777bc82bc59485403d99a66ac266ebb5527d613ed03cc32526db2f",
+      "output": {
+        "type": "ai",
+        "data": {
+          "content": "hi from replay.",
+          "additional_kwargs": {},
+          "response_metadata": {
+            "finish_reason": "stop",
+            "model_name": "sre/gpt-5",
+            "model_provider": "openai"
+          },
+          "type": "ai",
+          "name": null,
+          "id": "lc_run--019ea645-2c10-4fa9-8e77-6b31c0d9a512",
+          "tool_calls": [],
+          "invalid_tool_calls": [],
+          "usage_metadata": {
+            "input_tokens": 4012,
+            "output_tokens": 8,
+            "total_tokens": 4020,
+            "input_token_details": {
+              "audio": 0,
+              "cache_read": 3840
+            },
+            "output_token_details": {
+              "audio": 0,
+              "reasoning": 0
             }
           }
         }

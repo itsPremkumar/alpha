@@ -73,6 +73,7 @@ import os
 import re
 from collections import deque
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler, CallbackManagerForLLMRun
@@ -83,6 +84,7 @@ from langchain_core.runnables import Runnable
 from pydantic import PrivateAttr
 
 _FIXTURE_ENV = "ALPHA_REPLAY_FIXTURE"
+_MISS_DUMP_ENV = "ALPHA_REPLAY_MISS_DUMP"
 _DEFAULT_CALLER = "lead_agent"
 _CALLER_TAG_PREFIXES = ("middleware:", "subagent:")
 _CALLER_NAME_ALIASES = {
@@ -341,6 +343,28 @@ class ReplayChatModel(BaseChatModel):
         if not bucket:
             _replay_misses.append(key)
             preview = _canonical_messages(messages)
+            dump_dir = os.environ.get(_MISS_DUMP_ENV)
+            if dump_dir:
+                # Fixture maintenance: persist everything needed to author the
+                # missing turn — the caller-scoped input key this call computed
+                # plus the conversation hash a recording would have written
+                # beside it (see backend/docs/REPLAY_E2E.md). Strictly opt-in;
+                # an unset var keeps a miss purely in-memory.
+                dump_path = Path(dump_dir)
+                dump_path.mkdir(parents=True, exist_ok=True)
+                (dump_path / f"replay-miss-{key}.json").write_text(
+                    json.dumps(
+                        {
+                            "caller": caller,
+                            "conversation_hash": hash_messages(messages),
+                            "input_hash": key,
+                            "canonical_messages": preview,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
             raise KeyError(
                 f"replay miss: no recorded output for input hash {key} in {self._fixture_path!r}. "
                 "The replayed run diverged from the recording (graph changed, a non-deterministic tool result "

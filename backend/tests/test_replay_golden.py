@@ -94,4 +94,18 @@ def test_replay_write_read_file_ultra_matches_golden(tmp_path: Path, monkeypatch
     # Guards backend SSE protocol drift: the event name + payload-key sequence
     # must match the committed golden. (Replay divergence is caught by the miss
     # assertion above, not here — a swallowed miss keeps the shapes identical.)
-    assert events == golden, f"SSE event-shape sequence drifted from the golden.\ngot  ({len(events)}): {[e['event'] for e in events]}\nwant ({len(golden)}): {[e['event'] for e in golden]}"
+    if events != golden:
+        # Name-only diffs hide the actual payload — e.g. an `error` event that
+        # replaced a clean `end` carries the message that says *why* the run
+        # died, and CI logs are the only place we get to see it. Report the
+        # first differing event in full (bounded), not just its position.
+        limit = min(len(events), len(golden))
+        diff_at = next((i for i in range(limit) if events[i] != golden[i]), limit)
+        got = repr(events[diff_at])[:2000] if diff_at < len(events) else "<missing: got is shorter than golden>"
+        want = repr(golden[diff_at])[:2000] if diff_at < len(golden) else "<missing: want is shorter than got>"
+        pytest.fail(
+            f"SSE event-shape sequence drifted from the golden.\n"
+            f"got  ({len(events)}): {[e['event'] for e in events]}\n"
+            f"want ({len(golden)}): {[e['event'] for e in golden]}\n"
+            f"first difference at index {diff_at}:\n  got  {got}\n  want {want}"
+        )
