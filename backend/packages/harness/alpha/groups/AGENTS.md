@@ -25,20 +25,20 @@ no reasoning of its own.
 
 What it composes:
 
-- **Quorum** ΓÇö `groups/quorum.py::QuorumEngine`. `required_votes()` in
+- **Quorum** — `groups/quorum.py::QuorumEngine`. `required_votes()` in
   `WarRoomConfig` is the single place a policy becomes a number, so the enforced
   threshold and the reported threshold cannot drift. `abstain` is a real fourth
   choice, counted rather than discarded.
-- **Participants** ΓÇö real subagents through
+- **Participants** — real subagents through
   `subagents/executor.py::SubagentExecutor`, the same seam
   `groups/runner.py` uses. `SubagentParticipant` is the runtime binding.
-- **Timing** ΓÇö `channels/timing.py` (`StageBudget`, `Deadline`, `run_bounded`,
+- **Timing** — `channels/timing.py` (`StageBudget`, `Deadline`, `run_bounded`,
   `RoomIntake`) on an injected monotonic clock.
-- **Transcripts** ΓÇö `channels/transcript.py::TranscriptStore`.
-- **Governance** ΓÇö `channels/ledger.py`. Fail-closed: a ledger that refuses the
+- **Transcripts** — `channels/transcript.py::TranscriptStore`.
+- **Governance** — `channels/ledger.py`. Fail-closed: a ledger that refuses the
   room's opening transition means the run never starts.
-- **Agreement** ΓÇö `groups/consensus.py`.
-- **Taint** ΓÇö `groups/taint.py`.
+- **Agreement** — `groups/consensus.py`.
+- **Taint** — `groups/taint.py`.
 
 ### What it uses from `alpha.deliberation`, and what it does not
 
@@ -48,7 +48,7 @@ stage shape; `resolve_strategy()` carries the router's own rationale onto the
 run.
 
 It does **not** execute the multi-model engines. A `council` room's
-`draft ΓåÆ blind_review ΓåÆ chairman` stages run one subagent each, **not**
+`draft → blind_review → chairman` stages run one subagent each, **not**
 `CouncilEngine`; a `red_team` room's `attack` stage does not call
 `AdversaryDeliberator`. The strategy decides the *shape* of the deliberation, not
 the machinery behind it. The engines are reached through the `deliberate` tool
@@ -62,10 +62,10 @@ exists because this file's predecessor claimed the opposite of the truth.
 ### Strategy plans
 
 All ten non-`AUTO` values have a plan. With **no** strategy the room is the
-original fixed `positions ΓåÆ cross_exam ΓåÆ synthesis` and is recorded as
-`"legacy_fixed"` ΓÇö never attributed to a strategy it did not use.
+original fixed `positions → cross_exam → synthesis` and is recorded as
+`"legacy_fixed"` — never attributed to a strategy it did not use.
 
-`DEBATE` is the only plan whose length varies: `opening ΓåÆ cross_exam ├ùN ΓåÆ judge`.
+`DEBATE` is the only plan whose length varies: `opening → cross_exam ×N → judge`.
 
 ### Exploratory stages do not end the room
 
@@ -87,13 +87,13 @@ Four buckets, and the distinction between the last two matters:
 
 | Bucket | Meaning |
 | :--- | :--- |
-| `agreeing` | in the largest component (size ΓëÑ 2) |
-| `dissenting` | in a *different* component of size ΓëÑ 2 ΓÇö they agree against the room |
+| `agreeing` | in the largest component (size ≥ 2) |
+| `dissenting` | in a *different* component of size ≥ 2 — they agree against the room |
 | `isolated` | nobody else shares their position; they did not oppose anyone |
 | `unparsed` | stated nothing parseable; excluded from every side |
 
 A plurality vote over individual claims was rejected: when every member states a
-distinct claim ΓÇö the normal case for independent opinions ΓÇö every claim has
+distinct claim — the normal case for independent opinions — every claim has
 count 1, so "plurality" degenerates into an alphabetical tie-break.
 
 **Self-reported confidence is recorded and never used to move a threshold.**
@@ -114,7 +114,7 @@ bounded rather than claiming to stop it:
   illustrative clause is dismissed, and that dismissal is itself recorded.
 - `sanitize_for_prompt()` replaces a detected span with a visible
   `[redacted: <category>]` marker before the text re-enters another participant.
-  The receipt keeps the full contribution ΓÇö the transcript is evidence.
+  The receipt keeps the full contribution — the transcript is evidence.
 - `room_is_colluding()` flags a suspiciously unanimous room.
 - **Enforcement:** an unaddressed infection downgrades a run from `succeeded` to
   `partial`. Transparency without enforcement is what let a corrupted result ship
@@ -140,7 +140,7 @@ Each has a test in `tests/test_war_room_deliberation.py`:
 4. **A transcript fault cannot rewrite a delivered verdict.** Append failures
    land in `transcript_errors`; an unpersistable receipt is escalated to
    `receipt_loss` and downgrades `succeeded` to `partial`.
-5. **Quorum is explicit, configurable and reported** ΓÇö `all`/`any`/`majority`/
+5. **Quorum is explicit, configurable and reported** — `all`/`any`/`majority`/
    `supermajority`, with the tally and `engine_agrees_with_policy` recorded.
 
 A run always reaches a terminal status. `QuorumEngine` itself is in-memory:
@@ -162,17 +162,17 @@ prompt is, then applies gates a classifier cannot know about.
 
 Default off. Never in a non-interactive turn. Cooldown, duplicate reuse, a
 per-turn cap, `red_team` reserved for humans, and **a named `gate` and
-`rationale` on every refusal** ΓÇö a silent skip is indistinguishable from a bug.
+`rationale` on every refusal** — a silent skip is indistinguishable from a bug.
 A router fault fails closed.
 
 It is a decision function with a pre-flight surface (`war_room action=evaluate`,
 `POST /api/war-rooms/evaluate`). **Nothing calls it on a conversation's behalf
-yet** ΓÇö the room still opens only when a model calls the tool.
+yet** — the room still opens only when a model calls the tool.
 
 ## The `war_room` tool
 
 `tools/builtins/war_room_tool.py` is the model-facing door. Its action `Literal`
-is a **closed set** and every member is handled in the dispatcher ΓÇö enforced by
+is a **closed set** and every member is handled in the dispatcher — enforced by
 `test_every_advertised_action_is_handled_in_the_dispatcher`, because
 `action="status"` once existed in the `Literal` with no branch and returned
 "unknown action" for a schema-valid call.
@@ -192,7 +192,7 @@ Every action is fail-closed. Lifecycle actions run under a **non-negotiable
 authority ceiling**: a bot may create, clone, re-scope and archive other bots, but
 may not widen its own authority, edit the ceiling, or mint a profile exceeding
 it. Archiving never deletes and is reversible. Acquisition is a fenced supply
-chain ΓÇö untrusted by default, quarantined, provenance recorded, scanned, approved
+chain — untrusted by default, quarantined, provenance recorded, scanned, approved
 by somebody other than the requester.
 
 ## Read side, and the REST surface
@@ -474,7 +474,7 @@ refresh control disables itself in flight.
 - The strategy plans do not **execute** the deliberation engines.
 - No convergence-based early stop; a debate runs every round it was asked for.
 - The auto-trigger is not wired into the conversation loop.
-- No bus events, OTel spans, or `RunJournal` integration ΓÇö a run is observable
+- No bus events, OTel spans, or `RunJournal` integration — a run is observable
   only by reading its persisted state.
 - `QuorumEngine` is not persisted; votes die with the process.
 - No resume of an interrupted room, no priority queue, no global concurrency cap.

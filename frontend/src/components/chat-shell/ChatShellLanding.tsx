@@ -76,7 +76,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
        the spacing the design intends. `justify-start` keeps the top reachable and
        `my-auto` centres when there *is* spare room. */
     <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-start text-center py-8 space-y-6 select-none my-auto" data-shell="landing">
-      {/* ΓöÇΓöÇ 1. Hero Avatar Icon with Subtle Glow ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── 1. Hero Avatar Icon with Subtle Glow ─────────────────────── */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />
         {/* `size-18` is NOT in Tailwind's default spacing scale (it steps
@@ -96,7 +96,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         </div>
       </div>
 
-      {/* ΓöÇΓöÇ 2. Greeting & Context ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── 2. Greeting & Context ────────────────────────────────────── */}
       <div className="space-y-1.5 max-w-lg">
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
           {landingGreeting(operatorIdentity(userName), returning)}
@@ -128,7 +128,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         </p>
       </div>
 
-      {/* ΓöÇΓöÇ 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ΓöÇΓöÇ */}
+      {/* ── 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left pt-1">
         {/* Card 1: Create a new plan.
 
