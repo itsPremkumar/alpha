@@ -31,6 +31,7 @@ from app.gateway.routers.workflows import (
     list_workflow_plans,
     project_workflow_run,
     record_workflow_plan,
+    recover_workflow_run,
     register_workflow,
     start_workflow_run,
     step_workflow_run,
@@ -179,6 +180,71 @@ async def test_stale_run_is_not_served_after_refused_hydration() -> None:
     with pytest.raises(HTTPException) as exc_info:
         await get_workflow_run(run_id, req)
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_recover_rebuilds_a_stale_run_and_frees_its_orphaned_node() -> None:
+    """The explicit way back from a crash the hydration gate refused.
+
+    A mid-node crash advances the journal past the projection, so hydrate
+    correctly refuses the run and it becomes unreachable. Recovery folds the
+    real log back in, frees the node a dead worker left RUNNING, and
+    re-materializes the projection so the next startup does not refuse again.
+    """
+    req, run_id = await _register_and_start("wf_recover")
+    await project_workflow_run(run_id, req)
+    # The crash: a node_started the projection never saw.
+    get_workflow_engine().events.emit("node_started", run_id, node_id="only")
+    get_workflow_engine().runs.clear()
+    await hydrate_workflow_engine(req)
+
+    with pytest.raises(HTTPException) as refused:
+        await get_workflow_run(run_id, req)
+    assert refused.value.status_code == 404, "the fail-closed refusal must still hold"
+
+    report = await recover_workflow_run(run_id, req)
+
+    assert report["events_folded"] >= 2
+    assert report["run_status"] == "running"
+    reconciled = report["reconciled"]
+    assert reconciled, "a node left RUNNING by a dead worker must be reported"
+    assert reconciled[0]["action"] == "failed"
+    assert reconciled[0]["failure_class"] == "worker_lost"
+    assert "no longer present" in reconciled[0]["reason"]
+
+    restored = await get_workflow_run(run_id, req)
+    assert restored["run_id"] == run_id
+
+    # The projection now matches the journal, including the recovery events
+    # reconciliation itself appended.
+    get_workflow_engine().runs.clear()
+    again = await hydrate_workflow_engine(req)
+    assert again["stale_projections"] == []
+    assert run_id in again["hydrated_runs"]
+
+
+@pytest.mark.asyncio
+async def test_recovering_an_unknown_run_is_a_disclosed_404() -> None:
+    req = MagicMock()
+    with pytest.raises(HTTPException) as exc_info:
+        await recover_workflow_run("run_never_journaled", req)
+    assert exc_info.value.status_code == 404
+    assert "cannot be recovered" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_recover_never_reports_the_rebuilt_run_as_verified() -> None:
+    req, run_id = await _register_and_start("wf_recover_honest")
+    await project_workflow_run(run_id, req)
+    get_workflow_engine().events.emit("node_started", run_id, node_id="only")
+    get_workflow_engine().runs.clear()
+    await hydrate_workflow_engine(req)
+
+    report = await recover_workflow_run(run_id, req)
+
+    assert "verified" not in report
+    assert "acceptance" not in report
+    assert report["projection"]["last_seq"] > 0
 
 
 @pytest.mark.asyncio

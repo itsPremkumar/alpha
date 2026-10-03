@@ -7,6 +7,7 @@
 
 ## Architecture
 
+- [ALPHA-WORKFLOW-ARCHITECTURE.md](ALPHA-WORKFLOW-ARCHITECTURE.md) — Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and major runtime components.
 - [CHAT_SHELL_DESIGN.md](CHAT_SHELL_DESIGN.md) — Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.
 - [CHAT_SHELL_UX.md](CHAT_SHELL_UX.md) — Chat shell UX implementation notes: the component set, how the rail is wired into the existing sidebar, and the additive-change discipline it followed.
@@ -83,6 +84,7 @@
 
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
+- [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.

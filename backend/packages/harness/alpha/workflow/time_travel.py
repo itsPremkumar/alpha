@@ -415,6 +415,14 @@ def simulate_run(
 
     scratch.events = WorkflowEventDispatcher(durable_sink=None)
 
+    # ...and its own process-local lease manager, for the same reason: a dry
+    # run must never write a claim into the real lease store, or it could
+    # fence out a live run's node.  Fencing still works inside the simulation;
+    # what it does not do is disturb anybody else's.
+    from alpha.workflow.leases import LeaseManager
+
+    scratch.leases = LeaseManager()
+
     run = scratch.start_run(workflow_id, initial_state=dict(initial_state or {}), owner_id=definition.owner_id)
     visited: list[str] = []
     waves = 0

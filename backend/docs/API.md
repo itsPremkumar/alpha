@@ -1323,7 +1323,9 @@ surfaces under `/api/workflows`:
 - `GET /api/workflows/system/registries` — bounded registry health/discovery projection.
 - `POST /api/workflows/runs/{run_id}/{step,cancel,replan,compensate}` and the approval/patch routes — claimed, versioned run control.
 - `GET /api/workflows/runs/{run_id}/events`, `/events/durable`, and `POST /replay`, `/project`, `/hydrate` — event truth, projections, and honest recovery.
+- `POST /api/workflows/runs/{run_id}/recover` — fold the real journal back into a live run after a crash stranded it, reconcile any node a dead worker left `RUNNING`, then re-materialise the projection. Owner-scoped; reports what was folded and never claims the rebuilt run is verified.
 - `GET/POST /api/workflows/{workflow_id}/plans` — append-only graph revision history.
+- `GET /api/workflows/{workflow_id}/plans/{version}/diff?base={n}` — structural vs runtime change between two recorded plan revisions; the reason comes from the recorded `PlanVersion.note`/`source`, never invented.
 
 Definitions and runs are owner-scoped for real HTTP requests. The built-in
 `alpha.local.digest` executor is explicitly a local graph projection; its result

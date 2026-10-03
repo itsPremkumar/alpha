@@ -528,13 +528,22 @@ exactly-once execution.
 - **Dynamic workflow plane** — intent perception, capability discovery, task
   decomposition, bounded DAG waves, typed graph patches, approval gates,
   retry/replan, evidence-gated replay, and saga compensation via
-  `POST /api/workflows/dynamic/{perceive,execute}`. The built-in digest executor
-  is deliberately a **local graph projection**, disclosed as
+  `POST /api/workflows/dynamic/{perceive,execute}`. Node attempts hold a
+  **durable, fence-checked lease**, so a worker that dies mid-node is
+  reconciled instead of stranding the run, a late result is discarded rather
+  than written through, and `POST /api/workflows/runs/{run_id}/recover` folds
+  the journal back into a live run after a crash. Failures are classified into
+  nineteen retry-decision classes that bridge onto the existing recovery and
+  work-unit reason vocabularies, and `GET .../plans/{version}/diff?base={n}`
+  reports structural vs runtime changes between plan revisions. The built-in
+  digest executor is deliberately a **local graph projection**, disclosed as
   `execution_label="local_digest_projection"` with `acceptance_passed=false`
   until a real executor is bound.
 
 → [docs/RUN_RECOVERY.md](docs/RUN_RECOVERY.md) ·
-[docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md)
+[docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md) ·
+[docs/ALPHA-WORKFLOW-ARCHITECTURE.md](docs/ALPHA-WORKFLOW-ARCHITECTURE.md) ·
+[docs/ALPHA-WORKFLOW-CURRENT-STATE.md](docs/ALPHA-WORKFLOW-CURRENT-STATE.md)
 </details>
 
 <details>

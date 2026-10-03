@@ -146,6 +146,14 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "ALPHA-WORKFLOW-ARCHITECTURE.md": DocumentSpec(
+        "architecture",
+        "Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.",
+    ),
+    "ALPHA-WORKFLOW-CURRENT-STATE.md": DocumentSpec(
+        "plans",
+        "Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.",
+    ),
     "AGENT_LANDSCAPE_AND_ROADMAP.md": DocumentSpec(
         "plans",
         "Research survey and feature roadmap for the open-source agent landscape.",

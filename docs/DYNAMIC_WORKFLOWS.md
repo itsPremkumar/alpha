@@ -93,6 +93,20 @@ reopened or dispatched. `POST .../compensate` invokes only a real, dedicated
 compensation executor; a missing callback or missing evidence is a disclosed
 failure, never a fabricated rollback receipt.
 
+To see what a revision actually changed,
+
+```
+GET /api/workflows/{workflow_id}/plans/{version}/diff?base={n}
+```
+
+compares two recorded plan revisions. The differ separates **structural**
+changes — nodes added, removed or re-typed, edges rerouted — from **runtime**
+changes such as prompts, budgets, timeouts, retries and policy, so a
+cosmetic prompt edit is never reported as a graph reshape. The reason string
+comes from the recorded `PlanVersion.note`/`source` and is never invented. The
+payload is deterministically ordered, bounded, and truncated with an explicit
+marker rather than allowed to grow without limit.
+
 `GET /api/workflows/system/registries` is a bounded, read-only view of the
 capability, tool, skill, MCP, subagent, and bot registries used by planning.
 Registry health and unavailable entries are returned as data; discovery does
@@ -272,32 +286,101 @@ data, not a system instruction. The workflow plane does not replace
 `RunManager`, the group/bot lifecycle owner, or the scheduler, and it does not
 create a second parent-run stream.
 
+## Failure classification and recovery
+
+**Why a node failed is decided, not guessed.**
+`alpha.workflow.failures` classifies each node failure into one of nineteen
+`NodeFailureClass` values by ordered keyword rules, and every classification
+discloses the rule that matched rather than presenting an unexplained label.
+This is a **retry-decision classification**, not an error-code taxonomy:
+`alpha.errors.registry` remains the sole owner of stable, customer-facing error
+codes, and this module bridges onto vocabularies that already existed instead
+of growing a seventh one.
+
+- `ClassifiedFailure.recovery_class()` routes onto `alpha.recovery.policies`,
+  which stays the single authority on *what to do* after a failure.
+  `recovery_exhausted` events carry the terminal strategy it chose together
+  with `strategy_source` and `strategy_bridged`, so the bridge is visible.
+- `ClassifiedFailure.reason_code()` maps onto `alpha.bots.failure_reasons`, so a
+  node reads as the same work unit a swarm task or subagent would.
+
+`StagnationDetector` measures non-progress over `error_signature()`, a
+normalized rendering in which identifiers, numbers, paths and hex digests
+collapse away — so "the same fault wearing different digits" is measurable
+instead of argued about. The engine emits `failure_classified`,
+`node_stagnated`, `recovery_exhausted` and `node_retry_refused`.
+
+**Every attempt holds a durable, fenced lease.**
+`alpha.workflow.leases` records each attempt at
+`runtime_home()/workflow_store/leases.json` with an atomic replace. The
+lifecycle is: acquire *before* the node is marked `RUNNING`, release in
+`finally`, and **check the fence before adopting any output**. A result whose
+lease reports `STALE_LEASE`, `SUPERSEDED_REVISION` or `UNKNOWN_LEASE` is
+discarded rather than written through — an unverifiable key is refused, never
+assumed fresh. A lease refusal at dispatch is a one-shot honest failure naming
+the worker that already holds the claim, never a retry loop. The fence
+deliberately survives release and **advances** on reclaim or expiry, so a dead
+worker's late result reads `STALE_LEASE` instead of `ACCEPTED`.
+
+**A dead worker can no longer strand a run.** The scheduler admits only
+`PENDING`/`READY` and replay folds `node_started` into `RUNNING` with no
+completer, so before this a worker that died mid-node left the run permanently
+stuck on work nobody owns — and a restart reproduced that state from the
+journal. `reconcile_orphaned_nodes()` now runs at the top of every step: a node
+this process is actually executing (tracked in a process-local `_in_flight`
+set) or one with a live lease held by another worker is held; anything else
+`RUNNING` is **failed** with `failure_class=worker_lost`, because its side
+effects are unknown and it is never silently reset. The reconciliation is
+journalled as `orphaned_nodes_reconciled`.
+
+Because hydration correctly refuses a run whose projection lags its journal —
+and that refusal is load-bearing — such a run previously had no way back.
+`POST /api/workflows/runs/{run_id}/recover` is the explicit, owner-scoped way
+back: it folds the real journal into a fresh run, installs it, reconciles the
+orphaned nodes, and only then re-materialises the projection (projecting
+*after* reconciliation, because reconciliation itself appends events). The
+response reports what was folded and what was reconciled, and never reports
+the rebuilt run as verified.
+
 ## Current boundaries
 
 The orchestration graph, scheduling, retries, approvals, conditional routing,
 bounded loops, patch OCC, replay, and compensation plumbing are implemented, as
 are real node deadlines, opt-in wave concurrency, the seven executor-free node
 kinds, external-signal waits, operator suspend/resume, forking, dry-run
-simulation, measured observability, template promotion, and improvement
-proposals.
+simulation, measured observability, template promotion, improvement proposals,
+failure classification, durable attempt leases and crash recovery.
 
 What remains true and must keep being said plainly:
 
 - A deadline is enforced by **fencing**, not by cancelling: CPython cannot kill a
   thread, so timed-out work may still be completing in the background and its
   result is discarded rather than adopted.
-- Wave concurrency is **process-local**. Parallel waves overlap real threads in
-  one process; a multi-worker deployment still needs shared lease/coordination
-  before claiming cross-process exactly-once execution.
-- The template store and the durable event log are local and atomic for ONE
-  Gateway process. They are not a shared multi-worker repository.
+- Wave concurrency, the durable event log **and the lease store** are
+  **process-local**. They are atomic and restart-recoverable for ONE Gateway
+  process; a multi-worker deployment still needs shared lease/coordination
+  before claiming cross-process exactly-once execution. The lease `worker_id`
+  is a pid for exactly that reason — as specific as the guarantee available.
+- Hydration **still refuses** stale projections. `/recover` is an explicit
+  route and does not relax `/hydrate`.
+- The template store is local and atomic for ONE Gateway process. It is not a
+  shared multi-worker repository.
 - `alpha.local.digest` remains a `local_digest_projection`. Binding a real
   domain executor is an explicit host opt-in, and a run is only domain-complete
   when a real executor produced its evidence.
-- A **dry run is a projection**. It shares no state with the caller's engine and
-  asserts nothing about acceptance.
+- A **dry run is a projection**. It shares no state with the caller's engine, is
+  handed a process-local lease manager, and asserts nothing about acceptance.
 - An **improvement suggestion is a proposal**. Nothing in it has been shown to
   work; only a re-measured run can show that.
+- A **completed run is never a verified run**, and recovery only ever rebuilds a
+  run to match its journal — it does not vouch for the work.
+
+Known gaps that are not implemented (see
+[`ALPHA-WORKFLOW-CURRENT-STATE.md`](ALPHA-WORKFLOW-CURRENT-STATE.md) for the
+full list): workflow triggers still disclose the missing scheduler handoff
+rather than creating a second cron owner, and there is no failure quarantine
+store, no `verification_cmd` execution, no connectivity wait state, no
+goal-drift detection and no worktree claiming.
 
 ## Regression coverage
 
@@ -314,6 +397,14 @@ The implementation is covered by `backend/tests/test_dynamic_workflow_service.py
 - `test_workflow_templates_and_improvement.py` — the template lifecycle and
   evidence-cited proposals
 - `test_workflow_observability_router.py` — the REST observability/control routes
+- `test_workflow_leases.py` — claim/fence/expiry/reclaim, orphan
+  reconciliation, dry-run isolation, and lease-store corruption
+- `test_workflow_failures.py` — the nineteen failure classes, rule
+  disclosure, stagnation, and the recovery/reason bridges
+- `test_workflow_graph_diff.py` and `test_workflow_plan_diff_router.py` —
+  structural-vs-runtime revision diff, its endpoint, and owner scoping
+- `test_workflow_durability_router.py` — the journal, projection, the
+  stale-projection refusal, and `/recover`
 
 and the frontend `workflows.test.mjs` / `workflows-observability.test.mjs` client
 contract tests.
