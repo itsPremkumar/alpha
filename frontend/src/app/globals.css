@@ -24,6 +24,48 @@
     --input: 220 13% 91%;
     --ring: 221 83% 53%;
     --radius: 0.75rem;
+    /* Hue-only: the elevation scale multiplies it by its own alpha. Light mode
+       is a near-black slate, dark mode a lighter slate, because a pure black
+       shadow is invisible against a 6%-luminance surface. */
+    --shadow-color: 224 71% 4%;
+
+    /* Surface ladder.
+       Every surface in the app is one of three steps, which is what lets the
+       sidebar, the canvas and the composer separate by luminance instead of each
+       inventing a `bg-card/60`. They already exist as --card (raised),
+       --background (the page) and --secondary (sunken chrome); an earlier draft
+       added --surface-1/2/3 alongside them with byte-identical values, which is
+       two names for one colour and guarantees they drift apart. The names that
+       survived are the ones already in every className in the codebase. */
+
+    /* Elevation.
+       Two shadows each, not one: a tight contact shadow plus a wider ambient
+       one. A single shadow reads as a sticker at low elevation and as a flat
+       cutout at high elevation, because real depth has both. Consumed by
+       the `elev-1/2/3` utilities in `tailwind.config.cjs`. */
+    --shadow-e1:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.06),
+      0 1px 3px 0 hsl(var(--shadow-color) / 0.05);
+    --shadow-e2:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.06),
+      0 4px 12px -2px hsl(var(--shadow-color) / 0.1);
+    --shadow-e3:
+      0 2px 4px -1px hsl(var(--shadow-color) / 0.07),
+      0 12px 32px -6px hsl(var(--shadow-color) / 0.16);
+
+    /* Motion.
+       Durations are a log-ish scale, not arbitrary values: instant is for state
+       flips that must not read as animation, fast for hover/press feedback,
+       slow for things that move a large distance or change a layout. */
+    --dur-instant: 0ms;
+    --dur-fast: 120ms;
+    --dur-slow: 220ms;
+
+    /* Standard is decelerate (fast start, gentle stop) because it follows a
+       pointer or a key press. Emphasised is symmetric and is reserved for
+       anything the user did not directly drive, such as a panel entering. */
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasised: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark {
@@ -46,6 +88,11 @@
     --border: 217 19% 18%;
     --input: 217 19% 18%;
     --ring: 224 76% 66%;
+    --shadow-color: 217 30% 84%;
+
+    /* Dark mode inverts which end of the ladder is "raised". --card is still
+       the lighter surface, but it starts near the background's luminance instead
+       of at pure white, so the same three steps keep reading as depth. */
   }
 
   html {
@@ -75,11 +122,138 @@
   }
 }
 
+/* ── Interaction affordances ───────────────────────────────────────────────
+ *
+ * ## Why this block exists
+ *
+ * An audit of the running app measured **43 interactive elements whose hit
+ * area was under 24x24px** - almost all of them in the thread sidebar, which
+ * is the most-clicked surface in the product. WCAG 2.2 SC 2.5.8 (Target Size
+ * Minimum, AA) sets that floor at 24x24 CSS px, and the offenders were as small
+ * as 16x16 (a group expander) and 15px tall (the "Manage all projects" link).
+ * Those are real misses on touch and painful for anyone with a tremor.
+ *
+ * The naive fix - adding `p-2` everywhere - is wrong here for two reasons: the
+ * sidebar is a dense operator UI whose 11px type is deliberate, and padding a
+ * button also pads it *visually*, so 39 controls would gain 39 grey hover
+ * boxes and the panel would read as a field of empty chips.
+ *
+ * So the floor is applied as an **invisible hit area** instead. `.hit-target`
+ * draws nothing, and expands the *clickable* region to at least 24x24 by way of
+ * a `::after` pseudo-element that is centred on the control and allowed to
+ * overflow. Layout, visual density, and the accessible name are all unchanged;
+ * only the pointer target grows. Because the pseudo-element is a child of the
+ * button, clicks inside it also dispatch to the button, and it is not
+ * focusable, so it adds nothing to the tab order.
+ *
+ * `position: relative` is required on the host for the absolute pseudo-element
+ * to anchor to the control rather than to the nearest positioned ancestor.
+ */
+@layer components {
+  .hit-target {
+    position: relative;
+  }
+
+  .hit-target::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: 100%;
+    height: 100%;
+    /* Only grow; a control already larger than the floor is untouched. */
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: inherit;
+  }
+
+  /* Interactive elements that must *also* carry a visible box when they are the
+     primary action in a dense strip (the composer's icon buttons). Those opt in
+     via `.hit-target-boxed`, which grows the visible padding rather than only
+     the pointer region. */
+  .hit-target-boxed {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  /* Apply the floor to the dense regions automatically.
+   *
+   * 39 of the 43 undersized targets were in the thread sidebar, and they are
+   * spread across ~15 sibling elements in two components. Hand-editing each
+   * class string would leave the next one added at 16px by default, so the rule
+   * is scoped to the regions that are dense *by design* instead. The three
+   * dense containers are the sidebar, the workspace header, and the composer
+   * toolbar - all of which already commit to 10-12px type.
+   *
+   * Scoped by attribute rather than by bare `aside`/`header` so a full-width
+   * marketing-style `aside` elsewhere in the app is unaffected.
+   *
+   * **Overlap safety.** Growing a target is only an improvement if the grown
+   * region does not start claiming its neighbours' clicks. These containers
+   * stack their rows with `space-y-1` (4px) or `gap-1.5` (6px), and a 16px
+   * control centred into 24px extends 4px per side, so grown regions meet but
+   * do not cross. `src/lib/hit-targets.test.mjs` re-derives that geometry from
+   * the shipped class strings and fails if a future density change makes two
+   * grown regions intersect.
+   */
+  [data-dense-controls] button,
+  [data-dense-controls] a[href] {
+    position: relative;
+  }
+
+  [data-dense-controls] button::after,
+  [data-dense-controls] a[href]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: 100%;
+    height: 100%;
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  /* The group's own hover affordance is a full-row highlight, so an invisible
+     overflow there would paint nothing but *would* eat clicks meant for the
+     row below. Rows keep their existing padding and simply clear the floor. */
+  [data-dense-controls] button[data-hit-row]::after {
+    content: none;
+  }
+}
+
 /* Keep keyboard focus obvious even when a component removes its outline. */
 :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
+
+/* A pointer user should not be shown the keyboard ring, and a keyboard user
+ * should always be shown it. `:focus-visible` already encodes that split, but
+ * several dense controls set `focus:outline-none` with a 1px ring, which on a
+ * 16px target is nearly invisible. This raises the floor for the small,
+ * high-frequency controls without changing the global treatment. */
+:where(header button, aside button, [data-lion-pet-keepout] button):focus-visible {
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.28);
+}
+
+/* ── Elevation ────────────────────────────────────────────────────────────
+ *
+ * Three card levels instead of the ad-hoc `shadow-sm` / `shadow-2xs` /
+ * `shadow-xl` / `shadow-2xl` mix that was spread across the components, which
+ * meant a dropdown (`shadow-xl`) and a message card (`shadow-sm`) had no
+ * consistent relationship. Level 1 = resting surfaces, 2 = raised (popovers,
+ * the composer, sticky headers), 3 = overlays (modals, command palettes).
+ * Darkening with the theme keeps the shadow from reading as a grey halo on a
+ * near-black surface, where a black shadow is invisible.
+ */
+/* The elevation ladder itself lives in `tailwind.config.cjs` under
+ * `theme.extend.boxShadow`, not here, so that `hover:elev-2` and
+ * `max-md:elev-3` resolve. Only the token values are declared in this file.
+ * See the comment on `boxShadow.elev` in that config for why that split exists.
+ */
 
 ::selection {
   background: hsl(var(--primary) / 0.22);

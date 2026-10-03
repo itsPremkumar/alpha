@@ -87,7 +87,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
             rendering wrong with no lint, no build error and no test. An
             arbitrary value keeps the intended 4.5rem without inventing a new
             theme scale. `lib/tailwind-class-guard.test.mjs` pins this. */}
-        <div className="relative size-[4.5rem] rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-xl border border-white/20">
+        <div className="relative size-[4.5rem] rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center elev-3 border border-white/20">
           {botAvatar ? (
             <span className="text-3xl">{botAvatar}</span>
           ) : (
@@ -147,7 +147,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
               "Create a plan for this work. Break it into concrete steps, call out anything you need from me, and tell me what to start with.",
             )
           }
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
         >
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 group-hover:bg-primary/20 transition-colors">
@@ -173,7 +173,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
               "Write or improve some code. Show me the code, explain what it does, and point out anything you would do differently.",
             )
           }
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
         >
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
@@ -201,7 +201,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
               onPickStarter?.("Review the current project status, files and logic.");
             }
           }}
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
         >
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors">
@@ -223,7 +223,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
         <button
           type="button"
           onClick={() => onPickStarter?.("")}
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between shadow-2xs hover:shadow-md cursor-pointer"
+          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
         >
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">

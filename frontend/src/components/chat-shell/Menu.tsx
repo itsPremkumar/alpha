@@ -62,7 +62,7 @@ export function Menu(props: {
         <div
           role="menu"
           aria-label={props.label}
-          className={`absolute z-30 mt-1 w-60 max-w-[85vw] rounded-xl border border-border bg-card p-1 shadow-2xl ${props.compact ? "right-0" : "left-0"}`}
+          className={`absolute z-30 mt-1 w-60 max-w-[85vw] rounded-xl border border-border bg-card p-1 elev-3 ${props.compact ? "right-0" : "left-0"}`}
         >
           {props.children(() => setOpen(false))}
         </div>

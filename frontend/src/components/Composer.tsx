@@ -313,7 +313,7 @@ export function Composer({
     <div className="w-full max-w-4xl mx-auto p-3 relative">
       {/* Slash Command Suggestions Palette */}
       {suggestions.length > 0 && (
-        <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl elev-3 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 dur-fast">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Terminal className="size-3.5 text-primary" />
@@ -355,7 +355,7 @@ export function Composer({
       )}
 
       {showKeyPopover && (
-        <div className="mb-2.5 rounded-2xl border border-primary/30 bg-card/95 backdrop-blur-md shadow-xl p-3.5 space-y-3 animate-in fade-in slide-in-from-bottom-2">
+        <div className="mb-2.5 rounded-2xl border border-primary/30 bg-card/95 backdrop-blur-md elev-3 p-3.5 space-y-3 animate-in fade-in slide-in-from-bottom-2">
           <div className="flex items-center justify-between border-b border-border/50 pb-2">
             <div className="flex items-center gap-2">
               <Key className="size-4 text-primary" />
@@ -478,10 +478,17 @@ export function Composer({
 
       {/* The lion companion reads this rect to stay off the composer. Without a
           marked keep-out region the pet's own hit area (`pointer-events: auto`)
-          can land on the input and swallow clicks aimed at it. */}
+          can land on the input and swallow clicks aimed at it.
+
+          `data-dense-controls` adds the invisible 24px hit-area floor to the
+          toolbar's icon buttons, which sit at `p-1.5` around a 14px glyph —
+          a 22x22 target, under the WCAG 2.5.8 minimum. `elev-2` replaces the
+          ad-hoc `elev-1` so the composer sits on the documented elevation
+          ladder with the sticky header and the popovers. */}
       <div
         data-lion-pet-keepout=""
-        className="rounded-2xl border border-border bg-card shadow-sm focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all p-2.5"
+        data-dense-controls=""
+        className="rounded-2xl border border-border bg-card elev-2 focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all p-2.5"
       >
         <textarea
           ref={textareaRef}
@@ -678,7 +685,7 @@ export function Composer({
               <button
                 type="button"
                 onClick={onStop}
-                className="size-9 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm"
+                className="size-9 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-90 transition-opacity elev-1"
                 title="Stop generating"
                 aria-label="Stop generating"
               >
@@ -689,7 +696,7 @@ export function Composer({
                 type="button"
                 disabled={!input.trim()}
                 onClick={onSubmit}
-                className="size-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center disabled:opacity-40 hover:opacity-95 transition-all shadow-md cursor-pointer hover:shadow-blue-500/20"
+                className="size-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center disabled:opacity-40 hover:opacity-95 transition-all elev-2 cursor-pointer hover:shadow-blue-500/20"
                 title="Send message"
                 aria-label="Send message"
               >

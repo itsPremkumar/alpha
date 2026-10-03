@@ -144,8 +144,18 @@ export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
             <span className="font-semibold text-xs text-foreground">Project Inspector</span>
           </div>
           {onClose && (
-            <button type="button" onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
-              <X className="size-4" />
+            /* An icon-only button has no text content, so without an explicit
+             * label this is announced as just "button" — the audit found
+             * exactly one control in this panel with no accessible name. The
+             * glyph is `aria-hidden` so it is not announced twice. */
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Inspector"
+              title="Close Inspector"
+              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="size-4" aria-hidden="true" />
             </button>
           )}
         </div>

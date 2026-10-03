@@ -242,7 +242,7 @@ export function Modal(props: { title: string; subtitle?: string; onClose: () => 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={props.title}>
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <aside className="relative w-full max-w-md h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden">
+      <aside className="relative w-full max-w-md h-full bg-card border-l border-border elev-3 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-border/60">
           <h2 className="text-sm font-semibold">{props.title}</h2>
           {props.subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{props.subtitle}</p>}

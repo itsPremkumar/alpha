@@ -156,7 +156,7 @@ export function FilesSection(props: { threadId: string | null }) {
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={`Preview ${preview.name}`}>
           <div className="absolute inset-0 bg-black/40" onClick={() => setPreview(null)} />
-          <div className="relative w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+          <div className="relative w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-2xl elev-3 flex flex-col overflow-hidden">
             <div className="p-3 border-b border-border/60 flex items-center gap-2">
               <p className="text-xs font-semibold truncate flex-1">{preview.name}</p>
               <Btn variant="ghost" onClick={() => setPreview(null)}>

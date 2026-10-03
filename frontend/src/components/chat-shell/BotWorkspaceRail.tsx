@@ -223,7 +223,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
           onOpenSettings={() => onOpenView("bots")}
           onOpenView={onOpenView}
         >
-          <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 hover:bg-card hover:border-primary/40 transition-all cursor-pointer group shadow-2xs">
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 hover:bg-card hover:border-primary/40 transition-all cursor-pointer group elev-1">
             <div className="flex items-center gap-2.5 min-w-0">
               {activeBot ? (
                 <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 border border-primary/20">
@@ -314,7 +314,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                       onClick={() => onSelectThread(thread.thread_id)}
                       className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
                         isActive
-                          ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                          ? "bg-primary text-primary-foreground font-semibold elev-1"
                           : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -561,14 +561,21 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                               onOpenView("projects");
                             }}
                             onOpenView={onOpenView}
+                            triggerClassName="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 opacity-60 group-hover:opacity-100 transition-opacity"
                           >
-                            <button
-                              type="button"
-                              className="p-1 rounded text-muted-foreground hover:text-foreground opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer"
-                              title={`Project options for ${project?.name || row.projectId}`}
-                            >
-                              <MoreHorizontal className="size-3" />
-                            </button>
+                            {/* The trigger is an icon, not text, so the
+                                accessible name has to be supplied here. The
+                                wrapper is a `role="button"` element, so this
+                                must NOT be a real button: nesting one inside
+                                another is invalid HTML, drops the inner one
+                                out of the accessibility tree in several
+                                screen readers, and makes activation
+                                ambiguous. `aria-hidden` keeps the glyph from
+                                being announced twice while the wrapper
+                                carries the name. Styling moved up to
+                                `triggerClassName`, since the element that used
+                                to own it is gone. */}
+                            <MoreHorizontal className="size-3" aria-hidden="true" />
                           </ProjectDropdownMenu>
                         </div>
                       </div>
@@ -692,7 +699,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                   onClick={() => onSelectThread(thread.thread_id)}
                                   className={`w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded-md text-left text-[11px] transition-colors cursor-pointer ${
                                     isCurrent
-                                      ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                                      ? "bg-primary text-primary-foreground font-semibold elev-1"
                                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                   }`}
                                 >

@@ -298,7 +298,7 @@ export function WarRoomSection() {
                   {hierarchy.csuite.map((leader) => (
                     <div
                       key={leader.node_id}
-                      className="rounded-xl border border-primary/30 bg-card p-3.5 shadow-sm space-y-2 relative overflow-hidden"
+                      className="rounded-xl border border-primary/30 bg-card p-3.5 elev-1 space-y-2 relative overflow-hidden"
                     >
                       <div className="flex items-start justify-between">
                         <div>
@@ -452,7 +452,7 @@ export function WarRoomSection() {
                       onClick={() => setSelectedRfcId(rfc.rfc_id)}
                       className={`w-full text-left rounded-xl border p-3 transition-colors ${
                         selectedRfcId === rfc.rfc_id
-                          ? "border-primary bg-primary/5 shadow-sm"
+                          ? "border-primary bg-primary/5 elev-1"
                           : "border-border/60 bg-card hover:border-border"
                       }`}
                     >

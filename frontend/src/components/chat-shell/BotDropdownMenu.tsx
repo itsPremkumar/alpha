@@ -112,7 +112,7 @@ export function BotDropdownMenu({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-border/70 bg-card/60 hover:bg-card text-xs transition-all shadow-2xs cursor-pointer group"
+          className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-border/70 bg-card/60 hover:bg-card text-xs transition-all elev-1 cursor-pointer group"
           title={`Bot options for ${botTitle}`}
           aria-haspopup="true"
           aria-expanded={open}
@@ -126,7 +126,7 @@ export function BotDropdownMenu({
           </div>
           <span className="font-semibold text-foreground truncate max-w-32">{botTitle}</span>
           <ChevronDown
-            className={`size-3 text-muted-foreground transition-transform duration-200 ${
+            className={`size-3 text-muted-foreground transition-transform dur-fast ${
               open ? "rotate-180 text-foreground" : "group-hover:text-foreground"
             }`}
           />
@@ -137,7 +137,7 @@ export function BotDropdownMenu({
         <div
           role="menu"
           aria-label={`Menu for ${botTitle}`}
-          className="absolute left-0 mt-1.5 w-72 rounded-2xl border border-border bg-card shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100 divide-y divide-border/40"
+          className="absolute left-0 mt-1.5 w-72 rounded-2xl border border-border bg-card elev-3 p-2 z-50 animate-in fade-in zoom-in-95 dur-fast divide-y divide-border/40"
         >
           {/* Active Bot Summary Header */}
           <div className="px-2.5 py-2 flex items-center gap-2.5">

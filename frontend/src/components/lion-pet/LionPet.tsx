@@ -767,7 +767,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     return (
       <button
         type="button"
-        className="lion-pet-show-button fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-full border border-amber-400/40 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-amber-200 shadow-2xl backdrop-blur-xl transition hover:border-amber-300/70 hover:text-amber-100"
+        className="lion-pet-show-button fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-full border border-amber-400/40 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-amber-200 elev-3 backdrop-blur-xl transition hover:border-amber-300/70 hover:text-amber-100"
         onClick={toggleDesktopOverlay}
         aria-label="Return Alpha lion companion to the application window"
       >
@@ -786,7 +786,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     return (
       <button
         type="button"
-        className="lion-pet-show-button fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-full border border-amber-400/40 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-amber-200 shadow-2xl backdrop-blur-xl transition hover:border-amber-300/70 hover:text-amber-100"
+        className="lion-pet-show-button fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-full border border-amber-400/40 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-amber-200 elev-3 backdrop-blur-xl transition hover:border-amber-300/70 hover:text-amber-100"
         onClick={toggleVisible}
         aria-label="Show Alpha lion companion"
       >
