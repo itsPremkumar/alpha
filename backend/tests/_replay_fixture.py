@@ -56,7 +56,11 @@ def build_config_yaml(*, model_block: str, home: Path) -> str:
       gitignored custom skills present only on a dev box) never leak into the
       prompt. Pair with an empty ``extensions_config.json`` (no MCP) via
       :func:`prepare_hermetic_extras`.
-    - memory / summarization — disabled (background, non-deterministic timing)
+    - memory / summarization - disabled (background, non-deterministic timing)
+    - grounding - manifest injection off: it is prompt content added after the
+      recording era, and the whole point of this config is that record, replay,
+      and CI see byte-identical prompts. The step gates stay enforced with
+      ``enabled: false`` (a gate is a correctness check, not a feature).
     """
     return f"""\
 log_level: warning
@@ -88,6 +92,10 @@ memory:
   enabled: false
   injection_enabled: false
 summarization:
+  enabled: false
+grounding:
+  # See the docstring: injection off to keep the prompt byte-identical to the
+  # recording; the deterministic gates still run over every tool call.
   enabled: false
 agents_api:
   enabled: true
