@@ -30,19 +30,19 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   declare new loops in `register_default_loops()` with a `loops.py` adapter,
   gate them under `config.yaml -> autonomy.loops` (absent id = disabled), run
   sync ticks on threads, restart inside a budget then park, publish
-  `autonomy.loop.completed` on the in-process bus (`alpha/events/bus.py`), and
-  expose them through `GET /api/ops/integration-health`. Flags off = zero tasks.
-  It starts from the gateway lifespan after scheduler/channel services and stops
-  first on shutdown. `tests/test_autonomy_supervisor.py` pins the invariants.
+  `autonomy.loop.completed` on the in-process bus (`alpha/events/bus.py`), expose
+  them through `GET /api/ops/integration-health`. Flags off = zero tasks;
+  lifespan start after scheduler/channel services, stop first on shutdown.
+  `tests/test_autonomy_supervisor.py` pins the invariants.
 
 ## Run verification, autonomy, and self-repair contracts
 
 - **Run verification overlay** — `alpha.runtime.runs.verification` checks optional
-  run acceptance criteria against independently collected evidence; it is an
-  overlay, `RunManager` stays the sole lifecycle owner. Gateway run requests may
-  persist validated `acceptance_criteria` into run metadata, but a terminal
-  `success` must not be presented as verified without passing evidence for every
-  required kind. Tests: `tests/test_run_acceptance_criteria.py`.
+  run acceptance criteria against independently collected evidence; `RunManager`
+  stays the sole lifecycle owner. Gateway run requests may persist validated
+  `acceptance_criteria` into run metadata, but a terminal `success` is never
+  presented as verified without passing evidence for every required kind. Tests:
+  `tests/test_run_acceptance_criteria.py`.
 - **Autonomous run mode** — `RunCreateRequest.autonomous` is the Gateway-owned
   opt-in for prompt-to-completion execution. `start_run()` applies plan mode,
   permitted subagent delegation and `non_interactive` only after ordinary client
@@ -55,40 +55,40 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   prompt-injection resistance; CI/deployment must supply real benchmark values
   rather than treating defaults as evidence. Tests: `tests/test_release_gate.py`.
 - **Self-repair verification** — `selfrepair/engine.py` provides symptom
-  classification and disk-health observations, not automatic repair execution:
-  `verify_repair` returns false with an explicit missing-verifier reason and
+  classification and disk-health observations, never automatic repair execution:
+  `verify_repair` returns false with an explicit missing-verifier reason,
   `attempt_repair` refuses unimplemented actions without changing runtime state.
   Never report `fixed` from a repair-kind label or diagnostic suggestion. Future
   repair adapters must perform a scoped action and collect independent
-  post-action runtime evidence before success is permitted; existing refusal
-  reasons and record serialization remain supported. Coverage:
+  post-action runtime evidence before success; existing refusal reasons and
+  record serialization remain supported. Coverage:
   `tests/test_workforce_intelligence.py`.
 
 ## Project Overview
 
 Alpha is a LangGraph-based AI super agent system. The backend provides a "super
-agent" with sandbox execution, persistent memory, subagent delegation, and
-extensible tool integration - all operating in per-thread isolated environments.
-The four-service topology (Gateway 8001, Frontend 3000, Nginx 2026, optional
-Provisioner 8002) and the loopback-by-default publish rule are owned by the root
-guide's [Service Topology](../AGENTS.md#service-topology).
+agent" with sandbox execution, persistent memory, subagent delegation and
+extensible tool integration, all in per-thread isolated environments. The
+four-service topology (Gateway 8001, Frontend 3000, Nginx 2026, optional
+Provisioner 8002) and loopback-by-default publish rule: root guide's
+[Service Topology](../AGENTS.md#service-topology).
 
 **Runtime**:
 - `make dev`, Docker dev and production all run the agent runtime in Gateway via `RunManager` + `run_agent()` + `StreamBridge` (`packages/harness/alpha/runtime/`); Nginx exposes it at `/api/langgraph/*` and rewrites to Gateway's native `/api/*` routers.
 - Gateway SSE stream framing (bounded `messages-tuple` argument batching and subgraph event namespacing, #4399) is owned by [packages/harness/alpha/runtime/AGENTS.md](packages/harness/alpha/runtime/AGENTS.md).
 - Background subagent identity (provider `tool_call_id` vs. the executor's `execution_id`, and why provider IDs must never become registry ownership keys) is owned by [packages/harness/alpha/subagents/AGENTS.md](packages/harness/alpha/subagents/AGENTS.md).
-- Scheduled-task executions must reuse that same Gateway run lifecycle. The scheduler may decide *when* work runs, but it must dispatch through the existing run path rather than introducing a parallel execution stack. The dispatch, queue, lease, `preview-cron`, and multi-instance recovery rules are owned by [docs/WORKFORCE.md](../docs/WORKFORCE.md#scheduled-tasks-and-background-automation-contract).
-- Long-running MCP work uses a separate durable task runtime (`McpTaskService` + `mcp_tasks`, lease-based recovery) rather than keeping remote task IDs or status polling inside the Agent loop; only submit remains Agent-visible, the database is the source of truth, and `ThreadState` receives only a bounded current-thread projection. The full contract (leases, cancellation fencing, delivery idempotency, management-tool exposure, notification retries, dead-lettering, and the cancel endpoint's worker-stopped 503) is owned by [packages/harness/alpha/mcp/AGENTS.md](packages/harness/alpha/mcp/AGENTS.md).
+- Scheduled-task executions reuse that same Gateway run lifecycle: the scheduler decides *when*, dispatch goes through the existing run path, never a parallel stack. Dispatch, queue, lease, `preview-cron` and multi-instance recovery rules: [docs/WORKFORCE.md](../docs/WORKFORCE.md#scheduled-tasks-and-background-automation-contract).
+- Long-running MCP work uses a durable task runtime (`McpTaskService` + `mcp_tasks`, lease-based recovery) rather than remote task IDs or status polling inside the Agent loop; only submit stays Agent-visible, the database is source of truth, `ThreadState` gets a bounded projection. Full contract (leases, cancellation fencing, delivery idempotency, management-tool exposure, notification retries, dead-lettering, cancel endpoint's worker-stopped 503): [packages/harness/alpha/mcp/AGENTS.md](packages/harness/alpha/mcp/AGENTS.md).
 - `extensions_config.json` runtime write discipline (compose/Helm mount modes, the dual write locks, and the `EBUSY`-only non-atomic fallback) is owned by [packages/harness/alpha/extensions/AGENTS.md](packages/harness/alpha/extensions/AGENTS.md).
 
 **Project structure**: `packages/harness/alpha/` (import `alpha.*`) is the agent
-framework; `app/gateway/` + `app/channels/` (import `app.*`) are the FastAPI Gateway
-and IM channels; `packages/extension-api/` (import `alpha_extension_api.*`)
-is the public extension contract; `extensions/sources/` holds installed extension
-snapshots; `tests/`, `scripts/` (including `check_tool_schemas.py`,
-`generate_feature_manifest.py`, `benchmark/`), and `docs/` hold tests, gates,
-benchmarks, and reference docs. `langgraph.json` configures LangGraph Studio. The
-module guides below own the internals of each package.
+framework; `app/gateway/` + `app/channels/` (import `app.*`) are the FastAPI
+Gateway and IM channels; `packages/extension-api/` (import
+`alpha_extension_api.*`) is the public extension contract; `extensions/sources/`
+holds installed extension snapshots; `tests/`, `scripts/` (`check_tool_schemas.py`,
+`generate_feature_manifest.py`, `benchmark/`), `docs/` hold tests, gates,
+benchmarks and reference docs. `langgraph.json` configures LangGraph Studio. The
+module guides below own each package's internals.
 
 ## Important Development Guidelines
 
@@ -97,16 +97,15 @@ module guides below own the internals of each package.
 
 - Update `README.md` for user-facing changes (features, setup, usage instructions)
 - Update `AGENTS.md` for development changes (architecture, commands, workflows, internal systems). `CLAUDE.md` imports it via `@AGENTS.md`, so editing `AGENTS.md` updates both.
-- Keep documentation synchronized with the codebase at all times, with accuracy and timeliness
+- Keep documentation synchronized with the codebase at all times
 
 ### Backend Benchmarks
 
-`backend/scripts/benchmark/` holds standalone, reproducible measurements of
-production behavior: pin datasets by immutable revision and SHA-256, keep
-credentials and provider payloads out of the repo, version prompts/seeds/clocks,
-and use fixed clocks for offline selection. The per-benchmark protocols and
-offline commands for `context_snapshot/`, `deermem_eviction/`, and `concurrency/`
-are consolidated in
+`backend/scripts/benchmark/` holds reproducible measurements of production
+behavior: pin datasets by immutable revision and SHA-256, keep credentials and
+provider payloads out of the repo, version prompts/seeds/clocks, use fixed clocks
+for offline selection. Protocols and offline commands for `context_snapshot/`,
+`deermem_eviction/` and `concurrency/`:
 [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md#agent-guidance-reference-backend-benchmarks).
 
 ## Commands
@@ -134,9 +133,8 @@ make migrate-rev MSG="..."  # Autogenerate a new alembic revision (see Schema Mi
 
 The backend `make dev` target pre-creates and excludes `ALPHA_HOME`
 (default: `backend/.alpha`) and `backend/sandbox` from Uvicorn's reload
-watcher. Do not replace it with a bare `uvicorn --reload`: agent tasks write
-Python and other runtime files below `ALPHA_HOME`, which would otherwise
-restart the Gateway during an active run.
+watcher. Never replace it with a bare `uvicorn --reload`: agent tasks write
+runtime files below `ALPHA_HOME`, which would restart the Gateway mid-run.
 
 More specific `AGENTS.md` files in backend code directories contain the subsystem sections split from this file. Follow the nearest file in the directory tree.
 
@@ -153,15 +151,15 @@ The backend is split into two layers with a strict dependency direction:
 - **Harness** (`packages/harness/alpha/`): publishable agent framework package (`alpha-harness`), import prefix `alpha.*` — agent orchestration, tools, sandbox, models, MCP, skills, config: everything needed to build and run agents.
 - **App** (`app/`): unpublished application code, import prefix `app.*` — FastAPI Gateway API and IM channel integrations (Feishu, Slack, Telegram, DingTalk).
 
-**Dependency rule**: App imports alpha, but alpha never imports app. This boundary is enforced by `tests/test_harness_boundary.py` which runs in CI. Import conventions: `from alpha.agents import make_lead_agent` / `from alpha.models import create_chat_model` inside the harness; `from app.gateway.app import app` / `from app.channels.service import start_channel_service` inside the app; `from alpha.config import get_app_config` for the allowed App → Harness direction. A `from app.gateway.routers...` import inside the harness fails CI.
+**Dependency rule**: App imports alpha, alpha never imports app, enforced by `tests/test_harness_boundary.py` in CI. Import conventions: `from alpha.agents import make_lead_agent` / `from alpha.models import create_chat_model` inside the harness; `from app.gateway.app import app` / `from app.channels.service import start_channel_service` inside the app; `from alpha.config import get_app_config` for the allowed App → Harness direction. A `from app.gateway.routers...` import inside the harness fails CI.
 
-Package import hygiene: the `alpha.agents` and `alpha.subagents` package roots expose
-heavyweight graph/executor entrypoints lazily. `alpha.agents:make_lead_agent` stays a
-concrete module-level function because LangGraph Server resolves graph factories from
-the module dictionary; the wrapper keeps lead-agent and skill-cache imports inside it.
-Internal modules needing only lightweight types, config or registries should import
-the concrete submodule instead of eager package-root imports that pull in the tool
-graph or subagent executor during state/schema imports.
+Package import hygiene: `alpha.agents` and `alpha.subagents` package roots expose
+heavyweight graph/executor entrypoints lazily. `alpha.agents:make_lead_agent` stays
+a concrete module-level function because LangGraph Server resolves graph factories
+from the module dictionary; the wrapper keeps lead-agent and skill-cache imports
+inside it. Internal modules needing only lightweight types, config or registries
+import the concrete submodule instead of eager package-root imports that pull in
+the tool graph or subagent executor during state/schema imports.
 
 `ThreadMetaStore.search()` keeps JSON filter semantics identical across memory, SQLite,
 and PostgreSQL: missing differs from null, bool differs from int, and float filters
@@ -190,13 +188,13 @@ have bitten us, and both are now pinned by tests:
   `get_app_config()`, which stats the config file on *every* call to detect
   edits. Resolve it off-loop the same way.
 
-When you put a synchronous filesystem/path/config helper behind an `async` entry
-point, offload it with `asyncio.to_thread` (see
-`alpha/runtime/events/store/jsonl.py`, `alpha/utils/assembly_io.py`) instead of
-calling it inline. These tests need generous synchronization bounds: under the
-detector on a loaded host `threading.Thread.start()` alone can block >10s, so a
-sub-second gate expires before the run it waits on starts, and the failure looks
-like the bug it is meant to catch.
+Put synchronous filesystem/path/config helpers behind `async` entry points with
+`asyncio.to_thread` (see `alpha/runtime/events/store/jsonl.py`,
+`alpha/utils/assembly_io.py`), never inline. These tests need generous
+synchronization bounds: under the detector on a loaded host
+`threading.Thread.start()` alone can block >10s, so a sub-second gate expires
+before the run it waits on starts, and the failure looks like the bug it is
+meant to catch.
 
 ## Development Workflow
 
@@ -208,14 +206,13 @@ like the bug it is meant to catch.
 - Run both offline targets before and after your change: `make test` and `make test-blocking-io`
 - Tests must pass before a feature is considered complete
 - For lightweight config/utility modules, prefer pure unit tests with no external dependencies
-- If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `alpha.subagents.executor`)
+- For circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see `alpha.subagents.executor`)
 - Run a specific file with `PYTHONPATH=. uv run pytest tests/test_<feature>.py -v`
 
-Keep live tests opt-in via `ALPHA_RUN_LIVE_TESTS=1`; guard POSIX-only
-markers with `os.name` for Windows collection. Jina logging tests use dummy keys
-(`tests/test_jina_client.py`); Jina/Browserless/InfoQuest resolve URLs without
-rebuilding HTML; InfoQuest connect/read timeout is 30s, separate from crawl
-timeouts (`tests/test_infoquest_http_timeout.py`).
+Keep live tests opt-in (`ALPHA_RUN_LIVE_TESTS=1`); guard POSIX-only markers with
+`os.name` for Windows collection. Jina logging tests use dummy keys; Jina/
+Browserless/InfoQuest resolve URLs without rebuilding HTML; InfoQuest connect/read
+timeout is 30s, separate from crawl timeouts (`tests/test_infoquest_http_timeout.py`).
 
 ### Running the Application
 
@@ -232,10 +229,8 @@ frontend reaches the backend through a single variable,
 `GATEWAY_BASE`: unset (the default) or a bare path means the relative `/api`,
 and a full origin has `/api` appended to it. Left unset, `make dev` from the
 repo root talks to nginx on 2026 with no extra configuration. (Older guides named
-`NEXT_PUBLIC_LANGGRAPH_BASE_URL` and `NEXT_PUBLIC_BACKEND_BASE_URL`; nothing has
-read either since the client consolidated onto `GATEWAY_BASE`, and
-`electron/main.js`'s split-origin guard was still deleting them instead of the
-variable that is real.)
+`NEXT_PUBLIC_LANGGRAPH_BASE_URL`/`NEXT_PUBLIC_BACKEND_BASE_URL`; nothing reads
+either since `GATEWAY_BASE`.)
 
 ## Key Features
 
@@ -301,11 +296,11 @@ admission, preventing worker-local and cross-worker checkpoint-write races. See
 
 For models with `supports_vision: true`, `ViewImageMiddleware` processes images in
 conversation and `view_image_tool` joins the toolset. Images are base64-encoded
-into a hidden message carrying a reserved ID prefix and a server-owned metadata
+into a hidden message with a reserved ID prefix and a server-owned metadata
 marker; Gateway strips that marker from untrusted input and the middleware
 requires both identifiers to recognize its own message. Injection happens inside
-`wrap_model_call`, so the payload never enters graph state: checkpoints retain
-only lightweight `viewed_images` metadata, client-chosen IDs survive, and the
+`wrap_model_call`, so the payload never enters graph state: checkpoints keep only
+lightweight `viewed_images` metadata, client-chosen IDs survive, and the
 middleware sweeps its message out of every request before rebuilding it — a
 payload stranded in an older checkpoint by an interrupted run stops being resent.
 
@@ -313,16 +308,15 @@ payload stranded in an older checkpoint by an interrupted run stops being resent
 
 `packages/harness/alpha/peer_network/` is the harness-owned, installation-scoped
 peer plane: `service.py` owns lifecycle, pairing, topology, delivery, retry and SSE
-events; `storage.py` is synchronous SQLite, called through `asyncio.to_thread` at
-async boundaries; `transport.py` is HTTP-first with WebSocket fallback;
-`discovery.py` owns UDP and optional mDNS; `github.py` is Agent Card rendezvous
-only. Bot `peer/agent` DMs bridge through the service rather than duplicating
-transport. The harness root guide owns the cross-installation identity,
-discovery-untrusted, exact-public-path, sender-assertion, credential-stripping
-and SQLite-not-cross-process-exactly-once rules; Gateway router rules are in
-[app/gateway/AGENTS.md](app/gateway/AGENTS.md). Operations:
-[docs/ALPHA_PEER_NETWORK.md](../docs/ALPHA_PEER_NETWORK.md); tests:
-`tests/test_peer_network.py` and `tests/test_bots_dm.py`.
+events; `storage.py` is synchronous SQLite via `asyncio.to_thread`; `transport.py`
+is HTTP-first with WebSocket fallback; `discovery.py` owns UDP and optional mDNS;
+`github.py` is Agent Card rendezvous only. Bot `peer/agent` DMs bridge through the
+service rather than duplicating transport. The harness root guide owns the
+cross-installation identity, discovery-untrusted, exact-public-path,
+sender-assertion, credential-stripping and SQLite-not-cross-process-exactly-once
+rules; Gateway router rules: [app/gateway/AGENTS.md](app/gateway/AGENTS.md).
+Operations: [docs/ALPHA_PEER_NETWORK.md](../docs/ALPHA_PEER_NETWORK.md); tests:
+`tests/test_peer_network.py`, `tests/test_bots_dm.py`.
 
 ## Code Style
 

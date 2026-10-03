@@ -81,25 +81,24 @@ alpha/
 ```
 
 **`config.yaml` — the one file for every model setting.** Every model name Alpha
-knows lives in `config.yaml`, never in code and never in a second file:
-`models[]`, `providers:`, `model_routing`, `default_model`, `model_catalog:`,
-`free_gateways:` and `model_pricing:` (each namespace's semantics belong to the
-config guide linked below). Every `model_routing:` name is validated against
-`models[]` at load, so a typo is a startup error rather than a silent fallback.
-Discovery (`GET /api/models/discovery`) refreshes daily-rotating catalogs such
-as OpenRouter's `:free` set instead of hand-maintaining them.
+knows lives in `config.yaml`, never in code and never a second file: `models[]`,
+`providers:`, `model_routing`, `default_model`, `model_catalog:`, `free_gateways:`
+and `model_pricing:` (namespace semantics in the config guide below). Every
+`model_routing:` name is validated against `models[]` at load, so a typo is a
+startup error, not a silent fallback. Discovery (`GET /api/models/discovery`)
+refreshes daily-rotating catalogs such as OpenRouter's `:free` set instead of
+hand-maintaining them.
 
-There is **no second model file**: `models.example.yaml`, `alpha.config.models_catalog`,
-`backend/scripts/gen_models_example.py` and `$ALPHA_MODELS_CONFIG_PATH` are gone
-(removed, not deprecated — a deprecation window would have kept the broken
-fresh-install path reachable) and a duplicate gateway or provider id is a config
-error, not something to arbitrate between files. Schema, precedence and the
-hot-reload/honest-failure rules:
+There is **no second model file**: `models.example.yaml`,
+`alpha.config.models_catalog`, `backend/scripts/gen_models_example.py` and
+`$ALPHA_MODELS_CONFIG_PATH` are gone (removed, not deprecated — a deprecation
+window would have kept the broken fresh-install path reachable) and a duplicate
+gateway or provider id is a config error, not something to arbitrate between
+files. Schema, precedence, hot-reload/honest-failure:
 [backend/packages/harness/alpha/config/AGENTS.md](backend/packages/harness/alpha/config/AGENTS.md);
-discovery, drift detection and the fail-closed routers:
+discovery, drift detection, fail-closed routers:
 [backend/packages/harness/alpha/models/AGENTS.md](backend/packages/harness/alpha/models/AGENTS.md);
-the removal incident: the `backend/tests/test_single_file_model_config.py`
-module docstring.
+removal incident: `backend/tests/test_single_file_model_config.py` docstring.
 
 Third-party extensions load from a top-level `plugins:` list in `config.yaml`
 (operator-controlled on purpose — that list imports code, so it stays out of the
@@ -107,29 +106,26 @@ API-writable `extensions_config.json`). Packaged extensions contribute middlewar
 task lifecycle, system-model observers, Gateway services and FastAPI HTTP routers;
 the [reference extension](examples/alpha-extension-example/) shows all five. Manage
 with `alpha extensions install/upgrade/list/enable/disable/remove` or the root
-`make extension-*` wrappers. Every mutation needs a Gateway restart, and build hooks
-plus extension code run with Gateway privileges — only trusted operator sources
-belong here. The manager transaction, accepted source forms, locks,
-`extensions_config.json` write discipline and contribution contract:
-[the extensions guide](backend/packages/harness/alpha/extensions/AGENTS.md). Root
-config schema and resolution order: [backend/AGENTS.md](backend/AGENTS.md); skill
-quality review and the CI waiver protocol:
-[docs/SKILLS.md](docs/SKILLS.md#skill-quality-review-and-ci-waivers); the
-scheduled-task MVP contract and the workforce map:
-[docs/WORKFORCE.md](docs/WORKFORCE.md#scheduled-tasks-and-background-automation-contract).
+`make extension-*` wrappers; every mutation needs a Gateway restart, and build
+hooks plus extension code run with Gateway privileges — only trusted operator
+sources belong here. Manager transaction, source forms, locks, write discipline,
+contribution contract: [the extensions guide](backend/packages/harness/alpha/extensions/AGENTS.md).
+Root config schema: [backend/AGENTS.md](backend/AGENTS.md); skill review/CI
+waivers: [docs/SKILLS.md](docs/SKILLS.md#skill-quality-review-and-ci-waivers);
+scheduled tasks/workforce: [docs/WORKFORCE.md](docs/WORKFORCE.md#scheduled-tasks-and-background-automation-contract).
 
 ## Commands: Root vs. Module
 
-**Root `make` targets drive the whole stack** (run from the repo root); the complete
-target list is in
+**Root `make` targets drive the whole stack** (run from the repo root); the
+complete target list is in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#agent-guidance-reference-root-make-targets).
-`make dev` does **not** generate config files, so the first-time order is `make config`
-→ `make install` → optional `make voice-setup` → `make dev`. Without `config.yaml`
-present, services fail to boot; `config.yaml` / `extensions_config.json` may be edited
-at runtime via the Gateway API but are gitignored, so never commit them. Run
-`make help` for the full list. Per-module command blocks, single-test invocations,
-log locations, and the `scripts/pnpm.py` Windows/POSIX ordering rule are in the same
-reference.
+`make dev` does **not** generate config files: first-time order is `make config`
+→ `make install` → optional `make voice-setup` → `make dev`. Without
+`config.yaml` services fail to boot; `config.yaml` / `extensions_config.json` may
+be edited at runtime via the Gateway API but are gitignored, so never commit them.
+`make help` lists everything. Per-module command blocks, single-test invocations,
+log locations and the `scripts/pnpm.py` Windows/POSIX ordering rule are in the
+same reference.
 
 All startup modes (local foreground/daemon, Docker dev/prod) and the nginx routing
 table are in
@@ -161,9 +157,9 @@ re-verify against the live catalog before pinning a new one
 the only authority on what exists).
 
 The frontend package declares `typecheck`, `lint` (an alias of `typecheck`),
-`test`, `test:branding`, `test:extra`, and `verify`; it declares no `format`
-script and has no Prettier dependency, so no formatting gate runs — add both the
-dependency and the CI step together if one is ever adopted. `pnpm test` globs
+`test`, `test:branding`, `test:extra` and `verify`; it declares no `format` script
+and has no Prettier dependency, so no formatting gate runs — add both the
+dependency and the CI step together if adopted. `pnpm test` globs
 `src/lib/*.test.mjs` only, so every suite outside that directory needs its own
 script and its own CI step or it silently never runs.
 
@@ -284,9 +280,9 @@ in another layer; follow the pointer.
   **Capability counts are generated, never hand-typed.**
   `contracts/feature_manifest.json` is produced by
   `backend/scripts/generate_feature_manifest.py` and proves every tool, router,
-  middleware, supervisor loop and engine module is wired; if you change a
-  registry, regenerate the manifest *and* fix the numbers in `README.md`,
-  `llms.txt`, `llms-full.txt`, `docs/FAQ.md`, and `docs/COMPARISON.md` in the same
+  middleware, supervisor loop and engine module is wired; a registry change
+  means regenerating the manifest *and* fixing the numbers in `README.md`,
+  `llms.txt`, `llms-full.txt`, `docs/FAQ.md` and `docs/COMPARISON.md` in the same
   change set. `GET /api/ops/integration-health` exposes live coverage +
   supervisor status; the frontend Integration tab renders it.
 - **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
@@ -308,16 +304,15 @@ in another layer; follow the pointer.
   give no multi-process coherence; retained persistent records (not display
   pages) belong in snapshots, working memory stays ephemeral. See also
   **[docs/MEMORY.md](docs/MEMORY.md)**.
-- **Durable runtime** — the layer that makes "a process, UI, network, provider,
-  or Windows restart must not become a task failure" true. It is **additive**:
-  `RunManager` stays the sole lifecycle owner and `SafeRunRecoveryService` stays
-  the only safe-continuation authority, so nothing here is a second execution
-  path. It adds what was genuinely missing — session lifecycle (`runtime/sessions/`),
-  connectivity as a first-class state (`runtime/network/`), a per-effect `UNKNOWN`
-  + reconciliation ledger (`runtime/side_effects/`), a crash-loop-bounded process
-  supervisor (`runtime/supervisor/`), and an ordered, honestly-reported shutdown
-  (`runtime/shutdown.py`, which the Gateway lifespan drain runs through). Map and
-  the explicit **not-yet-implemented** list:
+- **Durable runtime** — makes "a process, UI, network, provider or Windows
+  restart must not become a task failure" true. **Additive**: `RunManager` stays
+  the sole lifecycle owner, `SafeRunRecoveryService` the only safe-continuation
+  authority — never a second execution path. It adds session lifecycle
+  (`runtime/sessions/`), connectivity as a first-class state (`runtime/network/`),
+  a per-effect `UNKNOWN` + reconciliation ledger (`runtime/side_effects/`), a
+  crash-loop-bounded process supervisor (`runtime/supervisor/`) and an ordered,
+  honestly-reported shutdown (`runtime/shutdown.py`, run by the Gateway lifespan
+  drain). Map and the **not-yet-implemented** list:
   **[docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md)**;
   normative contracts: the `AGENTS.md` beside each module.
 
@@ -325,15 +320,15 @@ in another layer; follow the pointer.
 
 These apply repo-wide; module guides own the module-specific detail.
 
-- **Documentation update policy**, **test-driven development** (mandatory in
-  `backend/tests/`; frontend tests in `frontend/tests/`), and the
-  **format-before-push** requirement (`ruff format --check` is enforced by backend
-  CI) are stated once in **[backend/AGENTS.md](backend/AGENTS.md)**. Keep
-  `README.md` current for user-facing changes and the relevant `AGENTS.md` for
-  development/architecture changes in the same change set.
-- **Skill text encoding** — treat `SKILL.md` and other textual skill resources as UTF-8;
-  Python utilities that read or write them must pass `encoding="utf-8"` rather than
-  relying on the platform locale.
+- **Documentation update policy**, **test-driven development** (backend tests in
+  `backend/tests/`, frontend in `frontend/tests/`) and **format-before-push**
+  (`ruff format --check` in backend CI) are stated once in
+  **[backend/AGENTS.md](backend/AGENTS.md)**. Keep `README.md` current for
+  user-facing changes and the relevant `AGENTS.md` for development/architecture
+  changes in the same change set.
+- **Skill text encoding** — treat `SKILL.md` and other textual skill resources as
+  UTF-8: Python utilities that read or write them must pass `encoding="utf-8"`,
+  never rely on the platform locale.
 - **Version sources must stay in lockstep** — a release version must match identically in
   `backend/pyproject.toml`, `frontend/package.json`, and `deploy/helm/alpha/Chart.yaml`
   (`version` + `appVersion`). Pushing a `v*` git tag triggers CI that runs

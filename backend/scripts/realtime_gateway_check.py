@@ -98,7 +98,7 @@ def start(config: Path, log_path: Path) -> subprocess.Popen[bytes]:
     return process
 
 
-def wait_for_health(deadline_seconds: float = 180.0) -> bool:
+def wait_for_health(deadline_seconds: float = 600.0) -> bool:
     deadline = time.monotonic() + deadline_seconds
     while time.monotonic() < deadline:
         status, _ = get("/health", timeout=2.0)

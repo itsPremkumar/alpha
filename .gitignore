@@ -211,3 +211,10 @@ logs/
 analysis-reports/
 .hypothesis/
 
+# ── Editor / agent session scratch ───────────────────────────────────────────
+# OpenCode writes this model catalog into the workspace root; it is a local
+# session artifact, not project configuration. Project model settings live in
+# config.yaml alone (see AGENTS.md, "config.yaml - the one file for every
+# model setting"), so committing a second model file is actively harmful.
+opencode-free-models.json
+

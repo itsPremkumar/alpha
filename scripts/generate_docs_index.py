@@ -146,6 +146,10 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "ALPHA_ARCHITECTURE_AUDIT.md": DocumentSpec(
+        "architecture",
+        "Phase 0 discovery audit: confirmed system map, component cards, capability matrix, and a code-evidenced risk register.",
+    ),
     "AGENT_LANDSCAPE_AND_ROADMAP.md": DocumentSpec(
         "plans",
         "Research survey and feature roadmap for the open-source agent landscape.",

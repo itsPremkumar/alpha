@@ -487,6 +487,15 @@ inventing a transport.
 
 ## 6. PHASE 3 — Enforcement & reclamation (opt-in)
 
+> **Implemented.** The refusal below is live: `groups/enforcement.py::
+> StrictEnforcer` supplies the verdict, and `groups/write_watch.py::
+> enforce_write` consults it from `ReadBeforeWriteMiddleware` on every
+> `write_file`/`str_replace` call — a write against another agent's live
+> claim is refused before the handler runs, stamped with the holder's
+> name and reason. Advisory stays the default and never regresses.
+> Reclamation of a confirmed-dead claim remains an explicit decision,
+> never an automatic transfer.
+
 `lock_policy` already accepts `"strict"`. Making it mean something:
 
 **Refusal.** With `lock_policy: strict`, an agent about to mutate a path held by

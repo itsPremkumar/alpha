@@ -44,8 +44,7 @@ What it composes:
 
 It imports the `DeliberationStrategy` contract and, for `strategy="auto"`, the
 `DeliberationRouter` classifier. `plan_stages()` gives every strategy a real
-stage shape; `resolve_strategy()` carries the router's own rationale onto the
-run.
+stage shape; `resolve_strategy()` carries the router's rationale onto the run.
 
 It does **not** execute the multi-model engines. A `council` room's
 `draft → blind_review → chairman` stages run one subagent each, **not**
@@ -53,7 +52,6 @@ It does **not** execute the multi-model engines. A `council` room's
 `AdversaryDeliberator` — the strategy decides the *shape* of the deliberation,
 not the machinery behind it; the engines are reached through the `deliberate`
 tool and `app/gateway/routers/deliberation.py`.
-
 `test_a_deliberation_claim_requires_a_real_deliberation_import` in
 `tests/test_war_room_honesty.py` enforces that a docstring crediting
 `alpha.deliberation` and the module's real imports cannot disagree.
@@ -68,11 +66,11 @@ only plan whose length varies: `opening → cross_exam ×N → judge`.
 ### Exploratory stages do not end the room
 
 `StagePlan.requires_previous_quorum` is what makes the plans usable: only the
-**last collecting** stage may terminate a run. A debate that finds no agreement
+**last collecting** stage may terminate a run. A debate finding no agreement
 after one round is working correctly, a red-team attack is *supposed* to find
 something — earlier stages are exploratory and a failed quorum simply continues.
-The legacy fixed plan keeps its original all-gating behaviour because that is
-what its existing invariants were written against.
+The legacy fixed plan keeps its all-gating behaviour because that is what its
+invariants were written against.
 
 ### Agreement is measured over claims, not over text
 
@@ -98,9 +96,9 @@ The **minority view is preserved verbatim** on the run.
 ### Cross-agent taint
 
 A war room is structurally the topology prompt-injection research targets: one
-agent's output is rendered into the next agent's prompt on purpose, which is also
-how an injected instruction propagates. `groups/taint.py` makes that visible and
-bounded rather than claiming to stop it:
+agent's output is rendered into the next agent's prompt on purpose — how an
+injected instruction propagates. `groups/taint.py` makes that visible and bounded
+rather than claiming to stop it:
 
 - `screen()` classifies each contribution clean/suspect/infected and says why.
   A room *discussing* injection is not flagged; only an unmarked hit inside an
@@ -146,17 +144,16 @@ process-local module state with no notification channel.
 
 Decides whether a turn should open a room — mostly vetoes, since an agent that
 convenes a panel on every turn is worse than one that never does. Reuses
-`DeliberationRouter` so a room and a council never disagree about how hard a
-prompt is, then applies gates a classifier cannot know about.
+`DeliberationRouter` so a room and a council never disagree about prompt
+difficulty, then applies gates a classifier cannot know about.
 
 Default off. Never in a non-interactive turn. Cooldown, duplicate reuse, a
 per-turn cap, `red_team` reserved for humans, and **a named `gate` and
 `rationale` on every refusal** — a silent skip is indistinguishable from a bug;
-a router fault fails closed.
-
-It is a decision function with a pre-flight surface (`war_room action=evaluate`,
-`POST /api/war-rooms/evaluate`). **Nothing calls it on a conversation's behalf
-yet** — the room still opens only when a model calls the tool.
+a router fault fails closed. Decision function with a pre-flight surface
+(`war_room action=evaluate`, `POST /api/war-rooms/evaluate`); **nothing calls it
+on a conversation's behalf yet** — the room still opens only when a model calls
+the tool.
 
 ## The `war_room` tool
 
@@ -173,8 +170,8 @@ is a **closed set** and every member is handled in the dispatcher — enforced b
 | `acquire` | `groups/acquisition.py` |
 
 `open` takes `strategy` and `debate_rounds`; omit `strategy` for the legacy
-fixed room. `open` must go through `_run_off_loop`, never `asyncio.run` directly:
-the tool runs inside the agent's event loop, where `asyncio.run` raises; the
+fixed room. `open` goes through `_run_off_loop`, never `asyncio.run` directly:
+the tool runs inside the agent's event loop where `asyncio.run` raises; the
 helper uses the same daemon-thread fallback as `swarm_tool.py`.
 
 Every action is fail-closed. Lifecycle actions run under a **non-negotiable
@@ -198,9 +195,9 @@ scanned, approved by somebody other than the requester.
 `list_persisted_runs()`, `load_run_record()` and `read_transcript_tail()` back
 both `action="status"` and `app/gateway/routers/war_rooms.py`
 (`GET /api/war-rooms`, `/{run_id}`, `/{run_id}/transcript`, `/analytics`,
-`/trigger-policy`, and `POST /evaluate`). A `run.json` that cannot be parsed is
-reported as `status="unreadable"` with the error, never silently dropped, and a
-partial trailing transcript line is ignored rather than raised.
+`/trigger-policy`, `POST /evaluate`). An unparsable `run.json` is reported as
+`status="unreadable"` with the error, never silently dropped; a partial trailing
+transcript line is ignored rather than raised.
 
 The router never labels a run **verified**: it reports
 `consensus_supported` / `consensus_degraded` / `tainted` / `unverified`, because
@@ -362,9 +359,15 @@ inside the critical section the gate already takes.
   reading its transcript sees the collision attached to a write it really
   performed. A `Command` is not rewritten — appending to the wrong surface would
   corrupt it, and the claim is recorded either way.
-- It **warns, never blocks**. Refusal stays in `projects/locks.py`, where a
-  wrong block already has a reviewed shape (423 + holder); blocking here would
-  mean the mechanism that draws a status dot could lose work.
+- It **warns, never blocks** in an `advisory` room (the default). Refusal stays
+  in `projects/locks.py`, where a wrong block already has a reviewed shape
+  (423 + holder); blocking by default would mean the mechanism that draws a
+  status dot could lose work.
+- Under the project's `lock_policy: "strict"` it refuses: `enforce_write()`
+  consults `StrictEnforcer` before the handler runs, and a live claim by
+  another agent produces an error `ToolMessage` stamped with `WRITE_BLOCK_KEY`
+  plus the enforcer's verdict — the handler never runs, and a confirmed-dead
+  holder never refuses. Tests: `tests/test_group_write_watch.py`.
 - Identity comes from **server-owned runtime context**, never tool arguments the
   model controls. A run with no room binding records nothing — a real write with
   no known crew.
@@ -405,48 +408,45 @@ announcement, **not a weaker guarantee**. Bounded at 20 subjects and 25 per bot.
 
 ## Strict enforcement (`groups/enforcement.py`)
 
-`lock_policy` has accepted `"strict"` since it was written and **nothing has ever
-read it** — the only fully decorative setting in the collaboration config, which
-is worse than absent, because an operator who sets it believes writes are
-protected.
+`lock_policy` has accepted `"strict"` since it was written and **nothing has
+ever read it** — the most fully decorative setting in the collaboration config,
+worse than absent: an operator who sets it believes writes are protected.
 
-This module reads the policy and returns a decision. Refusal itself stays in
-`LockManager`, unchanged: this supplies the policy question that was missing,
-not a second enforcement path.
-
-Two limits, because an over-eager enforcer is worse than none:
+This module reads the policy and returns a decision; the refusal shape stays
+consistent with existing write-gate blocks — this supplies the policy
+question, not a second enforcement path. The write-claiming path
+(`write_watch.enforce_write`, called by `ReadBeforeWriteMiddleware` on
+`write_file`/`str_replace`) is its production consumer: under `lock_policy:
+"strict"` a write that lands on another agent's live claim is refused before
+the handler runs; advisory rooms are unchanged. Two limits, because an over-eager enforcer is worse
+than none:
 
 - **It refuses unless the holder is CONFIRMED gone.** The question is never "is
-  there evidence the holder is alive?" but "is there evidence it is *dead*?".
-  Blocking protects real work and allowing destroys it, so `unresponsive` and
-  `unknown` both still block — silence is not death, but it is not consent
-  either, and an agent mid-tool-call is `unresponsive` and genuinely working.
-- **It sweeps before deciding**, so a decision is never made against a lapsed
-  lease.
+  there evidence the holder is alive?" but "is there evidence it is *dead*?" —
+  blocking protects real work, allowing destroys it, so `unresponsive` and
+  `unknown` both block: silence is not death, but not consent either, and a
+  mid-tool-call agent is `unresponsive` and genuinely working.
+- **It sweeps before deciding**, so a decision never targets a lapsed lease.
 
 It walks the room's live claims directly rather than `detect_soft_conflicts()`,
-which needs *two* holders by construction — but the case strict mode exists to
-catch is exactly ONE other agent holding the file, which is not a "conflict" to
-anybody, only a collision waiting to happen.
-
-`crashed_lock_ttl()` shortens a confirmed-dead holder's lock so a crash does not
-leave a path blocked for the rest of the 1800s TTL. Not zero: the crash is
-evidence, and a peer wanting the file should take it deliberately.
+which needs *two* holders by construction — but strict mode exists for exactly
+ONE other agent holding the file: not a "conflict" to anybody, a collision
+waiting to happen. `crashed_lock_ttl()` shortens a confirmed-dead holder's lock
+so a crash does not block a path for the rest of the 1800s TTL — not zero: the
+crash is evidence, and a peer wanting the file should take it deliberately.
 
 ## UI (`frontend/src/components/sections/GroupActivityPanel.tsx`)
 
-Rendered inside the group details pane, below the member list. Activity is a
-**third read** alongside the roster and the presence dots, and settles
-separately — an older Gateway has no `/activity` route at all, which must read
-as "this build does not have it", not as "nobody is working".
+Rendered inside the group details pane, below the member list: a **third read**
+alongside roster and presence dots, settling separately — an older Gateway has
+no `/activity` route, which must read as "this build does not have it", not
+"nobody is working". It rides the existing 10s poll rather than starting its
+own timer: one cadence, one place, no second interval to leak on unmount.
 
-It rides the existing 10s poll rather than starting its own timer: one cadence,
-one place, no second interval to leak on unmount.
-
-`group-activity-view.test.mjs` pins the *rendering* honesty, which the pure
-derivations cannot catch: that a crashed agent's row is never hidden, that
-`crashed` and `unresponsive` are never painted the same colour, and that the
-refresh control disables itself in flight.
+`group-activity-view.test.mjs` pins the *rendering* honesty the pure
+derivations cannot catch: a crashed agent's row is never hidden, `crashed` and
+`unresponsive` are never painted the same colour, and the refresh control
+disables itself in flight.
 
 ## Known gaps
 

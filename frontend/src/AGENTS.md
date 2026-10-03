@@ -108,6 +108,63 @@ throws inside the request and masks every status-code assertion behind a generic
 "request could not be completed" — that is the failure mode to watch for when
 adding a run option.
 
+## Free-model catalog dropdown (header)
+
+`components/FreeCatalogMenu.tsx` is the header's keyless-model control: a status
+trigger plus a dropdown of every provider `GET /api/models/free/catalog` knows,
+its measured health, and the model IDs that provider actually serves.
+
+**It exists because the sentence was unopenable.** `Free models: 8/10 healthy, 8
+eligible.` asserted a count and its `title` repeated the same words — you could
+not see *which* 8 were healthy, which 2 were not, what the 10 providers are
+called, or what "eligible" excludes. The count was a claim with no evidence
+attached; the list is the evidence.
+
+Three ownership rules:
+
+- **`lib/freeCatalogTone.ts` owns the tone, `lib/freeCatalogView.ts` owns the
+  per-provider sentences.** Both are pure so `free-catalog-view.test.mjs` can
+  drive the exact function that produces each string. Neither may be re-declared
+  beside the markup: the trigger's dot is a summary of the rows behind it, and a
+  second colour table would let them disagree. They are in `lib/` rather than
+  `ChatView.tsx` because the menu is rendered *by* `ChatView`, so importing back
+  out of it would make a cycle load-bearing.
+- **Opening the list performs no network call.** The trigger used to re-probe
+  every gateway on click — slow, and it mutated the very health state it was
+  reporting. The probe moved inside the panel, where it disables itself in
+  flight. The panel is portalled to `document.body` and placed by
+  `lib/workspace-menu-geometry.ts`, because an in-place panel is clipped by the
+  `overflow-x-auto` nav wrapper and `<main class="overflow-hidden">` (the failure
+  `NavTabs.tsx` documents).
+- **The client keeps the provider rows.** `ChatView` retains `freeProviders`
+  across a failed read rather than clearing them, so a broken read cannot
+  present itself as a catalog with no providers.
+
+The honesty rules this surface is built around, each of which has a tempting
+wrong reading:
+
+| Server says | Panel shows |
+| --- | --- |
+| `healthy: true` | green dot, `healthy` |
+| `healthy: false` | red dot, `failing`, plus the failure reason |
+| `healthy: null` | muted dot, **`not probed`** — never green |
+| `providers: []` | "the server reported no free providers" |
+| the read rejected | "the catalog read failed, so no provider was measured", with the reason |
+| `latency_ms: null` | `not reported` — never `0 ms`, never a bare dash |
+| no `model_count` | `models not reported` — never the length of the list that arrived |
+| `models_truncated: true` | `Showing 25 of 61` — the bound is disclosed, not hidden |
+| no eligibility data | `eligibility not reported`, distinct from `not eligible` |
+
+**Health is measured per provider, never per model.** The router probes a
+gateway, not a model ID, so a listed ID under a green provider has *not* been
+individually proven to answer. Model rows therefore render in one neutral chip
+class and the panel says so once in its footer — tinting each row by its
+parent's verdict is the specific claim the router never makes.
+
+Coverage: `src/lib/free-catalog-view.test.mjs` (the pure sentences, plus the
+panel's structural and disclosure pins) and `src/lib/freeModels.test.mjs` (the
+envelope mapping, truncation, and the per-provider-not-per-model boundary).
+
 ## Live activity layer (what shows between prompt and answer)
 
 Four pieces, all inline in the transcript and quiet by default:
