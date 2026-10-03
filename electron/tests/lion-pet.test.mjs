@@ -10,8 +10,10 @@ const preload = read('preload.js');
 const petPreload = read('pet-preload.js');
 const pet = read('pet.html');
 const builder = read('electron-builder.yml');
+const routes = read('lib/ipc-routes.js');
 const require = createRequire(import.meta.url);
 const { getLionPetMotionPlan } = require('../lib/lion-pet-window.js');
+const { CHANNELS, EVENTS, ROUTES } = require('../lib/ipc-routes.js');
 
 test('the desktop shell wires a sanitized lion state channel', () => {
   assert.match(main, /LionPetWindow/);
@@ -20,10 +22,6 @@ test('the desktop shell wires a sanitized lion state channel', () => {
   assert.match(controller, /LION_PET_ACTIONS/);
   assert.match(controller, /LION_PET_SKINS/);
   assert.match(controller, /sanitizeLionPetState/);
-  assert.match(main, /alpha:lion-pet-state/);
-  assert.match(main, /alpha:lion-pet-visible/);
-  assert.match(main, /alpha:lion-pet-visibility/);
-  assert.match(main, /alpha:lion-pet-perform/);
   assert.match(controller, /MOTION_RULES/);
   assert.match(controller, /setPosition/);
   assert.match(controller, /transparent: true/);
@@ -34,6 +32,31 @@ test('the desktop shell wires a sanitized lion state channel', () => {
   assert.match(controller, /pet\.html/);
   assert.match(main, /--show-lion-pet/);
   assert.match(main, /args\.showLionPet/);
+});
+
+test('the companion channel names live in the one route table', () => {
+  // The channel names moved out of main.js and into lib/ipc-routes.js, because
+  // `ipcMain.handle` throws on a duplicate and main.js had four channels
+  // registered twice — which exited the app at module load with no window and no
+  // log line. One table, one registration loop, and a test that can see it.
+  assert.equal(CHANNELS.lionPetState, 'alpha:lion-pet-state');
+  assert.equal(CHANNELS.lionPetPerform, 'alpha:lion-pet-perform');
+  assert.equal(CHANNELS.lionPetVisible, 'alpha:lion-pet-visible');
+  assert.equal(EVENTS.lionPetVisibility, 'alpha:lion-pet-visibility');
+
+  // Each is registered exactly once, and the state channel is the fire-and-
+  // forget one while the other two are awaited.
+  const routeByChannel = new Map(ROUTES.map((route) => [route.channel, route]));
+  assert.equal(routeByChannel.get('alpha:lion-pet-state').kind, 'on');
+  assert.equal(routeByChannel.get('alpha:lion-pet-perform').kind, 'invoke');
+  assert.equal(routeByChannel.get('alpha:lion-pet-visible').kind, 'invoke');
+
+  // main.js registers from the table and never names a channel literally, so a
+  // second spelling of one cannot appear.
+  assert.match(main, /require\('\.\/lib\/ipc-routes'\)/);
+  for (const channel of ['alpha:lion-pet-state', 'alpha:lion-pet-visible', 'alpha:lion-pet-perform']) {
+    assert.doesNotMatch(main, new RegExp(`ipcMain\\.\\w+\\('${channel}'`));
+  }
 });
 
 test('the preload bridge exposes only bounded companion controls', () => {

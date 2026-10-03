@@ -52,7 +52,16 @@ jobs:
 
       - name: Install Electron build dependencies
         working-directory: electron
-        run: npm install
+        run: npm ci
+        # npm >= 11 blocks dependency install scripts unless they are allow-listed,
+        # and electron's own postinstall is what downloads the binary the tests and
+        # the smoke test below actually run. Without this the install "succeeds"
+        # and leaves node_modules/electron/dist missing, which used to produce an
+        # installer built with no shell in it. `electron-winstaller` is a transitive
+        # dep of electron-builder whose script only selects a 7z arch; it is not
+        # needed for the NSIS path, so it stays blocked deliberately.
+        env:
+          NPM_CONFIG_ALLOW_SCRIPTS: 'electron'
 
       # The brand marks in electron/assets/ and frontend/public/ are generated
       # from frontend/src/assets/images/alpha.png and then committed, so
@@ -63,9 +72,28 @@ jobs:
       - name: Check the committed brand marks are not stale
         run: node scripts/generate-brand-assets.mjs --check
 
+      # Asserts the Electron binary actually landed. The allow-list above is a
+      # policy, this is the proof, and the two together mean a future npm default
+      # change cannot silently produce an Electron-less build.
+      - name: Assert the Electron binary is present
+        working-directory: electron
+        run: |
+          $binary = "node_modules\electron\dist\electron.exe"
+          if (-not (Test-Path $binary)) { throw "electron.exe missing at $binary; dependency install scripts did not run." }
+          Write-Host "electron binary present: $((Get-Item $binary).Length) bytes"
+
       - name: Electron shell tests
         working-directory: electron
         run: npm test
+
+      # The gate that was missing: `npm test` is pure Node and never loads
+      # main.js, so it passed while the app exited at module load with code 0
+      # (four IPC channels were registered twice, and Electron throws on that).
+      # This launches the real binary against stub services and fails if the app
+      # dies or the window never opens.
+      - name: Desktop boot smoke test
+        working-directory: electron
+        run: npm run smoke
 
       - name: Build desktop installer
         working-directory: electron
@@ -79,13 +107,28 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # `latest.yml` is what `electron-updater` reads to discover a new version.
+      # Without it published, the auto-update code in main.js can never fire, so
+      # it ships as a release asset too rather than only living in the build dir.
+      - name: Upload the update feed
+        uses: actions/upload-artifact@v4
+        with:
+          name: Alpha-Windows-Update-Feed
+          path: electron/dist/latest*.yml
+          if-no-files-found: error
+          retention-days: 30
+
       # Only tag pushes become public release assets, so anyone can download a
-      # finished installer without a GitHub account.
+      # finished installer without a GitHub account. `latest*.yml` is attached to
+      # the same release: an installed client fetches it from there, so an update
+      # feed that is not published means no installed client can ever update.
       - name: Attach installer to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: electron/dist/*.exe
+          files: |
+            electron/dist/*.exe
+            electron/dist/latest*.yml
 
   # ---------------------------------------------------------------------------
   # The native, fully-automatic bootstrapper (installer/bootstrap.ps1).

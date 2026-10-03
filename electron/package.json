@@ -13,8 +13,16 @@
     "fetch-runtime": "node scripts/fetch-runtime.mjs",
     "make:icon": "node scripts/make-icon.mjs",
     "build:frontend": "node scripts/build-frontend.mjs",
+    "smoke": "node scripts/smoke-boot.mjs",
+    "diagnose": "node scripts/collect-diagnostics.mjs",
+    "verify": "node scripts/verify-build.mjs",
+    "check": "npm run test && npm run smoke",
+    "predist": "npm run verify",
     "dist": "npm run fetch-runtime && npm run build:frontend && electron-builder --win nsis --x64",
-    "dist:dir": "electron-builder --win --x64 --dir"
+    "dist:dir": "npm run fetch-runtime && npm run build:frontend && electron-builder --win --x64 --dir"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "electron": "^44.3.0",
