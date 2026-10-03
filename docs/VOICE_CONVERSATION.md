@@ -217,6 +217,49 @@ The first turn may pay model initialization. `make voice-setup` performs a one-t
 
 Open **Settings → Voice & Speakers** and inspect the observed engine rows. Local TTS requires both `piper-tts` and a valid Piper model asset. Text chat remains available when speech playback is unavailable.
 
+## Generating speech audio files
+
+`backend/scripts/gen_speech.py` synthesizes a spoken welcome speech with the same
+local Piper engine and writes it to `logs/alpha-welcome-speech.wav` (about one
+minute at the default voice). Run it from the backend directory:
+
+```bash
+cd backend
+uv run --no-sync python scripts/gen_speech.py
+```
+
+The script reuses the cached Piper model installed by `make voice-setup`, so it
+needs no network and no API key. Edit `SPEECH_TEXT` in the script to change the
+spoken content.
+
+### Keeping the voice extra installed
+
+`make dev` runs `uv sync` on every start. A plain sync **removes** the voice-only
+packages (piper-tts, faster-whisper, webrtcvad) because they are an optional
+extra. Set the `UV_EXTRAS` environment variable so every dev start keeps them:
+
+```powershell
+# Windows (persistent for your user)
+[Environment]::SetEnvironmentVariable("UV_EXTRAS", "voice", "User")
+```
+
+```bash
+# Linux / macOS (add to your shell profile)
+export UV_EXTRAS=voice
+```
+
+With that set, `make dev` syncs with `--extra voice` and the speech packages
+survive restarts.
+
+### Routing speech to a Bluetooth speaker
+
+Alpha plays voice audio through the browser's default output device. To hear it
+on a Bluetooth speaker, connect the speaker and make it the Windows default
+playback device (Settings → System → Sound → Output, or the volume flyout in the
+taskbar). The speaker button in the Alpha UI audibly confirms the path with
+"Speaker output is ready." — if that phrase does not come through the speaker,
+the default output device is still the built-in speakers.
+
 ## Upstream licenses
 
 - faster-whisper and Whisper model assets: MIT.
