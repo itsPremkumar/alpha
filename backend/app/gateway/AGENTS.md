@@ -293,6 +293,14 @@ wake-armed, and a missing engine reports `not_installed` instead of a faked arme
 every speech package on restart; the setup and docs own that instruction, and
 `make voice-verify` restates it.
 
+**Verification layers.** `make voice-setup`/`make voice-verify` prove *assets* (package installed,
+model files present, checksummed, right size; no weights loaded). Behaviour is proven separately:
+`backend/tests/test_wakeword_e2e.py` covers wake-word honesty against the real engine where it is
+installed (honest `not_installed` otherwise), and `tests/test_kokoro_tts_engine.py` covers the
+second TTS engine's dispatch, argument mapping, and honest skip rows without loading weights. A
+green asset check is never evidence that a turn is conversational — the latency numbers in
+docs/VOICE_CONVERSATION.md are measurements from one host, not a guarantee.
+
 The public nginx configurations must forward Upgrade/Connection for
 `/api/multimodal/voice` before their generic `/api/` locations. Frontend tests must pin
 single-microphone ownership, interim/final protocol handling, automatic submission through

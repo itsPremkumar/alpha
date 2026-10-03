@@ -249,6 +249,53 @@ Pretrained wake-word weights download once on first load and are cached on disk;
 armed state, and `armed` only becomes true once frames have actually flowed — a
 silent session is never reported as wake-armed.
 
+## Verifying an installation
+
+Two layers cover this, and they answer different questions.
+
+**`make voice-verify`** checks assets: every engine's package is installed and
+its model files are present, checksummed, and the right size. It downloads
+nothing and loads no weights.
+
+**Live end-to-end checks** exercise behaviour against a running Gateway
+(`make dev` with `UV_EXTRAS=voice`):
+
+| Surface | Route |
+| --- | --- |
+| Honest availability matrix | `GET /api/multimodal/capabilities` |
+| Speech out (real WAV bytes, engine/tier headers, latency) | `POST /api/multimodal/tts` |
+| Speech in (upload audio, get a transcript + engine) | `POST /api/multimodal/stt` |
+| Real-time conversation socket | `WS /api/multimodal/voice` |
+| Wake word | `WS /api/multimodal/voice` with `wake_arm` |
+
+What each is expected to tell you:
+
+- `capabilities` lists **both** TTS engines as separate T3 rows, so one being
+  unavailable is visible without disabling the other, and every row carries
+  `status` plus a reason.
+- `tts` returns real `RIFF`/WAV bytes with `X-Alpha-Engine` and `X-Alpha-Tier`
+  headers. Exhaustion is a **503** carrying the per-engine attempt JSON — never
+  placeholder silence, never a fabricated success.
+- `stt` returns the transcript plus its engine (`faster-whisper/small`) and
+  discloses the tier. Silence returns an empty transcript; it is never filled in.
+- Guards are real: empty text and over-limit text are `422`, a path-shaped voice
+  id is `422`, a corrupt upload is `422`.
+- The conversation socket refuses a cross-origin upgrade and requires
+  `runs:create` on an authenticated one.
+- Wake word arms only against a ready engine, discloses every score against its
+  threshold, latches so one wake transcribes once, and survives a corrupt frame.
+
+Regression coverage: `backend/tests/test_wakeword_e2e.py` (real-engine arming,
+latching, corrupt-frame survival, disclosed scores), `tests/test_kokoro_tts_engine.py`
+(second TTS engine dispatch and honesty), `tests/test_multimodal_chain.py`, and
+`tests/test_multimodal_router.py`.
+
+Measured on the CPU-only host this was developed on: Piper synthesis is
+conversational (~1.7-3.6 s for a sentence), and Whisper `small` transcription is
+the slow stage. Neither is a claim about your hardware — measure it on the host
+that will run it, and switch `stt.model_size` to `base` if you need faster
+turns.
+
 ## Troubleshooting
 
 ### “No STT/TTS engine available”
@@ -289,9 +336,23 @@ Alpha routes audio through the browser's default Web Audio output.
 
 The first turn may pay model initialization. `make voice-setup` performs a one-time warm-up. Later turns reuse the same process-local model instances.
 
+### Wake word never arms
+
+`make voice-verify` must list openWakeWord indirectly — check the capability
+matrix instead: `GET /api/multimodal/capabilities` reports `wake_word /
+openwakeword` as `available` when the engine imports and `not_installed` when it
+does not. In the UI, arming is refused with the reason rather than silently
+appearing to work. A session that has armed but heard nothing reports
+`armed: false`, because `armed` only becomes true once frames have actually
+flowed — see [Wake word](#wake-word).
+
+If the engine is installed but the arm still fails, confirm the pre-trained
+weights were fetched: `make voice-setup` pre-downloads them, and openWakeWord
+otherwise downloads on first load.
+
 ### A response is not spoken
 
-Open **Settings → Voice & Speakers** and inspect the observed engine rows. Local TTS needs the engine package *and* its model assets — `kokoro-onnx` plus the `kokoro/` assets, or `piper-tts` plus the Piper voice. Text chat remains available when speech playback is unavailable.
+Open **Settings → Voice & Speakers** and inspect the observed engine rows. Local TTS needs the engine package *and* its model assets — `piper-tts` plus the Piper voice, or `kokoro-onnx` plus the `kokoro/` assets. Text chat remains available when speech playback is unavailable.
 
 ### Switching voices
 
