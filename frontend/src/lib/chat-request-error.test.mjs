@@ -6,6 +6,7 @@ import { moduleUrl } from "./test-modules.mjs";
 
 const { createApiClient, ApiClientError } = await import(moduleUrl("api-client"));
 const { consumeChatStream } = await import(moduleUrl("chat-stream"));
+const { emptyTodoPlan } = await import(moduleUrl("sse-reducer"));
 
 const compile = (source) => ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
@@ -52,6 +53,12 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
     setMessages: setter("messages"), setSuggestions: setter("suggestions"), setUsage: () => {},
     // Live subagent receipt; this harness only needs it to be settable.
     setSubagentTasks: setter("subagentTasks"),
+    // `sendMessage` resets the live execution plan at the start of every run.
+    // The setter follows the standard state-stub pattern; `emptyTodoPlan` is
+    // the reducer's real value (loaded via `moduleUrl`), so the harness cannot
+    // drift from the shape the plan panel actually renders.
+    setLivePlan: setter("livePlan"),
+    emptyTodoPlan,
     autoTriggerCommand: async () => null,
     appendLocalMessages: (_tid, messages) => state.saved.push(...messages),
     persistLocalHistory: async (operation) => {
