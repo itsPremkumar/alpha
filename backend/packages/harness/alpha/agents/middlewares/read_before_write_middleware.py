@@ -181,7 +181,7 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
                             # Stamp alpha_tool_meta so ToolProgressMiddleware can classify
                             # the blocked write even though it bypasses ToolErrorHandlingMiddleware.
                             return normalize_tool_result(blocked)
-                        return handler(request)
+                        return self._with_coordination(request, str(name), path, handler)
             except SandboxAuthorizationError as exc:
                 return self._authorization_error_result(request, exc)
         if name in _READ_TOOLS:
@@ -220,7 +220,7 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
                         blocked = await asyncio.to_thread(self._check_write_gate, request)
                         if blocked is not None:
                             return normalize_tool_result(blocked)
-                        return await handler(request)
+                        return await self._acoordinate(request, str(name), path, handler)
                     finally:
                         lock.release()
             except SandboxAuthorizationError as exc:
@@ -256,6 +256,76 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
             status="error",
         )
         return stamp_exception_meta(message, f"{exc.__class__.__name__}: {detail}")
+
+    # -- coordination ----------------------------------------------------
+
+    def _with_coordination(
+        self,
+        request: ToolCallRequest,
+        tool_name: str,
+        path: str,
+        handler: Callable[[ToolCallRequest], ToolMessage | Command],
+    ) -> ToolMessage | Command:
+        """Run the write, then append any overlap warning to its own result.
+
+        The claim is taken *before* the write so a peer polling mid-write sees
+        it, and the warning rides the result of the call that actually ran —
+        a model reading its transcript sees "someone else is on this file"
+        attached to the write it really performed.
+
+        A coordination failure is swallowed: this must never be able to fail a
+        write. With no room binding and no bot identity it is a no-op, which is
+        the correct behaviour for an ordinary single-agent run.
+        """
+        from alpha.groups.write_watch import auto_claim_write, warning_text
+
+        try:
+            outcome = auto_claim_write(request, path, tool_name=tool_name)
+        except Exception:
+            logger.debug("Write coordination failed for %s", path, exc_info=True)
+            return handler(request)
+        result = handler(request)
+        note = warning_text(outcome)
+        if not note:
+            return result
+        return self._append_note(result, note)
+
+    async def _acoordinate(
+        self,
+        request: ToolCallRequest,
+        tool_name: str,
+        path: str,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+    ) -> ToolMessage | Command:
+        """Async twin of `_with_coordination`; both claim-store calls are sync file IO."""
+        from alpha.groups.write_watch import auto_claim_write, warning_text
+
+        try:
+            outcome = await asyncio.to_thread(auto_claim_write, request, path, tool_name=tool_name)
+        except Exception:
+            logger.debug("Write coordination failed for %s", path, exc_info=True)
+            return await handler(request)
+        result = await handler(request)
+        note = warning_text(outcome)
+        if not note:
+            return result
+        return self._append_note(result, note)
+
+    @staticmethod
+    def _append_note(result: ToolMessage | Command, note: str) -> ToolMessage | Command:
+        """Append a coordination note to a successful write's own result.
+
+        Only a plain `ToolMessage` is rewritten. A `Command` carries its own
+        message list, and appending to the wrong surface would corrupt it; an
+        unannotated write is better than a malformed one, and the claim is
+        already recorded either way.
+        """
+        if not isinstance(result, ToolMessage):
+            return result
+        content = result.content
+        if not isinstance(content, str):
+            return result
+        return result.model_copy(update={"content": f"{content}\n\n{note}"})
 
     # -- locking ---------------------------------------------------------
 

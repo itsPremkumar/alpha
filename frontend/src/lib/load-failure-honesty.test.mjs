@@ -95,6 +95,11 @@ const inboxUrl = toDataUrl(inboxCode);
 let commCode = transpile(read("./comm.ts"));
 commCode = commCode.replace(/from\s+"\.\/http"/, `from "${httpStubUrl}"`);
 commCode = commCode.replace(/from\s+"\.\/inbox"/, `from "${inboxUrl}"`);
+// `group-activity` is a pure derivation module with no transport, so the real
+// implementation is inlined as-is. Stubbing it would make the envelope
+// mapping under test vacuous, which is the opposite of what this harness is for.
+const groupActivityUrl = toDataUrl(transpile(read("./group-activity.ts")));
+commCode = commCode.replace(/from\s+"\.\/group-activity"/, `from "${groupActivityUrl}"`);
 const { listRooms, rollCall, listRoomRuns, listDmThreads } = await import(toDataUrl(commCode));
 
 let teamopsCode = transpile(read("./teamops.ts"));

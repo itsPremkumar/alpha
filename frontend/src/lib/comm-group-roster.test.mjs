@@ -18,13 +18,17 @@ import test from "node:test";
 import ts from "typescript";
 
 const compiled = new Map(
-  ["comm", "http", "api-client", "inbox"].map((name) => [
+  ["comm", "http", "api-client", "inbox", "group-activity"].map((name) => [
     name,
     ts.transpileModule(readFileSync(new URL(`./${name}.ts`, import.meta.url), "utf8"), {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
     }).outputText,
   ]),
 );
+
+/** `group-activity` is pure, so it loads its real implementation. */
+const groupActivity = {};
+new Function("exports", compiled.get("group-activity"))(groupActivity);
 
 class FakeApiError extends Error {
   constructor(status, message) {
@@ -78,6 +82,14 @@ function client(responder) {
       if (dependency === "./http") return http;
       if (dependency === "./inbox") {
         return { fetchRoster: async () => [], fetchInbox: async () => [], registerRosterAgent: async () => {} };
+      }
+      // `./group-activity` is a pure derivation module with no transport of its
+      // own, so the real implementation is safe to load here. Stubbing it would
+      // defeat the point of this harness: `roomActivity` is supposed to map the
+      // server envelope through those exact coercions, and a stub returning
+      // `undefined` would make the envelope tests pass for the wrong reason.
+      if (dependency === "./group-activity") {
+        return groupActivity;
       }
       throw new Error(`Unexpected dependency: ${dependency}`);
     },

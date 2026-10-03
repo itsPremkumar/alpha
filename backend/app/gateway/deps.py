@@ -40,6 +40,7 @@ from alpha.runtime.network import (
     NetworkWaitService,
     set_network_wait_service,
 )
+from alpha.runtime.runs.manager import set_activity_observer
 from alpha.runtime.runs.store.base import RunStore
 from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from alpha.runtime.side_effects import (
@@ -187,6 +188,101 @@ def _validate_agent_storage(config: AppConfig) -> None:
             "across workers/nodes. Set agent_storage.backend='db' to share them.",
             workers,
         )
+
+
+#: In-flight ledger writes, held so the event loop cannot garbage-collect a
+#: task mid-write.
+_ACTIVITY_WRITES: set[asyncio.Task] = set()
+
+#: Server-owned run metadata keys that bind a run to a bot and a room. Read
+#: here and never accepted from a client: `app/gateway/AGENTS.md` is explicit
+#: that a caller-supplied room binding is not trustable, and guessing one would
+#: put one project's status dot in an unrelated room.
+_ACTIVITY_BOT_KEYS = ("bot_name", "agent_name", "member")
+
+
+def _activity_bot_name(record: RunRecord) -> str | None:
+    """Which bot a run belongs to, or `None` when it is nobody's work.
+
+    An ordinary chat run is not a bot's work in this sense: attributing it to a
+    room member would put a status dot on an agent that never did anything.
+    """
+    metadata = record.metadata if isinstance(record.metadata, dict) else {}
+    for key in _ACTIVITY_BOT_KEYS:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    return None
+
+
+def _record_run_activity(record: RunRecord, event: str) -> None:
+    """Fold a run lifecycle transition into the group activity ledger.
+
+    This is the whole reason a room display can claim an agent *crashed*
+    rather than merely quiet. Every terminal reason the run store persists is
+    evidence a display previously never read.
+
+    The file write is handed to `asyncio.to_thread` when there is a loop to
+    hand it to: `set_status` runs on the event loop, and a synchronous file
+    write there would trip the blocking-IO gate (`tests/blocking_io/`, strict
+    Blockbuster scoped to `alpha.*`). Outside a loop — a CLI, a synchronous test
+    — it writes inline, which is correct there because nothing is blocking.
+
+    Attribution is deliberately conservative. Only `metadata` that the server
+    itself stamped binds a run to a room; everything else is recorded against
+    the bot and later disclosed as `roster_match` rather than an explicit
+    binding.
+    """
+    try:
+        bot_name = _activity_bot_name(record)
+        if not bot_name:
+            return
+        from alpha.groups.activity import get_activity_ledger
+
+        ledger = get_activity_ledger()
+        metadata = record.metadata if isinstance(record.metadata, dict) else {}
+        room_name = metadata.get("room_name")
+        project_id = metadata.get("project_id")
+
+        if event.endswith("started"):
+
+            def write() -> None:
+                ledger.record_run_started(bot_name, run_id=record.run_id, room_name=room_name, project_id=project_id)
+
+        elif event.endswith("ownership_lost"):
+
+            def write() -> None:
+                ledger.record_run_terminal(
+                    bot_name,
+                    run_id=record.run_id,
+                    status="error",
+                    stop_reason="ownership_lost",
+                    error=record.error or "lease ownership was lost",
+                    room_name=room_name,
+                )
+
+        else:
+
+            def write() -> None:
+                ledger.record_run_terminal(
+                    bot_name,
+                    run_id=record.run_id,
+                    status=getattr(record.status, "value", str(record.status)),
+                    stop_reason=record.stop_reason,
+                    error=record.error,
+                    room_name=room_name,
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            write()
+            return
+        task = loop.create_task(asyncio.to_thread(write))
+        _ACTIVITY_WRITES.add(task)
+        task.add_done_callback(_ACTIVITY_WRITES.discard)
+    except Exception:
+        logger.debug("Run activity recording failed for %s (%s)", getattr(record, "run_id", "?"), event, exc_info=True)
 
 
 async def _drain_inflight_runs(run_manager: RunManager) -> None:
@@ -633,6 +729,12 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             event_store=app.state.run_event_store,
             on_orphans_recovered=terminalize_recovered_runs,
         )
+        # Group-room status displays need to tell an agent that *finished* from
+        # one that *died*, and that evidence is this manager's durable terminal
+        # reasons — nothing else records it. Installed after construction,
+        # read-only, and every failure inside it is swallowed, so it can never
+        # influence a run transition.
+        set_activity_observer(_record_run_activity)
         # Startup recovery: mark inflight runs whose lease has expired as error.
         # In single-worker mode (SQLite / backend=memory), no run has a lease, so
         # all inflight rows are reclaimed (unchanged behaviour). In multi-worker

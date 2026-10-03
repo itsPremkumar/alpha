@@ -6,25 +6,13 @@ from typing import Literal
 
 from langchain.tools import tool
 
-from alpha.groups.claims import get_claim_store
 from alpha.groups.room import OrchestrationMode
 from alpha.groups.service import get_group_chat_service
 
 
 @tool("group_chat", parse_docstring=True)
 def group_chat_tool(
-    action: Literal[
-        "send",
-        "create",
-        "list",
-        "history",
-        "propose_vote",
-        "cast_vote",
-        "tally_vote",
-        "status",
-        "claim",
-        "release",
-    ],
+    action: Literal["send", "create", "list", "history", "propose_vote", "cast_vote", "tally_vote", "status", "claim", "release", "declare_write_set"],
     room_name: str = "general",
     sender: str = "user",
     message: str = "",
@@ -34,15 +22,24 @@ def group_chat_tool(
     question: str = "",
     vote: Literal["agree", "disagree", "amend"] | None = None,
     subject: str = "",
+    kind: Literal["file", "dir", "symbol", "task", "artifact", "requirement"] = "file",
     claim_id: str = "",
+    subjects: str = "",
 ) -> str:
     """Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting.
 
     Vastly expands on bot mode with 5 speaker selection strategies (mention,
     moderated, quorum, parallel, round_robin) and real-time room auto-provisioning.
 
+    Use 'status' BEFORE you start editing shared code. It reports which agents
+    are working, on which files, and which of them stopped. A crashed agent is
+    reported as crashed, never as idle, so its unfinished work shows up as
+    available to pick up rather than silently held. Use 'claim' to announce the
+    file you are about to touch so peers can route around it. Both are advisory:
+    'claim' never refuses, it only tells the room.
+
     Args:
-        action: Operation ('send', 'create', 'list', 'history', 'propose_vote', 'cast_vote', 'tally_vote', 'status', 'claim', 'release').
+        action: Operation ('send', 'create', 'list', 'history', 'propose_vote', 'cast_vote', 'tally_vote', 'status', 'claim', 'release', 'declare_write_set').
         room_name: Group room name (e.g. 'core-team', 'arch-review'). Auto-created if missing. Defaults to 'general'.
         sender: Sending bot handle or 'user'. Defaults to 'user'.
         message: Message text to post. Supports @bot, @everyone, and (pass). Required for 'send'.
@@ -51,8 +48,10 @@ def group_chat_tool(
         proposal_id: Proposal identifier (for 'cast_vote' and 'tally_vote').
         question: Question/proposal for consensus voting (required for 'propose_vote').
         vote: Vote choice ('agree', 'disagree', 'amend'). Required for 'cast_vote'.
-        subject: Work subject for 'claim' and 'release' actions.
-        claim_id: Claim identifier for 'release'.
+        subject: File path, directory, symbol, or task id being claimed. Required for 'claim'.
+        kind: What the subject is ('file', 'dir', 'symbol', 'task', 'artifact', 'requirement'). A 'dir' claim covers everything beneath it.
+        claim_id: Which claim to release. Required for 'release'.
+        subjects: Comma-separated paths to claim as ONE declared intent. Required for 'declare_write_set'. Use this before a change that spans several files, so peers learn the whole scope at once instead of discovering it file by file.
     """
     service = get_group_chat_service()
 
@@ -90,49 +89,6 @@ def group_chat_tool(
             out.append(f"[{m.created_at[:19]}] **{m.sender}**: {m.content}")
         return "\n".join(out)
 
-    elif action == "status":
-        room = service.get_room(room_name)
-        if room is None:
-            return f"Room '{room_name}' does not exist yet."
-        claims_store = get_claim_store()
-        claims = claims_store.room_claims(room_name, live_only=True)
-        if not claims:
-            return f"Room '{room_name}' is active. Members: {', '.join(room.members) if room.members else '(none)'}"
-        lines = [
-            f"Room '{room_name}' status",
-            f"- Members: {', '.join(room.members) if room.members else '(none)'}",
-            "- Active claims:",
-        ]
-        for claim in claims:
-            lines.append(f"  - {claim.holder}: {claim.subject} ({claim.intent})")
-        return "\n".join(lines)
-
-    elif action == "claim":
-        if not subject.strip():
-            return "Error: 'subject' is required for 'claim'."
-        room = service.get_or_create_room(name=room_name)
-        claims_store = get_claim_store()
-        claim = claims_store.claim(room_name, sender, "file", subject.strip(), intent="editing", detail=f"Claimed by {sender}")
-        return f"Claim recorded for '{room.name}': {claim.subject} (claim_id={claim.claim_id})"
-
-    elif action == "release":
-        if claim_id.strip():
-            released = get_claim_store().release(claim_id.strip(), sender)
-            if released:
-                return f"Claim {claim_id} released by {sender}."
-            return f"Error: claim {claim_id} is not releasable by {sender}."
-        if not subject.strip():
-            return "Error: 'subject' or 'claim_id' is required for 'release'."
-        claims_store = get_claim_store()
-        room_claims = claims_store.room_claims(room_name, live_only=True)
-        for claim in room_claims:
-            if claim.holder == sender.lower().strip() and claim.subject == subject.strip():
-                released = claims_store.release(claim.claim_id, sender)
-                if released:
-                    return f"Claim released for '{subject}' in room '{room_name}'."
-                return f"Error: claim for '{subject}' could not be released."
-        return f"Error: no active claim for '{subject}' by {sender} in room '{room_name}'."
-
     elif action == "propose_vote":
         if not question:
             return "Error: 'question' is required for 'propose_vote'."
@@ -166,5 +122,73 @@ def group_chat_tool(
             f"Agree: {tally.get('agree')} | Disagree: {tally.get('disagree')} | Amend: {tally.get('amend')}\n"
             f"Total votes cast: {tally.get('total_votes')}/{tally.get('eligible')} (Ratio: {tally.get('ratio'):.1%})"
         )
+
+    elif action == "status":
+        from alpha.groups.coordination import room_snapshot
+
+        if service.get_room(room_name) is None:
+            return f"Room '{room_name}' does not exist. Create it first with action='create'."
+        snapshot = room_snapshot(room_name)
+        lines = [f"=== Live Activity: {room_name} ==="]
+        for agent in snapshot["agents"]:
+            held = ", ".join(agent["held_paths"]) if agent["held_paths"] else "-"
+            lines.append(f"- @{agent['bot_name']}: {agent['activity']} [{held}] - {agent['detail']}")
+        crashed = [a["bot_name"] for a in snapshot["agents"] if a["activity"] == "crashed"]
+        if crashed:
+            lines.append(f"\nCRASHED: {', '.join(sorted(crashed))}. Their claims are orphaned and available to take over.")
+        available = sorted({str(c["subject"]) for c in snapshot["orphaned"]})
+        if available:
+            lines.append(f"Available to claim: {', '.join(available)}")
+        if snapshot["conflicts"]:
+            lines.append("\nOverlapping claims:")
+            lines.extend(f"- {c['detail']}" for c in snapshot["conflicts"])
+        if not snapshot["agents"]:
+            lines.append("No members have any recorded work yet.")
+        return "\n".join(lines)
+
+    elif action == "claim":
+        if not subject.strip():
+            return "Error: 'subject' is required for 'claim'."
+        from alpha.groups.claims import get_claim_store
+        from alpha.groups.coordination import announce_claim
+
+        room = service.get_room(room_name)
+        if room is None:
+            return f"Room '{room_name}' does not exist."
+        try:
+            claim = get_claim_store().claim(room_name, sender, kind, subject, project_id=getattr(room, "project_id", None))
+        except ValueError as exc:
+            return f"Error: {exc}"
+        announce_claim(room_name, claim.to_dict())
+        return f"@{sender} claimed {claim.subject} ({claim.intent}). Peers are notified. Claims expire in ~120s unless renewed."
+
+    elif action == "release":
+        if not claim_id:
+            return "Error: 'claim_id' is required for 'release'."
+        from alpha.groups.claims import get_claim_store
+
+        if not get_claim_store().release(claim_id, sender):
+            return f"Error: claim '{claim_id}' was not found, is already released, or is not held by @{sender}."
+        return f"Released claim '{claim_id}'."
+
+    elif action == "declare_write_set":
+        from alpha.groups.claims import get_claim_store
+
+        entries = [s.strip() for s in subjects.split(",") if s.strip()]
+        if not entries:
+            return "Error: 'subjects' is required for 'declare_write_set' (comma-separated)."
+        room = service.get_room(room_name)
+        if room is None:
+            return f"Room '{room_name}' does not exist."
+        try:
+            claims = get_claim_store().declare_write_set(
+                room_name,
+                sender,
+                entries,
+                project_id=getattr(room, "project_id", None),
+            )
+        except ValueError as exc:
+            return f"Error: {exc}"
+        return f"@{sender} declared a write set of {len(claims)} subject(s); the room was told the whole scope at once. Peers should route around these until you release them."
 
     return f"Error: Unknown action '{action}'."

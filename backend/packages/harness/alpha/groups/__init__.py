@@ -1,8 +1,32 @@
 """Multi-Agent Group Chat Engine for Alpha."""
 
+from alpha.groups.activity import (
+    ACTIVITY_STATES,
+    ActivityEvidence,
+    ActivityLedger,
+    ActivityState,
+    ActivityTone,
+    AgentActivity,
+    RunEvidence,
+    derive_activity,
+    get_activity_ledger,
+    tone_for,
+)
+from alpha.groups.claims import (
+    CLAIM_INTENTS,
+    CLAIM_KINDS,
+    ClaimStore,
+    SoftConflict,
+    WorkClaim,
+    detect_soft_conflicts,
+    get_claim_store,
+    normalise_subject,
+)
 from alpha.groups.orchestration import GroupOrchestrator
 from alpha.groups.presence import MemberPresence, PresenceState, resolve_room_presence
+from alpha.groups.write_watch import WriteCoordination, auto_claim_write, write_coordination_context
 from alpha.groups.quorum import Proposal, QuorumEngine
+from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS, GroupMessage, GroupRoom, MessageIntent, OrchestrationMode
 from alpha.groups.roster import (
     GroupRoster,
     MembershipRule,
@@ -23,7 +47,6 @@ from alpha.groups.scope import (
     recompute_all,
     validate_state,
 )
-from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS, GroupMessage, GroupRoom, MessageIntent, OrchestrationMode
 from alpha.groups.service import GroupChatService, get_group_chat_service
 
 __all__ = [
@@ -41,6 +64,30 @@ __all__ = [
     "MemberPresence",
     "PresenceState",
     "resolve_room_presence",
+    # Activity (crash-honest live status)
+    "ACTIVITY_STATES",
+    "ActivityEvidence",
+    "ActivityLedger",
+    "ActivityState",
+    "ActivityTone",
+    "AgentActivity",
+    "RunEvidence",
+    "derive_activity",
+    "get_activity_ledger",
+    "tone_for",
+    # Work claims (advisory coordination)
+    "CLAIM_INTENTS",
+    "CLAIM_KINDS",
+    "ClaimStore",
+    "SoftConflict",
+    "WorkClaim",
+    "detect_soft_conflicts",
+    "get_claim_store",
+    "normalise_subject",
+    # Automatic write-path claiming
+    "WriteCoordination",
+    "auto_claim_write",
+    "write_coordination_context",
     # Nesting / scope
     "GroupScope",
     "ScopeError",
