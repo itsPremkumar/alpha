@@ -103,6 +103,7 @@ const FilesSection = lazy(() => import("@/components/sections/FilesSection").the
 const ScheduledSection = lazy(() => import("@/components/sections/ScheduledSection").then((m) => ({ default: m.ScheduledSection })));
 const SubagentsSection = lazy(() => import("@/components/sections/SubagentsSection").then((m) => ({ default: m.SubagentsSection })));
 const SkillsSection = lazy(() => import("@/components/sections/SkillsSection").then((m) => ({ default: m.SkillsSection })));
+const ReliabilitySection = lazy(() => import("@/components/sections/ReliabilitySection").then((m) => ({ default: m.ReliabilitySection })));
 const MemorySection = lazy(() => import("@/components/sections/MemorySection").then((m) => ({ default: m.MemorySection })));
 const ProjectsSection = lazy(() => import("@/components/sections/ProjectsSection").then((m) => ({ default: m.ProjectsSection })));
 const DashboardSection = lazy(() => import("@/components/sections/DashboardSection").then((m) => ({ default: m.DashboardSection })));
@@ -2328,6 +2329,10 @@ export default function ChatView() {
         ) : view === "skills" ? (
           <Suspense fallback={<SectionFallback />}>
             <SkillsSection />
+          </Suspense>
+        ) : view === "reliability" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ReliabilitySection />
           </Suspense>
         ) : view === "workflows" ? (
           <Suspense fallback={<SectionFallback />}>

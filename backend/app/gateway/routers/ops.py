@@ -43,6 +43,7 @@ deploy verification, dashboards, and monitoring gates beyond ``/health`` and
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -51,6 +52,7 @@ import threading
 import time
 from datetime import UTC, datetime
 from importlib import metadata
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -629,6 +631,165 @@ async def _connectivity(request: Request, *, recheck: bool) -> ConnectivityRespo
 async def ops_network(request: Request) -> ConnectivityResponse:
     """Return the live connectivity reading with its retry schedule."""
     return await _connectivity(request, recheck=False)
+
+
+class ReliabilityWorkload(BaseModel):
+    """One adjudicated workload attempt, as the monitor recorded it."""
+
+    workload: str = Field(..., description="Workload key, e.g. 'A'")
+    title: str | None = Field(default=None, description="Human title, null when the monitor wrote none")
+    kind: str | None = Field(default=None, description="Workload class (coding, research, multi-agent, ...), null when absent")
+    verdict: str = Field(..., description="The monitor's own verdict word, preserved verbatim (PASS/FAIL/ERROR/UNVERIFIED/SKIP)")
+    detail: str | None = Field(default=None, description="Why that verdict, in the monitor's words")
+    run_id: str | None = Field(default=None, description="The run that was exercised, null when none was admitted")
+    thread_id: str | None = Field(default=None, description="The thread the run was submitted on")
+    elapsed_s: float | None = Field(default=None, description="Measured run duration in seconds, null when unmeasured")
+    model: str | None = Field(default=None, description="The model that served the run, null when no run produced one")
+    server_error: str | None = Field(default=None, description="The Gateway's own failure text, bounded, null when the run reported none")
+    checked_at: str | None = Field(default=None, description="When the monitor adjudicated it, ISO 8601 UTC")
+
+
+class ReliabilityResponse(BaseModel):
+    """Real-work validation progress, with every absence stated."""
+
+    reported: bool = Field(..., description="False when no workload ledger could be read; true only with real rows")
+    reason: str = Field(..., description="Machine-readable reason: reported, ledger_not_found, or ledger_unreadable")
+    ledger_path: str | None = Field(default=None, description="Where the ledger was looked for, so a missing file is diagnosable")
+    total: int | None = Field(default=None, description="Workloads recorded, null when nothing was read (never 0 for an unread ledger)")
+    passed: int | None = Field(default=None, description="Workloads whose evidence check passed, null when nothing was read")
+    broken: int | None = Field(default=None, description="Workloads that failed, errored or could not be verified")
+    counts: dict[str, int] = Field(default_factory=dict, description="Workload count per verdict word")
+    returned: int = Field(..., description="How many rows this response carries")
+    truncated: bool = Field(..., description="True when the ledger held more rows than the bound allows")
+    workloads: list[ReliabilityWorkload] = Field(default_factory=list, description="Per-workload verdicts, most recently checked first")
+
+
+#: A ledger is operator state, not an unbounded log. The bound is disclosed
+#: rather than silently applied, and the UI shows "showing N of M".
+RELIABILITY_MAX_ROWS = 64
+
+#: Verdicts that mean "this did not work", counted apart from a pass.
+_BROKEN_VERDICTS = frozenset({"FAIL", "ERROR", "UNVERIFIED"})
+
+
+def _reliability_ledger_path() -> Path:
+    """Where the workload monitor writes, resolvable by the Gateway too.
+
+    An env override exists because the monitor may be run from a different
+    working directory than the Gateway; without it the two would silently
+    disagree about the same file and the surface would report "not found"
+    against a perfectly healthy ledger.
+    """
+    override = os.environ.get("ALPHA_RELIABILITY_LEDGER", "").strip()
+    if override:
+        return Path(override)
+    from alpha.config.runtime_paths import runtime_home
+
+    return runtime_home() / "reliability" / "workload-ledger.json"
+
+
+def _load_reliability_ledger(path: Path) -> tuple[dict, str, bool]:
+    """Read the ledger. Returns ``(payload, reason, reported)``.
+
+    Synchronous and pure so it is unit-testable without an event loop; the
+    route awaits it through ``asyncio.to_thread`` because a blocking file read
+    on the serving loop stalls every other run in the process.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, "ledger_not_found", False
+    except OSError:
+        # An unreadable ledger is a failed read, not an empty one: the UI must
+        # never render "0 workloads" for a file it could not open.
+        return {}, "ledger_unreadable", False
+    if not raw.strip():
+        # A zero-byte file is a torn write, not a matrix with nothing in it.
+        # The monitor rewrites this ledger in place, so a process killed
+        # between truncate and write leaves exactly this. Reading it as a valid
+        # empty ledger would report "0 workloads" for a monitor that has
+        # already run — the one thing this surface must never do.
+        return {}, "ledger_unreadable", False
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}, "ledger_unreadable", False
+    if not isinstance(payload, dict):
+        return {}, "ledger_unreadable", False
+    return payload, "reported", True
+
+
+def _reliability_rows(payload: dict) -> list[ReliabilityWorkload]:
+    """Map the ledger's rows, skipping malformed ones instead of failing the read.
+
+    A row the monitor wrote half of must not take the whole surface down, and
+    must not be silently dropped either: an unparseable row is counted as
+    skipped through the reason, not invented as a passing workload.
+    """
+    outcomes = payload.get("outcomes")
+    if not isinstance(outcomes, dict):
+        return []
+    rows: list[ReliabilityWorkload] = []
+    for key, raw in outcomes.items():
+        if not isinstance(raw, dict):
+            continue
+        verdict = raw.get("verdict")
+        if not isinstance(verdict, str) or not verdict:
+            continue
+        rows.append(
+            ReliabilityWorkload(
+                workload=str(raw.get("workload") or key),
+                title=raw.get("title") if isinstance(raw.get("title"), str) else None,
+                kind=raw.get("kind") if isinstance(raw.get("kind"), str) else None,
+                verdict=verdict,
+                detail=raw.get("detail") if isinstance(raw.get("detail"), str) else None,
+                run_id=raw.get("run_id") if isinstance(raw.get("run_id"), str) else None,
+                thread_id=raw.get("thread_id") if isinstance(raw.get("thread_id"), str) else None,
+                elapsed_s=raw.get("elapsed_s") if isinstance(raw.get("elapsed_s"), (int, float)) else None,
+                model=raw.get("model") if isinstance(raw.get("model"), str) else None,
+                server_error=raw.get("server_error") if isinstance(raw.get("server_error"), str) else None,
+                checked_at=raw.get("checked_at") if isinstance(raw.get("checked_at"), str) else None,
+            )
+        )
+    # Most recently checked first: the operator opening this surface is asking
+    # "what just happened", and the ledger is keyed by workload.
+    rows.sort(key=lambda row: row.checked_at or "", reverse=True)
+    return rows
+
+
+@router.get(
+    "/ops/reliability",
+    response_model=ReliabilityResponse,
+    summary="Real-work validation progress",
+    description=(
+        "Report what the real-work validation matrix last did: one row per workload with the verdict its evidence "
+        "check produced, the run that was exercised, and the Gateway's own failure text when there was one. "
+        "reported=false with a reason when no ledger could be read, so an unread file is never rendered as "
+        "'no workloads'."
+    ),
+)
+async def ops_reliability() -> ReliabilityResponse:
+    """Return the live real-work validation matrix."""
+    path = _reliability_ledger_path()
+    payload, reason, reported = await asyncio.to_thread(_load_reliability_ledger, path)
+    rows = _reliability_rows(payload) if reported else []
+    truncated = len(rows) > RELIABILITY_MAX_ROWS
+    bounded = rows[:RELIABILITY_MAX_ROWS]
+    counts: dict[str, int] = {}
+    for row in bounded:
+        counts[row.verdict] = counts.get(row.verdict, 0) + 1
+    return ReliabilityResponse(
+        reported=reported,
+        reason=reason,
+        ledger_path=str(path),
+        total=len(rows) if reported else None,
+        passed=(sum(1 for row in bounded if row.verdict == "PASS") if reported else None),
+        broken=(sum(1 for row in bounded if row.verdict in _BROKEN_VERDICTS) if reported else None),
+        counts=counts,
+        returned=len(bounded),
+        truncated=truncated,
+        workloads=bounded,
+    )
 
 
 @router.post(

@@ -205,6 +205,77 @@ class TestMatrixIntegrity:
         assert control.non_interactive is False, "the control case must not carry the proceed-without-asking suffix"
 
 
+class TestFailureClassification:
+    """A dependency outage must not be recorded as a broken workload.
+
+    The first live wave hit this for real: the only free model provider was
+    inside its own cooldown, and three of four workloads reported failure. Left
+    unclassified the ledger blames the workloads, and the "fix" an operator
+    attempts is to the agent instead of to the thing that actually broke.
+    """
+
+    def test_a_provider_cooldown_is_attributed_to_the_provider(self):
+        assert monitor.classify_server_error("all 1 free provider attempt(s) failed (1 now cooling down)") == "model provider"
+
+    def test_an_unavailable_model_is_attributed_to_the_provider(self):
+        assert monitor.classify_server_error("model 'x' is not offered by any reachable free provider") == "model provider"
+
+    def test_a_rate_limit_is_attributed_to_the_provider(self):
+        assert monitor.classify_server_error('ProviderError: ovhcloud: {"message":"API rate limit exceeded"}') == "model provider"
+
+    def test_a_genuine_workload_failure_is_not_reclassified(self):
+        # The dishonest direction to get wrong: a real defect filed as an
+        # infrastructure outage disappears and is never fixed.
+        for error in [
+            "the run produced no assistant message",
+            "no project carries this attempt's token",
+            "terminal status is 'error'",
+            "evidence check raised KeyError: token",
+        ]:
+            assert monitor.classify_server_error(error) is None, error
+
+    def test_no_error_is_not_a_dependency(self):
+        assert monitor.classify_server_error(None) is None
+        assert monitor.classify_server_error("") is None
+
+
+class TestBudgetExhaustionIsNotAnOutage:
+    """A client that stopped waiting must not claim the Gateway died.
+
+    The first live wave reported "the Gateway was unreachable for the whole run
+    window" for a run that was still working. That sends an operator to restart
+    a healthy service, so the honest verdict is UNVERIFIED with the outcome
+    unknown.
+    """
+
+    def _outcome(self, transport_error: str):
+        class G:
+            origin = "http://127.0.0.1:8001"
+            api = "http://127.0.0.1:8001/api"
+            verification_token = "t"
+
+            def create_thread(self, metadata=None):
+                return "t-1", "created"
+
+            def run(self, thread_id, prompt, *, timeout_s, key):
+                return {"http_status": 0, "body": {"transport_error": transport_error}}
+
+        workload = monitor.Workload(key="X", title="t", prompt="p", evidence=lambda *a: (True, "ok"))
+        return monitor.run_workload(G(), workload)
+
+    def test_a_timeout_is_unverified_with_an_unknown_outcome(self):
+        outcome = self._outcome("TimeoutError: timed out")
+        assert outcome.verdict == "UNVERIFIED"
+        assert "outcome is UNKNOWN" in outcome.detail
+        assert "may still be running it" in outcome.detail
+        assert "unreachable" not in outcome.detail
+
+    def test_a_refused_connection_is_still_a_transport_error(self):
+        outcome = self._outcome("URLError: ConnectionRefusedError")
+        assert outcome.verdict == "ERROR"
+        assert "unreachable" in outcome.detail
+
+
 class TestLedgerAlerting:
     """A standing break must alert once, not every interval forever."""
 
