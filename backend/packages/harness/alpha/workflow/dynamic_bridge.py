@@ -58,6 +58,7 @@ from alpha.workflow.models import (
 from alpha.workflow.patch_validator import PatchValidator
 from alpha.workflow.replanner import RuntimeReplanner
 from alpha.workflow.runtime import DynamicWorkflowEngine
+from alpha.workflow.verification import declared_command
 
 logger = logging.getLogger(__name__)
 
@@ -489,6 +490,19 @@ class DynamicWorkflowBridge:
                 "node_runner_bound": self.node_runner is not None,
                 "compensation_runner_bound": self.compensation_runner is not None,
                 "compensation": compensation_info,
+                # Verification posture, NOT a verdict.  Per-node outcomes are
+                # journalled as ``node_verification`` events because only the
+                # engine saw them; re-summarising them here from a process-local
+                # buffer could silently report "0 verified" after an eviction,
+                # which is exactly the false success this field must not create.
+                # What CAN be answered without guessing: whether anything was
+                # declared, and whether this host could run it at all.
+                "verification": {
+                    "registered_verifiers": len(self.engine.verifier_registry),
+                    "executor_bound": self.engine.verification_executor is not None,
+                    "declared_nodes": sorted(node_id for node_id, node in definition.graph.nodes.items() if declared_command(node.config)),
+                    "outcomes_event_type": "node_verification",
+                },
             },
         )
 

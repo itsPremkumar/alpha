@@ -14,6 +14,7 @@ from alpha.orchestrator.loop import ExecutionKernel, TurnContext, run_turn
 from alpha.orchestrator.replay import replay_run
 from alpha.workflow.event_log import DurableEventLog, DurableEventLogError
 from alpha.workflow.events import WorkflowEvent, get_event_dispatcher
+from alpha.workflow.graph_diff import diff_plan_versions
 from alpha.workflow.models import (
     WorkflowDefinition,
     WorkflowGraph,
@@ -1268,6 +1269,88 @@ async def replay_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     }
 
 
+@router.post("/runs/{run_id}/recover")
+@require_permission("runs", "create")
+async def recover_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
+    """Rebuild a run hydrate refused as stale, and free the nodes it stranded.
+
+    A crash mid-node leaves the projection behind its append-only log, so
+    ``POST /hydrate`` correctly refuses to install it — a stale projection is
+    never presented as current — and the run then has no way back into a live
+    engine. This is the explicit way back: fold the real journal into a fresh
+    run, install it, reconcile any node a dead worker left ``RUNNING``, and
+    re-materialize the projection so the next startup does not refuse it again.
+
+    The report says what was folded, what was reconciled and what a live
+    worker still owns. A rebuilt run is not a verified run.
+    """
+    await _assert_persisted_run_owner(run_id, request)
+    engine = get_workflow_engine()
+
+    def _load() -> tuple[WorkflowDefinition, list[WorkflowEvent]]:
+        log = _store()
+        snapshot = log.load_snapshot(run_id)
+        if snapshot is None:
+            raise LookupError("no projection is recorded for this run")
+        definition = snapshot.definition or engine.get_definition(snapshot.run.workflow_id)
+        if definition is None:
+            raise LookupError("no definition is recorded for this run")
+        events, disclosures = log.read_events(run_id)
+        if disclosures:
+            raise DurableEventLogError(f"durable event log is corrupt: {disclosures[0]}")
+        if not events:
+            raise LookupError("the durable event log for this run is empty")
+        return definition, events
+
+    try:
+        definition, events = await asyncio.to_thread(_load)
+    except DurableEventLogError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' cannot be recovered: {exc}.") from exc
+
+    try:
+        scratch, _replayed = await asyncio.to_thread(replay_run, events, definition)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        run, reconciled = await asyncio.to_thread(engine.adopt_replayed_run, scratch, run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=409, detail=f"Run '{run_id}' cannot be recovered: {exc}") from exc
+
+    def _refresh() -> dict[str, Any]:
+        # Re-materialize AFTER reconciliation: the reconcile itself journals
+        # ``node_failed`` / ``orphaned_nodes_reconciled``, so projecting the
+        # pre-recovery log would leave the run stale all over again.
+        log = _store()
+        records, disclosures = log.records_for(run_id)
+        if disclosures:
+            raise DurableEventLogError(f"event log for run {run_id} has a corrupt tail at line {disclosures[0]['line_number']}: {disclosures[0]['error']}")
+        graphs = {key: graph for key, graph in engine.graphs.items() if key.startswith(f"{run.workflow_id}:v")}
+        snapshot = log.project(
+            run=run,
+            definition=engine.get_definition(run.workflow_id),
+            graphs=graphs,
+            last_event=records[-1] if records else None,
+            event_count=len(records),
+        )
+        return {"last_seq": snapshot.last_seq, "event_count": snapshot.event_count}
+
+    try:
+        projection = await asyncio.to_thread(_refresh)
+    except DurableEventLogError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {
+        "run_id": run_id,
+        "events_folded": len(events),
+        "run_status": run.status.value,
+        "reconciled": reconciled,
+        "projection": projection,
+    }
+
+
 # ---------------------------------------------------------------------------
 # W-N1 durability surface (additive; every disk touch is offloaded to a thread)
 # ---------------------------------------------------------------------------
@@ -1546,3 +1629,48 @@ async def record_workflow_plan(workflow_id: str, request: Request) -> dict[str, 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PlanGraphError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{workflow_id}/plans/{version}/diff")
+@require_permission("runs", "read")
+async def diff_workflow_plan(workflow_id: str, version: int, request: Request, base: int | None = None) -> dict[str, Any]:
+    """Structural diff of one plan revision against another.
+
+    ``base`` defaults to the revision immediately before ``version``, so the
+    usual "what did this revision change?" needs no extra parameter. An
+    explicit ``base`` compares exactly the two revisions named, **in the order
+    named**: diffing backwards reports a node added by v3 as removed, because
+    an operator comparing two revisions wants to know what changed between the
+    two they asked about, not a normalised forward answer.
+
+    The earliest revision has nothing earlier to compare against. That is
+    reported as a 400 naming the reason rather than as an empty "identical"
+    diff, which would assert an equality nobody measured.
+    """
+    owner = _workflow_owner(request)
+    base_version = version - 1 if base is None else base
+
+    def _diff() -> dict[str, Any]:
+        store = PlanGraphStore(runtime_home() / "workflow_store" / "plans")
+        target = store.get(workflow_id, version)
+        if target is None or (owner and target.owner_id != owner):
+            raise LookupError(f"revision v{version} not found")
+        previous = store.get(workflow_id, base_version)
+        if previous is None or (owner and previous.owner_id != owner):
+            raise LookupError(f"revision v{base_version} not found")
+        return diff_plan_versions(previous, target).to_dict()
+
+    if version < 1:
+        raise HTTPException(status_code=400, detail=f"revision version must be >= 1, got {version}")
+    if base_version < 1:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"revision v{version} has no earlier revision to compare against; pass base=<version> to compare against an explicit revision"),
+        )
+
+    try:
+        return await asyncio.to_thread(_diff)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlanGraphError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

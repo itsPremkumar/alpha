@@ -93,6 +93,20 @@ reopened or dispatched. `POST .../compensate` invokes only a real, dedicated
 compensation executor; a missing callback or missing evidence is a disclosed
 failure, never a fabricated rollback receipt.
 
+To see what a revision actually changed,
+
+```
+GET /api/workflows/{workflow_id}/plans/{version}/diff?base={n}
+```
+
+compares two recorded plan revisions. The differ separates **structural**
+changes — nodes added, removed or re-typed, edges rerouted — from **runtime**
+changes such as prompts, budgets, timeouts, retries and policy, so a
+cosmetic prompt edit is never reported as a graph reshape. The reason string
+comes from the recorded `PlanVersion.note`/`source` and is never invented. The
+payload is deterministically ordered, bounded, and truncated with an explicit
+marker rather than allowed to grow without limit.
+
 `GET /api/workflows/system/registries` is a bounded, read-only view of the
 capability, tool, skill, MCP, subagent, and bot registries used by planning.
 Registry health and unavailable entries are returned as data; discovery does
@@ -156,6 +170,84 @@ an executor for work the engine already did:
 | `PARALLEL` | Runs a named member set as one bounded wave. All-or-nothing: a single non-succeeded member fails the group. |
 | `SUBWORKFLOW` | Runs a registered child workflow to a terminal state through this same engine and adopts only a genuinely `completed` child. Self-recursion is refused. |
 
+## Declared verification
+
+A node may declare `verification_cmd`, and since `alpha.workflow.verification`
+exists that declaration now **executes** — before, nothing in the tree read it,
+so a run could succeed while its own plan still named the check meant to prove
+that success.
+
+### Resolution never reaches a subprocess
+
+The declaration is client-supplied input (`POST /api/workflows` takes
+`body.graph` verbatim, and `update_node_config` writes node config), so it
+resolves to exactly three things, in order:
+
+1. a verifier the host registered with
+   `DynamicWorkflowEngine.register_verifier(name, callable)`;
+2. a dotted path inside the allowlisted `alpha.` prefix;
+3. a shell-style command handed to a **host-bound** `verification_executor`.
+
+That executor is **absent by default**, so `pytest -q` — the one declaration
+the decomposer still emits — is `not_run` until a host binds one. It is never
+spawned speculatively. Every other dotted path, `os.system` included, is
+refused at resolution *before* any import.
+
+### The verdict contract
+
+A zero-argument callable returning a bool. Dict keys
+`passed`/`ok`/`success`/`verdict` and the pass/fail strings are coerced;
+**anything else — including `None` — is `not_run`,** never a guess. An
+exception is `not_run` carrying the real reason: not a pass, and not a failure
+either.
+
+| Verdict | Effect on the node |
+| --- | --- |
+| `passed` | completes; **only this** appends evidence |
+| `failed` | **blocks** — `_fail_node` with the verifier's reason and a `verification` block |
+| `unresolved` | **blocks**, the same way |
+| `not_run` | completes, journalled as `node_verification` with `passed: false` |
+| `not_declared` | no event at all |
+
+`not_run` therefore completes the node without ever claiming it passed —
+exactly how an unbound compensation callback reports `executed: False`.
+
+### Where the gate runs, and where it does not
+
+The gate sits on the **default / agent / tool / bot path** of
+`_execute_single_node`, after the lease verdict and the evidence check but
+*before* either is folded into run state, and outside `_STATE_LOCK` (an
+operator-bound executor may block, and the lock guards bookkeeping, not command
+execution).
+
+Kinds the runtime measures itself do **not** run a declared verifier: the
+executor-free kinds above plus `condition`, `router`, `map`, `reduce`, `race`,
+`quorum` and `compensation`, all of which return before that path. That is a
+disclosed boundary pinned by
+`test_a_structural_node_kind_does_not_execute_a_declared_verifier` — declare a
+verifier on one of those kinds and it will not be executed.
+
+### Reading the outcome
+
+- `GET /api/workflows/runs/{run_id}/events` carries every `node_verification`
+  event, so per-node outcomes are durable and replayable.
+- `POST /api/workflows/dynamic/execute` returns `metadata["verification"]` —
+  registry size, whether an executor is bound, and the ids of nodes that
+  declared a check. It asserts **no verdict**: re-summarising outcomes from a
+  process-local buffer could report `0 verified` after an eviction, which is
+  precisely the false success that field must not create.
+- `acceptance_passed` is the *execution* axis and stays separate, so a consumer
+  cannot mistake "real work ran" for "the check passed".
+
+### What the decomposer declares
+
+Six of its seven names pointed at functions that exist nowhere in this tree, or
+at `alpha.skills.authoring.validate_skill_draft`, which takes three arguments
+and can never satisfy a zero-argument contract. With resolution live, each would
+have **failed every node it was attached to**, so they are gone; their intent
+stays in `verification_criteria`. `pytest -q` is the one declaration remaining,
+and it runs the moment a host binds an executor.
+
 ## External events, suspension, and waiting
 
 - `POST /api/workflows/runs/{run_id}/signals` delivers a named signal. Only
@@ -184,7 +276,11 @@ an executor for work the engine already did:
   `reset_completed_nodes` re-runs that work deliberately and is disclosed as
   dangerous, because idempotency keys are per-run and cannot protect a repeated
   effect. An un-replayable prefix, an unknown event id, and an out-of-range index
-  are all rejected with the real reason.
+  are all rejected with the real reason — and so is an **ambiguous** one: event
+  ids are unique (a sortable timestamp plus a process-local counter), and a log
+  whose ids collide is refused by name rather than resolved to the first match,
+  because that would silently truncate the prefix and re-run work the fork
+  claimed to inherit.
 - `POST /api/workflows/simulate` dry-runs a registered workflow against a
   recording executor on a **throwaway engine**, so it cannot touch the caller's
   definitions, runs, durable sink, or token budgets. Every result is labelled
@@ -272,32 +368,101 @@ data, not a system instruction. The workflow plane does not replace
 `RunManager`, the group/bot lifecycle owner, or the scheduler, and it does not
 create a second parent-run stream.
 
+## Failure classification and recovery
+
+**Why a node failed is decided, not guessed.**
+`alpha.workflow.failures` classifies each node failure into one of nineteen
+`NodeFailureClass` values by ordered keyword rules, and every classification
+discloses the rule that matched rather than presenting an unexplained label.
+This is a **retry-decision classification**, not an error-code taxonomy:
+`alpha.errors.registry` remains the sole owner of stable, customer-facing error
+codes, and this module bridges onto vocabularies that already existed instead
+of growing a seventh one.
+
+- `ClassifiedFailure.recovery_class()` routes onto `alpha.recovery.policies`,
+  which stays the single authority on *what to do* after a failure.
+  `recovery_exhausted` events carry the terminal strategy it chose together
+  with `strategy_source` and `strategy_bridged`, so the bridge is visible.
+- `ClassifiedFailure.reason_code()` maps onto `alpha.bots.failure_reasons`, so a
+  node reads as the same work unit a swarm task or subagent would.
+
+`StagnationDetector` measures non-progress over `error_signature()`, a
+normalized rendering in which identifiers, numbers, paths and hex digests
+collapse away — so "the same fault wearing different digits" is measurable
+instead of argued about. The engine emits `failure_classified`,
+`node_stagnated`, `recovery_exhausted` and `node_retry_refused`.
+
+**Every attempt holds a durable, fenced lease.**
+`alpha.workflow.leases` records each attempt at
+`runtime_home()/workflow_store/leases.json` with an atomic replace. The
+lifecycle is: acquire *before* the node is marked `RUNNING`, release in
+`finally`, and **check the fence before adopting any output**. A result whose
+lease reports `STALE_LEASE`, `SUPERSEDED_REVISION` or `UNKNOWN_LEASE` is
+discarded rather than written through — an unverifiable key is refused, never
+assumed fresh. A lease refusal at dispatch is a one-shot honest failure naming
+the worker that already holds the claim, never a retry loop. The fence
+deliberately survives release and **advances** on reclaim or expiry, so a dead
+worker's late result reads `STALE_LEASE` instead of `ACCEPTED`.
+
+**A dead worker can no longer strand a run.** The scheduler admits only
+`PENDING`/`READY` and replay folds `node_started` into `RUNNING` with no
+completer, so before this a worker that died mid-node left the run permanently
+stuck on work nobody owns — and a restart reproduced that state from the
+journal. `reconcile_orphaned_nodes()` now runs at the top of every step: a node
+this process is actually executing (tracked in a process-local `_in_flight`
+set) or one with a live lease held by another worker is held; anything else
+`RUNNING` is **failed** with `failure_class=worker_lost`, because its side
+effects are unknown and it is never silently reset. The reconciliation is
+journalled as `orphaned_nodes_reconciled`.
+
+Because hydration correctly refuses a run whose projection lags its journal —
+and that refusal is load-bearing — such a run previously had no way back.
+`POST /api/workflows/runs/{run_id}/recover` is the explicit, owner-scoped way
+back: it folds the real journal into a fresh run, installs it, reconciles the
+orphaned nodes, and only then re-materialises the projection (projecting
+*after* reconciliation, because reconciliation itself appends events). The
+response reports what was folded and what was reconciled, and never reports
+the rebuilt run as verified.
+
 ## Current boundaries
 
 The orchestration graph, scheduling, retries, approvals, conditional routing,
 bounded loops, patch OCC, replay, and compensation plumbing are implemented, as
 are real node deadlines, opt-in wave concurrency, the seven executor-free node
 kinds, external-signal waits, operator suspend/resume, forking, dry-run
-simulation, measured observability, template promotion, and improvement
-proposals.
+simulation, measured observability, template promotion, improvement proposals,
+failure classification, durable attempt leases and crash recovery.
 
 What remains true and must keep being said plainly:
 
 - A deadline is enforced by **fencing**, not by cancelling: CPython cannot kill a
   thread, so timed-out work may still be completing in the background and its
   result is discarded rather than adopted.
-- Wave concurrency is **process-local**. Parallel waves overlap real threads in
-  one process; a multi-worker deployment still needs shared lease/coordination
-  before claiming cross-process exactly-once execution.
-- The template store and the durable event log are local and atomic for ONE
-  Gateway process. They are not a shared multi-worker repository.
+- Wave concurrency, the durable event log **and the lease store** are
+  **process-local**. They are atomic and restart-recoverable for ONE Gateway
+  process; a multi-worker deployment still needs shared lease/coordination
+  before claiming cross-process exactly-once execution. The lease `worker_id`
+  is a pid for exactly that reason — as specific as the guarantee available.
+- Hydration **still refuses** stale projections. `/recover` is an explicit
+  route and does not relax `/hydrate`.
+- The template store is local and atomic for ONE Gateway process. It is not a
+  shared multi-worker repository.
 - `alpha.local.digest` remains a `local_digest_projection`. Binding a real
   domain executor is an explicit host opt-in, and a run is only domain-complete
   when a real executor produced its evidence.
-- A **dry run is a projection**. It shares no state with the caller's engine and
-  asserts nothing about acceptance.
+- A **dry run is a projection**. It shares no state with the caller's engine, is
+  handed a process-local lease manager, and asserts nothing about acceptance.
 - An **improvement suggestion is a proposal**. Nothing in it has been shown to
   work; only a re-measured run can show that.
+- A **completed run is never a verified run**, and recovery only ever rebuilds a
+  run to match its journal — it does not vouch for the work.
+
+Known gaps that are not implemented (see
+[`ALPHA-WORKFLOW-CURRENT-STATE.md`](ALPHA-WORKFLOW-CURRENT-STATE.md) for the
+full list): workflow triggers still disclose the missing scheduler handoff
+rather than creating a second cron owner, and there is no failure quarantine
+store, no connectivity wait state, no goal-drift detection and no worktree
+claiming.
 
 ## Regression coverage
 
@@ -314,6 +479,19 @@ The implementation is covered by `backend/tests/test_dynamic_workflow_service.py
 - `test_workflow_templates_and_improvement.py` — the template lifecycle and
   evidence-cited proposals
 - `test_workflow_observability_router.py` — the REST observability/control routes
+- `test_workflow_verification.py` — declared verification: resolution and its
+  refusals, the verdict contract, node-gate semantics, the disclosed scope
+  boundary, and the bridge posture
+- `test_workflow_event_identity.py` — event ids are unique, a fork inherits
+  completed work, and an ambiguous id is refused by name
+- `test_workflow_leases.py` — claim/fence/expiry/reclaim, orphan
+  reconciliation, dry-run isolation, and lease-store corruption
+- `test_workflow_failures.py` — the nineteen failure classes, rule
+  disclosure, stagnation, and the recovery/reason bridges
+- `test_workflow_graph_diff.py` and `test_workflow_plan_diff_router.py` —
+  structural-vs-runtime revision diff, its endpoint, and owner scoping
+- `test_workflow_durability_router.py` — the journal, projection, the
+  stale-projection refusal, and `/recover`
 
 and the frontend `workflows.test.mjs` / `workflows-observability.test.mjs` client
 contract tests.

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 import time
 import uuid
@@ -22,6 +23,8 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+from alpha.config.runtime_paths import runtime_home
+from alpha.recovery.policies import decide_from_reason
 from alpha.workflow.events import get_event_dispatcher
 from alpha.workflow.execution import (
     ConcurrencyGovernor,
@@ -34,6 +37,12 @@ from alpha.workflow.execution import (
     timeout_occurred,
 )
 from alpha.workflow.expressions import evaluate_condition, evaluate_condition_strict
+from alpha.workflow.failures import (
+    DEFAULT_STAGNATION_LIMIT,
+    StagnationDetector,
+    classify_node_failure,
+)
+from alpha.workflow.leases import LeaseManager, ResultVerdict
 from alpha.workflow.models import (
     NodeStatus,
     NodeType,
@@ -54,6 +63,12 @@ from alpha.workflow.patch import WorkflowPatchEngine
 from alpha.workflow.replanner import RuntimeReplanner
 from alpha.workflow.router import DynamicRouter
 from alpha.workflow.scheduler import WorkflowScheduler
+from alpha.workflow.verification import (
+    VerificationOutcome,
+    VerificationStatus,
+    declared_command,
+    run_verification,
+)
 
 # Module-level node-runner seam: the single default executor binding shared by
 # every DynamicWorkflowEngine. ``None`` means NO executor is bound, and nodes
@@ -466,6 +481,216 @@ class DynamicWorkflowEngine:
         self._governors_guard = threading.Lock()
         # Per-run wave counter. Kept beside the governor and released with it.
         self._wave_counts: dict[str, int] = {}
+        # Durable attempt leases, created on first use so a throwaway engine
+        # (``simulate_run``'s dry run) can be handed a process-local manager
+        # instead of writing into the real store.  Creation is guarded: a wave
+        # dispatches nodes on a bounded pool, and if two of them raced here
+        # they would each build a manager over an empty store, so one thread
+        # would acquire on a manager the others never see and every later
+        # verdict would read UNKNOWN_LEASE and discard good results.
+        self._leases: LeaseManager | None = None
+        self._lease_init_lock = threading.Lock()
+        # Nodes THIS process is executing, keyed ``run:node``.  The lease TTL
+        # is a wall-clock observation and lapses on a long-running node, so
+        # orphan reconciliation needs process-local ground truth too: a node
+        # in this set is alive by construction and is never reconciled away.
+        self._in_flight: set[str] = set()
+        # One honest worker identity per process.  The lease store is
+        # single-Gateway (see ``alpha.workflow.leases``), so a pid is exactly
+        # as specific as the guarantee this engine can actually make.
+        self.worker_id = f"gateway-pid-{os.getpid()}"
+        # Verification seams, both host-bound and empty by default.
+        # ``verification_cmd`` is reachable from ``POST /api/workflows``
+        # (``body.graph``) and from ``update_node_config``, i.e. it is
+        # client-supplied input, so nothing here may spawn a subprocess on its
+        # own: a command runs only through a bound executor, and only a
+        # registered or ``alpha.``-prefixed verifier may be imported and called.
+        self.verifier_registry: dict[str, Callable[[], Any]] = {}
+        self.verification_executor: Callable[[str], Any] | None = None
+
+    # ---------------------------------------------------------- verification
+
+    def register_verifier(self, name: str, verifier: Callable[[], Any]) -> None:
+        """Expose a host-side verifier under ``name`` for ``verification_cmd``.
+
+        The registry is the only way a *short* symbolic declaration resolves,
+        and it is populated by the host rather than by a request, so a caller
+        cannot make the engine reach arbitrary code by naming it.
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("verifier name must be a non-empty string")
+        if not callable(verifier):
+            raise ValueError(f"verifier for {name.strip()!r} is not callable")
+        self.verifier_registry[name.strip()] = verifier
+
+    def _verify_attempt(self, node: WorkflowNode, run: WorkflowRun) -> VerificationOutcome:
+        """Resolve and run a node's declared ``verification_cmd``.
+
+        Called once per attempt, after the runner's evidence is accepted and
+        before any of it is folded into run state, so a verifier that refuses
+        cannot be recorded as a success.  Every declared outcome is journalled
+        as ``node_verification``; an undeclared node emits nothing at all.
+        """
+        outcome = run_verification(
+            declared_command(node.config),
+            registry=self.verifier_registry,
+            executor=self.verification_executor,
+        )
+        if outcome.status is VerificationStatus.NOT_DECLARED:
+            return outcome
+        self.events.emit(
+            "node_verification",
+            run.run_id,
+            node_id=node.id,
+            passed=outcome.status is VerificationStatus.PASSED,
+            **outcome.to_dict(),
+        )
+        return outcome
+
+    # ----------------------------------------------------------------- leases
+
+    @property
+    def leases(self) -> LeaseManager:
+        """Durable, fenced leases for node attempts, created on first use.
+
+        Exactly one manager ever exists per engine.  This matters because a
+        manager loads the store into memory at construction and writes it back
+        wholesale: two managers built by racing wave threads would each hold a
+        private view, an acquire recorded by one would be invisible to the
+        other, and every ``check_result`` on that node would come back
+        ``UNKNOWN_LEASE`` — discarding work that actually succeeded.  The lock
+        closes that window; the fast path stays lock-free once built.
+        """
+        manager = self._leases
+        if manager is None:
+            with self._lease_init_lock:
+                manager = self._leases
+                if manager is None:
+                    manager = LeaseManager(runtime_home() / "workflow_store")
+                    self._leases = manager
+        return manager
+
+    @leases.setter
+    def leases(self, value: LeaseManager | None) -> None:
+        """Install a manager (a process-local one for throwaway engines)."""
+        self._leases = value
+
+    @staticmethod
+    def _lease_key(run_id: str, node_id: str) -> str:
+        return f"{run_id}:{node_id}"
+
+    def reconcile_orphaned_nodes(self, run: WorkflowRun) -> list[dict[str, Any]]:
+        """Fail nodes a dead worker left ``RUNNING``, and say why.
+
+        The event log folds ``node_started`` into ``RUNNING`` and folds
+        nothing back when the worker dies mid-attempt, and the scheduler
+        admits only ``PENDING``/``READY``.  Left alone, such a node is never
+        dispatched again and the run hangs forever on work nobody owns —
+        precisely the "a backend restart must not become a task failure"
+        case.
+
+        A node is orphaned when no *live* lease holds it: either this process
+        never dispatched it (no record — state restored by replay or
+        hydration) or its lease has expired (worker presumed gone).  A node
+        executing in this process is never touched regardless of lease state,
+        because a wall-clock TTL lapsing on a long node is not evidence that
+        the node stopped.
+
+        The node is **failed**, never silently reset: we cannot know whether
+        its side effects landed, and re-running work whose effects are
+        unknown is exactly what the failure taxonomy exists to prevent.  The
+        ordinary retry policy then decides what happens next, from
+        ``worker_lost``.
+        """
+        report: list[dict[str, Any]] = []
+        graph = self._run_graphs.get(run.run_id)
+        graph_version = int(graph.version) if graph is not None else 0
+        for node_id, status in list(run.node_states.items()):
+            if status is not NodeStatus.RUNNING:
+                continue
+            key = self._lease_key(run.run_id, node_id)
+            if key in self._in_flight:
+                continue
+            lease = self.leases.get_lease(run.run_id, node_id)
+            if lease is not None and not lease.is_expired:
+                report.append(
+                    {
+                        "node_id": node_id,
+                        "action": "held",
+                        "worker_id": lease.worker_id,
+                        "attempt_id": lease.attempt_id,
+                        "expires_in_seconds": round(lease.remaining_seconds(), 3),
+                    }
+                )
+                continue
+            superseded = self.leases.reclaim(run.run_id, node_id)
+            node = graph.nodes.get(node_id) if graph is not None else None
+            if node is None:
+                # Nothing to fail: the graph no longer carries this node, so
+                # clearing the state entry is the whole recovery.
+                with self.state():
+                    run.node_states.pop(node_id, None)
+                report.append({"node_id": node_id, "action": "dropped", "reason": "node no longer present in the run graph"})
+                continue
+            detail = (
+                f"node '{node_id}' was left RUNNING by a worker that is no longer present" if superseded is None else f"node '{node_id}' was left RUNNING by worker {superseded.worker_id} whose lease expired after {superseded.ttl_seconds}s"
+            )
+            self._fail_node(run, node, detail, failure_class="worker_lost", reconcile_action="failed")
+            report.append(
+                {
+                    "node_id": node_id,
+                    "action": "failed",
+                    "failure_class": "worker_lost",
+                    "reason": detail,
+                    "superseded_attempt_id": None if superseded is None else superseded.attempt_id,
+                    "superseded_fence_token": None if superseded is None else superseded.fence_token,
+                    "graph_version": graph_version,
+                }
+            )
+        if report:
+            self.events.emit(
+                "orphaned_nodes_reconciled",
+                run.run_id,
+                reconciled=[entry for entry in report if entry["action"] == "failed"],
+                held=[entry for entry in report if entry["action"] == "held"],
+                dropped=[entry for entry in report if entry["action"] == "dropped"],
+                run_status=run.status.value,
+            )
+        return report
+
+    def adopt_replayed_run(self, source: DynamicWorkflowEngine, run_id: str) -> tuple[WorkflowRun, list[dict[str, Any]]]:
+        """Install a run rebuilt from its event log, then reconcile its orphans.
+
+        ``source`` is the throwaway engine ``replay_run`` produced. This exists
+        because the honest fail-closed path alone has a hole: a crash mid-node
+        leaves the projection behind its append-only log, ``hydrate()`` refuses
+        to install it (correctly — a stale projection is never presented as
+        current), and the run then simply has no way back into a live engine.
+        Replay rebuilds it faithfully; this installs the result and resolves
+        whatever replay had to fold into ``RUNNING`` without an owning worker.
+
+        Nothing here claims the recovered run is correct — only that it now
+        matches its journal and that no node is left in a state the scheduler
+        will never admit again.
+        """
+        run = source.runs.get(run_id)
+        if run is None:
+            raise KeyError(f"Run '{run_id}' is not present on the replayed engine.")
+        definition = source.definitions.get(run.workflow_id)
+        if definition is None:
+            raise KeyError(f"Workflow '{run.workflow_id}' is not present on the replayed engine.")
+        graph = source._run_graphs.get(run_id) or source.graphs.get(f"{run.workflow_id}:v{run.graph_version}")
+        if graph is None:
+            raise KeyError(f"No graph revision {run.graph_version} for workflow '{run.workflow_id}' on the replayed engine.")
+        with self._workflow_lock(run.workflow_id):
+            self.register_definition(definition, allow_replace=True)
+            self.runs[run_id] = run
+            self._run_graphs[run_id] = graph
+            self.graphs[f"{run.workflow_id}:v{graph.version}"] = graph
+            for key, value in source.graphs.items():
+                self.graphs.setdefault(key, value)
+            report = self.reconcile_orphaned_nodes(run)
+        return run, report
 
     # -------------------------------------------------------------- run state
 
@@ -792,6 +1017,15 @@ class DynamicWorkflowEngine:
             # non-terminal but equally not dispatchable: stepping a parked run
             # must return its real status rather than resume held work.
             return run
+
+        # Recover any node a dead worker left RUNNING before computing what is
+        # ready.  The scheduler admits only PENDING/READY, so an unreconciled
+        # orphan would be skipped forever and the run would hang on work nobody
+        # owns — this is the seam that makes "a restart must not become a task
+        # failure" true for a run whose state was rebuilt from its event log.
+        # Cheap by construction: with no RUNNING node it touches neither the
+        # lease store nor the event log.
+        self.reconcile_orphaned_nodes(run)
 
         runner = node_runner if node_runner is not None else get_node_runner()
 
@@ -1315,6 +1549,13 @@ class DynamicWorkflowEngine:
 
         policy = node.retry_policy
         attempts = max(1, min(int(policy.max_attempts), 20))
+        # Stagnation is measured per node invocation: a streak of identical
+        # error signatures means the unchanged strategy is not distinguishing a
+        # transient fault from a deterministic one, so continuing to repeat it
+        # is a stall rather than a retry.  The limit is the spec's 3, bounded
+        # by the node's own attempt ceiling so a 1-attempt node cannot report a
+        # streak it never had.
+        stagnation = StagnationDetector(limit=max(1, min(DEFAULT_STAGNATION_LIMIT, attempts)))
         result: dict[str, Any] = {}
         for attempt in range(1, attempts + 1):
             raised_exception: Exception | None = None
@@ -1354,19 +1595,114 @@ class DynamicWorkflowEngine:
                     "tokens_used": 0,
                 }
             result = raw
-            if result.get("status") == "completed" or attempt >= attempts:
+            if result.get("status") == "completed":
+                return result
+
+            # Classify every failure so the journal records WHAT failed, not
+            # just that it did.  The verdict carries the rule that matched, the
+            # normalized signature, and both vocabulary bridges, so an operator
+            # can audit the classification instead of trusting it.
+            failure_text = str(result.get("output", ""))
+            classified = classify_node_failure(
+                failure_text,
+                exception_type=type(raised_exception).__name__ if raised_exception is not None else None,
+            )
+            self.events.emit(
+                "failure_classified",
+                run.run_id,
+                node_id=node.id,
+                attempt=attempt,
+                failure_class=classified.failure_class,
+                retryable=classified.retryable,
+                matched_rule=classified.matched_rule,
+                signature=classified.signature,
+                recovery_class=classified.recovery_class,
+                reason_code=classified.reason_code,
+            )
+
+            verdict = stagnation.observe(classified.signature)
+            if verdict.stagnated:
+                # Stop repeating the identical attempt and say exactly why.
+                # The node keeps its real failed result: stagnation is a reason
+                # to stop retrying, never a claim about the outcome.
+                self.events.emit(
+                    "node_stagnated",
+                    run.run_id,
+                    node_id=node.id,
+                    attempt=attempt,
+                    failure_class=classified.failure_class,
+                    identical_streak=verdict.identical_streak,
+                    limit=verdict.limit,
+                    signature=classified.signature,
+                    reason=verdict.reason,
+                    required_action="change_strategy",
+                )
+                return {
+                    **result,
+                    "stagnation": {
+                        "identical_streak": verdict.identical_streak,
+                        "limit": verdict.limit,
+                        "failure_class": classified.failure_class,
+                        "required_action": "change_strategy",
+                    },
+                }
+
+            if attempt >= attempts:
+                # A spent ceiling must ESCALATE, never become a silently
+                # repeated attempt.  The verdict is taken from the repository's
+                # existing recovery authority rather than from a table local to
+                # this engine, so a workflow node and every other bounded work
+                # unit end on the same decision.  `reason_code` is the bridge
+                # onto the shared work-unit vocabulary; where the class has no
+                # counterpart the authority classifies the measured text
+                # itself, and that fallback is recorded too.
+                authority = decide_from_reason(
+                    failure_text,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    failure_reason=classified.reason_code,
+                )
+                self.events.emit(
+                    "recovery_exhausted",
+                    run.run_id,
+                    node_id=node.id,
+                    attempt=attempt,
+                    of_attempts=attempts,
+                    failure_class=classified.failure_class,
+                    recovery_class=classified.recovery_class,
+                    reason=str(result.get("output", "")),
+                    terminal_strategy=authority.action,
+                    strategy_source="alpha.recovery.policies",
+                    strategy_reason=authority.reason,
+                    strategy_bridged=classified.reason_code is not None,
+                )
                 return result
 
             text = str(result.get("output", "")).lower()
             markers = [str(marker).lower() for marker in policy.retry_on_errors]
-            retryable = "*" in markers or "all" in markers or any(marker and marker in text for marker in markers)
-            if not retryable:
+            marker_ok = "*" in markers or "all" in markers or any(marker and marker in text for marker in markers)
+            # Two independent gates: the node's marker says this class of text
+            # is worth another try, AND the failure class says a retry is not
+            # provably futile.  A wildcard marker must not be able to re-enable
+            # an auth/permission/security retry that cannot succeed.
+            if not (marker_ok and classified.retryable):
                 # A direct runner exception is already the authoritative
                 # failure.  Let the outer engine boundary journal its exact
                 # ``str(exc)`` rather than wrapping it as a second generic
                 # "runner reported failure" error.  Typed failed results (for
                 # example ExecutorRegistry results carrying a traceback) still
                 # flow through the normal wrapper below.
+                self.events.emit(
+                    "node_retry_refused",
+                    run.run_id,
+                    node_id=node.id,
+                    attempt=attempt,
+                    failure_class=classified.failure_class,
+                    marker_matched=marker_ok,
+                    class_retryable=classified.retryable,
+                    matched_rule=classified.matched_rule,
+                    reason=(f"retry refused: marker={'matched' if marker_ok else 'not matched'}, class={classified.failure_class} retryable={classified.retryable}"),
+                )
                 if raised_exception is not None:
                     raise raised_exception
                 return result
@@ -1592,6 +1928,26 @@ class DynamicWorkflowEngine:
         # meant a declared timeout guaranteed failure instead of bounding
         # anything.
 
+        # Claim the attempt DURABLY before the node reads as RUNNING.  The
+        # record is what lets a later process tell an in-flight attempt from
+        # one whose worker is already dead, and the fence is what lets a
+        # result from a superseded attempt be recognised instead of adopted.
+        lease = self.leases.acquire_lease(
+            run.run_id,
+            nid,
+            self.worker_id,
+            attempt_id=self._node_attempt_key(node, run) or None,
+            graph_version=int(graph.version),
+        )
+        if lease is None:
+            held = self.leases.get_lease(run.run_id, nid)
+            holder = f"worker {held.worker_id}" if held is not None else "an unknown holder"
+            # One-shot and honest: a lease refusal is not a transient fault of
+            # THIS attempt — somebody else owns the node — so there is nothing
+            # to retry and the run must not be put into a retry loop.
+            self._fail_node(run, node, f"node '{nid}' could not be claimed: its lease is held by {holder}")
+            return
+
         # Mark Running
         with self.state():
             node.status = NodeStatus.RUNNING
@@ -1614,7 +1970,9 @@ class DynamicWorkflowEngine:
                 idempotency_key=attempt_key,
             )
 
+        lease_key = self._lease_key(run.run_id, nid)
         try:
+            self._in_flight.add(lease_key)
             # 3. Structural node types (checkpoint / goal_gate / handoff /
             #    wait / event_wait / parallel / subworkflow).  These need no
             #    executor: their completion evidence is a measurement the engine
@@ -1902,12 +2260,52 @@ class DynamicWorkflowEngine:
                     return
 
                 if status == "completed":
+                    # Fence before adopting.  A worker that outlived its lease,
+                    # or whose node was replanned out from under it, produces a
+                    # result that LOOKS complete; the lease is the only thing
+                    # that can tell the difference, so it is asked before any
+                    # evidence, output or status is folded into the run.
+                    verdict = self.leases.check_result(
+                        run.run_id,
+                        nid,
+                        worker_id=self.worker_id,
+                        fence_token=lease.fence_token,
+                        graph_version=int(graph.version),
+                    )
+                    if verdict is not ResultVerdict.ACCEPTED:
+                        self._fail_node(
+                            run,
+                            node,
+                            f"node '{nid}' result discarded: lease verdict is '{verdict.value}' (attempt fence {lease.fence_token} no longer owns this node)",
+                            lease_verdict=verdict.value,
+                        )
+                        return
                     # Evidence must belong to THIS executor result.  Reusing
                     # evidence from an earlier loop iteration would let a
                     # later, unverified attempt inherit a success marker.
                     if not evidence:
                         raise UnverifiedNodeCompletionError(f"Node '{nid}' completed without evidence.")
+                    # A declared verification_cmd gates THIS attempt before any
+                    # of its work reaches the run, so a verifier that refuses —
+                    # or one that names nothing that exists — can never be
+                    # folded into a success.  It runs outside ``self.state()``:
+                    # an operator-bound executor may block, and the process-wide
+                    # lock guards bookkeeping, not command execution.
+                    verification = self._verify_attempt(node, run)
+                    if verification.blocks_completion:
+                        self._fail_node(
+                            run,
+                            node,
+                            f"node '{nid}' verification {verification.status.value}: {verification.reason}",
+                            verification=verification.to_dict(),
+                        )
+                        return
                     node.evidence.append(evidence)
+                    if verification.evidence:
+                        # Only a real pass contributes evidence; a not_run is
+                        # already journalled as node_verification and must not
+                        # be mistaken for proof.
+                        node.evidence.append(verification.evidence)
                     node.output = output
                     if node.loop_policy:
                         stop_met = False
@@ -1973,6 +2371,15 @@ class DynamicWorkflowEngine:
                 comp_node.status = NodeStatus.COMPENSATING
                 run.node_states[comp_node.id] = NodeStatus.COMPENSATING
                 self.events.emit("compensation_triggered", run.run_id, node_id=comp_node.id)
+
+        finally:
+            # The attempt is over whether it completed, parked at an approval
+            # or wait, looped for another iteration, or failed — so the durable
+            # claim is released and the node stops counting as executing here.
+            # The fence travels with the release so a late release from a
+            # superseded attempt cannot steal a newer claim.
+            self._in_flight.discard(lease_key)
+            self.leases.release_lease(run.run_id, nid, self.worker_id, fence_token=lease.fence_token)
 
     # ------------------------------------------------------- structural nodes
 

@@ -1323,12 +1323,23 @@ surfaces under `/api/workflows`:
 - `GET /api/workflows/system/registries` — bounded registry health/discovery projection.
 - `POST /api/workflows/runs/{run_id}/{step,cancel,replan,compensate}` and the approval/patch routes — claimed, versioned run control.
 - `GET /api/workflows/runs/{run_id}/events`, `/events/durable`, and `POST /replay`, `/project`, `/hydrate` — event truth, projections, and honest recovery.
+- `POST /api/workflows/runs/{run_id}/recover` — fold the real journal back into a live run after a crash stranded it, reconcile any node a dead worker left `RUNNING`, then re-materialise the projection. Owner-scoped; reports what was folded and never claims the rebuilt run is verified.
 - `GET/POST /api/workflows/{workflow_id}/plans` — append-only graph revision history.
+- `GET /api/workflows/{workflow_id}/plans/{version}/diff?base={n}` — structural vs runtime change between two recorded plan revisions; the reason comes from the recorded `PlanVersion.note`/`source`, never invented.
 
 Definitions and runs are owner-scoped for real HTTP requests. The built-in
 `alpha.local.digest` executor is explicitly a local graph projection; its result
 keeps `acceptance_passed=false` until a real domain executor supplies evidence.
 Missing executors, compensation callbacks, registry connections, and verification
 are disclosed or fail closed. Recurring automation remains scheduler-owned.
+
+`POST /dynamic/execute` returns `metadata["verification"]` — the registered
+verifier count, whether an operator-bound `verification_executor` is present,
+and the ids of nodes that declared a check. It reports **posture only and
+asserts no verdict**; per-node outcomes are the durable `node_verification`
+events from `GET /api/workflows/runs/{run_id}/events`, where a declared check
+that could not run is `not_run` with `passed: false` rather than an absent
+record. A node kind the runtime measures itself does not execute a declared
+verifier, and that boundary is documented rather than implied.
 See [`docs/DYNAMIC_WORKFLOWS.md`](../../docs/DYNAMIC_WORKFLOWS.md) for the full
 contract and limitations.

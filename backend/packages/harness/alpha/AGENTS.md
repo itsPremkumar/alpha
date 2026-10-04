@@ -389,6 +389,44 @@ reporting measured sleep), `EVENT_WAIT` (parks the run in `WAITING_EVENT`),
 only a `completed` child is adopted, self recursion refused) complete on a
 measurement the runtime takes itself.
 
+**Declared verification execution.** `alpha.workflow.verification` is the
+consumer of `WorkflowNode.config["verification_cmd"]` — a field the decomposer
+wrote onto every task and the bridge copied into the graph, and which nothing
+in the tree ever read, so a run could succeed while its own plan still named
+the check meant to prove that success. The declaration is **client-supplied
+input** (`POST /api/workflows` takes `body.graph` verbatim and
+`update_node_config` writes node config), so it resolves to exactly three
+things and never to a subprocess: a verifier the host registered
+(`DynamicWorkflowEngine.register_verifier`), a dotted path inside the
+allowlisted `alpha.` prefix, or a shell-style command handed to a **host-bound**
+`verification_executor` — absent by default, so such a command is `not_run`,
+never spawned. Every other dotted path (`os.system` included) is refused at
+resolution, *before* any import. The gate runs on the **default / agent / tool
+/ bot path** of `_execute_single_node`, after the lease verdict and the
+evidence check but before either is folded into run state, and outside
+`_STATE_LOCK`. Kinds the runtime measures itself — the executor-free list
+above plus `condition`, `router`, `map`, `reduce`, `race`, `quorum` and
+`compensation`, all of which return before that path — do **not** execute a
+declared verifier, so declare one on a runnable node kind; a test pins that
+boundary rather than leaving it implied. `failed` and `unresolved` **block**:
+the node fails through `_fail_node` carrying the verifier's own reason and a
+`verification` block, and the runner's evidence is discarded rather than
+recorded. `not_run` (no executor bound, the callable needs arguments, or an
+uninterpretable return) completes the node and is journalled as a
+`node_verification` event with `passed: false` — never as a pass — exactly as
+an unbound compensation callback reports `executed: False`. Only `passed`
+appends evidence, and a node with no declaration emits nothing at all.
+`DynamicExecutionResult.metadata["verification"]` reports the posture
+(registry size, executor bound, declared node ids) and asserts no verdict,
+because re-summarising per-node outcomes from a process-local buffer could
+report `0 verified` after an eviction; the per-node outcomes live in the
+durable `node_verification` events. The decomposer now emits `verification_cmd`
+only where it can resolve: the six names that pointed at functions existing
+nowhere in the tree are gone, with their intent kept in
+`verification_criteria`, and `pytest -q` is the one declaration that remains —
+it runs the moment a host binds an executor. Tests:
+`tests/test_workflow_verification.py`.
+
 **Waiting, signals, and suspension.** `signal_event` releases only nodes
 registered for that exact event and returns them to `READY` (the scheduler admits
 only `PENDING`/`READY`, so a node left `WAITING` could never re-dispatch); an
@@ -398,23 +436,88 @@ nobody satisfies cannot leave a run non-terminal. `suspend_run`/`resume_run` par
 and release without inventing a terminal outcome; stepping a parked run returns
 its real status.
 
-**Fork, dry run, templates, proposals.** `alpha.workflow.time_travel` forks a new
-run from a point in event history, inheriting completed work rather than repeating
-it (each fork gets its own workflow id and graph; the source is never mutated);
-`simulate_run` dry-runs a graph on a **throwaway** engine so it cannot touch the
-caller's definitions, runs, durable sink or budgets — labelled
-`dry_run_simulation`, zero tokens, no acceptance verdict, and a parked graph says
-so. `alpha.workflow.templates` enforces `draft -> verified -> promoted`, where
-`verify` re-checks that a run completed, its graph is structurally identical, and
-every succeeded node carried evidence. `alpha.workflow.self_improvement` only
-**proposes**: nothing in it mutates a run, graph or template, every suggestion
-cites its measured signal, confidence derives from sample count, an unevidenced
-completion is reported as `unproven` rather than folded into a success rate, and
-the parallelisation / wave-underuse signals require a real independent sibling so
-they do not fire on every serial chain.
+**An `event_id` is an address, and an address that can repeat is not one.**
+`WorkflowEvent.event_id` was a bare microsecond timestamp, which is *not* unique:
+`node_attempt_started` and the `node_completed` emitted right after it are
+written back to back, so they routinely landed in the same microsecond and
+shared an id. Anything resolving a point in the log by id then took the first of
+several matches — a fork anchored on the wrong event, its prefix ended early, no
+completed work was inherited, and the fork **repeated a side effect it had
+reported as inherited**, which is precisely the outcome `time_travel` exists to
+prevent. Ids are now a sortable timestamp plus a process-local counter, and
+`_prefix_for_fork` refuses an ambiguous id *by name* rather than silently
+resolving it, so a log written before this fix fails loudly instead of
+mis-forking. Tests: `tests/test_workflow_event_identity.py`.
 
-Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay and append-only plan history. That local adapter is atomic and restart-recoverable for one Gateway process, not a shared multi-worker lease/exactly-once repository: never claim cross-process exactly-once execution; wave concurrency is likewise process-local. Full operations, API examples and regression suites:
-[`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md).
+**Fork, dry run, templates, proposals.** `alpha.workflow.time_travel` forks a
+new run from a point in an event history, inheriting completed work rather than
+repeating it (each fork gets its own workflow id and graph; the source is never
+mutated), and `simulate_run` dry-runs a graph on a **throwaway** engine so it
+cannot touch the caller's definitions, runs, durable sink or budgets — labelled
+`dry_run_simulation`, zero tokens, no acceptance verdict, and a graph that parks
+says so. `alpha.workflow.templates` enforces `draft -> verified -> promoted`,
+where `verify` re-checks that a run completed, that its graph is structurally
+identical, and that every succeeded node carried evidence.
+`alpha.workflow.self_improvement` only **proposes**: nothing in it mutates a run,
+graph or template, every suggestion cites its measured signal, confidence is
+derived from sample count, an unevidenced completion is reported as `unproven`
+rather than folded into a success rate, and the parallelisation / wave-underuse
+signals require a real independent sibling so they do not fire on every serial
+chain.
+
+**Failure classification.** `alpha.workflow.failures` is a **retry-decision**
+classification at node granularity, not an error-code taxonomy: nineteen
+`NodeFailureClass` values come from ordered keyword rules that disclose the
+rule that matched, and `alpha.errors.registry` stays the sole owner of stable
+error codes. It bridges onto vocabularies that already exist rather than
+growing a seventh — `ClassifiedFailure.recovery_class()` onto
+`alpha.recovery.policies` (still the authority on *what to do*), and
+`reason_code()` onto `alpha.bots.failure_reasons`. `StagnationDetector`
+measures non-progress over `error_signature()`, whose normalization collapses
+identifiers, numbers, paths and hex digests so "the same fault wearing
+different digits" is measurable rather than argued about. Emitted events:
+`failure_classified`, `node_stagnated`, `recovery_exhausted` (carrying
+`strategy_source`/`strategy_bridged`) and `node_retry_refused`.
+
+**Durable attempt leases and orphan recovery.** `alpha.workflow.leases` records
+each attempt at `runtime_home()/workflow_store/leases.json` with an atomic
+replace. The order is load-bearing: acquire **before** a node is marked
+`RUNNING`, release in `finally`, and `check_result` runs **before** any runner
+output is folded into run state — `STALE_LEASE`, `SUPERSEDED_REVISION` and
+`UNKNOWN_LEASE` all discard the work, because an unverifiable key is refused
+and never assumed fresh. A refusal at dispatch is a one-shot honest failure
+naming the holding worker, never a retry loop. The fence survives release and
+**advances** on reclaim/expiry so a dead worker's late result reads
+`STALE_LEASE`, not `ACCEPTED`. Because replay folds `node_started` into
+`RUNNING` with no completer while the scheduler admits only
+`PENDING`/`READY`, a worker dying mid-node used to strand a run forever —
+`reconcile_orphaned_nodes()` now runs at the top of every step and **fails**
+anything else `RUNNING` with `failure_class=worker_lost` (never a silent reset;
+its side effects are unknown), journalled as `orphaned_nodes_reconciled`. A
+process-local `_in_flight` set is the ground truth that keeps a live
+long-running node from being reconciled when its wall-clock TTL lapses. Since
+hydration correctly refuses a stale projection and `/replay` is read-only, the
+new owner-scoped `POST /api/workflows/runs/{run_id}/recover` folds the real
+journal into a fresh run, adopts it via `DynamicWorkflowEngine.adopt_replayed_run`,
+reconciles, and re-materialises the projection **after** reconciliation;
+it never reports the rebuilt run as verified. The lease manager's lazy
+construction is guarded by double-checked locking and every store mutation is
+an atomic read-modify-write under the persist lock: a wave dispatches nodes on
+a bounded pool, so unguarded construction let threads build competing managers
+over an empty store (every later verdict then read `UNKNOWN_LEASE` and
+discarded good results), and an unlocked snapshot let a concurrent release
+break iteration mid-persist. Tests: `tests/test_workflow_leases.py`.
+
+**Plan revision diff.** `alpha.workflow.graph_diff.diff_graphs()` separates
+**structural** changes (nodes added/removed/re-typed, edges rerouted) from
+**runtime** ones (prompts, budgets, timeouts, retries, policy), takes its
+reason from the recorded `PlanVersion.note`/`source` rather than inventing it,
+and returns a deterministically ordered, bounded payload truncated with a
+marker. Exposed at
+`GET /api/workflows/{workflow_id}/plans/{version}/diff?base={n}`.
+Tests: `tests/test_workflow_graph_diff.py`, `tests/test_workflow_plan_diff_router.py`.
+
+Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay, and append-only plan history. That local adapter, the lease store, and wave concurrency are atomic and restart-recoverable for one Gateway process, not a shared multi-worker lease/exactly-once repository: do not claim cross-process exactly-once execution, and keep the `worker_id` a pid — it is exactly as specific as the guarantee available. Hydration still refuses stale projections; `/recover` is an explicit route, not a relaxation of `/hydrate`. Full operations, API examples, architecture, gap inventory, and the regression suites are in [`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md), [`docs/ALPHA-WORKFLOW-ARCHITECTURE.md`](../../../docs/ALPHA-WORKFLOW-ARCHITECTURE.md), and [`docs/ALPHA-WORKFLOW-CURRENT-STATE.md`](../../../docs/ALPHA-WORKFLOW-CURRENT-STATE.md).
 
 ## Guarded source auto-update contract
 
