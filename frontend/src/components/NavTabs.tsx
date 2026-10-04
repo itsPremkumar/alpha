@@ -31,9 +31,11 @@ import {
   Radar,
   Scale,
   Search,
+  Compass,
 } from "lucide-react";
 
 export type WorkspaceView =
+  | "overview"
   | "chat"
   | "warroom"
   | "deliberation"
@@ -77,6 +79,7 @@ export interface WorkspaceTabItem {
 
 export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   // Primary / Core
+  { id: "overview", label: "Overview", icon: <Compass className="size-3.5" />, blurb: "Every agent, project, run and system surface — organized", category: "core", isPrimary: true },
   { id: "chat", label: "Chat", icon: <MessageSquare className="size-3.5" />, blurb: "Talk to the agent", category: "core", isPrimary: true },
   { id: "warroom", label: "War Room", icon: <Building2 className="size-3.5" />, blurb: "Autonomous AI Software Enterprise War Room", category: "core", isPrimary: true },
   { id: "deliberation", label: "Deliberation", icon: <Scale className="size-3.5" />, blurb: "Staged group deliberation: quorum, dissent and taint", category: "core" },

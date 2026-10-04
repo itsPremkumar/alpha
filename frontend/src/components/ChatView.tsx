@@ -11,6 +11,7 @@ import { emptyTodoPlan, type TodoPlan } from "@/lib/sse-reducer";
 import { currentTurn, deriveActivity, silenceNotice } from "@/lib/activity";
 import { Composer } from "@/components/Composer";
 import { NavTabs, WorkspaceView } from "@/components/NavTabs";
+import { workspaceViewFromSearch } from "@/lib/workspace-view";
 import { ChatMessage, Thread, AIModel } from "@/types/chat";
 import { BotProfile } from "@/types/bots";
 import { fetchThreadsResult, createThread, fetchThreadHistoryResult, fetchAvailableModels, fetchModelCatalog, autoTriggerCommand } from "@/lib/api";
@@ -87,6 +88,7 @@ import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
 export { FREE_TONE_DOT, freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
 
 // Sections load on demand so the first paint stays light.
+const OverviewSection = lazy(() => import("@/components/sections/OverviewSection").then((m) => ({ default: m.OverviewSection })));
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
 const MessagesSection = lazy(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })));
 const PeerNetworkSection = lazy(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })));
@@ -370,7 +372,16 @@ export default function ChatView() {
   const [bots, setBots] = useState<BotProfile[]>([]);
   const [botsLoading, setBotsLoading] = useState<boolean>(true);
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
-  const [view, setView] = useState<WorkspaceView>("chat");
+  /**
+   * Deep-linkable workspace view. `?view=overview` (or any registered view id)
+   * opens that surface on load — the helper this was built for
+   * (`lib/workspace-view.ts`) was never wired in, so every shared link landed
+   * on chat and the Overview atlas had no URL at all. Absent or unknown param
+   * still means chat, exactly the old default.
+   */
+  const [view, setView] = useState<WorkspaceView>(() =>
+    workspaceViewFromSearch(typeof window === "undefined" ? "" : window.location.search),
+  );
   /**
    * Who is operating this workspace.
    *
@@ -2191,7 +2202,11 @@ export default function ChatView() {
         )}
 
         <ErrorBoundary resetKey={view} label={view}>
-        {view === "warroom" ? (
+        {view === "overview" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <OverviewSection onOpenView={setView} />
+          </Suspense>
+        ) : view === "warroom" ? (
           <Suspense fallback={<SectionFallback />}>
             <WarRoomSection />
           </Suspense>
