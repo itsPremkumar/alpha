@@ -137,12 +137,27 @@ def _attempts(*, engine: str = "edge-tts", error: str = "ConnectionError") -> li
 
 def test_capabilities_returns_probe_matrix_and_voice_block(monkeypatch):
     monkeypatch.setattr(chain, "capabilities_report", lambda: _report())
-    with TestClient(_app()) as client:
-        response = client.get("/api/multimodal/capabilities")
+    chain.invalidate_capabilities_cache()
+    try:
+        with TestClient(_app()) as client:
+            response = client.get("/api/multimodal/capabilities")
+    finally:
+        chain.invalidate_capabilities_cache()
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"rows", "voice", "note"}
+    # `cache` joins the original three keys. The report is served from a
+    # disclosed process-local TTL cache because the first call in a fresh process
+    # costs a measured 63.0s of engine imports against 0.33s for the second --
+    # longer than a default client timeout, so the operator saw nothing at all.
+    # The repo's standing rule is that "not measured" and "measured earlier" must
+    # never render identically, so the reuse is stated rather than silent.
+    assert set(body) == {"rows", "voice", "note", "cache"}
+    assert set(body["cache"]) == {"cached", "age_seconds", "ttl_seconds", "computed_at", "building"}
+    assert isinstance(body["cache"]["cached"], bool)
+    assert isinstance(body["cache"]["building"], bool)
+    assert body["cache"]["ttl_seconds"] > 0
+    assert body["cache"]["computed_at"]
     assert all(row["status"] in chain.PROBE_STATUSES for row in body["rows"])
     assert body["voice"]["enabled"] is True
     assert body["voice"]["wake_word"] == {"engine": "openwakeword", "threshold": 0.5, "armed_default": False}

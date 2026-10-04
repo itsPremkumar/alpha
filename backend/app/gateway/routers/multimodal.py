@@ -56,6 +56,18 @@ IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"})
 MAX_AUDIO_BYTES = int(MAX_AUDIO_MB * 1024 * 1024)
 _VOICE_SESSION_LIMITER = ProcessSessionLimiter()
 
+#: Ceiling on one capability-matrix probe.
+#:
+#: The report itself is import/config observation and normally completes in well
+#: under a second once the engine modules are warm. The *first* call in a fresh
+#: process pays a large one-time import of kokoro / piper / faster-whisper /
+#: rapidocr / openwakeword / webrtcvad: measured at 63.0s here, against 0.33s
+#: for the second call. That 63s exceeds a default 60s client timeout, so an
+#: operator opening the matrix on a freshly restarted Gateway saw *nothing* at
+#: all rather than a slow answer. Overrunning this bound is an operator fact to
+#: report, not a request to hold open.
+CAPABILITIES_PROBE_TIMEOUT_SECONDS = 30.0
+
 
 def _max_encoded_audio_bytes(max_decoded_bytes: int) -> int:
     """Exact base64 framing bound checked before attempting an expensive decode."""
@@ -127,8 +139,43 @@ def _success_payload(result: Any, *, stt: bool = False) -> dict[str, Any]:
 )
 @require_permission("runs", "read")
 async def capabilities(request: Request) -> dict[str, Any]:
+    """Serve the capability matrix from a disclosed process-local cache.
+
+    Two changes over ``await asyncio.to_thread(chain.capabilities_report)``:
+
+    * **Cached.** The first call in a fresh process took a measured **63.0s**
+      (one-time import of kokoro / piper / faster-whisper / rapidocr /
+      openwakeword / webrtcvad); the second took **0.33s**. The answer does not
+      change between calls -- it observes imports and config only -- and 63s
+      exceeds a default 60s client timeout, so the operator saw *nothing* rather
+      than a slow answer.
+    * **Bounded and disclosed.** A cold build that overruns
+      ``CAPABILITIES_PROBE_TIMEOUT_SECONDS`` answers 503 naming the bound
+      instead of holding the request open, and a probe failure returns the same
+      honest disclosure shape the WebSocket leg already uses rather than a bare
+      500.
+    """
     del request  # Required by the auth decorator.
-    return await asyncio.to_thread(chain.capabilities_report)
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(chain.capabilities_report_cached),
+            timeout=CAPABILITIES_PROBE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"capability probe exceeded {CAPABILITIES_PROBE_TIMEOUT_SECONDS:g}s "
+                "while loading local speech/OCR engines; the matrix is observation-only and "
+                "can be retried once the engines are warm"
+            ),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - the disclosure IS the answer
+        return {
+            "rows": [],
+            "voice": {},
+            "note": f"capabilities probe failed: {type(exc).__name__}: {str(exc)[:200]}",
+        }
 
 
 @router.post(

@@ -32,7 +32,10 @@ from __future__ import annotations
 
 import importlib
 import logging
+import threading
+import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from alpha.multimodal.capabilities import Capability, CapabilityResult
@@ -437,6 +440,141 @@ def _t3_specs(capability: Capability) -> list[tuple[str, Callable[[], tuple[str,
         Capability.VISION: "no local vision engine ships with Alpha; a configured vision model (T1) serves this capability",
     }[capability]
     return [("(none)", lambda detail=detail: (SKIP_SKIPPED_NO_PROVIDER, detail))]
+
+
+#: Seconds a computed capability report may be reused. The report is a pure
+#: observation of imports and config, so it changes only when the process
+#: restarts or ``config.yaml`` is edited -- not per request.
+_CAPABILITIES_TTL_SECONDS = 60.0
+
+_capabilities_cache: dict[str, Any] | None = None
+_capabilities_cache_monotonic: float = 0.0
+_capabilities_cache_wall: str = ""
+#: Guards the *state*, never the build. Held only long enough to read or publish
+#: the cache slot, because the build costs up to a minute and CPython cannot
+#: interrupt a thread already inside it.
+_capabilities_lock = threading.Lock()
+#: True while some thread is inside ``capabilities_report()``.
+_capabilities_building = False
+
+
+def capabilities_report_cached(
+    *,
+    ttl_seconds: float | None = None,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    """:func:`capabilities_report` behind a process-local TTL cache.
+
+    Why this exists
+    ---------------
+    Measured on this host, the **first** call to :func:`capabilities_report`
+    took **63.0 seconds**; the second took **0.33 seconds**. The difference is
+    the one-time import of the engine modules the observers touch (kokoro,
+    piper, faster-whisper, rapidocr, openwakeword, webrtcvad). Nothing about the
+    answer changes between calls -- it is a pure observation of imports and
+    config -- so paying 63s per fresh Gateway for the first operator to open the
+    matrix is pure waste, and it exceeds a default 60s client timeout, which
+    means the UI shows *nothing at all* rather than a slow answer.
+
+    Concurrency, and the bug this shape fixes
+    ------------------------------------------
+    The first version held the lock across the whole build. That is wrong, and
+    measurably so. CPython cannot interrupt a thread already inside the build,
+    so the Gateway's ``asyncio.wait_for`` cancels the *await* while the worker
+    thread keeps running. A second caller then **blocked on the lock** for the
+    remainder of that build, and its own 30s request deadline expired while it
+    waited -- so the very next, nominally "warm" call also answered 503 even
+    though the answer was seconds away and the lock holder was about to publish
+    it. Measured: cold 503 at 30.6s, then an immediate second call 503 at 30.7s.
+
+    So the lock protects the slot, not the work:
+
+    * a fresh cached answer is returned immediately even while a build runs,
+      with ``building: true`` disclosed so the staleness is stated;
+    * with no cached answer and a build in flight, an immediate honest
+      ``still computing`` answer is returned rather than queueing behind a
+      minute of work;
+    * exactly one thread builds and the rest never wait on it.
+
+    ``force_refresh=True`` starts a build when none is running and otherwise
+    serves the current state, for an operator who just installed an engine.
+    """
+    global _capabilities_cache, _capabilities_cache_monotonic, _capabilities_cache_wall, _capabilities_building
+
+    ttl = _CAPABILITIES_TTL_SECONDS if ttl_seconds is None else max(0.0, float(ttl_seconds))
+    now = time.monotonic()
+    with _capabilities_lock:
+        cached = _capabilities_cache
+        cached_at = _capabilities_cache_monotonic
+        cached_wall = _capabilities_cache_wall
+        building = _capabilities_building
+        if not building and cached is not None and (now - cached_at) < ttl and not force_refresh:
+            return {
+                **cached,
+                "cache": {
+                    "cached": True,
+                    "age_seconds": round(now - cached_at, 3),
+                    "ttl_seconds": ttl,
+                    "computed_at": cached_wall,
+                    "building": False,
+                },
+            }
+        if building:
+            # Never queue behind a minute-long build.
+            if cached is not None:
+                return {
+                    **cached,
+                    "cache": {
+                        "cached": True,
+                        "age_seconds": round(now - cached_at, 3),
+                        "ttl_seconds": ttl,
+                        "computed_at": cached_wall,
+                        "building": True,
+                        "note": "a fresh probe is running; this is the previous answer",
+                    },
+                }
+            return {
+                "rows": [],
+                "voice": {},
+                "note": "the capability probe is still loading local speech/OCR engines; retry once it completes",
+                "cache": {"cached": False, "age_seconds": None, "ttl_seconds": ttl, "computed_at": None, "building": True},
+            }
+        _capabilities_building = True
+
+    # Build outside the lock, so no caller ever waits on it.
+    try:
+        report = capabilities_report()
+        computed_wall = datetime.now(UTC).isoformat()
+    except BaseException:
+        # A failed build must not leave the flag set, or the endpoint would
+        # report "still loading" forever.
+        with _capabilities_lock:
+            _capabilities_building = False
+        raise
+    with _capabilities_lock:
+        _capabilities_cache = report
+        _capabilities_cache_monotonic = time.monotonic()
+        _capabilities_cache_wall = computed_wall
+        _capabilities_building = False
+    return {
+        **report,
+        "cache": {
+            "cached": False,
+            "age_seconds": 0.0,
+            "ttl_seconds": ttl,
+            "computed_at": computed_wall,
+            "building": False,
+        },
+    }
+
+
+def invalidate_capabilities_cache() -> None:
+    """Drop the cached report so the next read recomputes."""
+    global _capabilities_cache, _capabilities_cache_monotonic, _capabilities_cache_wall
+    with _capabilities_lock:
+        _capabilities_cache = None
+        _capabilities_cache_monotonic = 0.0
+        _capabilities_cache_wall = ""
 
 
 def capabilities_report() -> dict[str, Any]:
