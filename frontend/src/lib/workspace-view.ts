@@ -32,6 +32,12 @@ export const WORKSPACE_VIEW_IDS = [
   "forge",
   "supervisor",
   "protocols",
+  // `reliability` was missing here while `NavTabs.tsx` declared it, so
+  // `isWorkspaceView("reliability")` returned false and `?view=reliability`
+  // silently fell back to `chat` — the same defect `run-inspector` had above.
+  // `workspace-nav.test.mjs` now pins this list against the tab list in both
+  // directions so neither can drift again.
+  "reliability",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];

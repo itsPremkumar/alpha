@@ -1,6 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
+// `next/dynamic`, not `React.lazy`: a lazy section cannot be server-rendered, so the
+// server shipped the Suspense fallback and React discarded the whole server tree on
+// hydration (error #418 on every non-chat view). `dynamic` participates in the App
+// Router module graph and renders the real section on the server.
+import dynamic from "next/dynamic";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { ActivityStatus } from "@/components/ActivityStatus";
@@ -90,36 +95,36 @@ import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
 export { FREE_TONE_DOT, freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
 
 // Sections load on demand so the first paint stays light.
-const OverviewSection = lazy(() => import("@/components/sections/OverviewSection").then((m) => ({ default: m.OverviewSection })));
-const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
-const MessagesSection = lazy(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })));
-const PeerNetworkSection = lazy(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })));
-const ExternalAlphaSection = lazy(() => import("@/components/sections/ExternalAlphaSection").then((m) => ({ default: m.ExternalAlphaSection })));
-const KanbanSection = lazy(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })));
-const CompanySection = lazy(() => import("@/components/sections/CompanySection").then((m) => ({ default: m.CompanySection })));
-const RunsSection = lazy(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })));
-const RunInspectorSection = lazy(() => import("@/components/sections/RunInspectorSection").then((m) => ({ default: m.RunInspectorSection })));
-const FilesSection = lazy(() => import("@/components/sections/FilesSection").then((m) => ({ default: m.FilesSection })));
-const ScheduledSection = lazy(() => import("@/components/sections/ScheduledSection").then((m) => ({ default: m.ScheduledSection })));
-const SubagentsSection = lazy(() => import("@/components/sections/SubagentsSection").then((m) => ({ default: m.SubagentsSection })));
-const SkillsSection = lazy(() => import("@/components/sections/SkillsSection").then((m) => ({ default: m.SkillsSection })));
-const ReliabilitySection = lazy(() => import("@/components/sections/ReliabilitySection").then((m) => ({ default: m.ReliabilitySection })));
-const MemorySection = lazy(() => import("@/components/sections/MemorySection").then((m) => ({ default: m.MemorySection })));
-const ProjectsSection = lazy(() => import("@/components/sections/ProjectsSection").then((m) => ({ default: m.ProjectsSection })));
-const DashboardSection = lazy(() => import("@/components/sections/DashboardSection").then((m) => ({ default: m.DashboardSection })));
-const AgentsSection = lazy(() => import("@/components/sections/AgentsSection").then((m) => ({ default: m.AgentsSection })));
-const TeamOpsSection = lazy(() => import("@/components/sections/TeamOpsSection").then((m) => ({ default: m.TeamOpsSection })));
-const ChannelsSection = lazy(() => import("@/components/sections/ChannelsSection").then((m) => ({ default: m.ChannelsSection })));
-const SystemSection = lazy(() => import("@/components/sections/SystemSection").then((m) => ({ default: m.SystemSection })));
-const IntegrationSection = lazy(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })));
-const WorkforceSection = lazy(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })));
-const WarRoomSection = lazy(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })));
-const WarRoomRunsSection = lazy(() => import("@/components/sections/WarRoomRunsSection").then((m) => ({ default: m.WarRoomRunsSection })));
-const SettingsSection = lazy(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })));
-const WorkflowsSection = lazy(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })));
-const ForgeSection = lazy(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })));
-const SupervisorSection = lazy(() => import("@/components/sections/SupervisorSection").then((m) => ({ default: m.SupervisorSection })));
-const ProtocolsSection = lazy(() => import("@/components/sections/ProtocolsSection").then((m) => ({ default: m.ProtocolsSection })));
+const OverviewSection = dynamic(() => import("@/components/sections/OverviewSection").then((m) => ({ default: m.OverviewSection })), { loading: () => <SectionFallback /> });
+const BotOpsSection = dynamic(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })), { loading: () => <SectionFallback /> });
+const MessagesSection = dynamic(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })), { loading: () => <SectionFallback /> });
+const PeerNetworkSection = dynamic(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })), { loading: () => <SectionFallback /> });
+const ExternalAlphaSection = dynamic(() => import("@/components/sections/ExternalAlphaSection").then((m) => ({ default: m.ExternalAlphaSection })), { loading: () => <SectionFallback /> });
+const KanbanSection = dynamic(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })), { loading: () => <SectionFallback /> });
+const CompanySection = dynamic(() => import("@/components/sections/CompanySection").then((m) => ({ default: m.CompanySection })), { loading: () => <SectionFallback /> });
+const RunsSection = dynamic(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })), { loading: () => <SectionFallback /> });
+const RunInspectorSection = dynamic(() => import("@/components/sections/RunInspectorSection").then((m) => ({ default: m.RunInspectorSection })), { loading: () => <SectionFallback /> });
+const FilesSection = dynamic(() => import("@/components/sections/FilesSection").then((m) => ({ default: m.FilesSection })), { loading: () => <SectionFallback /> });
+const ScheduledSection = dynamic(() => import("@/components/sections/ScheduledSection").then((m) => ({ default: m.ScheduledSection })), { loading: () => <SectionFallback /> });
+const SubagentsSection = dynamic(() => import("@/components/sections/SubagentsSection").then((m) => ({ default: m.SubagentsSection })), { loading: () => <SectionFallback /> });
+const SkillsSection = dynamic(() => import("@/components/sections/SkillsSection").then((m) => ({ default: m.SkillsSection })), { loading: () => <SectionFallback /> });
+const ReliabilitySection = dynamic(() => import("@/components/sections/ReliabilitySection").then((m) => ({ default: m.ReliabilitySection })), { loading: () => <SectionFallback /> });
+const MemorySection = dynamic(() => import("@/components/sections/MemorySection").then((m) => ({ default: m.MemorySection })), { loading: () => <SectionFallback /> });
+const ProjectsSection = dynamic(() => import("@/components/sections/ProjectsSection").then((m) => ({ default: m.ProjectsSection })), { loading: () => <SectionFallback /> });
+const DashboardSection = dynamic(() => import("@/components/sections/DashboardSection").then((m) => ({ default: m.DashboardSection })), { loading: () => <SectionFallback /> });
+const AgentsSection = dynamic(() => import("@/components/sections/AgentsSection").then((m) => ({ default: m.AgentsSection })), { loading: () => <SectionFallback /> });
+const TeamOpsSection = dynamic(() => import("@/components/sections/TeamOpsSection").then((m) => ({ default: m.TeamOpsSection })), { loading: () => <SectionFallback /> });
+const ChannelsSection = dynamic(() => import("@/components/sections/ChannelsSection").then((m) => ({ default: m.ChannelsSection })), { loading: () => <SectionFallback /> });
+const SystemSection = dynamic(() => import("@/components/sections/SystemSection").then((m) => ({ default: m.SystemSection })), { loading: () => <SectionFallback /> });
+const IntegrationSection = dynamic(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })), { loading: () => <SectionFallback /> });
+const WorkforceSection = dynamic(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })), { loading: () => <SectionFallback /> });
+const WarRoomSection = dynamic(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })), { loading: () => <SectionFallback /> });
+const WarRoomRunsSection = dynamic(() => import("@/components/sections/WarRoomRunsSection").then((m) => ({ default: m.WarRoomRunsSection })), { loading: () => <SectionFallback /> });
+const SettingsSection = dynamic(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })), { loading: () => <SectionFallback /> });
+const WorkflowsSection = dynamic(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })), { loading: () => <SectionFallback /> });
+const ForgeSection = dynamic(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })), { loading: () => <SectionFallback /> });
+const SupervisorSection = dynamic(() => import("@/components/sections/SupervisorSection").then((m) => ({ default: m.SupervisorSection })), { loading: () => <SectionFallback /> });
+const ProtocolsSection = dynamic(() => import("@/components/sections/ProtocolsSection").then((m) => ({ default: m.ProtocolsSection })), { loading: () => <SectionFallback /> });
 
 function SectionFallback() {
   return (

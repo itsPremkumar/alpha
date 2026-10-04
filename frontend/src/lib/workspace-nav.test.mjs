@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const SRC = readFileSync(new URL("../components/NavTabs.tsx", import.meta.url), "utf8");
+const VIEW_SRC = readFileSync(new URL("./workspace-view.ts", import.meta.url), "utf8");
 
 /** The slice of source between `start` (inclusive) and `end` (exclusive). */
 function slice(start, end) {
@@ -45,6 +46,58 @@ function groupCategories() {
   const block = slice("const SECONDARY_GROUPS", "\n];");
   return [...block.matchAll(/category: "([a-z]+)"/g)].map((m) => m[1]);
 }
+
+/**
+ * `WORKSPACE_VIEW_IDS` in `lib/workspace-view.ts`.
+ *
+ * A **second** list of the same ids, in a different file, feeding
+ * `isWorkspaceView` / `workspaceViewFromSearch`. It is not derived from the
+ * `WorkspaceView` union, so nothing stopped the two drifting — and both
+ * `run-inspector` and `reliability` shipped with a tab and a render case while
+ * this list still said the view did not exist. The effect is silent and
+ * specific: `?view=<id>` falls back to `chat`, so the view cannot be opened by
+ * link, by search-driven navigation, or by anything else that resolves a view
+ * from a URL.
+ */
+function routeViewIds() {
+  const block = VIEW_SRC.slice(VIEW_SRC.indexOf("export const WORKSPACE_VIEW_IDS"), VIEW_SRC.indexOf("] as const"));
+  // Line-anchored on purpose. The explanatory comments beside two of these
+  // entries quote the id itself (``isWorkspaceView("reliability")``), so a
+  // whole-array regex matches the prose too and reports every commented id as a
+  // duplicate. Only a line that is nothing but an array entry counts.
+  return [...block.matchAll(/^\s*"([a-z][a-z-]*)",?\s*$/gm)].map((m) => m[1]);
+}
+
+test("the routable view list agrees with the WorkspaceView union", () => {
+  const union = unionIds();
+  const routable = routeViewIds();
+
+  // Duplicates in the routable list are harmless at runtime but mean the list
+  // was edited by appending rather than by understanding the set.
+  assert.deepEqual(
+    routable.filter((id, index) => routable.indexOf(id) !== index),
+    [],
+    "WORKSPACE_VIEW_IDS contains a duplicate id",
+  );
+
+  const notRoutable = union.filter((id) => !routable.includes(id));
+  assert.deepEqual(
+    notRoutable,
+    [],
+    "views ChatView can render but isWorkspaceView() rejects: ?view=<id> would silently fall back to chat (add them to WORKSPACE_VIEW_IDS)",
+  );
+
+  const notRenderable = routable.filter((id) => !union.includes(id));
+  assert.deepEqual(notRenderable, [], "WORKSPACE_VIEW_IDS names views with no WorkspaceView union member");
+});
+
+test("the routable view list is the same set the tabs declare", () => {
+  assert.deepEqual(
+    [...routeViewIds()].sort(),
+    [...unionIds()].sort(),
+    "WORKSPACE_VIEW_IDS and the WorkspaceView union are the same set of views",
+  );
+});
 
 test("every workspace view has a tab, and every tab is a view", () => {
   const union = new Set(unionIds());
