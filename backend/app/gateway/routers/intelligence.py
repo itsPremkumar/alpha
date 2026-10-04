@@ -16,6 +16,11 @@ Consequently:
   :mod:`alpha.intelligence`, which is where the mode gate and the journal
   actually live. Wiring them to HTTP without an authz decision and a CSRF
   review would be adding a mutation surface nobody asked for.
+* **Route order is load-bearing here.** ``/inventory/status`` is declared after
+  ``/inventory`` and before the ``/experts/{expert_id}`` family. Starlette matches
+  in registration order, so a single-segment catch-all declared first would answer
+  ``"Expert 'status' not found"`` — the same trap the skills and dynamic-workflow
+  routers document. Both inventory routes are exact two-segment paths.
 * Every payload reports availability explicitly. A subsystem that cannot answer
   is ``{"available": false, "reason": "..."}``, not a fabricated value.
 * Expensive projections (``/state`` aggregates everything) run in
@@ -37,6 +42,8 @@ import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+
+from alpha.intelligence.self_inventory import INVENTORY_SECTIONS
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
@@ -91,6 +98,79 @@ async def intelligence_capabilities() -> dict[str, Any]:
         }
 
     return await gather()
+
+
+#: Query-string ceiling for ``/api/intelligence/inventory?query=``. Mirrors the
+#: model tool's bound so the HTTP and model surfaces cannot disagree about what
+#: counts as an oversized query.
+_MAX_INVENTORY_QUERY = 512
+
+
+@router.get("/inventory", summary="Full self-inventory: tools, skills, MCP, models, bots, commands, engines, wiring, identity")
+async def intelligence_inventory(
+    sections: str = "",
+    detail: str = "summary",
+    query: str = "",
+    limit: int = 25,
+) -> dict[str, Any]:
+    """One bounded answer to "what is this installation and what can it do?".
+
+    Projects every selection-plane registry (:mod:`alpha.workflow.registry`) into a
+    single payload, so a caller does not need to know there were eleven of them.
+    This is the HTTP counterpart of the ``alpha_capability`` tool's ``inventory``,
+    ``identity``, ``search`` and ``capability`` actions, reading the same modules.
+
+    ``detail`` defaults to ``summary`` (names, kinds, availability and reasons).
+    ``full`` adds each entry's source address, authority and evidence kind, which
+    is what makes a claim checkable rather than asserted.
+
+    A section that could not be read reports ``status="unavailable"`` with
+    ``count: null`` — **never** ``0``. "I could not look" and "I looked and found
+    nothing" lead to opposite decisions, and flattening the first into the second
+    is how an operator ends up chasing a phantom.
+
+    A ``query`` performs a lexical substring search across all sections, which
+    reaches skills, commands, bots and engines as well as tools. It is bounded by
+    ``limit`` and by :data:`_MAX_INVENTORY_QUERY`.
+    """
+    from alpha.intelligence.self_inventory import (
+        MAX_SEARCH_RESULTS,
+        build_self_inventory,
+        search_inventory,
+    )
+
+    normalized_detail = "full" if (detail or "summary").strip().lower() == "full" else "summary"
+    bounded_limit = max(1, min(int(limit or 25), MAX_SEARCH_RESULTS))
+
+    if len(query or "") > _MAX_INVENTORY_QUERY:
+        return {
+            "schema_version": "alpha.self-inventory.v1",
+            "status": "invalid_argument",
+            "detail": f"query exceeds {_MAX_INVENTORY_QUERY} characters",
+        }
+
+    try:
+        wanted = tuple(token.strip() for token in sections.split(",") if token.strip()) if sections else None
+        if query:
+            return await _read(search_inventory, query, sections=wanted, limit=bounded_limit)
+        return await _read(build_self_inventory, sections=wanted, detail=normalized_detail).to_dict
+    except KeyError as exc:
+        # An unknown section is a caller mistake, and it must be loud: silently
+        # dropping it would return a narrower payload than asked for.
+        return {"status": "unknown_kind", "detail": str(exc), "sections": list(INVENTORY_SECTIONS)}
+
+
+@router.get("/inventory/status", summary="Which self-inventory registries are currently readable")
+async def intelligence_inventory_status() -> dict[str, Any]:
+    """Cheap readiness check for the inventory plane.
+
+    Each registry measures its own source, so this is much cheaper than a full
+    read and answers "can I introspect this installation right now?" without
+    paying for the answer.
+    """
+    from alpha.intelligence.self_inventory import inventory_status
+
+    return await _read(inventory_status)
 
 
 # ---------------------------------------------------------------------------

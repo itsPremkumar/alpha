@@ -1,13 +1,19 @@
-"""W-N3 discovery registries for the universal dynamic workflow.
+"""Discovery registries for the selection plane — what may I use, and who am I?
 
-Read-only ``list`` / ``describe`` / ``health`` over the five selection-plane
-sources the dynamic-workflow planner needs when it asks "what may I use?":
+Read-only ``list`` / ``describe`` / ``health`` over every source an agent needs to
+answer "what am I, and what can I do?" without guessing:
 
 * ``capabilities`` — ``alpha.capabilities.catalog`` (per-entry ``find_spec`` probe)
 * ``tools``       — ``alpha.tools.tools.BUILTIN_TOOLS`` (production registration list)
 * ``skills``      — installed skill storage (SKILL.md scan + enabled state)
 * ``mcp``         — ``extensions_config.json`` ``mcpServers`` config (no connections)
 * ``memory``      — ``alpha.memory.*`` importability probes (no store construction)
+* ``models``      — ``config.yaml`` ``models[]`` / ``providers`` (declared, never probed)
+* ``bots``        — live ``alpha.bots`` profiles (archived excluded)
+* ``commands``    — slash catalog, availability gated on a bound handler
+* ``engines``     — generated manifest engine rows (importability probe)
+* ``wiring``      — generated manifest routers / middlewares / loops (static wiring)
+* ``identity``    — ``config/project-manifest.json`` + runtime identity
 
 Honesty (repo-wide rules): every descriptor carries ``evidence_kind``; nothing
 here claims a subsystem is *running* (``health`` stays ``unverified``);
@@ -15,17 +21,34 @@ here claims a subsystem is *running* (``health`` stays ``unverified``);
 closed via :class:`RegistryUnavailable` with the real exception text instead of
 reading as "zero entries".
 
+Two rules that decide the shape of this package
+-----------------------------------------------
+
+**One source of truth per fact, never a re-derivation.** ``engines`` and ``wiring``
+read ``contracts/feature_manifest.json`` rather than walking the filesystem, and
+``models`` reads the live ``AppConfig`` rather than parsing ``config.yaml``. Every
+capability count in this repository is generated and drift-gated; a registry that
+formed its own opinion would be an unreviewed second answer to a question the
+build already settles.
+
+**Availability is what the source says, health is what we probed.** A model that
+is *declared* is ``available`` with ``health="unverified"``; an MCP server that is
+*enabled* is ``available`` with ``health="unverified"``. Collapsing those two words
+is how "configured" becomes "working" in a status line nobody checked.
+
 Wiring: :class:`WorkflowRegistry` is the ``alpha.capabilities.catalog`` target
 of the ``workflow_registry`` capability entry, so the production capability
 loader (``alpha.capabilities.registry`` → Gateway startup /
 ``GET /api/ops/integration-health``) is the production import chain for this
-package. Consumers in the orchestrator loop / workflows router arrive with
-W-N2+ (those files are lead-owned); integration hooks ship as patch snippets
-in the wave report.
+package. ``alpha.intelligence.self_inventory`` aggregates every kind into the
+single self-knowledge payload the ``alpha_capability`` tool serves, and
+``GET /api/workflows/system/registries`` exposes them per-kind over HTTP.
 
 This package is deliberately side-effect-free at import: heavy sources
-(``alpha.tools.tools``, skill storage, extensions config) are imported lazily
-inside the registry methods, and no subsystem is instantiated here.
+(``alpha.tools.tools``, skill storage, extensions config, the config file, git)
+are imported lazily inside the registry methods, and no subsystem is instantiated
+here. That also means every ``list()`` may do blocking I/O — disk, ``git``, or a
+config re-read — so Gateway callers wrap these in ``asyncio.to_thread``.
 """
 
 from __future__ import annotations
@@ -38,25 +61,56 @@ from alpha.workflow.registry.base import (
     RegistryHealth,
     RegistryUnavailable,
 )
+from alpha.workflow.registry.bots import BotProfileRegistry
 from alpha.workflow.registry.capabilities import CapabilityCatalogRegistry
+from alpha.workflow.registry.commands import CommandRegistry
+from alpha.workflow.registry.engines import EngineRegistry
+from alpha.workflow.registry.identity import IdentityRegistry
 from alpha.workflow.registry.mcp import MCPServerRegistry
 from alpha.workflow.registry.memory import MemoryRegistry
+from alpha.workflow.registry.models import ModelRegistry
 from alpha.workflow.registry.skills import SkillRegistry
 from alpha.workflow.registry.tools import BuiltinToolRegistry
+from alpha.workflow.registry.wiring import WiringRegistry
 
-#: Registry kinds exposed by the facade, in discovery order.
-REGISTRY_KINDS: tuple[str, ...] = ("capabilities", "tools", "skills", "mcp", "memory")
+#: Registry kinds exposed by the facade, in discovery order: "what am I" first,
+#: then what I can call, then what I am built from. ``identity`` leads because
+#: every other answer is relative to it.
+REGISTRY_KINDS: tuple[str, ...] = (
+    "identity",
+    "tools",
+    "skills",
+    "mcp",
+    "models",
+    "bots",
+    "commands",
+    "capabilities",
+    "engines",
+    "wiring",
+    "memory",
+)
 
 
 class WorkflowRegistry:
-    """Aggregate facade over the five discovery registries."""
+    """Aggregate facade over the selection-plane discovery registries."""
 
     def __init__(self) -> None:
-        self._capabilities = CapabilityCatalogRegistry()
+        self._identity = IdentityRegistry()
         self._tools = BuiltinToolRegistry()
         self._skills = SkillRegistry()
         self._mcp = MCPServerRegistry()
+        self._models = ModelRegistry()
+        self._bots = BotProfileRegistry()
+        self._commands = CommandRegistry()
+        self._capabilities = CapabilityCatalogRegistry()
+        self._engines = EngineRegistry()
+        self._wiring = WiringRegistry()
         self._memory = MemoryRegistry()
+
+    @property
+    def identity(self) -> IdentityRegistry:
+        """Registry over the shipped repository/runtime identity."""
+        return self._identity
 
     @property
     def capabilities(self) -> CapabilityCatalogRegistry:
@@ -79,19 +133,61 @@ class WorkflowRegistry:
         return self._mcp
 
     @property
+    def models(self) -> ModelRegistry:
+        """Registry over the ``config.yaml`` model and provider namespaces."""
+        return self._models
+
+    @property
+    def bots(self) -> BotProfileRegistry:
+        """Registry over the live ``alpha.bots`` profiles."""
+        return self._bots
+
+    @property
+    def commands(self) -> CommandRegistry:
+        """Registry over the slash command catalog."""
+        return self._commands
+
+    @property
+    def engines(self) -> EngineRegistry:
+        """Registry over the generated engine package rows."""
+        return self._engines
+
+    @property
+    def wiring(self) -> WiringRegistry:
+        """Registry over the generated router / middleware / loop rows."""
+        return self._wiring
+
+    @property
     def memory(self) -> MemoryRegistry:
         """Registry over the ``alpha.memory.*`` import probes."""
         return self._memory
 
-    def registry(self, kind: str) -> DescriptorRegistry:
-        """One registry by kind; unknown kinds raise an honest KeyError."""
-        registries: dict[str, DescriptorRegistry] = {
+    def _registries(self) -> dict[str, DescriptorRegistry]:
+        """Kind -> registry. Rebuilt per call, cheap, and the only lookup path.
+
+        It is a method rather than a cached attribute on purpose: adding a kind to
+        ``__init__`` without adding it here would make ``registry(kind)`` raise
+        ``KeyError`` for a kind that ``REGISTRY_KINDS`` advertises, which is a
+        confusing failure to debug. A property would hide the same mistake from
+        the reader instead.
+        """
+        return {
+            "identity": self._identity,
             "capabilities": self._capabilities,
             "tools": self._tools,
             "skills": self._skills,
             "mcp": self._mcp,
+            "models": self._models,
+            "bots": self._bots,
+            "commands": self._commands,
+            "engines": self._engines,
+            "wiring": self._wiring,
             "memory": self._memory,
         }
+
+    def registry(self, kind: str) -> DescriptorRegistry:
+        """One registry by kind; unknown kinds raise an honest KeyError."""
+        registries = self._registries()
         if kind not in registries:
             raise KeyError(f"unknown registry kind {kind!r}; expected one of {sorted(registries)}")
         return registries[kind]
@@ -136,11 +232,22 @@ def get_workflow_registry() -> WorkflowRegistry:
 
 
 __all__ = [
+    "BotProfileRegistry",
+    "CapabilityCatalogRegistry",
     "CapabilityDescriptor",
+    "CommandRegistry",
     "DescriptorRegistry",
+    "EngineRegistry",
+    "IdentityRegistry",
+    "MCPServerRegistry",
+    "MemoryRegistry",
+    "ModelRegistry",
     "REGISTRY_KINDS",
     "RegistryHealth",
     "RegistryUnavailable",
+    "SkillRegistry",
+    "BuiltinToolRegistry",
     "WorkflowRegistry",
+    "WiringRegistry",
     "get_workflow_registry",
 ]

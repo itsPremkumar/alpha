@@ -3,6 +3,7 @@ from .action_transaction_tool import execute_transactional_action
 from .adaptive_autonomy_tool import check_or_set_autonomy_profile
 from .agency_competence_tool import evaluate_agent_competence
 from .agent_message_tool import agent_message_tool, agent_observe_tool
+from .alpha_capability_tool import alpha_capability
 from .artifact_lineage_tool import trace_artifact_lineage
 from .ask_oracle_tool import ask_oracle
 from .ast_grep_tool import ast_grep_rewrite, ast_grep_search
@@ -205,6 +206,7 @@ __all__ = [
     "harness_refine_tool",
     "agent_message_tool",
     "agent_observe_tool",
+    "alpha_capability",
     "alpha_peer_network_tool",
     "process_handle_tool",
     "invoke_python_skill_tool",

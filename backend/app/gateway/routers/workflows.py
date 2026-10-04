@@ -339,10 +339,25 @@ async def list_workflow_runs(
     }
 
 
+#: Per-kind descriptor ceiling for the registries projection. This was a bare
+#: ``[:100]`` slice, which is fine for five small registries and silently wrong
+#: once ``commands`` (461 rows) and ``engines`` (115) joined the plane: the slice
+#: dropped rows with nothing in the response saying so, so a caller could not tell
+#: "this is everything" from "this is the first hundred". Every kind now reports
+#: ``returned`` beside its measured ``count`` and sets ``truncated``.
+_MAX_REGISTRY_DESCRIPTORS = 500
+
+
 @router.get("/system/registries")
 @require_permission("runs", "read")
 async def get_workflow_registries(request: Request) -> dict[str, Any]:
-    """Expose the read-only capability selection plane used by DWE planning."""
+    """Expose the read-only capability selection plane used by DWE planning.
+
+    A bounded projection of what the registries declare — not proof that any
+    subsystem is running, connected, or reachable. Each kind carries its measured
+    ``count`` from ``health()`` alongside the descriptors actually returned, so a
+    truncated response is self-describing.
+    """
 
     def _collect() -> dict[str, Any]:
         from alpha.workflow.registry import REGISTRY_KINDS, get_workflow_registry
@@ -352,9 +367,14 @@ async def get_workflow_registries(request: Request) -> dict[str, Any]:
         for kind in REGISTRY_KINDS:
             try:
                 child = registry.registry(kind)
+                health = child.health()
+                descriptors = child.list()
+                window = descriptors[:_MAX_REGISTRY_DESCRIPTORS]
                 result["registries"][kind] = {
-                    "health": child.health().model_dump(mode="json"),
-                    "descriptors": [item.model_dump(mode="json") for item in child.list()[:100]],
+                    "health": health.model_dump(mode="json"),
+                    "returned": len(window),
+                    "truncated": len(descriptors) > len(window),
+                    "descriptors": [item.model_dump(mode="json") for item in window],
                 }
             except Exception as exc:
                 result["registries"][kind] = {
@@ -365,6 +385,8 @@ async def get_workflow_registries(request: Request) -> dict[str, Any]:
                         "error": f"{type(exc).__name__}: {exc}",
                         "evidence_kind": "measured",
                     },
+                    "returned": 0,
+                    "truncated": False,
                     "descriptors": [],
                 }
         return result

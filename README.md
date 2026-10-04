@@ -7,7 +7,7 @@
 **Alpha is a self-hosted, local-first AI agent platform that plans and executes
 long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
-research, multi-agent swarms, sandboxed code execution, persistent memory, 134 native
+research, multi-agent swarms, sandboxed code execution, persistent memory, 135 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
 proprietary backend.
 
@@ -88,7 +88,7 @@ control.
 In one sentence:
 
 > Alpha is a LangGraph-based agent operating system: a Python/FastAPI Gateway runs
-> the agent runtime and 134 native tools, a Next.js 15 workspace and an Electron
+> the agent runtime and 135 native tools, a Next.js 15 workspace and an Electron
 > Windows app are the front ends, and a single Nginx port is the only thing you
 > expose.
 
@@ -120,7 +120,7 @@ In one sentence:
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
 | **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
-| **Native tools** | 134 (`contracts/feature_manifest.json`, generated) |
+| **Native tools** | 135 (`contracts/feature_manifest.json`, generated) |
 | **Middleware layers** | 42 |
 | **Background supervisor loops** | 8 |
 | **Public skills** | 24 in `skills/public/` |
@@ -152,7 +152,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["134 tools + 43 middlewares + MCP + 24 skills"]
+        Tools["135 tools + 44 middlewares + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -190,7 +190,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
 | **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed and `X-Trace-Id` correlation on every log line. ⚠️ The trajectory flight recorder's writer is not installed in production, so span-level tracing is off by default and not reachable from `config.yaml`. |
-| **It can't use your tools** | 134 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
+| **It can't use your tools** | 135 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
 | **You can't evaluate it** | A benchmarks registry, a skill quality reviewer, a 5-pass research citation contract, and a generated `feature_manifest.json` that fails CI on registry drift. |
@@ -924,7 +924,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 134 tools, 65 routers, 43 middlewares, and 9 supervisor loops. CI fails
+  pins all 135 tools, 65 routers, 44 middlewares, and 9 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
@@ -963,7 +963,7 @@ access; pairing is explicit and uses a high-entropy out-of-band code.**
 **A:** An open-source autonomous multi-agent AI operating system: a LangGraph agent
 runtime behind a FastAPI Gateway, with a Next.js 15 workspace and an Electron
 Windows app, running long-horizon work with sandboxed execution, persistent
-memory, 134 native tools, MCP extensions, and 24 public skills. MIT licensed,
+memory, 135 native tools, MCP extensions, and 24 public skills. MIT licensed,
 self-hosted, no proprietary backend.
 
 **Q: How do I install and run it?**

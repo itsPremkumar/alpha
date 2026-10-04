@@ -17,7 +17,7 @@ guides that own the depth.
 User-facing and agent-facing content is a first-class deliverable. Strategy and
 checklist: **[docs/DISCOVERABILITY.md](docs/DISCOVERABILITY.md)** — read it before
 adding or restructuring user-facing content. Enforced constraints: `README.md` is
-**answer-first** (catalogs such as the 115 engines and 24 skills live inside
+**answer-first** (catalogs such as the 116 engines and 24 skills live inside
 `<details>`); `/llms.txt`, `/llms-full.txt`, and `docs/llms.txt` follow the
 [llmstxt.org](https://llmstxt.org/) shape with absolute
 `https://github.com/itsPremkumar/alpha/blob/main/...` URLs, updated together when
@@ -285,6 +285,29 @@ in another layer; follow the pointer.
   `llms.txt`, `llms-full.txt`, `docs/FAQ.md` and `docs/COMPARISON.md` in the same
   change set. `GET /api/ops/integration-health` exposes live coverage +
   supervisor status; the frontend Integration tab renders it.
+- **Self-inventory plane (self-knowledge)** — what Alpha is and what it can do,
+  from live local state in one bounded call:
+  **[docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md)**. `alpha.workflow.registry`
+  is the single source per fact: `identity`, `tools`, `skills`, `mcp`, `models`,
+  `bots`, `commands`, `capabilities`, `engines`, `wiring`, `memory`, each answering
+  `list` / `describe` / `health` with one `CapabilityDescriptor` shape. A registry
+  **re-derives nothing** — `engines` and `wiring` read the generated
+  `contracts/feature_manifest.json` through the single `manifest_source` loader and
+  `models` reads the live `AppConfig`, because every capability count here is
+  generated and drift-gated, so a second opinion would be an unreviewed answer to a
+  question the build already settles. `alpha.intelligence.self_inventory` aggregates
+  the kinds; `alpha_capability` (one tool, actions `inventory` / `identity` /
+  `capability` / `search` / `status` / `diagnose` / `symbols` / `symbol` /
+  `symbols_status`) is the model-facing surface, and `GET /api/intelligence/inventory`
+  the HTTP one. `alpha.ops.config_diagnosis` is **read-only and proposes, never
+  applies** — a model-writable `config.yaml` would be a fourth writer competing with
+  the dual write locks above. Three load-bearing invariants: an unreadable source
+  reports `count: null` and never `0`; `health` is `unverified` on every descriptor
+  because nothing here executes what it lists; and
+  `alpha.knowledge.code_index` returns names/signatures/`path:line` but **never a
+  function body** (the 67.8%-vs-29.2% ablation), with TypeScript rows labelled
+  `extraction="regex"` so a regex signature is never presented as parser-derived.
+  Tests: `backend/tests/test_self_inventory_plane.py`.
 - **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
   pairing, transport, receipts, topology semantics and the bounded model tool:
   **[docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md)**. Discovery never

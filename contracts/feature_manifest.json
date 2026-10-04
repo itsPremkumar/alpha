@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-03T14:41:29Z",
+ "generated_at": "2026-10-03T17:34:58Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -735,6 +735,14 @@
    "id": "search_project_docs",
    "module": "alpha.tools.builtins.self_documentation_tool",
    "symbol": "search_project_docs",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha_capability",
+   "module": "alpha.tools.builtins.alpha_capability_tool",
+   "symbol": "alpha_capability",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1740,6 +1748,13 @@
    "state": "wired"
   },
   {
+   "id": "alpha.agents.middlewares.reasoning_bank_context_middleware",
+   "module": "alpha.agents.middlewares.reasoning_bank_context_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "alpha.agents.middlewares.review_guard_middleware",
    "module": "alpha.agents.middlewares.review_guard_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
@@ -2471,6 +2486,11 @@
    "submodules": [
     "tom"
    ]
+  },
+  {
+   "id": "alpha.reasoning_bank",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.recovery",
