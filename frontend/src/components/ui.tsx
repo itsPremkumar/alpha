@@ -62,9 +62,31 @@ export function ErrorBox(props: { message: string; onRetry?: () => void }) {
   );
 }
 
-export function Notice(props: { message: string }) {
+/**
+ * A short inline message. `tone` exists because this component was
+ * emerald-only, and both call sites that needed a *warning* — a truncated
+ * transcript, a missing FTS index — borrowed the success green. A failed file
+ * transfer rendered as a success is worse than no styling at all, so the three
+ * tones are named rather than left to a caller's choice of class names.
+ *
+ * `neutral` is for disclosures that are neither good nor bad ("no expiry was
+ * reported"), which previously had nowhere to go and defaulted to green.
+ */
+export type NoticeTone = "success" | "warn" | "neutral";
+
+export function Notice(props: { message: string; tone?: NoticeTone }) {
+  const tone = props.tone ?? "success";
+  const style =
+    tone === "success"
+      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+      : tone === "warn"
+        ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+        : "border-border/70 bg-muted/40 text-muted-foreground";
   return (
-    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+    <div
+      className={`rounded-xl border px-3 py-2.5 text-xs ${style}`}
+      data-notice-tone={tone}
+    >
       {props.message}
     </div>
   );
@@ -91,6 +113,8 @@ export function Btn(props: {
   variant?: "primary" | "ghost" | "danger";
   disabled?: boolean;
   title?: string;
+  /** Required for an icon-only button; ignored when the button has text. */
+  ariaLabel?: string;
   className?: string;
 }) {
   const base =
@@ -107,6 +131,10 @@ export function Btn(props: {
       disabled={props.disabled}
       onClick={props.onClick}
       title={props.title}
+      // An icon-only control has no text for a screen reader to announce, so
+      // `title` is not an accessible name — `aria-label` has to carry it. The
+      // QR/copy rows are entirely icon buttons, which is what surfaced this.
+      aria-label={props.ariaLabel}
       className={`${base} ${style} ${props.className || ""}`}
     >
       {props.children}

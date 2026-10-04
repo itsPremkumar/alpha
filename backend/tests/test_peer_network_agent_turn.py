@@ -461,5 +461,21 @@ def test_model_facing_tool_cannot_grant_auto_reply():
     """Auto-reply is an operator decision, so no tool action exposes it."""
     from alpha.tools.builtins import peer_network_tool
 
-    source = Path(peer_network_tool.__file__).read_text(encoding="utf-8")
-    assert "auto_reply" not in source
+    import ast
+    import inspect
+
+    # The check is on the *call graph*, not on a substring. The tool's docstring
+    # deliberately names `set_auto_reply` to explain why it is unreachable, so a
+    # substring test over the source fails on the very sentence documenting the
+    # guarantee — and stripping docstrings by string replacement is itself fragile,
+    # because `ast.unparse` re-renders them with different whitespace.
+    #
+    # Walking the AST for identifiers and attribute accesses is exact: it sees
+    # every name the code can actually reach and no prose at all.
+    tree = ast.parse(inspect.getsource(peer_network_tool))
+    identifiers = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    identifiers |= {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    assert "set_auto_reply" not in identifiers, "the tool must not reach the auto-reply grant"
+
+    # And the model-facing projection must not carry the grant either.
+    assert "auto_reply" not in peer_network_tool._public_peer({"agent_id": "alpha-x", "auto_reply": True, "trust": "paired"})

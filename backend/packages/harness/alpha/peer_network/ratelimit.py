@@ -130,13 +130,9 @@ class PairingThrottle:
         self.base_lockout_seconds = float(_clamp(float(base_lockout_seconds), LOCKOUT_FLOOR_SECONDS, LOCKOUT_CEILING_SECONDS))
         self.max_lockout_seconds = float(_clamp(float(max_lockout_seconds), LOCKOUT_FLOOR_SECONDS, LOCKOUT_CEILING_SECONDS))
         self.global_max_attempts = int(_clamp(int(global_max_attempts), 1, GLOBAL_ATTEMPTS_CEILING))
-        self.global_window_seconds = float(
-            _clamp(float(global_window_seconds), WINDOW_FLOOR_SECONDS, WINDOW_CEILING_SECONDS)
-        )
+        self.global_window_seconds = float(_clamp(float(global_window_seconds), WINDOW_FLOOR_SECONDS, WINDOW_CEILING_SECONDS))
         self.breaker_failures = int(_clamp(int(breaker_failures), 1, FAILURES_CEILING))
-        self.breaker_cooldown_seconds = float(
-            _clamp(float(breaker_cooldown_seconds), LOCKOUT_FLOOR_SECONDS, LOCKOUT_CEILING_SECONDS)
-        )
+        self.breaker_cooldown_seconds = float(_clamp(float(breaker_cooldown_seconds), LOCKOUT_FLOOR_SECONDS, LOCKOUT_CEILING_SECONDS))
         self.max_tracked_keys = int(_clamp(int(max_tracked_keys), 1, TRACKED_KEYS_CEILING))
         self._clock = clock
         self._records: dict[str, _Record] = {}

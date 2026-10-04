@@ -21,22 +21,25 @@ from langchain.tools import tool
 
 from alpha.peer_network.models import ConversationCreateRequest, MessageCreateRequest
 from alpha.peer_network.service import get_peer_network_service
+from alpha.peer_network.storage import MODEL_PEER_FIELDS, public_peer as _project_peer
 from alpha.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
 
 
 def _public_peer(peer: dict) -> dict:
-    """Project only discovery-safe fields for model-visible output."""
+    """Project only model-safe fields for model-visible output.
 
-    return {
-        "agent_id": peer.get("agent_id"),
-        "name": peer.get("name"),
-        "description": peer.get("description"),
-        "capabilities": peer.get("capabilities", []),
-        "trust": peer.get("trust"),
-        "last_seen": peer.get("last_seen"),
-    }
+    Delegates to the one allowlist in ``peer_network.storage`` rather than
+    repeating its own key list. Two independent copies had already drifted: this
+    one was narrower, which was safe, but ``GET /status`` and ``POST /pair``
+    returned the raw row and were therefore *looser* than this tool. Now the
+    authenticated API, the transcript projection, and the model surface all read
+    the same definition, and a field added to the peer row stays invisible to all
+    three until somebody deliberately publishes it.
+    """
+
+    return _project_peer(peer, MODEL_PEER_FIELDS)
 
 
 def _public_peers(peers: list[dict]) -> list[dict]:
@@ -83,7 +86,17 @@ def alpha_peer_network_tool(
       * ``create`` — create a direct/group conversation from comma-separated participant ids.
 
     The response contains ids, capabilities, trust, and delivery status only. It
-    never contains pairing codes, bearer tokens, or private filesystem paths.
+    never contains pairing codes, bearer tokens, private endpoints, or private
+    filesystem paths.
+
+    Connecting to a new peer, minting a connection string, transferring files,
+    and sharing capabilities are deliberately **absent** from this tool. Pairing
+    mints a bearer credential and a file transfer reads bytes off disk; both are
+    operator decisions that belong to the authenticated API and its UI, where an
+    admin gate and a visible confirmation stand between the model and the
+    credential. ``set_trust``, ``set_auto_reply``, and ``pair/rotate`` are absent
+    for the same reason. This surface can *use* an established peer, never create
+    one.
 
     Args:
         runtime: Injected LangChain runtime context (unused by the installation-scoped service).

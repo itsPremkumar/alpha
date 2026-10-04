@@ -44,6 +44,7 @@ import {
   type PeerNetworkStatus,
 } from "@/lib/peer-network";
 import { errMsg } from "@/lib/http";
+import { PeerConnectPanel } from "@/components/sections/PeerConnectPanel";
 
 const MODES: Array<{ value: PeerConversationMode; label: string; hint: string }> = [
   { value: "direct", label: "One-to-one", hint: "Two participants" },
@@ -119,6 +120,20 @@ export function PeerNetworkSection() {
     void refresh();
     const timer = window.setInterval(() => void refresh(true), 7000);
     return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  /**
+   * A successful connect re-reads the roster from the Gateway rather than
+   * inserting the redeem response's copy of the peer.
+   *
+   * That response is an allowlisted projection taken during the pairing call; the
+   * authoritative list is what the server read returns afterwards. Splicing the
+   * projection in would briefly render a peer state built from a snapshot taken
+   * before the write, and a later disagreement with the real roster would have to
+   * walk it back.
+   */
+  const handleConnected = useCallback(() => {
+    void refresh(true);
   }, [refresh]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
@@ -304,7 +319,7 @@ export function PeerNetworkSection() {
   return (
     <Section
       title="Alpha Network"
-      hint="A separate peer-to-peer session for discovering, pairing, and messaging other Alpha installations. Discovery does not grant access; pairing is explicit."
+      hint="A separate peer-to-peer session for connecting, discovering, and messaging other Alpha installations. Discovery does not grant access; connecting is explicit."
       actions={
         <>
           <Btn variant="ghost" onClick={() => void refresh()} disabled={refreshing}>
@@ -359,6 +374,8 @@ export function PeerNetworkSection() {
           </div>
         </div>
       )}
+
+      <PeerConnectPanel status={status} onConnected={handleConnected} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
         <div className="space-y-3">

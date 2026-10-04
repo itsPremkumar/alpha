@@ -105,12 +105,87 @@ messages, questions/answers, review requests/results, file-offer messages, and
 receipts. Structured payloads are bounded; the initial text limit is 20,000
 UTF-8 bytes and structured payload limit is 256 KiB.
 
+## Connecting: the connection string
+
+Pairing used to mean copying a bare pairing code and typing a URL into a second
+field on the other machine — two actions, in an order you had to get right. It is
+now **one string, copied once and pasted once**:
+
+```text
+alpha://connect?v=1&a=<agent_id>&u=<url>&w=<ws_url>&n=<name>&e=<expiry>&ep=<number>&k=<pairing_code>
+```
+
+### Two copy modes
+
+| Mode | Contains `k=` | Where it may go |
+|---|---|---|
+| **Copy invite** (default) | yes | A private channel, or shown as a QR code in person |
+| **Copy address only** | no | Anywhere — it is public metadata |
+
+The UI labels which one you copied in the copy row itself, not in a tooltip.
+`GET /api/peer-network/invite?include_secret=true` is **admin-gated**, because
+with the secret it *is* the inbound bearer credential — the same reason
+`GET /status` and `POST /pair/rotate` are.
+
+### An invite is single use, enforced by the issuer
+
+`ep=` is a per-installation counter. `accept_pair` records the highest epoch it
+has consumed and refuses anything not strictly greater, so the first redeemer
+wins and a screenshot replayed afterwards is refused by name.
+
+It is worth recording why the obvious alternative does not work: rotating the
+pairing code on redemption protects nothing. Redemption happens on the
+*redeemer's* machine, while the credential that was exposed is the *issuer's*
+code, and the redeemer has no authority to invalidate it. The guard therefore
+lives where the exposure is.
+
+A pairing carrying **no** epoch — the classic manual code entry — bypasses the
+check entirely, so that path is unchanged.
+
+### Expiry
+
+`e=` is an absolute epoch second. Default lifetime **15 minutes**, ceiling 24
+hours (refused with the bound named, never clamped). A claim is refused once
+`now > e + 300s`; the skew tolerance is there because two laptops genuinely
+disagree about the clock, and refusing an invite that expired five minutes ago on
+a peer whose clock runs slow would be a support ticket, not a security control.
+
+### Endpoint substitution is refused
+
+A string edited in transit to point at an attacker's host yields *that host's*
+Agent Card, whose `agent_id` will not match the `a=` the editor left behind, so
+the pairing is refused. There is no signature to forge, because the string
+carries the secret itself.
+
+### Reading a QR code is not enabled yet
+
+Showing a QR code **works** — the invite renders, and the recipient pastes the
+text. Reading one is **not** wired up: `frontend/src/lib/qr-decode.ts` documents
+why its finder-location stage is not yet reliable, and the panel disables the
+camera and screenshot buttons with that reason rather than reporting "no QR code
+found" for a code that is plainly on screen.
+
+A failing round-trip test in `frontend/src/lib/qr-decode.test.mjs` is the gate.
+When it passes, delete that test, flip `canDecodeQr()`, and the camera path turns
+on.
+
 ## First-run setup
 
 ### 1. Configure the advertised address
 
-The default is suitable for two Gateways on one LAN. For a remote peer, set an
-address reachable from the other machine:
+The plane is **off by default**. `remote/pair`, `inbound/messages` and
+`api/peer-network/ws` are mounted without a browser session, and UDP/mDNS
+discovery puts this installation on the LAN whether or not anyone asks, so
+"enabled" is a production exposure decision rather than a convenience toggle.
+An operator opts in with `ALPHA_PEER_NETWORK_ENABLED=1`; a disabled plane
+refuses the whole public ingress while local management reads keep working, and
+`GET /api/peer-network/status` reports `enabled: false` so the UI can say *off*
+instead of showing an empty peer list. See
+[`docs/ALPHA_COLLABORATION_AUDIT.md`](ALPHA_COLLABORATION_AUDIT.md) and the
+ingress throttle in `ratelimit.py`.
+
+The advertised address below is only needed once the plane is enabled. For a
+remote peer, set an address reachable from the other machine:
 
 ```bash
 # PowerShell example
@@ -122,7 +197,7 @@ Useful environment variables:
 
 | Variable | Default | Meaning |
 |---|---:|---|
-| `ALPHA_PEER_NETWORK_ENABLED` | `1` | Enable UDP discovery and delivery retry loop |
+| `ALPHA_PEER_NETWORK_ENABLED` | `0` (**off**) | Enable UDP discovery, delivery retry loop and the public pairing/message ingress |
 | `ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL` | auto | Exact URL other peers should call |
 | `ALPHA_PEER_NETWORK_ADVERTISED_HOST` | auto | Host used when no base URL is set |
 | `ALPHA_PEER_NETWORK_BIND_HOST` | `0.0.0.0` | UDP discovery bind address |
@@ -172,10 +247,13 @@ Authenticated local routes (normal `threads:read`/`threads:write` permissions):
 ```text
 GET    /api/peer-network/status
 GET    /api/peer-network/peers?skill=&trust=
+GET    /api/peer-network/peers/{agent_id}
 POST   /api/peer-network/discover
 POST   /api/peer-network/github/publish (admin-only)
 POST   /api/peer-network/pair
-POST   /api/peer-network/pair/rotate
+POST   /api/peer-network/pair/rotate (admin-only)
+GET    /api/peer-network/invite?include_secret=&ttl_seconds=  (admin-only)
+POST   /api/peer-network/invite/redeem
 PATCH  /api/peer-network/peers/{agent_id}/trust
 PATCH  /api/peer-network/peers/{agent_id}/auto-reply (admin-only)
 POST   /api/peer-network/conversations
@@ -215,6 +293,13 @@ The `alpha_peer_network` built-in tool supports:
 - `list`
 - `send`
 - `create`
+
+Connecting is **absent from this tool on purpose**. Pairing mints a bearer
+credential and a connection string embeds one; both belong to the authenticated
+API and its UI, where an admin gate and a visible confirmation stand between the
+model and the credential. `set_trust`, `set_auto_reply`, `pair/rotate`, and
+`build_invite`/`redeem_invite` are absent for the same reason. The model can *use*
+an established peer, never create one.
 
 It exposes ids, capabilities, trust, and bounded delivery results only. It
 strips endpoints, cards, pairing codes, bearer tokens, and local filesystem

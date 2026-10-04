@@ -55,7 +55,7 @@ export default function nextConfig(phase) {
           headers: [
             {
               key: "Permissions-Policy",
-              value: "microphone=(self), camera=(), geolocation=()",
+              value: "microphone=(self), camera=(self), geolocation=()",
             },
           ],
         },

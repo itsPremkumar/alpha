@@ -106,19 +106,42 @@ request is trying to remove. The existing plane already treats the pairing code
 as a bearer credential and already warns about it; this keeps one warning and one
 action instead of adding a ritual.
 
-### D-2 — Redeeming an invite rotates the pairing code
+### D-2 — Single use is enforced by the issuer, via an epoch
+
+> **Corrected during implementation.** This section originally proposed rotating
+> the pairing code on redemption. That does not work, and the reason is worth
+> keeping: redemption happens on the *redeemer's* machine, while the credential
+> that leaked is the *issuer's* code, and the redeemer has no authority to
+> invalidate it. Rotating protects something nobody exposed and leaves the leaked
+> string working. The shipped mechanism is an epoch watermark in `accept_pair`.
+> See `invite.py` and §10.1.
+
+An invite is **single use**, and the guard lives on the issuer.
 
 Today the pairing code is a **persistent** bearer credential: anyone who ever
 sees it can pair until an operator remembers to rotate. A screenshot in a chat
 log is therefore permanent access.
 
-Redeeming rotates. The owner's UI immediately shows the new code and marks the old
-one consumed. `POST /pair/rotate` stays for manual rotation. Existing paired peers
-are unaffected — rotation is an ingress credential, not a session key.
+Each minted invite carries `ep=`, a per-installation monotonic counter.
+`accept_pair` records the highest epoch it has consumed and refuses any attempt
+whose epoch is not strictly greater, so the first redeemer wins and a replay is
+refused **by name**. Two ordering properties are load-bearing:
 
-Consequence to state honestly in the UI: **an invite is single-use.** Scanning the
-same screenshot twice reports "this invite was already used", not a silent
-re-pair.
+- The epoch is consumed **only after** the pairing code verifies. Checking it
+  first would let anyone who merely saw an invite claim `ep=999999` and
+  permanently block every future invite without ever knowing the code.
+- A replay is refused **without recording a throttle failure**. Whoever holds a
+  legitimately-shared screenshot is not an attacker, and charging their replay
+  against the owner's budget would let them lock the real owner out of pairing
+  anyone else.
+
+A pairing carrying **no** epoch — the classic manual code entry — bypasses the
+check entirely, so that path is unchanged. `POST /pair/rotate` stays for manual
+rotation.
+
+Consequence to state honestly in the UI: **an invite is single-use.** Redeeming
+the same string twice reports "This connection string was already used", not a
+silent re-pair.
 
 ### D-3 — Expiry is in the claim, and the clock is skewed-tolerant
 
@@ -617,6 +640,79 @@ surfaces inherit all of it:
 
 ---
 
+## 10.1 What was built, and what is deliberately not
+
+This plan was then implemented. The honest ledger, because a plan that reports
+its own gaps is the only kind worth keeping.
+
+### Shipped and verified
+
+| Piece | Where | Verified by |
+|---|---|---|
+| Connection-string codec, strict parser, two copy modes, expiry | `peer_network/invite.py` | `test_peer_invite_codec.py` |
+| Issuer-side single use via a monotonic epoch | `invite_state`, `accept_pair` | `test_peer_invite_redeem.py` |
+| Service mint/redeem + invite provenance (grants nothing) | `service.build_invite` / `redeem_invite` | same |
+| `GET /invite` (admin), `POST /invite/redeem`, `GET /peers/{id}` | `routers/peer_network.py` | `test_peer_network_admin_gate.py` |
+| One shared peer allowlist — API and model tool now agree (D5) | `storage.PUBLIC_PEER_FIELDS` / `MODEL_PEER_FIELDS` | `test_peer_invite_redeem.py`, `test_peer_network_agent_turn.py` |
+| Bounded envelope payload, enforced at validation (D7) | `models.MAX_PAYLOAD_BYTES` | `test_peer_network.py` |
+| Retry backoff, attempt counter, non-destructive error history (D3) | `storage.RETRY_BACKOFF_SECONDS` | `test_peer_network.py` |
+| D1 doc/code disagreement fixed | `docs/ALPHA_PEER_NETWORK.md` | — |
+| D6 Helm publishes UDP 8743, opt-in and with no Service | `deploy/helm/alpha/` | — |
+| Connect panel: copy, paste preview, address-only, manual fallback | `PeerConnectPanel.tsx` | `peer-network-view.test.mjs` |
+| `Notice` gained `warn` / `neutral` tones | `components/ui.tsx` | — |
+| One clipboard hook that reports failure | `use-copy-button.ts` | `peer-network-view.test.mjs` |
+| QR **encoder**, zero dependencies | `qr-encode.ts` | `qr-encode.test.mjs` |
+| Cross-language grammar parity across four parsers | — | `test_peer_qr_grammar_parity.py` |
+| The `peers` view test that did not exist | — | `peer-network-view.test.mjs` |
+
+**D-2 was wrong as originally written and the implementation says so.** It
+proposed rotating the pairing code on redemption. That protects nothing: the
+credential that leaked is the *issuer's*, and the redeemer has no authority to
+invalidate it. Single use is enforced where the exposure is — an epoch watermark
+in `accept_pair`, consumed only after the code verifies, and a replay refused
+*without* recording a throttle failure so a third party holding a screenshot
+cannot burn the owner's pairing budget.
+
+### Deliberately not shipped
+
+**QR *reading*.** `qr-decode.ts` implements every stage — Otsu binarisation,
+finder location by run ratio, geometry derivation, timing verification, format
+BCH, unmask, de-interleave, Berlekamp-Massey Reed-Solomon, bit-stream decode —
+and the **finder-location stage does not reliably lock onto a rendered code**. It
+returns `null` for a code that is plainly on screen, which is worse than not
+shipping it: it tells a user "no QR code found" about a visible code.
+
+So the camera and screenshot buttons are **disabled with that reason stated**,
+`canDecodeQr()` is `false`, and a *failing* round-trip test is the gate. That
+test failing is the signal to finish the work, not an oversight to delete: a skip
+would let the gap vanish from every report, and a deletion would leave the encoder
+looking verified in both directions when only one direction is.
+
+Showing a QR code **works** and is fully tested. The manual address + code path
+still works, so no deployment is left without a way in.
+
+**Phases 2 and 4–6** (live nearby scanning, blob transfer, typing/presence,
+capability sharing) remain as specified in §5–§7. Each is a new public surface or
+a new subsystem; shipping four of them unreviewed behind one branch would be the
+opposite of the incremental verification the sequencing above exists for.
+
+### Three defects found *during* implementation
+
+Each is a trap a reviewer would not predict, and each is why the stages are now
+separately testable:
+
+1. `matrixToImageData` folded both axes through one running index, transposing
+   every module below the first row. The output still *looked* like a QR code, so
+   the failure was a silent decode failure rather than an obviously wrong image.
+2. The finder run ratio divides the centre run by **3**, not by 7 — the five runs
+   are 1:1:3:1:1 *modules*. Dividing by the finder's total width understates the
+   module size by more than half, which invalidated every derived dimension.
+3. A row-only finder scan matches the seam between a finder's core and adjacent
+   data modules. It needs a vertical check too, or the top-left finder is found
+   twice and the three corners collapse to two.
+
+---
+
 ## 10. Sequencing
 
 | Phase | Contents | Gate |
@@ -634,6 +730,35 @@ Phases 3 and 4 are the two that carry real risk (a security-header change and a
 new public write surface), so they are isolated rather than bundled.
 
 ---
+
+## 11.1 Status after this branch
+
+| Gate | Result |
+|---|---|
+| Backend peer suites (21 files) | see §10.1 — green apart from the deliberate state below |
+| Frontend `src/lib/*.test.mjs` | 1570 tests, 1569 pass |
+| The one frontend failure | the **intentional** QR round-trip gate (§10.1) |
+| `tsc --noEmit` | clean |
+| `ruff format --check` (touched files) | clean |
+| `scripts/check_tool_schemas.py` | 132/132 ok — no tool was added, as designed |
+
+**This branch does not merge with one red test.** The QR round-trip gate is
+`node --test` visible and will fail CI. That is the correct state *today* — a
+red test names an unfinished feature — and it is also not mergeable as-is.
+
+Three ways to close it, and the choice is the next owner's:
+
+1. **Finish the decoder** (recommended). Fix the finder-location stage, flip
+   `canDecodeQr()`, delete the gate, mount the camera path.
+2. **Delete `qr-decode.ts` and its test** and ship paste-only connecting. Honest,
+   smaller, and the QR *encoder* goes with it — or stays, rendering a code nobody
+   can scan, which is the one option not to take.
+3. **Land the branch with the red test**, explicitly, as a tracked follow-up.
+
+Option 3 keeps the verified work and makes the gap unmissable. Options 1 and 2
+end with a green suite. What should not happen is the test being deleted to make
+CI green without the decoder being fixed — that is the failure this repository's
+honesty rules exist to prevent.
 
 ## 11. Obligations this branch inherits
 

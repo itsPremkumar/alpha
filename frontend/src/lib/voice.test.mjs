@@ -322,7 +322,9 @@ test("source wiring keeps one microphone owner and the local voice protocol", ()
   assert.match(messageItem, /player: \(value, signal\) => speak\(value, \{ signal \}\)/);
   assert.doesNotMatch(messageItem, /new Audio|synthesizeSpeech\(/);
   assert.match(nextConfig, /microphone=\(self\)/);
-  assert.match(nextConfig, /camera=\(\), geolocation=\(\)/);
+  // camera is granted to SELF, not to `*`: the peer-network QR scanner needs it
+  // and decodes locally, but a same-origin grant must not become an open one.
+  assert.match(nextConfig, /camera=\(self\), geolocation=\(\)/);
 });
 
 test("floatToPcm16 clamps, rounds, and silences non-finite samples", () => {
