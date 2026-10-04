@@ -470,6 +470,25 @@ class TestGates:
         for name in sorted(PROBE_SATISFYING_TOOLS):
             assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is False, name
 
+    def test_live_refused_read_tools_are_classified(self) -> None:
+        """The reads a real run was refused on 2026-10-04, pinned by name.
+
+        A monitored run tried ``hashline_read`` (the read ``alpha_capability``'s
+        guidance recommends for inspecting a body), ``catalog_tool_search`` and
+        ``catalog_tool_describe``; the gate refused all three as unclassified
+        irreversible calls. They are reads and must pass, and the write
+        counterpart ``hashline_edit`` is a reversible local write.
+        """
+        for name in ("hashline_read", "catalog_tool_search", "catalog_tool_describe"):
+            assert DEFAULT_SIDE_EFFECTS.get(name) is SideEffectClass.READ_ONLY, name
+            assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is False, name
+        assert DEFAULT_SIDE_EFFECTS.get("hashline_edit") is SideEffectClass.REVERSIBLE_WRITE
+        # Tools that really can execute commands stay blocked, rather than being
+        # waved through by this fix.
+        for name in ("external_job", "execute_sandboxed_computer_action", "catalog_tool_call"):
+            assert DEFAULT_SIDE_EFFECTS.get(name) is None, f"{name} must stay unclassified/blocked"
+            assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is True, name
+
     def test_present_files_is_classified_as_reversible(self) -> None:
         """`present_files` is the mandated delivery tool, not a side effect.
 

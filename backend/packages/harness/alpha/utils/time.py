@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, timedelta
+from math import isfinite
 
 __all__ = ["coerce_iso", "is_lease_expired", "now_iso"]
 
@@ -81,6 +82,14 @@ def coerce_iso(value: object) -> str:
             value = value.astimezone(UTC)
         return value.isoformat()
     if isinstance(value, (int, float)):
+        # Non-finite floats are not timestamps: ``float("nan")`` reaches
+        # ``fromtimestamp``, raises, and the fallback emitted the literal
+        # string ``"nan"``/``"inf"`` -- a value that looks like a timestamp
+        # but parses as expired in ``is_lease_expired``. A stored column with
+        # a corrupt numeric therefore surfaced as a plausible-looking wrong
+        # value instead of the module's "no timestamp" sentinel.
+        if not isfinite(value):
+            return ""
         try:
             return datetime.fromtimestamp(float(value), UTC).isoformat()
         except (ValueError, OverflowError, OSError):

@@ -155,6 +155,17 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "ast_grep_search": SideEffectClass.READ_ONLY,
     "describe_skill": SideEffectClass.READ_ONLY,
     "tool_describe": SideEffectClass.READ_ONLY,
+    # The same defect, observed live on 2026-10-04: a real run tried
+    # `hashline_read` (the read `alpha_capability`'s own guidance recommends for
+    # inspecting a function body) and the catalog search/describe pair, and the
+    # gate refused all three as unclassified irreversible calls. They are reads.
+    "hashline_read": SideEffectClass.READ_ONLY,
+    "catalog_tool_search": SideEffectClass.READ_ONLY,
+    "catalog_tool_describe": SideEffectClass.READ_ONLY,
+    # `hashline_read`'s write counterpart: it verifies an anchor and writes
+    # through the sandbox. Local and reversible like `str_replace`, and
+    # ReadBeforeWriteMiddleware still gates it independently.
+    "hashline_edit": SideEffectClass.REVERSIBLE_WRITE,
     # `tool_search` is a catalog read, but the run promotes the schemas it
     # returns (a local, reversible state change), so it is not read-only.
     "tool_search": SideEffectClass.REVERSIBLE_WRITE,
@@ -375,6 +386,12 @@ PROBE_SATISFYING_TOOLS: frozenset[str] = frozenset(
         "describe_skill",
         "tool_search",
         "tool_describe",
+        # Reads that were observed refused live on 2026-10-04. `hashline_read`
+        # is the read `alpha_capability`'s guidance names; the catalog pair is
+        # the same consultation surface as `tool_search`/`tool_describe`.
+        "hashline_read",
+        "catalog_tool_search",
+        "catalog_tool_describe",
         # `alpha_capability` IS the capability manifest read. The remediation for
         # `reuse_probe_missing` tells the agent to "read the capability manifest",
         # and this is that read — so it must satisfy the gate it recommends.

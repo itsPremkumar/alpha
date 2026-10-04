@@ -65,6 +65,26 @@ def test_coerce_iso_rejects_bool() -> None:
     assert coerce_iso(False) == "False"
 
 
+def test_coerce_iso_non_finite_floats_become_empty_sentinel() -> None:
+    """Non-finite floats are not timestamps, so they must not leak their repr.
+
+    ``float("nan")`` reached ``fromtimestamp``, raised, and the fallback
+    emitted the literal string ``"nan"`` -- which downstream
+    ``is_lease_expired("nan")`` parses as *expired*, so a corrupt numeric
+    column presented itself as a plausible-looking value instead of the
+    module's documented "no timestamp" sentinel. Pin the sentinel.
+    """
+    for value in (float("nan"), float("inf"), float("-inf")):
+        assert coerce_iso(value) == "", value
+        # The leaked repr must never appear on the wire.
+        assert coerce_iso(value) not in {"nan", "inf", "-inf"}
+
+
+def test_coerce_iso_still_heals_finite_zero_and_epoch() -> None:
+    """The non-finite guard must not touch 0.0, which is a real epoch value."""
+    assert coerce_iso(0.0) == "1970-01-01T00:00:00+00:00"
+
+
 def test_coerce_iso_handles_tz_aware_datetime() -> None:
     # str(datetime) would emit a space separator; coerce_iso must use ``T``.
     dt = datetime(2026, 4, 27, 1, 13, 30, 411327, tzinfo=UTC)
