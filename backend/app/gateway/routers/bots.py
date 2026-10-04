@@ -78,6 +78,7 @@ def _bot_to_response(profile) -> dict:
         "reputation_basis": reputation_basis,
         "task_stats": data.get("task_stats", {}),
         "routines": data.get("routines", []),
+        "model_config": data.get("model_config") or {},
         "created_at": data.get("created_at"),
         "updated_at": data.get("updated_at"),
     }
@@ -121,6 +122,25 @@ class BotUpdateRequest(BaseModel):
     reputation_score: float | None = Field(default=None, ge=0.0, le=1.0)
     task_stats: dict | None = None
     routines: list[dict] | None = None
+    # NOTE: ``model_config`` is deliberately NOT writable through this generic
+    # PATCH. It has its own validated route (``PUT /{name}/model-config``) so a
+    # fail-closed validation result (422 + ``detail.issues``) is the only write
+    # path; a name that is not in ``config.yaml models[]`` must never land here.
+
+
+class BotModelConfigRequest(BaseModel):
+    """Raw ``model_config`` payload. Validated server-side against ``models[]``."""
+
+    config: dict = Field(..., description="The model_config block to validate/store")
+
+
+class BotModelConfigPreviewRequest(BaseModel):
+    """Validate + resolve a candidate block **without** saving it."""
+
+    config: dict = Field(..., description="The candidate model_config block")
+    request_model: str | None = Field(default=None, max_length=200, description="Simulate a request-level model selection")
+    bot_model: str | None = Field(default=None, max_length=200, description="Simulate the bot's plain `model` field")
+    custom_agent_model: str | None = Field(default=None, max_length=200, description="Simulate a bound custom agent's model")
 
 
 class BotCloneRequest(BaseModel):
@@ -484,6 +504,173 @@ async def update_bot(name: str, request: Request, body: BotUpdateRequest) -> dic
     if bot is None:
         raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
     return _bot_to_response(bot)
+
+
+# ── Per-bot model configuration ────────────────────────────────────────────
+#
+# Declared models live in ``config.yaml`` ``models[]`` and nowhere else: these
+# routes only ever *name* them. Every mutation validates against that set and
+# fails with the full issue list, so the detail panel can render every problem
+# in one save instead of one round trip each.
+
+
+def _known_model_names() -> set[str]:
+    from alpha.config import get_app_config
+
+    return {m.name for m in get_app_config().models}
+
+
+def _model_config_issues(exc) -> list[dict]:
+    return [issue.to_dict() for issue in getattr(exc, "issues", [])]
+
+
+def _plan_view(cfg, *, bot_name: str, request_model=None, bot_model=None, custom_agent_model=None) -> dict:
+    """Resolve + describe a plan for preview/PUT responses.
+
+    ``resolve_model_plan`` reads ``model``/``model_config`` off a bot object;
+    preview inputs are plain strings, so a trivial namespace stands in for the
+    profile. ``bot_model_config`` is passed explicitly because a preview may
+    show a *candidate* block that is not stored yet.
+    """
+    from types import SimpleNamespace
+
+    from alpha.bots.model_config import describe_model_plan, resolve_model_plan
+
+    plan = resolve_model_plan(
+        request_model=request_model,
+        bot=SimpleNamespace(model=bot_model, model_config=None),
+        custom_agent_model=custom_agent_model,
+        bot_model_config=cfg,
+    )
+    return describe_model_plan(plan, bot_name=bot_name)
+
+
+@router.get("/{name}/model-config", summary="Full-detail per-bot model configuration")
+async def get_bot_model_config(name: str) -> dict:
+    """The stored block plus the resolved plan (with per-value provenance).
+
+    The response carries the precedence ladder and every limit so the UI can
+    explain *why* a value won, not only what won.
+    """
+    from alpha.bots.model_config import BotModelConfigError, validate_bot_model_config
+
+    key = _validate_bot_name(name)
+
+    def _get():
+        bot = _registry().get_bot(key)
+        if bot is None:
+            return None
+        raw = dict(getattr(bot, "model_config", None) or {})
+        issues: list[dict] = []
+        cfg = None
+        try:
+            cfg = validate_bot_model_config(raw, known_models=_known_model_names(), field_prefix="model_config")
+        except BotModelConfigError as exc:
+            issues = _model_config_issues(exc)
+        return {
+            "name": bot.name,
+            "model": bot.model,
+            "config": raw,
+            "resolved": _plan_view(cfg, bot_name=bot.name, bot_model=bot.model),
+            "issues": issues,
+            "valid": not issues,
+            # The picker may only offer names ``models[]`` declares, so the
+            # validated set travels with the read instead of the UI re-deriving
+            # it from ``GET /api/models`` (a different, wider surface).
+            "known_models": sorted(_known_model_names()),
+        }
+
+    result = await asyncio.to_thread(_get)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return result
+
+
+@router.put("/{name}/model-config", summary="Set the per-bot model configuration")
+async def put_bot_model_config(name: str, request: Request, body: BotModelConfigRequest) -> dict:
+    """Validate against ``models[]`` and store; every issue is reported at once.
+
+    An empty ``config`` clears the block (inherit-everything), which is the
+    same "empty means unset" convention the rest of the profile uses.
+    """
+    from alpha.bots.model_config import BotModelConfigError, validate_bot_model_config
+
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+
+    def _put():
+        bot = _registry().get_bot(key)
+        if bot is None:
+            return None, None
+        raw = dict(body.config or {})
+        cfg = validate_bot_model_config(raw, known_models=_known_model_names(), field_prefix="model_config")
+        # Store the canonical form (trimmed names, normalised effort rungs),
+        # not the caller's spelling, so the epoch hashes what will be executed.
+        _registry().update_bot(key, model_config=cfg.to_dict())
+        return _registry().get_bot(key), cfg
+
+    try:
+        bot, cfg = await asyncio.to_thread(_put)
+    except BotModelConfigError as exc:
+        raise HTTPException(status_code=422, detail={"message": str(exc), "issues": _model_config_issues(exc)}) from exc
+    if bot is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return {
+        "name": bot.name,
+        "model": bot.model,
+        "config": cfg.to_dict() if cfg else {},
+        "resolved": _plan_view(cfg, bot_name=bot.name, bot_model=bot.model),
+        "issues": [],
+        "valid": True,
+    }
+
+
+@router.delete("/{name}/model-config", summary="Clear the per-bot model configuration")
+async def delete_bot_model_config(name: str, request: Request) -> dict:
+    """Remove the block: the bot inherits primary/chain/sampling from global config."""
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+
+    def _clear():
+        return _registry().update_bot(key, model_config={})
+
+    bot = await asyncio.to_thread(_clear)
+    if bot is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return {"name": bot.name, "config": {}, "cleared": True}
+
+
+@router.post("/{name}/model-config/preview", summary="Preview a candidate model config without saving")
+async def preview_bot_model_config(name: str, body: BotModelConfigPreviewRequest) -> dict:
+    """Validate a candidate block and show the plan it would resolve to.
+
+    Read-only by contract: nothing is stored, so the UI can resolve errors and
+    see the winning chain before the operator commits the edit.
+    """
+    from alpha.bots.model_config import BotModelConfigError, validate_bot_model_config
+
+    key = _validate_bot_name(name)
+    raw = dict(body.config or {})
+    try:
+        cfg = validate_bot_model_config(raw, known_models=_known_model_names(), field_prefix="model_config")
+        issues: list[dict] = []
+    except BotModelConfigError as exc:
+        cfg = None
+        issues = _model_config_issues(exc)
+
+    return {
+        "name": key,
+        "config": raw,
+        "resolved": _plan_view(
+            cfg,
+            bot_name=key,
+            request_model=body.request_model,
+            bot_model=body.bot_model,
+            custom_agent_model=body.custom_agent_model,
+        ),
+        "issues": issues,
+        "valid": not issues,
+    }
 
 
 @router.post("/{name}/match", summary="Update match-time tracking (last_active, version bump)")

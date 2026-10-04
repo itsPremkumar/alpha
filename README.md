@@ -464,6 +464,13 @@ make doctor    # verify the environment
   the real host, missing journals, and unusable sandbox backends.
 - **Bot mode DMs** — `POST /api/bots/{name}/dm`, fire-and-forget, server-side
   attribution.
+- **Per-bot model configuration** — each bot chooses its own primary model, an
+  ordered fallback chain, a model-counselling panel and a mixture panel, edited
+  on its detail page with a live resolved-plan preview. `config.yaml` stays the
+  only place models are *declared*: a profile may only name models from
+  `models[]`, and a name that is not there is refused with every other problem
+  in the block in a single response. See
+  [docs/BOT_MODEL_CONFIG.md](docs/BOT_MODEL_CONFIG.md).
 - **Multi-agent group chat & swarms** — collaborative rooms where specialized
   bots challenge assumptions and produce unified deliverables.
 - **Swarm v2 DAG runtime** — atomic checkpoints, ordered JSONL audit events,

@@ -248,6 +248,44 @@ normalized by `lib/time.ts`), `last_message_sender` and `last_message_withheld`.
 
 Coverage: `lib/bots-activity-client.test.mjs`.
 
+## Per-bot model configuration panel
+
+`lib/bot-model-config.ts` + `components/bots/BotModelConfigPanel.tsx`, mounted
+on the bot detail page. Four routes only: `GET`/`PUT`/`DELETE
+/bots/{name}/model-config` and `POST .../model-config/preview`.
+
+- **A 422's `detail` is an object** (`{message, issues}`), which the shared
+  `ApiClientError` deliberately does not parse — it carries string details. The
+  client therefore captures the error body through its own `createApiClient`
+  instance and rethrows `ModelConfigValidationError` carrying every issue.
+  Collapsing that into "Request failed (HTTP 422)" while the server named each
+  problem is the failure this exists to stop.
+- **`known_models` absent maps to `null`, not `[]`.** "The Gateway did not
+  report the list" and "zero models are declared" are different facts; the
+  picker discloses the first rather than rendering a mysteriously empty menu.
+  It reads *this* list rather than `GET /api/models`, because validation is
+  `models[]`-only.
+- **Preview never saves.** It posts to the read-only route and shows the plan
+  that *would* resolve; Save is gated on `draftsEqual(draft, saved)` so an
+  untouched panel cannot write, and the panel re-reads the server's response
+  after a save instead of trusting the draft.
+- **An empty section is omitted, not sent.** `draftToConfig` drops blank
+  `counsel`/`mixture`/`sampling` blocks: the server treats absent as
+  inherit-everything, so sending `{enabled:false}` would store a block that
+  changes nothing while making the profile look configured.
+- **`configToDraft` tolerates junk.** A corrupt stored block must still open in
+  the panel — a panel that throws on mount is one the operator can never reach
+  to fix the block that broke it. Unknown enum strings (a strategy from a newer
+  Gateway) are preserved verbatim and offered back as an option.
+- The read-only plan block renders each value beside its `*_source`, then the
+  precedence ladder and the server's own limits; the editors are capped by
+  those limits so the UI cannot offer what the server refuses.
+
+Coverage: `lib/bot-model-config.test.mjs` (routes, verbs, CSRF, envelope
+mapping, the 422 issue list, draft round-trips) and
+`lib/bot-model-config-view.test.mjs` (mount, the four states, and the rendered
+honesty claims).
+
 ## Internet connectivity in the workspace strip
 
 `WorkspaceVitals` renders a fourth measurement in its "Backend connection"

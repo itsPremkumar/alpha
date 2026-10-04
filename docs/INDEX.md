@@ -10,6 +10,7 @@
 - [ALPHA-WORKFLOW-ARCHITECTURE.md](ALPHA-WORKFLOW-ARCHITECTURE.md) — Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.
 - [ALPHA_ARCHITECTURE_AUDIT.md](ALPHA_ARCHITECTURE_AUDIT.md) — Phase 0 discovery audit: confirmed system map, component cards, capability matrix, and a code-evidenced risk register.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and major runtime components.
+- [BOT_MODEL_CONFIG.md](BOT_MODEL_CONFIG.md) — Per-bot model configuration: primary, fallback chain, counselling and mixture, plus the one precedence ladder.
 - [CHAT_SHELL_DESIGN.md](CHAT_SHELL_DESIGN.md) — Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.
 - [CHAT_SHELL_UX.md](CHAT_SHELL_UX.md) — Chat shell UX implementation notes: the component set, how the rail is wired into the existing sidebar, and the additive-change discipline it followed.
 - [CONTINUAL_INTELLIGENCE.md](CONTINUAL_INTELLIGENCE.md) — Continual-intelligence layer: replay reservoir, regression gates, plasticity, expert fabric, paging.
