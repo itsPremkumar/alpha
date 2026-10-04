@@ -271,7 +271,7 @@ following are the closest things to divergences, graded:
    1.00 defaults as "Alpha achieves…", but the code refuses that reading.
 4. **Minor gap (doc precision, not dishonesty): MEMORY.md's transmission
    encoding.** `docs/MEMORY.md` contains non-UTF8/mojibake bytes around
-   lines 25–27 (visible as `�` in grep output). Cosmetic; S effort. Also the
+   lines 25–27 (visible as `U+FFFD` in grep output). Cosmetic; S effort. Also the
    repo's UTF-8 fragility history (MULTI_AGENT_PLAN.md:17-20) makes this worth
    a check pass.
 5. **Minor gap: ACP naming collision unflagged.** Two industry protocols share

@@ -17,7 +17,7 @@ guides that own the depth.
 User-facing and agent-facing content is a first-class deliverable. Strategy and
 checklist: **[docs/DISCOVERABILITY.md](docs/DISCOVERABILITY.md)** — read it before
 adding or restructuring user-facing content. Enforced constraints: `README.md` is
-**answer-first** (catalogs such as the 115 engines and 24 skills live inside
+**answer-first** (catalogs such as the 116 engines and 24 skills live inside
 `<details>`); `/llms.txt`, `/llms-full.txt`, and `docs/llms.txt` follow the
 [llmstxt.org](https://llmstxt.org/) shape with absolute
 `https://github.com/itsPremkumar/alpha/blob/main/...` URLs, updated together when

@@ -74,6 +74,20 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # and audit_frame(), which is the drift guard for the mode; nothing
     # selects the mode yet, so it is registered but not reachable from a run.
     "alpha.streamjson.emitter": "stream-JSON output mode emitter owning the TERMINAL_FIELDS/audit_frame drift guard; no run selects the mode yet, so it is registered but not yet reachable",
+    # Strict lock-policy decision seam (commit dd211d1). Its consumer is the
+    # write-claiming path (groups/write_watch.py / ReadBeforeWriteMiddleware),
+    # which must adopt the policy question; wiring it changes write-path
+    # behavior under lock_policy="strict", so it ships as a deliberate,
+    # separately-tested increment, not inside an unrelated change. Default
+    # policy is advisory, which is today's behaviour, so nothing regresses.
+    "alpha.groups.enforcement": "strict lock-policy decision seam; the write-claiming path adopts it as a separate increment because wiring changes write-path behaviour under lock_policy=strict, while advisory is today's behaviour",
+    # Code-mode gate and availability probe (commit 1dde8eb) for the isolated
+    # code bridge, which is NOT built on this host by design (no OS-level
+    # permission model; a curated __builtins__ is not a sandbox — see the
+    # module docstring). The module IS the tested fail-closed boundary; its
+    # production consumer is the bridge executor that a genuine isolated
+    # runtime would provide.
+    "alpha.tools.discovery.code_mode": "code-mode gate for the not-built isolated bridge; the module is the tested fail-closed boundary and its consumer is the bridge executor a real isolated runtime would provide",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by

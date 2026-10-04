@@ -276,8 +276,8 @@ cannot know ("refactoring the router").
 ### Reconciliation is on read
 
 Matching `crew.ensure_crew()` and `LockManager.sweep_expired()`. No new
-supervisor loop, so **no capability count moves** — 134 tools / 65 routers / 43
-middlewares / 9 loops / 115 engines all stay correct.
+supervisor loop, so **no capability count moves** - 134 tools / 66 routers / 43
+middlewares / 9 loops / 116 engines all stay correct.
 
 ### Claims are a separate store from locks, on purpose
 
@@ -343,6 +343,131 @@ is 404, a live un-reclaimable claim is 409, a non-member is 404.
 Tests: `tests/test_group_activity.py`, `test_group_activity_ledger.py`,
 `test_group_claims.py`, `test_group_activity_routes.py`,
 `test_run_activity_observer.py`, `test_group_chat_actions.py`.
+
+## Advanced messaging (`service.py` additions, 25 routes above `/{name}`)
+
+The group profile, its links, goals, project binding, and clone live on
+`GroupRoom` as **optional fields with defaults**, so an older room round-trips
+unchanged; the persistence envelope carries `version: 3` (was `2`). A field that
+defaults is not a field that is absent — `GET /{name}/profile` always answers
+with every key present.
+
+| Concern | Routes | Service |
+| --- | --- | --- |
+| Identity | `GET\|PATCH /{name}/profile` | `update_group_profile` |
+| Links | `GET\|POST\|DELETE /{name}/links`, `PATCH /{name}/links/reorder` | `add_link` / `remove_link` / `list_links` / `reorder_links` |
+| Goals | `GET\|POST /{name}/goals`, `PATCH /{name}/goals/{goal_id}` | `add_goal` / `update_goal` / `list_goals` |
+| Project binding | `GET\|POST\|DELETE /{name}/project-link` | `link_project` / `get_project_link` / `unlink_project` |
+| Clone | `POST /{name}/clone` | `clone_group` (charter only — **never** the transcript) |
+| Pinning | `POST\|DELETE /{name}/messages/{id}/pin`, `GET /{name}/pinned` | `pin_message` / `unpin_message` / `pinned_messages` |
+| Threading | `GET /{name}/messages/{id}/thread`, `GET /{name}/threads` | `thread_replies` / `thread_roots` |
+| Search | `GET /{name}/search` | `search_messages` |
+| Receipts | `POST /{name}/messages/{id}/read`, `GET /{name}/unread`, `GET /{name}/messages/{id}/readers` | `mark_read` / `unread_messages` / `message_readers` |
+| Typing | `POST\|GET /{name}/typing` | `set_typing` / `typing_indicators` |
+| Stream | `GET /{name}/events` | `app/gateway/group_events.py` |
+
+The stream is a **projection of room state, never a second write path**: each
+subscriber owns an asyncio queue bounded at `RETAINED_EVENTS = 100`, and
+`publish()` drops the *oldest* frame rather than blocking, so a client that stops
+reading can neither grow the process's memory nor stall `post_message`. A dropped
+frame is a re-read of the room, not a lost fact. It crosses into the app layer
+through `set_group_event_observer` (installed by `app/gateway/deps.py`), so the
+harness holds an optional callable instead of importing `app.*`; a Gateway that
+never installs one degrades to "no live stream", not to an import failure.
+
+The bus is keyed by **`room_id`, never by room name**. Every publisher passes
+`room.room_id` (`post_message`, link, pin and goal writes alike), so
+`GET /{name}/events` resolves the room and subscribes with `room.room_id`.
+Subscribing under the caller's name instead produced a stream that answered
+200, declared `text/event-stream`, held the connection open and heartbeated on
+schedule — and delivered no event for as long as the client stayed connected.
+History replay filters on the same key, so a late subscriber missed the backlog
+too. `GroupEventBus` tests passing invented keys like `"room_x"` only prove the
+bus matches a key to itself; the invariant worth pinning is a *route* subscriber
+receiving what a real `post_message` publishes.
+
+Five things that must not regress — the first three are invariants, the last two
+are facts an API caller will otherwise discover the hard way:
+
+- **Route order is load-bearing.** Every literal path above is declared before
+  the `/{name}` catch-all. Swapping two of them makes Starlette answer
+  `Room 'pinned' not found` for `GET /pinned`, which is indistinguishable from
+  an absent room.
+- **`mark_read` writes.** Receipts are read-modify-write against a per-room
+  file; a path that returns the updated message without `_save()` reports a
+  read that never happened. This was a real defect — the receipt file showed
+  `"receipts": {}` after a successful 200 — and
+  `test_group_advanced_messaging.py` pins persistence, not just the response.
+- **Search over a deleted message must not find it.** The index is derived
+  from the live transcript, so `delete_message` removes it; a search test that
+  never deletes is not a search test.
+- **There are two things called `goals`, and they are different stores.**
+  `PATCH /profile`'s `goals` writes `GroupRoom.goals`, a flat `list[str]` that
+  `GET /profile` reads back as `profile.goals`. `GET|POST /goals` reads
+  `GroupChatService._goals[room_id]`, a separate table of records with
+  `goal_id`/`status`/`progress`. The envelope's top-level `goals` key is the
+  *tracked* table; the room record's `goals` field is the *charter*. They do
+  not sync, and the UI renders only the tracked ones — so a client that reads
+  `profile.goals` and reports "this group has no goals" is reading the wrong
+  field, not observing an empty room.
+- **`clone_group` copies the charter, not the state.** Profile, links,
+  membership and rules are copied as fresh records with new ids so the clone
+  cannot mutate the source; `project_id` is reset to `None`. The transcript,
+  tracked goals, pins, receipts and the project binding are **not** copied —
+  a clone that started with a project binding would be doing work nobody asked
+  it to do. `CloneRequest` exposes `include_members` / `include_rules` /
+  `include_links` / `include_profile` so a caller can opt out of each layer.
+
+### Notifications (`alpha/notifications/`, 7 routes)
+
+`GroupChatService.post_message` calls `_raise_notifications()` inside the
+**single write path**, so a message that reached the room always raises its
+notification and one that did not can never claim to have been announced. The
+package owns three things: the per-operator JSON store (bounded at
+`MAX_HISTORY = 500`, fail-closed reads), the trigger table, and the preference
+model.
+
+- **Harness never imports app.** The Gateway installs the sink through
+  `set_group_event_observer(...)` from `app/gateway/deps.py`; the harness side
+  is an optional callable. An `app.*` import here fails
+  `tests/test_harness_boundary.py`.
+- **Single-process, single-operator, said out loud.** The store is one JSON
+  file per user under `Paths.user_dir(owner)`; the router serves the operator id
+  rather than inventing multi-user isolation. It is restart-recoverable, not
+  cross-process exactly-once.
+- **The operator is on every audience, and that is not optional.** The id lives
+  once, as `alpha.notifications.OPERATOR_USER_ID`, because the trigger path
+  decides *who to notify* and the read path decides *whose inbox to serve*.
+  `_raise_notifications()` therefore appends the operator to the resolved
+  roster, so the record lands somewhere a human can open it. A room's roster is
+  agents; `on_message_posted` skips only the *sender*, which is what keeps the
+  operator from being told about their own post once they are on that list.
+  This is the third bug of the same shape this layer has had: with the audience
+  as the roster alone, every notification was created, durable and counted, and
+  the bell was structurally empty because the only reader asked for a user
+  nobody had written to. Tests that read back an *agent's* inbox pass straight
+  through it — read back the one the UI asks for.
+- **A message carries no hard mute.** `sound` is `True` on a room message and
+  the operator's `sound_enabled` plus quiet hours decide delivery. It used to be
+  `intent in _LOUD_INTENTS`, which excluded the default `discussion` intent, so
+  an agent's ordinary post badged the panel and stayed inaudible while every
+  intent that rang already carried a raised priority — and a record-level
+  `False` is invisible to every preference the client evaluates, so nothing in
+  the UI could explain or override it.
+- **Muting deletes nothing.** Preferences gate *delivery* (sound, desktop
+  popup); every record still lands in history and still counts. Quiet hours
+  silence the chime without suppressing the record.
+
+Tests: `tests/test_group_advanced_messaging.py`,
+`tests/test_group_notifications.py` (87 cases together). Frontend:
+`frontend/src/lib/groups-profile.test.mjs`, `frontend/src/lib/notifications.test.mjs`,
+`frontend/src/lib/groups-profile-model.ts` and `notifications-model.ts` (pure
+derivations, no imports). `GroupProfilePanel.tsx` is a drill-down on one group
+and stays inside `MessagesSection`; `NotificationsBell.tsx` is mounted in
+`components/chat-shell/WorkspaceTopBar.tsx`, because mounting it is what runs
+`primeNotificationAudio()` and the 20s poll — inside the Messages section header
+the agent's message was recorded and announced nowhere on the chat view. Both
+facts are pinned by `src/lib/notifications.test.mjs`.
 
 ## Automatic write claiming (`groups/write_watch.py`)
 

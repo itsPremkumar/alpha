@@ -24,7 +24,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## Architecture
 
-- [Architecture](ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 102 harness engine packages.
+- [Architecture](ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 116 harness engine packages.
 - [Dynamic workflows](DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
 - [Extensions](EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
@@ -52,7 +52,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## API
 
-- [API reference](API_REFERENCE.md): all 61 Gateway routers, authentication, and SSE event streaming.
+- [API reference](API_REFERENCE.md): all 66 Gateway routers, authentication, and SSE event streaming.
 - [API overview](API.md): entry points, base URLs, routing, and versioning contracts.
 
 ## Operations
