@@ -153,7 +153,14 @@ async def intelligence_inventory(
         wanted = tuple(token.strip() for token in sections.split(",") if token.strip()) if sections else None
         if query:
             return await _read(search_inventory, query, sections=wanted, limit=bounded_limit)
-        return await _read(build_self_inventory, sections=wanted, detail=normalized_detail).to_dict
+        # The parentheses are load-bearing. `await _read(...).to_dict` parses as
+        # `await (_read(...).to_dict)` because attribute access binds tighter than
+        # `await`, so it reads `.to_dict` off the *coroutine* -- every call to this
+        # route raised AttributeError and the whole self-knowledge HTTP surface
+        # answered 500 while its unit tests stayed green, because they exercise
+        # `build_self_inventory` directly and never the route.
+        inventory = await _read(build_self_inventory, sections=wanted, detail=normalized_detail)
+        return inventory.to_dict()
     except KeyError as exc:
         # An unknown section is a caller mistake, and it must be loud: silently
         # dropping it would return a narrower payload than asked for.
