@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Building2,
   ChevronRight,
@@ -91,7 +97,9 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
   const [creating, setCreating] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [showAllStandalone, setShowAllStandalone] = useState(false);
-  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [expandedProjects, setExpandedProjects] = useState<
+    Record<string, boolean>
+  >({});
   const generationRef = useRef(0);
 
   const botName = activeBot ? activeBot.name : null;
@@ -142,27 +150,41 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   const presence = activeBot
     ? botPresence(activeBot)
-    : { state: "unrecorded" as const, label: "Lead Agent auto-routes", raw: null };
+    : {
+        state: "unrecorded" as const,
+        label: "Lead Agent auto-routes",
+        raw: null,
+      };
 
-  const projectRows = projects.map((project) => railRowFor(rows ?? [], project.id));
+  const projectRows = projects.map((project) =>
+    railRowFor(rows ?? [], project.id),
+  );
 
   // Determine projects scoped to this bot
   const botProjectRows = projectRows.filter((row) => {
     if (!botName) return true;
     if (row.leadsSelectedBot === true) return true;
-    const projGroup = groups.projects.find((g) => g.projectId === row.projectId);
+    const projGroup = groups.projects.find(
+      (g) => g.projectId === row.projectId,
+    );
     if (projGroup && projGroup.items.length > 0) return true;
     return false;
   });
 
   const displayedProjectRows =
-    projectScope === "bot" && botProjectRows.length > 0 ? botProjectRows : projectRows;
+    projectScope === "bot" && botProjectRows.length > 0
+      ? botProjectRows
+      : projectRows;
 
-  const visibleProjects = showAllProjects ? displayedProjectRows : displayedProjectRows.slice(0, 6);
+  const visibleProjects = showAllProjects
+    ? displayedProjectRows
+    : displayedProjectRows.slice(0, 6);
   const hiddenProjects = displayedProjectRows.length - visibleProjects.length;
 
   const standalone = groups.standalone.items;
-  const visibleStandalone = showAllStandalone ? standalone : standalone.slice(0, 6);
+  const visibleStandalone = showAllStandalone
+    ? standalone
+    : standalone.slice(0, 6);
   const hiddenStandalone = standalone.length - visibleStandalone.length;
 
   const toggleProjectExpand = (id: string, e?: React.MouseEvent) => {
@@ -170,10 +192,15 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     setExpandedProjects((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const currentBotDisplayName = activeBot ? botDisplayName(activeBot) : "Lead Agent";
+  const currentBotDisplayName = activeBot
+    ? botDisplayName(activeBot)
+    : "Lead Agent";
 
   return (
-    <div className="flex flex-col h-full select-none divide-y divide-border/40" data-shell="bot-workspace">
+    <div
+      className="flex flex-col h-full select-none divide-y divide-border/40"
+      data-shell="bot-workspace"
+    >
       {/* ── 1. Roster summary ───────────────────────────────────────────
           The scrolling "AI Agents (N)" profile list was removed here. It
           duplicated the agent selector that already exists directly below
@@ -204,7 +231,9 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                 : "No agents reported"}
             </span>
           </span>
-          <span className="shrink-0 text-[10px] font-medium">All profiles →</span>
+          <span className="shrink-0 text-[10px] font-medium">
+            All profiles →
+          </span>
         </button>
       </section>
 
@@ -267,7 +296,10 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       </section>
 
       {/* ── 3. Standalone Conversations (Outside Any Project) ────────── */}
-      <section className="p-3 space-y-1.5" aria-label="Standalone conversations">
+      <section
+        className="p-3 space-y-1.5"
+        aria-label="Standalone conversations"
+      >
         <div className="flex items-center justify-between pb-0.5 px-0.5">
           {/* `min-h-6` below: these group headers measured 99x16 and 81x16. */}
           <button
@@ -278,7 +310,9 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
             <MessageSquare className="size-3.5 text-primary" />
             <span>Standalone</span>
             {standalone.length > 0 && (
-              <span className="text-[10px] text-muted-foreground font-normal">({standalone.length})</span>
+              <span className="text-[10px] text-muted-foreground font-normal">
+                ({standalone.length})
+              </span>
             )}
             {standaloneCollapsed ? (
               <ChevronDown className="size-3 text-muted-foreground" />
@@ -309,7 +343,9 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
               <div className="space-y-0.5 mt-1">
                 {visibleStandalone.map((thread) => {
                   const isActive = thread.thread_id === activeThreadId;
-                  const title = threadTitle(thread as unknown as Record<string, unknown>);
+                  const title = threadTitle(
+                    thread as unknown as Record<string, unknown>,
+                  );
 
                   return (
                     <button
@@ -323,7 +359,9 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <MessageSquare className={`size-3 shrink-0 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                        <MessageSquare
+                          className={`size-3 shrink-0 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`}
+                        />
                         <span className="truncate">{title}</span>
                       </div>
                     </button>
@@ -354,7 +392,10 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       </section>
 
       {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
-      <section className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto" aria-label="Projects">
+      <section
+        className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto"
+        aria-label="Projects"
+      >
         <div className="flex items-center justify-between pb-0.5 px-0.5">
           {/* `min-h-6` below: measured 81x16. */}
           <button
@@ -390,16 +431,18 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
               type="button"
               onClick={() => void loadRows()}
               disabled={refreshing}
-              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40 cursor-pointer"
+              className="p-1 min-h-6 min-w-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40 cursor-pointer"
               title="Refresh project counts"
               aria-label="Refresh project counts"
             >
-              <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`size-3 ${refreshing ? "animate-spin" : ""}`}
+              />
             </button>
             <button
               type="button"
               onClick={() => onOpenView("projects")}
-              className="text-[10px] text-muted-foreground hover:text-primary font-medium pl-1 cursor-pointer"
+              className="min-h-6 inline-flex items-center text-[10px] text-muted-foreground hover:text-primary font-medium pl-1 cursor-pointer"
               title="Manage all projects"
             >
               Manage
@@ -408,32 +451,35 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
         </div>
 
         {/* Project Scope Filter Pills (Bot vs All) */}
-        {!projectsCollapsed && botName && botProjectRows.length > 0 && botProjectRows.length < projectRows.length && (
-          <div className="flex items-center gap-1 px-1 py-1">
-            <button
-              type="button"
-              onClick={() => setProjectScope("bot")}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
-                projectScope === "bot"
-                  ? "bg-primary/20 text-primary font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              }`}
-            >
-              {currentBotDisplayName} ({botProjectRows.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setProjectScope("all")}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
-                projectScope === "all"
-                  ? "bg-primary/20 text-primary font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              }`}
-            >
-              All Projects ({projectRows.length})
-            </button>
-          </div>
-        )}
+        {!projectsCollapsed &&
+          botName &&
+          botProjectRows.length > 0 &&
+          botProjectRows.length < projectRows.length && (
+            <div className="flex items-center gap-1 px-1 py-1">
+              <button
+                type="button"
+                onClick={() => setProjectScope("bot")}
+                className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                  projectScope === "bot"
+                    ? "bg-primary/20 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                {currentBotDisplayName} ({botProjectRows.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setProjectScope("all")}
+                className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                  projectScope === "all"
+                    ? "bg-primary/20 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                All Projects ({projectRows.length})
+              </button>
+            </div>
+          )}
 
         {rowsError && (
           <p className="px-1 text-[10px] text-destructive" role="alert">
@@ -446,12 +492,14 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
             {displayedProjectRows.length === 0 ? (
               <div className="px-2 py-3 rounded-xl border border-dashed border-border/70 text-center space-y-1.5">
                 <p className="text-[11px] text-muted-foreground italic">
-                  {botName ? `No projects for ${currentBotDisplayName} yet` : "No projects yet"}
+                  {botName
+                    ? `No projects for ${currentBotDisplayName} yet`
+                    : "No projects yet"}
                 </p>
                 <button
                   type="button"
                   onClick={() => setCreating(true)}
-                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium cursor-pointer"
+                  className="min-h-6 inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium cursor-pointer"
                 >
                   <Plus className="size-3" /> Create a project
                 </button>
@@ -459,15 +507,21 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
             ) : (
               <div className="space-y-1 mt-1">
                 {visibleProjects.map((row) => {
-                  const project = projects.find((p) => p.id === row.projectId) ?? null;
+                  const project =
+                    projects.find((p) => p.id === row.projectId) ?? null;
                   const isSelected = row.projectId === activeProjectId;
                   const isExpanded = Boolean(expandedProjects[row.projectId]);
                   const count = row.conversationCount;
-                  const projGroup = groups.projects.find((g) => g.projectId === row.projectId);
+                  const projGroup = groups.projects.find(
+                    (g) => g.projectId === row.projectId,
+                  );
                   const projThreads = projGroup ? projGroup.items : [];
 
                   return (
-                    <div key={row.projectId} className="rounded-xl transition-colors">
+                    <div
+                      key={row.projectId}
+                      className="rounded-xl transition-colors"
+                    >
                       {/* Project Row Header */}
                       <div
                         className={`group flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
@@ -480,7 +534,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                           type="button"
                           onClick={(e) => toggleProjectExpand(row.projectId, e)}
                           className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
-                          title={isExpanded ? "Collapse project conversations" : "Expand project conversations"}
+                          title={
+                            isExpanded
+                              ? "Collapse project conversations"
+                              : "Expand project conversations"
+                          }
                         >
                           {isExpanded ? (
                             <ChevronDown className="size-3 text-primary" />
@@ -499,11 +557,17 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                           title={`Project: ${project?.name || row.projectId}`}
                         >
                           {isExpanded ? (
-                            <FolderOpen className={`size-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                            <FolderOpen
+                              className={`size-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                            />
                           ) : (
-                            <Folder className={`size-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                            <Folder
+                              className={`size-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                            />
                           )}
-                          <span className="truncate">{project?.name || row.projectId}</span>
+                          <span className="truncate">
+                            {project?.name || row.projectId}
+                          </span>
                         </button>
 
                         <div className="flex items-center gap-1 shrink-0">
@@ -514,7 +578,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                 ? "bg-primary/20 text-primary font-bold"
                                 : "bg-muted text-muted-foreground"
                             }`}
-                            title={count !== null ? `${count} conversations in this project` : "Conversation count unknown"}
+                            title={
+                              count !== null
+                                ? `${count} conversations in this project`
+                                : "Conversation count unknown"
+                            }
                           >
                             {count !== null ? count : "—"}
                           </span>
@@ -581,7 +649,10 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                 carries the name. Styling moved up to
                                 `triggerClassName`, since the element that used
                                 to own it is gone. */}
-                            <MoreHorizontal className="size-3" aria-hidden="true" />
+                            <MoreHorizontal
+                              className="size-3"
+                              aria-hidden="true"
+                            />
                           </ProjectDropdownMenu>
                         </div>
                       </div>
@@ -648,7 +719,9 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                 className="block mt-0.5 text-[10px] italic text-muted-foreground/80"
                                 title={row.crewError ?? undefined}
                               >
-                                {row.crewError ? "Crew not read." : "Crew not reported."}
+                                {row.crewError
+                                  ? "Crew not read."
+                                  : "Crew not reported."}
                               </span>
                             ) : row.members.length === 0 ? (
                               <span className="block mt-0.5 text-[10px] italic text-muted-foreground/80">
@@ -686,8 +759,8 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                 // badge two inches above it. Say what is actually
                                 // true: the project has some, this agent has none.
                                 <>
-                                  {row.conversationCount} in this project, none with{" "}
-                                  {currentBotDisplayName} yet.
+                                  {row.conversationCount} in this project, none
+                                  with {currentBotDisplayName} yet.
                                 </>
                               ) : (
                                 "No conversations in this project yet."
@@ -695,14 +768,19 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             </span>
                           ) : (
                             projThreads.map((thread) => {
-                              const isCurrent = thread.thread_id === activeThreadId;
-                              const title = threadTitle(thread as unknown as Record<string, unknown>);
+                              const isCurrent =
+                                thread.thread_id === activeThreadId;
+                              const title = threadTitle(
+                                thread as unknown as Record<string, unknown>,
+                              );
 
                               return (
                                 <button
                                   key={thread.thread_id}
                                   type="button"
-                                  onClick={() => onSelectThread(thread.thread_id)}
+                                  onClick={() =>
+                                    onSelectThread(thread.thread_id)
+                                  }
                                   className={`w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded-md text-left text-[11px] transition-colors cursor-pointer ${
                                     isCurrent
                                       ? "bg-primary text-primary-foreground font-semibold elev-1"
@@ -741,7 +819,6 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                     Show fewer
                   </button>
                 ) : null}
-
               </div>
             )}
           </>
