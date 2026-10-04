@@ -15,9 +15,14 @@ logger = logging.getLogger(__name__)
 class Article:
     url: str
 
-    def __init__(self, title: str, html_content: str):
+    def __init__(self, title: str, html_content: str, url: str = ""):
         self.title = title
         self.html_content = html_content
+        # ``to_message`` resolves image URLs against the source page. A bare
+        # class-level ``url: str`` annotation creates no attribute, so this
+        # must be assigned here — otherwise ``to_message`` raises
+        # ``AttributeError`` on any article containing an image.
+        self.url = url
 
     def to_markdown(self, including_title: bool = True) -> str:
         markdown = ""
@@ -176,4 +181,4 @@ class ReadabilityExtractor:
         if not title or not str(title).strip():
             title = "Untitled"
 
-        return Article(title=title, html_content=html_content)
+        return Article(title=title, html_content=html_content, url=url or "")
