@@ -15,6 +15,7 @@ exception class name, because existing consumers read both.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from uuid import uuid4
 
@@ -25,6 +26,7 @@ from alpha.errors import report as report_module
 from alpha.runtime.events.catalog import RUN_ERROR_EVENT
 from alpha.runtime.events.store.memory import MemoryRunEventStore
 from alpha.runtime.journal import RunJournal
+from app.gateway.error_sse import UNBOUND_SSE_METRIC
 
 
 @pytest.fixture
@@ -173,6 +175,111 @@ class TestRunErrorFansOut:
         assert "run.error" in types
         assert "run.end" in types
         assert types <= {RUN_ERROR_EVENT.event_type, "run.start", "run.end"}
+
+
+class TestErrorReporterSseLeg:
+    """The fan-out's fourth leg, bound to the run that caused the failure.
+
+    Until the Gateway bound ``configure_error_reporter(sse_sink=...)`` the log,
+    metric and recovery legs fired for every coded run failure and the SSE leg
+    fired for none: a report counted as unbound against a process-global nobody
+    read. These cases drive the real journal, the real reporter and the real
+    memory bridge, because a stubbed bridge would pass even if the frame shape
+    were wrong in the one field clients read.
+    """
+
+    @staticmethod
+    def _bind(bridge):
+        from types import SimpleNamespace
+
+        from app.gateway.error_sse import bind_error_reporter_sse_leg
+
+        app = SimpleNamespace(state=SimpleNamespace())
+        bind_error_reporter_sse_leg(app, bridge, loop=asyncio.get_running_loop())
+        return app
+
+    @pytest.mark.anyio
+    async def test_a_reported_run_failure_reaches_the_runs_stream(self):
+        from alpha.runtime.stream_bridge.memory import MemoryStreamBridge
+
+        report_module.reset_error_reporter()
+        bridge = MemoryStreamBridge()
+        app = self._bind(bridge)
+        try:
+            store = MemoryRunEventStore()
+            instance = RunJournal("r1", "t1", store, flush_threshold=100)
+            run_id = uuid4()
+            instance.on_chain_error(RuntimeError("boom"), run_id=run_id)
+            # The sink hands the publish to the serving loop; give it a turn.
+            await asyncio.sleep(0.05)
+
+            frames = []
+            async for item in bridge.subscribe(str(run_id)):
+                frames.append(item)
+                break
+
+            assert frames, "the bound leg must publish onto the run's own stream"
+            assert frames[0].event == "error"
+            data = frames[0].data
+            # `code`/`correlation_id` are the keys the SSE consumer reads; the
+            # reporter payload nests them under `error_*`, so a verbatim payload
+            # would reach every client as an unidentifiable failure.
+            assert data["code"] == "RUN_EXECUTION_FAILED"
+            assert data["correlation_id"] == "alpha.errors.run"
+            assert data["run_id"] == str(run_id)
+            assert data["source"] == "error_reporter"
+            # The policy travels verbatim rather than being re-derived, so the
+            # frame cannot disagree with the registry the journal wrote.
+            definition = require_definition("RUN_EXECUTION_FAILED")
+            assert data["retryable"] is definition.retryable
+            assert data["severity"] == definition.severity.value
+            assert data["recovery"] == definition.recovery.value
+            # Registry-owned prose is rendered; the exception string is an
+            # operator field (log + recovery ledger) and never a client frame.
+            assert data["message"] == require_definition("RUN_EXECUTION_FAILED").message
+            assert "boom" not in json.dumps(data)
+            # The leg is bound, so the reporter's own unbound counter stays 0.
+            assert report_module.get_error_reporter().unbound_sse == 0
+            assert app.state.error_reporter_sse["published"] == 1
+        finally:
+            report_module.reset_error_reporter()
+
+    @pytest.mark.anyio
+    async def test_a_report_with_no_run_id_is_counted_and_publishes_nothing(self):
+        """No run means no stream: a measurable gap, not a silent drop."""
+        from alpha.ops.metrics import get_metrics_registry
+        from alpha.runtime.stream_bridge.memory import MemoryStreamBridge
+
+        report_module.reset_error_reporter()
+        bridge = MemoryStreamBridge()
+        app = self._bind(bridge)
+        try:
+            report_module.get_error_reporter().report("TIMEOUT", detail="provider did not answer")
+            await asyncio.sleep(0.05)
+
+            assert app.state.error_reporter_sse["published"] == 0
+            assert app.state.error_reporter_sse["unbound"] == 1
+            # The other three legs still ran: an unaddressable report is
+            # recorded, not swallowed.
+            reporter = report_module.get_error_reporter()
+            assert reporter.ledger.pending(), "the recovery leg still records it"
+            assert [record.code for record in reporter.ledger.records()] == ["TIMEOUT"]
+            rendered = get_metrics_registry().render_prometheus()
+            assert UNBOUND_SSE_METRIC in rendered
+            # Nothing was published, so no run stream exists at all.
+            assert not await bridge.stream_exists("no-such-run")
+        finally:
+            report_module.reset_error_reporter()
+
+    def test_the_gateway_lifespan_binds_the_leg_where_the_bridge_is_built(self):
+        """A binding added after the first run exists would miss that run."""
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "app" / "gateway" / "deps.py").read_text(encoding="utf-8")
+        bridge_at = source.index("app.state.stream_bridge = await stack.enter_async_context(make_stream_bridge(config))")
+        bind_at = source.index("bind_error_reporter_sse_leg(app,")
+        assert bind_at > bridge_at, "the sink addresses the bridge, so it binds after the bridge exists"
+        assert source.index("asyncio.get_running_loop()", bind_at) > bind_at
 
 
 class TestGateAndRegistryAgree:

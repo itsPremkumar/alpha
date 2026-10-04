@@ -8,6 +8,7 @@ const { createApiClient, ApiClientError } = await import(moduleUrl("api-client")
 const { consumeChatStream, StreamRunFailure } = await import(moduleUrl("chat-stream"));
 const { chatSupportId } = await import(moduleUrl("chat-support-id"));
 const { emptyTodoPlan } = await import(moduleUrl("sse-reducer"));
+const { newIdempotencyKey, sendIdempotent } = await import(moduleUrl("idempotency"));
 
 const compile = (source) => ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
@@ -92,11 +93,11 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
     readAutoplayEnabled: () => false,
     autoplaySpeak: async () => { state.autoplay++; return false; },
     updateLion: () => {},
-    fetch: async () => {
+    fetch: async (url, init) => {
       if (newerDraft) state.input = newerDraft;
       if (abort) abortRef.current.abort();
       if (navigateMidStream) runGenerationRef.current += 1;
-      return fetchResponse(abortRef.current);
+      return fetchResponse(abortRef.current, url, init);
     },
   };
   Object.assign(dependencies, {
@@ -106,6 +107,12 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
     // `instanceof` check false and silently skip the support-id path.
     StreamRunFailure,
     chatSupportId,
+    // Module-scope bindings `sendMessage` references for idempotent run
+    // admission. The real `sendIdempotent` is required, not a stub: a
+    // passthrough would silently drop the `Idempotency-Key` header and the
+    // bounded transport retry, which is the feature under test below.
+    newIdempotencyKey,
+    sendIdempotent,
     apiFetch: createApiClient({ fetch: dependencies.fetch, getCookie: () => "" }),
     consumeChatStream: (response, options) => consumeChatStream(response, {
       ...options,
@@ -165,6 +172,36 @@ test("fetch exceptions are visible, sanitized, and preserve a newer draft", asyn
   assert.equal(state.input, "new draft");
   assert.match(state.error.message, /connection/);
   assert.doesNotMatch(state.error.message, /Bearer|secret|html|private/);
+});
+
+test("a transport failure on admission is retried under the same Idempotency-Key", async () => {
+  // The Gateway accepts `Idempotency-Key` on thread-scoped run
+  // admission and resolves a reused key to the same run, so a
+  // retry of a POST whose response was lost is a resume, not a
+  // duplicate run. This drives the real extracted `sendMessage`
+  // path: the key must be generated per send, carried on the
+  // POST, and reused verbatim across the retry.
+  const attempts = [];
+  let failures = 1;
+  const state = await send((_controller, _url, init) => {
+    attempts.push({
+      url: _url,
+      key: new Headers(init?.headers).get("Idempotency-Key"),
+      body: typeof init?.body === "string" ? init.body : null,
+    });
+    if (failures-- > 0) throw new Error("connection reset");
+    return new Response("answer after retry");
+  });
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0].url, "/api/threads/thread-1/runs/stream");
+  assert.equal(attempts[1].url, attempts[0].url);
+  assert.match(attempts[0].key ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal(attempts[1].key, attempts[0].key);
+  assert.equal(attempts[1].body, attempts[0].body);
+  // The retried admission succeeded and streamed a real answer.
+  assert.equal(state.error, null);
+  assert.equal(state.messages.at(-1).content, "answer after retry");
+  assert.equal(state.saved.filter((message) => message.role === "assistant").length, 1);
 });
 
 for (const partial of ["", "actual partial answer"]) {

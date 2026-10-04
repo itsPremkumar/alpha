@@ -201,6 +201,33 @@ test("an unavailable server conversation list is stated, not rendered as empty h
   assert.match(reload, /setServerHistoryError\(null\)/);
 });
 
+test("a Gateway outage is one banner, not two disagreeing ones", () => {
+  const chatView = read("../components/ChatView.tsx");
+  // The amber history banner speaks only for a failure the Gateway
+  // did NOT explain: during a confirmed outage (`gatewayOk === false`)
+  // the history read failed because the Gateway is down, so the red
+  // offline banner is the single alert for that cause. The two
+  // banners used to render together with independent dismissal,
+  // leaving the amber one implying a partial problem after the red
+  // one was dismissed.
+  assert.match(chatView, /serverHistoryError && view === "chat" && gatewayOk !== false/);
+  // The red banner keeps its own gate and dismissal.
+  assert.match(chatView, /gatewayOk === false && !offlineDismissed/);
+  // Suppressing the amber banner must not lose its information: the
+  // outage banner itself discloses that the visible list is the local
+  // copy rather than a confirmed empty history.
+  assert.match(chatView, /the conversation list below is the complete local copy, not a confirmed empty history/);
+  // The history error is never force-cleared by the outage path: the
+  // probe's success handler re-arms only its own dismissal, so the
+  // amber banner re-renders the moment the Gateway answers again.
+  const probe = chatView.slice(
+    chatView.indexOf("const probeGateway"),
+    chatView.indexOf("useEffect(() => {\n    probeGateway();"),
+  );
+  assert.match(probe, /setGatewayOk\(true\)/);
+  assert.doesNotMatch(probe, /setServerHistoryError/);
+});
+
 test("a stream that outlives its conversation and rapid duplicate uploads are both fenced", () => {
   const chatView = read("../components/ChatView.tsx");
   // Run generation: navigation invalidates the run's React state writes.

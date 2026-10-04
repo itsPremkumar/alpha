@@ -69,6 +69,15 @@
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
+- [reliability/ALPHA_SYSTEM_MAP.md](reliability/ALPHA_SYSTEM_MAP.md) — Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.
+- [reliability/ERROR_CATALOG.md](reliability/ERROR_CATALOG.md) — Stable error codes with severity, retry policy, recovery action and the user-facing wording each code owns.
+- [reliability/FAILURE_RECOVERY_MATRIX.md](reliability/FAILURE_RECOVERY_MATRIX.md) — Per-failure detection, classification, retry decision, recovery strategy and the evidence each one leaves behind.
+- [reliability/FEATURE_EXECUTION_MATRIX.md](reliability/FEATURE_EXECUTION_MATRIX.md) — Per-feature trace from UI entry through handler, orchestrator, tool and persistence to verification, with current status and evidence.
+- [reliability/KNOWN_ISSUES.md](reliability/KNOWN_ISSUES.md) — The authority on open defects: every entry marked FIXED, WIRED or SPECIFIED, never aspirational.
+- [reliability/OBSERVABILITY_ARCHITECTURE.md](reliability/OBSERVABILITY_ARCHITECTURE.md) — The correlated log/trace/event spine: identifier hierarchy, trace shape, and where each telemetry hook is wired.
+- [reliability/REAL_WORK_VALIDATION.md](reliability/REAL_WORK_VALIDATION.md) — Workloads A-O and, for each, exactly which stability gate it does or does not prove.
+- [reliability/REGRESSION_MATRIX.md](reliability/REGRESSION_MATRIX.md) — Every confirmed bug mapped to the test that stops it reverting, plus the coverage gaps that have none.
+- [reliability/STABILITY_REPORT.md](reliability/STABILITY_REPORT.md) — Cycle-by-cycle test counts, bugs found and fixed, gate status, and the next highest-risk unresolved area.
 
 ## Contributing & Governance
 

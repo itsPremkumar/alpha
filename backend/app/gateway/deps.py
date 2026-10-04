@@ -568,6 +568,16 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
 
         app.state.stream_bridge = await stack.enter_async_context(make_stream_bridge(config))
 
+        # Bind the error reporter's SSE leg onto that bridge. This is the one
+        # point where `alpha.errors` output is addressed to a run's stream, and
+        # it must happen before any run exists: a report raised during a
+        # request has to find the leg already bound, not discover it missing.
+        # The binding is idempotent per call, so a subsystem restart re-binds
+        # instead of double-publishing. See app/gateway/error_sse.py.
+        from app.gateway.error_sse import bind_error_reporter_sse_leg
+
+        bind_error_reporter_sse_leg(app, app.state.stream_bridge, loop=asyncio.get_running_loop())
+
         # Initialize persistence engine BEFORE checkpointer so that
         # auto-create-database logic runs first (postgres backend).
         # Own cleanup before initialization so partial startup and host

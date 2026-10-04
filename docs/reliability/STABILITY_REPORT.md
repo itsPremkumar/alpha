@@ -1,5 +1,174 @@
 # Alpha — Stability Report
 
+**Cycle:** 2
+**Date:** 2026-10-04
+**Base commit:** `fefa49a`
+**Current commit:** *(this cycle's HEAD — see §Changes for the change set)*
+**Branch:** `main` (synced with `origin/main` at the start of the cycle)
+
+> Cycle 1's report is preserved below under [Cycle 1](#cycle-1), unchanged, so
+> the claim history stays readable. This cycle's report is the authority on the
+> current state.
+
+---
+
+## Cycle 2
+
+### Test counts
+
+| Suite | Command | Result |
+|---|---|---|
+| Frontend unit | `node --test src/lib/*.test.mjs` | **1488 passed, 0 failed** (+11 this cycle) |
+| Frontend typecheck | `tsc --noEmit` | **0 errors** |
+| Frontend, focused | `idempotency.test.mjs`, `chat-request-error.test.mjs`, `chat-stream.test.mjs`, `history-store.test.mjs` | **47 + history-store green** |
+| Backend coded run errors | `test_run_error_coded.py` | **18 passed** (+3 this cycle) |
+| Backend nginx contract | `test_nginx_coded_upstream_failures.py` (new) | **25 passed** |
+| Backend nginx regressions | `test_infra_audit_nginx_upstream_resolution.py`, `test_nginx_compression.py`, `test_nginx_langgraph_body_size.py`, `test_nginx_peer_network.py`, `test_nginx_provisioning.py`, `test_nginx_voice_websocket.py` | **50 passed**, unchanged |
+| Backend boundaries | `test_harness_boundary.py`, `test_no_orphan_modules.py` | **green** — the new `app/gateway/error_sse.py` module is wired and respects App→Harness |
+
+### Bugs discovered and fixed this cycle
+
+| ID | Severity | Symptom | Root cause |
+|---|---|---|---|
+| ALPHA-BUG-0011 | **P1** | A lost run-admission response was never re-sent, and a blind retry would have admitted a **second run** | The Gateway already scoped `Idempotency-Key` admission and deduped a reuse; the frontend sent no key and `apiFetch` is single-shot |
+| ALPHA-BUG-0012 | P2 | A transport drop on the initial POST ended the turn with no recovery path | Same gap, user-visible as a lost turn |
+| ALPHA-BUG-0013 | P2 | One Gateway outage rendered two disagreeing banners with independent dismissal | `gatewayOk` and `serverHistoryError` are the same outage, rendered as two alerts |
+| ALPHA-BUG-0014 | P2 | A coded run failure reached the log/metric/recovery ledger but never the watching client | No production `configure_error_reporter` caller; the SSE leg was unbound |
+| ALPHA-BUG-0015 | P2 | A proxy failure reached the client as an HTML page → only "HTTP 502" | No `proxy_intercept_errors`/`error_page` in any config; Helm was a third copy |
+
+### Remaining bugs
+
+| Severity | Count | Items |
+|---|---|---|
+| P0 | 0 | — |
+| P1 | 1 | Failure visibility queue (`flash()` single slot, ~60 call sites) |
+| P2 | 4 | Crash-loop supervisor wiring; coded-502 **live** acceptance; error-reporter SSE operator surface; idle-Gateway CPU (unreproduced, above target) |
+| P3 | 2 | Behaviour-trace spine default-off; no frontend client telemetry |
+
+### Observability
+
+| Gate | Status | Evidence |
+|---|---|---|
+| Logs | PASS | `alpha/observability/` spine; `alpha/errors/` registry |
+| Trace correlation | PASS | `TraceEnvelope` + `RunContext` contextvar |
+| Error UI | PASS | `chat-support-id.ts` renders code + correlationId |
+| **Coded run error reaches the client** | **PASS (cycle 2)** | `app/gateway/error_sse.py` bound in the lifespan; real journal → real reporter → real bridge → real `subscribe()` |
+| Unaddressable reports are countable | **PASS (cycle 2)** | `alpha_errors_sse_unbound_total` + `app.state.error_reporter_sse{published,unbound,loop_closed}` |
+| Failure artifacts | PARTIAL | Evidence bundle layout specified; not yet implemented |
+
+### Recovery
+
+| Gate | Status | Evidence |
+|---|---|---|
+| Retry | PASS | LLM middleware 3×; tool timeout 600 s; stall watchdog 900 s; **admission retry 3× under an idempotency key (cycle 2)** |
+| Handoff | PASS | `SafeRunRecoveryService`; peer takeover on lease expiry |
+| Checkpoint | PASS | LangGraph checkpointer + `runtime/checkpoint/` |
+| Resume | PARTIAL | Durable runtime wired; no live restart/resume run |
+
+### Real workloads
+
+Unchanged from cycle 1 except where noted. **No workload was run against a live
+Gateway this cycle** — this environment has no Docker daemon and no booted
+Gateway, so every live row stays as cycle 1 recorded it rather than being
+re-claimed. Workload **K (LLM provider failure)** and **N (backend-only
+failure)** gained *static* fault-path coverage: the admission retry is proven
+against an injected transport failure through the real `sendMessage`, and the
+error-reporter leg against a real run failure — but neither is a live stack
+observation.
+
+### Important findings
+
+1. **The P1 fix was waiting for a precondition that already existed.** Cycle 1
+   correctly refused to flip idempotent retry "blind", on the grounds that
+   retrying a run-creating POST without a key is the double-charging failure
+   `runtime/side_effects` exists to catch. Re-reading the tree first showed the
+   Gateway *has* scoped, deduped `Idempotency-Key` admission on thread-scoped
+   runs (`thread_runs.py`) — the key was implemented server-side and never sent.
+   Same shape as cycle 1's worst bug: **built, wired, never called.** The
+   refusal was right; the search that unblocked it was one grep away.
+2. **Two prescriptions in the roadmap were wrong, and the code won.** §3.2 said
+   intercept `502 503 504` — a Gateway-generated 503 (MCP worker-stopped,
+   admission refusal) carries a body the client acts on, so intercepting it
+   could only delete the server's reason; nginx never synthesises a 503 for a
+   proxied request. §4.5 said to apply `connectivityView()`, which renders
+   *internet* link state from `/api/ops/network` — a different question from "is
+   the Gateway reachable". Both were narrowed to what the code supports and the
+   deviations recorded rather than implemented blind.
+3. **The prescription missed a third config.** `deploy/helm/alpha/templates/`
+   ships its own nginx ConfigMap. A §3.2 fix applied to "both nginx configs"
+   would have left the Helm deployment on the bare 502 it has today, and the
+   existing nginx test family checks all three — which is how the third was
+   found.
+4. **A `keepalive` pool that cannot engage is dead configuration.** Connection
+   reuse needs a static `upstream {}` block, but the Docker config resolves its
+   upstream *per request* on purpose so a container restart cannot leave it
+   holding a dead IP. The pool landed where the address is stable (local
+   loopback, K8s Services) with the trade pinned by a test, instead of being
+   added everywhere and quietly doing nothing.
+5. **A UTF-8 BOM would have shipped invisibly.** Rewriting the local config with
+   a Windows tool added a BOM; nginx would have rejected its own first directive
+   (`unknown directive`) and every diff would still have looked correct. Caught
+   by reading bytes rather than trusting the diff, and now pinned.
+6. **A test harness that extracts source can silently mis-test a new binding.**
+   `chat-request-error.test.mjs` runs the real extracted `sendMessage` through
+   injected dependencies. Adding two module-scope bindings without injecting
+   them would have thrown `ReferenceError` *inside* the request, masking every
+   status-code assertion in the file behind one generic "connection" failure —
+   so the harness now injects the real `sendIdempotent` with a comment saying a
+   passthrough would silently drop the header the test exists to pin.
+
+### Changes
+
+| # | File | Change |
+|---|---|---|
+| 1 | `frontend/src/lib/idempotency.ts` | **new** — key minting, transport-failure classification, bounded equal-jitter retry under a fixed key |
+| 2 | `frontend/src/lib/idempotency.test.mjs` | **new** — 9 cases |
+| 3 | `frontend/src/components/ChatView.tsx` | per-send key; stream POST goes through `sendIdempotent`; the amber history banner is gated on `gatewayOk !== false` and the outage banner carries the local-copy disclosure |
+| 4 | `frontend/src/lib/chat-request-error.test.mjs` | inject the two new bindings; new end-to-end case asserting one key across a transport retry |
+| 5 | `frontend/src/lib/history-store.test.mjs` | new case: one outage, one banner |
+| 6 | `backend/app/gateway/error_sse.py` | **new** — binds the reporter's SSE leg onto the run stream; `unbound_sse` metric + counters |
+| 7 | `backend/app/gateway/deps.py` | bind the leg immediately after the bridge is built |
+| 8 | `backend/tests/test_run_error_coded.py` | +3 cases (bound leg reaches the stream; unaddressable report counted; lifespan binding order) |
+| 9 | `docker/nginx/nginx.conf` | coded 502/504 targets; `proxy_intercept_errors off` for frontend + provisioner; keepalive trade documented |
+| 10 | `docker/nginx/nginx.local.conf` | same, plus `keepalive 32` and `Connection` cleared on the 15 non-WebSocket gateway locations |
+| 11 | `deploy/helm/alpha/templates/configmap-nginx.yaml` | same coded targets (the third config) |
+| 12 | `backend/tests/test_nginx_coded_upstream_failures.py` | **new** — 25 cases over all three configs |
+| 13 | `docs/reliability/KNOWN_ISSUES.md`, `docs/RELIABILITY_ROADMAP.md` | §3.1, §3.2, §4.3, §4.5 → FIXED with deviations recorded |
+
+### Tests added
+
+- `frontend/src/lib/idempotency.test.mjs` — 9: key shape, retryable-classification,
+  header, retry identity (same key/path/body), server answer never retried, abort
+  never retried, bounded budget, abort during backoff, equal-jitter floor stepped
+  to the millisecond.
+- `frontend/src/lib/chat-request-error.test.mjs` — 1 new end-to-end case driving
+  the real `sendMessage` through a transport failure.
+- `frontend/src/lib/history-store.test.mjs` — 1 new case for the unified signal.
+- `backend/tests/test_run_error_coded.py` — 3 new cases.
+- `backend/tests/test_nginx_coded_upstream_failures.py` — 25 new cases.
+
+### Evidence
+
+`docs/RELIABILITY_ROADMAP.md` §3.1, §3.2, §4.3, §4.5 ·
+`docs/reliability/KNOWN_ISSUES.md` (ALPHA-BUG-0011…0015) · test files above.
+
+### Next cycle — highest-risk unresolved areas
+
+1. **Live acceptance is still the gap, and it gates six gates (D–K).** The
+   coded-502 fix in particular is *statically* proven only; `docker compose` with
+   the Gateway stopped must return the coded JSON for real.
+2. **P1 failure visibility queue** — the last P1 in the tree; a bounded list with
+   a persistent badge instead of one 4.5 s `string | null` slot.
+3. **Crash-loop supervisor wiring** to the Windows launcher (§3.5) — a service
+   that crash-loops is still not quarantined after N restarts.
+4. **Error-reporter SSE operator surface** — the counters exist but no `/api/ops`
+   route exposes them, so the leg's health is not yet visible at the operator
+   level.
+
+---
+
+# Cycle 1
+
 **Cycle:** 1
 **Date:** 2026-10-04
 **Base commit:** `eaf1b32`

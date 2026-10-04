@@ -83,6 +83,13 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     "operations": "operations",
     "plans": "plans",
     "reasoning": "reasoning",
+    # The reliability campaign's dossier. Classified as operations for the same
+    # reason ARCHITECTURE.md is not: these documents describe how this
+    # deployment behaves and what is still broken, which is operational
+    # content. Individual documents carry their own navigation description via
+    # FILE_OVERRIDES; this rule keeps a new file here from failing the whole
+    # generator closed.
+    "reliability": "operations",
     "roadmaps": "plans",
 }
 
@@ -198,6 +205,46 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "RELIABILITY_ROADMAP.md": DocumentSpec(
         "operations",
         "Production reliability plan: incident evidence, shipped fixes, specified retry/port/self-heal work, and the operational budget table.",
+    ),
+    # The docs/reliability/ dossier. A directory rule below classifies the
+    # folder, and these per-file entries give each document its own navigation
+    # sentence, which is the point of this table. REGENERATE docs/INDEX.md after
+    # editing; the generator fails closed rather than absorbing an unknown file.
+    "reliability/ALPHA_SYSTEM_MAP.md": DocumentSpec(
+        "operations",
+        "Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.",
+    ),
+    "reliability/FEATURE_EXECUTION_MATRIX.md": DocumentSpec(
+        "operations",
+        "Per-feature trace from UI entry through handler, orchestrator, tool and persistence to verification, with current status and evidence.",
+    ),
+    "reliability/OBSERVABILITY_ARCHITECTURE.md": DocumentSpec(
+        "operations",
+        "The correlated log/trace/event spine: identifier hierarchy, trace shape, and where each telemetry hook is wired.",
+    ),
+    "reliability/ERROR_CATALOG.md": DocumentSpec(
+        "operations",
+        "Stable error codes with severity, retry policy, recovery action and the user-facing wording each code owns.",
+    ),
+    "reliability/FAILURE_RECOVERY_MATRIX.md": DocumentSpec(
+        "operations",
+        "Per-failure detection, classification, retry decision, recovery strategy and the evidence each one leaves behind.",
+    ),
+    "reliability/REAL_WORK_VALIDATION.md": DocumentSpec(
+        "operations",
+        "Workloads A-O and, for each, exactly which stability gate it does or does not prove.",
+    ),
+    "reliability/KNOWN_ISSUES.md": DocumentSpec(
+        "operations",
+        "The authority on open defects: every entry marked FIXED, WIRED or SPECIFIED, never aspirational.",
+    ),
+    "reliability/REGRESSION_MATRIX.md": DocumentSpec(
+        "operations",
+        "Every confirmed bug mapped to the test that stops it reverting, plus the coverage gaps that have none.",
+    ),
+    "reliability/STABILITY_REPORT.md": DocumentSpec(
+        "operations",
+        "Cycle-by-cycle test counts, bugs found and fixed, gate status, and the next highest-risk unresolved area.",
     ),
     "CHAT_SHELL_DESIGN.md": DocumentSpec(
         "architecture",

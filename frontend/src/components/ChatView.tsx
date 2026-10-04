@@ -24,6 +24,7 @@ import {
   type EffortChoice,
 } from "@/lib/reasoning-effort";
 import { consumeChatStream, StreamRunFailure } from "@/lib/chat-stream";
+import { newIdempotencyKey, sendIdempotent } from "@/lib/idempotency";
 import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { chatSupportId } from "@/lib/chat-support-id";
@@ -1143,6 +1144,14 @@ export default function ChatView() {
     const runGeneration = runGenerationRef.current + 1;
     runGenerationRef.current = runGeneration;
     const runIsCurrent = () => runGenerationRef.current === runGeneration;
+    // One idempotency key per logical send. The Gateway scopes it to the
+    // authenticated owner and this thread, so a transport-level retry of the
+    // stream admission (the only failure `sendIdempotent` retries — a server
+    // answer, even a 5xx, is never re-sent) resolves to the SAME run record
+    // instead of admitting a duplicate. A regenerate/replay below is a new
+    // logical request and gets its own key, which is exactly right: it must
+    // not resolve to the run it replaces.
+    const runIdempotencyKey = newIdempotencyKey();
     const voiceTurn = options.voiceTurn === true;
     stopQueuedSpeech();
     setInput("");
@@ -1314,43 +1323,52 @@ export default function ChatView() {
     };
 
     try {
-      const res = await apiFetch(`/threads/${encodeURIComponent(threadId)}/runs/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          assistant_id: activeBot?.name || "lead_agent",
-          // A transient browser/network drop must not cancel durable work;
-          // the explicit Stop action remains the cancellation boundary.
-          on_disconnect: "continue",
-          // `custom` carries the root-namespace `task_*` subagent events. Without
-          // it the transcript can show only a spinner while a delegation runs.
-          stream_mode: ["messages-tuple", "values", "custom"],
-          ...(replay
-            ? {
-                // The prepared payload is authoritative: `input` is the graph
-                // input recorded at the base checkpoint (a regenerate re-sends
-                // the original question without a second user row; an edit
-                // carries the replacement already spliced in), `checkpoint` is
-                // the fork point *before* the superseded turn, and `metadata`
-                // marks the run as a replay so the paged history hides the
-                // attempt it replaces.
-                input: replay.prepared.input,
-                checkpoint: replay.prepared.checkpoint,
-                metadata: replay.prepared.metadata,
-              }
-            : { input: { messages: [{ role: "user", content }] } }),
-          config: {
-            configurable: {
-              model_name: selectedModel,
-              ...(planMode ? { is_plan_mode: true } : {}),
-              // `default` is omitted rather than sent as a level: it means "no
-              // explicit request", and sending the literal string would be
-              // rejected by the run boundary.
-              ...(reasoningEffort !== DEFAULT_EFFORT ? { reasoning_effort: reasoningEffort } : {}),
+      // The admission POST rides an idempotency key, so a transport
+      // failure (nothing was ever received) is retried with the same
+      // key, path and body and resolves to this one run. A server
+      // answer — success or any error status — propagates untouched:
+      // the retry never re-sends a request the Gateway already decided.
+      const res = await sendIdempotent(apiFetch, {
+        path: `/threads/${encodeURIComponent(threadId)}/runs/stream`,
+        idempotencyKey: runIdempotencyKey,
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            assistant_id: activeBot?.name || "lead_agent",
+            // A transient browser/network drop must not cancel durable work;
+            // the explicit Stop action remains the cancellation boundary.
+            on_disconnect: "continue",
+            // `custom` carries the root-namespace `task_*` subagent events. Without
+            // it the transcript can show only a spinner while a delegation runs.
+            stream_mode: ["messages-tuple", "values", "custom"],
+            ...(replay
+              ? {
+                  // The prepared payload is authoritative: `input` is the graph
+                  // input recorded at the base checkpoint (a regenerate re-sends
+                  // the original question without a second user row; an edit
+                  // carries the replacement already spliced in), `checkpoint` is
+                  // the fork point *before* the superseded turn, and `metadata`
+                  // marks the run as a replay so the paged history hides the
+                  // attempt it replaces.
+                  input: replay.prepared.input,
+                  checkpoint: replay.prepared.checkpoint,
+                  metadata: replay.prepared.metadata,
+                }
+              : { input: { messages: [{ role: "user", content }] } }),
+            config: {
+              configurable: {
+                model_name: selectedModel,
+                ...(planMode ? { is_plan_mode: true } : {}),
+                // `default` is omitted rather than sent as a level: it means "no
+                // explicit request", and sending the literal string would be
+                // rejected by the run boundary.
+                ...(reasoningEffort !== DEFAULT_EFFORT ? { reasoning_effort: reasoningEffort } : {}),
+              },
             },
-          },
-        }),
+          }),
+        },
       });
 
       responseStarted = true;
@@ -2145,6 +2163,22 @@ export default function ChatView() {
           />
         )}
 
+        {/*
+          One outage, one banner. When the Gateway probe has failed
+          (`gatewayOk === false`), the server-history read failed
+          *because* the Gateway is down — that is a single cause,
+          not a second independent failure. Rendering the amber
+          history banner too showed two disagreeing alerts with two
+          separate dismiss buttons for the same outage, and
+          dismissing the red one left the amber one implying a
+          partial problem. The amber banner therefore speaks only
+          when the Gateway answered but the history route still
+          failed — a genuinely distinct failure that deserves its
+          own Retry. `serverHistoryError` itself is never cleared
+          here: it is the reason the local list is showing, and it
+          re-renders the amber banner the moment the Gateway
+          answers again.
+        */}
         {gatewayOk === false && !offlineDismissed && (
           <div className="shrink-0 px-4 pt-2">
             {/* An interruption: `role="alert"` so a screen reader is told now,
@@ -2153,7 +2187,7 @@ export default function ChatView() {
               <span className="size-2 rounded-full bg-destructive animate-pulse shrink-0" aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <strong>Backend not connected.</strong>{" "}
-                <span className="text-muted-foreground">Chats stay in this browser until the Gateway runs. Start it with <code className="font-mono">.\start.ps1</code>, then refresh.</span>
+                <span className="text-muted-foreground">Chats stay in this browser until the Gateway runs — the conversation list below is the complete local copy, not a confirmed empty history. Start it with <code className="font-mono">.\start.ps1</code>, then refresh.</span>
               </span>
               <button type="button" onClick={() => setView("system")} className="px-2.5 py-1 rounded-lg bg-destructive text-destructive-foreground text-[11px] font-semibold shrink-0">
                 Diagnose
@@ -2165,7 +2199,7 @@ export default function ChatView() {
           </div>
         )}
 
-        {serverHistoryError && view === "chat" && (
+        {serverHistoryError && view === "chat" && gatewayOk !== false && (
           <div className="shrink-0 px-4 pt-2">
             <div role="alert" className="max-w-4xl mx-auto flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
               <span className="size-2 rounded-full bg-amber-500 shrink-0 mt-1" aria-hidden="true" />
