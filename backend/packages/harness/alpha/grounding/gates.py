@@ -179,6 +179,33 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     # This is also the mandated final step of every task (see the lead prompt's
     # deliverable rule), so leaving it unclassified would gate every delivery.
     "present_files": SideEffectClass.REVERSIBLE_WRITE,
+    # -- collaboration and coordination -----------------------------------
+    # Observed live on 2026-10-04: a real team run asked its coder to post an
+    # update to the shared room and the gate refused `group_chat` (and then
+    # `ask_clarification`) as unclassified-irreversible. Every multi-agent
+    # collaboration tool was unclassified, so a team could not message, plan,
+    # coordinate or delegate at all -- the feature was structurally unreachable.
+    #
+    # These are session-local coordination writes: a room message, a plan item,
+    # a board card, a goal, a delegation. They are bounded to this installation,
+    # re-runnable or reversible, and none of them publishes outside the session.
+    "group_chat": SideEffectClass.REVERSIBLE_WRITE,
+    "kanban_board": SideEffectClass.REVERSIBLE_WRITE,
+    "write_todos": SideEffectClass.REVERSIBLE_WRITE,
+    "goal_engine": SideEffectClass.REVERSIBLE_WRITE,
+    "bot_roster": SideEffectClass.REVERSIBLE_WRITE,
+    "war_room": SideEffectClass.REVERSIBLE_WRITE,
+    "swarm": SideEffectClass.REVERSIBLE_WRITE,
+    "workflow_dag_manage": SideEffectClass.REVERSIBLE_WRITE,
+    "task": SideEffectClass.REVERSIBLE_WRITE,
+    # `ask_clarification` must pass: it is the mechanism by which an agent
+    # obtains the very confirmation this gate tells it to obtain. Blocking it is
+    # the refused-remediation circularity (`alpha_capability`, `ls`,
+    # `hashline_read`) in its purest form -- the gate demands confirmation and
+    # refuses the tool for asking.
+    "ask_clarification": SideEffectClass.REVERSIBLE_WRITE,
+    "view_image": SideEffectClass.READ_ONLY,
+    "list_background_tasks": SideEffectClass.READ_ONLY,
     # The capability manifest is a read-only projection of local registries —
     # no model calls, no network, no provider probes. Classifying it as
     # READ_ONLY is what lets the reuse gate's own recommended remediation pass.

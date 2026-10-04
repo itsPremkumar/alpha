@@ -489,6 +489,38 @@ class TestGates:
             assert DEFAULT_SIDE_EFFECTS.get(name) is None, f"{name} must stay unclassified/blocked"
             assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is True, name
 
+    def test_collaboration_tools_are_classified(self) -> None:
+        """The multi-agent collaboration surface must not be gate-refused.
+
+        Observed live on 2026-10-04: a real team run asked its coder to post an
+        update to the shared room, and the gate refused `group_chat` and then
+        `ask_clarification` as unclassified-irreversible. Every collaboration
+        tool was unclassified, so a team could not message, plan, coordinate or
+        delegate -- the feature was structurally unreachable, and the refusal
+        text told the agent to obtain confirmation via a tool that was itself
+        refused.
+        """
+        for name in (
+            "group_chat",
+            "ask_clarification",
+            "kanban_board",
+            "write_todos",
+            "goal_engine",
+            "bot_roster",
+            "war_room",
+            "swarm",
+            "workflow_dag_manage",
+            "task",
+        ):
+            assert DEFAULT_SIDE_EFFECTS.get(name) is SideEffectClass.REVERSIBLE_WRITE, name
+            assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is False, name
+        for name in ("view_image", "list_background_tasks"):
+            assert DEFAULT_SIDE_EFFECTS.get(name) is SideEffectClass.READ_ONLY, name
+            assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is False, name
+        # Real execution stays blocked; this fix is not a general widening.
+        for name in ("bash", "execute_command", "git_push", "send_email"):
+            assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is True, name
+
     def test_present_files_is_classified_as_reversible(self) -> None:
         """`present_files` is the mandated delivery tool, not a side effect.
 
