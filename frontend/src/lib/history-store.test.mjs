@@ -220,9 +220,16 @@ test("a Gateway outage is one banner, not two disagreeing ones", () => {
   // The history error is never force-cleared by the outage path: the
   // probe's success handler re-arms only its own dismissal, so the
   // amber banner re-renders the moment the Gateway answers again.
-  const probe = chatView.slice(
-    chatView.indexOf("const probeGateway"),
-    chatView.indexOf("useEffect(() => {\n    probeGateway();"),
+  //
+  // Newlines are normalised before slicing: the slice anchors are literal
+  // multi-line strings, and a CRLF file with one LF-only line inserted by an
+  // edit makes `indexOf` return -1 — which silently turns `slice(start, -1)`
+  // into "the entire rest of the file" and fails this assertion for a reason
+  // that has nothing to do with the behaviour under test.
+  const normalised = chatView.replace(/\r\n/g, "\n");
+  const probe = normalised.slice(
+    normalised.indexOf("const probeGateway"),
+    normalised.indexOf("useEffect(() => {\n    probeGateway();"),
   );
   assert.match(probe, /setGatewayOk\(true\)/);
   assert.doesNotMatch(probe, /setServerHistoryError/);

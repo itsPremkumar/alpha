@@ -184,6 +184,12 @@ export function UpdateControl() {
 
   return (
     <div ref={rootRef} className="relative inline-flex">
+      {/* `min-h-6` makes the hit area a real 24px. It measured 37x21, which is
+          under the threshold for a comfortable click and well under what a
+          touch target needs — a header control is exactly where a mis-sized
+          box is invisible until someone tries to use it. In a 56px header the
+          three extra pixels change nothing visually, and `justify-center`
+          keeps the label centred in the taller box. */}
       <button
         type="button"
         onClick={() => (open ? setOpen(false) : void check())}
@@ -191,7 +197,7 @@ export function UpdateControl() {
         aria-expanded={open}
         title={title}
         aria-label={title}
-        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50 whitespace-nowrap ${tone}`}
+        className={`inline-flex items-center justify-center gap-1 min-h-6 px-1.5 py-0.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50 whitespace-nowrap ${tone}`}
       >
         {available ? (
           <ArrowUpCircle className={`size-3 ${busy ? "animate-spin" : ""}`} />

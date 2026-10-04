@@ -164,7 +164,12 @@ export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
             <Folder className="size-6" />
           </div>
           <div className="space-y-1">
-            <h4 className="text-xs font-semibold text-foreground">No Project Selected</h4>
+            {/* h3, not h4: this empty state is a child of the section's h2, and
+                an h4 skipped a level. Measured by the UI audit's DOM check
+                (`heading_skips`), which reports `h2 -> h4` on every view that
+                mounts this panel. The classes are unchanged, so the visual
+                density is identical and only the accessibility tree moves. */}
+            <h3 className="text-xs font-semibold text-foreground">No Project Selected</h3>
             <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
               Select or create a project to inspect files, team tasks, and conversations.
             </p>

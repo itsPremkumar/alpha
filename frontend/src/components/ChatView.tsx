@@ -284,7 +284,7 @@ function startHistoryArchive(
     });
 }
 
-export default function ChatView() {
+export default function ChatView({ initialView }: { initialView?: WorkspaceView } = {}) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -381,15 +381,32 @@ export default function ChatView() {
   const [botsLoading, setBotsLoading] = useState<boolean>(true);
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
   /**
-   * Deep-linkable workspace view. `?view=overview` (or any registered view id)
-   * opens that surface on load — the helper this was built for
-   * (`lib/workspace-view.ts`) was never wired in, so every shared link landed
-   * on chat and the Overview atlas had no URL at all. Absent or unknown param
-   * still means chat, exactly the old default.
+   * Deep-linkable workspace view.
+   *
+   * The initial value comes from the `initialView` prop, which `app/page.tsx`
+   * resolves from `searchParams` **on the server**. It used to be derived here
+   * from `window.location.search` behind a `typeof window === "undefined"`
+   * guard, which made the two renders disagree by construction: the server saw
+   * an empty query and rendered chat, the client saw `?view=<id>` and rendered
+   * that view. Measured, not inferred — the SSR responses for `?view=chat`,
+   * `?view=overview` and `?view=reliability` were byte-identical, so the server
+   * was ignoring the parameter entirely and React threw a hydration mismatch on
+   * every non-chat deep link, discarding the whole server-rendered tree.
+   *
+   * The `initialView` fallback below covers a mount that does not come from the
+   * page (there is one: the bot profile route), and it deliberately starts at
+   * `chat` rather than reading `window`, so it cannot reintroduce a mismatch.
+   * The effect that follows only ever runs after hydration.
    */
-  const [view, setView] = useState<WorkspaceView>(() =>
-    workspaceViewFromSearch(typeof window === "undefined" ? "" : window.location.search),
-  );
+  const [view, setView] = useState<WorkspaceView>(() => initialView ?? "chat");
+  // A mount that did not receive `initialView` (the bot profile route) resolves
+  // the URL itself — but only in an effect, which runs after hydration. Reading
+  // `window` during the first render is what caused the mismatch documented
+  // above, so it must never happen again on this path.
+  useEffect(() => {
+    if (initialView) return;
+    setView(workspaceViewFromSearch(window.location.search));
+  }, [initialView]);
   /**
    * Who is operating this workspace.
    *
@@ -2434,6 +2451,12 @@ export default function ChatView() {
             />
           </Suspense>
         ) : (
+          /* Not gated on the view id on purpose.
+           *
+           * This branch also holds the right-hand Project Inspector drawer,
+           * which is workspace-level and must stay reachable from every view,
+           * so the chat-only parts are gated individually below rather than by
+           * closing this whole branch on `view === "chat"`. */
           <div className="flex-1 flex overflow-hidden min-h-0">
             {activeContextTab === "files" ? (
               <Suspense fallback={<SectionFallback />}>
@@ -2447,7 +2470,30 @@ export default function ChatView() {
               <Suspense fallback={<SectionFallback />}>
                 <MemorySection />
               </Suspense>
-            ) : (
+            ) : view === "chat" ? (
+              /* The chat column renders ONLY in the chat view.
+               *
+               * This branch was the bare `else` of the `activeContextTab`
+               * chain, and `activeContextTab` is chat-scoped state, so for any
+               * view whose id is not one of `files` / `tasks` / `knowledge` it
+               * fell through to `else` and drew the transcript viewport, the
+               * empty-state hero and the composer — in a view that had already
+               * rendered its own section from its own `{view === X ? … : null}`
+               * block above.
+               *
+               * The damage was structural, not cosmetic. `<main>` is
+               * `flex flex-col h-full overflow-hidden`, so the section and a
+               * `flex-1` transcript competed for one screen and the section was
+               * clipped. Measured on Overview: the atlas was cut through the
+               * middle of its first card row, with the chat hero and a complete
+               * composer drawn underneath it. Every non-chat tab was affected
+               * and chat looked correct, which is why it read as a per-section
+               * styling bug rather than a layout one.
+               *
+               * The three sibling alternatives stay ungated because those tabs
+               * are reachable both as their own workspace view and as a chat
+               * sub-tab; `view === "chat"` would have made the latter
+               * unreachable. */
               <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
             {/* Active-bot banner */}
             {activeBot && (
@@ -2823,10 +2869,24 @@ export default function ChatView() {
               />
             </footer>
           </div>
-        )}
+        ) : null}
 
-        {/* Right-Hand Project Inspector Drawer */}
-        {inspectorOpen && (
+        {/* Right-Hand Project Inspector Drawer.
+
+            Chat-only, and it has to be said explicitly rather than left to fall
+            out of the layout. It shares a flex row with the chat column, and it
+            only ever appeared as a *right-hand* sidebar because that column
+            filled the space in front of it. With the chat column correctly
+            gated off, the drawer became the row's only child and rendered as a
+            320px block against the left edge, underneath a section it had
+            nothing to do with — measured on Overview, where the atlas was
+            clipped at the same 540px line so the drawer could start there.
+
+            It was never legitimately part of a non-chat view: it showed up in
+            30 tabs only as a side effect of the chat column leaking into them.
+            A section that opens a conversation does so by switching to chat
+            (`onOpenThread`), which is where the drawer still lives. */}
+        {view === "chat" && inspectorOpen && (
           <aside className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">
             <ProjectDetailPanel
               project={activeProject}
