@@ -21,7 +21,12 @@ from pydantic import BaseModel, Field
 
 from alpha.groups.activity import RunEvidence
 from alpha.groups.presence import resolve_room_presence
-from alpha.groups.room import REACTION_EMOJI, VALID_INTENTS
+from alpha.groups.room import (
+    GROUP_CATEGORIES,
+    GROUP_LINK_TYPES,
+    REACTION_EMOJI,
+    VALID_INTENTS,
+)
 from alpha.groups.roster import VALID_RULE_FIELDS, VALID_RULE_OPS, RosterError
 from alpha.groups.scope import MAX_DEPTH, MAX_HOP, ScopeError, children_of, descendants_of
 from app.gateway.deps import require_admin_user
@@ -957,6 +962,576 @@ async def reclaim_claim(name: str, claim_id: str, body: ReclaimRequest) -> dict:
     return {"room": key, "claim": claim.to_dict()}
 
 
+# ── Group profile, links, goals, project binding, clone ─────────
+#
+# Declared above the `/{name}` catch-all so Starlette matches them
+# before the single-segment parameterised route.
+
+
+class GroupProfileUpdate(BaseModel):
+    description: str | None = Field(default=None, max_length=5000)
+    purpose: str | None = Field(default=None, max_length=280)
+    goals: list[str] | None = Field(default=None, max_length=20)
+    tags: list[str] | None = Field(default=None, max_length=20)
+    category: str | None = Field(default=None, max_length=32)
+    avatar_url: str | None = Field(default=None, max_length=500)
+    banner_url: str | None = Field(default=None, max_length=500)
+    avatar_color: str | None = Field(default=None, max_length=16)
+    created_by: str | None = Field(default=None, max_length=64)
+
+
+class GroupLinkCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=120)
+    url: str = Field(min_length=1, max_length=500)
+    link_type: str = Field(default="custom", max_length=32)
+    icon: str | None = Field(default=None, max_length=32)
+
+
+class LinkReorderRequest(BaseModel):
+    link_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class GoalCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+
+
+class GoalUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    status: str | None = Field(default=None, max_length=32)
+    progress: int | None = Field(default=None, ge=0, le=100)
+
+
+class ProjectLinkRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=64)
+    project_name: str = Field(default="", max_length=120)
+    project_type: str = Field(default="kanban", max_length=32)
+
+
+class CloneRequest(BaseModel):
+    new_name: str = Field(min_length=1, max_length=64)
+    include_members: bool = True
+    include_rules: bool = True
+    include_links: bool = True
+    include_profile: bool = True
+
+
+class ActorRequest(BaseModel):
+    """An actor-only body: pin/read routes.
+
+    Deliberately separate from `ReactionRequest`, whose `emoji` field is
+    required — a pin carries no emoji, and modelling it as a reaction would
+    force a caller to invent one just to satisfy the schema.
+    """
+
+    actor: str = Field(min_length=1, max_length=64)
+
+
+@router.get("/{name}/profile", summary="Group identity and profile")
+async def get_group_profile(name: str) -> dict:
+    """The group's full identity record.
+
+    Absent fields are `null`, never defaults — a group without a
+    description is a real state, not a missing one.
+    """
+    key = _validate_room_name(name)
+
+    def _read():
+        room = _service().get_room(key)
+        if room is None:
+            return None
+        data = room.to_dict()
+        return {
+            "room_id": data["room_id"],
+            "name": data["name"],
+            "topic": data.get("topic"),
+            "summary": data.get("summary", ""),
+            "description": data.get("description"),
+            "purpose": data.get("purpose"),
+            "goals": data.get("goals", []),
+            "tags": data.get("tags", []),
+            "category": data.get("category"),
+            "avatar_url": data.get("avatar_url"),
+            "banner_url": data.get("banner_url"),
+            "avatar_color": data.get("avatar_color"),
+            "created_by": data.get("created_by"),
+            "created_at": data.get("created_at"),
+            "updated_at": data.get("updated_at"),
+            "valid_categories": list(GROUP_CATEGORIES),
+        }
+
+    profile = await asyncio.to_thread(_read)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    return profile
+
+
+@router.patch("/{name}/profile", summary="Update group profile")
+async def update_group_profile(name: str, body: GroupProfileUpdate) -> dict:
+    """Update the group's identity fields.
+
+    Only the fields present in the request body are written, so a
+    partial update cannot blank a field the caller did not send.
+    """
+    key = _validate_room_name(name)
+    # `model_fields_set` distinguishes "absent" from "explicit null",
+    # which is what the service needs to tell "clear it" from
+    # "leave it alone".
+    set_fields = set(body.model_fields_set)
+
+    def _update():
+        return _service().update_group_profile(
+            key,
+            description=body.description,
+            purpose=body.purpose,
+            goals=body.goals,
+            tags=body.tags,
+            category=body.category,
+            avatar_url=body.avatar_url,
+            banner_url=body.banner_url,
+            avatar_color=body.avatar_color,
+            created_by=body.created_by,
+            set_fields=set_fields,
+        )
+
+    try:
+        room = await asyncio.to_thread(_update)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return _room_to_response(room)
+
+
+@router.get("/{name}/links", summary="Group reference links")
+async def list_group_links(name: str) -> dict:
+    key = _validate_room_name(name)
+
+    def _read():
+        return [link.to_dict() for link in _service().list_links(key)]
+
+    try:
+        links = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "links": links, "count": len(links), "valid_types": list(GROUP_LINK_TYPES)}
+
+
+@router.post("/{name}/links", status_code=201, summary="Add a group link")
+async def add_group_link(name: str, body: GroupLinkCreate) -> dict:
+    key = _validate_room_name(name)
+    if body.link_type not in GROUP_LINK_TYPES:
+        raise HTTPException(status_code=422, detail=f"link_type must be one of {list(GROUP_LINK_TYPES)}")
+
+    def _add():
+        return _service().add_link(
+            key,
+            label=body.label,
+            url=body.url,
+            link_type=body.link_type,
+            icon=body.icon,
+            created_by=OPERATOR_ID,
+        )
+
+    try:
+        link = await asyncio.to_thread(_add)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return link.to_dict()
+
+
+@router.delete("/{name}/links/{link_id}", status_code=204, summary="Remove a group link")
+async def remove_group_link(name: str, link_id: str) -> None:
+    key = _validate_room_name(name)
+
+    def _remove():
+        _service().remove_link(key, link_id)
+
+    try:
+        await asyncio.to_thread(_remove)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+
+
+@router.patch("/{name}/links/reorder", summary="Reorder group links")
+async def reorder_group_links(name: str, body: LinkReorderRequest) -> dict:
+    key = _validate_room_name(name)
+
+    def _reorder():
+        return [link.to_dict() for link in _service().reorder_links(key, body.link_ids)]
+
+    try:
+        links = await asyncio.to_thread(_reorder)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "links": links, "count": len(links)}
+
+
+@router.get("/{name}/goals", summary="Group goals")
+async def list_group_goals(name: str) -> dict:
+    key = _validate_room_name(name)
+
+    def _read():
+        return _service().list_goals(key)
+
+    try:
+        goals = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "goals": goals, "count": len(goals)}
+
+
+@router.post("/{name}/goals", status_code=201, summary="Add a group goal")
+async def add_group_goal(name: str, body: GoalCreate) -> dict:
+    key = _validate_room_name(name)
+
+    def _add():
+        return _service().add_goal(key, title=body.title, description=body.description, created_by=OPERATOR_ID)
+
+    try:
+        goal = await asyncio.to_thread(_add)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return goal
+
+
+@router.patch("/{name}/goals/{goal_id}", summary="Update a group goal")
+async def update_group_goal(name: str, goal_id: str, body: GoalUpdate) -> dict:
+    key = _validate_room_name(name)
+    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+
+    def _update():
+        return _service().update_goal(key, goal_id, updates)
+
+    try:
+        goal = await asyncio.to_thread(_update)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return goal
+
+
+@router.post("/{name}/project-link", status_code=201, summary="Bind a group to a project")
+async def link_group_project(name: str, body: ProjectLinkRequest) -> dict:
+    key = _validate_room_name(name)
+
+    def _link():
+        return _service().link_project(
+            key,
+            project_id=body.project_id,
+            project_name=body.project_name,
+            project_type=body.project_type,
+        )
+
+    try:
+        link = await asyncio.to_thread(_link)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return link
+
+
+@router.get("/{name}/project-link", summary="The project this group is bound to")
+async def get_group_project_link(name: str) -> dict:
+    key = _validate_room_name(name)
+
+    def _read():
+        return _service().get_project_link(key)
+
+    try:
+        link = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "project_link": link}
+
+
+@router.delete("/{name}/project-link", status_code=204, summary="Remove the project binding")
+async def unlink_group_project(name: str) -> None:
+    key = _validate_room_name(name)
+
+    def _unlink():
+        _service().unlink_project(key)
+
+    try:
+        await asyncio.to_thread(_unlink)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+
+
+@router.post("/{name}/clone", status_code=201, summary="Clone a group's configuration")
+async def clone_group(name: str, body: CloneRequest) -> dict:
+    """Duplicate a group's charter into a new, empty room.
+
+    The transcript is never copied — two rooms sharing a history
+    would make reactions and edits ambiguous across the boundary.
+    """
+    key = _validate_room_name(name)
+    new_name = _validate_room_name(body.new_name)
+
+    def _clone():
+        return _service().clone_group(
+            key,
+            new_name=new_name,
+            include_members=body.include_members,
+            include_rules=body.include_rules,
+            include_links=body.include_links,
+            include_profile=body.include_profile,
+            created_by=OPERATOR_ID,
+        )
+
+    try:
+        room = await asyncio.to_thread(_clone)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    except ScopeError as exc:
+        raise _scope_error(exc, 409) from exc
+    return _room_to_response(room)
+
+
+# ── Message pinning, threading, search, receipts, typing ──────
+#
+# Declared above the `/{name}` catch-all.
+
+
+@router.post("/{name}/messages/{message_id}/pin", summary="Pin a message")
+async def pin_room_message(name: str, message_id: str, body: ActorRequest) -> dict:
+    """Pin a message to the group's pinned list.
+
+    The actor is recorded so the pin list shows who curated it.
+    """
+    key = _validate_room_name(name)
+    mid = _validate_message_id(message_id)
+
+    def _pin():
+        return _service().pin_message(key, mid, body.actor)
+
+    try:
+        msg = await asyncio.to_thread(_pin)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"message": msg.to_dict()}
+
+
+@router.delete("/{name}/messages/{message_id}/pin", summary="Unpin a message")
+async def unpin_room_message(name: str, message_id: str) -> dict:
+    key = _validate_room_name(name)
+    mid = _validate_message_id(message_id)
+
+    def _unpin():
+        return _service().unpin_message(key, mid)
+
+    try:
+        msg = await asyncio.to_thread(_unpin)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"message": msg.to_dict()}
+
+
+@router.get("/{name}/pinned", summary="Pinned messages")
+async def list_pinned_messages(name: str) -> dict:
+    """The group's pinned messages, most-recently-pinned first."""
+    key = _validate_room_name(name)
+
+    def _read():
+        return [m.to_dict() for m in _service().pinned_messages(key)]
+
+    try:
+        pinned = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "pinned": pinned, "count": len(pinned)}
+
+
+@router.get("/{name}/messages/{message_id}/thread", summary="A message's thread")
+async def get_message_thread(name: str, message_id: str) -> dict:
+    """The root message and every direct reply, in creation order."""
+    key = _validate_room_name(name)
+    mid = _validate_message_id(message_id)
+
+    def _read():
+        svc = _service()
+        room = svc.get_room(key)
+        if room is None:
+            return None
+        root = room.find_message(mid)
+        if root is None:
+            return {"root": None, "replies": []}
+        replies = svc.thread_replies(key, mid)
+        return {"root": root.to_dict(), "replies": [r.to_dict() for r in replies]}
+
+    thread = await asyncio.to_thread(_read)
+    if thread is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    return {"room": key, **thread}
+
+
+@router.get("/{name}/threads", summary="All thread roots")
+async def list_threads(name: str) -> dict:
+    """Messages that have at least one reply, for the thread list view."""
+    key = _validate_room_name(name)
+
+    def _read():
+        svc = _service()
+        roots = svc.thread_roots(key)
+        return [
+            {
+                **root.to_dict(),
+                "reply_count": len(svc.thread_replies(key, root.id)),
+            }
+            for root in roots
+        ]
+
+    try:
+        roots = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "threads": roots, "count": len(roots)}
+
+
+@router.get("/{name}/search", summary="Search the transcript")
+async def search_group_messages(
+    name: str,
+    q: str = Query(min_length=1, max_length=200),
+    sender: str | None = Query(default=None, max_length=64),
+    intent: str | None = Query(default=None, max_length=32),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    """Full-text search over a room's transcript.
+
+    Deleted messages are excluded — searching for withheld
+    content would re-disclose it. Results are newest-first
+    and capped.
+    """
+    key = _validate_room_name(name)
+
+    def _search():
+        return [m.to_dict() for m in _service().search_messages(key, q, sender=sender, intent=intent, limit=limit)]
+
+    try:
+        hits = await asyncio.to_thread(_search)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "query": q, "results": hits, "count": len(hits)}
+
+
+@router.post("/{name}/messages/{message_id}/read", summary="Mark a message read")
+async def mark_message_read(name: str, message_id: str, body: ActorRequest) -> dict:
+    """Record that ``actor`` has seen ``message_id``."""
+    key = _validate_room_name(name)
+    mid = _validate_message_id(message_id)
+
+    def _mark():
+        return _service().mark_read(key, mid, body.actor)
+
+    try:
+        msg = await asyncio.to_thread(_mark)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"message_id": mid, "reader": body.actor, "message": msg.to_dict()}
+
+
+@router.get("/{name}/unread", summary="Unread messages for a reader")
+async def list_unread_messages(name: str, reader: str = Query(..., max_length=64)) -> dict:
+    """Messages ``reader`` has not marked read.
+
+    A message with no receipt row is unread by default: the
+    absence of a read record is not proof of a read.
+    """
+    key = _validate_room_name(name)
+
+    def _read():
+        return [m.to_dict() for m in _service().unread_messages(key, reader)]
+
+    try:
+        unread = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "reader": reader, "unread": unread, "count": len(unread)}
+
+
+@router.get("/{name}/messages/{message_id}/readers", summary="Who has read a message")
+async def list_message_readers(name: str, message_id: str) -> dict:
+    key = _validate_room_name(name)
+    mid = _validate_message_id(message_id)
+
+    def _read():
+        return _service().message_readers(key, mid)
+
+    try:
+        readers = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"room": key, "message_id": mid, "readers": readers, "count": len(readers)}
+
+
+class TypingRequest(BaseModel):
+    bot_name: str = Field(min_length=1, max_length=64)
+    is_typing: bool = True
+
+
+@router.post("/{name}/typing", summary="Set a typing indicator")
+async def set_typing_indicator(name: str, body: TypingRequest) -> dict:
+    """Record that a bot is (or is no longer) typing.
+
+    Volatile by design: typing indicators live in memory only,
+    so a restart never claims someone is still typing.
+    """
+    key = _validate_room_name(name)
+
+    def _set():
+        _service().set_typing(key, body.bot_name, body.is_typing)
+
+    try:
+        await asyncio.to_thread(_set)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "bot_name": body.bot_name, "is_typing": body.is_typing}
+
+
+@router.get("/{name}/typing", summary="Current typing indicators")
+async def get_typing_indicators(name: str) -> dict:
+    key = _validate_room_name(name)
+
+    def _read():
+        return _service().typing_indicators(key)
+
+    try:
+        typing = await asyncio.to_thread(_read)
+    except KeyError as exc:
+        raise _scope_error(exc, 404) from exc
+    return {"room": key, "typing": typing, "count": len(typing)}
+
+
+@router.get("/{name}/events", summary="Real-time group event stream (SSE)")
+async def group_events(name: str):
+    """Server-Sent Events for a room's live activity.
+
+    The stream is a *projection* of the room's state, not a
+    second write path: a client that misses an event re-reads
+    the room and converges. Heartbeats keep the connection
+    alive through proxies that would otherwise idle-timeout
+    a quiet room.
+    """
+    from app.gateway.group_events import group_event_stream
+
+    key = _validate_room_name(name)
+    room = _service().get_room(key)
+    if room is None:
+        raise HTTPException(status_code=404, detail=f"Room '{key}' not found")
+    # Subscribe by `room_id`, because that is what every publisher uses
+    # (`post_message`, link/pin/goal writes all pass `room.room_id`). The room
+    # *name* is the caller's handle and is not the bus's key: keying the
+    # subscription by it produced a stream that connected cleanly, answered no
+    # 404, reported a healthy content type — and then never received a single
+    # event, because every publish landed under an id nobody was subscribed to.
+    return await group_event_stream(room.room_id)
+
+
 @router.get("/{name}", summary="Get room with recent messages")
 async def get_room(name: str, limit: int = 50) -> dict:
     key = _validate_room_name(name)
@@ -1007,7 +1582,7 @@ class MessageEditRequest(BaseModel):
 
 
 class ReactionRequest(BaseModel):
-    #: The actor toggling the reaction — normally the operator.
+    #: The actor toggling the reaction - normally the operator.
     actor: str = Field(min_length=1, max_length=64)
     emoji: str = Field(min_length=1, max_length=8)
 

@@ -736,6 +736,14 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # read-only, and every failure inside it is swallowed, so it can never
         # influence a run transition.
         set_activity_observer(_record_run_activity)
+        # The group-room SSE stream is a projection of the durable room
+        # state. The harness owns the mutations; the Gateway owns the
+        # fan-out, so the observer is installed here rather than imported
+        # by the harness — the dependency direction stays one-way.
+        from alpha.groups.service import set_group_event_observer
+        from app.gateway.group_events import publish_room_event
+
+        set_group_event_observer(publish_room_event)
         # Startup recovery: mark inflight runs whose lease has expired as error.
         # In single-worker mode (SQLite / backend=memory), no run has a lease, so
         # all inflight rows are reclaimed (unchanged behaviour). In multi-worker
