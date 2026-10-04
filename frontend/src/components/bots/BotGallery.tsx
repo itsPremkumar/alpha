@@ -69,7 +69,30 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
         </button>
       </div>
 
-      <FleetHealthBar health={health} />
+      {/* The fleet strip must not render while the roster is still in flight.
+          `computeFleetHealth([])` returns total/active/paused of 0, so gating
+          only the card grid below left this strip asserting a *measured empty
+          fleet* for the whole load. Measured here: the roster takes ~20s to
+          arrive (it is fetched with `activity=true`, which costs a per-bot
+          inbox read plus a secret scan), and for those 20s the header read
+          "0 Total bots / 0 Active / 0 Paused" against a server that reports 57.
+
+          That is the specific thing the client honesty rules forbid -- a count
+          the server did not report is `null`, never `0`. The grid below
+          already had a skeleton for exactly this reason; this strip did not,
+          because it sat outside that branch. */}
+      {isLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" aria-busy="true" aria-label="Fleet health loading">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border/60 bg-card px-3 py-2.5 animate-pulse">
+              <div className="h-4 rounded bg-muted w-10" />
+              <div className="h-2.5 rounded bg-muted w-16 mt-2" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <FleetHealthBar health={health} />
+      )}
 
       {activeNow.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-border/60 bg-card px-3 py-2">
@@ -102,6 +125,10 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            /* A placeholder is not a label: it vanishes as soon as the field has
+               content, and a screen reader may not announce it at all. Measured
+               as `unlabelled_inputs: INPUT[text]` on this view. */
+            aria-label="Search bots"
             placeholder="Search bots by name, role, skill, capability..."
             className="w-full bg-card border border-border/70 rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
           />
@@ -110,6 +137,7 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
+            aria-label="Filter by department"
             className="text-xs bg-card border border-border/70 rounded-xl px-2.5 py-2 font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40"
           >
             <option value="all">All departments</option>
@@ -120,6 +148,7 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
+            aria-label="Filter by status"
             className="text-xs bg-card border border-border/70 rounded-xl px-2.5 py-2 font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40"
           >
             <option value="all">Any status</option>
