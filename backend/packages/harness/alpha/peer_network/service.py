@@ -27,7 +27,9 @@ from .agent_dispatch import (
 from .discovery import MdnsDiscovery, UdpDiscovery
 from .github import GitHubRendezvous, GitHubRendezvousError
 from .identity import LocalIdentity, prime_advertised_host
+from .invite import DEFAULT_TTL_SECONDS, InviteClaims, InviteError, build_invite as _build_invite_uri, parse_invite
 from .models import (
+    MAX_PAYLOAD_BYTES,
     MESSAGE_KIND_VALUES,
     ConversationCreateRequest,
     MessageCreateRequest,
@@ -67,6 +69,7 @@ from .storage import (
     NETWORK_OWNER,
     PeerNetworkStore,
     PeerRegistryFullError,
+    public_peer,
     token_digest,
 )
 from .transport import PeerNetworkDisabledError, PeerTransport, PeerTransportError, validate_endpoint
@@ -75,8 +78,13 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_HOME = "peer_network"
 _MAX_PARTICIPANTS = 50
-_MAX_PAYLOAD_BYTES = 256 * 1024
 _MAX_RECIPIENTS = 50
+
+# The payload ceiling is owned by `models.MAX_PAYLOAD_BYTES`, next to the
+# validator that now enforces it on *every* envelope including inbound ones.
+# It used to live only here, which meant the bound existed on the send path and
+# nowhere else — two answers to one question, and the lossy one was the model's.
+_MAX_PAYLOAD_BYTES = MAX_PAYLOAD_BYTES
 
 # The peer network is an *inbound* plane: `remote/pair`, `inbound/messages`, and
 # `api/peer-network/ws` are mounted without a browser session, and UDP/mDNS
@@ -528,9 +536,20 @@ class PeerNetworkService:
         return peers
 
     async def list_peers(self, *, skill: str | None = None, trust: str | None = None) -> list[dict[str, Any]]:
-        return await self._run_store(self.store.list_peers, skill=skill, trust=trust)
+        rows = await self._run_store(self.store.list_peers, skill=skill, trust=trust)
+        # Allowlisted rather than filtered: `get_peer` returns `owner_id`, the
+        # outbound token (never) and the whole Agent Card, and a deny-list would
+        # silently start leaking the day a column is added.
+        return [public_peer(row) for row in rows]
 
     async def get_peer(self, agent_id: str, *, include_secret: bool = False) -> dict[str, Any] | None:
+        """Read one peer.
+
+        ``include_secret=True`` is for the *inbound* auth path and this module's
+        own delivery code, never for a response body. Callers that build an HTTP
+        or model-facing payload must project through :func:`public_peer`.
+        """
+
         return await self._run_store(self.store.get_peer, agent_id, include_secret=include_secret)
 
     async def set_auto_reply(self, agent_id: str, enabled: bool) -> dict[str, Any] | None:
@@ -542,7 +561,8 @@ class PeerNetworkService:
         messages) with auto-reply off.
         """
 
-        return await self._run_store(self.store.set_peer_auto_reply, agent_id, bool(enabled))
+        result = await self._run_store(self.store.set_peer_auto_reply, agent_id, bool(enabled))
+        return public_peer(result) if result else None
 
     async def get_peer_by_token(self, token: str, agent_id: str | None = None) -> dict[str, Any] | None:
         """Resolve a peer token for the inbound plane, or ``None``.
@@ -563,19 +583,24 @@ class PeerNetworkService:
             raise ValueError("trust must be discovered or blocked")
         result = await self._run_store(self.store.set_peer_trust, agent_id, trust)
         self._publish("peer.trust_changed", {"agent_id": agent_id, "trust": trust})
-        return result
+        return public_peer(result) if result else None
 
     async def rotate_pairing_code(self) -> str:
         code = await self._run_store(self.identity.rotate_pairing_code)
         self._publish("pairing.rotated", {"rotated": True})
         return code
 
-    async def pair(self, endpoint: str, pairing_code: str, expected_agent_id: str | None = None) -> dict[str, Any]:
+    async def pair(self, endpoint: str, pairing_code: str, expected_agent_id: str | None = None, *, invite_epoch: int | None = None) -> dict[str, Any]:
         """Pair with a remote card using an out-of-band shared code.
 
         The code is sent to the remote pair route, which validates it against
         its own identity.  The same code becomes the local bearer credential;
         it is never placed in the Agent Card or a discovery beacon.
+
+        ``invite_epoch`` is forwarded so the *issuer* can enforce single-use. It
+        is passed through rather than checked here because this installation is
+        the redeemer in that flow and has no authority over the remote
+        watermark; see ``invite.py``.
         """
 
         validate_endpoint(endpoint, allowed_schemes=("http", "https"))
@@ -586,7 +611,7 @@ class PeerNetworkService:
         card = await self.transport.fetch_card(endpoint)
         if expected_agent_id and card.agent_id != expected_agent_id:
             raise ValueError(f"Peer identity mismatch: expected {expected_agent_id}, received {card.agent_id}")
-        request = PeerPairRequest(card=self.card(), pairing_code=pairing_code)
+        request = PeerPairRequest(card=self.card(), pairing_code=pairing_code, invite_epoch=invite_epoch)
         response = await self.transport.pair(endpoint, request)
         if response.get("accepted") is not True:
             raise PeerTransportError(str(response.get("message") or "Remote peer rejected pairing"))
@@ -606,7 +631,111 @@ class PeerNetworkService:
             paired=True,
         )
         self._publish("peer.paired", {"agent_id": remote.agent_id, "transport": "pairing"})
-        return saved
+        # Allowlisted (D5): this return value goes straight into a POST /pair
+        # response body, and the raw row carries `owner_id` and the full card.
+        return public_peer(saved or {})
+
+    # ------------------------------------------------------------------
+    # Connection strings
+    # ------------------------------------------------------------------
+
+    async def build_invite(self, *, include_secret: bool = True, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> dict[str, Any]:
+        """Mint a connection string for this installation.
+
+        ``include_secret=True`` (the default) embeds the pairing code, because the
+        common case is a private handoff between two people who already know each
+        other and one copy action is the entire point. ``include_secret=False``
+        returns the same string without ``k=`` — public metadata, safe to post
+        anywhere — and is what the UI labels "address only".
+
+        The returned projection never echoes the code in a second field; the
+        operator gets exactly the one string they are going to share.
+        """
+
+        if not self.enabled:
+            # A disabled plane cannot be paired with, so minting an invite would
+            # hand out a credential that cannot be redeemed and read as though
+            # the feature were live.
+            raise ValueError("Alpha peer network is disabled; enable ALPHA_PEER_NETWORK_ENABLED to share a connection")
+        card = self.card()
+        # Only a *full* invite carries an epoch: an address-only string has no
+        # code, so there is nothing to make single-use.
+        epoch = await self._run_store(self.store.next_invite_epoch) if include_secret else None
+        uri = _build_invite_uri(
+            agent_id=card.agent_id,
+            url=card.url,
+            websocket_url=card.websocket_url,
+            name=card.name,
+            include_secret=include_secret,
+            epoch=epoch,
+            pairing_code=self.identity.pairing_code if include_secret else None,
+            ttl_seconds=ttl_seconds,
+        )
+        claims = parse_invite(uri)
+        return {
+            "invite": uri,
+            "includes_pairing_code": include_secret,
+            "single_use": include_secret,
+            "epoch": claims.epoch,
+            "expires_at": claims.expires_at,
+            "summary": claims.summary(),
+            "note": (
+                "This string contains your pairing code. Anyone who has it can connect as a peer, and it works only once."
+                if include_secret
+                else "This address contains no pairing code and is safe to share publicly. Your friend still needs your pairing code to connect."
+            ),
+        }
+
+    async def redeem_invite(self, uri: str, *, expected_agent_id: str | None = None) -> dict[str, Any]:
+        """Pair with the peer described by a connection string.
+
+        Order below is the security order, and every step refuses rather than
+        partially mutating:
+
+        1. parse the string strictly (``invite.parse_invite``) — unknown version,
+           unknown field, or an endpoint the SSRF guard rejects all refuse here;
+        2. refuse an expired claim, allowing for clock skew;
+        3. refuse a claim with no pairing code, naming the fix;
+        4. pair normally, which fetches the remote card and compares identities.
+
+        Step 4's identity comparison is what defeats endpoint substitution: a
+        string edited in transit to point at an attacker's host yields that
+        host's Agent Card, whose ``agent_id`` will not match the ``a=`` the
+        attacker left behind, so the pairing is refused. There is no signature to
+        forge because the string carries the secret itself.
+
+        On success the peer's provenance is stamped as an invite. Single-use is
+        **not** enforced here: the redeemer's machine holds no authority to
+        invalidate the issuer's credential, so the replay guard lives in
+        ``accept_pair`` on the issuer, which refuses an invite number it has
+        already consumed. ``invite.py`` records why rotating the local code would
+        not have been equivalent.
+        """
+
+        if not self.enabled:
+            raise ValueError("Alpha peer network is disabled; enable ALPHA_PEER_NETWORK_ENABLED to connect to a peer")
+        claims = parse_invite(uri)  # InviteError names the offending field
+        if claims.is_expired():
+            raise InviteError("This connection string has expired. Ask for a fresh one — an invite is short-lived.")
+        pairing_code = claims.require_secret()
+        if expected_agent_id and validate_agent_id(expected_agent_id) != claims.agent_id:
+            raise ValueError(f"Expected peer {expected_agent_id}, but the connection string describes {claims.agent_id}")
+
+        peer = await self.pair(claims.url, pairing_code, expected_agent_id=claims.agent_id, invite_epoch=claims.epoch)
+        # Provenance, stamped only after the pairing actually succeeded.
+        linked = await self._run_store(self.store.set_peer_link, claims.agent_id, source="invite")
+        self._publish(
+            "invite.redeemed",
+            {"agent_id": claims.agent_id, "epoch": claims.epoch},
+        )
+        return {
+            "peer": public_peer(linked or peer or {}),
+            "agent_id": claims.agent_id,
+            "name": claims.name,
+            "url": claims.url,
+            "epoch": claims.epoch,
+            "note": "Connected. That connection string is now used up — ask for a fresh one to connect again.",
+        }
 
     async def publish_github_card(self) -> dict[str, Any]:
         if not self.github.writable:
@@ -672,6 +801,12 @@ class PeerNetworkService:
         Steps 3-5 each count as a failed attempt, so a flood of well-formed
         cards with wrong codes is bounded by the same budget as a flood of
         malformed ones.
+
+        One step is deliberately *outside* that accounting: a replayed connection
+        string (step 6) is refused without recording a failure. Whoever holds a
+        legitimately-shared screenshot is not an attacker, and charging their
+        replay against the owner's budget would let them lock the real owner out
+        of pairing anyone else.
         """
 
         if not self.enabled:
@@ -698,6 +833,19 @@ class PeerNetworkService:
             return _refuse(f"Pairing rejected: {problem}")
         if not secrets.compare_digest(token_digest(request.pairing_code), token_digest(self.identity.pairing_code)):
             return _refuse("Pairing code rejected")
+        # Issuer-side replay guard for connection strings.
+        #
+        # Ordering is load-bearing twice over. It sits *after* the code check
+        # because consuming the watermark requires a valid credential: were it
+        # checked first, anyone who saw an invite could claim epoch 999999 and
+        # permanently block every future invite without ever knowing the code.
+        # And a replay is refused *without* recording a throttle failure, because
+        # a third party replaying a legitimately-shared screenshot must not be
+        # able to burn the owner's pairing budget and lock the real owner out.
+        if request.invite_epoch is not None and not await self._run_store(self.store.consume_invite_epoch, request.invite_epoch):
+            logger.info("Refused a replayed Alpha peer connection string (epoch %s)", request.invite_epoch)
+            self._publish("invite.replayed", {"agent_id": request.card.agent_id})
+            return self._rejected_response("This connection string was already used. Ask your friend for a fresh one.")
         try:
             await self._run_store(
                 self.store.upsert_peer,
@@ -1052,6 +1200,16 @@ class PeerNetworkService:
         self._publish("message.turn_started", {"message_id": turn.message_id, "peer_id": turn.peer_agent_id, "run_id": run_id})
 
     async def retry_pending(self) -> int:
+        """Re-attempt queued deliveries whose backoff window has elapsed.
+
+        Each attempt is now *counted* and the next one *scheduled*
+        (``storage.RETRY_BACKOFF_SECONDS``). Previously this method re-sent every
+        queued receipt on a flat 15s tick with no attempt counter and no
+        schedule, so a peer that was down for a day absorbed ~5,700 requests and
+        each retry overwrote ``deliveries.error`` — destroying the first, most
+        informative failure reason on the very first pass.
+        """
+
         pending = await self._run_store(self.store.pending_messages)
         attempted = 0
         for message in pending:
@@ -1078,9 +1236,11 @@ class PeerNetworkService:
                 try:
                     result = await self.transport.send(peer, envelope, str(peer.get("outbound_token") or ""))
                     await self._run_store(self.store.update_delivery, message["message_id"], recipient, status="delivered", transport=result.transport)
+                    await self._run_store(self.store.record_delivery_attempt, message["message_id"], recipient, succeeded=True)
                     attempted += 1
                 except PeerTransportError as exc:
                     await self._run_store(self.store.update_delivery, message["message_id"], recipient, status="queued", transport="offline", error=str(exc))
+                    await self._run_store(self.store.record_delivery_attempt, message["message_id"], recipient, succeeded=False)
         return attempted
 
     async def prune_history(self) -> int:

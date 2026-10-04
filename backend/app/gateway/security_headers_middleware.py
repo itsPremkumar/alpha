@@ -39,7 +39,13 @@ _STATIC_HEADERS: tuple[tuple[str, str], ...] = (
     ("referrer-policy", "same-origin"),
     ("x-frame-options", "SAMEORIGIN"),
     # microphone intentionally omitted: frontend voice-input needs the grant.
-    ("permissions-policy", "camera=(), geolocation=()"),
+    #
+    # camera is granted to SELF ONLY, not to `*`. The QR scanner in
+    # `PeerConnectPanel` decodes frames locally and never uploads one, and the
+    # scanner is operator-initiated — but a same-origin grant is still a grant, so
+    # it is scoped to this origin rather than opened to any embedder. geolocation
+    # stays fully denied: nothing in the product asks for it.
+    ("permissions-policy", "camera=(self), geolocation=()"),
 )
 
 

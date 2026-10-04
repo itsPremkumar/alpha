@@ -23,7 +23,7 @@ from alpha.peer_network import (
 )
 from alpha.peer_network.github import GitHubRendezvousError
 from alpha.peer_network.models import utc_now
-from alpha.peer_network.storage import NETWORK_OWNER
+from alpha.peer_network.storage import NETWORK_OWNER, public_peer
 from alpha.peer_network.transcript import (
     MAX_TRANSCRIPT_ENTRIES,
     MAX_TURN_EVENTS,
@@ -70,6 +70,16 @@ class AutoReplyBody(BaseModel):
     # decision about model spend and local execution, so it is a strict bool
     # rather than the loose "truthy" string parse the trust route uses.
     enabled: bool
+
+
+class RedeemInviteBody(BaseModel):
+    # `extra="forbid"` so a client cannot smuggle in a `sender_id`/`trust`/
+    # `auto_reply` field and have it ignored: a refused field is reported, which
+    # is what makes the request shape honest rather than silently permissive.
+    model_config = {"extra": "forbid"}
+
+    invite: str = Field(..., min_length=1, max_length=8192)
+    expected_agent_id: str | None = Field(default=None, max_length=128)
 
 
 class ReadBody(BaseModel):
@@ -215,6 +225,49 @@ async def rotate_pairing_code(request: Request) -> dict[str, Any]:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     code = await _call(_service().rotate_pairing_code())
     return {"status": "rotated", "pairing_code": code}
+
+
+# The two connection-string routes are declared together and BEFORE any
+# `/invite/{param}` catch-all for the same reason `search`/`analytics` precede
+# `/transcripts/{conversation_id}`: Starlette matches in registration order, so a
+# catch-all declared first answers `Invite 'redeem' not found`.
+@router.get("/invite", summary="Mint a copyable Alpha connection string for this installation")
+@require_permission("threads", "read")
+async def build_invite(request: Request, include_secret: bool = True, ttl_seconds: int = 900) -> dict[str, Any]:
+    # Admin-gated for the same reason as `GET /status` and `POST /pair/rotate`:
+    # with `include_secret=true` (the default) this response body IS the inbound
+    # bearer. Anyone who can read it can authenticate to the PUBLIC
+    # `remote/pair` and `inbound/messages` routes as a paired peer. Leaving it at
+    # bare `threads:read` would publish that credential to the widest role that
+    # can currently merely *look* at the peer list.
+    await require_admin_user(
+        request,
+        detail="Admin role is required to mint a connection string containing this installation's pairing code.",
+    )
+    return await _call(_service().build_invite(include_secret=include_secret, ttl_seconds=ttl_seconds))
+
+
+@router.post("/invite/redeem", summary="Pair with the peer described by a pasted Alpha connection string")
+@require_permission("threads", "write")
+async def redeem_invite(body: RedeemInviteBody) -> dict[str, Any]:
+    # Not admin-gated, and deliberately so: redeeming spends nothing and grants
+    # the *remote* peer nothing here — it registers a peer on this installation
+    # under the same rules `POST /pair` already follows, including the ingress
+    # throttle on the remote side. `threads:write` matches `POST /pair`.
+    return await _call(_service().redeem_invite(body.invite, expected_agent_id=body.expected_agent_id))
+
+
+@router.get("/peers/{agent_id}", summary="Read one peer, allowlisted")
+@require_permission("threads", "read")
+async def get_peer(agent_id: str) -> dict[str, Any]:
+    # Declared after the literal routes above and before any `/peers/{id}/…`
+    # sibling is safe because every sibling is two segments deep. The response is
+    # the allowlisted projection (no `owner_id`, no outbound token, no raw card),
+    # matching what the model-facing tool has always been allowed to see.
+    peer = await _call(_service().get_peer(agent_id))
+    if not peer:
+        raise HTTPException(status_code=404, detail=f"Peer '{agent_id}' not found")
+    return {"peer": public_peer(peer)}
 
 
 @router.patch("/peers/{agent_id}/trust", summary="Change peer trust state")

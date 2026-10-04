@@ -16,6 +16,7 @@ import logging
 import os
 import sqlite3
 import threading
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,8 +54,108 @@ def tokens_equal(left: str, right: str) -> bool:
     return hmac.compare_digest(token_digest(left), token_digest(right))
 
 
+#: The fields a peer row may expose to a *caller* — the local authenticated API,
+#: the model-facing tool, or the External Alpha transcript.
+#:
+#: This is an **allowlist**, not a filter, and that is the whole point. The
+#: `peers` row carries `owner_id`, `outbound_token`, `token_hash` and the full
+#: Agent Card; a deny-list would have to enumerate those today, and a field
+#: added to the row next year would leak by omission. Naming the safe keys means
+#: a new column is invisible until somebody deliberately publishes it.
+#:
+#: It lives here, beside the row shape it projects, because two callers already
+#: needed this and had drifted: the model tool shipped its own narrower copy
+#: while `GET /status` and `POST /pair` returned the raw row — so the *API* was
+#: leaking more than the *tool* did. One definition, imported by both.
+PUBLIC_PEER_FIELDS = (
+    "agent_id",
+    "name",
+    "description",
+    "version",
+    "capabilities",
+    "skills",
+    "supports",
+    "url",
+    "websocket_url",
+    "preferred_transport",
+    "source",
+    "trust",
+    "auto_reply",
+    "link_source",
+    "first_seen",
+    "last_seen",
+    "paired_at",
+)
+
+#: What the *model* is allowed to see, which is strictly narrower than what an
+#: authenticated local operator may see. A model has no use for a peer's
+#: endpoint (it cannot call it) and must never receive one, because a model can
+#: put a value into a prompt or a log.
+MODEL_PEER_FIELDS = (
+    "agent_id",
+    "name",
+    "description",
+    "capabilities",
+    "trust",
+    "last_seen",
+)
+
+
+def public_peer(peer: dict[str, Any] | None, fields: tuple[str, ...] = PUBLIC_PEER_FIELDS) -> dict[str, Any]:
+    """Project a peer row onto ``fields``, omitting anything absent.
+
+    Returns ``{}`` for a missing row rather than ``None``: every caller here
+    renders a peer, and "deleted" and "not reported" must not be confused with a
+    crash. Callers that need to distinguish them should check the row first.
+    """
+
+    if not peer:
+        return {}
+    return {key: peer.get(key) for key in fields if key in peer}
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+#: Retry backoff schedule, in seconds, indexed by attempt count. Exponential and
+#: bounded: the last two entries are equal on purpose, so a permanently dead peer
+#: settles at one attempt every ~15 minutes instead of either spinning or being
+#: given up on. The service never *drops* a queued message — an operator who
+#: believes they sent something must never find it silently deleted — so the
+#: schedule's job is to stop hammering an unreachable endpoint, not to prune.
+RETRY_BACKOFF_SECONDS = (0, 15, 30, 60, 120, 300, 600, 900)
+
+
+def retry_delay_seconds(attempt_count: int) -> int:
+    """Seconds to wait before attempt number ``attempt_count + 1``."""
+
+    index = max(0, int(attempt_count))
+    if index >= len(RETRY_BACKOFF_SECONDS):
+        return RETRY_BACKOFF_SECONDS[-1]
+    return RETRY_BACKOFF_SECONDS[index]
+
+
+def append_error_tail(previous: str | None, error: str | None) -> str | None:
+    """Append one attempt's error to a receipt's error history.
+
+    ``update_delivery`` used to assign ``error``, so the first failure reason was
+    overwritten by the second and an operator inspecting a stuck message saw
+    only the most recent symptom — often a generic timeout that hid the real
+    cause (a 401, an unreachable host, a refused pairing). The history is
+    bounded so a long-lived failure cannot grow the row without limit, and the
+    newest entry is last so a reader sees the current symptom first by scrolling
+    to the end.
+    """
+
+    if not error:
+        return previous
+    entry = error.strip()[:500]
+    if not previous:
+        return entry
+    kept = [line for line in previous.split(" | ") if line][-4:]
+    kept.append(entry)
+    return " | ".join(kept)
 
 
 def _loads(value: str | None, default: Any) -> Any:
@@ -182,6 +283,38 @@ class PeerNetworkStore:
                 """
             )
             self._ensure_column("peers", "auto_reply", "INTEGER NOT NULL DEFAULT 0")
+            # Provenance for a peer that arrived by redeeming a connection string
+            # rather than answering a beacon. Deliberately NOT a `trust` value: an
+            # invite *feels* more trusted than a broadcast, but a tier that
+            # implies a capability is a capability, and trust is what gates
+            # delivery. `link_source` records where the peer came from so an
+            # operator can filter and sort by it, and grants nothing.
+            self._ensure_column("peers", "link_source", "TEXT")
+            self._ensure_column("peers", "link_expires_at", "TEXT")
+            # Issuer-side replay guard for connection strings. A tiny state table
+            # rather than a peers column: the counter belongs to *this
+            # installation*, not to any peer, and it must survive a restart or a
+            # leaked screenshot becomes redeemable again every time the Gateway
+            # comes back up.
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS invite_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    minted_epoch INTEGER NOT NULL DEFAULT 0,
+                    consumed_epoch INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            self._conn.execute("INSERT OR IGNORE INTO invite_state (id, minted_epoch, consumed_epoch) VALUES (1, 0, 0)")
+            # Retry honesty. Without an attempt counter and a scheduled next
+            # attempt, `retry_pending` re-sent every queued delivery on a flat
+            # 15s tick forever and overwrote `deliveries.error` on every pass, so
+            # a permanently dead peer retried indefinitely and the record of *why*
+            # it first failed was destroyed by the first retry.
+            self._ensure_column("deliveries", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column("deliveries", "last_attempt_at", "TEXT")
+            self._ensure_column("deliveries", "next_attempt_at", "TEXT")
+            self._ensure_fts_index()
             self._ensure_fts_index()
 
     def _ensure_fts_index(self) -> None:
@@ -504,6 +637,11 @@ class PeerNetworkStore:
             # Whether this peer may drive a local Agent turn. Orthogonal to
             # `trust`: pairing authorises *delivery*, this authorises *spend*.
             "auto_reply": bool(row["auto_reply"]),
+            # How this peer arrived: 'invite' when a connection string was
+            # redeemed, 'manual-pair' / 'remote-pair' for the classic out-of-band
+            # code, or a `udp:`/`mdns:`/`github:` source for a beacon. Provenance
+            # only — see PUBLIC_PEER_FIELDS for why this is not a trust tier.
+            "link_source": row["link_source"] if "link_source" in row.keys() else None,
             "first_seen": row["first_seen"],
             "last_seen": row["last_seen"],
             "paired_at": row["paired_at"],
@@ -537,6 +675,24 @@ class PeerNetworkStore:
             self._conn.execute("UPDATE peers SET trust = ? WHERE agent_id = ?", (trust, agent_id))
         return self.get_peer(agent_id)
 
+    def set_peer_link(self, agent_id: str, *, source: str | None, expires_at: str | None = None) -> dict[str, Any] | None:
+        """Record how a peer arrived. Provenance only — grants nothing.
+
+        This exists so "my friend connected via an invite" is a fact the operator
+        can see and filter by, without inventing a trust tier that implies a
+        capability. A beacon arriving later for an already-linked peer must not
+        erase the link, so callers pass the existing value rather than ``None``
+        when they have nothing new to record — the service is what decides that,
+        because only it knows whether this observation was a fresh redeem.
+        """
+
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE peers SET link_source = ?, link_expires_at = ? WHERE agent_id = ?",
+                (source, expires_at, agent_id),
+            )
+        return self.get_peer(agent_id)
+
     def set_peer_auto_reply(self, agent_id: str, enabled: bool) -> dict[str, Any] | None:
         """Grant or revoke a peer's ability to drive a local Agent turn.
 
@@ -558,6 +714,41 @@ class PeerNetworkStore:
                 (1 if enabled else 0, agent_id),
             )
         return self.get_peer(agent_id)
+
+    def next_invite_epoch(self) -> int:
+        """Mint the next invite number for this installation.
+
+        Strictly monotonic and persisted, so an invite minted before a restart
+        still outranks one minted after it. A counter that reset to 1 on restart
+        would let a screenshot taken before the restart be redeemed again.
+        """
+
+        with self._lock, self._conn:
+            self._conn.execute("UPDATE invite_state SET minted_epoch = minted_epoch + 1 WHERE id = 1")
+            row = self._conn.execute("SELECT minted_epoch FROM invite_state WHERE id = 1").fetchone()
+        return int(row["minted_epoch"])
+
+    def consume_invite_epoch(self, epoch: int) -> bool:
+        """Claim ``epoch`` for redemption. Returns False when already consumed.
+
+        The strictly-greater comparison is the whole replay guard: the first
+        redeemer of an invite advances the watermark, and every later attempt
+        carrying the same (or an older) number is refused. Nothing is deleted —
+        the watermark only moves forward — so a restart cannot resurrect a spent
+        invite.
+        """
+
+        with self._lock, self._conn:
+            row = self._conn.execute("SELECT consumed_epoch FROM invite_state WHERE id = 1").fetchone()
+            if epoch <= int(row["consumed_epoch"]):
+                return False
+            self._conn.execute("UPDATE invite_state SET consumed_epoch = ? WHERE id = 1", (epoch,))
+        return True
+
+    def invite_state(self) -> dict[str, int]:
+        with self._lock:
+            row = self._conn.execute("SELECT minted_epoch, consumed_epoch FROM invite_state WHERE id = 1").fetchone()
+        return {"minted_epoch": int(row["minted_epoch"]), "consumed_epoch": int(row["consumed_epoch"])}
 
     def set_peer_token(self, agent_id: str, token: str) -> bool:
         with self._lock, self._conn:
@@ -749,7 +940,7 @@ class PeerNetworkStore:
             if row is None:
                 return None
             deliveries = self._conn.execute(
-                "SELECT recipient_id, status, transport, error, delivered_at, read_at FROM deliveries WHERE message_id = ? ORDER BY recipient_id",
+                "SELECT recipient_id, status, transport, error, delivered_at, read_at, attempt_count, last_attempt_at, next_attempt_at FROM deliveries WHERE message_id = ? ORDER BY recipient_id",
                 (message_id,),
             ).fetchall()
         return {
@@ -793,6 +984,15 @@ class PeerNetworkStore:
         delivered_at = now if status in {"delivered", "read"} else None
         read_at = now if status == "read" else None
         with self._lock, self._conn:
+            existing = self._conn.execute(
+                "SELECT error FROM deliveries WHERE message_id = ? AND recipient_id = ?",
+                (message_id, recipient_id),
+            ).fetchone()
+            previous = existing["error"] if existing else None
+            # Append rather than assign: a receipt that overwrites its error
+            # destroys the first (usually most informative) failure reason on
+            # the very first retry.
+            error = append_error_tail(previous, error) if status == "failed" else error
             self._conn.execute(
                 """
                 UPDATE deliveries
@@ -818,16 +1018,50 @@ class PeerNetworkStore:
                 for row in rows:
                     self.update_delivery(message_id, row["recipient_id"], status="read")
 
-    def pending_messages(self, *, limit: int = 100) -> list[dict[str, Any]]:
+    def record_delivery_attempt(self, message_id: str, recipient_id: str, *, succeeded: bool) -> int:
+        """Count one delivery attempt and schedule the next one.
+
+        Returns the new attempt count. A success clears the schedule so a
+        message that recovered does not carry a stale future ``next_attempt_at``
+        into its next (unrelated) failure.
+        """
+
+        now = datetime.now(UTC)
+        with self._lock, self._conn:
+            row = self._conn.execute(
+                "SELECT attempt_count FROM deliveries WHERE message_id = ? AND recipient_id = ?",
+                (message_id, recipient_id),
+            ).fetchone()
+            attempts = (int(row["attempt_count"]) if row else 0) + 1
+            if succeeded:
+                next_attempt = None
+            else:
+                next_attempt = (now + timedelta(seconds=retry_delay_seconds(attempts))).isoformat()
+            self._conn.execute(
+                "UPDATE deliveries SET attempt_count = ?, last_attempt_at = ?, next_attempt_at = ? WHERE message_id = ? AND recipient_id = ?",
+                (attempts, now.isoformat(), next_attempt, message_id, recipient_id),
+            )
+        return attempts
+
+    def pending_messages(self, *, limit: int = 100, now: str | None = None) -> list[dict[str, Any]]:
+        """Outbound messages with at least one recipient still awaiting delivery.
+
+        Honours each receipt's ``next_attempt_at`` so a backed-off recipient is
+        not re-attempted on every 15s tick. Before this gate existed, a peer that
+        was down for a day received one request every 15 seconds for 24 hours.
+        """
+
+        cutoff = now or utc_now()
         with self._lock:
             rows = self._conn.execute(
                 """
                 SELECT m.message_id FROM messages m
                 JOIN deliveries d ON d.message_id = m.message_id
                 WHERE d.status = 'queued' AND m.direction = 'outbound'
+                  AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= ?)
                 GROUP BY m.message_id ORDER BY m.created_at ASC LIMIT ?
                 """,
-                (max(1, min(int(limit), 1000)),),
+                (cutoff, max(1, min(int(limit), 1000))),
             ).fetchall()
         return [message for message in (self.get_message(row["message_id"]) for row in rows) if message]
 

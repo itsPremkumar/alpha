@@ -52,7 +52,7 @@ def test_security_headers_present_on_normal_response() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "same-origin"
     assert response.headers["x-frame-options"] == "SAMEORIGIN"
-    assert response.headers["permissions-policy"] == "camera=(), geolocation=()"
+    assert response.headers["permissions-policy"] == "camera=(self), geolocation=()"
     assert "strict-transport-security" not in response.headers
 
 

@@ -42,6 +42,17 @@ gateway:
   # shutdown begins (which runs the memory queue drain). 0 disables the hook.
   # Counts against terminationGracePeriodSeconds.
   preStopSleepSeconds: 5
+  # Alpha-to-Alpha peer network. Off by default, matching the Gateway's own
+  # ALPHA_PEER_NETWORK_ENABLED=0 default: the pairing/message ingress is
+  # unauthenticated-by-session and must be an explicit operator decision.
+  peerNetwork:
+    discovery:
+      # Declares the UDP discovery port on the pod. It does NOT create a Service:
+      # LAN discovery is not a cluster-external exposure, and publishing UDP
+      # through an ingress or LoadBalancer would put an unauthenticated beacon
+      # on the public internet.
+      enabled: false
+      port: 8743
   resources:
     requests:
       cpu: 200m

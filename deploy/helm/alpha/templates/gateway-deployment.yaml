@@ -153,6 +153,20 @@ spec:
           ports:
             - containerPort: 8001
               name: http
+            {{- /* UDP discovery beacon for the Alpha-to-Alpha peer network.
+                 Declared (not merely reachable) because a containerPort with a
+                 name is also a readiness/liveness target and part of the pod's
+                 declared surface; the plane itself stays OFF unless
+                 ALPHA_PEER_NETWORK_ENABLED=1, so this costs nothing by default.
+                 A Service is deliberately NOT created: mDNS/UDP discovery is a
+                 LAN mechanism, and publishing it through an ingress or a
+                 LoadBalancer would put an unauthenticated discovery beacon on
+                 the public internet. */}}
+            {{- if .Values.gateway.peerNetwork.discovery.enabled }}
+            - containerPort: {{ .Values.gateway.peerNetwork.discovery.port }}
+              name: peer-discovery
+              protocol: UDP
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /health/ready

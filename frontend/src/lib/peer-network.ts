@@ -39,6 +39,48 @@ export interface Peer {
   card: Record<string, unknown>;
 }
 
+export interface PeerDeliveryAttempt {
+  status: string;
+  transport: string | null;
+  error: string | null;
+  attempt_count: number | null;
+  last_attempt_at: string | null;
+  next_attempt_at: string | null;
+}
+
+/** How a peer arrived. Provenance only — it grants nothing, unlike `trust`. */
+export type PeerLinkSource = "invite" | "manual-pair" | "remote-pair" | string;
+
+/** What the paste-preview card shows before an operator confirms a connect. */
+export interface InviteSummary {
+  agent_id: string;
+  name: string | null;
+  url: string;
+  websocket_url: string | null;
+  expires_at: number | null;
+  epoch: number | null;
+  has_pairing_code: boolean;
+}
+
+export interface PeerInvite {
+  invite: string;
+  includes_pairing_code: boolean;
+  single_use: boolean;
+  epoch: number | null;
+  expires_at: number | null;
+  summary: InviteSummary;
+  note: string;
+}
+
+export interface RedeemInviteResult {
+  agent_id: string;
+  name: string | null;
+  url: string;
+  epoch: number | null;
+  note: string;
+  peer: Peer | null;
+}
+
 export interface PeerConversation {
   conversation_id: string;
   mode: PeerConversationMode | string;
@@ -57,6 +99,15 @@ export interface PeerDelivery {
   error: string | null;
   delivered_at: string | null;
   read_at: string | null;
+  /**
+   * Absent on a Gateway that predates retry accounting. `null` therefore means
+   * "this Gateway did not report it", which is a different fact from "0
+   * attempts", and the UI must not render a dash for a retry that is genuinely
+   * about to happen for the first time.
+   */
+  attempt_count?: number | null;
+  last_attempt_at?: string | null;
+  next_attempt_at?: string | null;
 }
 
 export interface PeerMessage {
@@ -123,6 +174,11 @@ function toConversation(raw: Record<string, unknown>): PeerConversation {
   };
 }
 
+function numOrNull(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function toDelivery(raw: Record<string, unknown>): PeerDelivery {
   return {
     recipient_id: str(raw, "recipient_id"),
@@ -131,6 +187,9 @@ function toDelivery(raw: Record<string, unknown>): PeerDelivery {
     error: nullableStr(raw, "error"),
     delivered_at: nullableStr(raw, "delivered_at"),
     read_at: nullableStr(raw, "read_at"),
+    attempt_count: numOrNull(raw, "attempt_count"),
+    last_attempt_at: nullableStr(raw, "last_attempt_at"),
+    next_attempt_at: nullableStr(raw, "next_attempt_at"),
   };
 }
 
@@ -205,6 +264,64 @@ export async function rotatePairingCode(): Promise<string> {
   const code = pick(response, ["pairing_code"], null);
   if (typeof code !== "string" || !code) throw new Error("Gateway did not return a pairing code");
   return code;
+}
+
+export async function fetchPeer(agentId: string): Promise<Peer> {
+  const response = await get<Record<string, unknown>>(`/peer-network/peers/${encodeURIComponent(agentId)}`);
+  return toPeer(record(response.peer));
+}
+
+export async function setPeerAutoReply(agentId: string, enabled: boolean): Promise<Peer> {
+  const response = await send<Record<string, unknown>>(`/peer-network/peers/${encodeURIComponent(agentId)}/auto-reply`, "PATCH", { enabled });
+  return toPeer(record(response.peer));
+}
+
+/**
+ * Mint this installation's connection string.
+ *
+ * `includeSecret: false` returns the address-only form, which carries no pairing
+ * code and is safe to post anywhere — the UI offers both and labels which one
+ * was copied rather than leaving the operator to guess from the string.
+ */
+export async function buildInvite(options: { includeSecret?: boolean; ttlSeconds?: number } = {}): Promise<PeerInvite> {
+  const query = new URLSearchParams();
+  query.set("include_secret", String(options.includeSecret ?? true));
+  if (options.ttlSeconds !== undefined) query.set("ttl_seconds", String(options.ttlSeconds));
+  const body = await get<Record<string, unknown>>(`/peer-network/invite?${query.toString()}`);
+  const summary = record(body.summary);
+  return {
+    invite: str(body, "invite"),
+    includes_pairing_code: body.includes_pairing_code === true,
+    single_use: body.single_use === true,
+    epoch: typeof body.epoch === "number" && Number.isFinite(body.epoch) ? body.epoch : null,
+    expires_at: typeof body.expires_at === "number" && Number.isFinite(body.expires_at) ? body.expires_at : null,
+    summary: {
+      agent_id: str(summary, "agent_id"),
+      name: nullableStr(summary, "name"),
+      url: str(summary, "url"),
+      websocket_url: nullableStr(summary, "websocket_url"),
+      expires_at: typeof summary.expires_at === "number" && Number.isFinite(summary.expires_at) ? summary.expires_at : null,
+      epoch: typeof summary.epoch === "number" && Number.isFinite(summary.epoch) ? summary.epoch : null,
+      has_pairing_code: summary.has_pairing_code === true,
+    },
+    note: str(body, "note"),
+  };
+}
+
+export async function redeemInvite(invite: string, expectedAgentId?: string | null): Promise<RedeemInviteResult> {
+  const body = await send<Record<string, unknown>>("/peer-network/invite/redeem", "POST", {
+    invite,
+    expected_agent_id: expectedAgentId ?? null,
+  });
+  const peer = record(body.peer);
+  return {
+    agent_id: str(body, "agent_id"),
+    name: nullableStr(body, "name"),
+    url: str(body, "url"),
+    epoch: typeof body.epoch === "number" && Number.isFinite(body.epoch) ? body.epoch : null,
+    note: str(body, "note"),
+    peer: Object.keys(peer).length > 0 ? toPeer(peer) : null,
+  };
 }
 
 export async function setPeerTrust(agentId: string, trust: "discovered" | "blocked"): Promise<Peer> {

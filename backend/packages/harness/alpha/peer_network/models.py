@@ -31,6 +31,7 @@ The three names that collide in this area, stated once:
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -44,6 +45,30 @@ CARD_TYPE = "application/alpha-peer-card+json"
 ENVELOPE_MEDIA_TYPE = "application/alpha-a2a+json"
 
 _AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+#: Serialized ceiling for an envelope payload. This lives here, next to the
+#: model that must enforce it, rather than only in the service: the service's
+#: byte check protects the *send* path, but an envelope arriving from a peer is
+#: validated by this model first, and before this bound existed that validation
+#: accepted an arbitrarily large dict from the network.
+MAX_PAYLOAD_BYTES = 256 * 1024
+
+#: Bookkeeping kinds. These are deliberately excluded from
+#: ``agent_dispatch.AUTO_REPLY_KINDS``: a typing indicator, a reaction or a
+#: delete notice must never start a model turn, because each one would spend
+#: this installation's tokens. Membership here is the cheap guard, and
+#: ``test_peer_network_agent_turn.py`` pins that none of them can.
+BOOKKEEPING_MESSAGE_KINDS = frozenset(
+    {
+        "capability_summary",
+        "typing",
+        "presence",
+        "reaction",
+        "message_edit",
+        "message_delete",
+    }
+)
+
 MESSAGE_KIND_VALUES = {
     "chat",
     "hello",
@@ -62,6 +87,12 @@ MESSAGE_KIND_VALUES = {
     "review_result",
     "file_offer",
     "file_request",
+    "capability_summary",
+    "typing",
+    "presence",
+    "reaction",
+    "message_edit",
+    "message_delete",
     "receipt",
     "goodbye",
 }
@@ -206,6 +237,25 @@ class PeerEnvelope(BaseModel):
             raise ValueError(f"kind must be one of {sorted(MESSAGE_KIND_VALUES)}")
         return normalized
 
+    @field_validator("payload")
+    @classmethod
+    def _validate_payload_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Bound the serialized payload at validation time.
+
+        The service already refuses an oversized payload on the send path, but
+        an *inbound* envelope is validated by this model before the service ever
+        sees it. Without the bound here, a peer could post a multi-megabyte
+        payload that was parsed and held in memory before any size check ran.
+        """
+
+        try:
+            encoded = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("payload must be JSON-serializable") from exc
+        if encoded > MAX_PAYLOAD_BYTES:
+            raise ValueError(f"payload must serialize to at most {MAX_PAYLOAD_BYTES} bytes, got {encoded}")
+        return value
+
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
 
@@ -216,12 +266,18 @@ class PeerPairRequest(BaseModel):
     The shared pairing code is deliberately not placed in an Agent Card.  It
     is supplied out of band by the operator, and the remote side validates it
     before registering the caller.
+
+    ``invite_epoch`` is the receiver-side replay guard for a connection string.
+    It is ``None`` for the classic manual code entry, and ``None`` explicitly
+    bypasses the epoch check on the receiving side — otherwise upgrading an
+    installation would have locked out every peer still pairing the old way.
     """
 
     model_config = {"extra": "forbid"}
 
     card: PeerCard
     pairing_code: str = Field(min_length=16, max_length=256)
+    invite_epoch: int | None = Field(default=None, ge=1)
     requested_at: str = Field(default_factory=utc_now)
 
 
@@ -298,10 +354,12 @@ class TrustRequest(BaseModel):
 
 
 __all__ = [
+    "BOOKKEEPING_MESSAGE_KINDS",
     "CARD_TYPE",
     "ConversationCreateRequest",
     "ConversationMode",
     "ENVELOPE_MEDIA_TYPE",
+    "MAX_PAYLOAD_BYTES",
     "MESSAGE_KIND_VALUES",
     "MessageCreateRequest",
     "MessageStatus",

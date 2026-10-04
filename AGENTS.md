@@ -274,6 +274,24 @@ frontend `src/lib/groups-tree.test.mjs` and
 These contracts are stated once, in the guide that owns them. Do not restate them
 in another layer; follow the pointer.
 
+- **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
+  pairing, transport, receipts, topology semantics and the bounded model tool:
+  **[docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md)**. Discovery never
+  grants access; pairing uses a high-entropy out-of-band code; public Agent
+  Card/pair/inbound routes are exact-path surfaces with their own token checks
+  while local management routes keep Gateway auth and `threads:read/write`;
+  public/model callers cannot self-assert a sender id and the model tool strips
+  endpoints, cards, pairing codes and credentials; libp2p reports unavailable
+  until a real authenticated adapter is wired; installation-scoped SQLite is
+  never cross-process exactly-once. Connecting uses **one connection string**
+  (`alpha://connect?…`, `peer_network/invite.py`) copied once and pasted once;
+  it is **single use via an issuer-side epoch**, *not* by rotating the code on
+  redemption, which would protect nothing — the redeemer has no authority over
+  the credential that leaked. `GET /invite` is admin-gated because the string
+  *is* the inbound bearer. Reading a QR code is not enabled yet
+  (`canDecodeQr()` is `false`); showing one works, and the manual
+  address+code path still works.
+
 - **Integration health + autonomy ownership** — generated feature manifest wiring,
   orphan-module scan, `@tool` signature rules, and the background-loop lifecycle
   owner: **[backend/AGENTS.md](backend/AGENTS.md#integration-health--autonomy-ownership)**.

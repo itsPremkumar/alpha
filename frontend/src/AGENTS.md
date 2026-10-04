@@ -409,3 +409,38 @@ an empty network or mark a discovered peer as paired. The client contract is
 `src/lib/peer-network.ts`, with exact-route/honesty tests in
 `src/lib/peer-network.test.mjs`. Pairing is an explicit state-changing action,
 so the UI keeps the code reveal/copy and rotation controls deliberate.
+
+### Connecting is one string, copied once
+
+`PeerConnectPanel` is the surface the whole feature exists for. The rules it is
+built around, each of which has a tempting wrong reading:
+
+| Server says | Panel shows |
+| --- | --- |
+| `include_secret: true` | `contains your pairing code`, plus an explicit "works only once" warning |
+| `include_secret: false` | `safe to share publicly` |
+| `epoch: null` | no invite number — the claim has no replay guard |
+| `expires_at: null` | `no expiry reported`, never "never expires" |
+| an expired claim | refused before the request, and again by the server |
+| an address-only invite | parses and previews, then **Connect is disabled** with the reason |
+| a malformed field | the refusal names the field — never "invalid invite" |
+
+- **The paste decides what happens.** `onPaste` inspects the clipboard before
+  the textarea: a connection string previews, an image is decoded, anything else
+  falls through untouched. A handler that ate every paste would break typing.
+- **A client-side check never decides redeemability.** Expiry, replay, and the
+  code check are server verdicts; `invite.ts` mirrors the *grammar* so a paste can
+  be explained, and `redeemabilityProblem` only previews the server's answer.
+- **`invite.ts` is a mirror, not an authority, and deliberately duplicates less
+  than the server.** It checks shape (scheme, credentials, host). It does **not**
+  copy the blocked-metadata-host table — a browser-side pass proves nothing about
+  what the Gateway will accept, and a second list would only drift.
+- **Copy is labelled by what it contains.** `useCopyButton` is the one clipboard
+  implementation; a denied permission must surface a worded remedy, never a
+  silent no-op.
+- **A failed request is never an empty panel.** Each panel owns its own error.
+
+**Reading a QR code is not enabled.** `canDecodeQr()` in `lib/qr-decode.ts` is
+`false` and the camera/screenshot buttons are disabled with that reason. Showing
+a code works and is verified. Do not mount the scanner by flipping the boolean
+alone — the failing round-trip gate in `qr-decode.test.mjs` is what turns it on.
