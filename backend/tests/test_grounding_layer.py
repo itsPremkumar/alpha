@@ -59,7 +59,7 @@ from alpha.grounding import (
     screen_text,
 )
 from alpha.grounding.effort import LADDER
-from alpha.grounding.gates import DEFAULT_SIDE_EFFECTS, SideEffectClass
+from alpha.grounding.gates import DEFAULT_SIDE_EFFECTS, PROBE_SATISFYING_TOOLS, SideEffectClass
 from alpha.grounding.manifest import Availability, CapabilityEntry, CapabilityManifest, CapabilityProbe, EntrySource
 
 # ---------------------------------------------------------------------------
@@ -413,6 +413,47 @@ class TestGates:
     def test_read_only_passes(self) -> None:
         assert check_side_effect(GateSubject(tool_calls=("read_file",))).blocked is False
 
+    def test_ls_directory_listing_is_read_only(self) -> None:
+        """The sandbox directory-listing tool is registered as ``ls``
+        (`alpha.sandbox.tools.ls_tool`); it calls ``sandbox.list_dir()``
+        internally, but the name the gate sees is the tool name ``ls``.
+        The side-effect and reuse-probe tables named the *method*
+        (``list_dir``), not the *tool*, so ``ls`` was UNKNOWN in both:
+        ``check_side_effect`` refused every listing as an unclassified
+        irreversible call, and ``check_reuse_probe`` refused a step that
+        called nothing but ``ls`` for "not consulting prior work" -- the
+        exact read/search call that is supposed to satisfy it."""
+        assert DEFAULT_SIDE_EFFECTS["ls"] is SideEffectClass.READ_ONLY
+        assert check_side_effect(GateSubject(tool_calls=("ls",))).blocked is False
+        probe = check_reuse_probe(GateSubject(tool_calls=("ls",)))
+        assert probe.blocked is False
+        # Satisfied by being a consultation in its own right, not merely
+        # tolerated: the probe detail carries the reason it passed.
+        assert probe.detail.get("probed")
+
+    def test_every_always_bound_sandbox_tool_is_classified(self) -> None:
+        """A structural ratchet over the six always-bound sandbox tools.
+
+        ``ls`` was the third shipped tool found absent from these tables
+        (``alpha_capability`` and ``present_files`` were the first two), and
+        each absence is the same defect: a tool the agent can call every step
+        is UNKNOWN to the gate, so a read-only listing is refused as an
+        irreversible call and (for a read/search tool) the reuse gate refuses
+        the very consultation it recommends. Pin the whole set so a rename or
+        a removed ``PROBE_SATISFYING_TOOLS`` entry fails here rather than in a
+        live run.
+        """
+        for name in ("read_file", "grep", "glob", "ls"):
+            assert DEFAULT_SIDE_EFFECTS.get(name) is SideEffectClass.READ_ONLY, name
+            assert name in PROBE_SATISFYING_TOOLS, name
+            assert check_reuse_probe(GateSubject(tool_calls=(name,))).blocked is False, name
+        for name in ("write_file", "str_replace"):
+            assert DEFAULT_SIDE_EFFECTS.get(name) is SideEffectClass.REVERSIBLE_WRITE, name
+            assert name not in PROBE_SATISFYING_TOOLS, name
+        # A shell is not a consultation and is never waved through.
+        assert DEFAULT_SIDE_EFFECTS.get("bash") is SideEffectClass.IRREVERSIBLE
+        assert "bash" not in PROBE_SATISFYING_TOOLS
+
     def test_present_files_is_classified_as_reversible(self) -> None:
         """`present_files` is the mandated delivery tool, not a side effect.
 
@@ -651,6 +692,39 @@ class TestEffort:
         controller.record(WorkOutcome.FAILED_PROGRESS, signature="a")
         controller.record(WorkOutcome.FAILED_PROGRESS, signature="b")
         assert controller.consecutive_failures == 1
+
+    def test_identical_retries_brake_advances_off_retry_same(self) -> None:
+        """``identical_retries`` was declared and read by the RETRY_SAME
+        brake but never incremented, so ``0 > max_identical_retries`` was
+        always false and the operator-tunable ``max_identical_retries``
+        field had no effect -- a silent configuration failure. Two
+        same-rung failures must spend the allowance and advance the ladder
+        off RETRY_SAME. The brake advances (it does not stop), so the
+        loop continues on the next rung."""
+        controller = EffortController(max_steps=99, max_consecutive_failures=99)
+        assert controller.current_step is EscalationStep.RETRY_SAME
+        controller.record(WorkOutcome.FAILED_REPEAT)
+        assert controller.identical_retries == 1
+        # One retry is within the default allowance (max_identical_retries=1).
+        assert controller.stop_reason() is None
+        assert controller.current_step is EscalationStep.RETRY_SAME
+        controller.record(WorkOutcome.FAILED_REPEAT)
+        assert controller.identical_retries == 2
+        assert controller.stop_reason() is None  # the brake advances, not stops
+        assert controller.current_step is EscalationStep.RESEARCH
+
+    def test_identical_retries_is_scoped_to_the_retry_same_rung(self) -> None:
+        """Once the ladder has advanced past RETRY_SAME, later failures are
+        not same-step retries and must not keep bumping the counter -- the
+        brake is scoped to the first rung by ``current_step is RETRY_SAME``."""
+        controller = EffortController(max_steps=99, max_consecutive_failures=99)
+        controller.record(WorkOutcome.FAILED_REPEAT)
+        controller.record(WorkOutcome.FAILED_REPEAT)
+        assert controller.stop_reason() is None  # advances RETRY_SAME -> RESEARCH
+        assert controller.current_step is EscalationStep.RESEARCH
+        before = controller.identical_retries
+        controller.record(WorkOutcome.FAILED_REPEAT)
+        assert controller.identical_retries == before
 
     def test_tier_comparison_uses_rank(self) -> None:
         """These are string enums, so member comparison silently inverts on the most

@@ -31,7 +31,6 @@ from __future__ import annotations
 from alpha.grounding.gates import (
     DEFAULT_SIDE_EFFECTS,
     PROBE_SATISFYING_TOOLS,
-    GateResult,
     GateSubject,
     SideEffectClass,
     check_reuse_probe,
@@ -61,10 +60,7 @@ def test_the_capability_manifest_tool_satisfies_the_gate_it_recommends() -> None
     This is the whole regression. Before the fix the gate's remediation named a
     tool that the gate itself refused.
     """
-    assert "alpha_capability" in PROBE_SATISFYING_TOOLS, (
-        "the reuse gate's remediation tells the agent to read the capability "
-        "manifest; alpha_capability IS that read, so refusing it is circular"
-    )
+    assert "alpha_capability" in PROBE_SATISFYING_TOOLS, "the reuse gate's remediation tells the agent to read the capability manifest; alpha_capability IS that read, so refusing it is circular"
 
 
 def test_the_capability_manifest_tool_is_classified_read_only() -> None:
@@ -75,19 +71,13 @@ def test_the_capability_manifest_tool_is_classified_read_only() -> None:
     clear it.
     """
     classification = DEFAULT_SIDE_EFFECTS.get("alpha_capability")
-    assert classification is SideEffectClass.READ_ONLY, (
-        "alpha_capability performs no model call, no network fetch and no "
-        "provider probe; an unclassified (UNKNOWN) manifest read is a guard "
-        "that cannot be satisfied by reading"
-    )
+    assert classification is SideEffectClass.READ_ONLY, "alpha_capability performs no model call, no network fetch and no provider probe; an unclassified (UNKNOWN) manifest read is a guard that cannot be satisfied by reading"
 
 
 def test_a_call_that_is_only_the_capability_manifest_passes() -> None:
     """The exact call the gate recommends must clear the gate."""
     result = check_reuse_probe(_subject(tool_calls=("alpha_capability",)))
-    assert not result.blocked, (
-        "the gate refused the call its own remediation names"
-    )
+    assert not result.blocked, "the gate refused the call its own remediation names"
 
 
 # --------------------------------------------------------------------------

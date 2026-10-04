@@ -259,6 +259,17 @@ class EffortController:
             self.consecutive_failures = 1
         self._last_failure = signature or self._last_failure
 
+        # A failure recorded while the ladder still sits on RETRY_SAME is a
+        # same-step retry: the loop was told to repeat the current step
+        # verbatim and it failed again. Count it so the RETRY_SAME brake in
+        # ``stop_reason`` can spend the ``max_identical_retries`` allowance
+        # and advance. The counter was declared and read by that brake but
+        # never incremented, so ``0 > max_identical_retries`` was always
+        # false and the operator-tunable ``max_identical_retries`` field had
+        # no effect -- a silent configuration failure.
+        if self.current_step is EscalationStep.RETRY_SAME:
+            self.identical_retries += 1
+
         if escalate:
             self.advance()
 

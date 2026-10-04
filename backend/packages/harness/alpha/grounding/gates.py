@@ -135,6 +135,12 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "read_file": SideEffectClass.READ_ONLY,
     "grep": SideEffectClass.READ_ONLY,
     "glob": SideEffectClass.READ_ONLY,
+    # The sandbox directory-listing tool is registered as `ls`
+    # (`alpha.sandbox.tools.ls_tool`); it calls `sandbox.list_dir()`
+    # internally, but the name the gate sees is the tool name `ls`.
+    # Classifying only the method name left `ls` UNKNOWN, so every
+    # directory listing was refused as an unclassified irreversible call.
+    "ls": SideEffectClass.READ_ONLY,
     "list_dir": SideEffectClass.READ_ONLY,
     "web_search": SideEffectClass.READ_ONLY,
     "web_fetch": SideEffectClass.READ_ONLY,
@@ -346,6 +352,10 @@ PROBE_SATISFYING_TOOLS: frozenset[str] = frozenset(
         "read_file",
         "grep",
         "glob",
+        # `ls` is the sandbox directory-listing tool (see DEFAULT_SIDE_EFFECTS);
+        # a listing is a read/search consultation, so calling it satisfies the
+        # reuse probe rather than being blocked for "not consulting prior work".
+        "ls",
         "list_dir",
         "ast_grep_search",
         "search_project_docs",

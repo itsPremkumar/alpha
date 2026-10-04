@@ -1,4 +1,4 @@
-﻿"""Tests for ``alpha.utils.llm_text``."""
+"""Tests for ``alpha.utils.llm_text``."""
 
 from __future__ import annotations
 
@@ -113,7 +113,6 @@ def test_strip_markdown_code_fence_strips_unterminated_fence() -> None:
 def test_strip_markdown_code_fence_strips_unterminated_language_fence() -> None:
     """A truncated ```` ```python ```` fence is stripped, not leaked."""
     assert strip_markdown_code_fence("```python\ndef f():\n    return 1") == "def f():\n    return 1"
-
 
     """A single ```` ``` ```` line has no body to preserve."""
     assert strip_markdown_code_fence("```json") == ""
