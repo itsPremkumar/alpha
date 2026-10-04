@@ -26,6 +26,9 @@ upgrades from SPECIFIED to FIXED.
 | 4 | Idle Gateway process burned 1 442 s CPU doing nothing (starved the test box) | Not reproduced after the hardening work: on 2026-10-02 an idle Gateway (post-Task-2, zero traffic) measured **0.91 s CPU over 60 s wall** (≈1.5 %) with the stall watchdog, network monitor and 5 s system monitor all active; the original trigger is still unknown, so the 5-min <1 % acceptance and the regression guard in §3.3 remain open | **SPECIFIED** (evidence in §3.3) |
 | 5 | The four-legged error fan-out's SSE leg never fires: no production `configure_error_reporter` caller exists | Claimed-in-docstring wiring was never implemented; run-scoped errors still reach clients via `gateway_terminal_error_payload` | Honesty **FIXED** (docstring); binding **SPECIFIED** (§3.1) |
 | 6 | `e2e_real_task.py` end-to-end: **both tasks green** — Task 1 single-file (40 s) and Task 2 multi-file (172 s, the shape of the earlier zombie incident) each exit 0 with durable `status=success` and verified artifacts; Task 2's stream carried named `heartbeat` frames at 15 s cadence under a live parser | — | Evidence that the happy path works after Fixes 1–4 |
+| 7 | Every failed run in the product rendered one indistinguishable sentence, even though the Gateway sent a coded, correlated reason and the frontend parsed it correctly | Three links each looked fine in isolation: the parse was written and pinned by a test, the throw site dropped the parsed object, and the error mapper had no field to put a code in. A defect invisible *because* the first link worked — the one shape a green suite cannot catch | **FIXED** — §4.1 |
+| 8 | A dropped SSE stream with no `retry:` frame was re-dialed with **zero** delay, up to 3× in a row | `let retryDelay = 0` and the only fallback was the post-increment cap; a missing `retry:` frame read as "retry immediately", which is the worst input to give a dependency that has just failed | **FIXED** — §4.2 (equal jitter, guaranteed floor, 5 attempts) |
+| 9 | A corrupt `goals.json` / harness state file reported "No active autonomous goals." / injected **no** system-reminder, and a failed save reported a successful `resume` | Three JSON stores under `alpha/harness/` wrapped `json.load`/write in `except Exception: pass` with no logger. The structurally identical `groups/claims.py` and `bots/registry.py` *do* log, so this was not the house style — three stores that predate it. `HarnessState` also lost data: it reset `self.entries` before parsing, so one bad entry left a half-populated state the next save wrote back | **FIXED** — degraded/durable disclosure + staged load |
 
 ---
 
@@ -184,35 +187,91 @@ status reports it.
 
 ---
 
-## 4. Phase 2 — frontend prescriptions (SPECIFIED, owned elsewhere)
+## 4. Phase 2 — frontend prescriptions
 
-The frontend is owned by a parallel workstream; these are exact, reviewable
-prescriptions from the connectivity survey — not vague advice.
+**Verification note (2026-10-04).** All four prescriptions below were re-verified
+against the current tree before any change, not taken from the original survey.
+Each was confirmed still broken at the cited line, so each is now either FIXED
+here or still SPECIFIED with a narrower scope.
 
-1. **Propagate the rich error payload.** `sse-reducer.ts:526` already parses
-   `code/message/correlationId`, but `chat-stream.ts:65,107` throws
-   `new ApiClientError("response")` and drops it, so `ErrorBox` renders
-   generic copy. **Change:** carry `SseErrorDetail` on `ApiClientError`
-   (`api-client.ts:22-46` gains `detail`), render code + correlation id in
-   `ChatView`'s failure path. *User-visible effect: every failed run shows
-   WHY with a support id.*
-2. **Idempotent HTTP retry.** `api-client.ts:80-130` and `http.ts:23-48` do
-   one attempt. **Change:** retry GET/PUT/DELETE and probe-style POSTs with
-   backoff (0.5 s/1 s/2 s, jitter); for `POST /runs/stream`, send the
-   `Idempotency-Key` the server already accepts (`thread_runs.py:83-91`) so a
-   retried send resumes the same run instead of creating a duplicate.
-3. **Reconnect ladder.** `chat-stream.ts:109-115` caps rejoin at 2 attempts
-   (Last-Event-ID rejoin already exists). **Change:** 5 attempts with full
-   jitter (0.5→8 s) + the server `retryDelay`; give up into the existing
-   `stopped` error with the draft preserved.
-4. **Failure visibility queue.** All failures currently funnel through
-   `flash()` (4.5 s auto-clear, one slot — concurrent failures overwrite).
-   **Change:** per-failure identity + a bounded list (5) with a persistent
-   error badge; heartbeat frames stay out of the UI entirely.
-5. **Unify offline signals.** `gatewayOk` (30 s probe) and
-   `serverHistoryError` render independent banners that can disagree; route
-   both through one `connectivityView()` verdict (the honesty rules already
-   live in `lib/network.ts`).
+### 4.1 Propagate the rich error payload — **FIXED**
+
+This was the worst of the four, and the reason is worth recording: the Gateway
+had always sent a coded, correlated `event: error`, `sse-reducer.ts` had always
+parsed it into `SseState.error`, and `tool-status-honesty.test.mjs` had always
+pinned that the parse was correct. **Nothing read the result.**
+`consumeChatStream` threw a bare `ApiClientError("response")` at all five
+failure sites, `ChatView` collapsed that to `{ kind: "stream" }`, and
+`chatRequestErrorMessage` returned fixed prose — so every failed run in the
+product rendered "The response stream was interrupted", which is true of every
+failed run ever seen.
+
+A silent failure with a **passing** test suite: the defect was invisible
+precisely because the parse worked.
+
+- `chat-stream.ts` now throws `StreamRunFailure` (an `ApiClientError`
+  subclass, so `kind === "response"` and every existing caller/assertion is
+  unchanged) carrying `sseError`.
+- `lib/chat-support-id.ts` is new and owns the filtering. Only the server's
+  **`code` and `correlationId`** are rendered — server-generated tokens, which
+  is what a second operator needs to find the trace. The server's failure
+  **`message` is deliberately still not rendered**: it is derived from tool
+  output and provider text, so it is untrusted content, and
+  `chat-request-error.test.mjs:137-142` deliberately pins that a body carrying
+  a secret or `<script>` never reaches the transcript. Trading a missing reason
+  for an injection surface would be the wrong fix. Identifiers are shape-checked
+  and bounded to 96 chars; a malformed one renders **no line** rather than being
+  trimmed into something renderable.
+- A failure with no reported identity renders byte-identically to the previous
+  sentence — pinned by test, because most failures carry no id.
+
+Coverage: `src/lib/chat-support-id.test.mjs` (13 cases, incl. the security
+property), `chat-stream.test.mjs` (+4), `chat-request-error.test.mjs` (24 pass).
+A missing import in the `chat-request-error.test.mjs` harness is also fixed
+(`StreamRunFailure` / `chatSupportId` are now bound there, or every
+`instanceof` would be false and the new path silently untested).
+
+### 4.2 Reconnect ladder — **FIXED**, and the zero-delay retry was the real bug
+
+The prescription said "5 attempts with full jitter". The sharper defect was one
+line below it: `let retryDelay = 0`, so a stream that dropped **without** a
+`retry:` frame was re-dialed with **no wait at all** — hammering the very
+dependency that had just failed to deliver, three times in a row.
+
+`MAX_REJOIN_ATTEMPTS` is now 5, and the fallback ladder is **equal jitter**
+(`half + random(half)` of `min(8s, 500ms·2ⁿ)`), not full jitter. Full jitter is
+uniform over `[0, ceiling]` and can return ~0 — it spreads the herd but
+reintroduces the immediate re-dial it was meant to remove. Equal jitter spreads
+the herd *and* guarantees a real floor. A server-supplied `retry:` delay still
+wins and is used verbatim; the ladder is only the "nobody told us" case.
+
+*User-visible effect:* a laptop that sleeps for two seconds no longer loses the
+rest of an answer irreversibly — every later byte was still on the server behind
+`Last-Event-ID`.
+
+### 4.3 Idempotent HTTP retry — **SPECIFIED, deliberately not flipped**
+
+`api-client.ts` and `http.ts` are still single-shot, and the frontend still
+sends no `Idempotency-Key`. This one is **not** being done blind: retrying a
+`POST /runs/stream` without an idempotency key is exactly the
+double-charging-side-effects failure `runtime/side_effects/` exists to catch, so
+the prescription stands but needs the key plumbed end-to-end and verified
+against the server's real dedupe before it lands. Left open rather than
+half-done.
+
+### 4.4 Failure visibility queue — **SPECIFIED, owned elsewhere**
+
+`flash()` is still one `string | null` slot with a 4.5 s auto-clear and ~60
+call sites, duplicated per-section. It is a real defect (concurrent failures
+overwrite each other) but it is a broad `ChatView` refactor across ~15
+components, not a change to land beside a correctness fix.
+
+### 4.5 Unify offline signals — **SPECIFIED, owned elsewhere**
+
+`gatewayOk` and `serverHistoryError` still render two independent banners with
+independent dismissal that can visibly disagree. The honesty machinery the fix
+needs (`connectivityView()`) is built and tested in `lib/network.ts`; it is
+simply not applied to these two signals.
 
 ---
 
@@ -274,6 +333,10 @@ health-checks 8002, old port never re-probed after success.
 | Idle Gateway CPU (incident #4 evidence) | 60 s sample post-Task-2: 0.91 s (≈1.5 %); no burn recurrence across both sessions; §3.3 5-min acceptance still open |
 | Pre-existing config-coupled suite failures fixed | `2251170`: honesty-suite kill-switch opt-in fixture + forced L1 chain gate — 11/11 green under both the shipped template and an operator `config.yaml` |
 | Cancel path finalises cleanly | live evidence: manual cancel → `CancelledError` → `interrupted` → finalized, gateway healthy |
+| A failed run names itself to the operator | `frontend/src/lib/chat-support-id.test.mjs` (13) + `chat-stream.test.mjs` (+4) + `chat-request-error.test.mjs` (24) — code + correlation id reach the UI; the server's untrusted message still cannot |
+| A brief network blip does not lose the answer | `chat-stream.test.mjs` — 5-rejoin budget, and a guaranteed non-zero first backoff (the full-jitter version failed this) |
+| A corrupt harness store is never an empty one | `backend/tests/test_harness_state_durability.py` (12) — degraded ≠ empty, and a partial parse no longer destroys the entries that parsed |
+| The pre-existing `harness_refine` tool test failure | FIXED — it invoked the tool with no `runtime`, which pydantic rejects; reproduced on a clean `main` before the fix, repaired at the call site |
 
 ---
 

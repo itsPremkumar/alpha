@@ -23,9 +23,10 @@ import {
   reconcileEffortForModel,
   type EffortChoice,
 } from "@/lib/reasoning-effort";
-import { consumeChatStream } from "@/lib/chat-stream";
+import { consumeChatStream, StreamRunFailure } from "@/lib/chat-stream";
 import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
+import { chatSupportId } from "@/lib/chat-support-id";
 import { branding } from "@/lib/branding";
 import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -1451,11 +1452,17 @@ export default function ChatView() {
         }
       }
     } catch (error) {
+      // The run's own failure identity (stable code + correlation id) is the
+      // only evidence an operator can act on, and the Gateway has always sent
+      // it. `StreamRunFailure` is the one place it survives the stream layer;
+      // a bare ApiClientError carries no run context, so `supportId` stays
+      // undefined and the sentence renders exactly as it did before.
+      const supportId = error instanceof StreamRunFailure ? chatSupportId(error.sseError) : null;
       await showRequestFailure(controller.signal.aborted
-        ? { kind: "stopped" }
+        ? { kind: "stopped", supportId }
         : !responseStarted && error instanceof ApiClientError && error.kind === "http"
-          ? { kind: "http", status: error.status }
-          : { kind: responseStarted ? "stream" : "network" });
+          ? { kind: "http", status: error.status, supportId }
+          : { kind: responseStarted ? "stream" : "network", supportId });
     } finally {
       // isLoading is a workspace-wide "a run is in flight" indicator, not a
       // per-thread view. It must always clear or the composer stays wedged

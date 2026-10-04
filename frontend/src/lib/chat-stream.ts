@@ -1,5 +1,74 @@
 import { apiFetch, ApiClientError } from "./api-client";
-import { createSseDecoder, createSseState, reduceSse, runIdFromLocation, streamMessages, streamTasks, streamTodos, StreamMessage, SubagentTask, ReplayGapEvent, TodoPlan } from "./sse-reducer";
+import { createSseDecoder, createSseState, reduceSse, runIdFromLocation, streamMessages, streamTasks, streamTodos, StreamMessage, SubagentTask, ReplayGapEvent, SseErrorDetail, TodoPlan } from "./sse-reducer";
+
+/**
+ * A stream that ended because the run failed, carrying the reason the Gateway
+ * sent with it.
+ *
+ * It is an `ApiClientError` with `kind: "response"` so every existing caller,
+ * and every existing assertion on `error.kind`, keeps working unchanged — a
+ * dedicated error *type* rather than a new `ApiFailureKind`, because the
+ * transport did not misbehave: the run reported a failure and the failure is
+ * the news. Before this existed the reducer parsed `code`/`correlation_id` off
+ * the `event: error` frame and every throw site dropped it on the floor.
+ */
+export class StreamRunFailure extends ApiClientError {
+  /** The Gateway's own account of the failure, already bounded by the reducer. */
+  readonly sseError: SseErrorDetail | null;
+
+  constructor(sseError: SseErrorDetail | null = null) {
+    // `detail` stays null: the server's failure *message* is untrusted content
+    // and must not become the thrown message. `chatSupportId` is the only
+    // sanctioned consumer of the identity fields.
+    super("response");
+    this.name = "StreamRunFailure";
+    this.sseError = sseError;
+  }
+}
+
+/**
+ * Client-side reconnect ladder, used ONLY when the server sent no `retry:`
+ * delay.
+ *
+ * `retryDelay` starts at `0`, so before this existed a stream that dropped
+ * without a `retry:` frame was re-dialed with **no wait at all** — three
+ * immediate reconnects against whatever had just failed to deliver a frame.
+ * That is the worst case for the dependency: a backend mid-restart or a proxy
+ * with a full accept queue gets hammered precisely when it is least able to
+ * answer, and each attempt costs the same as a real one.
+ *
+ * A server-supplied delay always wins and is used verbatim — the server knows
+ * whether it is shedding load, and the existing contract (and its tests) pin
+ * that a `retry:` frame is honoured exactly. This ladder is the fallback for
+ * the case where nobody told us, where "no advice" must not mean "retry at
+ * once".
+ *
+ * The ceiling is deliberately `8s` while the server cap is `30s`: a client
+ * ladder is a guess, a server delay is information, and the fallback must not
+ * be the reason a reconnect arrives late.
+ */
+const MAX_REJOIN_ATTEMPTS = 5;
+const REJOIN_BASE_DELAY_MS = 500;
+const REJOIN_MAX_DELAY_MS = 8_000;
+
+/**
+ * Equal-jitter backoff for one attempt: `half + random(half)` of
+ * `min(cap, base·2ⁿ)`.
+ *
+ * **Equal jitter, not full jitter.** Full jitter is uniform over
+ * `[0, ceiling]`, so its expected delay is `ceiling/2` — but it can return
+ * ~0, which is precisely the behaviour this function exists to remove: an
+ * immediate re-dial against the dependency that just failed. Full jitter only
+ * spreads the *herd*; equal jitter spreads the herd **and** guarantees a real
+ * floor, so every attempt waits at least `ceiling/2`. The random half is what
+ * stops N browser tabs that all lost the same stream from re-dialing in
+ * lockstep, which a deterministic backoff would guarantee.
+ */
+function rejoinDelayMs(attempt: number): number {
+  const ceiling = Math.min(REJOIN_MAX_DELAY_MS, REJOIN_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1));
+  const half = Math.floor(ceiling / 2);
+  return half + Math.floor(Math.random() * half);
+}
 
 function waitForReconnect(delay: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -71,7 +140,7 @@ export async function consumeChatStream(
       options.onUpdate(streamMessages(state), state.runId);
       options.onTasks?.(streamTasks(state));
       options.onTodos?.(streamTodos(state));
-      if (state.failure) throw new ApiClientError("response");
+      if (state.failure) throw new StreamRunFailure(state.error ?? null);
     }, (delay) => { retryDelay = delay; });
     let transportFailed = false;
     try {
@@ -113,10 +182,17 @@ export async function consumeChatStream(
       if (transportFailed) throw new ApiClientError("network");
       return { messages: text.trim() ? [{ id: "plain", runId: state.runId || "", content: text }] : [], tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
     }
-    if (state.failure) throw new ApiClientError("response");
+    if (state.failure) throw new StreamRunFailure(state.error ?? null);
     if (state.ended) return { messages: streamMessages(state), tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
-    if (!state.runId || !state.lastEventId || attempts++ >= 2) throw new ApiClientError("response");
-    await waitForReconnect(retryDelay, options.signal);
+    if (!state.runId || !state.lastEventId) throw new StreamRunFailure(state.error ?? null);
+    // 2 attempts used to be the whole budget: a laptop that slept for two
+    // seconds was enough to lose the rest of an answer irreversibly, because
+    // every byte after `lastEventId` was still on the server and the client had
+    // already given up asking for it.
+    if (attempts++ >= MAX_REJOIN_ATTEMPTS) throw new StreamRunFailure(state.error ?? null);
+    // A `retry:` frame is the server's own instruction and outranks the ladder;
+    // only its absence falls through to the client backoff.
+    await waitForReconnect(retryDelay > 0 ? retryDelay : rejoinDelayMs(attempts), options.signal);
     if (options.signal.aborted) throw new ApiClientError("stopped");
     response = await (options.reconnect || apiFetch)(
       `/threads/${encodeURIComponent(options.threadId)}/runs/${encodeURIComponent(state.runId)}/join`,

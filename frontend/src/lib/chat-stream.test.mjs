@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { moduleUrl } from "./test-modules.mjs";
 
-const { consumeChatStream } = await import(moduleUrl("chat-stream"));
+const { consumeChatStream, StreamRunFailure } = await import(moduleUrl("chat-stream"));
 const frame = (event, id, data) => `event: ${event}\nid: ${id}\ndata: ${JSON.stringify(data)}\n\n`;
 const chunk = (id, text) => frame("messages", id, [{ type: "AIMessageChunk", id: "answer", content: text }, {}]);
 const response = (body) => new Response(body, { headers: { "Content-Type": "text/event-stream", "Content-Location": "/threads/thread-1/runs/run-1" } });
@@ -127,4 +127,91 @@ test("onActivity is optional, so callers that do not measure silence are unaffec
     reconnect: async () => { throw new Error("Unexpected reconnect"); },
   });
   assert.equal(result.messages[0].content, "Answer");
+});
+
+test("a server error frame survives the throw, so the UI can name the failure", async () => {
+  // The defect this pins: the reducer parsed code/correlationId off this frame
+  // and every throw site dropped it, so all failed runs rendered one sentence.
+  const error = frame("error", "100-9", { code: "run_failed", message: "model unavailable", correlation_id: "req-abc-123" });
+  await assert.rejects(
+    consumeChatStream(response(chunk("100-1", "Partial") + error), {
+      threadId: "thread-1", signal: new AbortController().signal, onUpdate: () => {},
+      reconnect: async () => { throw new Error("Unexpected reconnect"); },
+    }),
+    (thrown) => {
+      // Still an ApiClientError of the same kind, so every existing caller and
+      // every existing assertion on `error.kind` is untouched.
+      assert.equal(thrown.kind, "response");
+      assert.equal(thrown.name, "StreamRunFailure");
+      assert.equal(thrown.sseError.code, "run_failed");
+      assert.equal(thrown.sseError.correlationId, "req-abc-123");
+      return true;
+    },
+  );
+});
+
+test("the thrown error never carries the server's message as its own text", () => {
+  // `detail`/message are untrusted content derived from tool output. They stay
+  // off the thrown error so no caller can splatter them into the transcript.
+  const thrown = new StreamRunFailure({ code: "run_failed", message: "Bearer sk-secret", correlationId: "c1" });
+  assert.equal(thrown.detail, null);
+  assert.doesNotMatch(thrown.message, /sk-secret/);
+});
+
+test("a stream failure with no server identity is still a plain response error", () => {
+  const thrown = new StreamRunFailure(null);
+  assert.equal(thrown.kind, "response");
+  assert.equal(thrown.sseError, null);
+});
+
+test("a dropped stream rejoins up to 5 times, so a brief blip does not lose the answer", async (t) => {
+  // The budget used to be 2: a laptop that slept for two seconds lost the rest
+  // of an answer irreversibly, even though every later byte was still on the
+  // server waiting behind Last-Event-ID.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let requests = 0;
+  const pending = consumeChatStream(response(chunk("1", "A")), {
+    threadId: "thread-1", signal: new AbortController().signal, onUpdate: () => {},
+    reconnect: async () => { requests++; return response(chunk("2", "B")); },
+  });
+  const rejected = assert.rejects(pending, (error) => error.kind === "response");
+  // Drive the ladder: no `retry:` frame, so each wait is a client backoff.
+  for (let i = 0; i < 12; i++) {
+    await flush();
+    t.mock.timers.tick(8000);
+    await flush();
+  }
+  await rejected;
+  assert.equal(requests, 5, "exactly the ladder budget, then an honest give-up");
+});
+
+test("a dropped stream with no server retry hint waits before its first rejoin", async (t) => {
+  // `retryDelay` starts at 0, so before the ladder this re-dialed with NO wait
+  // at all — hammering the very dependency that had just failed to deliver.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const requests = [];
+  const pending = consumeChatStream(response(chunk("1", "A")), {
+    threadId: "thread-1", signal: new AbortController().signal, onUpdate: () => {},
+    reconnect: async (path, options) => { requests.push({ path, options }); return response(frame("end", "2", null)); },
+  });
+  await flush();
+  assert.equal(requests.length, 0, "no rejoin is attempted synchronously");
+  // Equal jitter on a 500ms ceiling is uniform over [250, 500), so 200ms is
+  // guaranteed short of it. This is the assertion that would fail under full
+  // jitter, whose range includes ~0 — the immediate re-dial this replaced.
+  t.mock.timers.tick(200);
+  await flush();
+  assert.equal(requests.length, 0, "the first backoff has a real floor, not a ~0ms one");
+  t.mock.timers.tick(300);
+  await flush();
+  assert.equal(requests.length, 1, "and fires once the wait has actually elapsed");
+  await pending;
+});
+
+test("ChatView surfaces the support identity instead of discarding it", () => {
+  // The wiring pin. Without it the parsed detail is parsed, tested and dropped
+  // again — which is exactly the state this change set exists to end.
+  const source = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
+  assert.match(source, /error instanceof StreamRunFailure \? chatSupportId\(error\.sseError\)/);
+  assert.match(source, /supportId/);
 });

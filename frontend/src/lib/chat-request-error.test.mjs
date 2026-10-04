@@ -5,13 +5,20 @@ import ts from "typescript";
 import { moduleUrl } from "./test-modules.mjs";
 
 const { createApiClient, ApiClientError } = await import(moduleUrl("api-client"));
-const { consumeChatStream } = await import(moduleUrl("chat-stream"));
+const { consumeChatStream, StreamRunFailure } = await import(moduleUrl("chat-stream"));
+const { chatSupportId } = await import(moduleUrl("chat-support-id"));
 const { emptyTodoPlan } = await import(moduleUrl("sse-reducer"));
 
 const compile = (source) => ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText;
-const helperSource = readFileSync(new URL("./chat-request-error.ts", import.meta.url), "utf8");
+// `chat-request-error.ts` now imports `./chat-support-id`, so it is loaded
+// through `moduleUrl` rather than hand-transpiled: a raw data: URL has no base
+// to resolve the relative specifier against. This suite transpiles the module
+// itself (to drive the real ChatView send path) and `moduleUrl` does the same
+// job for its dependencies.
+const helperSource = readFileSync(new URL("./chat-request-error.ts", import.meta.url), "utf8")
+  .replace(/from "\.\/(api-client|sse-reducer|http|chat-support-id)"/g, (_, dependency) => `from "${moduleUrl(dependency)}"`);
 const { chatRequestErrorMessage } = await import(`data:text/javascript;base64,${Buffer.from(compile(helperSource)).toString("base64")}`);
 const source = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
 const ast = ts.createSourceFile("ChatView.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -94,6 +101,11 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
   };
   Object.assign(dependencies, {
     ApiClientError,
+    // `sendMessage` names both of these in its catch block, so the harness
+    // supplies the real ones. A stubbed `StreamRunFailure` would make every
+    // `instanceof` check false and silently skip the support-id path.
+    StreamRunFailure,
+    chatSupportId,
     apiFetch: createApiClient({ fetch: dependencies.fetch, getCookie: () => "" }),
     consumeChatStream: (response, options) => consumeChatStream(response, {
       ...options,
