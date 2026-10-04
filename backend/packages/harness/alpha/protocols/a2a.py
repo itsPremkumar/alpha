@@ -62,8 +62,7 @@ class A2ATransport(Protocol):
     A real transport must be injected.
     """
 
-    def dispatch(self, card: AgentCapabilityCard, request: A2ADelegationRequest) -> A2ADelegationResponse:
-        ...
+    def dispatch(self, card: AgentCapabilityCard, request: A2ADelegationRequest) -> A2ADelegationResponse: ...
 
 
 class A2AProtocolAdapter:
@@ -71,7 +70,7 @@ class A2AProtocolAdapter:
 
     This is a **registry and a wire shape**, not an executor. No transport ships
     with it, so with no transport injected a delegation is reported as
-    ``not_dispatched`` â€” never as completed. See ``delegate``.
+    ``not_dispatched`` — never as completed. See ``delegate``.
     """
 
     def __init__(self, transport: A2ATransport | None = None):

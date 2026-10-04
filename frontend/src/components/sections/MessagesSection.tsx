@@ -15,6 +15,7 @@ import {
 } from "@/lib/groups-tree";
 import { GroupTreeSidebar, GroupBreadcrumbs, NewSubgroupForm } from "@/components/sections/GroupTreeSidebar";
 import { GroupActivityPanel } from "@/components/sections/GroupActivityPanel";
+import { GroupProfilePanel } from "@/components/sections/GroupProfilePanel";
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
 import { runCouncil, CouncilStrategy } from "@/lib/deliberation";
@@ -687,7 +688,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
               >
                 <RefreshCw className="size-4" aria-hidden="true" />
               </button>
-            </div>
+              </div>
             <div className="relative">
               <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats…" aria-label="Search chats" className={`${inputCls} pl-8`} />
@@ -1551,6 +1552,19 @@ function DetailsPane(props: {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {/* The group's own charter — identity, links, goals, project binding and
+            cloning. It reads on its own four routes so a failure here cannot
+            blank the roster below, and vice versa: two independent reads of two
+            independent subsystems, each with its own honest failure. */}
+        {isGroup && (
+          <GroupProfilePanel
+            roomName={props.sel.kind === "group" ? props.sel.name : ""}
+            onError={props.onError}
+            onChanged={() => props.onRefresh()}
+            onCloned={(name) => props.onOpenRoom(name)}
+          />
+        )}
+
         {/* This roster is the reason the view exists: every bot in the group,
             with the state the server actually measured. Direct / inherited /
             rule-matched are kept visually distinct because each has a

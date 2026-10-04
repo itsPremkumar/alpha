@@ -114,7 +114,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 65 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 66 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -122,7 +122,7 @@ In one sentence:
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
 | **Native tools** | 135 (`contracts/feature_manifest.json`, generated) |
 | **Middleware layers** | 42 |
-| **Background supervisor loops** | 8 |
+| **Background supervisor loops** | 9 |
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
@@ -946,7 +946,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 135 tools, 65 routers, 44 middlewares, and 9 supervisor loops. CI fails
+  pins all 135 tools, 66 routers, 44 middlewares, and 9 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

@@ -171,6 +171,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "Live agent activity ledger, work claims, and crash-honest status for group rooms.",
     ),
     "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec("plans", "Unified local-only integration plan and sequencing for Alpha."),
+    "ADVANCED_GROUP_MESSAGING_PLAN.md": DocumentSpec(
+        "plans",
+        "Group profiles, links, goals, pinning, threading, receipts and notifications — design record plus a per-feature shipped/not-shipped map.",
+    ),
     "AUTHORITY_MODEL.md": DocumentSpec(
         "operations",
         "Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.",

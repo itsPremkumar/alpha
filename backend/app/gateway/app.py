@@ -62,6 +62,7 @@ from app.gateway.routers import (
     missions,
     models,
     multimodal,
+    notifications,
     openai_compat,
     ops,
     ops_integration,
@@ -1212,6 +1213,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # `GET /tree` before `GET /{name}` for exactly this reason.
     app.include_router(group_coordination.router)
     app.include_router(groups.router)
+    app.include_router(notifications.router)
     app.include_router(agent_messages.router)
     # Cross-instance Alpha network: local management routes plus the explicitly
     # public Agent Card / pairing-token ingress surface.

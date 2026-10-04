@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Bell, Settings, Check, User, ExternalLink, ShieldCheck, Sparkles, Compass } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { NotificationsBell } from "@/components/sections/NotificationsBell";
 import { UpdateControl } from "@/components/UpdateControl";
 import { ANONYMOUS_INITIALS, ANONYMOUS_LABEL, ANONYMOUS_ROLE } from "@/lib/operator";
 import type { WorkspaceView } from "@/lib/workspace-view";
@@ -149,6 +150,16 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
             user actually spends their time on. This bar is the one header all
             views share. */}
         <UpdateControl />
+
+        {/* Notification delivery belongs where every view can receive it. This
+            component is not just a panel: mounting it is what runs
+            `primeNotificationAudio()` and the 20s poll, so an agent's message
+            raises a toast and a chime only while it is on screen. It used to
+            live in the Messages section header, which does not render in the
+            chat view at all -- so on the screen a user actually spends their
+            time, a message landed, was recorded, and was announced nowhere.
+            That is the same trap `UpdateControl` above already had. */}
+        <NotificationsBell />
 
         {/* Notifications toggle */}
         <div className="relative" ref={notifRef}>

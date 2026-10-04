@@ -91,6 +91,22 @@ class GroupMessage:
     reply_to: str | None = None
     #: ``{"room": ..., "sender": ...}`` when this message was forwarded here.
     forwarded_from: dict[str, str] | None = None
+    # ── Advanced messaging features ────────────────────────────────────
+    #: Set when the message is pinned to the group. Pinned messages are
+    #: the operator's curated reference points, not a sorted queue —
+    #: `pinned_at` records when it was pinned so the UI can show recency
+    #: without reordering the transcript.
+    pinned: bool = False
+    pinned_at: str | None = None
+    pinned_by: str | None = None
+    #: Number of direct replies in this message's thread. Derived, not
+    #: stored as a mutable counter the caller could forget to update.
+    reply_count: int = 0
+    #: Timestamp of the most recent reply, for the thread list view.
+    last_reply_at: str | None = None
+    #: File/image attachments carried by this message. Bounded per
+    #: message so a single post cannot balloon the transcript.
+    attachments: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -127,6 +143,32 @@ class GroupRoom:
     #: `draft` until the room is used, then `active`. Mirrors `GroupScope.state`
     #: so a plain room read can filter drafts without loading every scope.
     lifecycle: RoomLifecycle = "active"
+    # ── Group identity & profile ──────────────────────────────────────
+    #: Rich-text description of the group's purpose and scope. Distinct
+    #: from `topic` (the working subject) and `summary` (the collapsed
+    #: one-liner). A group without one is not a broken group — the field
+    #: is simply absent.
+    description: str | None = None
+    #: Short purpose statement ("Build the core product"). Shown in the
+    #: group header beside the name.
+    purpose: str | None = None
+    #: Explicit goals the group is chartered to achieve. Bounded and
+    #: human-authored, never model-inferred.
+    goals: list[str] = field(default_factory=list)
+    #: Free-form tags for filtering and discovery. Bounded.
+    tags: list[str] = field(default_factory=list)
+    #: Predefined category for grouping rooms. `custom` is the catch-all;
+    #: unknown values are preserved verbatim rather than snapped.
+    category: str | None = None
+    #: Avatar/banner image URLs and the fallback colour used when no
+    #: avatar is set. `avatar_color` is a hex value so a room without
+    #: an uploaded image still gets a deterministic visual identity.
+    avatar_url: str | None = None
+    banner_url: str | None = None
+    avatar_color: str | None = None
+    #: Identity of the operator who created the room. Server-assigned
+    #: from the request context, never client-supplied.
+    created_by: str | None = None
 
     def append_message(
         self,
@@ -168,6 +210,73 @@ class GroupRoom:
                 return msg
         return None
 
+    # ── Advanced messaging helpers ──────────────────────────────────────
+
+    def pinned_messages(self) -> list[GroupMessage]:
+        """Every pinned message, most-recently-pinned first.
+
+        The transcript order is the message *creation* order; the pinned
+        list is a curation order. Sorting by `pinned_at` (newest first)
+        keeps the most recently pinned reference at the top without
+        reordering the transcript itself.
+        """
+        pinned = [m for m in self.log if m.pinned]
+        pinned.sort(key=lambda m: m.pinned_at or "", reverse=True)
+        return pinned
+
+    def thread_replies(self, message_id: str) -> list[GroupMessage]:
+        """Every direct reply to ``message_id``, in creation order."""
+        return [m for m in self.log if m.reply_to and m.reply_to.strip().lower() == message_id.strip().lower()]
+
+    def thread_roots(self) -> list[GroupMessage]:
+        """Messages that have at least one reply, oldest reply first.
+
+        A thread root is any message that `thread_replies` returns a
+        non-empty list for. Reporting `reply_count` beside each root is
+        what makes a thread list legible: a root with no replies is not a
+        thread.
+        """
+        roots: list[GroupMessage] = []
+        for msg in self.log:
+            replies = self.thread_replies(msg.id)
+            if replies:
+                roots.append(msg)
+        return roots
+
+    def search_messages(
+        self,
+        query: str,
+        *,
+        sender: str | None = None,
+        intent: str | None = None,
+        limit: int = 50,
+    ) -> list[GroupMessage]:
+        """Case-insensitive substring search over the transcript.
+
+        A full-text index is overkill for a file-backed single-process
+        store: the transcript is bounded and the scan is the honest
+        implementation. Results are ordered by creation time, newest
+        first, and capped so a broad query cannot return the whole log.
+        Deleted messages are excluded — searching for content the system
+        already withheld would re-disclose it.
+        """
+        needle = (query or "").strip().lower()
+        if not needle:
+            return []
+        hits: list[GroupMessage] = []
+        for msg in reversed(self.log):
+            if msg.deleted:
+                continue
+            if sender and msg.sender.strip().lower() != sender.strip().lower():
+                continue
+            if intent and msg.intent != intent:
+                continue
+            if needle in msg.content.lower():
+                hits.append(msg)
+                if len(hits) >= limit:
+                    break
+        return hits
+
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["log"] = [m.to_dict() for m in self.log]
@@ -183,3 +292,54 @@ class GroupRoom:
         room = cls(**filtered)
         room.log = [GroupMessage.from_dict(dict(m)) for m in raw_log]
         return room
+
+
+#: Predefined group categories. `custom` is the explicit catch-all; an
+#: unknown value is preserved verbatim rather than snapped to this list,
+#: because a category a newer Gateway wrote is data, not an error.
+GROUP_CATEGORIES: tuple[str, ...] = (
+    "engineering",
+    "research",
+    "operations",
+    "support",
+    "management",
+    "custom",
+)
+
+
+@dataclass
+class GroupLink:
+    """A reference URL attached to a group.
+
+    Links are how a group names what it is *for* — the project board, the
+    repo, the docs. They are operator-authored, ordered by `position`,
+    and never model-supplied: a link is a claim about where work lives,
+    and inventing one is exactly the kind of fabricated state this layer
+    exists to prevent.
+    """
+
+    link_id: str
+    room_id: str
+    label: str
+    url: str
+    #: What kind of reference this is. Drives the icon and the ordering
+    #: default; unknown values are preserved verbatim.
+    link_type: str = "custom"
+    icon: str | None = None
+    created_by: str | None = None
+    created_at: str = field(default_factory=_now)
+    #: Display order within the group. Lower renders first.
+    position: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GroupLink:
+        filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        return cls(**filtered)
+
+
+#: Predefined link types. `custom` is the catch-all; unknown values are
+#: preserved verbatim so a newer Gateway's type is not silently relabelled.
+GROUP_LINK_TYPES: tuple[str, ...] = ("project", "docs", "repo", "external", "custom")

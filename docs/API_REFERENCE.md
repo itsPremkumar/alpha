@@ -724,6 +724,117 @@ The events endpoint is an ordered JSONL-backed audit projection; the stream endp
 GET /api/groups/{group_name}/runs/{run_id}/stream
 ```
 
+### Group Profiles, Messaging & Real-Time
+```http
+GET    /api/groups/{name}/profile
+PATCH  /api/groups/{name}/profile
+GET    /api/groups/{name}/links
+POST   /api/groups/{name}/links
+DELETE /api/groups/{name}/links/{link_id}
+PATCH  /api/groups/{name}/links/reorder
+GET    /api/groups/{name}/goals
+POST   /api/groups/{name}/goals
+PATCH  /api/groups/{name}/goals/{goal_id}
+GET    /api/groups/{name}/project-link
+POST   /api/groups/{name}/project-link
+DELETE /api/groups/{name}/project-link
+POST   /api/groups/{name}/clone
+POST   /api/groups/{name}/messages/{message_id}/pin
+DELETE /api/groups/{name}/messages/{message_id}/pin
+GET    /api/groups/{name}/pinned
+GET    /api/groups/{name}/messages/{message_id}/thread
+GET    /api/groups/{name}/threads
+GET    /api/groups/{name}/search
+POST   /api/groups/{name}/messages/{message_id}/read
+GET    /api/groups/{name}/unread
+GET    /api/groups/{name}/messages/{message_id}/readers
+POST   /api/groups/{name}/typing
+GET    /api/groups/{name}/typing
+GET    /api/groups/{name}/events
+```
+
+Every literal path above is declared **before** the `GET /api/groups/{name}`
+catch-all. Starlette matches in registration order, so a `/{name}` route placed
+first answers `Room 'pinned' not found` for `GET /pinned` — a room-level 404 for
+a room that exists, which no client can distinguish from an absent group.
+
+`PATCH /profile` takes `description`, `purpose`, `goals`, `tags`, `category`,
+`avatar_url`, `banner_url`, `avatar_color` and `created_by`, and writes only the
+keys actually present — a partial update cannot blank a field the caller did not
+send.
+
+> **Two different things are called `goals`.** `PATCH /profile`'s `goals` is a
+> flat `list[str]`: the room's *charter*, read back as `profile.goals`.
+> `GET|POST /goals` returns **objects** with `goal_id`, `status` and `progress`,
+> stored in a separate table and carrying their own lifecycle. They do not sync
+> and are not two views of one list.
+
+`POST /clone` takes `{new_name, include_members, include_rules, include_links,
+include_profile}` (all default `true`) and copies the **charter only**: profile,
+links, membership and rules, each as fresh records with new ids so editing the
+clone never mutates the source. It deliberately does **not** copy the transcript,
+tracked goals, pins, read receipts, or the project binding (`project_id` is reset
+to `null`) — a clone starts with a project unbound rather than silently working
+in the source's project.
+
+`GET /search` takes `q` (1–200 chars, required) plus `sender`, `intent` and
+`limit` (default 50). Results come from the live transcript, so a deleted message
+stops matching — the index *is* the room, not a copy of it.
+
+`POST .../read` marks one message read **and persists it** — a receipt that is
+returned but not written is a read that never happened.
+
+`GET /events` is SSE: `event: <type>` / `data: <json>` frames, a `: heartbeat`
+comment every 15s, and per-subscriber queues bounded at 100 frames that drop the
+oldest when full. The stream is a projection of room state, never a second write
+path — a dropped frame converges on the next room read. The stream is keyed by
+the room's internal `room_id`, not its name, so a subscriber resolves the room
+first; a frame carries the message id, sender and room name for a client to
+re-read by, never the message body.
+
+### Notifications
+```http
+GET    /api/notifications?limit=50&unread_only=
+GET    /api/notifications/unread-count
+POST   /api/notifications/{notification_id}/read
+POST   /api/notifications/read-all
+GET    /api/notifications/preferences
+PATCH  /api/notifications/preferences
+GET    /api/notifications/test
+```
+
+`GET /api/notifications` takes `limit` (default 50, max 200), `unread_only` and
+`types` (a comma-separated filter).
+
+Notification records are produced inside `GroupChatService.post_message`, the
+single write path that creates a room message, so the two cannot disagree.
+`GET /test` creates a real `type="test"` record through that same path, which is
+what makes the frontend sound and desktop popup checkable without waiting for an
+agent to speak.
+
+**A room message is delivered to the operator, not to the agents.** The audience
+is the room's resolved roster *plus* the single operator id
+(`alpha.notifications.OPERATOR_USER_ID`) that these routes serve, so an agent's
+post lands in an inbox a human can actually open. The sender is skipped, so the
+operator is not notified about their own message. Records carry `sound: true`;
+whether a chime is actually played is decided client-side by `sound_enabled`
+and the quiet-hours window, which is why the record has no per-message mute of
+its own — an agent post that badged the panel while staying inaudible would be
+a setting nothing in the UI could explain or override.
+
+`PATCH /preferences` takes `enabled`, `sound_enabled`, `desktop_enabled`,
+`types` and `priorities` (each a map of key → bool), `quiet_hours_start` and
+`quiet_hours_end` (`HH:MM`-shaped, ≤8 chars), `digest_mode` and
+`digest_interval_minutes` (1–1440). Preferences gate **delivery only**: a
+silenced notification is still recorded and still counted, so muting the chime
+never loses history.
+
+Storage is one JSON file per user under the harness user directory, capped at
+500 records and read fail-closed — an unreadable file raises rather than
+resolving to an empty list, because "nothing recorded" must never mean "the call
+failed". The router addresses the single operator; it does not claim per-user
+isolation it has not implemented.
+
 ---
 
 ## Missions & Work Queue API

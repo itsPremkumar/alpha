@@ -133,11 +133,6 @@ FOREIGN_ROOT_STEMS = ("start.", "stop.")
 
 OWNERSHIP_EXEMPTIONS: dict[str, str] = {
     "BUG_FIX_BOARD.md": "owned by the integrator as the merge surface; this audit reports its sites and does not edit it",
-    "backend/packages/harness/alpha/groups/AGENTS.md": ("an AGENTS.md other agents may be editing; the whole file is UTF-16LE, so any repair is a full re-encode rather than a surgical edit"),
-    "backend/tests/test_system_one_wiring.py": (
-        "mixed EOL is a working-tree artifact: .gitattributes sets '* text=auto eol=lf', so the committed blob is LF and this checkout is CRLF for lines 1-939 only. "
-        "Unifying it rewrites 87 line breaks, which this audit's charter forbids as a non-surgical change"
-    ),
 }
 
 # A UTF-8 BOM is required on .ps1 (PowerShell 5.1) and never removed from a

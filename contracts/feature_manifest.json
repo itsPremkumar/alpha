@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-04T00:55:06Z",
+ "generated_at": "2026-10-04T01:52:52Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1414,6 +1414,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.notifications",
+   "module": "app.gateway.routers.notifications",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.openai_compat",
    "module": "app.gateway.routers.openai_compat",
    "symbol": "router",
@@ -2398,6 +2406,11 @@
    "submodules": [
     "engines"
    ]
+  },
+  {
+   "id": "alpha.notifications",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.observability",

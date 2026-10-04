@@ -1,7 +1,7 @@
 """Organization blueprints: how a company turns a mission into a real org chart.
 
 A blueprint is a *proposal*. Nothing here touches the bot registry, the Kanban
-store, or the project store â€” the caller decides what to accept. Keeping
+store, or the project store — the caller decides what to accept. Keeping
 construction separate from application is what lets an operator preview the
 whole structure, edit it, and then hire.
 
@@ -353,7 +353,7 @@ _ARCHETYPE_CATALOGUE: list[dict[str, str]] = [
     {
         "archetype": "custom",
         "display_name": "Dynamic Custom Collective",
-        "description": "A perpetual organization synthesized from any prompt â€” a game studio, data pipeline, newsroom, or trading desk.",
+        "description": "A perpetual organization synthesized from any prompt — a game studio, data pipeline, newsroom, or trading desk.",
     },
 ]
 
@@ -394,7 +394,7 @@ def _employee(
 
 
 def _company_blueprint(name: str, mission: str, description: str, vision: str) -> list[PlannedEmployee]:
-    """Executive â†’ Product & Engineering â†’ Security & SRE â†’ Research & Growth.
+    """Executive → Product & Engineering → Security & SRE → Research & Growth.
 
     The bot template slugs are the real ones from ``alpha.bots.templates``, so a
     hire lands on a profile that already has a sensible role, toolset and SOUL

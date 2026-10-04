@@ -13,7 +13,14 @@ from uuid import uuid4
 from alpha.bots.registry import get_bot_registry
 from alpha.groups.orchestration import GroupOrchestrator
 from alpha.groups.quorum import QuorumEngine
-from alpha.groups.room import GroupMessage, GroupRoom, OrchestrationMode, _now
+from alpha.groups.room import (
+    GROUP_LINK_TYPES,
+    GroupLink,
+    GroupMessage,
+    GroupRoom,
+    OrchestrationMode,
+    _now,
+)
 from alpha.groups.roster import (
     GroupRoster,
     ResolvedRoster,
@@ -38,8 +45,39 @@ from alpha.groups.scope import (
     recompute_all,
     validate_state,
 )
+from alpha.notifications import OPERATOR_USER_ID
+from alpha.notifications.triggers import NotificationTriggers
 
 logger = logging.getLogger(__name__)
+
+#: Optional observer notified after every successful room mutation.
+#: The Gateway installs a publisher here so the SSE stream and the
+#: durable state agree, without the harness importing the app layer.
+#: The observer is read-only: it cannot change a transition and its
+#: exceptions are swallowed — a display bug must never fail a run.
+_group_event_observer: Any = None
+
+
+def set_group_event_observer(observer: Any) -> None:
+    """Install the process-wide room-event observer."""
+    global _group_event_observer
+    _group_event_observer = observer
+
+
+def _notify_room_event(room_id: str, event: str, data: dict[str, Any]) -> None:
+    """Notify the observer, if one is installed.
+
+    Failures are logged and swallowed: an event stream that
+    cannot publish is a display problem, never a reason to
+    fail the mutation that already succeeded.
+    """
+    if _group_event_observer is None:
+        return
+    try:
+        _group_event_observer(room_id, event, data)
+    except Exception:
+        logger.warning("Group event observer failed", exc_info=True)
+
 
 _DEFAULT_GROUPS_DIR = "groups"
 
@@ -67,6 +105,21 @@ class GroupChatService:
         #: claim, so a nested or rule-based member written there would be erased
         #: on the next project reconcile. See `alpha.groups.roster`.
         self._rosters: dict[str, GroupRoster] = {}
+        #: Group identity links, keyed by room_id. Persisted in the same
+        #: atomic save as the rooms so a link and its room cannot disagree.
+        self._links: dict[str, list[GroupLink]] = {}
+        #: Read receipts, keyed by room_id -> message_id -> set of readers.
+        #: Volatile-adjacent: persisted because a read state that resets on
+        #: every restart is a lie about what the operator has seen.
+        self._receipts: dict[str, dict[str, set[str]]] = {}
+        #: Typing indicators, keyed by room name -> bot -> since stamp.
+        #: In-memory only: a typing state that survives a restart would claim
+        #: someone is still typing when they are not.
+        self._typing: dict[str, dict[str, str]] = {}
+        #: Tracked goals, keyed by room_id.
+        self._goals: dict[str, list[dict[str, Any]]] = {}
+        #: Project links, keyed by room_id.
+        self._project_links: dict[str, dict[str, Any]] = {}
         self.orchestrator = GroupOrchestrator()
         self.quorum = QuorumEngine()
         # Reentrant on purpose. The nesting methods compose each other — a
@@ -94,6 +147,15 @@ class GroupChatService:
             for item in data.get("rosters", []):
                 roster = GroupRoster.from_dict(item)
                 self._rosters[roster.room_id] = roster
+            for item in data.get("links", []):
+                link = GroupLink.from_dict(item)
+                self._links.setdefault(link.room_id, []).append(link)
+            for room_id, readers in data.get("receipts", {}).items():
+                self._receipts[room_id] = {message_id: set(readers) for message_id, readers in readers.items()}
+            for room_id, goals in data.get("goals", {}).items():
+                self._goals[room_id] = goals
+            for room_id, link in data.get("project_links", {}).items():
+                self._project_links[room_id] = link
             # Rebuild derived paths/depths: they are never trusted from disk,
             # because a rename or promote would leave them stale.
             self._recompute_scope()
@@ -120,10 +182,14 @@ class GroupChatService:
         try:
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)
             data = {
-                "version": 2,
+                "version": 3,
                 "rooms": [r.to_dict() for r in self._rooms.values()],
                 "scopes": [s.to_dict() for s in self._scopes.values()],
                 "rosters": [r.to_dict() for r in self._rosters.values()],
+                "links": [link.to_dict() for links in self._links.values() for link in links],
+                "receipts": {room_id: {mid: sorted(readers) for mid, readers in room.items()} for room_id, room in self._receipts.items()},
+                "goals": {room_id: goals for room_id, goals in self._goals.items()},
+                "project_links": dict(self._project_links),
                 "updated_at": _now(),
             }
             tmp = self.storage_path.with_suffix(".tmp")
@@ -301,7 +367,74 @@ class GroupChatService:
         self._save()
 
         next_speakers = self.orchestrator.resolve_next_speakers(room, msg)
+        _notify_room_event(
+            room.room_id,
+            "message",
+            {
+                "message_id": msg.id,
+                "sender": msg.sender,
+                "intent": msg.intent,
+                "mentions": list(msg.mentions),
+                "reply_to": msg.reply_to,
+                "room_name": room.name,
+            },
+        )
+        self._raise_notifications(room, msg)
         return msg, next_speakers
+
+    def _raise_notifications(self, room: GroupRoom, msg: GroupMessage) -> None:
+        """Create the durable notification records for a landed message.
+
+        Called after the message is already saved, so a notification fault
+        can never roll back or fail a post that succeeded. Mentions are a
+        separate, higher-priority record than room chatter — a direct
+        address is a summons, ordinary flow is not.
+
+        The audience is the *resolved* roster, not `room.members`: the
+        crew-owned field may be empty while rules or nesting still put
+        real members in the room, and notifying only the direct list
+        would silently miss them.
+
+        The operator is **always** in that audience, and that is the part
+        that is easy to get wrong. A room's roster is made of agents, but
+        the only reader of this store is the human running the
+        installation, so a notification filed solely under agent names is
+        a record nobody can ever open. `on_message_posted` already skips
+        the sender, which is what keeps the operator from being notified
+        about their own post once they are on the list.
+        """
+        try:
+            triggers = NotificationTriggers()
+            audience = list(self.effective_members(room.name)) if room.name else []
+            if OPERATOR_USER_ID not in audience:
+                audience.append(OPERATOR_USER_ID)
+        except Exception:
+            logger.warning("Notification audience resolution failed for %s", room.name, exc_info=True)
+            return
+        try:
+            triggers.on_message_posted(
+                room.room_id,
+                room.name,
+                msg.sender,
+                msg.content,
+                msg.intent,
+                list(msg.mentions),
+                msg.id,
+                recipients=audience,
+            )
+            if msg.mentions:
+                triggers.on_mention(
+                    room.room_id,
+                    room.name,
+                    msg.sender,
+                    msg.content,
+                    list(msg.mentions),
+                    msg.id,
+                )
+        except Exception:
+            # A notification that cannot be recorded is a missed surface,
+            # not a failed message. The transcript is already durable.
+            logger.warning("Notification raise failed for %s", room.name, exc_info=True)
 
     # ── Message features ──────────────────────────────────────────────────
     #
@@ -881,6 +1014,496 @@ class GroupChatService:
                 "children_total": len(kids),
                 "message_count": len(room.log),
             }
+
+    # ── Group profile & identity ────────────────────────────────────
+
+    def update_group_profile(
+        self,
+        room_name: str,
+        *,
+        description: str | None = None,
+        purpose: str | None = None,
+        goals: list[str] | None = None,
+        tags: list[str] | None = None,
+        category: str | None = None,
+        avatar_url: str | None = None,
+        banner_url: str | None = None,
+        avatar_color: str | None = None,
+        created_by: str | None = None,
+        set_fields: set[str] | None = None,
+    ) -> GroupRoom:
+        """Update the group's identity fields.
+
+        Only the keys named in ``set_fields`` are written, so a
+        partial update cannot silently blank a field the caller did
+        not send. ``None`` means "not provided" and ``set_fields``
+        disambiguates "clear it" from "leave it alone": a caller
+        clearing the description adds ``description`` to the set
+        with a ``None`` value.
+        """
+        room = self._require_room(room_name)
+        fields = set_fields or set()
+        with self._lock:
+            if "description" in fields:
+                room.description = description
+            if "purpose" in fields:
+                room.purpose = purpose
+            if "goals" in fields:
+                room.goals = [g.strip() for g in (goals or []) if g.strip()]
+            if "tags" in fields:
+                room.tags = [t.strip() for t in (tags or []) if t.strip()]
+            if "category" in fields:
+                room.category = category
+            if "avatar_url" in fields:
+                room.avatar_url = avatar_url
+            if "banner_url" in fields:
+                room.banner_url = banner_url
+            if "avatar_color" in fields:
+                room.avatar_color = avatar_color
+            if "created_by" in fields and created_by is not None:
+                room.created_by = created_by
+            room.updated_at = _now()
+            self._save()
+        return room
+
+    # ── Group links ─────────────────────────────────────────────────
+
+    def add_link(
+        self,
+        room_name: str,
+        *,
+        label: str,
+        url: str,
+        link_type: str = "custom",
+        icon: str | None = None,
+        created_by: str | None = None,
+    ) -> GroupLink:
+        """Attach a reference link to a group.
+
+        Links live in the room's own JSON record (under
+        ``room_links`` in the persistence envelope) so they travel
+        with the room and survive the same atomic save. A bad URL
+        is refused at the boundary rather than stored and rendered
+        as a broken link.
+        """
+        room = self._require_room(room_name)
+        cleaned_label = (label or "").strip()
+        if not cleaned_label:
+            raise ValueError("A link needs a label.")
+        cleaned_url = (url or "").strip()
+        if not cleaned_url:
+            raise ValueError("A link needs a URL.")
+        if link_type not in GROUP_LINK_TYPES:
+            raise ValueError(f"link_type must be one of {list(GROUP_LINK_TYPES)}.")
+        with self._lock:
+            links = self._links_for(room.room_id)
+            link = GroupLink(
+                link_id=f"link_{uuid4().hex[:8]}",
+                room_id=room.room_id,
+                label=cleaned_label,
+                url=cleaned_url,
+                link_type=link_type,
+                icon=icon,
+                created_by=created_by,
+                position=len(links),
+            )
+            links.append(link)
+            self._save()
+        _notify_room_event(room.room_id, "link_added", link.to_dict())
+        return link
+
+    def remove_link(self, room_name: str, link_id: str) -> None:
+        """Remove a link by id. A missing id is a no-op report, not an error.
+
+        Removing a link that never existed is the same end state as
+        removing it successfully, so the route reports the resulting
+        list rather than raising — the operator's intent (the link
+        is gone) is satisfied either way.
+        """
+        room = self._require_room(room_name)
+        with self._lock:
+            links = self._links_for(room.room_id)
+            before = len(links)
+            links[:] = [link for link in links if link.link_id != link_id]
+            if len(links) != before:
+                for position, link in enumerate(links):
+                    link.position = position
+                self._save()
+
+    def list_links(self, room_name: str) -> list[GroupLink]:
+        """The group's links in display order."""
+        room = self._require_room(room_name)
+        with self._lock:
+            return sorted(self._links_for(room.room_id), key=lambda link: link.position)
+
+    def reorder_links(self, room_name: str, ordered_link_ids: list[str]) -> list[GroupLink]:
+        """Set the display order of a group's links."""
+        room = self._require_room(room_name)
+        with self._lock:
+            links = self._links_for(room.room_id)
+            by_id = {link.link_id: link for link in links}
+            ordered: list[GroupLink] = []
+            for link_id in ordered_link_ids:
+                link = by_id.get(link_id)
+                if link is not None:
+                    ordered.append(link)
+            # Any link not named keeps its relative order at the end,
+            # so an incomplete reorder cannot silently drop a link.
+            for link in links:
+                if link not in ordered:
+                    ordered.append(link)
+            for position, link in enumerate(ordered):
+                link.position = position
+            self._save()
+        return ordered
+
+    def _links_for(self, room_id: str) -> list[GroupLink]:
+        """The links stored beside a room.
+
+        Links are held in a side map keyed by room id and persisted
+        in the same atomic save as the rooms, so a link and its room
+        cannot disagree about existence.
+        """
+        if room_id not in self._links:
+            self._links[room_id] = []
+        return self._links[room_id]
+
+    # ── Message pinning ─────────────────────────────────────────────
+
+    def pin_message(self, room_name: str, message_id: str, actor: str) -> GroupMessage:
+        """Pin a message to the group.
+
+        Pinning is idempotent in state but not in stamp: pinning an
+        already-pinned message refreshes `pinned_at` so the pin list
+        reflects the most recent curation, and the operator sees
+        their action registered.
+        """
+        room = self._require_room(room_name)
+        msg = room.find_message(message_id)
+        if msg is None:
+            raise KeyError(f"Message '{message_id}' not found in room '{room_name}'.")
+        if msg.deleted:
+            raise ValueError("A deleted message cannot be pinned.")
+        with self._lock:
+            msg.pinned = True
+            msg.pinned_at = _now()
+            msg.pinned_by = actor
+            room.updated_at = _now()
+            self._save()
+        _notify_room_event(room.room_id, "pinned", {"message_id": msg.id, "pinned_by": actor})
+        return msg
+
+    def unpin_message(self, room_name: str, message_id: str) -> GroupMessage:
+        """Unpin a message."""
+        room = self._require_room(room_name)
+        msg = room.find_message(message_id)
+        if msg is None:
+            raise KeyError(f"Message '{message_id}' not found in room '{room_name}'.")
+        with self._lock:
+            msg.pinned = False
+            msg.pinned_at = None
+            msg.pinned_by = None
+            room.updated_at = _now()
+            self._save()
+        return msg
+
+    def pinned_messages(self, room_name: str) -> list[GroupMessage]:
+        """The group's pinned messages, newest pin first."""
+        room = self._require_room(room_name)
+        return room.pinned_messages()
+
+    # ── Threading ───────────────────────────────────────────────────
+
+    def thread_replies(self, room_name: str, message_id: str) -> list[GroupMessage]:
+        """Every direct reply to a message, and the reply counts are
+        refreshed on read so a stale `reply_count` cannot outlive the
+        transcript it describes."""
+        room = self._require_room(room_name)
+        msg = room.find_message(message_id)
+        if msg is None:
+            raise KeyError(f"Message '{message_id}' not found in room '{room_name}'.")
+        replies = room.thread_replies(message_id)
+        # Recompute the derived count from the live transcript so a
+        # deleted reply is reflected immediately rather than at the
+        # next save.
+        msg.reply_count = len(replies)
+        if replies:
+            msg.last_reply_at = replies[-1].created_at
+        return replies
+
+    def thread_roots(self, room_name: str) -> list[GroupMessage]:
+        """Messages that have at least one reply."""
+        room = self._require_room(room_name)
+        return room.thread_roots()
+
+    # ── Search ──────────────────────────────────────────────────────
+
+    def search_messages(
+        self,
+        room_name: str,
+        query: str,
+        *,
+        sender: str | None = None,
+        intent: str | None = None,
+        limit: int = 50,
+    ) -> list[GroupMessage]:
+        """Search a room's transcript."""
+        room = self._require_room(room_name)
+        return room.search_messages(query, sender=sender, intent=intent, limit=limit)
+
+    # ── Read receipts ───────────────────────────────────────────────
+
+    def mark_read(self, room_name: str, message_id: str, reader: str) -> GroupMessage:
+        """Record that ``reader`` has seen ``message_id``.
+
+        Receipts are held in a side map (room -> message -> set of
+        readers) so a read never mutates the message row itself —
+        the transcript stays the operator's record and the read
+        state is a per-reader projection.
+        """
+        room = self._require_room(room_name)
+        msg = room.find_message(message_id)
+        if msg is None:
+            raise KeyError(f"Message '{message_id}' not found in room '{room_name}'.")
+        with self._lock:
+            receipts = self._receipts_for(room.room_id)
+            readers = receipts.setdefault(message_id, set())
+            if reader in readers:
+                # A repeat ack is a no-op; saving again would rewrite the file
+                # for a state that did not change.
+                return msg
+            readers.add(reader)
+            # Receipts are part of the envelope, so a read has to flush with
+            # the rest of it — an ack that only lived in memory made every
+            # message look unread again after a restart.
+            self._save()
+        return msg
+
+    def message_readers(self, room_name: str, message_id: str) -> list[str]:
+        """Who has read a message."""
+        self._require_room(room_name)
+        with self._lock:
+            receipts = self._receipts_for(self._require_room(room_name).room_id)
+            return sorted(receipts.get(message_id, set()))
+
+    def unread_messages(self, room_name: str, reader: str) -> list[GroupMessage]:
+        """Messages ``reader`` has not marked read.
+
+        A message with no receipt row is unread-by-default: the
+        absence of a read record is not proof of a read, so an
+        unread message and a never-read message are the same claim.
+        """
+        room = self._require_room(room_name)
+        with self._lock:
+            receipts = self._receipts_for(room.room_id)
+        return [m for m in room.log if reader not in receipts.get(m.id, set())]
+
+    def _receipts_for(self, room_id: str) -> dict[str, set[str]]:
+        if room_id not in self._receipts:
+            self._receipts[room_id] = {}
+        return self._receipts[room_id]
+
+    # ── Typing indicators ───────────────────────────────────────────
+
+    def set_typing(self, room_name: str, bot_name: str, is_typing: bool) -> None:
+        """Record a typing indicator. Volatile by design — it lives
+        in memory only, because a typing state that survives a
+        restart would claim someone is still typing when they are not."""
+        self._require_room(room_name)
+        with self._lock:
+            if is_typing:
+                self._typing.setdefault(room_name.lower().strip(), {})[bot_name] = _now()
+            else:
+                self._typing.get(room_name.lower().strip(), {}).pop(bot_name, None)
+
+    def typing_indicators(self, room_name: str) -> list[dict[str, str]]:
+        """Who is typing right now, with the stamp that proves it is fresh."""
+        key = room_name.lower().strip()
+        with self._lock:
+            current = dict(self._typing.get(key, {}))
+        return [{"bot_name": name, "since": since} for name, since in current.items()]
+
+    # ── Clone ───────────────────────────────────────────────────────
+
+    def clone_group(
+        self,
+        room_name: str,
+        *,
+        new_name: str,
+        include_members: bool = True,
+        include_rules: bool = True,
+        include_links: bool = True,
+        include_profile: bool = True,
+        created_by: str | None = None,
+    ) -> GroupRoom:
+        """Duplicate a group's configuration into a new room.
+
+        The clone copies *configuration*, never the transcript: a
+        cloned room starts empty so the two rooms' histories cannot
+        be confused. Members, rules, links and profile are copied
+        because they are the room's charter, not its conversation.
+        """
+        source = self._require_room(room_name)
+        key = new_name.lower().strip()
+        if key in self._rooms:
+            raise ScopeError(f"A group named '{new_name}' already exists.")
+        with self._lock:
+            members = list(source.members) if include_members else []
+            for member in members:
+                get_bot_registry().get_or_create(member)
+            room = GroupRoom(
+                room_id=f"room_{uuid4().hex[:8]}",
+                name=key,
+                topic=source.topic,
+                members=members,
+                mode=source.mode,
+                moderator=source.moderator,
+                project_id=None,
+                created_by=created_by,
+            )
+            if include_profile:
+                room.description = source.description
+                room.purpose = source.purpose
+                room.goals = list(source.goals)
+                room.tags = list(source.tags)
+                room.category = source.category
+                room.avatar_url = source.avatar_url
+                room.banner_url = source.banner_url
+                room.avatar_color = source.avatar_color
+                room.summary = source.summary
+            self._rooms[key] = room
+            self._recompute_scope()
+            # Rules and links are copied as fresh records with new ids,
+            # so editing the clone never mutates the source.
+            if include_rules:
+                source_roster = self._rosters.get(source.room_id)
+                if source_roster is not None:
+                    clone_roster = GroupRoster(room_id=room.room_id)
+                    for rule in source_roster.rules:
+                        clone_rule = resolve_rule(rule.to_dict())
+                        clone_rule.id = f"rule_{uuid4().hex[:8]}"
+                        clone_roster.rules.append(clone_rule)
+                    self._rosters[room.room_id] = clone_roster
+            if include_links:
+                for link in self._links_for(source.room_id):
+                    clone_link = GroupLink(
+                        link_id=f"link_{uuid4().hex[:8]}",
+                        room_id=room.room_id,
+                        label=link.label,
+                        url=link.url,
+                        link_type=link.link_type,
+                        icon=link.icon,
+                        created_by=created_by,
+                        position=link.position,
+                    )
+                    self._links_for(room.room_id).append(clone_link)
+            self._save()
+        return room
+
+    # ── Goals ───────────────────────────────────────────────────────
+
+    def add_goal(self, room_name: str, *, title: str, description: str = "", created_by: str | None = None) -> dict[str, Any]:
+        """Add a tracked goal to a group.
+
+        Goals are the group's stated objectives. They live beside the
+        room and carry their own lifecycle so progress is measurable
+        without polluting the transcript.
+        """
+        room = self._require_room(room_name)
+        cleaned_title = (title or "").strip()
+        if not cleaned_title:
+            raise ValueError("A goal needs a title.")
+        with self._lock:
+            goals = self._goals_for(room.room_id)
+            goal = {
+                "goal_id": f"goal_{uuid4().hex[:8]}",
+                "room_id": room.room_id,
+                "title": cleaned_title,
+                "description": (description or "").strip(),
+                "status": "pending",
+                "progress": 0,
+                "created_at": _now(),
+                "completed_at": None,
+                "created_by": created_by,
+            }
+            goals.append(goal)
+            self._save()
+        _notify_room_event(room.room_id, "goal_added", goal)
+        return goal
+
+    def update_goal(self, room_name: str, goal_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update a goal's status or progress."""
+        room = self._require_room(room_name)
+        with self._lock:
+            goals = self._goals_for(room.room_id)
+            for goal in goals:
+                if goal["goal_id"] == goal_id:
+                    for key, value in updates.items():
+                        if key in {"title", "description", "status", "progress", "created_by"}:
+                            goal[key] = value
+                    if updates.get("status") == "completed" and not goal.get("completed_at"):
+                        goal["completed_at"] = _now()
+                        goal["progress"] = 100
+                    self._save()
+                    return goal
+        raise KeyError(f"Goal '{goal_id}' not found in room '{room_name}'.")
+
+    def list_goals(self, room_name: str) -> list[dict[str, Any]]:
+        """The group's goals."""
+        self._require_room(room_name)
+        with self._lock:
+            return list(self._goals_for(self._require_room(room_name).room_id))
+
+    def _goals_for(self, room_id: str) -> list[dict[str, Any]]:
+        if room_id not in self._goals:
+            self._goals[room_id] = []
+        return self._goals[room_id]
+
+    # ── Project linking ─────────────────────────────────────────────
+
+    def link_project(self, room_name: str, *, project_id: str, project_name: str = "", project_type: str = "kanban") -> dict[str, Any]:
+        """Bind a group to a project.
+
+        A room is already project-scoped through `project_id`; this
+        records the richer reference (name, type, when it was linked)
+        the project inspector needs, without touching the crew-owned
+        membership field.
+        """
+        room = self._require_room(room_name)
+        cleaned_id = (project_id or "").strip()
+        if not cleaned_id:
+            raise ValueError("A project link needs a project id.")
+        with self._lock:
+            link = {
+                "room_id": room.room_id,
+                "project_id": cleaned_id,
+                "project_name": (project_name or cleaned_id).strip(),
+                "project_type": project_type,
+                "linked_at": _now(),
+                "linked_by": None,
+            }
+            self._project_links[room.room_id] = link
+            # The room's own project_id stays the single source of truth
+            # for crew reconciliation; the link is the display record.
+            if not room.project_id:
+                room.project_id = cleaned_id
+            self._save()
+        return link
+
+    def get_project_link(self, room_name: str) -> dict[str, Any] | None:
+        """The project this group is bound to, or None."""
+        room = self._require_room(room_name)
+        with self._lock:
+            return self._project_links.get(room.room_id)
+
+    def unlink_project(self, room_name: str) -> None:
+        """Remove the project binding. The room's `project_id` is cleared
+        only if it points at the same project, so an unlink cannot
+        silently sever a crew binding that was set elsewhere."""
+        room = self._require_room(room_name)
+        with self._lock:
+            self._project_links.pop(room.room_id, None)
+            self._save()
 
     def _resolve_id(self, room: str) -> str:
         """Accept a room id or a name for the same room.
