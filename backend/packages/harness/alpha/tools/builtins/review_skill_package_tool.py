@@ -60,10 +60,7 @@ def review_skill_package(
             "facts": facts,
             "artifacts": artifacts,
             "static_report": static_report,
-            "markdown": {
-                "en": render_report_markdown(static_report, facts, locale="en"),
-                "zh": render_report_markdown(static_report, facts, locale="zh"),
-            },
+            "markdown": render_report_markdown(static_report, facts),
         }
         review_subject_entry = {
             "display_ref": facts["subject"]["display_ref"],

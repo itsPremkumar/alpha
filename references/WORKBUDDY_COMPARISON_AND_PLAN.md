@@ -14,7 +14,7 @@
 | 3 | **Skills** | ~301 built-in reusable capability units; **Skill Marketplace** with categories + "recommended"; custom upload package (`SKILL.md`, `manifest.yaml`, `scripts/`, `references/`, `assets/`); enterprise whitelist/blacklist; scripts run in a sandbox. |
 | 4 | **Connectors / MCP** | Connect GitHub, GitLab, Jira, Confluence, Google Drive, Gmail, Notion, Slack, Tencent Docs, Figma; auth = **MCP OAuth 2.1 / OAuth 2.0 / API Key**; credential + MCP server config + **tool-permission filter** + timeout + custom headers; gateway routing. |
 | 5 | **Experts** | Role-based agents (prompt + skills + model hint) that add domain experience; built-in market + enterprise-built `.zip` packages (MD5/SHA256, avatar, id, name, category, version). |
-| 6 | **Expert Groups (专家团)** | Multiple experts wired into a **pipeline**, each owning a stage (e.g. Creative Director → Copywriter → Video Generator → Editor). |
+| 6 | **Expert Groups** | Multiple experts wired into a **pipeline**, each owning a stage (e.g. Creative Director → Copywriter → Video Generator → Editor). |
 | 7 | **Enterprise Knowledge Base** | Enterprise Q&A over internal documents and code, with management + permissions. |
 | 8 | **Automations** | One-time / daily / weekly / monthly / yearly scheduled tasks (**RRULE**), running outside the session and reusing the workspace + connectors. |
 | 9 | **Remote Assistant** | Send tasks from Slack / Telegram / Discord / WeCom / Feishu / DingTalk / QQ; results delivered back to the same channel. |

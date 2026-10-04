@@ -14,7 +14,7 @@ where the two overlap.
   `Notice`, `ErrorBox`, `EmptyState`, `SkeletonList`, `inputCls`).
 - `lib/` — API clients, one module per backend plane, plus the shared
   `api-client.ts` / `http.ts` transport.
-- `content/` — the documentation site content (en/zh).
+- `content/` — the documentation site content (English only).
 - `types/` — shared TypeScript types.
 
 ## Lion companion boundary
