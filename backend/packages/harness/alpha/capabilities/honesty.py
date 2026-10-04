@@ -112,21 +112,19 @@ class WiringReport:
 
 
 def repo_root() -> Path:
-    """The repository root, found by walking up from this file.
+    """The repository root, found structurally rather than from the cwd.
 
-    Deliberately not ``runtime_paths.project_root()``. That resolves
-    ``ALPHA_PROJECT_ROOT`` or the **process working directory**, so a test run
-    from ``backend/`` yields ``backend/`` and every source root below silently
-    resolves to ``backend/backend/...``. This audit must be anchored to the tree
-    it is auditing, so the root is located structurally: the nearest ancestor
-    containing both ``backend/`` and ``AGENTS.md``.
+    Delegates to :func:`alpha.config.runtime_paths.repository_root`, which owns
+    the single structural marker walk. Deliberately not
+    ``runtime_paths.project_root()``: that resolves ``ALPHA_PROJECT_ROOT`` or
+    the **process working directory**, so a test run from ``backend/`` yields
+    ``backend/`` and every source root below silently resolves to
+    ``backend/backend/...``. This audit must be anchored to the tree it is
+    auditing.
     """
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / "backend" / "packages").is_dir() and (candidate / "AGENTS.md").is_file():
-            return candidate
-    # Fall back to the harness package's known depth rather than the cwd, so a
-    # relocated checkout still audits something rather than nothing.
-    return Path(__file__).resolve().parents[4]
+    from alpha.config.runtime_paths import repository_root
+
+    return repository_root()
 
 
 def _source_roots(extra: tuple[str, ...] = ()) -> list[Path]:

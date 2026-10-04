@@ -20,11 +20,22 @@ SyncTick = Callable[[], dict[str, Any]]
 
 
 def _resolve_project_root() -> Path:
-    """Repository root for repo-scoped loops (sentinel scans, etc.)."""
-    try:
-        from alpha.config.runtime_paths import project_root
+    """Repository root for repo-scoped loops (sentinel scans, etc.).
 
-        return project_root()
+    Structural, not cwd-relative. This used to call
+    ``alpha.config.runtime_paths.project_root()``, which resolves the *process
+    working directory* -- and the documented launch command is
+    ``cd backend && uvicorn app.gateway.app:app``, so it answered ``backend/``.
+    Every ``.ps1`` file in this repository lives at the repository root
+    (``start.ps1``, ``installer/``, ``recovery/``, ``scripts/``); there are none
+    under ``backend/``. The PowerShell sentinel therefore scanned a tree with
+    zero PowerShell scripts, found nothing, and reported a healthy empty result
+    while costing ~18s to walk the virtualenv it found instead.
+    """
+    from alpha.config.runtime_paths import repository_root
+
+    try:
+        return repository_root()
     except Exception:
         # backend/app/gateway/autonomy/loops.py -> repo root is four levels up.
         return Path(__file__).resolve().parents[4]
