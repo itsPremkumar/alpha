@@ -60,6 +60,34 @@ class TestManifestInjection:
         history = first["messages"] + [HumanMessage(content="again", id="h2")]
         assert middleware.before_agent({"messages": history}, None) is None
 
+    def test_a_carried_manifest_still_satisfies_the_reuse_probe(self) -> None:
+        """A manifest already in context must count as consulted.
+
+        Observed live on 2026-10-04: the reuse probe refused six consecutive
+        productive steps on a continued thread and the agent reported, correctly,
+        "the gate is still refusing, despite both conditions now being met". The
+        marker check short-circuits re-injection, and `_consulted` was only set on
+        the *injecting* turn -- so a thread whose checkpoint already carried the
+        manifest could never satisfy the probe again, and the remediation ("read
+        the capability manifest") could never put one back. The signal is "the map
+        is in front of the model", not "the map was sent this turn".
+        """
+        middleware = GroundingMiddleware(manifest=_manifest(names=("read_file", "group_chat")))
+        # A later turn: the manifest marker is already present in history.
+        carried = {
+            "messages": [
+                HumanMessage(content="go", id="h1"),
+                SystemMessage(content="<capability manifest/>", id="m1", additional_kwargs={GROUNDING_MANIFEST_KEY: True}),
+                HumanMessage(content="now post the update", id="h2"),
+            ]
+        }
+        assert middleware.before_agent(carried, None) is None  # still no re-injection
+        # ...but the run counts as having consulted the map.
+        assert middleware._consulted is True
+        subject = middleware._subject_for({"name": "group_chat", "id": "c1", "args": {}})
+        assert subject.reuse_probe_run is True
+        assert middleware._gate({"name": "group_chat", "id": "c1", "args": {}}) is None
+
     def test_gaps_are_disclosed_to_the_model(self) -> None:
         """A manifest with no gap section reads as 'nothing is missing'."""
         middleware = GroundingMiddleware(manifest=_manifest())

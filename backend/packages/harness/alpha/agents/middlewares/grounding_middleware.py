@@ -304,6 +304,19 @@ class GroundingMiddleware(AgentMiddleware):
                         },
                     )
                 )
+        else:
+            # The manifest is ALREADY in the conversation -- a continued thread,
+            # a checkpoint reloaded after a restart, or a second run on the same
+            # thread. The marker check above short-circuits the injection, which
+            # used to leave `_consulted` at its default False, so every later
+            # productive step was refused by `check_reuse_probe` while the
+            # manifest sat in context and its remediation ("read the capability
+            # manifest") could never re-inject one. Observed live on 2026-10-04:
+            # an agent looped six refusals deep and reported, correctly, "the
+            # gate is still refusing, despite both conditions now being met".
+            # The signal is "the map has been put in front of the model", not
+            # "the map was sent on this particular turn".
+            self._consulted = True
         claims = self._claims_block()
         if claims and not self._has_marker(messages, GROUNDING_CLAIMS_KEY):
             new_messages.append(
