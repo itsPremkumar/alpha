@@ -66,8 +66,17 @@ test("the view id is registered in all three required places", () => {
   ]) {
     assert.ok(source.includes('"deliberation"'), `deliberation is not registered in ${name}`);
   }
-  // The section must be lazy-loaded, not eagerly pulled into the bundle.
-  assert.match(chat, /lazy\(\(\) => import\("@\/components\/sections\/WarRoomRunsSection"\)/);
+  // The section must load on demand, not be eagerly pulled into the bundle.
+  // `next/dynamic` replaced `React.lazy` here: a lazy section cannot be
+  // server-rendered, so the server shipped the Suspense fallback and React
+  // discarded the whole server tree on hydration. Both forms are on-demand
+  // loads; only `dynamic` participates in the App Router module graph.
+  assert.match(chat, /dynamic\(\(\) => import\("@\/components\/sections\/WarRoomRunsSection"\)/);
+  assert.doesNotMatch(
+    chat,
+    /lazy\(\(\) => import\("@\/components\/sections\/WarRoomRunsSection"\)/,
+    "a React.lazy section cannot be server-rendered and reintroduces the hydration mismatch",
+  );
   assert.match(chat, /view === "deliberation"/);
 });
 

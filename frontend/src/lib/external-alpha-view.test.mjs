@@ -39,8 +39,11 @@ test("the tab declares a collaboration category that has a dropdown heading", ()
   assert.match(nav, /\{ category: "collaboration", heading: "Collaboration & Team" \}/);
 });
 
-test("the section is lazy-imported", () => {
-  assert.match(chatView, /lazy\(\(\) => import\("@\/components\/sections\/ExternalAlphaSection"\)/);
+test("the section is loaded on demand", () => {
+  // `next/dynamic`, not `React.lazy`: a lazy section cannot be server-rendered,
+  // so the server shipped the Suspense fallback and React discarded the whole
+  // server tree on hydration. Both forms are on-demand loads.
+  assert.match(chatView, /dynamic\(\(\) => import\("@\/components\/sections\/ExternalAlphaSection"\)/);
 });
 
 test("the view has a render branch", () => {

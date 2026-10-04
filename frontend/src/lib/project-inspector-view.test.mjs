@@ -70,7 +70,7 @@ test("the Projects tab is registered in all three places a view must be", () => 
   // A view id that exists in the tab bar but not the router, or vice versa, is
   // either unreachable or a dead render branch.
   assert.match(views, /"projects"/, "projects is in the workspace-view union");
-  assert.match(chatView, /lazy\(\(\) => import\("@\/components\/sections\/ProjectsSection"\)/);
+  assert.match(chatView, /dynamic\(\(\) => import\("@\/components\/sections\/ProjectsSection"\)/);
   assert.match(chatView, /view === "projects"/);
 });
 

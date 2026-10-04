@@ -38,7 +38,10 @@ test("the tab is declared exactly once, with a label and a blurb", () => {
 });
 
 test("the section is lazy-imported and rendered for its view id", () => {
-  assert.match(chatView, /lazy\(\(\) => import\("@\/components\/sections\/ReliabilitySection"\)/);
+  // `next/dynamic`, not `React.lazy`: a lazy section cannot be server-rendered,
+  // so the server shipped the Suspense fallback and React discarded the whole
+  // server tree on hydration. Both are on-demand loads.
+  assert.match(chatView, /dynamic\(\(\) => import\("@\/components\/sections\/ReliabilitySection"\)/);
   assert.match(chatView, /view === "reliability" \? \([\s\S]*?<ReliabilitySection \/>/);
 });
 
