@@ -486,9 +486,41 @@ class FreeLLMRouter:
             )
         cooling = [name for name, state in self._states.items() if state.cooldown_until > self._clock()]
         raise FreeLLMUnavailableError(
-            f"all {len(attempts)} free provider attempt(s) failed ({len(cooling)} now cooling down)",
+            f"all {len(attempts)} free provider attempt(s) failed ({len(cooling)} now cooling down){self._no_failover_reason(model, target_provider, len(attempts))}",
             attempts=attempts,
         )
+
+    def _no_failover_reason(self, model: str, target_provider: str | None, attempted: int) -> str:
+        """Explain *why* there was no failover, or return "" when there was room.
+
+        A `free:<provider>:<model>` spec is a pin, not a preference. Every other
+        provider is dropped from the candidate list because it does not offer
+        that model id, so the chain legitimately has exactly one member and a
+        single 429 ends the run.
+
+        Measured on this deployment: `config.yaml` declares
+        `models[].model: free:opencode-zen:space-bunny-free`, while the same
+        catalog advertises 45 healthy free models across 8 providers. The run
+        reported "all 1 free provider attempt(s) failed (1 now cooling down)" --
+        which reads as a transient blip on a router with failover, and sent the
+        investigation looking for a circuit-breaker bug instead of at the pin.
+
+        So the exhaustion message names the pin and the alternative, whenever one
+        existed. Silence here is what made a configuration fact look like a
+        runtime fault.
+        """
+        if attempted != 1:
+            return ""
+        pinned = model if model and model != "auto" else None
+        if not pinned and not target_provider:
+            # One candidate with no pin means only one provider had models.
+            return " (only one provider had discovered models; the others were unreachable)"
+        # Prefer the bare provider name over the whole `free:provider:model` spec.
+        who = target_provider
+        if who is None and pinned and pinned.startswith("free:"):
+            parts = pinned.split(":", 2)
+            who = parts[1] if len(parts) == 3 else (parts[1] if len(parts) == 2 else pinned)
+        return f" — this is a single-endpoint pin ({who or pinned}), so there was nothing to fail over to. Set models[].model to 'auto' (or omit the provider segment) to route across all discovered free providers."
 
     # ------------------------------------------------------------------
     # Probing (optional liveness; failures stay inconclusive)

@@ -562,7 +562,12 @@ def get_available_tools(
     except Exception as e:
         logger.warning(f"Failed to load ACP tool: {e}")
 
-    logger.info(f"Total tools loaded: {len(loaded_tools)}, built-in tools: {len(builtin_tools)}, MCP tools: {len(mcp_tools)}, ACP tools: {len(acp_tools)}")
+    # The breakdown is logged *after* dedup below, because "total tools loaded"
+    # must mean what the model is actually offered. Logging `len(loaded_tools)`
+    # as the total reported "Total tools loaded: 11" on a run whose agent
+    # received 143 tools — `loaded_tools` is only the `tools:` block from
+    # config.yaml. An operator reading tool-usage logs to work out why a tool
+    # was never called was reading the wrong number.
 
     # Deduplicate by tool name — config-loaded tools take priority, followed by
     # built-ins, MCP tools, and ACP tools.  Duplicate names cause the LLM to
@@ -579,4 +584,14 @@ def get_available_tools(
                 "Duplicate tool name %r detected and skipped — check your config.yaml and MCP server registrations (issue #1803).",
                 t.name,
             )
+
+    # Report what the model is actually offered, not one component of it.
+    logger.info(
+        "Tools offered to the model: %d total (config: %d, built-in: %d, MCP: %d, ACP: %d) after dedup",
+        len(unique_tools),
+        len(loaded_tools),
+        len(builtin_tools),
+        len(mcp_tools),
+        len(acp_tools),
+    )
     return unique_tools
