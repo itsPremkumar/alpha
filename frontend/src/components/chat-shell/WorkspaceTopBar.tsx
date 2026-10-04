@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Bell, Settings, Check, User, ExternalLink, ShieldCheck, Sparkles } from "lucide-react";
+import { Search, Bell, Settings, Check, User, ExternalLink, ShieldCheck, Sparkles, Compass } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { UpdateControl } from "@/components/UpdateControl";
 import { ANONYMOUS_INITIALS, ANONYMOUS_LABEL, ANONYMOUS_ROLE } from "@/lib/operator";
@@ -278,6 +278,18 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
               >
                 <Settings className="size-3.5" /> Workspace Settings
               </button>
+              {onOpenView && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    onOpenView("overview");
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground text-left text-xs transition-colors"
+                >
+                  <Compass className="size-3.5" /> Overview atlas
+                </button>
+              )}
               {onOpenView && (
                 <button
                   type="button"
