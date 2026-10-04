@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from langchain.tools import ToolRuntime
 from langchain_core.messages import SystemMessage
 
 from alpha.agents.middlewares.continual_harness_middleware import (
@@ -124,28 +125,59 @@ def test_continual_harness_middleware(tmp_path: Path):
     assert "Global Habit" in msg.content
 
 
+def _tool_runtime() -> ToolRuntime:
+    """The injected runtime `harness_refine` requires.
+
+    `harness_refine_tool` declares `runtime: Runtime` as a bare required first
+    parameter so LangChain injects it (see the NOTE at the top of
+    `harness_refine_tool.py`). `ToolNode` injects that at dispatch, but a direct
+    `invoke()` does not, so the field has to be supplied *in the input dict* —
+    which is why every other tool test in this repo spells it
+    `tool.invoke({"runtime": runtime, ...})`. This test was failing on `main`
+    for that reason alone, with nothing to do with the behaviour it asserts.
+    """
+    return ToolRuntime(
+        state={},
+        context={},
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="harness-refine-test",
+        store=None,
+    )
+
+
 def test_harness_refine_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    runtime = _tool_runtime()
     # Add entry
-    add_res = harness_refine_tool.invoke({
-        "action": "add",
-        "kind": "prompt",
-        "title": "TDD Rule",
-        "content": "Write unit test first before editing core code.",
-        "scope": "local",
-    })
+    add_res = harness_refine_tool.invoke(
+        {
+            "runtime": runtime,
+            "action": "add",
+            "kind": "prompt",
+            "title": "TDD Rule",
+            "content": "Write unit test first before editing core code.",
+            "scope": "local",
+        }
+    )
     assert "Successfully recorded" in add_res
 
     # List entries
-    list_res = harness_refine_tool.invoke({
-        "action": "list",
-        "scope": "local",
-    })
+    list_res = harness_refine_tool.invoke(
+        {
+            "runtime": runtime,
+            "action": "list",
+            "scope": "local",
+        }
+    )
     assert "TDD Rule" in list_res
 
     # Refine
-    refine_res = harness_refine_tool.invoke({
-        "action": "refine",
-        "scope": "local",
-    })
+    refine_res = harness_refine_tool.invoke(
+        {
+            "runtime": runtime,
+            "action": "refine",
+            "scope": "local",
+        }
+    )
     assert "Refinement" in refine_res

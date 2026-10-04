@@ -27,17 +27,23 @@ class GoalStore:
     """Thread-safe persistent store for continuous goals and milestones."""
 
     def __init__(self, storage_path: str | Path | None = None):
-        self.storage_path = (
-            Path(storage_path).resolve()
-            if storage_path
-            else Path.cwd() / _DEFAULT_GOAL_DIR / "goals.json"
-        )
+        self.storage_path = Path(storage_path).resolve() if storage_path else Path.cwd() / _DEFAULT_GOAL_DIR / "goals.json"
         self._goals: dict[str, Goal] = {}
         self._lock = threading.Lock()
+        # Why an unreadable / unwritable store is surfaced rather than absorbed:
+        # `goal_engine action="list"` and `/loop:status` both answer from
+        # `list_goals()`. With the parse error swallowed, a corrupt goals.json
+        # answered "No active autonomous goals." — a model told there is no work
+        # when the truth is that its work cannot be read. The same held for
+        # writes: a disk-full save returned a Goal as if persisted, and
+        # `/loop:resume` then reported success on state that never landed.
+        self.load_error: str | None = None
+        self.save_error: str | None = None
         self._load()
 
     def _load(self) -> None:
         if not self.storage_path.exists():
+            self.load_error = None
             return
         try:
             with open(self.storage_path, encoding="utf-8") as f:
@@ -45,10 +51,42 @@ class GoalStore:
             for item in data.get("goals", []):
                 goal = Goal.from_dict(item)
                 self._goals[goal.goal_id.lower()] = goal
-        except Exception:
-            pass
+        except Exception as exc:
+            # A corrupt store must not read as an empty one. `goal_engine` and
+            # the `/loop:*` commands both answer "no goals" from this dict, so
+            # swallowing here told the model there was nothing to work on when
+            # the truth was that state could not be read at all.
+            self.load_error = str(exc)
+            logger.warning("Continuous goal store unreadable; goals unavailable: %s", self.storage_path, exc_info=True)
+            return
+        self.load_error = None
 
-    def _save(self) -> None:
+    @property
+    def is_degraded(self) -> bool:
+        """Whether the on-disk store could not be read.
+
+        Distinct from "there are no goals": the two lead to opposite decisions,
+        so a caller that checks must not infer one from the other.
+        """
+        return self.load_error is not None
+
+    @property
+    def is_durable(self) -> bool:
+        """Whether the most recent save actually reached disk.
+
+        Read this after a mutating call before reporting success. A `Goal`
+        handed back by `create_goal` / `update_goal_status` exists in memory
+        either way; only this says whether it survives a restart.
+        """
+        return self.save_error is None
+
+    def _save(self) -> bool:
+        """Persist the store. Returns whether the write actually landed.
+
+        The return value is the point: every caller used to hand back an
+        in-memory object as though it were durable, so a full disk reported a
+        successful resume and the work was gone on restart.
+        """
         try:
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)
             data = {
@@ -60,8 +98,12 @@ class GoalStore:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             tmp.replace(self.storage_path)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("Continuous goal store save failed; goals are NOT durable: %s", self.storage_path, exc_info=True)
+            self.save_error = str(exc)
+            return False
+        self.save_error = None
+        return True
 
     def create_goal(
         self,

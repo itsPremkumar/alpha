@@ -30,6 +30,12 @@ def goal_engine_tool(
     runner = get_goal_runner()
     store = get_goal_store()
 
+    # A corrupt store used to answer "No active autonomous goals." here, which
+    # told the model there was no work when the truth was that its work could
+    # not be read. Say so instead, and name the file so the operator can act.
+    if store.is_degraded:
+        return f"Error: the goal store at {store.storage_path} could not be read ({store.load_error}). Goal state is UNKNOWN — this is not an empty catalog. Repair or remove the file, then retry."
+
     if action == "list":
         goals = store.list_goals()
         if not goals:
@@ -84,7 +90,12 @@ def goal_engine_tool(
     elif action == "resume":
         if not goal_id:
             return "Error: 'goal_id' is required for 'resume'."
-        goal = store.update_goal_status(goal_id, "executing", "Resumed by operator tool command.")
+        # `store.is_durable` reports whether the status write actually landed.
+        # Reporting `executing` from an in-memory object that never reached disk
+        # is the fake-success case: the run proceeds and the state is gone on
+        # restart.
+        if not store.is_durable:
+            return f"Error: goal '{goal_id}' status could NOT be persisted to {store.storage_path} ({store.save_error}). The in-memory status changed but will not survive a restart; the goal is NOT durably resumed."
         return f"Goal {goal_id} status updated to: executing."
 
     return f"Error: Unknown action '{action}'."

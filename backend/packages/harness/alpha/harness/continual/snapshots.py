@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any
 from uuid import uuid4
 
 from alpha.harness.continual.state import HarnessState
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -54,16 +57,27 @@ class HarnessSnapshotManager:
                 with open(manifest_file, encoding="utf-8") as f:
                     manifest = json.load(f)
             except Exception:
+                # Rewriting the index from `[]` here would orphan every snapshot
+                # already on disk — the files survive, but nothing can find them,
+                # so `rollback` would report that no rollback target exists. The
+                # snapshot itself was copied before this point and is not lost.
+                logger.warning(
+                    "Harness snapshot manifest unreadable; the new snapshot is on disk but prior snapshots are unindexed: %s",
+                    manifest_file,
+                    exc_info=True,
+                )
                 manifest = []
 
-        manifest.append({
-            "snapshot_id": snapshot_id,
-            "created_at": _now(),
-            "description": description,
-            "file": target_path.name,
-            "scope": self.state.scope,
-            "entry_count": sum(len(v) for v in self.state.entries.values()),
-        })
+        manifest.append(
+            {
+                "snapshot_id": snapshot_id,
+                "created_at": _now(),
+                "description": description,
+                "file": target_path.name,
+                "scope": self.state.scope,
+                "entry_count": sum(len(v) for v in self.state.entries.values()),
+            }
+        )
 
         with open(manifest_file, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
@@ -81,6 +95,15 @@ class HarnessSnapshotManager:
             with open(manifest_file, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
+            # An unreadable index is not an empty one. `harness_refine
+            # action="rollback"` answers "No snapshots available" from this
+            # return value, so swallowing here told the model rollback was
+            # impossible while the snapshot files were sitting on disk.
+            logger.warning(
+                "Harness snapshot manifest unreadable; snapshots exist on disk but cannot be enumerated: %s",
+                manifest_file,
+                exc_info=True,
+            )
             return []
 
     def restore_snapshot(self, snapshot_id: str) -> bool:

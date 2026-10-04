@@ -202,6 +202,46 @@ passes rows in. Full contract, five loop breakers, durability rules:
 **[packages/harness/alpha/company_os/AGENTS.md](company_os/AGENTS.md)**. Tests:
 `tests/test_company_os_core.py`; frontend `frontend/src/lib/company.test.mjs`.
 
+## Durable state under `harness/` (`continuous/`, `continual/`)
+
+A JSON-backed store that cannot be read must report **unknown**, never empty.
+The two lead to opposite decisions, so the difference has to survive to the
+caller — a bare `except Exception: pass` in `_load` is not a safe default here,
+it is a silent failure with a green suite beside it.
+
+Three stores carried exactly that shape and now carry the same disclosure:
+
+- **`continuous/store.py` (`GoalStore`)** backs the model-facing `goal_engine`
+  tool and the `/loop:*` commands, both of which answer from `list_goals()`. A
+  corrupt `goals.json` used to answer `"No active autonomous goals."` — telling
+  the model there was no work when the truth was that its work could not be
+  read. It exposes `load_error` / `is_degraded`, and `_save` returns whether the
+  write landed (`is_durable`, `save_error`): a full disk used to return a `Goal`
+  as though persisted, so `resume` reported success on state that vanished on
+  restart. `goal_engine` now refuses on a degraded store and refuses to claim a
+  resume it could not persist.
+- **`continual/state.py` (`HarnessState`)** backs `ContinualHarnessMiddleware`,
+  which is appended to **every** lead agent and builds its system-reminder from
+  `self.entries`. A corrupt state file therefore injected *no* reminder at all —
+  the agent silently lost every persisted failure rule it had been given.
+  `load()` stages into a local mapping and adopts it **only on full success**:
+  the previous code reset `self.entries` first, so one malformed entry partway
+  through left a half-populated state that the next `add_entry` → `save()`
+  wrote back, destroying the entries that *had* parsed. That was real data loss.
+- **`continual/snapshots.py` (`HarnessSnapshotManager`)** answers
+  `harness_refine action="rollback"` from its manifest. An unreadable index used
+  to return `[]`, i.e. "No snapshots available", while the snapshot files sat on
+  disk; `create_snapshot` then rewrote the manifest from `[]` and orphaned every
+  prior snapshot. The payload files are never at risk — only the index — and the
+  return signature is unchanged, so the log line is what distinguishes this from
+  the old behaviour.
+
+The house style these three were brought up to is already set by the
+structurally identical `groups/claims.py` and `bots/registry.py`, which log with
+`exc_info=True`. **Absent is not corrupt**: a missing file leaves
+`is_degraded` false, or a first run would report a fault. Tests:
+`tests/test_harness_state_durability.py`.
+
 ## Swarm v2 runtime contract
 
 `alpha.swarm` is the lifecycle owner for autonomous swarm plans. Plans are explicit

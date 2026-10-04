@@ -8,6 +8,7 @@ The immutable base system prompt and safety policies are never modified.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
@@ -38,6 +39,9 @@ def get_default_global_dir() -> Path:
     if env_dir and env_dir.strip():
         return Path(env_dir.strip()).expanduser().resolve()
     return Path.home() / ".alpha" / "harness"
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -113,6 +117,11 @@ class HarnessState:
         self.entries: dict[HarnessKind, dict[str, HarnessEntry]] = {kind: {} for kind in _KINDS}
         self.refinements: list[RefinementEvent] = []
         self._loaded_mtime: int | None = None
+        # Why this is a real field: `ContinualHarnessMiddleware` builds every
+        # lead agent's system-reminder from `self.entries`, and `harness_refine`
+        # is model-facing. A store that could not be read used to look exactly
+        # like one with nothing learned in it.
+        self.load_error: str | None = None
         self.load()
 
     def _disk_mtime(self) -> int | None:
@@ -131,23 +140,46 @@ class HarnessState:
 
     def load(self) -> None:
         if self.file_path is None or not self.file_path.exists():
+            self.load_error = None
             return
+        # Build into a local mapping and only adopt it on full success. Resetting
+        # `self.entries` first meant a single malformed entry partway through
+        # left a half-populated state that the next `add_entry` → `save()` wrote
+        # back, destroying every entry that had parsed.
+        staged: dict[str, dict[str, HarnessEntry]] = {kind: {} for kind in _KINDS}
         try:
             with open(self.file_path, encoding="utf-8") as f:
                 data = json.load(f)
 
-            self.entries = {kind: {} for kind in _KINDS}
             for kind in _KINDS:
                 for item in data.get("entries", {}).get(kind, []):
                     entry = HarnessEntry.from_dict(item)
-                    self.entries[kind][entry.id] = entry
+                    staged[kind][entry.id] = entry
 
-            self.refinements = [
-                RefinementEvent.from_dict(r) for r in data.get("refinements", [])
-            ]
-            self._loaded_mtime = self._disk_mtime()
-        except Exception:
-            pass
+            refinements = [RefinementEvent.from_dict(r) for r in data.get("refinements", [])]
+        except Exception as exc:
+            # `ContinualHarnessMiddleware` is on every lead agent and reads this
+            # state to build its system-reminder. A swallowed parse error made a
+            # corrupt file inject *no* reminder at all, so the agent silently
+            # lost every persisted failure rule it had been given — and reported
+            # it as having no learned directives.
+            self.load_error = str(exc)
+            logger.warning("Harness state unreadable; learned directives unavailable: %s", self.file_path, exc_info=True)
+            return
+
+        self.entries = staged
+        self.refinements = refinements
+        self._loaded_mtime = self._disk_mtime()
+        self.load_error = None
+
+    @property
+    def is_degraded(self) -> bool:
+        """Whether persisted state could not be read.
+
+        Never inferred from an empty `entries`: "the file is corrupt" and "there
+        is nothing learned yet" lead to opposite decisions.
+        """
+        return self.load_error is not None
 
     def save(self) -> None:
         if self.file_path is None:
@@ -156,10 +188,7 @@ class HarnessState:
         data = {
             "version": 1,
             "scope": self.scope,
-            "entries": {
-                kind: [entry.to_dict() for entry in self.entries[kind].values()]
-                for kind in _KINDS
-            },
+            "entries": {kind: [entry.to_dict() for entry in self.entries[kind].values()] for kind in _KINDS},
             "refinements": [r.to_dict() for r in self.refinements],
             "updated_at": _now(),
         }
