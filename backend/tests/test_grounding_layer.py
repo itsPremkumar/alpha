@@ -454,6 +454,22 @@ class TestGates:
         assert DEFAULT_SIDE_EFFECTS.get("bash") is SideEffectClass.IRREVERSIBLE
         assert "bash" not in PROBE_SATISFYING_TOOLS
 
+    def test_every_probe_satisfying_tool_is_classified(self) -> None:
+        """The other half of the `ls` defect, pinned structurally.
+
+        A name in ``PROBE_SATISFYING_TOOLS`` is declared to be a read/search
+        consultation, but ``check_side_effect`` still refuses any name missing
+        from ``DEFAULT_SIDE_EFFECTS`` as UNKNOWN. So a consultation the reuse
+        gate recommends is simultaneously refused by the side-effect gate --
+        the `ls`, `alpha_capability`, `present_files` circularity again, and it
+        silently recurs whenever a table entry is added to one table only.
+        The two tables must agree on every probe name.
+        """
+        unclassified = sorted(name for name in PROBE_SATISFYING_TOOLS if name not in DEFAULT_SIDE_EFFECTS)
+        assert not unclassified, "PROBE_SATISFYING_TOOLS declares these as consultations, but check_side_effect would refuse each as UNKNOWN (unclassified -> irreversible): " + ", ".join(unclassified)
+        for name in sorted(PROBE_SATISFYING_TOOLS):
+            assert check_side_effect(GateSubject(tool_calls=(name,))).blocked is False, name
+
     def test_present_files_is_classified_as_reversible(self) -> None:
         """`present_files` is the mandated delivery tool, not a side effect.
 

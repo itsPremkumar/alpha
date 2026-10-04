@@ -145,7 +145,19 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "web_search": SideEffectClass.READ_ONLY,
     "web_fetch": SideEffectClass.READ_ONLY,
     "web_extract": SideEffectClass.READ_ONLY,
-    "codebase_search": SideEffectClass.READ_ONLY,
+    # Discovery / consultation tools. `PROBE_SATISFYING_TOOLS` declares these as
+    # the read/search calls that clear the reuse gate, but they were missing
+    # here, so `check_side_effect` classified each as UNKNOWN and refused it as
+    # an unclassified irreversible call -- the same defect as `ls` above, and it
+    # made the reuse gate's own recommended remediation unreachable.
+    "search_project_docs": SideEffectClass.READ_ONLY,
+    "session_search": SideEffectClass.READ_ONLY,
+    "ast_grep_search": SideEffectClass.READ_ONLY,
+    "describe_skill": SideEffectClass.READ_ONLY,
+    "tool_describe": SideEffectClass.READ_ONLY,
+    # `tool_search` is a catalog read, but the run promotes the schemas it
+    # returns (a local, reversible state change), so it is not read-only.
+    "tool_search": SideEffectClass.REVERSIBLE_WRITE,
     "write_file": SideEffectClass.REVERSIBLE_WRITE,
     "edit_file": SideEffectClass.REVERSIBLE_WRITE,
     "str_replace": SideEffectClass.REVERSIBLE_WRITE,
@@ -359,13 +371,10 @@ PROBE_SATISFYING_TOOLS: frozenset[str] = frozenset(
         "list_dir",
         "ast_grep_search",
         "search_project_docs",
-        "codebase_search",
         "session_search",
         "describe_skill",
         "tool_search",
         "tool_describe",
-        "list_skills",
-        "self_documentation_tool",
         # `alpha_capability` IS the capability manifest read. The remediation for
         # `reuse_probe_missing` tells the agent to "read the capability manifest",
         # and this is that read — so it must satisfy the gate it recommends.
