@@ -1,4 +1,4 @@
-"""Tests for ``alpha.utils.llm_text``."""
+﻿"""Tests for ``alpha.utils.llm_text``."""
 
 from __future__ import annotations
 
@@ -95,13 +95,28 @@ def test_strip_markdown_code_fence_ignores_inline_backticks() -> None:
     assert strip_markdown_code_fence("see `code` here") == "see `code` here"
 
 
-def test_strip_markdown_code_fence_leaves_lone_fence_line_unchanged() -> None:
-    # Fewer than three lines cannot be an opening + body + closing fence.
-    assert strip_markdown_code_fence("```json") == "```json"
+def test_strip_markdown_code_fence_lone_fence_line_is_dropped() -> None:
+    # A single ``` line has no body to preserve; dropping it is correct.
+    assert strip_markdown_code_fence("```json") == ""
 
 
-def test_strip_markdown_code_fence_leaves_unterminated_fence_unchanged() -> None:
-    assert strip_markdown_code_fence("```\ncontent") == "```\ncontent"
+def test_strip_markdown_code_fence_strips_unterminated_fence() -> None:
+    """An unclosed fence has its opening line stripped, not leaked.
+
+    The model was truncated mid-response. Returning the text unchanged leaks
+    the ```` ``` ```` prefix into the parsed output, which is a silent failure:
+    the consumer sees a fence it did not write and cannot parse the content.
+    """
+    assert strip_markdown_code_fence("```\ncontent") == "content"
+
+
+def test_strip_markdown_code_fence_strips_unterminated_language_fence() -> None:
+    """A truncated ```` ```python ```` fence is stripped, not leaked."""
+    assert strip_markdown_code_fence("```python\ndef f():\n    return 1") == "def f():\n    return 1"
+
+
+    """A single ```` ``` ```` line has no body to preserve."""
+    assert strip_markdown_code_fence("```json") == ""
 
 
 # ---------------------------------------------------------------------------

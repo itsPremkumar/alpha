@@ -31,14 +31,22 @@ def strip_think_blocks(text: str, *, truncate_unclosed: bool = True) -> str:
 
 
 def strip_markdown_code_fence(text: str) -> str:
-    """Remove a single wrapping markdown code fence when present."""
+    """Remove a single wrapping markdown code fence when present.
+
+    An unclosed fence (model truncated mid-response) has its opening line
+    stripped and the remaining content returned, rather than leaking the
+    ```` ```python ```` prefix into the parsed output.
+    """
     stripped = text.strip()
     if not stripped.startswith("```"):
         return stripped
     lines = stripped.splitlines()
     if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
         return "\n".join(lines[1:-1]).strip()
-    return stripped
+    # Unclosed fence: drop the opening fence line and return the rest.
+    if len(lines) >= 2:
+        return "\n".join(lines[1:]).strip()
+    return ""
 
 
 def extract_response_text(content: object) -> str:

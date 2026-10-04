@@ -150,6 +150,10 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     # This is also the mandated final step of every task (see the lead prompt's
     # deliverable rule), so leaving it unclassified would gate every delivery.
     "present_files": SideEffectClass.REVERSIBLE_WRITE,
+    # The capability manifest is a read-only projection of local registries —
+    # no model calls, no network, no provider probes. Classifying it as
+    # READ_ONLY is what lets the reuse gate's own recommended remediation pass.
+    "alpha_capability": SideEffectClass.READ_ONLY,
     "execute_command": SideEffectClass.IRREVERSIBLE,
     "bash": SideEffectClass.IRREVERSIBLE,
     "send_email": SideEffectClass.IRREVERSIBLE,
@@ -352,6 +356,13 @@ PROBE_SATISFYING_TOOLS: frozenset[str] = frozenset(
         "tool_describe",
         "list_skills",
         "self_documentation_tool",
+        # `alpha_capability` IS the capability manifest read. The remediation for
+        # `reuse_probe_missing` tells the agent to "read the capability manifest",
+        # and this is that read — so it must satisfy the gate it recommends.
+        # Before this entry the gate refused the exact call its own remediation
+        # named, which is an inescapable loop: the agent is told to do the one
+        # thing that will not clear the block.
+        "alpha_capability",
     }
 )
 
