@@ -271,16 +271,19 @@ def test_path_normalizers_reject_traversal_and_absolute_paths():
         parse_skill_uri("skill://public/../../etc")
 
 
-def test_static_report_renders_chinese_labels(tmp_path):
+def test_static_report_renders_english_labels(tmp_path):
     _write(tmp_path / "SKILL.md", _valid_skill())
     facts = analyze_skill_package(LocalDirectoryReader(tmp_path).read())
 
     report = build_static_report(facts, completed_at="2026-07-10T00:00:00Z")
-    markdown = render_report_markdown(report, facts, locale="zh")
+    markdown = render_report_markdown(report, facts)
 
     assert report["schema_version"] == "alpha.skill-review.report.v1"
-    assert "## 摘要" in markdown
+    assert "## Executive Summary" in markdown
+    assert "Publish candidate" in markdown
     assert "publish_candidate" in markdown
+    # The renderer is English-only: no CJK may appear in the report.
+    assert not any("\u4e00" <= char <= "\u9fff" for char in markdown)
 
 
 def test_cli_fail_on_error(tmp_path, capsys):

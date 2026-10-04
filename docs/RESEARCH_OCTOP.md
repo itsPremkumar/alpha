@@ -164,7 +164,7 @@ This is the idea I would steal first. Decisions 9, 11, 12 and the runtime sectio
   rewritten task specification, not the user's raw words** (S6 runtime section).
   The group-chat transcript is passed only as *System* background context.
 - The coordinator's system prompt carries a runtime constraint to "digest first,
-  then rewrite" (`先消化再改写`), and **forbids forwarding verbatim** (禁止原样转发).
+  then rewrite", and **forbids forwarding verbatim**.
 - A dispatched member is forcibly downgraded: request-level
   `peer_invoke_mode=sync` and `team_peers` narrowed to colleagues, with pulling
   more people into the group forbidden (decision 13).
@@ -193,8 +193,9 @@ Octop instead makes the coordinator the sole interpreter of user intent.
   when live push did not happen.
 - Stop semantics: cancelling from the dashboard **only cancels the coordinator's
   current stream**; queued and running member jobs keep going (decision 16).
-- The room is invisible to IM. On successful dispatch, IM gets "已请 {成员} 处理，
-  请稍候…" immediately, the full member message after, and "【主持人总结】…" for
+- The room is invisible to IM. On successful dispatch, IM gets "Requested
+  {member} to handle it, please wait..." immediately, the full member message
+  after, and "[Moderator summary]..." for
   the coordinator. Team coordinators are forced to `response_mode=stream` at
   channel registration so the IM adapter cannot collapse away the dispatch
   narration.
@@ -203,8 +204,8 @@ Octop instead makes the coordinator the sole interpreter of user intent.
 
 **In-flight dispatch state is in-process and is lost on restart.** The tracker is
 `TeamJobTracker` in `src/octop/infra/agents/teams/jobs.py` — **2,553 bytes** — and
-the non-goals list says so outright: `harness inbox 进程外持久化（重启丢在途任务）`
-("in-process inbox persistence is out of scope; restart loses in-flight tasks").
+the non-goals list says so outright: "in-process inbox persistence is out of
+scope; restart loses in-flight tasks".
 
 It is idempotent by inbox `job_id` and releases on either the `record_peer_turn`
 or `on_reply` path **including on failure** (S6) — that part is careful. But a
@@ -224,7 +225,8 @@ coordination logic; the durability story is 2.5 KB and deliberately absent.
 
 Error codes: `TEAM_NOT_FOUND`, `TEAM_MEMBERS_TOO_FEW`, `TEAM_MEMBER_INVALID`,
 `TEAM_MEMBER_BUSY`, `TEAM_MEMBER_NOT_SHAREABLE`. `kind=team` cannot be
-`is_shared`. Exposed in the dashboard as four tabs: `我的专家 | 我的团队 | 专家库 | 市场`.
+`is_shared`. Exposed in the dashboard as four tabs: "My experts | My teams |
+Expert library | Market".
 
 ---
 
@@ -563,8 +565,7 @@ quality.
 What S10 does show is an unusually rigorous honesty discipline, and it is worth
 quoting because it is the opposite of the marketing voice:
 
-- **It refuses to fake progress.** "备份/VACUUM 不提供虚假的百分比或剩余时间;
-  耗时增加仅表示服务连接仍有响应,不代表完成比例" — backup/VACUUM report no fake
+- **It refuses to fake progress.** Backup/VACUUM reports no fake
   percentages or ETA; elapsed time increasing only means the service connection
   is still responsive, **not** a fraction complete.
 - **It refuses to fake completion.** If a long read transaction still holds the
@@ -574,18 +575,17 @@ quoting because it is the opposite of the marketing voice:
 - **It fails closed on capability mismatch.** A version-mismatched, memory-off,
   PostgreSQL, or non-running agent fails *before* rewriting anything.
 - **It refuses the unsafe path over IM.** `/memory slim` is disabled on IM because
-  "现有 IM `user_id` 是用于会话存储的 agent owner,不是发送者的可验证维护身份" — the
+  the
   existing IM `user_id` is the agent owner used for session storage, **not a
   verifiable identity of the sender**. The user is told to use web or CLI. This is
   a genuinely correct refusal: a maintenance action that mutates a database must
   not be triggerable by an unverified IM sender, and the design says so.
 - **It states its own untested edges.** Multi-GiB databases, full production IM
-  end-to-end, and long-term disk growth: "未测" (not tested).
+  end-to-end, and long-term disk growth are all marked **not tested**.
 - **It records a partial test run as partial.** The full gates were not green —
   octop-memory had 24 pre-existing failures against an unwritable home directory,
-  and the Octop full run aborted on a port-binding `PermissionError`. It writes
-  "未把中止结果或 PostgreSQL skip 当成通过" — did not treat the aborted run or the
-  PG skip as a pass.
+  and the Octop full run aborted on a port-binding `PermissionError`. It records
+  that it did not treat the aborted run or the PG skip as a pass.
 
 **This is the strongest single quality signal in the repository.** Any comparison
 should weight it far above the README.
@@ -647,8 +647,8 @@ maintainer before treating it as a differentiator.
 
 ### 6.4 Agents, teams, and the library/market tabs
 
-Dashboard Experts page has four tabs: `我的专家 | 我的团队 | 专家库 | 市场`
-("My experts | My teams | Expert library | Market"). `kind !== team` filters the
+Dashboard Experts page has four tabs: "My experts | My teams | Expert library |
+Market". `kind !== team` filters the
 first; teams are `kind=team` and cannot be shared. The "hidden template" for
 coordinators lives at `infra/agents/teams/template/` and is deliberately absent
 from the expert catalogue (`template_name = team-host` is internal only) — a

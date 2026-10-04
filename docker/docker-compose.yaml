@@ -9,15 +9,15 @@
 #   - provisioner: (optional) Sandbox provisioner for Kubernetes mode
 #
 # Key environment variables (set via environment/.env or scripts/deploy.sh):
-#   ALPHA_PROJECT_ROOT           â€” project root for relative runtime paths
-#   ALPHA_HOME                   â€” runtime data dir, default .alpha under $ALPHA_PROJECT_ROOT (or cwd)
-#   ALPHA_CONFIG_PATH            â€” path to config.yaml
-#   ALPHA_EXTENSIONS_CONFIG_PATH â€” path to extensions_config.json
-#   ALPHA_SKILLS_PATH            â€” skills dir, default $ALPHA_PROJECT_ROOT/skills
-#   ALPHA_DOCKER_SOCKET          â€” Docker socket path for aio/DooD mode, default /var/run/docker.sock (used only by the opt-in docker-compose.dood.yaml overlay)
-#   ALPHA_REPO_ROOT              â€” repo root (used for skills host path in DooD)
-#   BETTER_AUTH_SECRET               â€” required for frontend auth/session security
-#   ALPHA_INTERNAL_AUTH_TOKEN    â€” shared internal Gateway auth token for multi-worker IM channels
+#   ALPHA_PROJECT_ROOT           — project root for relative runtime paths
+#   ALPHA_HOME                   — runtime data dir, default .alpha under $ALPHA_PROJECT_ROOT (or cwd)
+#   ALPHA_CONFIG_PATH            — path to config.yaml
+#   ALPHA_EXTENSIONS_CONFIG_PATH — path to extensions_config.json
+#   ALPHA_SKILLS_PATH            — skills dir, default $ALPHA_PROJECT_ROOT/skills
+#   ALPHA_DOCKER_SOCKET          — Docker socket path for aio/DooD mode, default /var/run/docker.sock (used only by the opt-in docker-compose.dood.yaml overlay)
+#   ALPHA_REPO_ROOT              — repo root (used for skills host path in DooD)
+#   BETTER_AUTH_SECRET               — required for frontend auth/session security
+#   ALPHA_INTERNAL_AUTH_TOKEN    — shared internal Gateway auth token for multi-worker IM channels
 #
 # LangSmith tracing is disabled by default (LANGSMITH_TRACING=false).
 # Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY in .env to enable it.
@@ -37,7 +37,7 @@ x-bounded-logs: &bounded_logs
     max-file: "${ALPHA_LOG_MAX_FILE:-3}"
 
 services:
-  # â”€â”€ Redis Stream Bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ── Redis Stream Bridge ────────────────────────────────────────────────────
   redis:
     image: redis:8-alpine
     container_name: alpha-redis
@@ -54,7 +54,7 @@ services:
     logging: *bounded_logs
     restart: unless-stopped
 
-  # â”€â”€ Reverse Proxy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ── Reverse Proxy ──────────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     container_name: alpha-nginx
@@ -80,7 +80,7 @@ services:
     logging: *bounded_logs
     restart: unless-stopped
 
-  # â”€â”€ Frontend: Next.js Production â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ── Frontend: Next.js Production ───────────────────────────────────────────
   frontend:
     build:
       context: ../
@@ -108,7 +108,7 @@ services:
     logging: *bounded_logs
     restart: unless-stopped
 
-  # â”€â”€ Gateway API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ── Gateway API ────────────────────────────────────────────────────────────
   gateway:
     build:
       context: ../
@@ -209,7 +209,7 @@ services:
     logging: *bounded_logs
     restart: unless-stopped
 
-  # â”€â”€ Sandbox Provisioner (optional, Kubernetes mode) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ── Sandbox Provisioner (optional, Kubernetes mode) ────────────────────────
   provisioner:
     build:
       context: ./provisioner
@@ -223,14 +223,14 @@ services:
     environment:
       - K8S_NAMESPACE=alpha
       - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
-      # Optional lark-cli init image (Pattern A). Empty â‡’ legacy runtime mount.
+      # Optional lark-cli init image (Pattern A). Empty ⇒ legacy runtime mount.
       # Set to a published tag (e.g. alpha/lark-cli-init:v1.0.65) to provision
       # the sandbox lark-cli runtime via an init container + emptyDir.
       - LARK_CLI_INIT_IMAGE=${LARK_CLI_INIT_IMAGE:-}
       # Optional lark-cli broker image (Pattern B, issue #4338). When set, the
       # sandbox gets a shim + broker sidecar that holds the credentials, so the
       # plaintext config/data are never mounted into the sandbox. Supersedes
-      # LARK_CLI_INIT_IMAGE when both are set. Empty â‡’ broker off.
+      # LARK_CLI_INIT_IMAGE when both are set. Empty ⇒ broker off.
       - LARK_CLI_BROKER_IMAGE=${LARK_CLI_BROKER_IMAGE:-}
       - THREADS_HOST_PATH=${ALPHA_HOME:-../.alpha}/threads
       - ALPHA_HOST_BASE_DIR=${ALPHA_HOME:-../.alpha}

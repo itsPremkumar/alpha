@@ -38,12 +38,12 @@ Analyze the [messages to extract], together with the [previous scene], and decid
 ### Task 2: Core Memory Extraction
 Combine the background and the current scene, and extract core information ONLY from the [messages to extract].
 
-【General extraction principles】
+[General extraction principles]
 1. Prefer no memory over a weak one: filter trivial small talk, one-off requests, and single-use instructions (like "this time only"); drop unreliable fringe information.
 2. Stand-alone completeness: a memory must "hold outside this conversation" and be understandable with no surrounding context. The subject must be "the user ([name])" or "the AI".
 3. Consolidate: several strongly related or causal messages must be merged into one complete memory, never fragmented.
 
-【The three supported types】 (the "sentence patterns" and "trigger words" below are structural guidance only; the actual `content` must be written in the output language):
+[The three supported types] (the "sentence patterns" and "trigger words" below are structural guidance only; the actual `content` must be written in the output language):
 
 1. Personalization memory (type: "persona")
    - Definition: stable attributes, preferences, skills, values, habits of the user (home, occupation, dietary restrictions, ...).
@@ -121,20 +121,20 @@ This task targets team collaboration at work. Focus on project facts, task progr
 
 Analyze the [messages to extract] together with the [previous scene] and [background messages], and decide which work scene each message belongs to.
 
-【Scene definition】
+[Scene definition]
 A scene is a group of messages centered on the same project, task, module, requirement, problem, decision, incident, customer scenario, or work goal.
 
-【Inheritance】
+[Inheritance]
 When new messages continue the previous project, task, requirement, problem, or work goal, keep the previous scene.
 
-【Switch conditions】
+[Switch conditions]
 Create or switch to a new scene when any of the following happens:
 1. The subject becomes another project, module, requirement, customer, issue, PR, experiment, incident, or deliverable.
 2. The work goal clearly shifts, e.g. from "requirement discussion" to "release scheduling".
 3. A clearly new independent task, decision thread, or troubleshooting thread appears.
 4. Several work topics appear in one batch — split them into separate scenes.
 
-【Naming rule】
+[Naming rule]
 - Name the scene around the work subject.
 - Recommended format: "the team is advancing [goal activity] around [project/module/topic]".
 - About 30-50 characters or equivalent length, single sentence, globally unique.
@@ -145,7 +145,7 @@ Create or switch to a new scene when any of the following happens:
 
 Combine the background and the current scene, and extract shareable core work information ONLY from the [messages to extract].
 
-【General extraction principles】
+[General extraction principles]
 
 1. Work-collaboration oriented:
    - An extracted memory should help team members or agents later understand project context, resume tasks, reuse experience, or avoid repeating mistakes.
@@ -339,11 +339,11 @@ def format_extraction_prompt(
     return (
         "**Output language**: write `scene_name` and memory `content` in the dominant language "
         "of the user's messages in the [messages to extract] below.\n\n"
-        f"【Previous scene】: {previous}\n\n"
-        "【Background conversation】(context and reference/time resolution ONLY — never extract memories from it):\n"
+        f"[Previous scene]: {previous}\n\n"
+        "[Background conversation](context and reference/time resolution ONLY — never extract memories from it):\n"
         f"{background_text}\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "【Messages to extract】(derive times from timestamps — extract memories ONLY from here!):\n"
+        "[Messages to extract](derive times from timestamps — extract memories ONLY from here!):\n"
         f"{new_text}"
     )
 
@@ -537,7 +537,7 @@ def format_batch_conflict_prompt(matches: list[dict]) -> str:
             ensure_ascii=False,
             indent=2,
         )
-        memory_parts.append(f"### New memory #{index + 1} (record_id: {record['record_id']})\n{memory_text}\n\n【Related candidate ids】{related_note}")
+        memory_parts.append(f"### New memory #{index + 1} (record_id: {record['record_id']})\n{memory_text}\n\n[Related candidate ids]{related_note}")
 
     new_memories_text = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n".join(memory_parts)
 
@@ -605,12 +605,10 @@ def build_persona_prompt(*, memories: list[dict], existing_profile: str | None, 
     )
     existing = existing_profile.strip() if existing_profile else "(none yet — this is the first version)"
     user_prompt = (
-        f"【Existing persona profile】:\n{existing}\n\n"
-        f"【Memories to integrate】 ({len(memories)} persona memories):\n{memory_text}\n\n"
-        f"【Change note】: {changed_note}\n\n"
-        "Write the updated persona profile now (Markdown only, <= 2000 characters)."
+        f"[Existing persona profile]:\n{existing}\n\n[Memories to integrate] ({len(memories)} persona memories):\n{memory_text}\n\n[Change note]: {changed_note}\n\nWrite the updated persona profile now (Markdown only, <= 2000 characters)."
     )
     return PERSONA_SYSTEM_PROMPT, user_prompt
+
 
 __all__ = [
     "CONFLICT_DETECTION_SYSTEM_PROMPT",
