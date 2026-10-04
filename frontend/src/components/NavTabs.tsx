@@ -41,6 +41,7 @@ export type WorkspaceView =
   | "company"
   | "messages"
   | "peers"
+  | "external-alpha"
   | "kanban"
   | "runs"
   | "run-inspector"
@@ -85,6 +86,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "kanban", label: "Board", icon: <SquareKanban className="size-3.5" />, blurb: "Full project kanban board", category: "core", isPrimary: true },
   { id: "messages", label: "Messages", icon: <MessagesSquare className="size-3.5" />, blurb: "Agent chats & group rooms", category: "collaboration", isPrimary: true },
   { id: "peers", label: "Alpha Network", icon: <Network className="size-3.5" />, blurb: "Discover, pair & message other Alpha installations", category: "collaboration" },
+  { id: "external-alpha", label: "External Alpha", icon: <MessagesSquare className="size-3.5" />, blurb: "Read every cross-installation conversation, local turn & delivery receipt", category: "collaboration" },
   { id: "dashboard", label: "Usage", icon: <LayoutDashboard className="size-3.5" />, blurb: "Activity, tokens & cost", category: "operations", isPrimary: true },
 
   // Collaboration & Team

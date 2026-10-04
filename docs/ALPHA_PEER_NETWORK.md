@@ -177,6 +177,7 @@ POST   /api/peer-network/github/publish (admin-only)
 POST   /api/peer-network/pair
 POST   /api/peer-network/pair/rotate
 PATCH  /api/peer-network/peers/{agent_id}/trust
+PATCH  /api/peer-network/peers/{agent_id}/auto-reply (admin-only)
 POST   /api/peer-network/conversations
 GET    /api/peer-network/conversations
 GET    /api/peer-network/conversations/{id}
@@ -184,7 +185,11 @@ GET    /api/peer-network/conversations/{id}/messages
 POST   /api/peer-network/conversations/{id}/messages
 POST   /api/peer-network/messages
 POST   /api/peer-network/messages/{id}/read
-GET    /api/peer-network/events       (bounded SSE event stream)
+GET    /api/peer-network/transcripts
+GET    /api/peer-network/transcripts/{id}
+GET    /api/peer-network/transcripts/{id}/turns/{run_id}
+GET    /api/peer-network/transcripts/{id}/export
+GET    /api/peer-network/events       (SSE stream; `Last-Event-ID` replay)
 ```
 
 Narrow public routes:
@@ -282,3 +287,190 @@ pnpm test
 The UI is a separate **Alpha Network** workspace tab. It has honest loading,
 empty, error, provider-state, pairing, topology, and per-recipient delivery
 states. It does not turn a failed Gateway request into an empty peer list.
+
+A second workspace tab, **External Alpha**, reads the cross-installation
+*history* that Alpha Network does not show. See
+[External Alpha transcripts](#external-alpha-transcripts) below.
+
+## External Alpha transcripts
+
+Alpha Network is the control surface (discover, pair, send). **External Alpha**
+is the read surface: every conversation this installation exchanged with another
+Alpha, including the local Agent turn that answered each remote message.
+
+### Why a second tab
+
+The two sides of a cross-installation conversation live in two stores that have
+no join key the UI can use:
+
+| Side | Stored by | Contains |
+| --- | --- | --- |
+| Remote envelope | `peer_network/network.sqlite3` | what a peer sent, per-recipient receipts |
+| Local Agent turn | the run event store | what this installation replied, tool calls, timings, tokens |
+
+`RunCreateRequest.metadata.peer_network` stamps `message_id` /
+`conversation_id` / `peer_agent_id` on the run, so the join exists;
+`alpha.peer_network.transcript` owns the projection and the Gateway exposes it
+under `/api/peer-network/transcripts/*`.
+
+### The local reply is already durable
+
+A peer turn is dispatched with `hide_from_ui` on its triggering human message
+(`app.gateway.services.launch_peer_network_agent_turn`), which keeps the framed
+untrusted prompt out of the ordinary chat feed. That flag does **not** suppress
+the run's events: `RunJournal.on_llm_end` persists AI replies and tool results
+unconditionally. The local half of every peer turn is therefore already stored,
+and this feature only has to find and project it.
+
+### Why these routes omit `owner_check`
+
+The transcript routes use `@require_permission("threads", "read")` **without**
+`owner_check=True`, which would otherwise be mandatory for a run-detail route.
+A peer turn runs on `peer_thread_id(peer_agent_id)` owned by
+`NETWORK_OWNER = "installation"` — a constant, never a session user id — so
+`owner_check` resolves the caller against a thread they do not own and would
+404 the operator who owns this very installation, making the history permanently
+unreadable.
+
+`_assert_peer_network_scope` is the deliberate substitute: an explicit allow-check
+that admits an authenticated local caller with `threads:read` or the internal
+system role, and refuses anything else. It fails closed. This is documented at
+the call site so the missing decorator reads as a decision rather than an
+oversight.
+
+### What is never exposed
+
+Responses are built by an **allowlist**, not a filter — the peer row is readable
+with `url`, `websocket_url`, `outbound_token`, `token_hash` and the full Agent
+Card, and none of them reach a response body. An allowlist means a field added to
+the peer row later cannot leak by omission. This mirrors
+`_public_peer` in `alpha.tools.builtins.peer_network_tool`.
+
+Peer text is untrusted data from another machine. It is rendered as escaped text
+and is never injected as raw HTML, never executed, and never promoted into a
+prompt.
+
+### Honesty rules the tab enforces
+
+- **Two sides, never merged.** A `peer_message` entry and a `local_reply` entry
+  render and label differently. A merged stream would let a reader believe a
+  remote peer said something the local Agent said.
+- **"Disabled" is not "no traffic".** The plane defaults **off**
+  (`ALPHA_PEER_NETWORK_ENABLED`); an off plane says so instead of showing an
+  empty list.
+- **Bounded is not complete.** `truncated` and `events_truncated` are rendered as
+  warnings, and delivery receipts stay per-recipient so a partial fan-out never
+  renders as a successful group send.
+- **A failed request is never an empty list.**
+
+### API surface
+
+```text
+GET    /api/peer-network/transcripts
+GET    /api/peer-network/transcripts/search?q=&limit=&conversation_id=&direction=
+GET    /api/peer-network/transcripts/analytics
+GET    /api/peer-network/transcripts/{conversation_id}
+GET    /api/peer-network/transcripts/{conversation_id}/turns/{run_id}
+GET    /api/peer-network/transcripts/{conversation_id}/turns/{run_id}/trace
+GET    /api/peer-network/transcripts/{conversation_id}/export
+```
+
+`search` and `analytics` are declared **before** the `{conversation_id}`
+catch-all. Unlike the existing `/conversations/{conversation_id}` route, these two
+literals share a path segment with a parameterised route, so Starlette would
+answer them with "Conversation 'search' not found" if the order slipped — the same
+trap as `skills/{skill_name}` and `workflows/{workflow_id}`.
+
+Read-only. The only write routes in this plane stay where they were, and the
+admin gates on `auto-reply`, `pair/rotate` and `github/publish` are unchanged —
+a peer still cannot grant itself the ability to spend this installation's
+budget.
+
+### Search (FTS5, free)
+
+Peer message bodies are searchable across the whole installation's history using
+SQLite's built-in FTS5 — no external search service, no extra dependency.
+
+| Property | Behaviour |
+|---|---|
+| Index type | `fts5`, external-content over `messages.rowid`, `unicode61 remove_diacritics 2` |
+| Storage | No second copy of the body; the index resolves through `messages` |
+| Ranking | `bm25`, most relevant first |
+| Fallback | A bounded, escaped `LIKE` scan when the interpreter has no FTS5 |
+
+Four mechanisms make this correct, and each one is load-bearing:
+
+- **Triggers.** An external-content FTS table is *not* self-populating. A fresh
+  `CREATE VIRTUAL TABLE` over an existing table searches nothing, and later
+  `INSERT`s are equally invisible — so without insert/update/delete triggers
+  search would return nothing forever while looking completely healthy.
+- **A one-time rebuild.** Triggers only cover rows written after they exist, so a
+  database that already has messages needs one `rebuild` pass.
+- **That rebuild commits on its own.** `rebuild` is not ordinary DML: it populates
+  an in-memory index that only joins the transaction once it is read, so a
+  rollback leaves the shadow table reporting a correct row count while `MATCH`
+  finds nothing.
+- **The backfill guard asks a question rather than counting.** `SELECT count(*)`
+  on an external-content FTS table reads the *shadow* tables, so it reports a
+  plausible number for an empty live index. The guard instead runs a probe
+  `MATCH`; no hits means nothing is indexed, so the rebuild fires. That also makes
+  startup self-healing for a damaged index.
+
+Diacritics fold, so a peer writing `résumé` is findable by an operator typing
+`resume`. Malformed FTS expressions (an unbalanced quote, a bare operator) fall
+back to the scan rather than raising, and `%`/`_` are escaped in that fallback
+so a wildcard cannot return the whole mailbox.
+
+When FTS5 is unavailable the response carries `fts_available: false` and the UI
+says "substring scan" rather than implying ranked full-text search.
+
+### Analytics
+
+`GET /transcripts/analytics` returns counted histograms — by direction, status,
+topology and kind — plus the effective retention window and FTS availability.
+Every number is counted in SQL from the rows that exist. Nothing is inferred from
+a peer's *declared* card: a peer advertising fifty kinds of work is counted only
+against what actually arrived.
+
+### Behaviour-trace drill-down
+
+`GET /transcripts/{id}/turns/{run_id}/trace` returns the
+`alpha.observability` envelopes for one turn — per-layer spans, tool outcomes,
+error codes and subagent attribution. Trace payloads are already redacted by the
+writer, so they pass through unchanged.
+
+The response carries an explicit `note`, because an empty trace list has a benign
+cause: a turn whose writer emitted no envelopes. The UI renders that note instead
+of an invented "nothing happened".
+
+### Live events
+
+`GET /api/peer-network/events` now carries a monotonic SSE `id` per event and
+honours `Last-Event-ID` on reconnect (header or `?last_event_id=`). A
+reconnecting client whose cursor predates the retained ring receives an explicit
+`stream.reset` telling it to re-fetch the REST snapshot, and a subscriber that
+falls behind receives `stream.overflow` with the dropped count. A silent
+dropped event would render a continuous timeline the client never received.
+
+The replay ring is **process-local and bounded** (last 500 events). It is a
+reconnect convenience, not a durable event log — the SQLite store is the
+authority. This is the same single-process honesty the rest of this plane keeps.
+
+### Retention
+
+Delivered/read history is pruned after
+`ALPHA_PEER_NETWORK_RETENTION_DAYS` (default **90**, floored at **7**). The floor
+is a safety floor: `0` would otherwise delete an operator's entire
+cross-installation transcript on the next tick.
+
+Two things are deliberately **not** pruned:
+
+- **Undelivered messages.** A `queued` or `failed` outbound row is still awaiting
+  delivery by the retry loop; deleting it would silently drop a message the
+  operator believes was sent.
+- **Conversations.** An empty conversation still records which peers ever talked,
+  so removing it would erase history instead of bounding it.
+
+Delivery receipts cascade with their message, so a receipt can never outlive the
+message it describes. The prune runs on the existing retry loop's cadence rather
+than adding a second background task.

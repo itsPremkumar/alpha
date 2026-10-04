@@ -6,8 +6,13 @@ export const WORKSPACE_VIEW_IDS = [
   "company",
   "messages",
   "peers",
+  "external-alpha",
   "kanban",
   "runs",
+  // `run-inspector` was missing here while `NavTabs.tsx` declared it, so
+  // `isWorkspaceView("run-inspector")` returned false for a view the UI
+  // navigates to. Documented in docs/WIRING_AUDIT.md §1.11 as a live bug.
+  "run-inspector",
   "files",
   "scheduled",
   "subagents",

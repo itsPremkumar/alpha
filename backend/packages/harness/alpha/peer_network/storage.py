@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from .models import utc_now
+
+logger = logging.getLogger(__name__)
 
 NETWORK_OWNER = "installation"
 
@@ -79,6 +82,10 @@ class PeerNetworkStore:
             os.chmod(self.path, 0o600)
         except OSError:
             pass
+        # Set by `_ensure_fts_index()` during `_initialize`. Read by the
+        # transcript routes so the UI can say "ranked search unavailable"
+        # instead of silently returning substring matches.
+        self.fts_available = False
         self._initialize()
 
     def _initialize(self) -> None:
@@ -175,6 +182,180 @@ class PeerNetworkStore:
                 """
             )
             self._ensure_column("peers", "auto_reply", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_fts_index()
+
+    def _ensure_fts_index(self) -> None:
+        """Create the full-text search index and keep it current.
+
+        FTS5 ships inside the standard-library ``sqlite3`` on CPython builds
+        compiled with it, but that is a property of the *interpreter*, not of
+        this package -- so availability is detected rather than assumed. When it
+        is missing, ``self.fts_available`` stays False and :meth:`search_messages`
+        falls back to a bounded ``LIKE`` scan rather than raising: losing ranked
+        search is a degraded feature, not a reason to make message delivery fail.
+
+        Four mechanisms, each load-bearing:
+
+        * **External content.** The FTS table stores no copy of the text and
+          resolves through ``messages.rowid``, so the body lives in exactly one
+          place and cannot drift between two copies.
+        * **Triggers.** An external-content index is *not* self-populating. A
+          fresh ``CREATE VIRTUAL TABLE`` over an existing table searches nothing,
+          and every later INSERT is equally invisible. Without the
+          insert/update/delete triggers below, search returns zero rows forever
+          while looking completely healthy -- the failure mode this method exists
+          to prevent.
+        * **A one-time rebuild.** Triggers only cover rows written *after* they
+          exist, so a database that already has messages (any installation that
+          ran before this feature) needs one ``rebuild`` pass.
+        * **That rebuild must commit on its own.** ``rebuild`` is not ordinary
+          DML: it populates an in-memory index that only becomes part of the
+          transaction once it is *read*. Rolling back afterwards leaves the
+          shadow table reporting the right row count while ``MATCH`` finds
+          nothing -- an index that looks healthy and is silently empty. So the
+          DDL and the backfill are separate transactions, and the backfill is
+          committed before any later read can roll it back.
+        """
+
+        try:
+            # Transaction 1: schema. Committed before the backfill so a failure
+            # in the backfill cannot discard the triggers.
+            with self._lock, self._conn:
+                self._conn.execute(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                        text,
+                        content='messages',
+                        content_rowid='rowid',
+                        tokenize='unicode61 remove_diacritics 2'
+                    )
+                    """
+                )
+                # Keeping the index current. The delete branch uses FTS5's
+                # 'delete' command with the OLD text, which is required for an
+                # external-content index: the row is about to disappear, so the
+                # index must be told what to un-index.
+                self._conn.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+                        INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
+                    END
+                    """
+                )
+                self._conn.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+                        INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+                    END
+                    """
+                )
+                self._conn.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+                        INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+                        INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
+                    END
+                    """
+                )
+            self._conn.commit()
+
+            # Transaction 2: the one-time backfill.
+            #
+            # The condition deliberately does NOT ask the FTS table how many rows
+            # it holds. For an external-content table `SELECT count(*)` reads the
+            # shadow tables, so it reports the right number even when the live
+            # in-memory index is empty -- an index that looks populated and
+            # matches nothing. Instead we ask a question the index itself can
+            # answer: does a probe term find anything?
+            #
+            # The probe is a term that cannot appear in a `rebuild`-independent
+            # way: if ANY row is indexed the count is non-zero, and if none is,
+            # MATCH returns nothing. An empty table skips the rebuild entirely,
+            # and an already-populated index is left alone, so this is not O(history)
+            # on every startup.
+            with self._lock:
+                probe_row = self._conn.execute("SELECT 1 FROM messages WHERE text IS NOT NULL LIMIT 1").fetchone()
+                if probe_row is not None:
+                    # A cheap, always-true query: `MATCH` on an empty index
+                    # returns no rows regardless of the term, so `EXISTS` is
+                    # false only when nothing at all is indexed.
+                    already = self._conn.execute(
+                        "SELECT 1 FROM messages_fts WHERE messages_fts MATCH ? LIMIT 1",
+                        ("the",),
+                    ).fetchone()
+                    if already is None:
+                        self._conn.execute("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')")
+                        self._conn.commit()
+            self.fts_available = True
+        except sqlite3.OperationalError:
+            # No FTS5 in this interpreter. Deliberately silent and non-fatal:
+            # the caller reports `fts_available: False` to the UI.
+            self.fts_available = False
+        except Exception:  # pragma: no cover - defensive
+            logger.warning("Peer FTS index unavailable", exc_info=True)
+            self.fts_available = False
+
+    def search_messages(
+        self,
+        needle: str,
+        *,
+        limit: int = 50,
+        conversation_id: str | None = None,
+        direction: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Full-text search across stored peer message bodies.
+
+        Returns message rows ordered oldest-first within a relevance-ranked page
+        so the UI can show a snippet list and still render a coherent timeline.
+        An empty or whitespace-only needle returns ``[]`` rather than every row --
+        "search for nothing" must never become "return the whole mailbox".
+        """
+
+        text = (needle or "").strip()
+        if not text:
+            return []
+        bounded = max(1, min(int(limit), 200))
+        clauses: list[str] = []
+        params: list[Any] = []
+        if conversation_id:
+            clauses.append("m.conversation_id = ?")
+            params.append(conversation_id)
+        if direction in {"inbound", "outbound"}:
+            clauses.append("m.direction = ?")
+            params.append(direction)
+        where = f" AND {' AND '.join(clauses)}" if clauses else ""
+
+        with self._lock:
+            if self.fts_available:
+                try:
+                    # bm25 is negative-is-better in SQLite, so ASC gives the
+                    # most relevant row first.
+                    rows = self._conn.execute(
+                        f"""
+                        SELECT m.message_id FROM messages_fts f
+                        JOIN messages m ON m.rowid = f.rowid
+                        WHERE messages_fts MATCH ?{where}
+                        ORDER BY bm25(messages_fts) ASC, m.created_at DESC
+                        LIMIT ?
+                        """,
+                        [text, *params, bounded],
+                    ).fetchall()
+                    return [message for message in (self.get_message(row["message_id"]) for row in rows) if message]
+                except sqlite3.OperationalError:
+                    # A malformed FTS expression (unbalanced quote, a bare
+                    # operator) must degrade to the scan, not 500 the tab.
+                    logger.debug("Peer FTS query failed; falling back to scan", exc_info=True)
+            pattern = f"%{text}%"
+            direction_clause = " AND m.direction = ?" if direction in {"inbound", "outbound"} else ""
+            rows = self._conn.execute(
+                f"""
+                SELECT m.message_id FROM messages m
+                WHERE m.text LIKE ? ESCAPE '\\'{where}{direction_clause}
+                ORDER BY m.created_at DESC LIMIT ?
+                """,
+                [pattern.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_"), *params, bounded],
+            ).fetchall()
+        return [message for message in (self.get_message(row["message_id"]) for row in rows) if message]
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
         """Add one column to an existing on-disk database, idempotently.
@@ -299,9 +480,7 @@ class PeerNetworkStore:
         if remaining >= cap:
             # Nothing left to evict: every row is a paired or blocked peer. The
             # ceiling is the boundary here, not availability.
-            raise PeerRegistryFullError(
-                "The bounded peer registry is full of paired peers; remove a peer before pairing another"
-            )
+            raise PeerRegistryFullError("The bounded peer registry is full of paired peers; remove a peer before pairing another")
 
     def get_peer(self, agent_id: str, *, include_secret: bool = False) -> dict[str, Any] | None:
         with self._lock:
@@ -651,6 +830,46 @@ class PeerNetworkStore:
                 (max(1, min(int(limit), 1000)),),
             ).fetchall()
         return [message for message in (self.get_message(row["message_id"]) for row in rows) if message]
+
+    def message_stats(self) -> dict[str, Any]:
+        """Count messages by conversation mode, kind, direction and status.
+
+        Grouped in SQL rather than in Python so the whole table is never
+        materialised just to produce four small histograms.
+        """
+
+        def _group(column: str) -> dict[str, int]:
+            rows = self._conn.execute(f"SELECT {column} AS key, COUNT(*) AS count FROM messages GROUP BY {column}").fetchall()
+            return {str(row["key"]): int(row["count"]) for row in rows if row["key"] is not None}
+
+        modes = {str(row["mode"]): int(row["count"]) for row in self._conn.execute("SELECT mode, COUNT(*) AS count FROM conversations GROUP BY mode").fetchall()}
+        return {
+            "modes": modes,
+            "kinds": _group("kind"),
+            "directions": _group("direction"),
+            "statuses": _group("status"),
+        }
+
+    def prune_messages(self, older_than_iso: str) -> int:
+        """Delete messages created before ``older_than_iso`` and return the count.
+
+        The delivery receipts cascade (``ON DELETE CASCADE`` on
+        ``deliveries.message_id``), so one delete removes the receipts too and a
+        receipt can never outlive the message it describes. Conversations are
+        deliberately **not** removed: an empty conversation still records which
+        peers ever talked, and dropping it would erase that history instead of
+        bounding it.
+
+        Only ``delivered`` and ``read`` messages are eligible. A ``queued`` or
+        ``failed`` outbound row is still awaiting delivery by the retry loop, and
+        deleting it would silently drop a message the operator believes was sent.
+        """
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                "DELETE FROM messages WHERE created_at < ? AND status IN ('delivered', 'read')",
+                (older_than_iso,),
+            )
+        return max(0, int(cursor.rowcount or 0))
 
     def counts(self) -> dict[str, int]:
         with self._lock:
