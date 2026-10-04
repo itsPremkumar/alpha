@@ -190,10 +190,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
           list. The measured count stays, because the count is real data - what
           was removed is the duplicate way of choosing, not the information. */}
       <section className="px-3 py-2 bg-card/10">
+        {/* `min-h-6` below: measured 231x16, a 16px-tall click target. */}
         <button
           type="button"
           onClick={() => onOpenView("bots")}
-          className="w-full flex items-center justify-between gap-2 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+          className="w-full min-h-6 flex items-center justify-between gap-2 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
         >
           <span className="flex items-center gap-1.5 min-w-0">
             <Sparkles className="size-3.5 text-primary shrink-0" />
@@ -268,10 +269,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       {/* ── 3. Standalone Conversations (Outside Any Project) ────────── */}
       <section className="p-3 space-y-1.5" aria-label="Standalone conversations">
         <div className="flex items-center justify-between pb-0.5 px-0.5">
+          {/* `min-h-6` below: these group headers measured 99x16 and 81x16. */}
           <button
             type="button"
             onClick={() => setStandaloneCollapsed((v) => !v)}
-            className="text-xs font-semibold text-foreground hover:text-primary flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="min-h-6 text-xs font-semibold text-foreground hover:text-primary flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <MessageSquare className="size-3.5 text-primary" />
             <span>Standalone</span>
@@ -284,10 +286,12 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
               <ChevronUp className="size-3 text-muted-foreground" />
             )}
           </button>
+          {/* `min-h-6 min-w-6` below: these icon buttons measured 22x22 and 20x20.
+              A `p-1` box around a 14px icon is not a comfortable click target. */}
           <button
             type="button"
             onClick={() => onNewConversation(null)}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+            className="p-1 min-h-6 min-w-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
             title="Start standalone conversation"
             aria-label="Start standalone conversation"
           >
@@ -352,10 +356,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
       <section className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto" aria-label="Projects">
         <div className="flex items-center justify-between pb-0.5 px-0.5">
+          {/* `min-h-6` below: measured 81x16. */}
           <button
             type="button"
             onClick={() => setProjectsCollapsed((v) => !v)}
-            className="text-xs font-semibold text-foreground hover:text-primary flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="min-h-6 text-xs font-semibold text-foreground hover:text-primary flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <Folder className="size-3.5 text-primary" />
             <span>Projects</span>
@@ -371,10 +376,11 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
             )}
           </button>
           <div className="flex items-center gap-1">
+            {/* `min-h-6 min-w-6` below: measured 20x20. */}
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+              className="p-1 min-h-6 min-w-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
               title={`Create project for ${currentBotDisplayName}`}
               aria-label="Create new project"
             >

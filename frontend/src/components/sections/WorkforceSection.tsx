@@ -477,7 +477,21 @@ function InsightsTab() {
 
 function WarRoomTab(props: { focusedProjectId: string | null }) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
-  const [selectedProject, setSelectedProject] = useState<string>("default");
+  /* Empty means "no project chosen", and it is deliberately **not** the literal
+     * "default"*.
+
+       The old initial value was `"default"`, and the picker rendered an
+       `<option value="default">default</option>` whenever the project list came
+       back empty. On an installation with no projects that invented a project
+       that cannot exist, then four `useAsync` reads fired against it on mount —
+       `/projects/default/war-room`, `/self-config/status`, `/meta-compiler/lineage`
+       and `/perpetual/status` all 404 — so the tab rendered four failure states
+       instead of saying there is nothing to inspect. Measured on an install with
+       zero projects; every one of those 404s appeared in the UI audit.
+
+       The reads below are gated on a non-empty id, and an empty list now renders
+       as an honest absence rather than a selectable fiction. */
+  const [selectedProject, setSelectedProject] = useState<string>("");
   const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({});
   const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
   const [expandedSpecKey, setExpandedSpecKey] = useState<string | null>(null);
@@ -498,7 +512,7 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
     }).catch(() => {});
   }, [props.focusedProjectId]);
 
-  const warRoom = useAsync(() => fetchWarRoomData(selectedProject), [selectedProject]);
+  const warRoom = useAsync(() => (selectedProject ? fetchWarRoomData(selectedProject) : Promise.resolve(null)), [selectedProject]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     setApprovalBusy((prev) => ({ ...prev, [requestId]: true }));
@@ -638,7 +652,7 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
   };
 
   // Feature 1: Autonomous Self-Configuration Engine
-  const selfConfig = useAsync(() => fetchSelfConfigStatus(selectedProject), [selectedProject]);
+  const selfConfig = useAsync(() => (selectedProject ? fetchSelfConfigStatus(selectedProject) : Promise.resolve(null)), [selectedProject]);
   const [inferGoalInput, setInferGoalInput] = useState("Build a self-configuring ASI harness with autonomous replication and continuous healing");
   const [inferringConfig, setInferringConfig] = useState(false);
   const [lastAnalysis, setLastAnalysis] = useState<GoalAnalysisResult | null>(null);
@@ -647,13 +661,13 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
   const [tuneBusy, setTuneBusy] = useState(false);
 
   // Feature 2: Recursive Agent Meta-Compiler
-  const metaLineage = useAsync(() => fetchMetaLineage(selectedProject), [selectedProject]);
+  const metaLineage = useAsync(() => (selectedProject ? fetchMetaLineage(selectedProject) : Promise.resolve(null)), [selectedProject]);
   const [optimTarget, setOptimTarget] = useState("performance_and_reasoning");
   const [compilingGen, setCompilingGen] = useState(false);
   const [benchmarkingBp, setBenchmarkingBp] = useState<string | null>(null);
 
   // Feature 3: Perpetual Never-Ending Daemon
-  const perpetualStatus = useAsync(() => fetchPerpetualStatus(selectedProject), [selectedProject]);
+  const perpetualStatus = useAsync(() => (selectedProject ? fetchPerpetualStatus(selectedProject) : Promise.resolve(null)), [selectedProject]);
   const [perpetualBusy, setPerpetualBusy] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState("");
 
@@ -811,12 +825,23 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-muted-foreground">Project Workspace:</label>
+          {/* `aria-label` rather than `htmlFor`/`id`: the visible label is not
+              programmatically associated without them, so a screen reader
+              announced this as an unlabelled combo box. */}
           <select
+            aria-label="Project workspace"
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
             className="text-xs bg-muted/50 border border-border/60 rounded-lg px-2.5 py-1"
           >
-            {projects.length === 0 && <option value="default">default</option>}
+            {/* The honest absence. This used to be
+                `<option value="default">default</option>` — a project offered to
+                the user that the server has never heard of, whose every read 404s.
+                A disabled option cannot be chosen, so it cannot be a control that
+                looks actionable and cannot succeed. */}
+            {projects.length === 0 && (
+              <option value="" disabled>No projects exist yet</option>
+            )}
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name} ({p.id})</option>
             ))}
