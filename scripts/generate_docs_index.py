@@ -229,6 +229,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Orchestration probe record: ten probes across swarms, subagent delegation, the ralph loop, bot roster and group rosters, plus the grounding-gate defect that made delegation succeed or fail depending on model prose.",
     ),
+    "audits/BOT_FORGE_VERIFICATION.md": DocumentSpec(
+        "operations",
+        "Bot forge verification record: the agent forges its own new specialist, the bot is verified on four independent surfaces including a real addressed run, the duplicate-role guard is negative-controlled, and the duplicated SOUL identity heading it produced is fixed.",
+    ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
     # sentence, which is the point of this table. REGENERATE docs/INDEX.md after

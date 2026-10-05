@@ -369,7 +369,24 @@ def build_guardrail_soul(
 
 
 def _retitle(soul: str, name: str, role: str) -> str:
-    """Ensure the persona's heading names *this* Bot and nothing else."""
+    """Ensure the persona's heading names *this* Bot and nothing else.
+
+    "One identity per Bot" has to mean *one*. A supplied persona that carries its
+    own identity heading twice used to keep both: only the first ``#`` line was
+    retitled, and every later one was passed through verbatim. Observed live on
+    2026-10-05, where a Bot forged by the agent itself came back as::
+
+        # SOUL.md - Capability-curator (Capability Surface & Prompt Steward)
+
+        # SOUL.md - Capability-curator (Capability Surface & Prompt Steward)
+        1. Trigger & description quality. ...
+
+    which is worse than a stale name: it teaches the model that its identity is
+    something it may state more than once. This dedupes only headings that repeat
+    *this* Bot's identity -- a legitimate sub-section such as ``## Where you run``
+    is untouched, and a heading naming a *different* Bot is still rewritten rather
+    than removed, so nothing is silently discarded.
+    """
     lines = soul.splitlines()
     heading_idx = next((i for i, line in enumerate(lines) if line.lstrip().startswith("#")), None)
     wanted = f"# SOUL.md - {name[:1].upper() + name[1:]} ({role})"
@@ -377,12 +394,21 @@ def _retitle(soul: str, name: str, role: str) -> str:
         return wanted + "\n\n" + soul
     if name.lower() not in lines[heading_idx].lower():
         lines[heading_idx] = wanted
-    # Drop a stale "You are <Other>" identity line so the Bot never adopts
-    # another Bot's name.
-    cleaned = [lines[heading_idx]]
     identity = re.compile(rf"^\s*(?:you are|you're)\s+\*\*(?!{re.escape(name)}\b)\w+\*\*", re.I)
+    # A repeat of this Bot's own identity heading: same "# SOUL.md - <name>"
+    # opener, whatever role text follows.
+    repeat = re.compile(rf"^\s*#\s*SOUL\.md\s*-\s*{re.escape(name)}\b", re.I)
+
+    cleaned = [lines[heading_idx]]
     for line in lines[1:]:
         if identity.match(line):
+            continue
+        # Collapse a duplicate identity opener down to its blank line, so the
+        # body that followed it keeps its own separation instead of being glued
+        # onto the surviving heading.
+        if repeat.match(line):
+            if not (cleaned and cleaned[-1].strip() == ""):
+                cleaned.append("")
             continue
         cleaned.append(line)
     return "\n".join(cleaned)
