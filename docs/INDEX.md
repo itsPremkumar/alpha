@@ -71,6 +71,7 @@
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
 - [audits/FLEET_VERIFICATION.md](audits/FLEET_VERIFICATION.md) — Fleet verification record: five real tasks run concurrently against five named bot profiles, every output opened and checked, and the coerce_iso OverflowError the review bot found and that was then reproduced, fixed and negative-controlled.
 - [audits/FULL_VERIFICATION_REPORT.md](audits/FULL_VERIFICATION_REPORT.md) — Full verification report: per-subsystem verdicts, the complete bug inventory, three-source cross-verification, and an explicit limitations list.
+- [audits/ORCHESTRATION_PROBES.md](audits/ORCHESTRATION_PROBES.md) — Orchestration probe record: ten probes across swarms, subagent delegation, the ralph loop, bot roster and group rosters, plus the grounding-gate defect that made delegation succeed or fail depending on model prose.
 - [audits/SYSTEM_MAP.md](audits/SYSTEM_MAP.md) — Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.
 - [audits/screenshots/2026-10-05/bots-after-fix.md](audits/screenshots/2026-10-05/bots-after-fix.md) — Operations, deployment, and reliability documentation.
 - [reliability/ALPHA_SYSTEM_MAP.md](reliability/ALPHA_SYSTEM_MAP.md) — Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.

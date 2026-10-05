@@ -198,6 +198,34 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "swarm": SideEffectClass.REVERSIBLE_WRITE,
     "workflow_dag_manage": SideEffectClass.REVERSIBLE_WRITE,
     "task": SideEffectClass.REVERSIBLE_WRITE,
+    # The rest of the delegation family, which `task` above belongs to. Observed
+    # live on 2026-10-05 driving real orchestration probes: a run delegating to
+    # `deep-code-reviewer` was refused with
+    #
+    #     Grounding gate refused this call: irreversible or unclassified call(s)
+    #     without confirmation: delegate_to_deep_agent
+    #
+    # while an otherwise identical run delegating to `deep-security` went
+    # through -- because `check_side_effect` falls through to the plan-naming
+    # branch when `forbid_unconfirmed_side_effects` is off, so the outcome
+    # depended on whether the model happened to name the tool in its prose. That
+    # is the nondeterminism, not the verdict, that makes this a defect.
+    #
+    # `delegate_to_deep_agent` is the isolated-child equivalent of `task`;
+    # `batch_task` is its durable-batch form and `ralph_loop` is the bounded
+    # retry loop over `task` (its own nested-loop guard lives in
+    # `SubagentConfig.disallowed_tools`). All three can write files reversibly
+    # and none of them mutates anything irreversibly, so they take exactly the
+    # class `task` already had rather than a new judgement call.
+    "delegate_to_deep_agent": SideEffectClass.REVERSIBLE_WRITE,
+    "batch_task": SideEffectClass.REVERSIBLE_WRITE,
+    "ralph_loop": SideEffectClass.REVERSIBLE_WRITE,
+    # The read half of the delegation surface: both are pure introspection of
+    # the subagent registry, and `list_available_deep_agents` was called (and
+    # refused) in the same probe run.
+    "list_available_deep_agents": SideEffectClass.READ_ONLY,
+    "inspect_deep_agent_telemetry": SideEffectClass.READ_ONLY,
+    "await_task_event": SideEffectClass.READ_ONLY,
     # `ask_clarification` must pass: it is the mechanism by which an agent
     # obtains the very confirmation this gate tells it to obtain. Blocking it is
     # the refused-remediation circularity (`alpha_capability`, `ls`,
