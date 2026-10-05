@@ -582,6 +582,21 @@ class GroupChatService:
             key = name.lower().strip()
             if key in self._rooms:
                 raise ScopeError(f"A group named '{name}' already exists.")
+            # Refuse a too-deep placement BEFORE creating anything. This check
+            # used to live only on `move_room`, so the cap was enforced on the
+            # re-parent path while `POST /{name}/subgroups` -- the path an
+            # operator actually reaches for -- could walk a chain down
+            # indefinitely, one level at a time. Observed live on 2026-10-05:
+            # eight nested rooms were created with no refusal at any depth.
+            #
+            # The cap exists because deeper "makes the rendered path unreadable
+            # and turns relay fan-out into a cost problem", and the contract is
+            # that the limit is REFUSED, never clamped -- so this has to run
+            # before `self._rooms[key] = room`, or a refusal would leave a
+            # half-built room behind. `assert_within_depth` reads only
+            # `new_parents`, so passing a room id that is not registered yet is
+            # safe.
+            assert_within_depth(self._scopes, f"pending:{key}", [parent.room_id])
             clean_members: list[str] = []
             for m in list(parent.members) if inherit else list(members or []):
                 clean = m.lower().strip()

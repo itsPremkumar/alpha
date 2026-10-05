@@ -74,6 +74,7 @@
 - [audits/FULL_VERIFICATION_REPORT.md](audits/FULL_VERIFICATION_REPORT.md) — Full verification report: per-subsystem verdicts, the complete bug inventory, three-source cross-verification, and an explicit limitations list.
 - [audits/ORCHESTRATION_PROBES.md](audits/ORCHESTRATION_PROBES.md) — Orchestration probe record: ten probes across swarms, subagent delegation, the ralph loop, bot roster and group rosters, plus the grounding-gate defect that made delegation succeed or fail depending on model prose.
 - [audits/SYSTEM_MAP.md](audits/SYSTEM_MAP.md) — Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.
+- [audits/WRITE_PATH_VERIFICATION.md](audits/WRITE_PATH_VERIFICATION.md) — Write-path verification record: the group nesting probes are green after the MAX_DEPTH cap was found absent from the subgroup creation route and wired in, with the inheritance projection, the depth and delete refusals, and the probe's own wrong assumptions all pinned.
 - [audits/screenshots/2026-10-05/bots-after-fix.md](audits/screenshots/2026-10-05/bots-after-fix.md) — Operations, deployment, and reliability documentation.
 - [reliability/ALPHA_SYSTEM_MAP.md](reliability/ALPHA_SYSTEM_MAP.md) — Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.
 - [reliability/ERROR_CATALOG.md](reliability/ERROR_CATALOG.md) — Stable error codes with severity, retry policy, recovery action and the user-facing wording each code owns.

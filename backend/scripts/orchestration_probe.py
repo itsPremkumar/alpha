@@ -627,7 +627,15 @@ async def probe_group_nesting(c: httpx.AsyncClient, p: Probe) -> Outcome:
         o.seconds = round(time.monotonic() - t0, 1)
         return o
     fj = forest.json()
-    nodes = fj.get("rooms") or fj.get("tree") or []
+    # The collection route keys its rows `nodes`. An earlier draft of this probe
+    # looked for `rooms`/`tree`, found neither, and recorded `forest_nodes: 0`
+    # while still reporting PASS -- a probe that measures nothing and passes is
+    # the same failure class as a verifier that cannot check. A forest that
+    # parses to no recognised key is now a problem, not a zero.
+    nodes = fj.get("nodes") or fj.get("rooms") or fj.get("tree") or []
+    o.observed["forest_keys"] = sorted(fj)
+    if not isinstance(nodes, list) or not nodes:
+        o.problems.append(f"the forest route returned no node rows (keys={sorted(fj)}); a parse miss must not read as an empty forest")
     o.observed["forest_nodes"] = len(nodes) if isinstance(nodes, list) else None
     rows: list[dict[str, Any]] = []
     for name in names:
