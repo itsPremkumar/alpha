@@ -344,6 +344,85 @@ Coverage: `src/lib/network.test.mjs` (routes, verbs, envelope mapping, every
 honesty inversion), and the new entries are also subject to
 `src/lib/ui-legibility.test.mjs`'s dash-with-disclosure rule.
 
+## Subagent catalog panel (every field of a definition)
+
+`lib/subagents.ts` + `lib/subagent-catalog-view.ts` +
+`CatalogPanel`/`SubagentDetail` in
+`components/sections/SubagentsSection.tsx`, over `GET /api/subagents`.
+
+**It is a detail pane because the fields it shows did not fit on a card.**
+`SubagentResponse` sends fifteen fields. The catalog block was a two-column grid
+rendering four of them - name, an on/off badge, a `line-clamp-2` description,
+and `model . source`. Measured live against the Gateway: 8 builtin definitions,
+23 tool names across them, and prompts of 292 to 2384 characters, all of it
+discarded. The `line-clamp-2` was the worst of it: every builtin description
+ends with a **"when NOT to use this"** paragraph, which is exactly what decides
+whether a delegation is worth its context cost, and the clamp hid it. Selecting a
+row opens the full record.
+
+An operator choosing a subagent needs to answer *what may it call* and *what is it
+told to do*, and those are exactly the two fields that were being dropped.
+
+### `null` and `[]` are different facts, in four places
+
+| Server sent | Meaning | Must not become |
+| --- | --- | --- |
+| `tools: null` | no allowlist constraint - unrestricted | "no tools" |
+| `tools: []` | an explicit empty allowlist - nothing callable | "not reported" |
+| `system_prompt: null` | withheld; the route is **admin-gated** | "no prompt" |
+| `max_turns: null` | unreported | `50` (the server default) |
+| `config_overrides: {}` | operator wrote nothing; defaults in force | "not configured" |
+
+Both list states are reachable live: seven builtins carry explicit tool lists and
+`general-purpose` sends `tools: null`. The `[]` state is not reachable from this
+route today - it needs a caller to pass `tools: []` explicitly - so it is covered
+by unit tests only, and should not be described as live-verified.
+
+`system_prompt` is gated by `is_admin_user` in `subagents.py`, so `null` is a
+**permission outcome**. On a deployment with `ALPHA_AUTH_DISABLED` set the prompt
+is visible to everyone and the gate never engages; the panel must not be
+documented as though it always withholds.
+
+The empty-overrides case is the subtle one: `_explicit_overrides` reports only
+keys present in `model_fields_set`, so `{}` is what a stock install sends for
+every definition. "Not configured" is false there - the defaults are very much in
+force - so the sentence says that instead.
+
+### The enabled tri-state
+
+`SubagentDef.enabled` is `boolean | null` and the third state is load-bearing. It
+was `Boolean(pick(s, ["enabled"], true))`, which made an absent flag **TRUE** and
+painted it green; `enabledView()` now owns the three states and both the list row
+and the detail header call it. `collaboration-surfaces-honesty.test.mjs` pins that
+the panel derives its badge from the helper rather than branching on `=== null`
+inline, so the pin follows the behaviour instead of the old literal.
+
+### Ownership rules
+
+- **Every sentence lives in `lib/subagent-catalog-view.ts`.** The panel holds no
+  claim of its own. A second copy of a phrase is how a list row and its own
+  detail pane end up contradicting each other for the same field, and
+  `subagent-catalog-view.test.mjs` fails on any absence phrasing that appears in
+  the panel markup instead of in a helper.
+- **A filtered list says how many it hid.** "N of M hidden by the filter" keeps a
+  short list from reading as the whole catalog, which is the same failure as a
+  count with no evidence.
+- **Selection resets when the catalog changes.** Two catalogs of the same size
+  really can differ - a managed definition replacing a builtin - and a pane left
+  on the deleted row would be naming a definition the read did not return.
+- **An unknown `source` renders verbatim** with a neutral tone and sorts last.
+  Snapping it to `builtin` would tell the operator a runtime-created definition
+  ships with Alpha.
+- The panel is **read-only**. Create/edit/delete belong to the admin routes the
+  registry surface already owns; this one reports.
+
+Coverage: `src/lib/subagent-catalog-view.test.mjs` (40 cases, each naming the
+payload that would make a plausible wrong word appear) and the enabled-tri-state
+pins in `src/lib/collaboration-surfaces-honesty.test.mjs`.
+`backend/scripts/render_subagent_catalog.py` transpiles the shipped view module
+with the repo's own TypeScript compiler and renders the live Gateway payload, so
+"the panel will show this" is checkable without a browser.
+
 ## Honesty patterns to copy
 
 - A control that is off by default renders as off, with the reason it is off.

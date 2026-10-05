@@ -2,8 +2,48 @@ import { get, send, asList, pick } from "./http";
 
 export interface SubagentDef {
   name: string;
+  /**
+   * The server's `display_name`, or `null` when it sent none.
+   *
+   * `null` is not "unnamed": every catalog row carries a `name`, and the
+   * server sends `display_name=None` for builtins that have no separate label.
+   * `subagent-catalog-view.ts` owns the fallback sentence so the list and the
+   * detail pane cannot disagree about what this row is called.
+   */
+  displayName: string | null;
   description: string;
+  /**
+   * The full system prompt, or `null` when the server withheld it.
+   *
+   * `GET /api/subagents` gates this behind `is_admin_user`
+   * (`subagents.py:183`): a non-admin receives `system_prompt=None` for every
+   * row. So `null` means "you are not an admin", and rendering it as an empty
+   * prompt would claim a definition has no instructions when it plainly does.
+   * The reason is disclosed rather than guessed — `promptDisclosure()` names
+   * the admin gate as the reading, because it is the one this route can
+   * produce.
+   */
+  systemPrompt: string | null;
+  /**
+   * The tool allowlist, or `null` when the server did not report one.
+   *
+   * `null` and `[]` are opposite facts. `SubagentResponse.tools` is
+   * `list[str] | None`, so a definition with no `tools` constraint is `null`
+   * (unrestricted) while an explicit empty list is `[]` (nothing callable).
+   * `pick` already distinguishes them — it returns a real `[]` and falls back
+   * only on `undefined`/`null` — so this mapping preserves the distinction and
+   * `asStringList` must not collapse it.
+   */
+  tools: string[] | null;
+  /** The deny-list, `null` for unreported. Same `null` vs `[]` distinction. */
+  disallowedTools: string[] | null;
+  /** Skills this subagent was granted, `null` for unreported. */
+  skills: string[] | null;
   model: string;
+  /** Turn ceiling, or `null` when unreported — never defaulted to 50 here. */
+  maxTurns: number | null;
+  /** Wall-clock ceiling in seconds, or `null` when unreported. */
+  timeoutSeconds: number | null;
   /**
    * The server's `enabled` flag, or `null` when the server did not send one.
    *
@@ -17,6 +57,49 @@ export interface SubagentDef {
   enabled: boolean | null;
   source: string;
   editable: boolean;
+  /**
+   * True when this name is also claimed by a built-in or a `config.yaml`
+   * entry. The server keeps all three rows rather than silently shadowing, so
+   * two definitions can share a name — and without this flag the UI would
+   * present an overridden definition as the only one.
+   */
+  conflict: boolean;
+  /**
+   * The `config.yaml -> subagents.agents.<name>` keys explicitly set for this
+   * entry, or `null` when the server sent no block. Only fields the operator
+   * actually wrote appear here (`_explicit_overrides` reads
+   * `model_fields_set`), so an empty object means "nothing was overridden",
+   * not "nothing is configured" — the defaults still apply.
+   */
+  configOverrides: Record<string, unknown> | null;
+}
+
+/**
+ * Map one list value without collapsing "reported empty" into "not reported".
+ *
+ * `pick` returns a real `[]` for an empty array and falls back to `null` for
+ * `undefined`/`null`, so the distinction survives the helper — a wrapper that
+ * did `Array.isArray(x) ? x : null` would keep it, while
+ * `(pick(s, ["tools"], []) as string[])` would erase it. Non-string entries are
+ * dropped rather than stringified: `"12"` is not a tool name, and rendering it
+ * as one would put an un-callable chip in the tool list.
+ */
+function asStringList(
+  s: Record<string, unknown>,
+  key: string,
+): string[] | null {
+  const v = pick<unknown>(s, [key], null);
+  if (!Array.isArray(v)) return null;
+  return v.filter((x): x is string => typeof x === "string" && x !== "");
+}
+
+/** A count the server sent, or `null` — never a locally-invented default. */
+function asNumberOrNull(
+  s: Record<string, unknown>,
+  key: string,
+): number | null {
+  const v = pick<unknown>(s, [key], null);
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 /** Rejects on failure — an unreachable catalog must not read as an empty one. */
@@ -24,15 +107,35 @@ export async function listSubagentCatalog(): Promise<SubagentDef[]> {
   const d = await get<unknown>("/subagents");
   return asList(d, ["subagents", "data"]).map((s) => ({
     name: String(pick(s, ["name"], "")),
+    displayName:
+      typeof pick<unknown>(s, ["display_name"], null) === "string"
+        ? String(pick(s, ["display_name"], ""))
+        : null,
     description: String(pick(s, ["description"], "")),
+    systemPrompt:
+      typeof pick<unknown>(s, ["system_prompt"], null) === "string"
+        ? String(pick(s, ["system_prompt"], ""))
+        : null,
+    tools: asStringList(s, "tools"),
+    disallowedTools: asStringList(s, "disallowed_tools"),
+    skills: asStringList(s, "skills"),
     // `SubagentResponse.model` defaults to the literal "inherit", so echoing
     // that string is the server's own wording. An absent model is left as the
     // empty string and the view says so, rather than the client inventing
     // "inherit" on the server's behalf.
     model: String(pick(s, ["model"], "")),
+    maxTurns: asNumberOrNull(s, "max_turns"),
+    timeoutSeconds: asNumberOrNull(s, "timeout_seconds"),
     enabled: typeof s.enabled === "boolean" ? s.enabled : null,
     source: String(pick(s, ["source"], "")),
     editable: typeof s.editable === "boolean" ? s.editable : false,
+    conflict: typeof s.conflict === "boolean" ? s.conflict : false,
+    configOverrides:
+      pick<unknown>(s, ["config_overrides"], null) &&
+      typeof s.config_overrides === "object" &&
+      !Array.isArray(s.config_overrides)
+        ? (s.config_overrides as Record<string, unknown>)
+        : null,
   }));
 }
 
@@ -73,7 +176,9 @@ export function parseLiveSubagents(body: unknown): LiveSubagent[] {
     list = nested;
   }
   return (list as unknown[]).map((s, i) =>
-    s && typeof s === "object" ? toLiveSubagent(s as Record<string, unknown>, i) : toLiveSubagent({}, i),
+    s && typeof s === "object"
+      ? toLiveSubagent(s as Record<string, unknown>, i)
+      : toLiveSubagent({}, i),
   );
 }
 
@@ -105,7 +210,10 @@ export async function listLiveSubagents(): Promise<LiveSubagent[]> {
   return fetchLiveSubagentsStrict();
 }
 
-export async function spawnSubagent(objective: string, role = "general-purpose"): Promise<Record<string, unknown>> {
+export async function spawnSubagent(
+  objective: string,
+  role = "general-purpose",
+): Promise<Record<string, unknown>> {
   return send<Record<string, unknown>>("/subagents/control/spawn", "POST", {
     objective,
     role,
@@ -113,8 +221,13 @@ export async function spawnSubagent(objective: string, role = "general-purpose")
   });
 }
 
-export async function cancelSubagent(id: string, reason = "Cancelled from UI"): Promise<void> {
-  await send(`/subagents/control/${encodeURIComponent(id)}/cancel`, "POST", { reason });
+export async function cancelSubagent(
+  id: string,
+  reason = "Cancelled from UI",
+): Promise<void> {
+  await send(`/subagents/control/${encodeURIComponent(id)}/cancel`, "POST", {
+    reason,
+  });
 }
 
 /**
@@ -131,14 +244,19 @@ export async function cancelSubagent(id: string, reason = "Cancelled from UI"): 
  * Callers must render the rejection. `null` now means one thing only: the
  * server answered and reported no result.
  */
-export async function subagentResult(id: string): Promise<Record<string, unknown> | null> {
-  const d = await get<Record<string, unknown>>(`/subagents/control/${encodeURIComponent(id)}/result`);
+export async function subagentResult(
+  id: string,
+): Promise<Record<string, unknown> | null> {
+  const d = await get<Record<string, unknown>>(
+    `/subagents/control/${encodeURIComponent(id)}/result`,
+  );
   // The route answers either with the deliverable itself, or with
   // `{"status": <enum>, "result": null}` when there is none
   // (subagent_control.py:124). An explicit null `result` is therefore the
   // server's own "no deliverable" answer and nothing else — a payload without
   // that key IS the deliverable and is shown verbatim.
-  if (d && typeof d === "object" && "result" in d && d.result === null) return null;
+  if (d && typeof d === "object" && "result" in d && d.result === null)
+    return null;
   return d;
 }
 
@@ -161,19 +279,34 @@ export async function subagentResult(id: string): Promise<Record<string, unknown
  * The rule now: a status this build does not name gets the neutral tone and is
  * flagged as unrecognised, never the success colour.
  */
-export function subagentStatusTone(status: string): "green" | "amber" | "blue" | "red" | undefined {
+export function subagentStatusTone(
+  status: string,
+): "green" | "amber" | "blue" | "red" | undefined {
   if (status === "running") return "blue";
   if (status === "completed") return "green";
   if (["failed", "error", "stalled", "expired"].includes(status)) return "red";
-  if (["blocked", "waiting", "cancelled", "archived"].includes(status)) return "amber";
-  if (["created", "initializing", "ready", "recovering"].includes(status)) return "blue";
+  if (["blocked", "waiting", "cancelled", "archived"].includes(status))
+    return "amber";
+  if (["created", "initializing", "ready", "recovering"].includes(status))
+    return "blue";
   return undefined;
 }
 
 /** Every value of the server's `SubagentStatusEnum`, so a new one is visible. */
 export const KNOWN_SUBAGENT_STATUSES = [
-  "created", "initializing", "ready", "running", "waiting", "blocked", "stalled",
-  "completed", "failed", "recovering", "cancelled", "expired", "archived",
+  "created",
+  "initializing",
+  "ready",
+  "running",
+  "waiting",
+  "blocked",
+  "stalled",
+  "completed",
+  "failed",
+  "recovering",
+  "cancelled",
+  "expired",
+  "archived",
 ] as const;
 
 /** True when this build names the status; false flags a newer Gateway. */
@@ -182,9 +315,12 @@ export function isKnownSubagentStatus(status: string): boolean {
 }
 
 /** The same rule for a work batch, whose statuses the Gateway owns separately. */
-export function batchStatusTone(status: string): "green" | "amber" | "blue" | "red" | undefined {
+export function batchStatusTone(
+  status: string,
+): "green" | "amber" | "blue" | "red" | undefined {
   if (status === "running") return "blue";
-  if (["completed", "done", "succeeded", "success"].includes(status)) return "green";
+  if (["completed", "done", "succeeded", "success"].includes(status))
+    return "green";
   if (["failed", "error", "stalled", "expired"].includes(status)) return "red";
   if (["blocked", "cancelled", "partial"].includes(status)) return "amber";
   if (["pending", "queued", "created"].includes(status)) return "blue";
@@ -192,6 +328,8 @@ export function batchStatusTone(status: string): "green" | "amber" | "blue" | "r
 }
 
 /** The same rule for one item inside a batch. */
-export function batchItemStatusTone(status: string): "green" | "amber" | "blue" | "red" | undefined {
+export function batchItemStatusTone(
+  status: string,
+): "green" | "amber" | "blue" | "red" | undefined {
   return batchStatusTone(status);
 }
