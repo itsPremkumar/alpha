@@ -237,6 +237,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Write-path verification record: the group nesting probes are green after the MAX_DEPTH cap was found absent from the subgroup creation route and wired in, with the inheritance projection, the depth and delete refusals, and the probe's own wrong assumptions all pinned.",
     ),
+    "audits/SUBAGENT_CREATION.md": DocumentSpec(
+        "operations",
+        "Subagent creation record: an agent asked to create one claimed success it did not achieve, the admin create route was found to answer 201 to a typo'd field, and the UI's separate live-activity plane is explained with the limits of what could be verified.",
+    ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
     # sentence, which is the point of this table. REGENERATE docs/INDEX.md after
