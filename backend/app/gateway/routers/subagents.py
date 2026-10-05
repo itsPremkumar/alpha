@@ -6,9 +6,8 @@ import asyncio
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.gateway.deps import is_admin_user, require_admin_user
 from alpha.config.app_config import get_app_config
 from alpha.persistence.managed_subagents import (
     ManagedSubagentDefinition,
@@ -20,6 +19,7 @@ from alpha.persistence.managed_subagents.base import (
     normalize_managed_subagent_name,
 )
 from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+from app.gateway.deps import is_admin_user, require_admin_user
 
 router = APIRouter(prefix="/api/subagents", tags=["subagents"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage subagents."
@@ -48,6 +48,19 @@ class SubagentsListResponse(BaseModel):
 
 
 class ManagedSubagentCreateRequest(BaseModel):
+    # `extra="forbid"` mirrors `ManagedSubagentDefinition.model_config`, and its
+    # absence was a live defect found on 2026-10-05: `POST /api/subagents` with a
+    # typo'd field returned **201** and silently dropped it. Asked for
+    # `max_turn=5`, the caller got a subagent with `max_turns=50` — the default —
+    # and a success code. The persistence model was already strict, so the
+    # strictness existed in the codebase and was simply not on the request
+    # boundary that decides it.
+    #
+    # This is the repo's own documented failure shape: a claim more specific than
+    # the evidence behind it. A caller who misspells a knob is the only one who
+    # can detect it, and "201 Created" tells them they were right.
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(pattern=MANAGED_SUBAGENT_NAME_PATTERN.pattern)
     display_name: str | None = None
     description: str = Field(min_length=1)
@@ -62,6 +75,10 @@ class ManagedSubagentCreateRequest(BaseModel):
 
 
 class ManagedSubagentUpdateRequest(BaseModel):
+    # Same reason as the create model: a typo'd field on an update is otherwise
+    # dropped with a 200, so the caller believes a setting changed when it did not.
+    model_config = ConfigDict(extra="forbid")
+
     display_name: str | None = None
     description: str | None = Field(default=None, min_length=1)
     system_prompt: str | None = Field(default=None, min_length=1)
