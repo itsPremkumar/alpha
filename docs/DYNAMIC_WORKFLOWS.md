@@ -51,6 +51,12 @@ carry `execution_label: "local_digest_projection"` and
 `acceptance_passed: false`. A host must bind a real executor before domain
 acceptance can be true.
 
+For `auto_execute: true`, the Gateway checks the default and task executors
+against its live registry before resource assembly or workflow registration. If
+any required executor is unbound, the request returns `503` with the missing
+names and creates no workflow or run. Compile-only requests do not require
+executor bindings and never start execution.
+
 Recurring automation is deliberately not converted into an in-process cron
 loop. The service reports the missing scheduler handoff and leaves recurring
 execution to the existing scheduler/host lifecycle.
@@ -304,8 +310,24 @@ these spend money and reach the network and must never be bound merely by
 importing a module. The engine's node seam is synchronous while tool assembly is
 async, so the executors bridge through a dedicated worker loop and **refuse**
 when called from a thread with a running event loop rather than deadlocking.
-`GET /api/workflows/system/executors` reports what is actually bound and makes
-the opt-in nature visible.
+`GET /api/workflows/system/executors` reports what is actually bound, whether
+all three domain executors are bound, and the host-managed opt-in policy. There
+is intentionally no `config.yaml` switch for binding them: this Gateway path
+does not yet define the strict executor allowlist, per-run budget enforcement,
+and approval contract needed to safely expose paid model calls or side-effecting
+tools to dynamic workflows. Operators must not treat importing the module,
+listing an executor, or compiling a workflow as permission to execute it.
+The workflow run inspector distinguishes an unbound registry, the digest-only
+projection, and host-bound domain executors. A host binding means an executor
+can resolve a matching node; it does not prove that the executor ran or that
+the workflow's goal was accepted. Older Gateway responses that omit readiness
+fields are shown as unknown rather than inferred from the executor list.
+For auto-execution, the Gateway checks every executor named by the decomposed
+tasks against the live registry before resource assembly, plan persistence, or
+run creation. Missing bindings return 503 with the executor names. Compile-only
+requests still assemble without provisioning resources, register the compiled
+workflow, and persist its initial plan revision; they do not start a workflow
+run or execute any node.
 
 A tool that needs populated `runtime.state` (sandbox paths, thread outputs) has
 none on this seam, because it is not inside a LangGraph run. The tool's own real

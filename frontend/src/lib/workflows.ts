@@ -602,17 +602,55 @@ export interface ExecutorListing {
   domain_executors: string[];
   /** The real model/tool/subagent executors currently bound (opt-in). */
   domain_bound: string[];
+  /** Null means the Gateway predates or omitted this readiness field. */
+  domain_bindings_complete: boolean | null;
+  public_dynamic_default_executor: string | null;
+  domain_binding_policy: {
+    mode: string;
+    configurable: boolean | null;
+    reason: string;
+  } | null;
   note: string;
+}
+
+export type ExecutorReadiness = "unknown" | "legacy" | "unbound" | "projection" | "partially_host_bound" | "all_host_bound";
+
+export function getExecutorReadiness(executors: ExecutorListing | null): ExecutorReadiness {
+  if (!executors) return "unknown";
+  if (executors.domain_bindings_complete === null) return "legacy";
+  if (executors.domain_bound.length > 0) {
+    return executors.domain_bindings_complete ? "all_host_bound" : "partially_host_bound";
+  }
+  if (executors.bound.length === 0) return "unbound";
+  if (executors.public_dynamic_default_executor && executors.bound.includes(executors.public_dynamic_default_executor)) {
+    return "projection";
+  }
+  return "unbound";
 }
 
 /** GET /workflows/system/executors → which node executors are actually bound. */
 export async function listWorkflowExecutors(): Promise<ExecutorListing> {
   const d = await get<Record<string, unknown>>("/workflows/system/executors");
+  const rawPolicy = d["domain_binding_policy"];
+  const policy =
+    rawPolicy && typeof rawPolicy === "object" && !Array.isArray(rawPolicy)
+      ? (rawPolicy as Record<string, unknown>)
+      : null;
   return {
     bound: asList(d, ["bound"]).map(String),
     count: Number(pick(d, ["count"], 0)),
     domain_executors: asList(d, ["domain_executors"]).map(String),
     domain_bound: asList(d, ["domain_bound"]).map(String),
+    domain_bindings_complete: typeof d["domain_bindings_complete"] === "boolean" ? d["domain_bindings_complete"] : null,
+    public_dynamic_default_executor:
+      typeof d["public_dynamic_default_executor"] === "string" ? d["public_dynamic_default_executor"] : null,
+    domain_binding_policy: policy
+      ? {
+          mode: String(pick(policy, ["mode"], "")),
+          configurable: typeof policy["configurable"] === "boolean" ? policy["configurable"] : null,
+          reason: String(pick(policy, ["reason"], "")),
+        }
+      : null,
     note: String(pick(d, ["note"], "")),
   };
 }

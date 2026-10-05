@@ -30,6 +30,7 @@ import { Badge, Btn, EmptyState, ErrorBox, Field, Notice, inputCls } from "@/com
 import { errMsg } from "@/lib/http";
 import {
   forkWorkflowRun,
+  getExecutorReadiness,
   getRunHistory,
   getRunReport,
   listWorkflowExecutors,
@@ -123,6 +124,7 @@ export function WorkflowRunInspector(props: {
   const obs = report?.observability;
   const isSuspended = run?.status === "suspended";
   const canSignal = run?.status === "waiting_event";
+  const domainExecutorStatus = getExecutorReadiness(executors);
 
   return (
     <div className="space-y-3">
@@ -416,11 +418,27 @@ export function WorkflowRunInspector(props: {
 
       {/* ── Executors ─────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border/60 bg-card/40 p-3 space-y-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wide">Bound executors</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold uppercase tracking-wide">Executor readiness</span>
+          {executors && domainExecutorStatus !== "legacy" && (
+            <Badge tone={domainExecutorStatus === "all_host_bound" ? "amber" : "gray"}>
+              {domainExecutorStatus === "unknown" && "Readiness unknown"}
+              {domainExecutorStatus === "projection" && "Digest projection only"}
+              {domainExecutorStatus === "unbound" && "No executor bound"}
+              {domainExecutorStatus === "partially_host_bound" && "Some domain executors host-bound"}
+              {domainExecutorStatus === "all_host_bound" && "All domain executors host-bound"}
+            </Badge>
+          )}
+        </div>
         {!executors ? (
           <p className="text-[11px] text-muted-foreground">Executor registry not reported.</p>
         ) : (
           <>
+            {domainExecutorStatus === "legacy" && (
+              <p className="text-[11px] text-muted-foreground">
+                This Gateway does not report domain-executor readiness; execution capability is unknown.
+              </p>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {executors.bound.map((name) => (
                 <Badge key={name} tone={executors.domain_bound.includes(name) ? "green" : "gray"}>
@@ -433,10 +451,26 @@ export function WorkflowRunInspector(props: {
                 </span>
               )}
             </div>
-            {executors.domain_bound.length === 0 && executors.domain_executors.length > 0 && (
+            {domainExecutorStatus === "projection" && (
               <p className="text-[11px] text-muted-foreground">
-                The real executors ({executors.domain_executors.join(", ")}) are available but not bound. They spend
-                money and reach the network, so binding them is an explicit opt-in.
+                The public dynamic workflow uses {executors.public_dynamic_default_executor}; it exercises graph
+                mechanics only and does not perform domain work or establish acceptance.
+              </p>
+            )}
+            {domainExecutorStatus === "unbound" && (
+              <p className="text-[11px] text-muted-foreground">
+                No executor is bound. Nodes requiring one fail honestly; no domain task is performed.
+              </p>
+            )}
+            {(domainExecutorStatus === "partially_host_bound" || domainExecutorStatus === "all_host_bound") && (
+              <p className="text-[11px] text-muted-foreground">
+                Host-bound executors can resolve matching nodes, but this status does not mean they ran or that work
+                was accepted.
+              </p>
+            )}
+            {executors.domain_binding_policy && (
+              <p className="text-[11px] text-muted-foreground">
+                {executors.domain_binding_policy.reason}
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">{executors.note}</p>
