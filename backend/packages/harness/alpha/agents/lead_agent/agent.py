@@ -571,7 +571,25 @@ def build_middlewares(
     # is not a feature that should disappear with a config flag.
     from alpha.agents.middlewares.grounding_middleware import GroundingMiddleware
 
-    middlewares.append(GroundingMiddleware(app_config=resolved_app_config))
+    # The grounding gate answers "is this tool installed?" from the toolset the
+    # model was actually given. Its capability manifest is built by calling
+    # `get_available_tools()` with no arguments, so `subagent_enabled` defaults to
+    # False and every delegation tool is missing from it. A run created with
+    # `autonomous: true` HAS those tools, the model called `task`, and the gate
+    # refused it as `{"gate": "tool_exists", "code": "unknown_tool"}` -- an
+    # installed tool reported as not installed. See
+    # `docs/audits/AGENT_SELF_SERVICE.md`.
+    #
+    # Only the delegation names are added, and only when this run enabled them:
+    # the middleware unions this with the manifest, so nothing is claimed that the
+    # run does not actually have, and a genuinely absent tool is still refused.
+    grounding_extra: frozenset[str] = frozenset()
+    if _get_runtime_config(config).get("subagent_enabled", False):
+        from alpha.tools.tools import SUBAGENT_TOOLS
+
+        grounding_extra = frozenset(getattr(t, "name", "") for t in SUBAGENT_TOOLS if getattr(t, "name", ""))
+
+    middlewares.append(GroundingMiddleware(app_config=resolved_app_config, available_tools=grounding_extra or None))
 
     # Continual Harness injection — learned directives, project memories and
     # failure rules from local + global harness state. Fail-open: disk or state

@@ -346,17 +346,42 @@ class GroundingMiddleware(AgentMiddleware):
     def _subject_for(self, tool_call: dict) -> GateSubject:
         """Build the gate subject for one tool call.
 
-        ``available_tools`` is resolved from the manifest rather than left ``None``
-        on purpose: an unresolved tool set must block (see
-        :func:`alpha.grounding.gates.check_tool_exists`), and resolving it from
-        the manifest is the only source this middleware has.
+        ``available_tools`` must answer one question: **is this tool installed?**
+        The only set that can answer it is the toolset the model was actually
+        given, so ``self._available_tools`` -- the assembled runtime set -- is the
+        authority, and the manifest is unioned in rather than preferred.
+
+        Observed live on 2026-10-05. A run created with ``autonomous: true`` has
+        the delegation tools assembled, the model called ``task``, and the gate
+        refused it:
+
+            Grounding gate refused this call: not installed: task use a tool
+            from the capability manifest, or escalate rather than substituting
+            an invented one
+
+            {"gate": "tool_exists", "code": "unknown_tool"}
+
+        Cause: ``_build_manifest`` calls ``get_available_tools()`` with **no
+        arguments**, so ``subagent_enabled`` defaults to False and every
+        delegation tool is absent from the manifest -- while the agent's real
+        toolset had them. Preferring the manifest therefore answered "installed"
+        for a narrower set than the one the model was offered, and the gate
+        refused a tool that was demonstrably present.
+
+        The manifest is an interface map for reuse (see
+        ``alpha/grounding/AGENTS.md``); it is not an inventory, and an inventory
+        built with default flags is not an inventory of a configured run. Unioning
+        cannot weaken tool-selection hallucination detection: a fabricated tool is
+        in neither set, so it is still refused.
         """
         manifest = self._build_manifest()
-        tool_names = frozenset(e.name for e in manifest.by_kind("tool")) if len(manifest) else self._available_tools
-        if not tool_names and self._available_tools is not None:
-            tool_names = self._available_tools
+        names: set[str] = set()
+        if len(manifest):
+            names.update(e.name for e in manifest.by_kind("tool"))
+        if self._available_tools:
+            names.update(self._available_tools)
         return GateSubject(
-            available_tools=tool_names if tool_names else self._available_tools,
+            available_tools=frozenset(names) if names else None,
             tool_calls=(str(tool_call.get("name") or ""),),
             ledger=self._service_for().ledger,
             reuse_probe_run=self._consulted,
