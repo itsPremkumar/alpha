@@ -39,7 +39,9 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -462,11 +464,24 @@ async def _main_async(argv: list[str] | None) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Sync entry point.
 
-    The async Playwright API is used deliberately: the sync API drives its driver
-    through asyncio subprocesses, which raises NotImplementedError on a Windows
-    selector event loop. `asyncio.run` gets the default Proactor loop, where
-    subprocess support exists.
+    Two Windows-specific constraints are handled here, both found the hard way.
+
+    The async Playwright API is used rather than the sync one: the sync API drives
+    its driver through asyncio subprocesses too, but on top of greenlet, so a
+    failure surfaces as an opaque `Illegal return` rather than a real traceback.
+
+    The Proactor event loop is forced because Playwright launches its driver as a
+    subprocess, and asyncio's *Selector* loop raises `NotImplementedError` from
+    `create_subprocess_exec`. Nothing in this script needs a selector loop, so
+    the default is overridden rather than worked around. The policy class is
+    deprecated on 3.12+ but is still the supported way to select the loop on
+    Windows and is removed no earlier than 3.14; if it ever disappears, the
+    failure is loud and immediate at startup rather than silent.
     """
+    if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     return asyncio.run(_main_async(argv))
 
 
