@@ -152,7 +152,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["135 tools + 44 middlewares + MCP + 24 skills"]
+        Tools["136 tools + 44 middlewares + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -946,7 +946,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 135 tools, 66 routers, 44 middlewares, and 9 supervisor loops. CI fails
+  pins all 136 tools, 66 routers, 44 middlewares, and 9 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

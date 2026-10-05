@@ -16,7 +16,10 @@ reporting one as another is how a catalog entry becomes a claimed capability:
 |---|---|---|
 | 1 | Can an **agent** create one? | **No** — no model-facing tool exists |
 | 2 | Can an **admin** create one, guards intact? | **Yes**, after this fix |
-| 3 | Does the created subagent **actually run**? | **Not verified** — no execution backend in this deployment |
+| 3 | **Can an agent** create one itself? | **Yes** — `subagent_registry` tool, added this session |
+| 4 | Does the created subagent **actually run**? | **Not verified** — no execution backend in this deployment |
+
+Stage 3 is answered in `docs/audits/AGENT_SELF_SERVICE.md`.
 
 ---
 
@@ -149,10 +152,24 @@ earlier in this session and unchanged by this fix:
   execution backend is configured; delegation refuses to fabricate an execution
   result."` — correct fail-closed behaviour, but it means **no deep specialist has
   ever executed here**.
-- The `task` tool is **not registered** in this deployment, so the ordinary
-  delegation path is absent.
-- `GET /api/subagents/control` → **`[]`**: no subagent lifecycle record exists,
-  because none has run.
+- ~~The `task` tool is **not registered** in this deployment.~~ **CORRECTED —
+  this was wrong.** `RunCreateRequest.autonomous` is the server-applied opt-in
+  that registers it (`app/gateway/services.py` sets
+  `body_context["subagent_enabled"] = True`). Measured, same prompt, two runs:
+
+  | `autonomous` | tools the model saw | `task`? |
+  |---|---|---|
+  | `false` | `alpha_capability, catalog_tool_search` | **no** |
+  | `true` | `alpha_capability, task` | **yes** |
+
+  Delegation was never absent from the deployment — it was switched off for
+  those runs. "The tool is not registered" and "the tool is not enabled for this
+  request" are different claims and only the second is true, so the earlier
+  claim is withdrawn rather than softened.
+- `GET /api/subagents/control` → **`[]`**: no subagent lifecycle record exists.
+  A managed subagent appears in the **definition catalog**
+  (`/api/subagents`) and in the UI only once it has actually run, because
+  `SubagentsSection` reads the live-activity plane.
 
 A subagent that is created and listed but never dispatched is exactly the
 "declared is not wired" failure the repo forbids — so it is reported

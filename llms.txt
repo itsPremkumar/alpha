@@ -50,7 +50,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
   `extensions_config.json` (MCP servers + skills, API-editable at runtime),
   `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
 - Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
-  135 tools, 66 routers, 44 middlewares, 9 supervisor loops.
+  136 tools, 66 routers, 44 middlewares, 9 supervisor loops.
 - Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
   `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
 - Third-party Python extensions use the operator-controlled top-level `plugins:`

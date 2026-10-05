@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-04T01:52:52Z",
+ "generated_at": "2026-10-05T13:14:14Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -263,6 +263,14 @@
    "id": "skills_hub_manage",
    "module": "alpha.tools.builtins.skills_hub_tool",
    "symbol": "skills_hub_manage",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "subagent_registry_tool",
+   "module": "alpha.tools.builtins.subagent_registry_tool",
+   "symbol": "subagent_registry_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"

@@ -241,6 +241,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Subagent creation record: an agent asked to create one claimed success it did not achieve, the admin create route was found to answer 201 to a typo'd field, and the UI's separate live-activity plane is explained with the limits of what could be verified.",
     ),
+    "audits/AGENT_SELF_SERVICE.md": DocumentSpec(
+        "operations",
+        "Agent self-service record: the subagent_registry tool that lets an agent create its own specialised subagent, four bugs in that tool found by running it, the grounding-classification defect its author introduced and fixed, and the live re-verification left unverified.",
+    ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
     # sentence, which is the point of this table. REGENERATE docs/INDEX.md after
