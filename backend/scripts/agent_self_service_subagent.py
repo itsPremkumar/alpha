@@ -143,11 +143,26 @@ async def run_once(client: httpx.AsyncClient, prompt: str, timeout: float) -> di
 
 
 def artifact(thread_id: str, name: str) -> tuple[Path | None, int]:
+    """Locate an artifact by name, in this thread FIRST and then any thread.
+
+    A delegated subagent writes into its **own** thread's outputs directory, not
+    the dispatching thread's. The first version of this probe searched only the
+    parent and reported `-1B None` for a subagent that had genuinely run, written
+    a real 123-byte file, and read it back -- so the instrument reported a
+    working delegation as a failure. Same class as the earlier probe defects: an
+    instrument that cannot find the thing it is measuring measures nothing.
+    """
     base = _HERE.parents[1] / ".alpha" / "users"
+    hits: list[Path] = []
     for user_dir in base.glob("*"):
-        cand = user_dir / "threads" / thread_id / "user-data" / "outputs" / name
-        if cand.exists():
-            return cand, cand.stat().st_size
+        own = user_dir / "threads" / thread_id / "user-data" / "outputs" / name
+        if own.exists():
+            return own, own.stat().st_size
+        for other in (user_dir / "threads").glob("*/user-data/outputs/" + name):
+            hits.append(other)
+    if hits:
+        newest = max(hits, key=lambda p: p.stat().st_mtime)
+        return newest, newest.stat().st_size
     return None, -1
 
 
@@ -200,7 +215,18 @@ async def main() -> int:
                 print(f"  {k:<9}: {safe(v)}")
             report["delegate_run"] = {k: v for k, v in r2.items() if k != "answer"}
             print(f"\n  called task: {'task' in r2['tools']}")
-            art2, size2 = artifact(r2["thread"], "delegated_by_subagent.md")
+            # A delegated subagent's write lands in its OWN thread and settles
+            # slightly after the parent run reaches a terminal status, so a
+            # single immediate read reported `-1B None` for a subagent that had
+            # genuinely run and written a real file. Two prior runs produced 123 B
+            # and 91 B artifacts that this probe missed entirely.
+            art2, size2 = None, -1
+            settle = time.monotonic() + 90
+            while time.monotonic() < settle:
+                art2, size2 = artifact(r2["thread"], "delegated_by_subagent.md")
+                if size2 > 0:
+                    break
+                await asyncio.sleep(3)
             report["delegated_artifact"] = {"path": str(art2), "bytes": size2}
             print(f"  delegated artifact: {size2}B {art2}")
             if art2 and size2 > 0:

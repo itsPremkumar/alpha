@@ -3,7 +3,9 @@
 **Date:** 2026-10-05
 **Gateway:** `http://127.0.0.1:8001`
 **Driver:** `backend/scripts/agent_self_service_subagent.py`
-**Verdict:** **an agent now creates its own specialised subagent. It reached the tool on the first try and was then blocked by a defect I had introduced myself — fixed, with the live re-verification NOT completed.**
+**Verdict:** **an agent creates its own specialised subagent, and a delegated subagent executes and writes real files — both verified on disk. Two gates blocked it first; both were real defects, and the second was mine.**
+
+**Full chain, verified live:** agent creates a subagent (roster 8 → 9, three different names across runs) → agent delegates to it with `task` → **the subagent runs and writes an artifact in its own thread** (123 B, 91 B, 127 B on disk).
 
 ---
 
@@ -91,6 +93,80 @@ Fix: `subagent_registry` → `REVERSIBLE_WRITE`, the class `task`, `swarm` and
 `test_a_registered_tool_is_classified_or_the_gate_will_refuse_it`, which asserts
 the connection between the two registries for the delegated family. **8 passed.**
 
+## 3b. Second blocker, found and fixed: the gate called an installed tool "not installed"
+
+With the classification fixed, the agent reached `subagent_registry` and created
+`docs-truth-auditor` — **verified live: roster 8 → 9**. Delegation was then tried
+and refused:
+
+```
+Grounding gate refused this call: not installed: task use a tool from the
+capability manifest, or escalate rather than substituting an invented one
+
+{"gate": "tool_exists", "code": "unknown_tool"}
+```
+
+**`task` was installed.** That was measured in §0. Root cause: *two*
+hand-built inventories answering one question, neither matching a configured run.
+
+1. `GroundingMiddleware._build_manifest` calls `get_available_tools()` with **no
+   arguments**, so `subagent_enabled` defaults to False and every delegation tool
+   is missing. Verified directly: that call sees **145** tools and `task` is not
+   among them.
+2. `_subject_for` **preferred** the manifest over `self._available_tools`
+   whenever the manifest was non-empty — and production built the middleware with
+   no `available_tools` at all, so it was `None`.
+
+Fix: the assembled runtime set becomes the authority and the manifest is unioned
+in; `build_middlewares` passes the delegation names when this run enabled them.
+Unioning does not weaken hallucination detection — a fabricated name is in neither
+set. **15 tests, negative-controlled: 5 fail with the runtime set ignored again.**
+125 grounding tests pass.
+
+## 3c. Delegation VERIFIED — three independent subagent artifacts on disk
+
+With both blockers fixed, `task` dispatched and **the subagent executed**, proven
+by artifacts it wrote in its own thread:
+
+| Bytes | Written | Content |
+|---|---|---|
+| 123 | 22:50:57 | `subagent: docs-truth-auditor` … `written_by: write_file tool, issued by a delegated subagent, not the parent agent` |
+| 91 | 23:00:21 | `subagent: evidence-researcher` … `written_by: delegated subagent on 2026-10-05` |
+| 127 | 23:08:56 | `subagent: delegated subagent write check` … `Demonstrates that a delegated subagent can create a file and report back.` |
+
+The first is the most interesting: the subagent computed a **self-referential
+byte count** — the file states its own size — and solved the fixed point before
+writing, then reported receipt `[r3 write_file]` status `success` and read the
+file back with `hashline_read`.
+
+Across three runs the agent chose **three different** subagents —
+`docs-contract-auditor`, `docs-truth-auditor`, `evidence-researcher`,
+`deep-doc-author` — so it is deciding, not replaying.
+
+**And it kept the honesty contract while being refused.** Quoting a blocked run:
+
+> *"The delegation was **refused by the runtime before it reached any subagent**.
+> Nothing was written, and no subagent ran."*
+
+It did not write the file itself, and did not claim the subagent produced it.
+
+## 3d. My probe still misreports the artifact — recorded, not smoothed over
+
+The driver printed `delegated artifact: -1B None` on runs whose artifacts were on
+disk. Two causes, both mine:
+
+1. A delegated subagent writes into **its own** thread's outputs directory, and
+   the probe searched only the dispatching thread. Fixed: search the parent first,
+   then any thread.
+2. The write **settles after** the parent run reaches terminal status. Fixed: a
+   bounded 90 s poll.
+
+Even so the last run still printed `-1B None` against a 127 B file that existed.
+**The artifact locator in `agent_self_service_subagent.py` is unreliable and is
+reported as such** — the subagent execution claim rests on the on-disk artifacts in
+the table above, not on the driver's own line. An instrument that reports a
+working delegation as a failure is the failure.
+
 ## 4. Generated artefacts, because a tool shifts the counts
 
 Adding a tool is drift-gated:
@@ -102,37 +178,44 @@ Adding a tool is drift-gated:
 - `scripts/check_generated_drift.py` → **0 file(s) drift**.
 - `test_feature_manifest_wiring.py` + `test_no_orphan_modules.py` → **20 passed**.
 
-## 5. Honest limitations — including the one that matters most
+## 5. Honest limitations
 
-- **The live re-verification did NOT complete.** After fixing the grounding
-  classification the Gateway would not start: repeated launches exited with no
-  output while ~18 stray Python processes held the SQLite lock
-  (`acquired sqlite in-process lock` / `Connection closed` /
-  `no active connection` in the prior logs). That is an environment fault, not a
-  code fault, but the consequence stands: **an agent creating a subagent through
-  the fixed path is NOT VERIFIED end to end.** What *is* verified is that the
-  agent reached and called the tool, that the tool is classified, and that 20
-  tool tests pass.
-- **Delegation to a managed subagent is still unproven.** `delegate_to_deep_agent`
-  reports no execution backend, and no run has produced a
-  `/api/subagents/control` record, so the UI's subagent list remains empty.
+- **The UI's subagent list is still empty.** `GET /api/subagents/control` → `[]`
+  across every run, including the ones where a subagent demonstrably executed. So
+  the delegation execution and the control-plane record are **not connected**: a
+  real subagent ran, wrote a file, and reported back, yet nothing appeared on the
+  surface the UI reads. That is an open finding, not a verified pass — the most
+  likely reading is that the control plane records only a different kind of
+  subagent lifecycle, but I have not established which, and I am not guessing.
 - **The UI screenshot is impossible here** — `browser.screenshot` fails with
-  *"Screenshot needs a visible tab"*. The rendered subagent view is unverified.
+  *"Screenshot needs a visible tab"* and `tabs.focus` does not move
+  `focusedTabID`. The rendered subagent view is **unverified**.
+- **The driver's artifact locator is unreliable** (§3d) and printed `-1B None`
+  against artifacts that existed. Every subagent-execution claim here rests on the
+  on-disk files, not on the driver.
+- **Three of four runs left the created subagent cleaned up correctly**
+  (`DELETE` → 204); the roster returned to 8 each time.
+- `delegate_to_deep_agent` still reports no execution backend — the ordinary
+  `task` path works, the deep-agent path does not. Both claims are separate and
+  both are load-bearing.
 - The earlier claim in `docs/audits/SUBAGENT_CREATION.md` that "the `task` tool is
   not registered in this deployment" is **withdrawn and corrected** in that file.
-  Delegation was never absent; it required `autonomous: true`, which is a
-  server-applied per-request opt-in.
-- One run, one model. The gate refusal is a real defect, not a rate.
+- One model, one host. The gate refusals were real, reproducible defects, but
+  rates are not characterised.
 
 ## 6. Evidence index
 
 | Artifact | Path |
 |---|---|
 | Tool | `backend/packages/harness/alpha/tools/builtins/subagent_registry_tool.py` |
-| Tests | `backend/tests/test_subagent_registry_tool.py` (20 cases) |
-| Gate fix | `backend/packages/harness/alpha/grounding/gates.py` |
-| Gate tests | `backend/tests/test_grounding_side_effect_classification.py` (8 cases) |
+| Tool tests | `backend/tests/test_subagent_registry_tool.py` (20 cases) |
+| Gate fix 1 — classification | `backend/packages/harness/alpha/grounding/gates.py` |
+| Gate fix 1 — tests | `backend/tests/test_grounding_side_effect_classification.py` (8 cases) |
+| Gate fix 2 — `tool_exists` set | `grounding_middleware.py`, `lead_agent/agent.py` |
+| Gate fix 2 — tests | `backend/tests/test_grounding_tool_exists_uses_runtime_set.py` (15 cases) |
 | Driver | `backend/scripts/agent_self_service_subagent.py` |
 | `autonomous` discriminator | `backend/scripts/autonomous_subagent_probe.py` |
-| Logs | `logs/agent_self_service.log`, `logs/agent_self_service.json` |
+| Logs | `logs/agent_self_service{,2,3,4,5}.log` + `.json` |
+| Subagent artifacts | `backend/.alpha/users/default/threads/*/user-data/outputs/delegated_by_subagent.md` (123 B, 91 B, 127 B) |
 | Drift gate | 0 files; manifest wiring + orphan tests 20 passed |
+| Surrounding grounding suites | 125 passed |
