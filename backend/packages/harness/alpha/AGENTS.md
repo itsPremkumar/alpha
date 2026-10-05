@@ -400,8 +400,13 @@ as domain-task acceptance. Real domain work runs through
 `SubagentExecutor` — **opt-in** via `bind_domain_executors()` and never bound at
 import, because they spend money and reach the network; the async-to-sync bridge
 refuses when called from a thread with a running event loop rather than
-deadlocking. Recurring prompts disclose the missing scheduler handoff rather than
-creating a second cron owner.
+deadlocking. The Gateway exposes their bound state and the host-managed policy
+at `/api/workflows/system/executors`, but deliberately has no config switch:
+dynamic workflows still lack a strict executor allowlist plus integrated
+approval and hard per-run budget enforcement for paid or side-effecting work.
+Do not add automatic binding until those controls are wired and tested.
+Recurring prompts disclose the missing scheduler handoff rather than creating a
+second cron owner.
 
 **Bounded execution and concurrency.** `WorkflowNode.timeout_seconds` is
 ENFORCED through `alpha.workflow.execution.run_with_deadline`; a missed deadline

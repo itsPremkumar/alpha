@@ -402,4 +402,11 @@ async def test_executor_listing_makes_the_opt_in_nature_visible():
     assert "alpha.local.model" in payload["domain_executors"]
     # Not bound by default: importing a module must never start spending tokens.
     assert payload["domain_bound"] == []
+    assert payload["domain_bindings_complete"] is False
+    assert payload["public_dynamic_default_executor"] == DIGEST_EXECUTOR
+    assert payload["domain_binding_policy"] == {
+        "mode": "host_managed_opt_in",
+        "configurable": False,
+        "reason": ("real model, tool, and subagent executors are never bound automatically; there is no strict operator configuration with a defined approval and budget contract for enabling their paid or side-effecting work"),
+    }
     assert "not a claim that any" in payload["note"]

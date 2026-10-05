@@ -459,13 +459,24 @@ async def execute_dynamic_workflow(body: DynamicExecuteRequest, request: Request
         intent = perception_engine.perceive(body.prompt, body.context)
         decomposer = get_dynamic_decomposer()
         goal = decomposer.decompose(intent, body.prompt)
+        if body.auto_execute:
+            required_executors = {body.default_executor}
+            required_executors.update(task.executor for task in goal.tasks if task.executor)
+            registry = get_executor_registry()
+            unbound = sorted(name for name in required_executors if not registry.has(name))
+            if unbound:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(f"dynamic workflow execution requires unbound executor(s): {', '.join(unbound)}; bind them through a trusted host before execution"),
+                )
         assembler = DynamicResourceAssembler(
             bot_registry=get_bot_registry(),
             clone_engine=get_bot_clone_engine(),
             skills_hub=get_skills_hub(),
             mcp_manager=SkillMcpLifecycleManager(),
         )
-        # Compile-only requests remain side-effect free.
+        # Compile-only skips resource provisioning and execution, but still registers
+        # the compiled definition and persists its first plan revision below.
         resources = assembler.assemble(goal, body.prompt, provision=body.auto_execute)
         bridge = DynamicWorkflowBridge(
             engine=engine,
@@ -543,6 +554,8 @@ async def execute_dynamic_workflow(body: DynamicExecuteRequest, request: Request
 
     try:
         return await asyncio.to_thread(_execute)
+    except HTTPException:
+        raise
     except PlanGraphError as exc:
         raise HTTPException(status_code=503, detail=f"workflow plan persistence failed: {exc}") from exc
     except ValueError as exc:
@@ -802,11 +815,20 @@ async def list_workflow_executors(request: Request) -> dict[str, Any]:
 
     registry = get_executor_registry()
     bound = list(registry.names())
+    domain_bound = sorted(name for name in DOMAIN_EXECUTORS if registry.has(name))
+    domain_available = sorted(DOMAIN_EXECUTORS)
     return {
         "bound": bound,
         "count": len(bound),
-        "domain_executors": sorted(DOMAIN_EXECUTORS),
-        "domain_bound": sorted(name for name in DOMAIN_EXECUTORS if registry.has(name)),
+        "domain_executors": domain_available,
+        "domain_bound": domain_bound,
+        "domain_bindings_complete": set(domain_bound) == set(domain_available),
+        "public_dynamic_default_executor": "alpha.local.digest",
+        "domain_binding_policy": {
+            "mode": "host_managed_opt_in",
+            "configurable": False,
+            "reason": ("real model, tool, and subagent executors are never bound automatically; there is no strict operator configuration with a defined approval and budget contract for enabling their paid or side-effecting work"),
+        },
         "note": ("a bound executor name means the node seam can resolve it; it is not a claim that any model, tool, or subagent was invoked, and the domain executors are opt-in"),
     }
 

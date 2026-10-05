@@ -35,10 +35,14 @@ import pytest
 from fastapi import HTTPException
 
 import alpha.orchestrator.executors as executors_module
+import alpha.workflow.dynamic_assembler as dynamic_assembler_module
+import alpha.workflow.dynamic_decomposer as dynamic_decomposer_module
 import alpha.workflow.runtime as runtime_module
+from alpha.orchestrator.domain_executors import MODEL_EXECUTOR
 from alpha.orchestrator.executors import DIGEST_EXECUTOR, ExecutorRegistry
 from alpha.orchestrator.mode_mapper import NON_EXPRESSIBLE_REASONS
 from alpha.tools.builtins.workflow_dag_tool import workflow_dag_manage
+from alpha.workflow.plan_graph import PlanGraphStore
 from app.gateway.routers.workflows import (
     DynamicExecuteRequest,
     DynamicPerceiveRequest,
@@ -744,6 +748,38 @@ async def test_execute_dynamic_workflow_compile_only(monkeypatch):
     # Verify workflow definition is registered and retrievable
     wf_def = await get_workflow(res["workflow_id"], req)
     assert wf_def["id"] == res["workflow_id"]
+    assert PlanGraphStore().list_versions(res["workflow_id"]) == [1]
+    assert not any(run.workflow_id == res["workflow_id"] for run in get_workflow_engine().runs.values())
+
+
+@pytest.mark.asyncio
+async def test_execute_dynamic_workflow_rejects_unbound_task_executor_before_side_effects(monkeypatch):
+    """An unbound explicit executor is rejected before assembly, registration, or run creation."""
+    _bind_digest_registry(monkeypatch)
+    original_get_decomposer = dynamic_decomposer_module.get_dynamic_decomposer
+
+    class _ModelExecutorDecomposer:
+        def decompose(self, intent, prompt):
+            goal = original_get_decomposer().decompose(intent, prompt)
+            goal.goal_id = "preflight_unbound_model"
+            goal.tasks[0].executor = MODEL_EXECUTOR
+            return goal
+
+    def _unexpected_assembly(*args, **kwargs):
+        raise AssertionError("resource assembly must not run after executor preflight fails")
+
+    monkeypatch.setattr(dynamic_decomposer_module, "get_dynamic_decomposer", lambda: _ModelExecutorDecomposer())
+    monkeypatch.setattr(dynamic_assembler_module, "DynamicResourceAssembler", _unexpected_assembly)
+    req = MagicMock()
+    body = DynamicExecuteRequest(prompt="Design a small caching layer", auto_execute=True)
+
+    with pytest.raises(HTTPException) as exc:
+        await execute_dynamic_workflow(body, req)
+
+    assert exc.value.status_code == 503
+    assert "alpha.local.model" in exc.value.detail
+    assert get_workflow_engine().get_definition("wf_goal_preflight_unbound_model") is None
+    assert not any(run.workflow_id == "wf_goal_preflight_unbound_model" for run in get_workflow_engine().runs.values())
 
 
 @pytest.mark.asyncio

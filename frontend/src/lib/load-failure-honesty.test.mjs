@@ -22,6 +22,15 @@ const transpile = (source) =>
   }).outputText;
 const read = (url) => readFileSync(new URL(url, import.meta.url), "utf8");
 
+test("ChatView reports unexpected initialization failures and clears loading states", () => {
+  const src = read("../components/ChatView.tsx");
+  const match = src.match(/void init\(\)\.catch\(\(error\) => \{([\s\S]*?)\n    \}\);/);
+  assert.ok(match, "the async initialization promise must have a rejection handler");
+  assert.match(match[1], /flash\(`Workspace initialization failed\.\s*\$\{errMsg\(error\)\}`\)/);
+  assert.match(match[1], /setBotsLoading\(false\)/);
+  assert.match(match[1], /setThreadsLoading\(false\)/);
+});
+
 /* ── Stub 1: api-client for api.ts ─────────────────────────────────────── */
 
 const apiClientStub = `

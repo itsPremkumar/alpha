@@ -851,7 +851,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       listCommands().then(setSlashCommands).catch(() => setSlashCommands([]));
       setThreadsLoading(false);
     }
-    void init();
+    void init().catch((error) => {
+      flash(`Workspace initialization failed. ${errMsg(error)}`);
+      setBotsLoading(false);
+      setThreadsLoading(false);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

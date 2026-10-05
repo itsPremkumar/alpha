@@ -16,7 +16,7 @@ I fixed**, and **what I could not verify in this environment**. Nothing in §1 o
 
 | Area | Verdict |
 |---|---|
-| **F1** Frontend suite | **1609 / 1610 pass** (baseline 1591 / 1594) — only the pre-existing, honestly-labelled `KNOWN FAILING` QR gate remains |
+| **F1** Frontend suite | **1610 / 1611 pass** (baseline 1591 / 1594) — only the pre-existing, honestly-labelled `KNOWN FAILING` QR gate remains |
 | **F2** `tsc --noEmit` | **0 errors** |
 | **F3** Electron suite | **284 / 284 pass** |
 | **F4** Backend gate (8 modules) | **277 passed / 1 failed** → after the depth fix, **124 passed** across the group-nesting pair |
@@ -26,15 +26,16 @@ I fixed**, and **what I could not verify in this environment**. Nothing in §1 o
 | **F8** Group-nesting `depth_of` | **FIXED** — fan-in counted ancestors, refusing valid placements with a fabricated depth |
 | **F9** Duplicate supervision stubs | **FIXED** — one shared stub + a parity tripwire, after two link-time failures |
 | Manifest drift | **clean** — regeneration diff is the timestamp only |
-| `docs/INDEX.md` | **regenerates cleanly** — 103 documents, +2 indexed |
+| `docs/INDEX.md` | **check clean** — 104 documents |
 | Screenshots | **CAPTURED** — `docs/audits/screenshots/2026-10-05/bots-after-fix.png` |
 | Docker/nginx `:2026`, Provisioner `:8002` | **NOT VERIFIED** — no Docker daemon on this host |
 
-**Overall verdict: PASS on every gate that can be exercised on this host, with
-four real defects found and fixed at root cause. One MAJOR unfixed finding is
-recorded in §13 (§L3), and the full Phase D/E/F exercises that the previous
-cycle left unverified were **not** completed this cycle — see §13 for exactly
-what that means.**
+**Overall verdict: PASS on the targeted gates that completed on this host, with
+the reported defects fixed at root cause. The previously reported MAJOR
+initialization rejection path (formerly §L3) is now caught and surfaced with
+loading states cleared. The full backend suite did not complete, and the
+Phase D/E/F exercises left unverified were **not** completed this cycle — see
+§13 for exactly what that means.**
 
 I am not claiming a clean bill of health. The previous cycle reported 38/38
 subsystems PASS on the *read* surface; this cycle found that a subsystem the
@@ -112,7 +113,7 @@ Severity labels are exactly the rubric's.
 | Feature exists but unreachable | **CLEAN** for the view registry — 31 union / 31 tabs / 31 routable / 31 render branches, **0 dead ids** | `workspace-nav.test.mjs` passes both directions; `frontend/src/lib/workspace-nav.test.mjs` |
 | UI shows a number the server never sent | **1 real (F2-adjacent, legibility)**. The prior cycle's **fabricated-zero** (NEW-1) is **fixed** — the strip now renders a skeleton while loading and reads 60/44/0 against a server that reports 60 | `logs/gateway` `GET /api/bots → count: 58→60`; UI `60 Total bots / 44 Active / 0 Paused` |
 | UI shows a number the server never sent (honesty spot-checks) | **CLEAN, verified against the API.** `0 agents` in the vitals strip is **correct** — `total_agents` counts custom agent *profiles*, and the server genuinely reports `0`. `60/44/0` fleet strip matches `GET /api/bots` and `GET /api/bots/health/overview` | `GET /api/console/stats` → `total_agents: 0`, `total_runs: 112`, `total_threads: 109` |
-| Catch-and-empty error handling | **1 real, unfixed (§L3)**: `ChatView.init()`'s `Promise.all` at `ChatView.tsx:737` is **outside any `try`/`catch`** (the only `try` covers `loadStore()` above it). `listProjects()` has a `.catch`; `fetchBots`, `fetchModelCatalog`, `fetchFeatures` all catch internally and resolve — so it does not fire today, but the structure is one unguarded await from a whole-app abort | static read; §L3 |
+| Catch-and-empty error handling | **The previously identified unexpected `ChatView.init()` rejection is handled** at the effect boundary: its reason is flashed and both primary loading states are cleared. Fetch helpers still retain their normal surface-specific fallback/error behavior. | `frontend/src/components/ChatView.tsx`; `frontend/src/lib/load-failure-honesty.test.mjs` |
 | Missing structured logging | **CLEAN in changed paths.** Live errors observed carry `trace_id`: `Readiness database probe failed … [trace_id=be35adb5…]` | `logs/gateway.err.log` |
 | Timeouts / unbounded loops | **CLEAN** — the only failure mode seen was host resource starvation, which the vitals strip disclosed honestly (`26 ms internet`, honest system vitals) rather than hiding | measured; §13 |
 | Race conditions | **1 real (mine, self-inflicted, recorded for honesty):** I killed a watchdog-owned `next dev` while the browser was fetching `main-app.js` and the page died with `ERR_ABORTED`. I diagnosed it as my own artifact rather than reporting a product defect, then rebuilt and re-verified | `network.list` showed `failed … main-app.js :: net::ERR_ABORTED` on the run I had just interrupted |
@@ -171,6 +172,16 @@ persisted hub.depth    = 2          (was 4 — wrong sidebar indentation)
 
 `flat()` normalisation added to `chat-shell-dedupe.test.mjs` (the house style already used in 5 sibling suites), with the window computed **after** flattening so re-indentation can no longer starve it. One shared `test-supervision-stub.mjs` replaces three inline copies, and `supervision-stub-parity.test.mjs` fails if the stub and the real module disagree about the export list — turning a link error in an unrelated file into a named failure at the point of change.
 
+### F7 — unexpected workspace initialization rejection
+
+`ChatView` now handles an unexpected rejection from its asynchronous mount
+initializer at the promise boundary. It displays the actual error through
+`errMsg()` and clears the bot/thread loading indicators rather than leaving the
+workspace on skeletons or producing an unhandled rejection. The normal fetch
+helpers keep their existing per-surface failure handling. A focused regression
+pin verifies that both indicators and the surfaced reason remain part of the
+handler.
+
 ---
 
 ## 6. SUBSYSTEM MATRIX
@@ -189,6 +200,7 @@ Three-source rule: **A** automated · **B** live I/O · **C** UI. Two sources is
 | Group nesting | `test_group_nesting` **80 passed**, `_routes` 124 passed | — | — | **PASS** (was FAIL) |
 | Harness boundary | `test_harness_boundary` + `test_no_orphan_modules` pass | — | — | **PASS** |
 | Run event stream | `test_run_event_stream_contract` pass | — | — | **PASS (contract)** — no live run exercised |
+| Dynamic workflow runtime | Router, durability and service suites: **32 passed** | **NOT RUN** — no host-bound domain executor or live provider run | — | **NOT VERIFIED for domain work** — the default digest is a local projection and acceptance remains false |
 | Peer network | — | `peer_network.enabled: false`; **libp2p `available: false`, reason given** | — | **PASS (honest unavailable)** |
 | Autonomy loops | — | all 9 `enabled: false`, `runs: 0` | — | **PASS (honest off)** — config-gated, as documented |
 | Skills route order | `test_skills_router_route_order` pass | — | — | **PASS (contract)** |
@@ -221,6 +233,33 @@ live runs. What *was* done is real and citable:
 - **A production build shipped, restarted, and re-verified** in a real browser.
 
 I am not scoring these as T1–T5 completions. §13 records the gap.
+
+The focused dynamic-workflow gate (`test_dynamic_workflow_router.py`,
+`test_workflow_durability_router.py`, and `test_dynamic_workflow_service.py`)
+passed **32 tests** offline. This verifies those route, durability, and service
+contracts only. No live run with a host-supplied domain executor was performed;
+the default `alpha.local.digest` remains a local graph projection labelled
+`local_digest_projection`, with `acceptance_passed: false`. This is not evidence
+that a domain task was completed or that dynamic execution is production-ready.
+
+The executor-status route now reports the domain executor binding state,
+whether all three bindings are present, the digest default, and why there is no
+YAML opt-in. Real executors remain host-managed: a strict executor allowlist,
+integrated approval behavior, and hard per-run budget contract are not wired at
+this Gateway boundary, so adding a configuration switch would expose paid or
+side-effecting operations without those controls. Regression check:
+`uv run --project backend pytest backend/tests/test_workflow_observability_router.py -q`
+— **19 passed**. No provider or tool invocation was made by this check.
+`uv run --project backend pytest backend/tests/test_dynamic_workflow_router.py::test_execute_dynamic_workflow_rejects_unbound_task_executor_before_side_effects -q`
+— **1 passed**. The regression injects an unbound model executor into a dynamic
+task and verifies the request returns 503 before resource assembly, workflow
+registration, or run creation; the digest-only execution path remains separate.
+The workflow run inspector now separates no-bound, digest-projection-only,
+partial host binding, and complete host binding; legacy responses remain
+unknown, and host binding is explicitly not presented as proof of invocation or
+acceptance. Frontend checks:
+`pnpm exec node --test src/lib/workflows-observability.test.mjs` — **19 passed**;
+`pnpm typecheck` — **passed**. Both commands were run from `frontend/`.
 
 ---
 
@@ -286,19 +325,21 @@ strip**, obscuring two cards. Recorded as §L4; not fixed.
 
 ## 11. ITERATION DELTAS
 
-Two iterations. I did not reach the 12-iteration cap; I stopped because the
-remaining work is Phase D/E/F live-run verification that this host cannot
-complete in the remaining budget, and padding iterations with re-runs of the
-same gates would be theatre.
+Two audit iterations were followed by the F7 bootstrap error-path fix and
+focused revalidation. I did not reach the 12-iteration cap: the full offline
+backend suite produced no output for 10 minutes and was stopped, while the
+remaining Phase D/E/F live-run work requires unavailable external/runtime
+conditions. Repeating completed targeted gates would not resolve those
+limitations.
 
 | Metric | Iteration 1 (baseline) | Iteration 2 (after) |
 |---|---|---|
 | Backend gate | 277 pass / **1 fail** | **124 pass** (group pair) + 3 new depth tests |
-| Frontend suite | 1594 tests, 1591 pass, **3 fail** | **1610 tests, 1609 pass, 1 fail** |
+| Frontend suite | 1594 tests, 1591 pass, **3 fail** | **1611 tests, 1610 pass, 1 fail** |
 | `tsc --noEmit` | 0 errors | 0 errors |
 | Electron | not run | **284 / 284** |
 | Manifest drift | clean | clean (content-identical) |
-| `docs/INDEX.md` | clean | regenerates, +2 indexed |
+| `docs/INDEX.md` | clean | `--check` clean, 104 documents |
 | Files changed | — | 13 (6 source, 4 test, 3 new) |
 | Tests added | — | **24** |
 | Distinct tools invoked | 2 (`Invoke-WebRequest`, `browser.*`) + `pytest`/`node` | same + `ruff`, `generate_feature_manifest.py`, `generate_docs_index.py` |
@@ -327,14 +368,14 @@ same gates would be theatre.
 
 | Suite | Before | After |
 |---|---|---|
-| Frontend `src/lib/*.test.mjs` | 1594 / 1591 pass / 3 fail | **1610 / 1609 / 1 fail** |
+| Frontend `src/lib/*.test.mjs` | 1594 / 1591 pass / 3 fail | **1611 / 1610 / 1 fail** |
 | Backend `test_group_nesting*.py` | 1 fail (depth) | **124 passed** |
-| Backend gate (8 modules) | 277 pass / 1 fail | all pass |
+| Backend gate (8 modules) | 277 pass / 1 fail (group depth) | group-nesting pair 124 passed; dynamic-workflow suites 32 passed |
 | Electron `tests/*.test.mjs` | not run | **284 / 284** |
 | `tsc --noEmit` | 0 | **0** |
 | `ruff format --check` (my 2 files) | — | **clean** |
 | Manifest | — | content-identical |
-| Docs index | — | regenerates, 103 docs |
+| Docs index | — | `--check` clean, 104 docs |
 
 **Pre-existing, not introduced by me and not fixed:**
 - `ruff format --check .` → **501 files** would be reformatted (verified at `HEAD`
@@ -348,55 +389,49 @@ same gates would be theatre.
 
 Stated plainly and separately from what works.
 
-1. **§L1 — Backend full suite: NOT COMPLETED.** It reached 15 % in ~80 minutes
-   and starved the host to 386 MB free. I killed it to free the machine and
-   report a targeted gate instead. **The claim "1345+ backend tests green" is NOT
-   made.** Only the 8-module gate (277→all pass) and the group-nesting pair (124)
-   were run to completion.
+1. **§L1 — Backend full suite: NOT COMPLETED.** The earlier attempt reached 15 %
+   in ~80 minutes and starved the host to 386 MB free. A fresh attempt with the
+   documented offline command
+   `uv run pytest -m 'not live' --ignore=tests/blocking_io tests/ -q` produced no
+   output and left a 0-byte log after 10 minutes; I stopped only that test
+   process. Its state (collection versus a slow/hung test) could not be
+   distinguished, so this is **not a pass or a test failure**. No test process
+   from this run remains active. **The claim "1345+ backend tests green" is NOT
+   made.** Completed focused evidence includes the group-nesting pair (124) and
+   dynamic-workflow router/durability/service suites (32 passed).
 2. **§L2 — Gateway logs are reset on restart.** `start.ps1:687`
    `Archive-ServiceLogs` truncates/rotates `gateway.log` and `gateway.err.log`
    at every start; both were **0 bytes** after the 05:43 restart. An operator
    investigating a crash therefore loses the evidence. Severity **OBSERVABILITY**.
    Not fixed — archiving is deliberate and I will not change log retention
    without an owner decision.
-3. **§L3 — `ChatView.init()` has an unguarded `Promise.all` (MAJOR, unfixed).**
-   `ChatView.tsx:737` sits outside any `try`/`catch`; the only `try` covers
-   `loadStore()` above it, and there is **no `finally`**. Today every dependency
-   catches internally and resolves, so the rejection path is unreachable — but
-   `listProjects()`/`listCommands()` beside it are not in that `Promise.all`, and
-   the structure makes any future non-catching dependency abort the entire
-   workspace bootstrap (`setBotsLoading(false)`, `setThreadsLoading(false)`,
-   `setModels`, `setFeatures` all skipped) with an unhandled rejection. Root
-   cause is real and named; I did not fix it because the honest fix is to
-   restructure a 130-line initialiser and re-verify all 31 views, which I could
-   not complete.
-4. **§L4 — Lion companion tooltip overlays the fleet strip (MINOR, unfixed).**
+3. **§L4 — Lion companion tooltip overlays the fleet strip (MINOR, unfixed).**
    Visible in the screenshot, covering two cards.
-5. **§L5 — Phase D/E/F live-run verification: NOT PERFORMED.** No agent task was
+4. **§L5 — Phase D/E/F live-run verification: NOT PERFORMED.** No agent task was
    run, no subagent delegated, no scheduler task fired, no swarm started, no
    kanban card moved, no group nest/move/merge/promote exercised, no memory
    recall, no MCP tool executed, no live peer pairing, no Electron app launched.
    The previous cycle's coverage of these is not re-asserted here.
-6. **§L6 — Docker/nginx `:2026` and Provisioner `:8002`: NOT VERIFIED.** No
+5. **§L6 — Docker/nginx `:2026` and Provisioner `:8002`: NOT VERIFIED.** No
    Docker daemon.
-7. **§L7 — `/api/company/*`: read-only.** No company was bootstrapped this cycle;
+6. **§L7 — `/api/company/*`: read-only.** No company was bootstrapped this cycle;
    the honest 404 is what I verified.
-8. **§L8 — Two documentation contradictions left open.** (a) Does
+7. **§L8 — Two documentation contradictions left open.** (a) Does
    `SqlSideEffectLedger` have a production writer? `docs/architecture/durable-runtime.md:490-502`
    says no; `alpha/runtime/AGENTS.md` asserts yes in its `honesty-claims` block.
    (b) `docs/ARCHITECTURE.md` §5 lists nine middleware stages; **six have no
    definition anywhere in the backend**. Both recorded in `SYSTEM_MAP.md` §7; I
    did not adjudicate either.
-9. **§L9 — Intermittent 500s observed once each** on
+8. **§L9 — Intermittent 500s observed once each** on
    `/api/multimodal/capabilities` and `/api/threads/{id}/token-usage`, both 200 on
    every direct retry. Flaky, not diagnosed, not fixed.
-10. **§L10 — `/api/health` 404s**; the live liveness route is `/health`. Harmless,
-    but any external check written against `/api/health` is silently probing
-    nothing.
-11. **§L11 — Manifest count discrepancy, pre-existing.** `llms.txt:72` and the
-    root guide say **117** harness engines; the regenerated manifest says
-    **117** (`{'engines': 117}`) — consistent today. (Recorded because the
-    prior cycle found this class of drift five times.)
+9. **§L10 — `/api/health` 404s**; the live liveness route is `/health`. Harmless,
+   but any external check written against `/api/health` is silently probing
+   nothing.
+10. **§L11 — Manifest count discrepancy, pre-existing.** `llms.txt:72` and the
+   root guide say **117** harness engines; the regenerated manifest says
+   **117** (`{'engines': 117}`) — consistent today. (Recorded because the
+   prior cycle found this class of drift five times.)
 
 ---
 
@@ -408,10 +443,14 @@ Stated plainly and separately from what works.
 | This report | `docs/audits/FULL_VERIFICATION_REPORT.md` |
 | Screenshot (after fixes) | `docs/audits/screenshots/2026-10-05/bots-after-fix.png` |
 | Frontend baseline | `logs/baseline_fe.log` (1594 / 1591 / 3) |
-| Frontend after | `logs/after_fe3.log` (1610 / 1609 / 1) |
+| Frontend after initial audit fixes | `logs/after_fe3.log` (1610 / 1609 / 1; before F7) |
+| Frontend full suite after F7 | 1611 tests: 1610 pass, one known QR decode failure (`pnpm test`; exit 1) |
 | Frontend intermediate (caught the stub break) | `logs/after_fe.log` |
 | Backend gate | `logs/gate_backend.log` (277 / 1) |
 | Backend full-suite partial | `logs/baseline_backend.log` (15 %, aborted) |
+| Dynamic workflow focused tests | `backend/tests/test_dynamic_workflow_router.py`, `test_workflow_durability_router.py`, `test_dynamic_workflow_service.py` (32 passed offline) |
+| Full backend suite attempt | `uv run pytest -m 'not live' --ignore=tests/blocking_io tests/ -q` from `backend/` — stopped after 10 minutes with no output; 0-byte temp log; no test result |
+| Documentation index | `uv run --project backend python scripts/generate_docs_index.py --check --commit HEAD` — clean, 104 documents |
 | Electron | `logs/electron_tests.log` (284 / 284) |
 | Next build | `logs/next_build.log` (exit 0, no `vendor-chunks`) |
 | Gateway logs (pre-restart) | `logs/gateway.err.log`, `logs/gateway.log` |
@@ -426,6 +465,8 @@ Stated plainly and separately from what works.
 `supervision-stub-parity`: 6 tests, incl. "the shared stub exports exactly the module's real export list".
 `ui-legibility`: 47/47.
 `test_group_nesting`: "test_depth_counts_the_longest_chain_and_not_the_ancestor_count" (+3 added) · 80 passed.
+`load-failure-honesty`: ChatView initializer rejection pin passed in the focused run.
+Dynamic workflow focused gate: 32 passed across router, durability, and service suites; no live domain executor run.
 
 ### Live requests captured
 

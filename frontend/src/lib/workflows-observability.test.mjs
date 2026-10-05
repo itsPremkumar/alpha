@@ -328,7 +328,7 @@ test("sweepWorkflowWaits posts to the sweep path", async () => {
   assert.equal(swept.status, "failed");
 });
 
-test("listWorkflowExecutors shows the domain executors as available but unbound", async () => {
+test("listWorkflowExecutors maps the explicit readiness contract", async () => {
   setHttpHandler((path, method) => {
     assert.equal(path, "/workflows/system/executors");
     assert.equal(method, "GET");
@@ -337,6 +337,13 @@ test("listWorkflowExecutors shows the domain executors as available but unbound"
       count: 1,
       domain_executors: ["alpha.local.model", "alpha.local.subagent", "alpha.local.tool"],
       domain_bound: [],
+      domain_bindings_complete: false,
+      public_dynamic_default_executor: "alpha.local.digest",
+      domain_binding_policy: {
+        mode: "host_managed_opt_in",
+        configurable: false,
+        reason: "operator approval and budget controls are not wired",
+      },
       note: "a bound executor name means the node seam can resolve it",
     };
   });
@@ -344,6 +351,61 @@ test("listWorkflowExecutors shows the domain executors as available but unbound"
   assert.deepEqual(listing.bound, ["alpha.local.digest"]);
   assert.equal(listing.domain_bound.length, 0, "importing a module must never start spending tokens");
   assert.equal(listing.domain_executors.length, 3);
+  assert.equal(listing.domain_bindings_complete, false);
+  assert.equal(listing.public_dynamic_default_executor, "alpha.local.digest");
+  assert.deepEqual(listing.domain_binding_policy, {
+    mode: "host_managed_opt_in",
+    configurable: false,
+    reason: "operator approval and budget controls are not wired",
+  });
+  assert.equal(wf.getExecutorReadiness(listing), "projection");
+});
+
+test("listWorkflowExecutors keeps readiness unknown for an older Gateway response", async () => {
+  setHttpHandler(() => ({
+    bound: ["alpha.local.digest"],
+    count: 1,
+    domain_executors: ["alpha.local.model"],
+    domain_bound: [],
+    note: "legacy response",
+  }));
+  const listing = await wf.listWorkflowExecutors();
+  assert.equal(listing.domain_bindings_complete, null);
+  assert.equal(listing.public_dynamic_default_executor, null);
+  assert.equal(listing.domain_binding_policy, null);
+  assert.equal(wf.getExecutorReadiness(listing), "legacy");
+});
+
+test("executor readiness distinguishes unbound, partial, and host-bound states", () => {
+  const base = {
+    bound: [],
+    count: 0,
+    domain_executors: ["alpha.local.model", "alpha.local.tool"],
+    domain_bound: [],
+    domain_bindings_complete: false,
+    public_dynamic_default_executor: "alpha.local.digest",
+    domain_binding_policy: null,
+    note: "",
+  };
+  assert.equal(wf.getExecutorReadiness({ ...base, bound: [] }), "unbound");
+  assert.equal(
+    wf.getExecutorReadiness({
+      ...base,
+      bound: ["alpha.local.model"],
+      domain_bound: ["alpha.local.model"],
+    }),
+    "partially_host_bound",
+  );
+  assert.equal(
+    wf.getExecutorReadiness({
+      ...base,
+      bound: ["alpha.local.model", "alpha.local.tool"],
+      domain_bound: ["alpha.local.model", "alpha.local.tool"],
+      domain_bindings_complete: true,
+    }),
+    "all_host_bound",
+  );
+  assert.equal(wf.getExecutorReadiness(null), "unknown");
 });
 
 test("every control rejects rather than returning an empty success", async () => {
