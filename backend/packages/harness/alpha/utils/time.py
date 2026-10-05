@@ -88,9 +88,20 @@ def coerce_iso(value: object) -> str:
         # but parses as expired in ``is_lease_expired``. A stored column with
         # a corrupt numeric therefore surfaced as a plausible-looking wrong
         # value instead of the module's "no timestamp" sentinel.
-        if not isfinite(value):
-            return ""
+        #
+        # The finiteness test belongs INSIDE the try. ``math.isfinite`` coerces
+        # its argument to a float, so an int too large for one raises
+        # ``OverflowError`` from the guard itself -- which is exactly the
+        # exception the ``except`` clause two lines below exists to absorb. With
+        # the guard outside, ``coerce_iso(10**400)`` propagated
+        # ``OverflowError`` out of a function documented as best-effort that
+        # never raises, turning a corrupt stored value into a 500 in every
+        # caller (``routers/projects.py``, ``routers/threads.py``,
+        # ``routers/evidence.py``). Found by a bot reviewing this file; see
+        # ``docs/audits/FLEET_VERIFICATION.md``.
         try:
+            if not isfinite(value):
+                return ""
             return datetime.fromtimestamp(float(value), UTC).isoformat()
         except (ValueError, OverflowError, OSError):
             return str(value)
