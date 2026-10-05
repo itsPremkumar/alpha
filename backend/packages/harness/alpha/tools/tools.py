@@ -145,6 +145,7 @@ from alpha.tools.builtins import (
     simulate_consequences,
     skills_hub_manage,
     subagent_control,
+    subagent_registry_tool,
     supervision_tool,
     swarm_tool,
     synthesize_reusable_skill,
@@ -208,6 +209,7 @@ BUILTIN_TOOLS = [
     moa_multi_model_reasoning,
     emergency_stop_manage,
     skills_hub_manage,
+    subagent_registry_tool,
     cronjob_manage,
     browser_navigate_and_inspect,
     # Resilient Multi-Session Workflow & Boulder Checkpointing Engine:

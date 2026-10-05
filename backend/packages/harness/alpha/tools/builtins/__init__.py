@@ -166,6 +166,7 @@ from .smart_approval_tool import verify_command_approval
 from .stigmergic_mesh_tool import emit_stigmergic_event, query_stigmergic_traces
 from .structural_ast_reconciler_tool import reconcile_structural_ast_conflicts
 from .subagent_control_tool import subagent_control
+from .subagent_registry_tool import subagent_registry_tool
 from .supervision_tool import supervision_tool
 from .swarm_tool import swarm_tool
 from .task_tool import task_tool
@@ -211,6 +212,7 @@ __all__ = [
     "process_handle_tool",
     "invoke_python_skill_tool",
     "bot_roster_tool",
+    "subagent_registry_tool",
     "swarm_tool",
     "group_chat_tool",
     "kanban_board_tool",

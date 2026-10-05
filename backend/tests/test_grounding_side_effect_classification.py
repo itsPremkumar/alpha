@@ -49,12 +49,14 @@ def _subject(**kw) -> GateSubject:
 
 #: Delegation and its introspection half. Each is either the isolated-child
 #: equivalent of `task`, its durable-batch form, the bounded retry loop over it,
-#: or a read of the registry that decides all three.
+#: a read of the registry that decides all three, or the model-facing registry
+#: that mints them.
 DELEGATION = {
     "task": SideEffectClass.REVERSIBLE_WRITE,
     "delegate_to_deep_agent": SideEffectClass.REVERSIBLE_WRITE,
     "batch_task": SideEffectClass.REVERSIBLE_WRITE,
     "ralph_loop": SideEffectClass.REVERSIBLE_WRITE,
+    "subagent_registry": SideEffectClass.REVERSIBLE_WRITE,
     "await_task_event": SideEffectClass.READ_ONLY,
     "list_available_deep_agents": SideEffectClass.READ_ONLY,
     "inspect_deep_agent_telemetry": SideEffectClass.READ_ONLY,
@@ -111,6 +113,31 @@ def test_delegation_passes_even_with_forbid_unconfirmed_side_effects() -> None:
         )
     )
     assert result.blocked is False, f"strict branch still refuses delegation: {result.reason}"
+
+
+def test_a_registered_tool_is_classified_or_the_gate_will_refuse_it() -> None:
+    """The failure this table keeps producing, turned into a build error.
+
+    Registering a tool in `BUILTIN_TOOLS` without adding it to
+    `DEFAULT_SIDE_EFFECTS` makes it UNKNOWN, which `check_side_effect` refuses as
+    an unclassified irreversible call. It has now happened six times, and the
+    sixth was self-inflicted: `subagent_registry` was registered, an agent reached
+    it, and the call was refused with
+
+        "blocked by a runtime safety gate ... requires explicit human
+         confirmation before a non-reversible registry call can run"
+
+    Nothing in the build connected the two registries, so the only reporter was a
+    model, in prose, to a user. This asserts the connection for the family that
+    actually gets delegated to; the ~110 unrelated unclassified tools are a
+    separate, disclosed gap (see the count test below), not something to pretend
+    away by reclassifying them blind.
+    """
+    from alpha.tools.tools import BUILTIN_TOOLS
+
+    registered = {getattr(t, "name", "") for t in BUILTIN_TOOLS}
+    missing = sorted(name for name in DELEGATION if name in registered and name not in DEFAULT_SIDE_EFFECTS)
+    assert not missing, f"registered but unclassified, so the grounding gate will refuse them: {missing}. An unlisted tool defaults to UNKNOWN, which check_side_effect enforces like IRREVERSIBLE."
 
 
 def test_the_strict_branch_still_refuses_a_genuinely_irreversible_call() -> None:

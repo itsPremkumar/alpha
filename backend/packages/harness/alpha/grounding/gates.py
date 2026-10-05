@@ -198,6 +198,25 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "swarm": SideEffectClass.REVERSIBLE_WRITE,
     "workflow_dag_manage": SideEffectClass.REVERSIBLE_WRITE,
     "task": SideEffectClass.REVERSIBLE_WRITE,
+    # Model-facing subagent registry. Creating/updating/deleting a managed
+    # subagent definition is a durable write, and `delete` reverses a `create` --
+    # so the same class as `task`, `swarm` and `bot_roster`, which are the
+    # session-local coordination writes it sits beside.
+    #
+    # Observed live on 2026-10-05, minutes after this table was last widened:
+    # a real agent reached `subagent_registry`, chose a subagent, and had the
+    # call refused --
+    #
+    #     "The `subagent_registry` call was blocked by a runtime safety gate...
+    #      The gate requires explicit human confirmation before a non-reversible
+    #      registry call can run, and I can't clear that gate on your behalf."
+    #
+    # That is the SIXTH occurrence of this exact defect class, and the first one
+    # I caused myself by registering a tool without classifying it: an unlisted
+    # tool defaults to UNKNOWN, which `check_side_effect` enforces identically to
+    # IRREVERSIBLE. The refusal was correct behaviour on an incomplete table --
+    # the fix is the table, not the gate.
+    "subagent_registry": SideEffectClass.REVERSIBLE_WRITE,
     # The rest of the delegation family, which `task` above belongs to. Observed
     # live on 2026-10-05 driving real orchestration probes: a run delegating to
     # `deep-code-reviewer` was refused with
