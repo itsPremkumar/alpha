@@ -69,6 +69,7 @@
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
+- [audits/FLEET_VERIFICATION.md](audits/FLEET_VERIFICATION.md) — Fleet verification record: five real tasks run concurrently against five named bot profiles, every output opened and checked, and the coerce_iso OverflowError the review bot found and that was then reproduced, fixed and negative-controlled.
 - [audits/FULL_VERIFICATION_REPORT.md](audits/FULL_VERIFICATION_REPORT.md) — Full verification report: per-subsystem verdicts, the complete bug inventory, three-source cross-verification, and an explicit limitations list.
 - [audits/SYSTEM_MAP.md](audits/SYSTEM_MAP.md) — Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.
 - [audits/screenshots/2026-10-05/bots-after-fix.md](audits/screenshots/2026-10-05/bots-after-fix.md) — Operations, deployment, and reliability documentation.

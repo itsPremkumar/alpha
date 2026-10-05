@@ -221,6 +221,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.",
     ),
+    "audits/FLEET_VERIFICATION.md": DocumentSpec(
+        "operations",
+        "Fleet verification record: five real tasks run concurrently against five named bot profiles, every output opened and checked, and the coerce_iso OverflowError the review bot found and that was then reproduced, fixed and negative-controlled.",
+    ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
     # sentence, which is the point of this table. REGENERATE docs/INDEX.md after
