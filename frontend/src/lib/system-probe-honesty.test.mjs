@@ -20,12 +20,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
+import { supervisionStubSource } from "./test-supervision-stub.mjs";
 
 const toDataUrl = (source) => `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
 
-/** A probe dependency that returns a fixed value (or throws the server's reason). */
-function stub(name, body) {
-  return `export function ${name}() { ${body} }`;
+/**
+ * A probe dependency that returns a fixed value (or throws the server's reason).
+ *
+ * `params` defaults to none, which is right for every dependency that takes no
+ * arguments. `get` is the exception: the watchdog probe now calls it WITH a path,
+ * so the fleet stub has to receive that argument to answer per-route. An earlier
+ * version hardcoded `p` into a stub that declared no parameters, which is a
+ * ReferenceError at call time rather than a link error - worth avoiding in a
+ * suite whose whole job is honest failures.
+ */
+function stub(name, body, params = "") {
+  return `export function ${name}(${params}) { ${body} }`;
 }
 
 const channelFixture = JSON.stringify({
@@ -63,28 +73,26 @@ function capabilities(overrides = {}) {
 async function loadProbeAll(deps) {
   const source = readFileSync(new URL("./system.ts", import.meta.url), "utf8");
   const stubs = {
-    http: stub("get", "return Promise.resolve({});"),
+    // `/supervision/fleet` is the one route the watchdog probe reads RAW (it needs
+    // the reserved keys, not just the worker list), so this stub answers THAT
+    // path with the live no-worker payload and every other path with `{}`.
+    http: stub(
+      "get",
+      "return Promise.resolve(String(p || '').includes('supervision/fleet') ? globalThis.__fleetBody : {});",
+      "p",
+    ),
     workspace: stub("fetchConsoleStats", "return Promise.resolve({ runs: 0, threads: 0 });"),
     memory: stub("fetchMemory", "return Promise.resolve({ facts: [] });"),
     skills: stub("listSkills", "return Promise.resolve([]);"),
     scheduled: stub("listScheduledTasks", "return Promise.resolve([]);"),
     channels: stub("channelStatus", "return Promise.resolve(globalThis.__channels);"),
-    supervision: [
-      // Every named export `./supervision` actually provides. ESM validates
-      // named imports at link time, so a stub missing one is a link-time
-      // SyntaxError in a file that has nothing to do with the probe - which is
-      // how a stale stub turns a suite red for the wrong reason. Three of these
-      // arrived with the watchdog fix that made the fleet state honest; this stub
-      // predates it and carried only the first.
-      stub("supervisionFleet", "return Promise.resolve({});"),
-      stub("supervisionAnomalies", "return Promise.resolve([]);"),
-      stub("recoverWorker", "return Promise.resolve('');"),
-      stub("adoptOrphans", "return Promise.resolve('');"),
-      stub("parseFleetWorkers", "return [];"),
-      stub("fetchFleetWorkers", "return Promise.resolve([]);"),
-      stub("watchdogDetail", "return 'no workers reporting';"),
-      stub("fetchAnomaliesStrict", "return Promise.resolve([]);"),
-    ].join("\n"),
+    // The supervision stub is SHARED (test-supervision-stub.mjs) rather than
+    // hand-written here. It used to be inline, and it went stale twice: first by
+    // the watchdog fix, then by the fleet-reserved-key fix. Each time the suite
+    // died with a link-time "does not provide an export named ..." that pointed
+    // at the test file instead of at the change. One definition, plus
+    // `supervision-stub-parity.test.mjs` to keep it honest.
+    supervision: supervisionStubSource(),
     teamops: stub("companyStatus", "return Promise.resolve({});"),
     mcp: stub("fetchMcpConfig", "return Promise.resolve([]);"),
     multimodal: stub("getCapabilities", "return Promise.resolve(globalThis.__capabilities);"),
@@ -103,6 +111,75 @@ function find(probes, key) {
   assert.ok(probe, `expected a "${key}" probe, got ${probes.map((p) => p.key).join(", ")}`);
   return probe;
 }
+
+test("the watchdog row keeps the server's own reason for observing nothing", async () => {
+  // THE DEFECT THIS PINS, end to end through `probeAll`.
+  //
+  // Live `GET /api/supervision/fleet` on a default install:
+  //   {"observed":false,
+  //    "observed_reason":"no_worker_has_posted_a_heartbeat_to_this_process",
+  //    "observed_worker_count":0,"watching":false}
+  //
+  // That route's whole reason for existing is to refuse to let an empty map read
+  // as a healthy fleet. The workspace header nevertheless rendered
+  // "The server returned an unreadable fleet payload." because the probe fed
+  // the body to a parser that required every key to be a worker record, threw on
+  // the reserved scalars, and - in throwing - discarded the one sentence the
+  // operator needed. The row was not merely wrong, it was wrong in the exact
+  // direction the backend had written code to prevent.
+  globalThis.__fleetBody = {
+    observed: false,
+    observed_reason: "no_worker_has_posted_a_heartbeat_to_this_process",
+    observed_worker_count: 0,
+    watching: false,
+  };
+  try {
+    const probeAll = await loadProbeAll();
+    const probes = await probeAll();
+    const watchdog = find(probes, "watchdog");
+
+    assert.equal(
+      watchdog.ok,
+      true,
+      "a 200 with a documented shape must not be reported as a failed read",
+    );
+    assert.doesNotMatch(
+      watchdog.detail,
+      /unreadable/i,
+      "the client must stop calling a well-formed server payload corrupt",
+    );
+    assert.match(
+      watchdog.detail,
+      /no_worker_has_posted_a_heartbeat_to_this_process/,
+      "the server's own reason is the operator-facing sentence",
+    );
+    assert.match(
+      watchdog.detail,
+      /no workers reporting/,
+      "and the honest 'nothing is reporting' verdict stays alongside it",
+    );
+    assert.match(
+      watchdog.detail,
+      /—/,
+      "the two are joined, not one substituted for the other",
+    );
+
+    // A reason is only appended when the server says it is NOT watching. A
+    // healthy fleet keeps the plain worker count, so this cannot turn into a
+    // permanent warning appended to a passing row.
+    globalThis.__fleetBody = {
+      observed: true,
+      observed_reason: "",
+      observed_worker_count: 1,
+      watching: true,
+    };
+    const healthy = find(await probeAll(), "watchdog");
+    assert.ok(healthy.ok, "a watching fleet is a passing row");
+    assert.doesNotMatch(healthy.detail, /server reason:/, "a healthy fleet cites no reason");
+  } finally {
+    delete globalThis.__fleetBody;
+  }
+});
 
 test("a fully-disabled channel roster reports nothing connected, not \"10 running\"", async () => {
   globalThis.__channels = [

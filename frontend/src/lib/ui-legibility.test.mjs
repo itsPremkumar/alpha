@@ -728,6 +728,23 @@ const PROBE_DEPS_URL = dataUrl(`
   // half of the component. \`watchdogDetail\` is stubbed with the real semantics
   // so the file cannot drift into passing for the wrong reason.
   export const fetchFleetWorkers = async () => { throw new Error("stub: must not run"); };
+  // Added with the fleet-reserved-key fix. \`system.ts\` now reads the fleet route
+  // BODY, because the server's honest answer to "is anything supervised?" lives
+  // in \`watching\` / \`observed_reason\` rather than in the worker map. ESM
+  // validates named imports at link time, so these must exist even though the
+  // VitalsStrip assertions below drive the pure half of the component and never
+  // reach them. This is now the third inline supervision stub in the suite
+  // (\`agent-status\`, \`system-probe-honesty\`, this one); each went stale on the
+  // same change, which is the argument for routing them through one shared stub.
+  export function observedReason(body) {
+    const r = body && typeof body === "object" ? body.observed_reason : null;
+    return typeof r === "string" && r !== "" ? r : null;
+  }
+  export function isWatching(body) {
+    const w = body && typeof body === "object" ? body.watching : null;
+    return typeof w === "boolean" ? w : null;
+  }
+  export function parseFleetWorkers(body) { return Array.isArray(body) ? body : []; }
   export function watchdogDetail(workers) {
     const n = Array.isArray(workers) ? workers.length : 0;
     if (n === 0) return "no workers reporting — no heartbeat received, nothing is being watched";

@@ -129,6 +129,105 @@ def test_depth_within_the_cap_is_allowed() -> None:
     assert_within_depth(scopes, "child", ["root"])
 
 
+def test_depth_counts_the_longest_chain_and_not_the_ancestor_count() -> None:
+    """Fan-in is not depth.
+
+    ``depth`` is how many levels a subtree hangs below a root, so a hub that
+    eight rooms each parent sits one level below them, never eight. An
+    implementation that counted *distinct ancestors* and clamped the result
+    reported such a wide-but-shallow room as ``MAX_DEPTH`` — and since
+    ``assert_within_depth`` measures against the highest parent, that turned
+    the inflated number into a refusal of a placement that fits easily.
+    """
+    scopes = {"root": GroupScope(room_id="root")}
+    parents = [f"p{i}" for i in range(8)]
+    for pid in parents:
+        scopes[pid] = GroupScope(room_id=pid, parents=["root"])
+    scopes["hub"] = GroupScope(room_id="hub", parents=parents)
+
+    assert len(ancestors_of(scopes, "hub")) == 9  # eight parents, plus the root
+    assert depth_of(scopes, "hub") == 2  # root → p_i → hub
+
+    # …and a room placed beneath that shallow hub is two levels from the cap,
+    # so the placement must be allowed rather than refused.
+    assert_within_depth(scopes, "new", ["hub"])
+    assert_within_depth(scopes, "new2", ["hub"])
+
+
+def test_a_refusal_names_the_real_chain_and_not_the_ancestor_count() -> None:
+    """A too-deep refusal must not quote a number no path produces.
+
+    The fan-in bug above reported ``depth == MAX_DEPTH`` for a two-deep hub, so
+    the refusal it produced was not merely wrong but *self-contradicting*: it
+    named a depth the message itself claimed was beyond the cap, for a room
+    three levels from the root. An operator reading that had no way to tell a
+    real refusal from a counting artifact.
+
+    This pins the message against the longest chain actually walked, so the
+    number in the sentence and the number the guard computed cannot drift.
+    """
+    scopes = {"root": GroupScope(room_id="root")}
+    for i in range(1, MAX_DEPTH + 1):
+        scopes[f"l{i}"] = GroupScope(room_id=f"l{i}", parents=["root"] if i == 1 else [f"l{i - 1}"])
+    # Fan-in over a SHALLOW root: nine distinct ancestors, but every path from
+    # root to `fanin` is exactly two long. Under the ancestor-count
+    # implementation this read as MAX_DEPTH and the placement below was refused
+    # with a fabricated "nest 5 levels deep".
+    wide = [f"p{i}" for i in range(8)]
+    for pid in wide:
+        scopes[pid] = GroupScope(room_id=pid, parents=["root"])
+    scopes["fanin"] = GroupScope(room_id="fanin", parents=wide)
+
+    # Nine distinct ancestors…
+    assert len(ancestors_of(scopes, "fanin")) == 9
+    # …but only two levels deep, so a room under it is 3 and must be allowed.
+    assert depth_of(scopes, "fanin") == 2
+    assert_within_depth(scopes, "under_fanin", ["fanin"])
+
+    # A genuinely-too-deep placement still refuses, and quotes the chain length.
+    with pytest.raises(ScopeError, match=r"nest \d+ levels deep") as excinfo:
+        assert_within_depth(scopes, "too_deep", [f"l{MAX_DEPTH}"])
+    assert str(MAX_DEPTH + 1) in str(excinfo.value)
+
+
+def test_depth_of_a_cycle_reads_as_the_cap_rather_than_hanging() -> None:
+    """A corrupt file must not hang a room read, and must not under-report.
+
+    ``ancestors_of`` dedupes on first visit, so a cycle is traversed once and
+    the walk terminates. The depth walk has to keep that bound while still
+    taking the LONGEST path — a fix that only re-added a ``seen`` set would make
+    a cycle read as depth 1, which is a room that appears shallow while its
+    own parents loop.
+    """
+    scopes = {
+        "a": GroupScope(room_id="a", parents=["b"]),
+        "b": GroupScope(room_id="b", parents=["c"]),
+        "c": GroupScope(room_id="c", parents=["a"]),
+    }
+    assert depth_of(scopes, "a") == MAX_DEPTH
+    # An unparseable parent is not a chain to anywhere: a room that names a
+    # ghost parent reads as a root, not as an error.
+    assert depth_of(scopes, "orphan") == 0
+    assert depth_of({"ghost_parent": GroupScope(room_id="ghost_parent")}, "orphan") == 0
+
+
+def test_depth_is_the_deepest_parent_not_the_shallowest() -> None:
+    """Two parents at two depths: the room nests under the DEEPER one.
+
+    Taking the shortest would let a placement pass the cap on the strength of a
+    shallow sibling while the sidebar still renders the four-deep branch. This
+    is the mirror of the fan-in case and it is the direction that under-reports.
+    """
+    scopes = {"root": GroupScope(room_id="root")}
+    for i in range(1, MAX_DEPTH + 1):
+        scopes[f"l{i}"] = GroupScope(room_id=f"l{i}", parents=["root"] if i == 1 else [f"l{i - 1}"])
+    # A room parented by both a shallow root and a room already at the cap.
+    scopes["split"] = GroupScope(room_id="split", parents=["root", f"l{MAX_DEPTH}"])
+    assert depth_of(scopes, "split") == MAX_DEPTH
+    with pytest.raises(ScopeError, match=str(MAX_DEPTH)):
+        assert_within_depth(scopes, "child_of_split", ["split"])
+
+
 def test_the_authority_parent_must_also_be_a_visibility_parent() -> None:
     """Authority must refine visibility, never contradict it."""
     scopes = {"a": GroupScope(room_id="a"), "b": GroupScope(room_id="b"), "c": GroupScope(room_id="c", parents=["a"])}

@@ -29,6 +29,16 @@ interface BotProfileCardProps {
   isActive: boolean;
   onSelect: (bot: BotProfile) => void;
   onChat: (bot: BotProfile) => void;
+  /**
+   * The headline, optionally disambiguated by the roster owner.
+   *
+   * Optional so every other caller (the detail panel, the dropdowns, omnisearch)
+   * keeps the server's own `display_name` verbatim - a qualifier it cannot know
+   * is needed would be an invented distinction. `BotGallery` is the surface that
+   * renders the whole fleet at once, so it is the only one that can see a
+   * collision and the only one that passes this.
+   */
+  rosterLabel?: string;
 }
 
 function statusBadge(status: string) {
@@ -51,7 +61,7 @@ function statusBadge(status: string) {
   );
 }
 
-export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCardProps) {
+export function BotProfileCard({ bot, isActive, onSelect, onChat, rosterLabel }: BotProfileCardProps) {
   // Measured counters only. `total`/`succeeded` were never fields the Gateway
   // sends (it sends `total_runs`/`completed`), so this pair was permanently
   // `0`/`0` and the card claimed "0 tasks" for every bot on every render. An
@@ -91,7 +101,9 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold truncate">{botDisplayName(bot)}</h3>
+            <h3 className="text-sm font-semibold truncate" title={rosterLabel ?? botDisplayName(bot)}>
+              {rosterLabel ?? botDisplayName(bot)}
+            </h3>
             {/* Presence is derived from the server's own `last_active`; a bot
                 with no recorded activity never reads as working. */}
             <span

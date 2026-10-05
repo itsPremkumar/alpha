@@ -74,6 +74,49 @@ function asRecordList(v: unknown, what: string): Array<Record<string, unknown>> 
 }
 
 /**
+ * The reserved keys `GET /api/supervision/fleet` rides alongside the worker map.
+ *
+ * `routers/supervision.py::get_fleet_health` returns the flat
+ * `worker_id -> status` map PLUS these four siblings, and its docstring says why
+ * they are siblings rather than fields:
+ *
+ *   "They are siblings rather than fields because the per-worker values are
+ *    consumed as a map, and a reserved key inside it would be read as a worker
+ *    whose id happened to be `observed`."
+ *
+ * That reasoning is about a CONSUMER that iterates the map, and this client is
+ * exactly such a consumer - so the names are pinned here and stripped before
+ * the map is read. They describe the fleet; they are not workers.
+ *
+ * Measured live on a fresh Gateway:
+ *   {"observed":false,
+ *    "observed_reason":"no_worker_has_posted_a_heartbeat_to_this_process",
+ *    "observed_worker_count":0,
+ *    "watching":false}
+ */
+const FLEET_RESERVED_KEYS = ["observed", "observed_reason", "observed_worker_count", "watching"] as const;
+
+/** Drop the reserved fleet-metadata siblings, leaving only real worker entries. */
+function workerEntries(rec: Record<string, unknown>): [string, unknown][] {
+  return Object.entries(rec).filter(([key]) => !(FLEET_RESERVED_KEYS as readonly string[]).includes(key));
+}
+
+/** The server's own reason when it is not observing a fleet, else `null`. */
+export function observedReason(body: unknown): string | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const raw = (body as Record<string, unknown>).observed_reason;
+  if (typeof raw !== "string" || raw === "") return null;
+  return raw;
+}
+
+/** Whether the server says it is actually watching something. `null` = not stated. */
+export function isWatching(body: unknown): boolean | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const raw = (body as Record<string, unknown>).watching;
+  return typeof raw === "boolean" ? raw : null;
+}
+
+/**
  * Parse `GET /api/supervision/fleet` (a map keyed by worker id, tolerating an
  * array or a `{workers|data: [...]}` envelope). Throws on an unreadable body
  * so a failed request is never shown as an empty fleet.
@@ -88,7 +131,11 @@ export function parseFleetWorkers(body: unknown): FleetWorker[] {
     if (Array.isArray(nested)) {
       return asRecordList(nested, "fleet").map((r, i) => toFleetWorker(r, `worker-${i}`));
     }
-    const entries = Object.entries(rec);
+    const entries = workerEntries(rec);
+    // A payload that is nothing but the four reserved keys is the server's
+    // documented "zero workers, and here is why" answer. `entries.length === 0`
+    // below treats it as the empty fleet it literally is; the REASON travels
+    // separately through `observedReason` so nothing is lost.
     if (entries.length === 0) return [];
     if (entries.every(([, v]) => v && typeof v === "object" && !Array.isArray(v))) {
       return entries.map(([key, v]) => toFleetWorker(v as Record<string, unknown>, key));

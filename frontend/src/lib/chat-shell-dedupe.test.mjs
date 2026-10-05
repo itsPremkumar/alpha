@@ -37,6 +37,30 @@ const chatShellSource = readFileSync(new URL("./chat-shell.ts", import.meta.url)
 
 const NL = String.fromCharCode(10);
 
+/**
+ * Collapse a component source to one line before matching it.
+ *
+ * THE REGRESSION THIS EXISTS FOR. These structural pins assert on source TEXT,
+ * and commit 2dbfe90 (a reformatting commit that touched this component) moved
+ * two expressions across line boundaries without changing a single rendered
+ * byte:
+ *
+ *   {row.crewError ? "Crew not read." : "Crew not reported."}
+ *   {row.conversationCount} in this project, none with{" "}
+ *
+ * became a three-line ternary and a wrapped JSX text run. Both tests failed,
+ * neither defect existed, and the failure pointed at the honesty copy this file
+ * exists to protect rather than at the formatter that broke the grep.
+ *
+ * So every source-text assertion in this file now runs against `flat()`.
+ * A line break is a formatting fact; the branch structure and the rendered
+ * sentence are the behaviour, and those are what the assertions below pin.
+ * The same normalisation is the house style in `design-tokens.test.mjs`,
+ * `hit-targets.test.mjs`, `ui-legibility.test.mjs`, `runtime-visibility.test.mjs`
+ * and `collaboration-surfaces-honesty.test.mjs`.
+ */
+const flat = (source) => source.replace(/\s+/g, " ").trim();
+
 const SIBLING_STUBS = {
   "time.mjs": [
     "export const absoluteStamp = () => null;",
@@ -442,7 +466,13 @@ test("an expanded project shows its agents, and never turns an unread crew into 
   // The unread branch must not leak the server's error reason as if it were a
   // fact about the project; it is a failure to read, and says so.
   assert.match(rail, /Crew not reported\./, "an unread crew states that, not a count");
-  assert.match(rail, /row\.crewError \? "Crew not read\." : "Crew not reported\."/);
+  // Matched on the flattened source so the pin is the ternary, not the line
+  // break that 2dbfe90 introduced. Same expression, one less way to fail.
+  assert.match(
+    flat(rail),
+    /row\.crewError \? "Crew not read\." : "Crew not reported\."/,
+    "a failed crew read and an unread one are two different sentences",
+  );
 });
 
 test("the empty project list never claims a project is empty when its badge says otherwise", () => {
@@ -458,15 +488,17 @@ test("the empty project list never claims a project is empty when its badge says
   //
   // Asserted on the copy, because the copy is the defect. A test that merely
   // checked the list renders would pass while the UI contradicted itself.
-  const rail = readFileSync(
-    new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
-    "utf8",
+  const rail = flat(
+    readFileSync(new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url), "utf8"),
   );
   const start = rail.indexOf("{projThreads.length === 0 ? (");
   assert.notEqual(start, -1, "the empty-project branch must exist");
-  // The inline rationale comments run long, so the window has to clear them
-  // plus all three branches or the later assertions read a truncated region and
-  // fail for the wrong reason.
+  // Flattened FIRST, then windowed. Collapsing the source shrinks it by roughly
+  // 45% (the indentation 2dbfe90 added is the bulk of it), so one 2600-character
+  // budget now clears all three branches with room to spare and can no longer be
+  // silently starved by re-indentation - which is exactly how this assertion
+  // started failing without any defect existing. Windowing the raw source first
+  // and matching it raw is the order that made formatting load-bearing.
   const region = rail.slice(start, start + 2600);
 
   // The unread case, so a failed count is not read as a zero either.

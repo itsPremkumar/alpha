@@ -4,7 +4,7 @@ import test from "node:test";
 import { moduleUrl } from "./test-modules.mjs";
 
 const { parseExecutionModeStatus } = await import(moduleUrl("plan"));
-const { parseFleetWorkers } = await import(moduleUrl("supervision"));
+const { parseFleetWorkers, observedReason, isWatching } = await import(moduleUrl("supervision"));
 const { parseLiveSubagents } = await import(moduleUrl("subagents"));
 
 const panelSource = readFileSync(new URL("../components/AgentStatusPanel.tsx", import.meta.url), "utf8");
@@ -117,6 +117,78 @@ test("fleet: unreadable payloads throw instead of reading as an empty fleet", ()
   assert.throws(() => parseFleetWorkers(7));
   assert.throws(() => parseFleetWorkers({ w1: "not-a-record" }));
   assert.throws(() => parseFleetWorkers([42]));
+});
+
+test("fleet: the live no-workers payload is READ, not rejected as unreadable", () => {
+  // THE DEFECT THIS PINS. Verbatim from the running Gateway, captured live:
+  //
+  //   GET /api/supervision/fleet -> 200
+  //   {"observed":false,
+  //    "observed_reason":"no_worker_has_posted_a_heartbeat_to_this_process",
+  //    "observed_worker_count":0,
+  //    "watching":false}
+  //
+  // `get_fleet_health` deliberately returns the worker map plus FOUR reserved
+  // sibling keys, and its own docstring explains why they are siblings rather
+  // than fields: "a reserved key inside it would be read as a worker whose id
+  // happened to be `observed`".
+  //
+  // The client's map branch required EVERY entry to be an object. Three of
+  // these four are scalars, so the strict guard rejected a payload the server
+  // had deliberately documented, and the workspace header rendered
+  // "The server returned an unreadable fleet payload." on the one deployment
+  // shape this route exists to describe honestly. The server said
+  // "nothing is being supervised, and here is why"; the client threw that
+  // reason away and replaced it with a claim about its own parser.
+  //
+  // A three-source disagreement, and the most expensive kind: the server was
+  // right, the client called it corrupt.
+  const live = {
+    observed: false,
+    observed_reason: "no_worker_has_posted_a_heartbeat_to_this_process",
+    observed_worker_count: 0,
+    watching: false,
+  };
+
+  const workers = parseFleetWorkers(live);
+  assert.deepEqual(
+    workers,
+    [],
+    "zero workers is a real answer, and it must arrive as an empty list",
+  );
+
+  // The reserved keys are metadata ABOUT the fleet, never workers themselves.
+  // If any of them leaked through, `worker_id` would read "observed".
+  for (const w of workers) {
+    assert.doesNotMatch(
+      String(w.worker_id),
+      /^(observed|observed_reason|observed_worker_count|watching)$/,
+      "a reserved metadata key must never be read as a worker id",
+    );
+  }
+
+  // The reason the server attached is the operator-facing sentence. Losing it is
+  // the second half of the same defect.
+  assert.equal(observedReason(live), "no_worker_has_posted_a_heartbeat_to_this_process");
+  assert.equal(isWatching(live), false);
+});
+
+test("fleet: reserved metadata keys are stripped from a NON-empty fleet too", () => {
+  // The same four keys ride alongside a populated map, so the bug was not
+  // limited to the empty case: every healthy deployment hit it as well.
+  const workers = parseFleetWorkers({
+    observed: true,
+    observed_reason: "",
+    observed_worker_count: 1,
+    watching: true,
+    w1: { worker_id: "w1", status: "busy", unresolved_anomalies_count: 0 },
+  });
+  assert.deepEqual(
+    workers.map((w) => w.worker_id),
+    ["w1"],
+    "the reserved keys are not workers",
+  );
+  assert.equal(workers.length, 1, "and observed_worker_count must not be counted as one");
 });
 
 test("subagents: bare arrays and envelopes map id, status and parent", () => {

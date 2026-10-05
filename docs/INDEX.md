@@ -69,6 +69,9 @@
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
+- [audits/FULL_VERIFICATION_REPORT.md](audits/FULL_VERIFICATION_REPORT.md) — Full verification report: per-subsystem verdicts, the complete bug inventory, three-source cross-verification, and an explicit limitations list.
+- [audits/SYSTEM_MAP.md](audits/SYSTEM_MAP.md) — Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.
+- [audits/screenshots/2026-10-05/bots-after-fix.md](audits/screenshots/2026-10-05/bots-after-fix.md) — Operations, deployment, and reliability documentation.
 - [reliability/ALPHA_SYSTEM_MAP.md](reliability/ALPHA_SYSTEM_MAP.md) — Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.
 - [reliability/ERROR_CATALOG.md](reliability/ERROR_CATALOG.md) — Stable error codes with severity, retry policy, recovery action and the user-facing wording each code owns.
 - [reliability/FAILURE_RECOVERY_MATRIX.md](reliability/FAILURE_RECOVERY_MATRIX.md) — Per-failure detection, classification, retry decision, recovery strategy and the evidence each one leaves behind.

@@ -99,6 +99,61 @@ export function botDisplayName(bot: BotProfile): string {
   return bot.display_name || bot.name;
 }
 
+/**
+ * The name to put on a roster row, disambiguated only when it has to be.
+ *
+ * THE DEFECT THIS FIXES. `display_name` is not a unique identifier, and on a
+ * real deployment it is very far from one. Captured live from
+ * `GET /api/bots` (58 bots, 0 duplicate `name`s, **8 colliding display names
+ * covering 35 of the 58 cards**):
+ *
+ *   "Data Engineer"                 x8   (bot_ed5fc1, bot_f62dd2, ... bot_cb596e)
+ *   "Solidity_Security Specialist"  x7
+ *   "Cuda_Kernel_Opt Specialist"    x7
+ *   "Researcher" / "Coder" / "Tester" x3 each
+ *   "Architect" / "Support"         x2 each
+ *
+ * Every card therefore rendered the same headline, and `bot.name` - the one
+ * field that actually separates them - appeared nowhere in the grid. Two bots
+ * with different names, different departments and different capability chips
+ * were indistinguishable in the roster, so "which Data Engineer?" had no answer
+ * on screen.
+ *
+ * The rule is deliberately narrow, because over-disambiguating is its own lie:
+ * the qualifier is added ONLY for a bot whose label actually collides in the
+ * given roster. A unique name is left exactly as the server sent it, and an
+ * absent roster (`null`) means "collision unknown", which must not be read as
+ * "this one is unique" - so it degrades to the plain display name rather than
+ * inventing a distinction.
+ */
+export function botRosterLabel(bot: BotProfile, colliding: ReadonlySet<string> | null): string {
+  const label = botDisplayName(bot);
+  if (!colliding || !colliding.has(label)) return label;
+  const id = (bot.name ?? "").trim();
+  // A colliding label with no id to fall back on stays as the server sent it;
+  // appending nothing is better than appending an empty qualifier.
+  if (!id || id === label) return label;
+  // Case-only difference is not a distinction. The live roster contains
+  // `architect` alongside `cto`, both displayed as "Architect" - and the
+  // qualifier "(architect)" would have added two inches of noise beside
+  // "(cto)" while telling the operator nothing they could not already infer
+  // from the chip. The id has to actually differ to earn the qualifier.
+  if (id.toLowerCase() === label.toLowerCase()) return label;
+  return `${label} (${id})`;
+}
+
+/** The set of display labels that appear more than once across `bots`. */
+export function collidingBotLabels(bots: readonly BotProfile[]): Set<string> {
+  const seen = new Map<string, number>();
+  for (const b of bots) {
+    const label = botDisplayName(b);
+    seen.set(label, (seen.get(label) ?? 0) + 1);
+  }
+  const dupes = new Set<string>();
+  for (const [label, n] of seen) if (n > 1) dupes.add(label);
+  return dupes;
+}
+
 export function botInitials(bot: BotProfile): string {
   const label = botDisplayName(bot).trim();
   if (!label) return "?";

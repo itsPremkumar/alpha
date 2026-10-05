@@ -191,17 +191,60 @@ def descendants_of(scopes: dict[str, GroupScope], room_id: str) -> list[str]:
 
 
 def depth_of(scopes: dict[str, GroupScope], room_id: str) -> int:
-    """Longest distance from a root, not the shortest.
+    """Longest distance from a root, not the shortest, and not a head count.
 
     With several visibility parents a room can be reachable at two different
-    depths, and the *deepest* one is what a reader sees in a sidebar — a room
+    depths, and the *deepest* one is what a reader sees in a sidebar - a room
     whose subtree hangs four levels down under one parent renders four levels
     deep, not one. Taking the shortest would let a placement pass the depth
     check on the strength of a shallow second parent while still producing a
-    four-deep branch. A cycle reads as ``MAX_DEPTH``.
+    four-deep branch.
+
+    THE BUG THIS FIXES. The previous implementation was
+    ``min(len(ancestors_of(...)), MAX_DEPTH)`` - the SIZE of the deduped
+    ancestor set, not the length of the longest chain. Those two agree only
+    when every ancestor lies on one path, which is exactly the case the linear
+    tests already covered. Fan-in breaks the equivalence, and it broke it in
+    the direction that refuses valid work:
+
+        root
+        |- p0 .. p7          (each directly under root)
+        `- hub   (p0..p7)    (one level below every p_i)
+
+    ``ancestors_of(hub)`` is ``[p0..p7, root]`` - 9 entries - so ``depth_of``
+    returned ``min(9, MAX_DEPTH) == 4`` for a room that is genuinely **2** deep.
+    ``assert_within_depth`` then refused ``hub -> new`` with "Room would nest 5
+    levels deep", which is a fabricated number: no path from root to ``new`` is
+    longer than three. A wide, shallow forest became un-nestable, and
+    ``recompute_all`` persisted the inflated value into ``GroupScope.depth``,
+    so the sidebar rendered the wrong indentation too.
+
+    Fan-in is not depth. The walk is bounded on two axes - the level never
+    exceeds ``MAX_DEPTH``, and a room already seen at an equal or shallower
+    level is not re-expanded - so a corrupt file with a cycle cannot hang a
+    room read. A cycle reads as ``MAX_DEPTH``, as documented.
     """
-    ancestors = ancestors_of(scopes, room_id)
-    return min(len(ancestors), MAX_DEPTH)
+    room = scopes.get(room_id)
+    if room is None or not room.parents:
+        return 0
+    # Longest-path BFS: `level` is the distance from `room_id`, so a direct
+    # parent sits at 1 and a room at the cap sits at MAX_DEPTH.
+    deepest_at: dict[str, int] = {}
+    frontier: list[tuple[str, int]] = [(p, 1) for p in room.parents]
+    while frontier:
+        current, level = frontier.pop(0)
+        if level > MAX_DEPTH:
+            continue
+        if deepest_at.get(current, -1) >= level:
+            continue
+        deepest_at[current] = level
+        parent_scope = scopes.get(current)
+        if parent_scope is None:
+            continue
+        frontier.extend((p, level + 1) for p in parent_scope.parents)
+    if not deepest_at:
+        return 0
+    return min(max(deepest_at.values()), MAX_DEPTH)
 
 
 def recompute_path(scopes: dict[str, GroupScope], room_id: str, name_of: dict[str, str]) -> str:

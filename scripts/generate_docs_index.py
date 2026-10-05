@@ -90,6 +90,7 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     # FILE_OVERRIDES; this rule keeps a new file here from failing the whole
     # generator closed.
     "reliability": "operations",
+    "audits": "operations",
     "roadmaps": "plans",
 }
 
@@ -205,6 +206,20 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "RELIABILITY_ROADMAP.md": DocumentSpec(
         "operations",
         "Production reliability plan: incident evidence, shipped fixes, specified retry/port/self-heal work, and the operational budget table.",
+    ),
+    # The docs/audits/ dossier produced by the production-reliability campaign.
+    # Same treatment as docs/reliability/ above: the directory rule classifies
+    # the folder, and each document carries its own navigation sentence. The
+    # audit is deliberately NOT folded into the reliability dossier - it is a
+    # point-in-time verification record with a fixed base commit, so linking it
+    # beside a living document would imply findings that never expire.
+    "audits/FULL_VERIFICATION_REPORT.md": DocumentSpec(
+        "operations",
+        "Full verification report: per-subsystem verdicts, the complete bug inventory, three-source cross-verification, and an explicit limitations list.",
+    ),
+    "audits/SYSTEM_MAP.md": DocumentSpec(
+        "operations",
+        "Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.",
     ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { BotProfile } from "@/types/bots";
+import { BotProfile, collidingBotLabels, botRosterLabel } from "@/types/bots";
 import { uniqueDepartments, computeFleetHealth } from "@/lib/bots";
 import { isRecent, PRESENCE_WINDOW_SECONDS } from "@/lib/time";
 import { BotProfileCard } from "./BotProfileCard";
@@ -50,6 +50,16 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
       return hay.includes(q);
     });
   }, [bots, search, department, status]);
+
+  /**
+   * Which display labels collide in the FULL roster, not the filtered one.
+   *
+   * Deliberately `bots` and not `filtered`: a filter that hides five of the
+   * eight "Data Engineer" cards would otherwise make the remaining three look
+   * unique, and the qualifier would disappear as the user typed. The collision
+   * is a property of the fleet, not of the current view.
+   */
+  const collidingLabels = useMemo(() => collidingBotLabels(bots), [bots]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4 max-w-6xl w-full mx-auto">
@@ -193,6 +203,7 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
                 isActive={bot.name === activeBotName}
                 onSelect={onSelect}
                 onChat={onChat}
+                rosterLabel={botRosterLabel(bot, collidingLabels)}
               />
             ))}
           </div>

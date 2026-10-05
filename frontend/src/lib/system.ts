@@ -4,7 +4,7 @@ import { fetchMemory } from "./memory";
 import { listSkills } from "./skills";
 import { listScheduledTasks } from "./scheduled";
 import { channelStatus } from "./channels";
-import { fetchFleetWorkers, watchdogDetail } from "./supervision";
+import { watchdogDetail, parseFleetWorkers, observedReason, isWatching } from "./supervision";
 import { companyStatus } from "./teamops";
 import { fetchMcpConfig } from "./mcp";
 import { getCapabilities } from "./multimodal";
@@ -117,7 +117,30 @@ export async function probeAll(): Promise<Probe[]> {
     // a `null` the probe then has to describe in words of its own. The detail is
     // derived from the fleet instead of being the constant "watching", which said
     // nothing about whether any worker is actually reporting.
-    runProbe("watchdog", "Safety watchdog", "Worker health + self-heal", () => fetchFleetWorkers(), watchdogDetail),
+    //
+    // The body is read as well as the worker list, because the route's honest
+    // answer to "is anything supervised?" is the RESERVED KEYS, not the map. An
+    // empty map is the normal state of a default install, so discarding those
+    // keys discarded the server's own explanation with them - which is how the
+    // header came to print "The server returned an unreadable fleet payload."
+    // over a 200 that had said, in full, "nothing is being watched, and here is
+    // why".
+    runProbe(
+      "watchdog",
+      "Safety watchdog",
+      "Worker health + self-heal",
+      async () => {
+        const body = await get<unknown>("/supervision/fleet");
+        return { workers: parseFleetWorkers(body), reason: observedReason(body), watching: isWatching(body) };
+      },
+      ({ workers, reason, watching }) => {
+        const detail = watchdogDetail(workers);
+        // `watching === false` is the server stating it supervises nothing, so
+        // its reason is appended rather than replaced: both are true and only
+        // the second one is actionable.
+        return watching === false && reason ? `${detail} — server reason: ${reason}` : detail;
+      },
+    ),
     // No `catch` here, and no invented fallback wording. `companyStatus()` now
     // propagates the Gateway's own 404 detail, so both the workspace header and
     // the System control centre read exactly what the server said:
