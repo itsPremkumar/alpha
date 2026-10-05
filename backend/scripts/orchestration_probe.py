@@ -511,8 +511,19 @@ async def run_llm(c: httpx.AsyncClient, p: Probe, timeout: float) -> Outcome:
         o.problems.append(f"expected tool(s) {need} were never called; saw {o.tools or '(none)'}")
     if not o.files:
         o.problems.append("no artifact produced")
-    if o.status != "success":
+    # A produced-but-unpresented artifact is NOT the same as a missing one. The
+    # delivery-receipt contract downgrades such a run to `error` by design, so
+    # reporting it as an orchestration failure would blame the feature for the
+    # runtime correctly enforcing its own rule.
+    delivery_only = bool(o.files) and "delivery incomplete" in (o.error or "").lower()
+    if o.status != "success" and not delivery_only:
         o.problems.append(f"durable status={o.status!r} error={o.error!r}")
+    if delivery_only:
+        o.observed["delivery_contract"] = (
+            f"artifact(s) WERE produced ({', '.join(f'{k}={v}B' for k, v in o.bytes.items())}) "
+            "but present_files was never called, so the delivery receipt downgraded the run to error. "
+            "This is the contract enforcing itself, not a missing artifact."
+        )
     if o.blocked and not o.problems:
         o.verdict = "BLOCKED"
     elif o.problems:

@@ -126,6 +126,58 @@ restored, **7 pass**. Specifically pinned:
 Surrounding suites: **186 passed** (`test_grounding_layer`,
 `test_grounding_wiring`, `test_tool_governance`, `test_governance_guardrail`).
 
+### Live re-verification after a Gateway restart
+
+The unit tests prove the gate. They do not prove a *running* process serves the
+new table, so the Gateway was restarted (pid 596, uptime confirmed < 250 s) and
+**both previously-refused probes re-run**:
+
+| Probe | Before | After restart | Evidence |
+|---|---|---|---|
+| `subagent_reviewer` | **refused by the gate**, no artifact | **`delegate_to_deep_agent` called**, 10 tools, **10,083 B** artifact | gate no longer refuses |
+| `ralph_loop` | **refused by the gate**, no artifact | **`ralph_loop` called**, round executed, artifact written, **`status: success`** | gate no longer refuses |
+
+**The fix is verified live, not just in tests.**
+
+### What the delegation then hit — a *second*, separate cause
+
+With the gate no longer refusing, `delegate_to_deep_agent` returned:
+
+```
+"status": "UNRECOVERABLE_ERROR",
+"error": "No deep agent execution backend is configured; delegation refuses to
+          fabricate an execution result."
+```
+
+That is **correct, deliberate, fail-closed behaviour** — the delegation layer
+refuses to emit a synthetic result rather than hallucinate one. It is a
+*configuration* gap (no deep-agent execution backend registered), not the gate
+defect, and it is reported here as a limitation rather than fixed by inventing a
+backend.
+
+The lead then did the honest thing: it read the file itself with `hashline_read`
+/ `read_file`, wrote its own findings, and **separated them** from the
+specialist's per the instruction. Its findings included a confirmation of the
+`coerce_iso` fix from `FLEET_VERIFICATION.md` §3:
+
+> `is_lease_expired("")` → `fromisoformat("")` raises `ValueError` → caught, and
+> `float(value)` on a huge `int` raising `OverflowError` is **inside** the `try`
+
+Two independent runs and the live tool both point at the same fix.
+
+### One more probe defect found and fixed
+
+`ralph_loop` first re-run came back **FAIL** with
+`error: 'Artifact delivery incomplete: no produced output artifact was presented'`
+— while having **actually produced** a 1,631 B artifact. The run failed for
+*presenting* nothing, not for *doing* nothing.
+
+That is the delivery-receipt contract enforcing itself correctly, so reporting it
+as an orchestration failure would blame the feature for the runtime doing its
+job. The driver now distinguishes a produced-but-unpresented artifact from a
+missing one and records the distinction in `observed.delivery_contract`.
+Re-run: **PASS, `status: success`, 882 B artifact.**
+
 ---
 
 ## 4. Other findings
@@ -152,6 +204,13 @@ correct and honest; the declaration is simply absent.
 - **`swarm_map_reduce` was not re-run after the fix.** The fix addresses the
   grounding gate, and O1 is a *different* cause (no roster provider), so a re-run
   would not have been expected to change it. Not re-run; not claimed.
+- **No deep-agent execution backend is configured**, so
+  `delegate_to_deep_agent` cannot actually run a specialist. Its refusal is
+  correct and fail-closed. **The deep specialists themselves are NOT VERIFIED** —
+  none of the eight has ever executed in this deployment.
+- **`present_files` was not called** on the first post-fix `ralph_loop` run, so
+  the delivery receipt downgraded it. Whether the lead reliably calls it under
+  load is **NOT VERIFIED** — one miss in two runs is not a rate.
 - **Single probe run per feature.** No flakiness data, and the
   `subagent_reviewer` refusal could in principle have been the lenient branch —
   though the strict-branch test now pins the class on both paths.
