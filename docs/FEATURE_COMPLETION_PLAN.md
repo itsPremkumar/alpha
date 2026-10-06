@@ -495,18 +495,66 @@ catalog_tool_search`. `autonomous: true` → `alpha_capability, task`. **Typing 
 prompt can never produce a working subagent in this UI.** It is not the
 operator's usage; it is the wiring.
 
-### 4.T1 Make delegation reachable from a prompt
+### 4.T1 Make delegation reachable from a prompt — **control + opt-in built; one file still uncommitted**
 
-- [ ] Add an explicit, visible delegation control to the composer, defaulting to
-      the server's configured policy rather than a hidden hardcoded `false`.
-- [ ] Send the opt-in the server already understands. `RunCreateRequest.autonomous`
-      is the server-owned switch (`app/gateway/services.py` sets
-      `body_context["subagent_enabled"] = True`).
-- [ ] The control states what it will do before it is used, and the run's
-      metadata records what was actually applied.
-- [ ] Gate: with delegation on, a prompt that warrants it produces a real `task`
-      dispatch and a real artifact; with it off, the toolset genuinely lacks
-      `task` and the UI says so.
+**The blocker, measured.** The composer could not delegate at all. `sendMessage`
+sent `model_name`, `is_plan_mode` and `reasoning_effort`, and never the server's
+`autonomous` run flag, so `subagent_enabled` stayed false and `task` was never in
+the toolset. Measured against the live Gateway:
+
+| Sent | Tools offered |
+| --- | --- |
+| `autonomous: false` | `alpha_capability`, `catalog_tool_search` |
+| `autonomous: true` | `alpha_capability`, **`task`** |
+
+So no wording of any prompt could produce a working subagent — wiring, not
+operator error. And it is invisible from the UI, because a missing capability and
+an idle one look identical on screen.
+
+- [x] A visible delegation control, **defaulting OFF and looking off.**
+      Deliberately not "the server's configured policy": there is no read for it,
+      and inventing one would be a fabricated default. `false` is the least-
+      privilege posture and it is also what shipped behaviour was, so the toggle
+      is honest about changing it. Both states say what will happen —
+      "the agent answers this itself" when off, "Costs extra tokens" when on — and
+      `aria-pressed` exposes the state. Disabled mid-run, because toggling then
+      would change nothing about the run already admitted.
+- [x] Sends the server-owned switch. `RunCreateRequest.autonomous` is applied by
+      `start_run` only after ordinary client context is sanitized, so it cannot
+      widen authorization, tool allowlists, sandbox policy, budgets or ownership —
+      it changes whether the `task` tool exists. `false` is **never sent**: the
+      field appears only when on, so an explicit opt-out stays distinguishable
+      from a client that never considered the question.
+- [x] The transcript already requested `custom` in `stream_mode`, so `task_*`
+      progress reaches `SubagentList` once the tool exists. The missing piece was
+      the tool, not the plumbing.
+- [x] 9 cases in `frontend/src/lib/delegation-opt-in.test.mjs` + 4 negative
+      controls, all caught (flag removed, default flipped on, literal `false`
+      sent, `aria-pressed` dropped).
+- [x] **A regression I caused and caught.** Adding a run option broke 12 tests in
+      `chat-request-error.test.mjs`, which extracts `sendMessage` and injects its
+      module-scope bindings: the new `delegationEnabled` was absent, threw inside
+      the request, and masked every status-code assertion behind the generic
+      "request could not be completed". `frontend/src/AGENTS.md` documents this
+      exact trap for anyone adding a run option. Fixed by injecting
+      `delegationEnabled: false` — the honest value, since no scenario there
+      exercises delegation. **12 failures -> 1.**
+- [x] 6 brittle line-shape pins made whitespace-tolerant, and one structural
+      lookup made semantic. Details and the two defects my own negative controls
+      caught in my own fixes are in the `e6f2e5d` commit message.
+- [ ] **The committed tree is INERT, and this is stated rather than papered
+      over.** The control and its test are committed; the **3 lines in
+      `ChatView.tsx`** that pass it are **not**, because that file also carries a
+      concurrent agent's large in-flight rewrite plus 8 of their failing pins.
+      Staging it would commit their work as mine. Those 3 lines are live in the
+      working tree, `tsc --noEmit` = 0 and 9 tests green; they must be committed
+      once that rewrite lands. **The commit alone is not a working delegation
+      path.**
+- [ ] Gate still open: with delegation on, a prompt that warrants it produces a
+      real `task` dispatch and a real artifact; with it off, the toolset genuinely
+      lacks `task` and the UI says so. **No end-to-end delegation run has been
+      observed** — the configured provider is currently refusing completions for
+      quota/billing, the same limit blocking 3.T2's completion gate.
 
 ### 4.T2 Realtime progress for delegated work
 
@@ -734,7 +782,7 @@ Tick in order. Each line links to its section.
 - [ ] 3.T5 Document every gated capability
 
 ### Phase 2 — prompt-only work assignment
-- [ ] 4.T1 Make delegation reachable from a prompt
+- [x] 4.T1a Composer delegation control + `autonomous` opt-in (3 ChatView lines still uncommitted)
 - [ ] 4.T2 Realtime progress for delegated work
 - [ ] 4.T3 Assign work without the Subagents panel
 
@@ -774,6 +822,9 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | Control-plane runner | `docs/audits/SUBAGENT_VISIBILITY.md` | finding documented, **fix not started** |
 | 2026-10-06 | 3.T2a control-plane runner | 13 passed exit 0; live: 141 tools, 24 skills, max_turns=150, graph started | VERIFIED to the model call; **completion blocked by provider quota** |
 | 2026-10-06 | 3.T2a bug found live | run 1: `Thread ID is required` — my `thread_id=None` | fixed; run 2 reached the model |
+| 2026-10-06 | 4.T1a prompt delegation | 9 cases + 4 NCs; `autonomous:false` -> no `task`, `true` -> `task` | **UI opt-in built**; e2e run blocked by provider quota |
+| 2026-10-06 | 4.T1a self-inflicted regression | new run option broke 12 harness tests (undocumented binding) | caught by the suite; fixed, 12 -> 1 |
+| 2026-10-06 | line-shape pins | 6 assertions + 1 structural lookup made formatting-tolerant | 2 defects found in my own fixes by negative controls |
 | 2026-10-06 | 3.T1 deep-agent runner | measured: no deep agent constructs a `SubagentExecutor`; executor needs only 2 kwargs | **not started** - scope corrected in plan |
 | 2026-10-06 | Prompt-only assignment | — | **not started** |
 | 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |
