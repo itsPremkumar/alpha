@@ -359,19 +359,46 @@ Four honesty decisions inside the runner, each of which was a trap:
    a different hat.
 
 - [x] Runner written and wired into the spawn route.
-- [x] `tests/test_subagent_lifecycle_runner.py`, **13 cases**, each aimed at a
-      plausible lie rather than a crash: every non-completed terminal status, a
-      submission exception, an unknown definition, a poller ceiling, a start
-      refusal at the attempt ceiling, lease renewal across a slow run, the
-      absence of a progress percentage, a capped run keeping its `stop_reason`,
-      and an empty completion staying empty.
+- [x] `tests/test_subagent_lifecycle_runner.py`, **13 cases** (verified: `13
+      passed`, exit 0), each aimed at a plausible lie rather than a crash: every
+      non-completed terminal status, a submission exception, an unknown
+      definition, a poller ceiling, a start refusal at the attempt ceiling, lease
+      renewal across a slow run, the absence of a progress percentage, a capped
+      run keeping its `stop_reason`, and an empty completion staying empty.
 - [x] Start-refusal honoured: `start_subagent` returning `False` at the attempt
       ceiling stops the runner before it reaches the executor, so a restart sweep
       can never resurrect a unit that has given up.
-- [ ] **Live end-to-end run NOT yet performed.** No real subagent has executed
-      through this path, so the claim is "the runner is unit-verified", **not**
-      "a subagent runs". The next gate is a real spawn observed moving
-      `ready -> running -> completed` with a real summary in the UI.
+- [x] **Live run performed** — `backend/scripts/probe_lifecycle_runner.py`.
+      Two live runs, and the first one found a real bug immediately:
+
+      | Observation | Run 1 (before fix) | Run 2 (after fix) |
+      |---|---|---|
+      | status at spawn | `ready`, `started_at=None` | `ready`, `started_at=None` |
+      | first poll | `running`, `started_at` set, `renew_count=1` | same |
+      | terminal | `failed` in 17 s | `failed` in 24 s |
+      | reason | `Thread ID is required in runtime context or config.configurable` | provider quota rejection |
+      | executor reached | no — 141 tools resolved, then middleware raised | yes — **141 tools, 24 skills loaded, `max_turns=150`, graph started** |
+
+      **Run 1 was my bug.** The route passed `thread_id=None`, and
+      `ThreadDataMiddleware.before_agent` requires one. Fixed with
+      `_execution_thread_id()` (deterministic per record, so a retry rejoins the
+      same workspace and two helpers cannot share state) plus a resolved runtime
+      user. Run 2 proves the fix: the graph now starts.
+
+      Also proved by the Gateway log, not inferred: `renew_count` advances 1 -> 2
+      during the run, so the lease renewal is real rather than nominal.
+
+- [ ] **A subagent COMPLETING with a real summary is still NOT verified.** Run 2
+      reached the model call and was refused:
+
+      > The configured LLM provider rejected the request because the account is
+      > out of quota, billing is unavailable, or usage is restricted.
+
+      `GET /api/models/free/catalog` still reports `healthy=True` for the probed
+      providers, so this is a specific account/route rejection at completion
+      time, not a wiring fault. It is an **environment limit, reported as one.**
+      The claim is "the control plane executes and reports the truth about why it
+      stopped", **not** "a subagent completes".
 - [ ] Have `task` register each dispatch **and maintain its heartbeat**, so the
       ordinary delegation path reaches the same live plane.
 - [x] The naive version is rejected in the design: registering without
@@ -701,7 +728,7 @@ Tick in order. Each line links to its section.
 
 ### Phase 1 — registered-but-dead
 - [ ] 3.T1 Deep-agent runner (scope measured; pair with 3.T2)
-- [x] 3.T2a Control-plane runner written + 13 unit cases (live run still open)
+- [x] 3.T2a Control-plane runner: 13 unit cases + 2 live runs (ready -> running -> terminal)
 - [ ] 3.T3 Slash commands: publish dispatchable count
 - [ ] 3.T4 Self-repair: implement or keep refusing, honestly
 - [ ] 3.T5 Document every gated capability
@@ -745,7 +772,8 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | Subagent catalog panel | 5 live screenshots; 8 definitions, 23 tool chips | 40 new cases, 5 negative controls; tsc 0 |
 | 2026-10-06 | Live subagent objective | Rendered rows show the real objective | flat-only read → 15/1; restored 16/0 |
 | 2026-10-06 | Control-plane runner | `docs/audits/SUBAGENT_VISIBILITY.md` | finding documented, **fix not started** |
-| 2026-10-06 | 3.T2a control-plane runner | 13 cases; 4 honesty traps avoided by design | unit-verified; **live run NOT yet done** |
+| 2026-10-06 | 3.T2a control-plane runner | 13 passed exit 0; live: 141 tools, 24 skills, max_turns=150, graph started | VERIFIED to the model call; **completion blocked by provider quota** |
+| 2026-10-06 | 3.T2a bug found live | run 1: `Thread ID is required` — my `thread_id=None` | fixed; run 2 reached the model |
 | 2026-10-06 | 3.T1 deep-agent runner | measured: no deep agent constructs a `SubagentExecutor`; executor needs only 2 kwargs | **not started** - scope corrected in plan |
 | 2026-10-06 | Prompt-only assignment | — | **not started** |
 | 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |

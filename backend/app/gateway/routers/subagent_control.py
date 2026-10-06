@@ -121,7 +121,15 @@ async def spawn_subagent(payload: SpawnSubagentRequest, request: Request):
                 rec.subagent_id,
                 agent_name=agent_name,
                 task=payload.instructions.strip() or payload.objective,
-                thread_id=None,
+                # The executor requires a thread identity in runtime context, and a
+                # control-plane spawn has no parent thread to inherit. Passing None
+                # produced a real, honest failure on the first live run:
+                #   "Thread ID is required in runtime context or config.configurable"
+                # so each spawned helper gets its own deterministic thread id. That
+                # isolates its workspace and state per subagent and keeps the run
+                # attributable, rather than borrowing an unrelated thread's identity.
+                thread_id=_execution_thread_id(rec.subagent_id),
+                user_id=_default_runtime_user(),
             )
         )
     except Exception as exc:  # noqa: BLE001 - the record still exists; report why it will not run
@@ -143,6 +151,32 @@ async def spawn_subagent(payload: SpawnSubagentRequest, request: Request):
 #: definition can execute, so an unknown role runs as the generalist rather than
 #: silently registering work nothing will ever pick up.
 _DEFAULT_SUBAGENT = "general-purpose"
+
+
+def _execution_thread_id(subagent_id: str) -> str:
+    """A stable thread identity for one spawned helper's run.
+
+    Deterministic from the record id, so a retried or restarted run rejoins the
+    same workspace instead of silently forking a new one, and distinct per
+    helper, so two concurrent helpers cannot share state.
+    """
+    return f"ctl-{subagent_id}"
+
+
+def _default_runtime_user() -> str:
+    """The runtime user for a control-plane spawn.
+
+    Resolved through the same helper the rest of the Gateway uses so a spawned
+    helper reads user-scoped skills and storage under a real identity rather than
+    an invented one. Falls back to the framework default only when no request
+    context is available, which is the standalone-embed case.
+    """
+    try:
+        from alpha.runtime.user_context import resolve_runtime_user_id
+
+        return str(resolve_runtime_user_id(None) or "default")
+    except Exception:  # noqa: BLE001 - a helper import must not stop a spawn
+        return "default"
 
 
 def _known_subagent_names() -> frozenset[str]:
