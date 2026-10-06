@@ -377,13 +377,33 @@ not exist, which made `?view=<id>` fall back to `chat`.
   re-reads the status. It does not run a tool, start a run, or complete a
   mission, and the panel says so in its own `Notice` rather than leaving it to a
   doc — that button is the one most likely to be read as "do the work".
+- **The session-control card acts, then re-reads — never on click alone.**
+  `SessionControlCard` posts `pause`/`resume`/`stop` (and approval verdicts),
+  then re-reads the mode — which carries `active_session` — and the approvals
+  list before painting anything; a refused action leaves the card exactly where
+  it was with the server's reason in the error line. The verbs carry **no
+  client-side transition rules** ("resume disabled because paused"): the
+  server's rules are the single authority, so a click that changes nothing
+  reports `applied: false` with the server's own reason instead of a silently
+  dead button, and the approval gate's 409 lands verbatim.
+- **The card's two reads fail independently.** Mode and approvals go through
+  `Promise.allSettled`: a broken approvals store must not blank a healthy
+  session view (or vice versa), because "no verdicts are waiting" and "the
+  verdicts could not be read" lead to opposite actions. Each failure renders as
+  its own `Notice`, and the session badge says `state unknown` rather than
+  inventing an absence.
+- **The verdicts' asymmetry comes from the response, not the button.** The
+  decision's `resumed` flag is the server's claim: `reject` renders "the
+  session stays parked", and an `approve` that did not resume says so rather
+  than implying a release the server never confirmed.
 - **Drift is surfaced, not smoothed.** A session whose `contract_digest`
   differs from the active contract renders a `Policy drift` warning naming both,
   because a mission silently continuing under changed policy is the failure the
   digest exists to catch.
 
 Coverage: `src/lib/apex.test.mjs` (routes, verbs, the null-preserving counters,
-and the honesty inversions for each block).
+the control/approval/goal envelope mappings, and the honesty inversions for
+each block).
 
 ## Subagent catalog panel (every field of a definition)
 

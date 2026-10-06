@@ -42,6 +42,11 @@ from alpha.apex.contract import (
     profile_for,
 )
 from alpha.apex.executive import run_cycle
+from alpha.apex.goals import (
+    GoalState,
+    IllegalGoalTransition,
+    get_goal_store,
+)
 from alpha.apex.invariants import check_invariants
 from alpha.apex.mode import DEFAULT_SCOPE as DEFAULT_APEX_SCOPE
 from alpha.apex.mode import get_apex_mode_store, set_mode
@@ -215,6 +220,13 @@ def _mode_body(scope_key: str, *, changed: bool, durable: bool = False, reason: 
         # is the fail-closed choice, but a client must be able to see it is a
         # degraded read rather than a considered decision.
         body["load_error"] = store.load_error
+    # The session this scope controls, when one exists. The control
+    # verbs (pause/resume/stop) and the approval gate act on it, so a
+    # client rendering the switch can also render the controls that
+    # belong to a live session — and can tell "off" from "off because
+    # no session was ever created".
+    session = get_apex_store().active_for_scope(scope_key)
+    body["active_session"] = session.to_dict() if session is not None else None
     return body
 
 
@@ -273,6 +285,431 @@ async def disable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]
     except ValueError as exc:  # pragma: no cover - disable takes no profile
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _mode_body(scope, changed=bool(outcome.get("changed")), durable=bool(outcome.get("durable")), reason=str(outcome.get("reason", "")))
+
+
+# --------------------------------------------------------------------------- #
+# Session control — pause / resume / stop (spec §3, §30, §33)
+# --------------------------------------------------------------------------- #
+#
+# Each verb targets the *active session for a conversation scope*, not a
+# caller-supplied session id: a chat command or a UI button names a
+# conversation, and the join is `ApexStore.active_for_scope`. Admin-gated
+# like the mode writes, because parking a mission is an operator act.
+
+
+class ScopeRequest(BaseModel):
+    """A control action that targets a conversation scope."""
+
+    scope_key: str = ""
+
+
+def _control_transition(scope_key: str, target: ApexSessionState, reason: str) -> dict[str, Any]:
+    """Move the active session for a scope, or say there is none to move."""
+    store = get_apex_store()
+    session = store.active_for_scope(scope_key)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no active APEX session for scope {scope_key!r}; create one with POST /api/apex/sessions",
+        )
+    if session.is_terminal:
+        raise HTTPException(status_code=409, detail=f"session {session.session_id} is terminal ('{session.state.value}')")
+    if session.state is ApexSessionState.BLOCKED:
+        # The approval gate owns a parked session: only an operator verdict
+        # (or a replan) may move it. Without this, pause-then-resume would
+        # un-park it in two clicks — the gate with a side door.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"session {session.session_id} is parked awaiting approval ({session.blocked_reason or 'blocked'}); "
+                "it already decides nothing, and the control verbs do not move a blocked session — decide it with "
+                "POST /api/apex/approvals/{approval_id}/approve or .../reject, or replan it"
+            ),
+        )
+    if session.state is target:
+        return {"applied": False, "reason": f"already {target.value}", "session": session.to_dict()}
+    updated = store.set_state(session.session_id, target, reason=reason)
+    if updated is None:
+        raise HTTPException(status_code=409, detail="transition refused by the session state machine")
+    return {"applied": True, "session": updated.to_dict()}
+
+
+@router.post("/pause", summary="Park the active session for a scope")
+async def pause_apex(payload: ScopeRequest, request: Request) -> dict[str, Any]:
+    """Park this conversation's session; the executive decides nothing further.
+
+    Work already admitted to a run is owned by ``RunManager`` and is not
+    interrupted by a pause — APEX is a control plane, not a second
+    lifecycle owner.
+    """
+    _require_admin(request)
+    scope, _owner = _resolve_scope(request, payload.scope_key)
+    return _control_transition(scope, ApexSessionState.PAUSED, "operator pause")
+
+
+@router.post("/resume", summary="Release a paused session")
+async def resume_apex(payload: ScopeRequest, request: Request) -> dict[str, Any]:
+    """Release a paused session. A parked (blocked) session is not resumed here.
+
+    A session at ``BLOCKED`` is behind the approval gate: only an
+    operator approval (``POST /api/apex/approvals/{id}/approve``) or a
+    replan moves it, which is the property the gate exists to guarantee.
+    """
+    _require_admin(request)
+    scope, _owner = _resolve_scope(request, payload.scope_key)
+    return _control_transition(scope, ApexSessionState.ACTIVE, "operator resume")
+
+
+@router.post("/stop", summary="Stop this mission's APEX work")
+async def stop_apex(payload: ScopeRequest, request: Request) -> dict[str, Any]:
+    """Stop this mission: park its session so the executive decides no more.
+
+    Two boundaries are stated rather than crossed. In-flight runs belong
+    to ``RunManager`` and are not interrupted here, and the whole-fleet
+    emergency stop is ``alpha.runtime.control``'s ESTOP — deliberately
+    not an APEX route, because spec §24 requires the emergency stop to
+    stay outside LLM control.
+    """
+    _require_admin(request)
+    scope, _owner = _resolve_scope(request, payload.scope_key)
+    body = _control_transition(scope, ApexSessionState.PAUSED, "operator stop")
+    body["note"] = "mission work stopped; in-flight runs belong to RunManager and are not interrupted, and the whole-fleet emergency stop is the separate ESTOP, which no APEX route can engage"
+    return body
+
+
+# --------------------------------------------------------------------------- #
+# Goals — the Goal Operating System's HTTP surface (spec §7, §8, §33)
+# --------------------------------------------------------------------------- #
+#
+# The goal store is the durable record; these routes expose it. Reads are
+# unauthenticated-but-authenticated (any signed-in user, owner-scoped
+# unless admin); writes are the same. A goal is a planning artifact, so
+# it does not carry the session surface's admin gate — but it never
+# answers for another user's goals either.
+
+
+class GoalCreateRequest(BaseModel):
+    objective: str = Field(min_length=1, max_length=4000)
+    description: str = ""
+    #: Create as a child of this goal. A child may not outrank any ancestor.
+    parent_goal_id: str = ""
+    session_id: str = ""
+    mission_id: str = ""
+    success_criteria: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    priority: int = 50
+    risk: str = "R1"
+    budget: dict[str, Any] = Field(default_factory=dict)
+
+
+class GoalSteerRequest(BaseModel):
+    instruction: str = Field(min_length=1, max_length=2000)
+    source: str = "user"
+
+
+def _goal_or_404(goal_id: str) -> Any:
+    goal = get_goal_store().get(goal_id)
+    if goal is None:
+        raise HTTPException(status_code=404, detail=f"no APEX goal {goal_id!r}")
+    return goal
+
+
+@router.post("/goals", summary="Create an APEX goal or subgoal")
+async def create_goal(payload: GoalCreateRequest, request: Request) -> dict[str, Any]:
+    """Create a goal, optionally as a child of an existing one.
+
+    ``COMPLETED`` is unreachable from here (or anywhere else) without
+    measured evidence — creation only ever starts the clock.
+    """
+    user = getattr(request.state, "user", None)
+    owner = str(getattr(user, "id", "") or "") if user is not None else ""
+    store = get_goal_store()
+    if store.is_degraded:
+        raise HTTPException(status_code=503, detail=f"goal store unreadable: {store.load_error}")
+    kwargs: dict[str, Any] = {
+        "objective": payload.objective,
+        "owner": owner,
+        "description": payload.description,
+        "success_criteria": payload.success_criteria,
+        "constraints": payload.constraints,
+        "priority": payload.priority,
+        "risk": payload.risk,
+        "budget": payload.budget,
+        "session_id": payload.session_id,
+        "mission_id": payload.mission_id,
+    }
+    try:
+        goal = store.create_child(payload.parent_goal_id, **kwargs) if payload.parent_goal_id else store.create(**kwargs)
+    except (KeyError, ValueError, IllegalGoalTransition) as exc:
+        # 422: the request was well-formed but the goal graph refused it —
+        # a missing parent, a terminal parent, or a child that would
+        # outrank the work it derives from.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"goal": goal.to_dict()}
+
+
+@router.get("/goals", summary="List APEX goals")
+async def list_goals(
+    request: Request,
+    state: str | None = Query(default=None),
+    session_id: str | None = Query(default=None),
+    root_only: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> dict[str, Any]:
+    """Goals for the caller (all, for an admin), newest-priority first."""
+    user = getattr(request.state, "user", None)
+    owner = str(getattr(user, "id", "") or "") if user is not None else None
+    is_admin = bool(getattr(user, "is_admin", False)) if user is not None else False
+    store = get_goal_store()
+    if store.is_degraded:
+        return {"available": False, "reason": store.load_error, "count": None, "goals": []}
+    goals = store.list(
+        owner=None if is_admin else owner,
+        state=state,
+        root_only=root_only,
+        session_id=session_id or "",
+        limit=limit,
+    )
+    return {"available": True, "count": len(goals), "goals": [g.to_dict() for g in goals]}
+
+
+@router.get("/goals/{goal_id}", summary="One APEX goal and its subtree")
+async def get_goal(goal_id: str) -> dict[str, Any]:
+    store = get_goal_store()
+    goal = _goal_or_404(goal_id)
+    return {"goal": goal.to_dict(), "tree": store.tree(goal_id)}
+
+
+@router.post("/goals/{goal_id}/steer", summary="Record a constraint on a goal")
+async def steer_goal(goal_id: str, payload: GoalSteerRequest) -> dict[str, Any]:
+    """Attach one steering constraint (spec §57). A constraint, not a rewrite."""
+    _goal_or_404(goal_id)
+    store = get_goal_store()
+    updated = store.add_constraint(goal_id, payload.instruction, source=payload.source)
+    if updated is None:
+        current = store.get(goal_id)
+        reason = "goal is terminal" if current and current.is_terminal else "constraint refused"
+        raise HTTPException(status_code=409, detail=reason)
+    return {"goal": updated.to_dict()}
+
+
+@router.post("/goals/{goal_id}/replan", summary="Move a goal back to replanning")
+async def replan_goal(goal_id: str) -> dict[str, Any]:
+    """Spec §37's escalation: a stop is not a dead end."""
+    _goal_or_404(goal_id)
+    store = get_goal_store()
+    try:
+        updated = store.transition(goal_id, GoalState.REPLANNING, reason="operator replan")
+    except IllegalGoalTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"goal": updated.to_dict()}
+
+
+@router.post("/goals/{goal_id}/verify", summary="Verify a goal against its criteria")
+async def verify_goal(goal_id: str) -> dict[str, Any]:
+    """Verification-first completion (spec §16).
+
+    A goal with unmeasured criteria enters ``VERIFYING``; a goal whose
+    criteria are all measured closes through the acceptance gate. A
+    criterion that measured false is named in the 409 — a partial is
+    reported as partial, never folded into a completion.
+    """
+    _goal_or_404(goal_id)
+    store = get_goal_store()
+    try:
+        updated = store.verify(goal_id)
+    except IllegalGoalTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"goal": updated.to_dict()}
+
+
+@router.get("/goals/{goal_id}/tasks", summary="A goal's decomposition")
+async def goal_tasks(goal_id: str) -> dict[str, Any]:
+    """The goal's children — the subgoals a decomposition created."""
+    _goal_or_404(goal_id)
+    store = get_goal_store()
+    children = store.children(goal_id)
+    return {"goal_id": goal_id, "count": len(children), "tasks": [c.to_dict() for c in children]}
+
+
+@router.get("/goals/{goal_id}/agents", summary="Specialists recorded against a goal")
+async def goal_agents(goal_id: str) -> dict[str, Any]:
+    """The agents *asked for* against this goal.
+
+    The subagent lifecycle manager owns the agents themselves — leases,
+    heartbeats, recovery. This is the record of the asks, which is what
+    makes an empty list mean "none recorded" rather than "none exist".
+    """
+    goal = _goal_or_404(goal_id)
+    return {
+        "goal_id": goal_id,
+        "count": len(goal.agent_records),
+        "agents": [dict(record) for record in goal.agent_records],
+        "note": "agents are owned by alpha.subagents.lifecycle; this records the asks made against this goal",
+    }
+
+
+@router.get("/goals/{goal_id}/workflow", summary="A goal's strategy and plan version")
+async def goal_workflow(goal_id: str) -> dict[str, Any]:
+    """What the goal records about its own strategy.
+
+    ``available: false` is deliberate: workflow *graphs* are owned by the
+    dynamic workflow engine, and a goal records which strategy it is
+    pursuing, not a graph. Reporting a graph here would be a second,
+    divergent copy of the truth.
+    """
+    goal = _goal_or_404(goal_id)
+    return {
+        "goal_id": goal_id,
+        "strategy": goal.current_strategy,
+        "plan_version": goal.plan_version,
+        "replan_count": goal.replan_count,
+        "available": False,
+        "reason": "workflow graphs are owned by the dynamic workflow engine; a goal records its strategy, not a graph",
+    }
+
+
+@router.get("/goals/{goal_id}/events", summary="A goal's event history")
+async def goal_events(
+    goal_id: str,
+    after_seq: int = Query(default=0, ge=0),
+    limit: int = Query(default=DEFAULT_EVENT_LIMIT, ge=1, le=MAX_EVENT_LIMIT),
+) -> dict[str, Any]:
+    """Replay the goal's journal — real history, bounded."""
+    _goal_or_404(goal_id)
+    events = get_apex_store().read_events(goal_id, after_seq=after_seq)[:limit]
+    return {"goal_id": goal_id, "count": len(events), "events": [e.to_dict() for e in events]}
+
+
+@router.get("/goals/{goal_id}/decisions", summary="The cycle decisions of the goal's session")
+async def goal_decisions(goal_id: str) -> dict[str, Any]:
+    """The executive's cycle decisions for the session this goal belongs to.
+
+    Derived from the session's journal, never recomputed: a goal with no
+    session link has no cycle decisions, and says so rather than implying
+    an empty history it never had.
+    """
+    goal = _goal_or_404(goal_id)
+    if not goal.session_id:
+        return {
+            "goal_id": goal_id,
+            "available": True,
+            "decisions": [],
+            "note": "goal is not linked to a session, so it has no cycle decisions",
+        }
+    events = get_apex_store().read_events(goal.session_id)
+    decisions = [e.to_dict() for e in events if e.event_type.startswith("cycle.")]
+    return {
+        "goal_id": goal_id,
+        "session_id": goal.session_id,
+        "count": len(decisions),
+        "decisions": decisions,
+    }
+
+
+@router.get("/goals/{goal_id}/evidence", summary="A goal's measured evidence")
+async def goal_evidence(goal_id: str) -> dict[str, Any]:
+    """Every measurement, plus the criteria that still decide nothing."""
+    goal = _goal_or_404(goal_id)
+    return {
+        "goal_id": goal_id,
+        "count": len(goal.evidence),
+        "criteria": list(goal.success_criteria),
+        "criteria_without_evidence": goal.criteria_without_evidence(),
+        "criteria_failed": goal.criteria_failed(),
+        "evidence": [e.to_dict() for e in goal.evidence],
+    }
+
+
+@router.get("/goals/{goal_id}/failures", summary="A goal's failures, derived from its record")
+async def goal_failures(goal_id: str) -> dict[str, Any]:
+    """What failed, from the record itself — never from a guess.
+
+    Failed criteria carry their latest measurement's provenance; the
+    blocked reason and a FAILED state are failures too. An empty list is
+    a real answer: nothing has failed yet.
+    """
+    goal = _goal_or_404(goal_id)
+    latest = goal.latest_evidence()
+    failures: list[dict[str, Any]] = [
+        {
+            "kind": "criterion_failed",
+            "criterion": criterion,
+            "source": latest[criterion].source,
+            "detail": latest[criterion].detail,
+            "recorded_at": latest[criterion].recorded_at,
+        }
+        for criterion in goal.criteria_failed()
+    ]
+    if goal.blocked_reason:
+        failures.append({"kind": "blocked", "reason": goal.blocked_reason})
+    if goal.state is GoalState.FAILED:
+        failures.append({"kind": "goal_state", "state": "failed"})
+    return {"goal_id": goal_id, "count": len(failures), "failures": failures}
+
+
+# --------------------------------------------------------------------------- #
+# Approvals — the operator's side of the approval gate (spec §24, §27, §30)
+# --------------------------------------------------------------------------- #
+
+
+class ApprovalDecisionRequest(BaseModel):
+    note: str = ""
+
+
+@router.get("/approvals", summary="Operator decisions on parked work")
+async def list_approvals(request: Request) -> dict[str, Any]:
+    """Every approval, newest session first, owner-scoped unless admin."""
+    user = getattr(request.state, "user", None)
+    owner = str(getattr(user, "id", "") or "") if user is not None else None
+    is_admin = bool(getattr(user, "is_admin", False)) if user is not None else False
+    store = get_apex_store()
+    if store.is_degraded:
+        return {"available": False, "reason": store.load_error, "count": None, "approvals": []}
+    approvals = store.approvals(owner=None if is_admin else owner)
+    pending = [a for a in approvals if a.get("status") == "pending"]
+    return {
+        "available": True,
+        "count": len(approvals),
+        "pending": len(pending),
+        "approvals": approvals,
+    }
+
+
+def _decide_approval_route(approval_id: str, verdict: str, operator: str, note: str) -> dict[str, Any]:
+    """Apply one verdict, distinguishing a missing id from a decided one."""
+    store = get_apex_store()
+    outcome = store.decide_approval(approval_id, verdict=verdict, operator=operator, note=note)
+    if outcome is None:
+        # A second decision is a conflict; a never-existing id is not found.
+        if any(a["approval_id"] == approval_id for a in store.approvals()):
+            raise HTTPException(status_code=409, detail=f"approval {approval_id} was already decided")
+        raise HTTPException(status_code=404, detail=f"no approval {approval_id!r}")
+    record, resumed = outcome
+    return {
+        "approval": record.to_dict(),
+        "resumed": resumed is not None,
+        "session": resumed.to_dict() if resumed is not None else None,
+    }
+
+
+@router.post("/approvals/{approval_id}/approve", summary="Approve parked work")
+async def approve_approval(approval_id: str, payload: ApprovalDecisionRequest, request: Request) -> dict[str, Any]:
+    """The only thing that un-parks a blocked session.
+
+    Admin-gated: an approval is an operator act, the exact point where
+    autonomy asks a human. The executive cannot grant its own approval,
+    which is the property the gate exists to guarantee.
+    """
+    operator = _require_admin(request)
+    return _decide_approval_route(approval_id, "approved", operator, payload.note)
+
+
+@router.post("/approvals/{approval_id}/reject", summary="Reject parked work; the park stands")
+async def reject_approval(approval_id: str, payload: ApprovalDecisionRequest, request: Request) -> dict[str, Any]:
+    """Record a rejection. The session stays parked, with the blocker on record."""
+    operator = _require_admin(request)
+    return _decide_approval_route(approval_id, "rejected", operator, payload.note)
 
 
 # --------------------------------------------------------------------------- #

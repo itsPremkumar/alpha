@@ -152,6 +152,33 @@ The HTTP state route refuses **every** terminal value with a 409, not just
 `COMPLETED` — a request body that could assert `failed` or `cancelled` would be
 the same false-completion hole under a different label.
 
+### The approval gate
+
+A cycle that cannot proceed does not loop and does not fail silently. It
+**parks** the session and asks:
+
+1. The decision comes back `blocked` (typically `acceptance_pending`).
+2. The executive moves the session to `BLOCKED` and creates **one pending
+   `ApprovalRecord`** naming the blocker as its `note`.
+3. While parked, `select_next_action` answers `NONE` with
+   `awaiting_operator_approval` — autonomy cannot un-park itself.
+4. Only an operator verdict moves it: `approve` sets the session back to
+   `ACTIVE`; `reject` keeps it parked with the refusal on record. A second
+   verdict on the same approval is refused (409), never an overwrite.
+
+**The control verbs refuse a parked session.** `/apex pause`, `/apex resume`,
+`/apex stop` and `/apex take-over` — and their HTTP twins — return an error
+naming the approval route instead of moving `BLOCKED`. Without that rule,
+pause-then-resume would un-park the session in two commands: the gate with a
+side door. The refusal also says the park already stops the work, so an
+operator arriving with stop intent is told the session decides nothing rather
+than being sent to un-park it first. `steer` still works while parked — a
+constraint is a record, not a control — and a rejected park is moved only by
+`replan`.
+
+Pending verdicts are listed at `GET /api/apex/approvals` (and rendered by the
+APEX panel's session-control card, which re-reads after every action).
+
 ---
 
 ## 6. Fleet control
@@ -188,9 +215,28 @@ stop.
 | `GET` | `/api/apex/status` | the §59 projection (read-only) |
 | `GET` | `/api/apex/policy?profile=…` | contract + attributed policy sites |
 | `GET` | `/api/apex/invariants` | §188 I1–I12 and their live sites |
-| `GET` | `/api/apex/mode` | the ON/OFF state for a scope |
+| `GET` | `/api/apex/mode` | the ON/OFF state for a scope, plus its `active_session` |
 | `POST` | `/api/apex/enable` | turn APEX on; admin |
 | `POST` | `/api/apex/disable` | turn APEX off; admin |
+| `POST` | `/api/apex/pause` | park the scope's active session; admin |
+| `POST` | `/api/apex/resume` | release a paused session; admin |
+| `POST` | `/api/apex/stop` | mission-scoped park carrying the RunManager/ESTOP note; admin |
+| `GET` | `/api/apex/goals` | list; owner-scoped; degraded store reports `count: null` |
+| `POST` | `/api/apex/goals` | create a goal or subgoal; authenticated, the owner is the caller |
+| `GET` | `/api/apex/goals/{id}` | one goal and its subtree |
+| `POST` | `/api/apex/goals/{id}/steer` | record a constraint on the goal |
+| `POST` | `/api/apex/goals/{id}/replan` | move a goal back to replanning |
+| `POST` | `/api/apex/goals/{id}/verify` | verify against the success criteria |
+| `GET` | `/api/apex/goals/{id}/tasks` | the decomposition |
+| `GET` | `/api/apex/goals/{id}/agents` | specialists *recorded as asks* (this route never spawns) |
+| `GET` | `/api/apex/goals/{id}/workflow` | reports `available: false` — not implemented, by design |
+| `GET` | `/api/apex/goals/{id}/events` | the goal journal |
+| `GET` | `/api/apex/goals/{id}/decisions` | the goal's session's cycle decisions |
+| `GET` | `/api/apex/goals/{id}/evidence` | measured evidence |
+| `GET` | `/api/apex/goals/{id}/failures` | failures derived from the record |
+| `GET` | `/api/apex/approvals` | pending verdicts; degraded store reports `count: null` |
+| `POST` | `/api/apex/approvals/{id}/approve` | approve and un-park; admin |
+| `POST` | `/api/apex/approvals/{id}/reject` | reject — the park stands; admin |
 
 Collection routes are declared before `/sessions/{id}`; Starlette matches in
 registration order, and the reverse order answers
@@ -200,7 +246,9 @@ first would answer `405 Session 'enable' not found` for a feature that
 exists. Pinned by `tests/test_apex_api.py::TestRouteOrder` and
 `tests/test_apex_mode.py`.
 
-Control endpoints (`POST`) require an administrator. Reads do not.
+Control and approval endpoints (`POST /pause|/resume|/stop`, the approval
+verdicts) require an administrator. Goal reads and creation are authenticated
+and owner-scoped; plain reads do not require admin.
 
 ### The mode toggle
 
@@ -224,6 +272,11 @@ append-only `mode_events.jsonl` journal recording who enabled what, at which
 profile, and when. A scope with no row reads as OFF — an unknown session is
 not enabled.
 
+The read also carries **`active_session`** — the session bound to this scope
+(or `null` when none exists) — because the control verbs and the approval gate
+act on exactly that session, and because "APEX is off" and "APEX is off and
+no session was ever created" are different facts to render.
+
 `POST /api/apex/disable` retains the profile, so a later enable restores the
 authority the operator had rather than resetting them to a default. Both
 writes are idempotent and report `changed: false` on a repeat.
@@ -235,6 +288,9 @@ from the model-facing `execute_slash_command` tool — one implementation behind
 all three, because two independently written toggles would eventually disagree
 about what "on" means.
 
+Fourteen verbs: the five the switch needs, plus the nine that move or inspect
+one conversation's session.
+
 | Command | Effect |
 |---|---|
 | `/apex` | status — on/off, profile, contract, invariants, fleet control |
@@ -242,8 +298,17 @@ about what "on" means.
 | `/apex off` | disable, preserving mission state |
 | `/apex status` | same as `/apex` |
 | `/apex policy [profile]` | what a profile grants, budgets, and refuses |
+| `/apex pause` | park this conversation's session; the executive decides nothing further |
+| `/apex resume` | release a paused session |
+| `/apex stop` | park this mission's APEX work; in-flight runs belong to `RunManager` |
+| `/apex steer <instruction>` | record a mission constraint — never a prompt rewrite |
+| `/apex take-over` | park APEX and record, at high priority, that the operator drives |
+| `/apex approve` | approve the pending approval and resume the parked session |
+| `/apex reject` | reject the pending approval; the session stays parked |
+| `/apex replan` | move this session's non-terminal goals back to replanning |
+| `/apex verify` | verify this session's goals against their success criteria |
 
-Three properties worth knowing:
+Properties worth knowing:
 
 - **`/apex` alone never enables.** A bare or truncated line routes to status.
   The one control that grants autonomy is the explicit `on`.
@@ -251,7 +316,13 @@ Three properties worth knowing:
   a request for maximum authority; raising it is a separate, explicit act.
 - **Scoping follows the conversation.** The handler resolves the session,
   thread or conversation id from the dispatch context, so two conversations
-  never share a toggle, and `/apex on` in one never reaches another.
+  never share a toggle, and `/apex on` in one never reaches another. The
+  session join prefers an active session for the scope and falls back to the
+  latest one, so a completed mission answers "that session is terminal"
+  instead of pretending no session ever existed.
+- **A parked session is the approval gate's to move.** `pause`, `resume`,
+  `stop` and `take-over` refuse on `BLOCKED` with the pending approval named —
+  see [the approval gate](#the-approval-gate).
 
 A bad profile is refused with the valid ones named, so a typo cannot silently
 grant a different authority than the operator asked for.
@@ -320,7 +391,10 @@ Read these before treating a green status as a working system.
 | cycle stuck at `await_verification` | register an `AcceptanceRegistry` probe, or set a passing report |
 | `422 contract refused` | the request tried to widen; narrow instead |
 | `409` on `/state` | terminal values are the gate's to assert, not the body's |
+| `409` on `/pause`, `/resume`, `/stop` | the session is `BLOCKED` behind the approval gate; decide it with `/api/apex/approvals/{id}/approve` (or reject/replan) |
+| command errors with "parked awaiting approval" | same gate — the park already stops the work; the refusal names the verdict routes |
 | session list reports `available: false` | `sessions.json` is unreadable; `reason` carries the exception |
+| approvals list reports `available: false` | `approvals` could not be read; `count` is `null`, not `0` — pending verdicts are unknown |
 | an invariant shows `live: false` | `module`/`symbol` name the missing enforcement site |
 
 Logs: `alpha.apex.*` at INFO for refusals and WARN/ERROR for a degraded store
@@ -335,15 +409,17 @@ or an unreadable journal.
 | `tests/test_apex_contract.py` | profiles, budgets, fail-closed, narrowing, attribution |
 | `tests/test_apex_executive.py` | decide-only, acceptance gate, fleet control, invariants, status |
 | `tests/test_apex_api.py` | route order, refusals, SSE, the supervisor loop |
-| `tests/test_apex_mode.py` | the ON/OFF switch: fail-closed, the `/apex` commands, the mode routes |
+| `tests/test_apex_mode.py` | the ON/OFF switch: fail-closed, the fourteen `/apex` verbs, the mode routes |
+| `tests/test_apex_control.py` | the approval gate and its side-door refusals, the scope joins, the goal operating system, the control/approval/goal routes |
 
 Gates that must also stay green: `test_feature_manifest_wiring.py`,
 `test_no_orphan_modules.py`, `test_harness_boundary.py`,
 `test_autonomy_supervisor.py`, `test_discovery_plane_parity.py`,
 `test_command_honesty.py`, and `scripts/check_generated_drift.py`.
 
-Frontend: `frontend/src/lib/apex.test.mjs` (routes, the null-preserving
-counters, and the toggle's honesty inversions).
+Frontend: `frontend/src/lib/apex.test.mjs` (routes, verbs, the null-preserving
+counters, the control/approval/goal mappings, and the toggle's honesty
+inversions).
 
 ---
 

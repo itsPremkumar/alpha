@@ -174,6 +174,10 @@ class ApexSession:
     #: The real reason the session cannot progress, or "".
     blocked_reason: str = ""
     cycle_count: int = 0
+    #: Operator decisions on parked work, oldest first. Stored as
+    #: dicts (not ApprovalRecord rows) so the row serialises with
+    #: ``asdict`` unchanged and a pre-approval row loads as empty.
+    approvals: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -208,6 +212,52 @@ class ApexSession:
         self.constraints.append(constraint)
         self.updated_at = time.time()
         return constraint
+
+
+@dataclass
+class ApprovalRecord:
+    """One operator decision on parked work (spec §24, §27, §30).
+
+    An approval exists because the executive **parked** a session: a
+    blocked cycle creates a pending approval naming the blocker, and
+    only an operator's verdict moves the session off the park. That
+    is the approval gate the spec asks for — autonomy that cannot
+    un-park itself. The record is stored on the session row, so it
+    survives a restart with the same durability as everything else
+    here.
+    """
+
+    approval_id: str
+    session_id: str
+    #: ``pending`` until an operator decides; the two outcomes are
+    #: spelled out rather than boolean so a third state is never
+    #: implied by a missing field.
+    status: str = "pending"
+    note: str = ""
+    requester: str = ""
+    operator: str = ""
+    requested_at: float = field(default_factory=time.time)
+    decided_at: float | None = None
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status == "pending"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ApprovalRecord:
+        return cls(
+            approval_id=str(data.get("approval_id", "")),
+            session_id=str(data.get("session_id", "")),
+            status=str(data.get("status", "pending") or "pending"),
+            note=str(data.get("note", "") or ""),
+            requester=str(data.get("requester", "") or ""),
+            operator=str(data.get("operator", "") or ""),
+            requested_at=float(data.get("requested_at", 0.0) or 0.0),
+            decided_at=data.get("decided_at"),
+        )
 
 
 def _default_storage_path() -> Path:
@@ -472,6 +522,151 @@ class ApexStore:
             self._save()
         self.emit(session_id, "constraint.recorded", **constraint.to_dict())
         return constraint
+
+    # -- scope join ----------------------------------------------------------
+
+    def active_for_scope(self, scope_key: str) -> ApexSession | None:
+        """The newest non-terminal session bound to a conversation scope.
+
+        The mode store keys on the conversation (thread or session id);
+        an ``ApexSession`` carries the same identifier in ``thread_id``
+        or ``mission_id``. A control command names a *scope*, not a
+        session id, so this is the join between the two — and the
+        reason ``/apex pause`` can act without the caller knowing a
+        session id. A scope with no live session is ``None``, never a
+        fabricated row.
+        """
+        if not scope_key:
+            return None
+        with self._lock:
+            rows = [s for s in self._rows.values() if not s.is_terminal and scope_key in (s.thread_id, s.mission_id)]
+        return max(rows, key=lambda s: s.created_at) if rows else None
+
+    def latest_for_scope(self, scope_key: str) -> ApexSession | None:
+        """The newest session bound to a scope, terminal or not.
+
+        The complement of :meth:`active_for_scope`: a control
+        command that finds no live session falls back to this
+        so a *completed* mission is answerable by name —
+        "session X is terminal" — rather than as an absence
+        that is indistinguishable from a conversation that
+        never had a session at all.
+        """
+        if not scope_key:
+            return None
+        with self._lock:
+            rows = [s for s in self._rows.values() if scope_key in (s.thread_id, s.mission_id)]
+        return max(rows, key=lambda s: s.created_at) if rows else None
+
+    # -- approvals -----------------------------------------------------------
+
+    def request_approval(self, session_id: str, *, note: str, requester: str = "operator") -> ApprovalRecord | None:
+        """Ask an operator to decide parked work (spec §27 ``approval.required``).
+
+        One pending approval per parked episode: a session that is
+        re-blocked while an ask is still outstanding does not stack a
+        second one, so an operator is never asked to clear a backlog
+        of duplicates of the same block.
+        """
+        with self._lock:
+            session = self._rows.get(session_id)
+            if session is None:
+                return None
+            if session.is_terminal:
+                self.emit(session_id, "approval.refused", note=note, reason="session is terminal")
+                return None
+            if self.pending_approval(session_id) is not None:
+                return None
+            record = ApprovalRecord(
+                approval_id=f"app-{uuid.uuid4().hex[:8]}",
+                session_id=session_id,
+                note=str(note),
+                requester=str(requester),
+            )
+            session.approvals.append(record.to_dict())
+            session.updated_at = time.time()
+            self._save()
+        # The record's own ``session_id`` is the journal key, so
+        # it is not re-sent as a payload field: ``emit``'s first
+        # parameter already carries it, and a same-named keyword
+        # would arrive twice.
+        payload = dict(record.to_dict())
+        payload.pop("session_id", None)
+        self.emit(session_id, "approval.requested", **payload)
+        return record
+
+    def pending_approval(self, session_id: str) -> ApprovalRecord | None:
+        """The session's outstanding ask, newest first, or ``None``."""
+        with self._lock:
+            session = self._rows.get(session_id)
+            if session is None:
+                return None
+            for item in reversed(session.approvals):
+                record = ApprovalRecord.from_dict(item)
+                if record.is_pending:
+                    return record
+        return None
+
+    def decide_approval(self, approval_id: str, *, verdict: str, operator: str, note: str = "") -> tuple[ApprovalRecord, ApexSession | None] | None:
+        """Record an operator's verdict and apply it.
+
+        ``approved`` is the only thing that un-parks a blocked
+        session — the executive cannot do it itself, which is the
+        property the approval gate exists to guarantee. ``rejected``
+        records the decision and leaves the park in place. A
+        second decision on the same id is refused (``None``), so a
+        stale UI cannot overwrite a fresh verdict.
+        """
+        wanted = str(verdict).lower()
+        if wanted not in ("approved", "rejected"):
+            raise ValueError(f"unknown verdict {verdict!r}; expected 'approved' or 'rejected'")
+        found: ApprovalRecord | None = None
+        with self._lock:
+            for session in self._rows.values():
+                for index, item in enumerate(session.approvals):
+                    record = ApprovalRecord.from_dict(item)
+                    if record.approval_id != approval_id:
+                        continue
+                    if not record.is_pending:
+                        return None
+                    record.status = wanted
+                    record.operator = str(operator)
+                    if note:
+                        record.note = str(note)
+                    record.decided_at = time.time()
+                    session.approvals[index] = record.to_dict()
+                    session.updated_at = time.time()
+                    self._save()
+                    found = record
+                    break
+                if found is not None:
+                    break
+        if found is None:
+            return None
+        decided = dict(found.to_dict())
+        decided.pop("session_id", None)
+        self.emit(found.session_id, "approval.decided", **decided)
+        resumed: ApexSession | None = None
+        if wanted == "approved":
+            resumed = self.set_state(
+                found.session_id,
+                ApexSessionState.ACTIVE,
+                reason=f"operator approved {approval_id}",
+            )
+        return found, resumed
+
+    def approvals(self, *, owner: str | None = None) -> list[dict[str, Any]]:
+        """Every approval, newest session first, flattened and owner-scoped."""
+        with self._lock:
+            rows = list(self._rows.values())
+        if owner:
+            rows = [s for s in rows if s.owner == owner]
+        flat: list[dict[str, Any]] = []
+        for session in sorted(rows, key=lambda s: -s.created_at):
+            for item in session.approvals:
+                record = ApprovalRecord.from_dict(item)
+                flat.append({**record.to_dict(), "owner": session.owner, "objective": session.objective})
+        return flat
 
     def delete(self, session_id: str) -> bool:
         with self._lock:

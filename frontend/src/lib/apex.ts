@@ -369,6 +369,275 @@ export async function steerApexSession(sessionId: string, instruction: string): 
 }
 
 // --------------------------------------------------------------------------- //
+// Session control — pause / resume / stop (spec §3, §33)
+// --------------------------------------------------------------------------- //
+//
+// The three verbs move *this conversation's* session. They are a control
+// plane, not a second lifecycle owner: a pause parks the executive's own
+// decision loop and reaches nothing about a run already admitted to
+// `RunManager`, and the `stop` route says so in the server's own note rather
+// than implying work was interrupted.
+
+/** One APEX session record, as `session.to_dict()` sends it. */
+export interface ApexSessionRecord {
+  session_id: string;
+  owner: string;
+  objective: string;
+  state: string;
+  profile: string;
+  contract_digest: string;
+  mission_id: string;
+  thread_id: string;
+  blocked_reason: string;
+  cycle_count: number | null;
+  acceptance_criteria: string[];
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+function mapSessionRecord(v: unknown): ApexSessionRecord {
+  const r = rec(v);
+  return {
+    session_id: str(r.session_id),
+    owner: str(r.owner),
+    objective: str(r.objective),
+    state: str(r.state),
+    profile: str(r.profile),
+    contract_digest: str(r.contract_digest),
+    mission_id: str(r.mission_id),
+    thread_id: str(r.thread_id),
+    blocked_reason: str(r.blocked_reason),
+    cycle_count: optNum(r.cycle_count),
+    acceptance_criteria: Array.isArray(r.acceptance_criteria) ? (r.acceptance_criteria as unknown[]).map(String) : [],
+    created_at: optNum(r.created_at),
+    updated_at: optNum(r.updated_at),
+  };
+}
+
+export type ApexControlAction = "pause" | "resume" | "stop";
+
+export interface ApexControlOutcome {
+  /** Whether *this* call changed anything. A second pause is `false`. */
+  applied: boolean;
+  /** Why nothing changed, when `applied` is false (e.g. "already paused"). */
+  reason: string;
+  /** The session the server reported after the verb — never a local guess. */
+  session: ApexSessionRecord;
+  /** The stop route's boundary note; null when the route carried none. */
+  note: string | null;
+}
+
+function mapControlOutcome(v: unknown): ApexControlOutcome {
+  const r = rec(v);
+  return {
+    applied: bool(r.applied),
+    reason: optStr(r.reason) ?? "",
+    session: mapSessionRecord(r.session),
+    note: optStr(r.note),
+  };
+}
+
+/**
+ * `POST /apex/{pause,resume,stop}`. Admin-gated server-side; a refusal here
+ * rejects with the gateway's reason (403 for a non-admin, 404 when no
+ * session is bound to the scope, 409 for a terminal one).
+ *
+ * The result carries the *server's* session record: the caller renders what
+ * the transition produced, never what the click implied.
+ */
+export async function setApexControl(
+  action: ApexControlAction,
+  opts?: { scopeKey?: string },
+): Promise<ApexControlOutcome> {
+  const body: Record<string, string> = {};
+  if (opts?.scopeKey) body.scope_key = opts.scopeKey;
+  return mapControlOutcome(await send<Rec>(`/apex/${action}`, "POST", body));
+}
+
+// --------------------------------------------------------------------------- //
+// The approval gate — the operator's verdict on parked work
+// --------------------------------------------------------------------------- //
+//
+// A blocked cycle parks the session and creates one pending approval naming
+// the blocker. Only an operator verdict moves it: `approved` un-parks the
+// session, `rejected` keeps it parked with the refusal on record. The client
+// keeps that asymmetry visible — a rejection is not a "close" that makes the
+// row disappear into success.
+
+export interface ApexApprovalRecord {
+  approval_id: string;
+  session_id: string;
+  /** `pending` until an operator decides; then `approved` / `rejected`. */
+  status: string;
+  /** The blocker, in the requester's words. */
+  note: string;
+  requester: string;
+  /** The deciding operator; empty while the ask is pending. */
+  operator: string;
+  requested_at: number | null;
+  decided_at: number | null;
+}
+
+function mapApprovalRecord(v: unknown): ApexApprovalRecord {
+  const r = rec(v);
+  return {
+    approval_id: str(r.approval_id),
+    session_id: str(r.session_id),
+    status: str(r.status),
+    note: str(r.note),
+    requester: str(r.requester),
+    operator: str(r.operator),
+    requested_at: optNum(r.requested_at),
+    decided_at: optNum(r.decided_at),
+  };
+}
+
+export interface ApexApprovals {
+  available: boolean;
+  /** The server's reason when the store could not be read. */
+  reason: string;
+  count: number | null;
+  pending: number | null;
+  approvals: ApexApprovalRecord[];
+}
+
+/**
+ * `GET /apex/approvals`.
+ *
+ * `count` and `pending` are `null` — never `0` — when the store could not be
+ * read: "we could not look" and "nothing is pending" lead to opposite
+ * decisions, so the difference survives the mapping.
+ */
+export async function fetchApexApprovals(): Promise<ApexApprovals> {
+  const r = rec(await get<Rec>("/apex/approvals"));
+  return {
+    available: bool(r.available),
+    reason: optStr(r.reason) ?? "",
+    count: optNum(r.count),
+    pending: optNum(r.pending),
+    approvals: (Array.isArray(r.approvals) ? r.approvals : []).map((row) => mapApprovalRecord(row)),
+  };
+}
+
+export interface ApexApprovalDecision {
+  approval: ApexApprovalRecord;
+  /** True only when this verdict returned the session to ACTIVE. */
+  resumed: boolean;
+  session: ApexSessionRecord | null;
+}
+
+/**
+ * `POST /apex/approvals/{id}/approve` / `.../reject`.
+ *
+ * The two verdicts are asymmetric on purpose: approve un-parks, reject leaves
+ * the session blocked. The response says which happened (`resumed`) rather
+ * than the UI inferring it from which button was pressed. A second verdict on
+ * the same id is a 409 and rejects here with the server's reason.
+ */
+export async function decideApexApproval(
+  approvalId: string,
+  verdict: "approve" | "reject",
+  opts?: { note?: string },
+): Promise<ApexApprovalDecision> {
+  const path = `/apex/approvals/${encodeURIComponent(approvalId)}/${verdict === "approve" ? "approve" : "reject"}`;
+  const r = rec(await send<Rec>(path, "POST", { note: opts?.note ?? "" }));
+  return {
+    approval: mapApprovalRecord(r.approval),
+    resumed: bool(r.resumed),
+    session: r.session === undefined || r.session === null ? null : mapSessionRecord(r.session),
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Goals — the Goal Operating System's HTTP surface (spec §7, §33)
+// --------------------------------------------------------------------------- //
+
+export interface ApexGoalRecord {
+  goal_id: string;
+  objective: string;
+  parent_goal_id: string;
+  state: string;
+  owner: string;
+  priority: number | null;
+  risk: string;
+  plan_version: number | null;
+  success_criteria: string[];
+  constraints: string[];
+  session_id: string;
+  mission_id: string;
+  current_strategy: string;
+  blocked_reason: string;
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+function mapGoalRecord(v: unknown): ApexGoalRecord {
+  const r = rec(v);
+  return {
+    goal_id: str(r.goal_id),
+    objective: str(r.objective),
+    parent_goal_id: str(r.parent_goal_id),
+    state: str(r.state),
+    owner: str(r.owner),
+    priority: optNum(r.priority),
+    risk: str(r.risk),
+    plan_version: optNum(r.plan_version),
+    success_criteria: Array.isArray(r.success_criteria) ? (r.success_criteria as unknown[]).map(String) : [],
+    constraints: Array.isArray(r.constraints) ? (r.constraints as unknown[]).map(String) : [],
+    session_id: str(r.session_id),
+    mission_id: str(r.mission_id),
+    current_strategy: str(r.current_strategy),
+    blocked_reason: str(r.blocked_reason),
+    created_at: optNum(r.created_at),
+    updated_at: optNum(r.updated_at),
+  };
+}
+
+export interface ApexGoals {
+  available: boolean;
+  reason: string;
+  /** `null` when the store could not be read — never 0. */
+  count: number | null;
+  goals: ApexGoalRecord[];
+}
+
+/** `GET /apex/goals`. Owner-scoped unless the caller is an admin. */
+export async function fetchApexGoals(): Promise<ApexGoals> {
+  const r = rec(await get<Rec>("/apex/goals"));
+  return {
+    available: bool(r.available),
+    reason: optStr(r.reason) ?? "",
+    count: optNum(r.count),
+    goals: (Array.isArray(r.goals) ? r.goals : []).map((row) => mapGoalRecord(row)),
+  };
+}
+
+export interface CreateApexGoal {
+  objective: string;
+  description?: string;
+  /** Create as a child of this goal. A child may not outrank any ancestor. */
+  parent_goal_id?: string;
+  session_id?: string;
+  mission_id?: string;
+  success_criteria?: string[];
+  constraints?: string[];
+  priority?: number;
+  risk?: string;
+}
+
+/** `POST /apex/goals`. Authenticated, not admin: the owner is the caller. */
+export async function createApexGoal(input: CreateApexGoal): Promise<ApexGoalRecord> {
+  const body = await send<Rec>("/apex/goals", "POST", input);
+  return mapGoalRecord(rec(body.goal));
+}
+
+/** `GET /apex/goals/{id}` — the stored record. */
+export async function fetchApexGoal(goalId: string): Promise<ApexGoalRecord> {
+  const body = rec(await get<Rec>(`/apex/goals/${encodeURIComponent(goalId)}`));
+  return mapGoalRecord(body.goal);
+}
+
+// --------------------------------------------------------------------------- //
 // The mode toggle
 // --------------------------------------------------------------------------- //
 //
@@ -403,6 +672,14 @@ export interface ApexMode {
   load_note: string | null;
   /** Set when the mode store could not be read at all. */
   load_error: string | null;
+  /**
+   * The live session bound to this scope, or `null` when none exists.
+   *
+   * The control verbs and the approval gate act on it, so a client rendering
+   * the switch can render the controls beside it — and can tell "off" from
+   * "off because no session was ever created".
+   */
+  active_session: ApexSessionRecord | null;
 }
 
 function mapMode(v: unknown): ApexMode {
@@ -420,6 +697,7 @@ function mapMode(v: unknown): ApexMode {
     updated_at: optNum(r.updated_at),
     load_note: optStr(r.load_note),
     load_error: optStr(r.load_error),
+    active_session: r.active_session === undefined || r.active_session === null ? null : mapSessionRecord(r.active_session),
   };
 }
 

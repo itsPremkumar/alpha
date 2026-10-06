@@ -248,15 +248,34 @@ def registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> object:
     return command_registry
 
 
-def test_apex_binds_exactly_the_five_published_verbs() -> None:
+def test_apex_binds_exactly_the_published_verbs() -> None:
     """The binding list is the audit surface for the command family.
 
-    ``bound_commands()`` exists so the parity test and this one can read what
-    was registered rather than trusting that registration happened.
+    ``bound_commands()`` exists so the parity test and this one can read
+    what was registered rather than trusting that registration happened.
+    Fourteen verbs: the five the switch needs, plus the nine session
+    control verbs (pause, resume, stop, steer, take-over, approve,
+    reject, replan, verify) that act on the active session for the
+    conversation.
     """
     import alpha.apex.commands as apex_commands
 
-    assert set(apex_commands.bound_commands()) == {"/apex", "/apex on", "/apex off", "/apex status", "/apex policy"}
+    assert set(apex_commands.bound_commands()) == {
+        "/apex",
+        "/apex on",
+        "/apex off",
+        "/apex status",
+        "/apex policy",
+        "/apex pause",
+        "/apex resume",
+        "/apex stop",
+        "/apex steer",
+        "/apex take-over",
+        "/apex approve",
+        "/apex reject",
+        "/apex replan",
+        "/apex verify",
+    }
 
 
 def test_registering_the_family_twice_does_not_double_bind() -> None:

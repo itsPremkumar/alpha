@@ -84,6 +84,8 @@ REASON_ACCEPTANCE_FAILED = "acceptance_failed"
 REASON_STALLED = "no_progress"
 REASON_BLOCKED = "blocked"
 REASON_IN_PROGRESS = "work_in_progress"
+REASON_SESSION_PAUSED = "session_paused"
+REASON_AWAITING_APPROVAL = "awaiting_operator_approval"
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +206,31 @@ def select_next_action(
             detail={"state": session.state.value},
         )
 
+    # A paused session decides nothing. Pause is the operator's act
+    # (spec §30), and the only exit is the matching resume — a cycle
+    # that decided through a pause would make the pause advisory.
+    if session.state is ApexSessionState.PAUSED:
+        return ExecutiveDecision(
+            action=NextAction.NONE,
+            reason=REASON_SESSION_PAUSED,
+            confidence=1.0,
+            blocked=True,
+            detail={"note": "paused by operator; /apex resume or POST /api/apex/resume clears it"},
+        )
+
+    # A parked session waits for an operator, not for another cycle.
+    # This is the approval gate: the executive parked itself here
+    # (see run_cycle's blocked path), and autonomy cannot un-park
+    # itself — an approval, a replan, or a stop is required.
+    if session.state is ApexSessionState.BLOCKED:
+        return ExecutiveDecision(
+            action=NextAction.NONE,
+            reason=REASON_AWAITING_APPROVAL,
+            confidence=1.0,
+            blocked=True,
+            detail={"note": "parked; POST /api/apex/approvals/{id}/approve, /apex replan or /apex stop moves it"},
+        )
+
     stopped, why = _fleet_stopped()
     if stopped:
         return ExecutiveDecision(
@@ -272,14 +299,6 @@ def select_next_action(
             detail={"mission_id": session.mission_id},
         )
 
-    if session.state is ApexSessionState.BLOCKED:
-        return ExecutiveDecision(
-            action=NextAction.RECOVER,
-            reason=REASON_BLOCKED,
-            confidence=0.5,
-            detail={"blocked_reason": session.blocked_reason},
-        )
-
     return ExecutiveDecision(action=NextAction.PLAN, reason="awaiting_plan", confidence=0.6)
 
 
@@ -344,7 +363,14 @@ def run_cycle(
         if session is None or decision.action is NextAction.NONE:
             return "noop", decision.reason
         if decision.blocked:
-            store.update(session_id, blocked_reason=decision.reason)
+            # A blocked decision parks the session and asks an operator
+            # to decide (spec §24/§27/§30). Parking — rather than
+            # writing ``blocked_reason`` onto a session that keeps
+            # running — is what makes the block observable in state and
+            # the ask a real approval record. Autonomy cannot un-park
+            # itself: the exits are an approval, a replan, or a stop.
+            store.set_state(session_id, ApexSessionState.BLOCKED, reason=decision.reason)
+            store.request_approval(session_id, note=decision.reason, requester="apex.executive")
             store.emit(session_id, "cycle.blocked", decision=decision.to_dict())
             return "blocked", decision.reason
         if decision.action is NextAction.REPORT:

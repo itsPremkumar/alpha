@@ -337,8 +337,8 @@ in another layer; follow the pointer.
   until a real authenticated adapter is wired; installation-scoped SQLite is
   never cross-process exactly-once.
 - **APEX — the executive control plane** — one autonomy contract, one bounded
-  decision cycle, and one read-only status projection over the engines that
-  already exist: **[docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md)**. It is
+  decision cycle, one read-only status projection, and one control surface over
+  the engines that already exist: **[docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md)**. It is
   **additive and deliberately thin**: `RunManager` stays the sole run-lifecycle
   owner and `AutonomySupervisor` the sole background-loop owner, so the loop is
   declared in `register_default_loops()` beside the other nine and every policy
@@ -347,16 +347,20 @@ in another layer; follow the pointer.
   `alpha.bots.authority_ceiling`, the emergency stop to `alpha.runtime.control`).
   `AutonomyContract.policy_sites` records that delegation in machine-readable
   form and `alpha.apex.invariants` maps spec §188 I1–I12 to their live
-  enforcement sites, so both claims are checkable rather than asserted. Three
+  enforcement sites, so both claims are checkable rather than asserted. Four
   refusals are load-bearing: `ApexControls(emergency_stop=False)` raises, every
   terminal state is unreachable over HTTP (only
-  `alpha.mission.acceptance.assert_acceptance_passed` writes one), and
-  `narrow_contract` refuses to widen. The Phase 0 inventory —
+  `alpha.mission.acceptance.assert_acceptance_passed` writes one),
+  `narrow_contract` refuses to widen, and a `BLOCKED` session is the approval
+  gate's to move — the fourteen `/apex` verbs' `pause`/`resume`/`stop`/
+  `take-over` and their HTTP twins refuse it by name with the pending approval
+  named, so pause-then-resume cannot un-park parked work in two commands. The
+  Phase 0 inventory —
   `docs/APEX_INTEGRATION_MAP.md` — records which of the 198 specification
   sections already existed, and is the reason this package is a control plane
   rather than the ~35 modules the spec's module list implies. Tests:
-  `tests/test_apex_contract.py`, `test_apex_executive.py`, `test_apex_api.py`;
-  frontend `src/lib/apex.test.mjs`.
+  `tests/test_apex_contract.py`, `test_apex_executive.py`, `test_apex_api.py`,
+  `test_apex_control.py`; frontend `src/lib/apex.test.mjs`.
 - **Cognitive memory** — server-resolved owner, per-owner/per-directory process
   cache, atomic fsync-backed snapshots and fail-closed owner/corrupt-state
   handling:

@@ -470,5 +470,14 @@ def get_default_catalog_entries():
         ("/apex off", CommandCategory.AUTONOMOUS_OPS, "Disables APEX autopilot for this session, preserving mission state", "/apex off", True),
         ("/apex status", CommandCategory.AUTONOMOUS_OPS, "Shows APEX on/off, profile, contract, invariants and fleet control", "/apex status", True),
         ("/apex policy", CommandCategory.AUTONOMOUS_OPS, "Shows what the APEX contract grants, budgets, and refuses", "/apex policy [off|assist|autonomous|apex_max]", True),
+        ("/apex pause", CommandCategory.AUTONOMOUS_OPS, "Parks this conversation's APEX session; the executive decides nothing further", "/apex pause", True),
+        ("/apex resume", CommandCategory.AUTONOMOUS_OPS, "Releases a paused APEX session", "/apex resume", True),
+        ("/apex stop", CommandCategory.AUTONOMOUS_OPS, "Stops this mission's APEX work (in-flight runs belong to RunManager)", "/apex stop", True),
+        ("/apex steer", CommandCategory.AUTONOMOUS_OPS, "Records a mission constraint on this conversation's APEX session", "/apex steer <instruction>", True),
+        ("/apex take-over", CommandCategory.AUTONOMOUS_OPS, "Parks APEX and records that the operator drives manually", "/apex take-over", True),
+        ("/apex approve", CommandCategory.AUTONOMOUS_OPS, "Approves the pending approval and resumes the parked session", "/apex approve", True),
+        ("/apex reject", CommandCategory.AUTONOMOUS_OPS, "Rejects the pending approval; the session stays parked", "/apex reject", True),
+        ("/apex replan", CommandCategory.AUTONOMOUS_OPS, "Moves this session's non-terminal goals back to replanning", "/apex replan", True),
+        ("/apex verify", CommandCategory.AUTONOMOUS_OPS, "Verifies this session's goals against their success criteria", "/apex verify", True),
     ]
     return entries

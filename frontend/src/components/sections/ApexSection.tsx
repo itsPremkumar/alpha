@@ -1,21 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Cpu, Power, Radio, ShieldCheck } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Cpu, PauseCircle, Power, Radio, ShieldCheck } from "lucide-react";
 
-import { Badge, Btn, ErrorBox, Notice, Section, SkeletonList } from "@/components/ui";
+import { Badge, Btn, ErrorBox, Notice, Section, SkeletonList, inputCls } from "@/components/ui";
 import {
   APEX_PROFILES,
+  decideApexApproval,
+  fetchApexApprovals,
   fetchApexMode,
   fetchApexPolicy,
   fetchApexStatus,
+  type ApexApprovals,
   type ApexBlock,
   type ApexContract,
+  type ApexControlAction,
   type ApexMode,
   type ApexProfile,
   type ApexStatus,
   runApexCycle,
+  setApexControl,
   setApexMode,
+  steerApexSession,
 } from "@/lib/apex";
 
 /**
@@ -35,6 +41,10 @@ import {
  * **This panel starts nothing.** "Run one cycle" records a decision; the
  * Gateway's supervisor loop and a host adapter perform work. The button is
  * labelled accordingly.
+ *
+ * **Control actions re-read before they render.** The session card acts, then
+ * re-reads mode and approvals from the server; no verb or verdict paints a
+ * state it inferred from its own click.
  */
 
 /**
@@ -344,6 +354,288 @@ function ApexToggle({ onError }: { onError: (message: string | null) => void }) 
   );
 }
 
+/** State → tone for the session badge; a state this build does not know
+ *  renders verbatim in grey rather than being snapped to a familiar one. */
+const SESSION_TONE: Record<string, "green" | "amber" | "red" | "gray"> = {
+  active: "green",
+  paused: "amber",
+  blocked: "red",
+  completed: "gray",
+  failed: "red",
+  cancelled: "gray",
+};
+
+/**
+ * Session control — pause / resume / stop, steering, and the approval gate.
+ *
+ * ## The two rules this card is built around
+ *
+ * **Nothing is painted before the server confirms it.** Every action re-reads
+ * the mode (which carries `active_session`) and the approvals list after the
+ * mutation; a refused action leaves the card exactly where it was and shows
+ * the server's reason. The verbs are deliberately *not* re-implemented in the
+ * client — no "resume disabled because paused" logic — because the server's
+ * transition rules are the single authority, and a click that changes nothing
+ * gets the server's own explanation instead of a silently dead button.
+ *
+ * **The two reads fail independently.** The session read and the approval read
+ * go through `Promise.allSettled`: a broken approvals store must not blank a
+ * healthy session view, and vice versa, because "no verdicts are waiting" and
+ * "the verdicts could not be read" lead to opposite actions.
+ */
+function SessionControlCard({ onError }: { onError: (message: string | null) => void }) {
+  const [mode, setMode] = useState<ApexMode | null>(null);
+  const [modeError, setModeError] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<ApexApprovals | null>(null);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [instruction, setInstruction] = useState("");
+  const [verdictNote, setVerdictNote] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  const reload = useCallback(async () => {
+    const [modeResult, approvalsResult] = await Promise.allSettled([fetchApexMode(), fetchApexApprovals()]);
+    if (!mountedRef.current) return;
+    if (modeResult.status === "fulfilled") {
+      setMode(modeResult.value);
+      setModeError(null);
+    } else {
+      setModeError(modeResult.reason instanceof Error ? modeResult.reason.message : String(modeResult.reason));
+    }
+    if (approvalsResult.status === "fulfilled") {
+      setApprovals(approvalsResult.value);
+      setApprovalsError(null);
+    } else {
+      setApprovalsError(
+        approvalsResult.reason instanceof Error ? approvalsResult.reason.message : String(approvalsResult.reason),
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void reload();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [reload]);
+
+  const control = async (verb: ApexControlAction) => {
+    if (busy) return;
+    setBusy(verb);
+    onError(null);
+    setNotice(null);
+    try {
+      const outcome = await setApexControl(verb);
+      await reload();
+      // `applied: false` is the server saying it changed nothing (an
+      // already-paused session) — surface that rather than letting a click
+      // look like it did work. An applied stop carries its boundary note.
+      setNotice(
+        !outcome.applied
+          ? `${verb} changed nothing — ${outcome.reason || "the session was already in that state"}.`
+          : (outcome.note ?? null),
+      );
+    } catch (exc) {
+      // Leave the card untouched: a refused write (404, 409, or the approval
+      // gate naming itself) must not move the UI — it moves the error line.
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const steer = async () => {
+    const session = mode?.active_session;
+    const text = instruction.trim();
+    if (!session || !text || busy) return;
+    setBusy("steer");
+    onError(null);
+    setNotice(null);
+    try {
+      await steerApexSession(session.session_id, text);
+      setInstruction("");
+      setNotice("Steering recorded as a mission constraint on this session.");
+      await reload();
+    } catch (exc) {
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const decide = async (approvalId: string, verdict: "approve" | "reject") => {
+    if (busy) return;
+    setBusy(`${verdict}:${approvalId}`);
+    onError(null);
+    setNotice(null);
+    try {
+      const outcome = await decideApexApproval(approvalId, verdict, { note: verdictNote.trim() });
+      setVerdictNote("");
+      await reload();
+      // The verdicts are asymmetric and the response says which happened —
+      // the card never infers it from which button was pressed.
+      setNotice(
+        verdict === "reject"
+          ? "Rejected — the session stays parked with the blocker on record."
+          : outcome.resumed
+            ? "Approved — the session returned to ACTIVE."
+            : "Approved — the verdict is recorded; the session was not resumed.",
+      );
+    } catch (exc) {
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const session = mode?.active_session ?? null;
+  const pending = approvals?.available ? approvals.approvals.filter((row) => row.status === "pending") : [];
+  const busyNow = busy !== null;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <PauseCircle className="size-4" />
+          Session control
+        </span>
+        {modeError ? (
+          <Badge tone="gray">state unknown</Badge>
+        ) : session ? (
+          <Badge tone={SESSION_TONE[session.state] ?? "gray"}>{session.state}</Badge>
+        ) : (
+          <Badge tone="gray">no session</Badge>
+        )}
+      </div>
+
+      {/* A failed session read is an unknown, not an absence — the badge above
+          says "state unknown" and no control verbs render against it. The
+          approval read below is independent and still renders. */}
+      {modeError && (
+        <Notice
+          tone="warn"
+          message={`The session read failed, so the control state is unknown — this is not the same as no session. ${modeError}`}
+        />
+      )}
+
+      {!modeError &&
+        (session ? (
+          <div className="space-y-2">
+            <p className="text-xs text-neutral-500">
+              Session <code>{session.session_id}</code> · {session.objective || "no objective recorded"}
+              {session.blocked_reason ? ` · blocked: ${session.blocked_reason}` : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Btn onClick={() => control("pause")} disabled={busyNow}>
+                Pause
+              </Btn>
+              <Btn onClick={() => control("resume")} disabled={busyNow}>
+                Resume
+              </Btn>
+              {/* A mission-scoped park, not the fleet ESTOP — the stop route's
+                  own note says so after it applies, and it lands in `notice`. */}
+              <Btn variant="danger" onClick={() => control("stop")} disabled={busyNow}>
+                Stop
+              </Btn>
+            </div>
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void steer();
+              }}
+            >
+              <div className="min-w-[14rem] flex-1">
+                <input
+                  className={inputCls}
+                  value={instruction}
+                  onChange={(event) => setInstruction(event.target.value)}
+                  disabled={busyNow}
+                  aria-label="Steering instruction"
+                  placeholder="Steering instruction — a mission constraint, not a prompt rewrite"
+                />
+              </div>
+              <Btn type="submit" disabled={busyNow || !instruction.trim()}>
+                Steer
+              </Btn>
+            </form>
+          </div>
+        ) : (
+          <p className="text-xs text-neutral-500">
+            No active APEX session in this scope. Pause, resume, stop, steer and approvals act on the session bound to
+            this conversation.
+          </p>
+        ))}
+
+      {approvalsError && (
+        <Notice
+          tone="warn"
+          message={`The approval read failed, so pending verdicts are unknown — not zero. ${approvalsError}`}
+        />
+      )}
+
+      {approvals && !approvals.available && (
+        <Notice
+          tone="warn"
+          message={`Approvals unavailable — ${approvals.reason || "the store could not be read"}. Pending verdicts are unknown, not zero.`}
+        />
+      )}
+
+      {approvals?.available && (
+        <div className="space-y-2">
+          <p className="text-xs text-neutral-500">
+            {approvals.pending === null
+              ? "Pending approvals were not reported."
+              : approvals.pending === 0
+                ? "No approvals are waiting."
+                : `${approvals.pending} awaiting an operator verdict.`}
+          </p>
+
+          {pending.length > 0 && (
+            <>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold">Verdict note (optional)</span>
+                <input
+                  className={inputCls}
+                  value={verdictNote}
+                  onChange={(event) => setVerdictNote(event.target.value)}
+                  disabled={busyNow}
+                  placeholder="Recorded with the verdict"
+                />
+              </label>
+              <ul className="space-y-2">
+                {pending.map((row) => (
+                  <li
+                    key={row.approval_id}
+                    className="space-y-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800"
+                  >
+                    <p className="text-xs">{row.note || "The blocker was parked without a named reason."}</p>
+                    <p className="text-[11px] text-neutral-500">
+                      requested by {row.requester || "unknown requester"} · session {row.session_id}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Btn onClick={() => decide(row.approval_id, "approve")} disabled={busyNow}>
+                        Approve
+                      </Btn>
+                      <Btn variant="danger" onClick={() => decide(row.approval_id, "reject")} disabled={busyNow}>
+                        Reject
+                      </Btn>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {notice && <Notice tone="neutral" message={notice} />}
+    </div>
+  );
+}
+
 export function ApexSection() {
   const [status, setStatus] = useState<ApexStatus | null>(null);
   const [policy, setPolicy] = useState<ApexContract | null>(null);
@@ -440,6 +732,10 @@ export function ApexSection() {
         {/* The switch owns the first row: it is the one control that decides
             whether anything below it is live at all. */}
         <ApexToggle onError={setError} />
+
+        {/* Session-scoped verbs and the approval gate, reading their own two
+            routes so a failure in one does not blank the other. */}
+        <SessionControlCard onError={setError} />
 
         <ContractCard contract={policy} />
 

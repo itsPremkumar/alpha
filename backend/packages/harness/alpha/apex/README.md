@@ -62,6 +62,11 @@ curl -s localhost:8001/api/apex/invariants | jq '{declared,live}'   # 12 declare
 | `store.py` | §10, §51, §57, §120 | Durable sessions, usage ledger, steering constraints |
 | `executive.py` | §63–§65 | The next-action cycle |
 | `status.py` | §55, §59 | One bounded, read-only projection |
+| `mode.py` | §3 | The persisted ON/OFF switch a UI toggle actually flips |
+| `commands.py` | §3 | The 14-verb `/apex` family, on the shared command registry |
+| `goals.py` | §7, §8 | The Goal Operating System: objective, criteria, evidence |
+| `strategy.py` | §12, §13, §36, §37 | Strategy choice, swarm sizing, stuck detection |
+| `agents.py` | §10, §11, §16, §17, §28 | The specialist factory over existing owners |
 
 ## Enabling
 

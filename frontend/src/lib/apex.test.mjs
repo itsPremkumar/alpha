@@ -537,3 +537,281 @@ test("a refused mode read rejects rather than resolving to a defaulted OFF switc
   record("GET /apex/mode", { reject: "HTTP 500: mode store unreachable" });
   await assert.rejects(() => apex.fetchApexMode(), /unreachable/);
 });
+
+/* ── Session control: pause / resume / stop ──────────────────────────────── */
+
+/*
+ * The control verbs are a control plane, not a second lifecycle owner, and the
+ * card renders only what the server confirmed. Every test below names a payload
+ * that would make a plausible wrong claim: the click's intent painted as an
+ * applied transition, the stop route's boundary note dropped, a 409 folded into
+ * a quiet no-op, or an optional field inflated to zero.
+ */
+
+const SESSION_RECORD = {
+  session_id: "apx-1",
+  owner: "tester",
+  objective: "ship the release",
+  state: "paused",
+  profile: "autonomous",
+  contract_digest: "apxc-abc123",
+  mission_id: "msn-9",
+  thread_id: "thread-1",
+  blocked_reason: "",
+  cycle_count: 4,
+  acceptance_criteria: ["tests pass"],
+  created_at: 1700000000,
+  updated_at: 1700000100,
+};
+
+test("pause posts to /apex/pause and maps the server's session, not the click's intent", async () => {
+  record("POST /apex/pause", {
+    body: { applied: true, reason: "", session: { ...SESSION_RECORD, state: "paused" }, note: null },
+  });
+  const outcome = await apex.setApexControl("pause");
+  assert.equal(lastCall().path, "/apex/pause");
+  assert.equal(lastCall().method, "POST");
+  assert.deepEqual(lastCall().body, {}, "the caller's own scope is the server default; no scope_key is invented");
+  assert.equal(outcome.applied, true);
+  assert.equal(outcome.session.state, "paused");
+});
+
+test("an explicit scope travels as scope_key, never interpolated into the path", async () => {
+  record("POST /apex/resume", { body: { applied: true, reason: "", session: SESSION_RECORD, note: null } });
+  await apex.setApexControl("resume", { scopeKey: "thread/7" });
+  assert.equal(lastCall().path, "/apex/resume");
+  assert.deepEqual(lastCall().body, { scope_key: "thread/7" });
+});
+
+test("a verb that changed nothing keeps applied:false and the server's reason", async () => {
+  record("POST /apex/pause", {
+    body: { applied: false, reason: "already paused", session: SESSION_RECORD, note: null },
+  });
+  const outcome = await apex.setApexControl("pause");
+  assert.equal(outcome.applied, false);
+  assert.equal(outcome.reason, "already paused");
+});
+
+test("stop carries the RunManager boundary note through the mapping", async () => {
+  // The stop verb parks the mission's session; it is not the fleet ESTOP. If
+  // the note were dropped, the UI would imply in-flight work was interrupted.
+  record("POST /apex/stop", {
+    body: {
+      applied: true,
+      reason: "",
+      session: { ...SESSION_RECORD, state: "paused" },
+      note: "APEX park only — in-flight runs belong to RunManager (spec §24) and were not interrupted.",
+    },
+  });
+  const outcome = await apex.setApexControl("stop");
+  assert.match(outcome.note, /RunManager/);
+});
+
+test("the approval gate's 409 rejects with the route it names rather than resolving", async () => {
+  record("POST /apex/resume", {
+    reject:
+      "HTTP 409: session apx-1 is parked awaiting approval (acceptance pending); it already decides nothing, and the control verbs do not move a blocked session — decide it with POST /api/apex/approvals/{approval_id}/approve or .../reject",
+  });
+  await assert.rejects(() => apex.setApexControl("resume"), /approvals/);
+});
+
+test("session fields absent from the payload map to null, never 0", async () => {
+  record("POST /apex/pause", {
+    body: { applied: true, reason: "", session: { session_id: "apx-1", state: "active" }, note: null },
+  });
+  const outcome = await apex.setApexControl("pause");
+  assert.equal(outcome.session.cycle_count, null);
+  assert.equal(outcome.session.created_at, null);
+  assert.equal(outcome.session.blocked_reason, "");
+});
+
+/* ── The approval gate over HTTP ─────────────────────────────────────────── */
+
+const PENDING_APPROVAL = {
+  approval_id: "apr-1",
+  session_id: "apx-1",
+  status: "pending",
+  note: "acceptance pending: tests pass",
+  requester: "apex.executive",
+  operator: "",
+  requested_at: 1700000000,
+  decided_at: null,
+};
+
+const APPROVALS_BODY = {
+  available: true,
+  count: 2,
+  pending: 1,
+  approvals: [
+    PENDING_APPROVAL,
+    { ...PENDING_APPROVAL, approval_id: "apr-0", status: "rejected", operator: "admin-1", decided_at: 1700000500 },
+  ],
+};
+
+test("approvals reads GET /apex/approvals and keeps pending separate from count", async () => {
+  record("GET /apex/approvals", { body: APPROVALS_BODY });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(lastCall().path, "/apex/approvals");
+  assert.equal(lastCall().method, "GET");
+  assert.equal(list.available, true);
+  assert.equal(list.count, 2);
+  assert.equal(list.pending, 1);
+  assert.equal(list.approvals.length, 2);
+  assert.equal(list.approvals[0].approval_id, "apr-1");
+  assert.equal(list.approvals[0].status, "pending");
+});
+
+test("a degraded approval store keeps count and pending null instead of 0", async () => {
+  // "We could not look" and "nothing is pending" lead to opposite actions, so
+  // the difference has to survive the mapping rather than defaulting to zero.
+  record("GET /apex/approvals", {
+    body: { available: false, reason: "JSONDecodeError: approvals.json is not JSON", count: null, approvals: [] },
+  });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(list.available, false);
+  assert.equal(list.count, null);
+  assert.equal(list.pending, null);
+  assert.deepEqual(list.approvals, []);
+  assert.match(list.reason, /JSONDecodeError/);
+});
+
+test("a measured zero pending stays a real zero", async () => {
+  record("GET /apex/approvals", { body: { available: true, count: 0, pending: 0, approvals: [] } });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(list.count, 0);
+  assert.equal(list.pending, 0);
+});
+
+test("a verdict posts to the approval's approve route with the note", async () => {
+  record("POST /apex/approvals/apr-1/approve", {
+    body: {
+      approval: { ...PENDING_APPROVAL, status: "approved", operator: "admin-1", decided_at: 1700000900 },
+      resumed: true,
+      session: { ...SESSION_RECORD, state: "active" },
+    },
+  });
+  const outcome = await apex.decideApexApproval("apr-1", "approve", { note: "looks fine" });
+  assert.equal(lastCall().path, "/apex/approvals/apr-1/approve");
+  assert.equal(lastCall().method, "POST");
+  assert.deepEqual(lastCall().body, { note: "looks fine" });
+  assert.equal(outcome.approval.status, "approved");
+  assert.equal(outcome.resumed, true, "the response says the park was released");
+  assert.equal(outcome.session.state, "active");
+});
+
+test("a reject posts to the reject route with resumed false and no session", async () => {
+  // The asymmetry: reject does NOT un-park, so `resumed` is false and the
+  // response carries no session. Inferring success from which button was
+  // pressed would paint a refusal as a release.
+  record("POST /apex/approvals/apr-1/reject", {
+    body: {
+      approval: { ...PENDING_APPROVAL, status: "rejected", operator: "admin-1", decided_at: 1700000900 },
+      resumed: false,
+      session: null,
+    },
+  });
+  const outcome = await apex.decideApexApproval("apr-1", "reject");
+  assert.equal(lastCall().path, "/apex/approvals/apr-1/reject");
+  assert.deepEqual(lastCall().body, { note: "" }, "an omitted note still sends the field the route expects");
+  assert.equal(outcome.resumed, false);
+  assert.equal(outcome.session, null);
+});
+
+test("an approval id is url-encoded rather than interpolated raw", async () => {
+  record("POST /apex/approvals/apr%2F..%2Fsneaky/approve", {
+    body: { approval: PENDING_APPROVAL, resumed: false, session: null },
+  });
+  await apex.decideApexApproval("apr/../sneaky", "approve");
+  assert.equal(lastCall().path, "/apex/approvals/apr%2F..%2Fsneaky/approve");
+});
+
+test("a second verdict's 409 rejects with the server's reason", async () => {
+  record("POST /apex/approvals/apr-1/approve", {
+    reject: "HTTP 409: approval apr-1 was already decided ('rejected'); a verdict is never overwritten",
+  });
+  await assert.rejects(() => apex.decideApexApproval("apr-1", "approve"), /already decided/);
+});
+
+/* ── Goals — the Goal Operating System's HTTP surface ────────────────────── */
+
+const GOAL_RECORD = {
+  goal_id: "gl-1",
+  objective: "fix the browser",
+  parent_goal_id: "",
+  state: "executing",
+  owner: "tester",
+  priority: 50,
+  risk: "R1",
+  plan_version: 2,
+  success_criteria: ["suite passes"],
+  constraints: ["no network"],
+  session_id: "apx-1",
+  mission_id: "msn-9",
+  current_strategy: "stepwise",
+  blocked_reason: "",
+  created_at: 1700000000,
+  updated_at: 1700000100,
+};
+
+test("goals reads GET /apex/goals and maps the records verbatim", async () => {
+  record("GET /apex/goals", { body: { available: true, count: 1, goals: [GOAL_RECORD] } });
+  const list = await apex.fetchApexGoals();
+  assert.equal(lastCall().path, "/apex/goals");
+  assert.equal(lastCall().method, "GET");
+  assert.equal(list.count, 1);
+  assert.equal(list.goals[0].goal_id, "gl-1");
+  assert.equal(list.goals[0].state, "executing");
+  assert.deepEqual(list.goals[0].success_criteria, ["suite passes"]);
+});
+
+test("a goal store that could not be read keeps count null, not 0", async () => {
+  record("GET /apex/goals", {
+    body: { available: false, reason: "OSError: goals.json unreadable", count: null, goals: [] },
+  });
+  const list = await apex.fetchApexGoals();
+  assert.equal(list.available, false);
+  assert.equal(list.count, null);
+  assert.deepEqual(list.goals, []);
+  assert.match(list.reason, /OSError/);
+});
+
+test("creating a goal posts to /apex/goals with the caller's objective", async () => {
+  record("POST /apex/goals", { body: { goal: GOAL_RECORD } });
+  const goal = await apex.createApexGoal({ objective: "fix the browser", success_criteria: ["suite passes"] });
+  assert.equal(lastCall().path, "/apex/goals");
+  assert.equal(lastCall().method, "POST");
+  assert.equal(lastCall().body.objective, "fix the browser");
+  assert.equal(goal.goal_id, "gl-1");
+  assert.equal(goal.session_id, "apx-1", "the session link survives the mapping — /decisions needs it");
+});
+
+test("one goal reads its own route with the id encoded", async () => {
+  record("GET /apex/goals/gl%2F1", { body: { goal: GOAL_RECORD, tree: { goal: "gl-1", children: [] } } });
+  const goal = await apex.fetchApexGoal("gl/1");
+  assert.equal(lastCall().path, "/apex/goals/gl%2F1");
+  assert.equal(goal.goal_id, "gl-1");
+  assert.equal(goal.parent_goal_id, "");
+});
+
+/* ── active_session rides the mode read ──────────────────────────────────── */
+
+test("the mode read carries the active session the control verbs act on", async () => {
+  record("GET /apex/mode", { body: { ...OFF_MODE, active_session: SESSION_RECORD } });
+  const mode = await apex.fetchApexMode();
+  assert.equal(mode.active_session.session_id, "apx-1");
+  assert.equal(mode.active_session.state, "paused");
+  assert.equal(mode.active_session.cycle_count, 4);
+  assert.deepEqual(mode.active_session.acceptance_criteria, ["tests pass"]);
+});
+
+test("a mode with no bound session keeps active_session null", async () => {
+  // Null is a real answer ("no session exists for this scope"); an absent
+  // key from an older Gateway must not become a fabricated record either.
+  record("GET /apex/mode", { body: { ...OFF_MODE, active_session: null } });
+  const mode = await apex.fetchApexMode();
+  assert.equal(mode.active_session, null);
+
+  record("GET /apex/mode", { body: OFF_MODE });
+  const older = await apex.fetchApexMode();
+  assert.equal(older.active_session, null);
+});
