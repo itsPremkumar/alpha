@@ -211,17 +211,87 @@ failed**. Every plan that dispatches through it fails by construction.
 The refusal itself is correct and must not be weakened. What is missing is the
 runner.
 
-- [ ] Decide the executor: reuse the ordinary `task` executor, or a distinct deep
-      one. Record the decision and why.
-- [ ] Bind a real runner at assembly, with the same lifecycle, lease and budget
-      rules the ordinary path uses.
+#### Measured scope, 2026-10-06 — read this before estimating
+
+The definitions are **real**; only the execution is missing.
+
+| Deep agent | tools | max_turns | timeout |
+| --- | --- | --- | --- |
+| `deep-architect` | 3 | 120 | 1800 |
+| `deep-code-reviewer` | 3 | 120 | 1800 |
+| `deep-debugger` | 3 | 120 | 1800 |
+| `deep-performance` | 3 | 120 | 1800 |
+| `deep-security` | 3 | 120 | 1800 |
+| `deep-test-synthesizer` | 3 | 120 | 1800 |
+
+And the decisive measurement: **no deep agent ever constructs a
+`SubagentExecutor`.** Every construction site in the tree is
+`batch_service.py:226`, `executor.py:996` (its own internal path), and the
+`task` tool. `grep SubagentExecutor packages/harness/alpha/subagents/` returns
+those three plus re-exports in `__init__.py`. There is no partial wiring to
+finish — the execution path does not exist.
+
+The seam itself is narrow and well-specified:
+`DeepAgentRunner = Callable[[DeepAgentSession], DeepHandoffContract]`, and the
+session already carries `spec: DeepTaskSpec` and `workspace_dir`.
+
+What a real runner must therefore do, in order:
+
+1. Resolve the definition by `agent_type` from `BUILTIN_SUBAGENTS`.
+2. Assemble tools via `get_available_tools(...)`, filtered to the definition's
+   3-tool allowlist, with `task` excluded so a deep agent cannot nest.
+3. Construct `SubagentExecutor` — about 25 keyword arguments, including the whole
+   identity-propagation set (`user_id`, `user_role`, `oauth_provider`,
+   `oauth_id`, `is_internal`, `authz_attributes`, `channel_user_id`,
+   `alpha_trace_id`, `run_extensions`), plus `sandbox_state`, `thread_data`,
+   `uploaded_files` and `context_snapshot`.
+4. Submit through `execute_async` onto the **persistent isolated subagent loop**,
+   behind the process-wide admission controller Gateway installs at startup.
+5. Poll the registry for the terminal `SubagentResult`.
+6. Translate into a `DeepHandoffContract` with a **real** status, the real final
+   answer as the executive summary, real artifacts, and real token usage
+   harvested from the run.
+
+#### Why this is the riskiest item in the plan
+
+`subagents/AGENTS.md` documents the isolated-loop boundary in detail, and each
+rule it states is a bug someone already shipped:
+
+- ContextVars must be copied into the persistent loop, or checkpoint lineage,
+  tracing and the namespaced message stream are lost.
+- `RunJournal` must be kept **out** of the child loop (it carries an
+  `alpha_loop_bound` marker) — crossing it causes duplicate accounting and
+  `Future attached to a different loop`.
+- `record_external_llm_usage_records` must never run on the persistent loop or a
+  worker thread; the report crosses back via `call_soon_threadspacesafe` on the
+  captured parent loop.
+- Deferred cleanup must be pinned to the isolated loop via
+  `run_on_isolated_subagent_loop()`, because `asyncio.run()` cancels
+  caller-loop tasks on teardown.
+
+A runner that gets the loop boundary wrong produces silently wrong token
+accounting rather than a visible failure — the worst failure mode in this
+repository, and the reason this task is scheduled rather than improvised.
+
+#### Recommendation: do 3.T1 and 3.T2 together
+
+Both need the same machinery — isolated-loop submission, admission control,
+registry polling, terminal-state translation. Building it twice risks two subtly
+different boundary implementations, and the second one is the one nobody reviews.
+One implementation, two bindings.
+
+- [ ] Resolve the definition and assemble the filtered toolset.
+- [ ] Construct and submit the executor on the isolated loop.
+- [ ] Poll to a terminal `SubagentResult`.
+- [ ] Translate to a real `DeepHandoffContract`, claiming `passed` for a test
+      oracle **only** when that check genuinely executed.
+- [ ] Bind at assembly with the ordinary lifecycle, lease and budget rules.
 - [ ] Make the SUBAGENT paradigm's `failed` mapping depend on the delegation
       result rather than on an unconditional refusal.
 - [ ] Negative-control: unbind the runner and confirm `UNRECOVERABLE_ERROR`
-      returns with its reason intact.
+      returns with its reason intact — the refusal must survive.
 - [ ] Gate: a real `delegate_to_deep_agent` call executes and returns a real
-      result; the planning bridge's SUBAGENT paradigm stops failing by
-      construction.
+      result; token accounting matches the `task` path on the same work.
 - [ ] Record in the audit file that `deep_agent` is real.
 
 ### 3.T2 The subagent control plane has no runner
@@ -556,7 +626,7 @@ Tick in order. Each line links to its section.
 - [ ] 0.T3b Pre-commit eslint gate (shared state; additions-only instruction)
 
 ### Phase 1 — registered-but-dead
-- [ ] 3.T1 Deep-agent delegation: bind a real runner
+- [ ] 3.T1 Deep-agent runner (scope measured; pair with 3.T2)
 - [ ] 3.T2 Control-plane runner: start, heartbeat, complete
 - [ ] 3.T3 Slash commands: publish dispatchable count
 - [ ] 3.T4 Self-repair: implement or keep refusing, honestly
@@ -601,7 +671,7 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | Subagent catalog panel | 5 live screenshots; 8 definitions, 23 tool chips | 40 new cases, 5 negative controls; tsc 0 |
 | 2026-10-06 | Live subagent objective | Rendered rows show the real objective | flat-only read → 15/1; restored 16/0 |
 | 2026-10-06 | Control-plane runner | `docs/audits/SUBAGENT_VISIBILITY.md` | finding documented, **fix not started** |
-| 2026-10-06 | Deep-agent runner | — | **not started** |
+| 2026-10-06 | 3.T1 deep-agent runner | measured: no deep agent constructs a `SubagentExecutor` | **not started** - scope + loop-boundary risk recorded |
 | 2026-10-06 | Prompt-only assignment | — | **not started** |
 | 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |
 | 2026-10-06 | 0.T2 engine count | fresh gen was 119 vs committed 118 | fixed `collect_engines()`; 8 cases; NC → `alpha.backend` counted |
