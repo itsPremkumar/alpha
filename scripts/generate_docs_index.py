@@ -250,6 +250,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "The frontend-eslint pre-commit hook cannot pass: it runs a bare npx eslint against a frontend that has no ESLint configuration and declares its lint as a typecheck, so every commit touching frontend/ is refused. Root cause, evidence, and the two fix options.",
     ),
+    "audits/SUBAGENT_VISIBILITY.md": DocumentSpec(
+        "operations",
+        "Why a subagent cannot be seen working in the UI: the task delegation path really executes but never registers, while the control plane registers but has no runner, since start_subagent has no production caller. Measured, with the two honest options and why an invented runner is refused.",
+    ),
+    "FEATURE_COMPLETION_PLAN.md": DocumentSpec(
+        "operations",
+        "The working plan for every remaining feature, as tickable tasks with a verification gate each: the baseline count drift, the registered-but-dead capability families (deep-agent delegation, the control-plane runner, slash-command dispatch, self-repair), prompt-only work assignment, swarm/dynamic-workflow/company/messages end to end, and the measured frontend honesty defects.",
+    ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
     # sentence, which is the point of this table. REGENERATE docs/INDEX.md after
