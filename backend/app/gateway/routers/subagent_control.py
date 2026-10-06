@@ -13,14 +13,16 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.deps import require_admin_user
+from alpha.subagents.executor import run_on_isolated_subagent_loop
 from alpha.subagents.lifecycle import (
     SubagentContract,
     SubagentStatusEnum,
     get_subagent_lifecycle_manager,
 )
+from alpha.subagents.lifecycle_runner import run_registered_subagent
 from alpha.subagents.promotion import get_subagent_promotion_manager
 from alpha.subagents.resilience import get_subagent_resilience_engine
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/subagents/control", tags=["subagents-control"])
@@ -99,9 +101,61 @@ async def spawn_subagent(payload: SpawnSubagentRequest, request: Request):
             parent_task_id=payload.parent_task_id,
             depth=payload.depth,
         )
-        return rec.to_dict()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Dispatch the record for real. Until 2026-10-06 this route returned a `ready`
+    # record and nothing ever started it: `SubagentLifecycleManager.start_subagent`
+    # had no production caller anywhere in the tree, so `GET /api/subagents/control`
+    # — the surface `SubagentsSection` renders as "Running now" — could only ever
+    # show registered intentions. Measured evidence in docs/audits/SUBAGENT_VISIBILITY.md.
+    #
+    # The runner is scheduled, not awaited: the response returns the record
+    # immediately (as its docstring always promised) while execution proceeds on
+    # the process-owned isolated subagent loop. `run_on_isolated_subagent_loop`
+    # pins it there so an `asyncio.run()` caller teardown cannot cancel live work.
+    agent_name = payload.role if payload.role in _known_subagent_names() else _DEFAULT_SUBAGENT
+    try:
+        run_on_isolated_subagent_loop(
+            run_registered_subagent(
+                rec.subagent_id,
+                agent_name=agent_name,
+                task=payload.instructions.strip() or payload.objective,
+                thread_id=None,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - the record still exists; report why it will not run
+        logger.warning("could not dispatch subagent %s: %s: %s", rec.subagent_id, type(exc).__name__, exc)
+        await asyncio.to_thread(
+            lifecycle.fail_subagent,
+            rec.subagent_id,
+            f"The subagent was registered but could not be dispatched: {type(exc).__name__}: {exc}",
+            reason="dispatch_failed",
+        )
+        refreshed = await asyncio.to_thread(lifecycle.get_subagent, rec.subagent_id)
+        return (refreshed or rec).to_dict()
+
+    return rec.to_dict()
+
+
+#: Fallback definition when a caller asks for a role that is not a subagent name.
+#: The lifecycle plane stores an arbitrary `role` string, but only a real
+#: definition can execute, so an unknown role runs as the generalist rather than
+#: silently registering work nothing will ever pick up.
+_DEFAULT_SUBAGENT = "general-purpose"
+
+
+def _known_subagent_names() -> frozenset[str]:
+    """Names that resolve to an executable subagent definition."""
+    global _KNOWN_SUBAGENT_NAMES
+    if _KNOWN_SUBAGENT_NAMES is None:
+        from alpha.subagents.registry import get_available_subagent_names
+
+        _KNOWN_SUBAGENT_NAMES = frozenset(get_available_subagent_names())
+    return _KNOWN_SUBAGENT_NAMES
+
+
+_KNOWN_SUBAGENT_NAMES: frozenset[str] | None = None
 
 
 @router.get("/{subagent_id}")

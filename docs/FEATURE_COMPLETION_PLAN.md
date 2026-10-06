@@ -294,15 +294,15 @@ One implementation, two bindings.
       result; token accounting matches the `task` path on the same work.
 - [ ] Record in the audit file that `deep_agent` is real.
 
-### 3.T2 The subagent control plane has no runner
+### 3.T2 The subagent control plane has no runner — **RUNNER WRITTEN, live run NOT yet verified**
 
 **This is the user's original request, and it is the reason the Subagents panel
-says `ready` forever.** Full analysis: `docs/audits/SUBAGENT_VISIBILITY.md`.
+said `ready` forever.** Full analysis: `docs/audits/SUBAGENT_VISIBILITY.md`.
 
-Measured: `SubagentLifecycleManager.start_subagent` has **no production caller**.
-The only production lifecycle call is `spawn_subagent` from the `/subagent:spawn`
-slash command. So a spawned record is created at `ready` and nothing transitions,
-heartbeats, or completes it.
+Measured: `SubagentLifecycleManager.start_subagent` had **no production caller**.
+The only production lifecycle call was `spawn_subagent` from the
+`/subagent:spawn` route, so a spawned record was created at `ready` and nothing
+transitions, heartbeats, or completes it.
 
 Two paths, wired to unrelated surfaces:
 
@@ -311,15 +311,89 @@ Two paths, wired to unrelated surfaces:
 | `task` delegation | **Yes** — 3 artifacts on disk | **No** — never registers |
 | `/api/subagents/control/spawn` | **No** | Yes, registers at `ready` |
 
-- [ ] Implement the runner: `start_subagent` on dispatch, heartbeat on the lease,
-      complete with the real result, mark failure with the real reason.
-- [ ] Have `task` register each dispatch **and maintain its heartbeat**.
-- [ ] Reject the naive version explicitly: registering without heartbeats makes
-      every row decay to `stalled` without ever having been stalled, which is a
-      fabricated measurement.
-- [ ] Gate: a delegated subagent appears in `/api/subagents/control` as `running`,
-      transitions to `completed` with a result, and the UI shows all three states
-      from real records.
+#### Scope correction, measured before writing any code
+
+The plan previously estimated "about 25 required keyword arguments". Measured
+with `scripts/probe_deep_runner_wiring.py`, that was wrong in the runner's
+favour:
+
+- `SubagentExecutor.__init__` requires **two** kwargs — `config` and `tools`.
+  The other 22 (the whole identity-propagation set included) are optional.
+- `get_subagent_config` **does** resolve the deep agents:
+  `deep-architect` → 3 tools, 4 disallowed, 120 turns, 1800 s, `model=inherit`.
+- `execute_async(task, task_id) -> str` and
+  `get_background_task_result(execution_id) -> SubagentResult | None` form a
+  clean round-trip.
+
+So the config and registry layers were already finished; only the runner was
+missing. The estimate was corrected in the plan rather than left standing.
+
+#### What was built
+
+`subagents/lifecycle_runner.py` — the single implementation of the execution
+boundary, deliberately the *only* place that drives a lifecycle record, so 3.T1
+binds to it instead of writing a second one. `subagent_control.py::spawn` now
+schedules it on `run_on_isolated_subagent_loop`, so the response still returns
+immediately (as its docstring always promised) while the work proceeds on the
+process-owned loop where `asyncio.run()` teardown cannot cancel it.
+
+Four honesty decisions inside the runner, each of which was a trap:
+
+1. **`renew_lease` instead of `record_heartbeat`.** `record_heartbeat`'s
+   `progress_percent` defaults to `0.0` and clamps with `min(100.0, max(0.0, v))`,
+   so passing `None` raises `TypeError` and omitting it asserts *measured zero
+   progress*. The registry exposes a status enum, not a percentage. So the runner
+   renews the lease and records the real status string, and never stamps a number
+   it did not measure.
+2. **`artifacts` left unset.** `SubagentResult` carries no artifact list
+   (task_id, status, result, error, stop_reason, ai_messages, token_usage_records,
+   tool_receipts, bash_executions). `getattr(result, "artifacts", [])` would
+   yield `[]` every time, and an always-empty artifact list is indistinguishable
+   from "this run produced no files". Populating it from the result *text* would
+   be worse — parsing prose as a path list.
+3. **Only `COMPLETED` completes.** `FAILED`, `CANCELLED` and `TIMED_OUT` each
+   call `fail_subagent` with the real reason, and a failed run's prose is never
+   promoted into a deliverable summary.
+4. **A submission exception fails the record.** Otherwise the record is left
+   `running` because the runner died quietly — which is the original bug wearing
+   a different hat.
+
+- [x] Runner written and wired into the spawn route.
+- [x] `tests/test_subagent_lifecycle_runner.py`, **13 cases**, each aimed at a
+      plausible lie rather than a crash: every non-completed terminal status, a
+      submission exception, an unknown definition, a poller ceiling, a start
+      refusal at the attempt ceiling, lease renewal across a slow run, the
+      absence of a progress percentage, a capped run keeping its `stop_reason`,
+      and an empty completion staying empty.
+- [x] Start-refusal honoured: `start_subagent` returning `False` at the attempt
+      ceiling stops the runner before it reaches the executor, so a restart sweep
+      can never resurrect a unit that has given up.
+- [ ] **Live end-to-end run NOT yet performed.** No real subagent has executed
+      through this path, so the claim is "the runner is unit-verified", **not**
+      "a subagent runs". The next gate is a real spawn observed moving
+      `ready -> running -> completed` with a real summary in the UI.
+- [ ] Have `task` register each dispatch **and maintain its heartbeat**, so the
+      ordinary delegation path reaches the same live plane.
+- [x] The naive version is rejected in the design: registering without
+      heartbeats makes every row decay to `stalled` without ever having been
+      stalled, which is the fabricated measurement this task exists to remove.
+
+#### Process incident worth keeping
+
+An interrupted negative-control run left a mutation in the source
+(`if now - started >= wait_ceiling_seconds:` became `if False:`), and a follow-up
+integrity check **reported the file as clean** because its output had not flushed
+before the command timed out. `ruff` caught it instead, as
+`F841 Local variable 'started' is assigned to but never used` — a dead variable
+is the fingerprint of a deleted condition.
+
+Two rules came out of it, and both generalise past this task:
+
+- **Never mutate a source file for a negative control without a restore that is
+  verified after the fact.** The restore was in the same script as the mutation,
+  so an interruption between them left the defect in place.
+- **A clean-looking integrity check that did not print is not a check.** Read the
+  output, do not infer it from the absence of an error.
 
 ### 3.T3 Slash-command dispatch — 54 of 461 rows
 
@@ -627,7 +701,7 @@ Tick in order. Each line links to its section.
 
 ### Phase 1 — registered-but-dead
 - [ ] 3.T1 Deep-agent runner (scope measured; pair with 3.T2)
-- [ ] 3.T2 Control-plane runner: start, heartbeat, complete
+- [x] 3.T2a Control-plane runner written + 13 unit cases (live run still open)
 - [ ] 3.T3 Slash commands: publish dispatchable count
 - [ ] 3.T4 Self-repair: implement or keep refusing, honestly
 - [ ] 3.T5 Document every gated capability
@@ -671,7 +745,8 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | Subagent catalog panel | 5 live screenshots; 8 definitions, 23 tool chips | 40 new cases, 5 negative controls; tsc 0 |
 | 2026-10-06 | Live subagent objective | Rendered rows show the real objective | flat-only read → 15/1; restored 16/0 |
 | 2026-10-06 | Control-plane runner | `docs/audits/SUBAGENT_VISIBILITY.md` | finding documented, **fix not started** |
-| 2026-10-06 | 3.T1 deep-agent runner | measured: no deep agent constructs a `SubagentExecutor` | **not started** - scope + loop-boundary risk recorded |
+| 2026-10-06 | 3.T2a control-plane runner | 13 cases; 4 honesty traps avoided by design | unit-verified; **live run NOT yet done** |
+| 2026-10-06 | 3.T1 deep-agent runner | measured: no deep agent constructs a `SubagentExecutor`; executor needs only 2 kwargs | **not started** - scope corrected in plan |
 | 2026-10-06 | Prompt-only assignment | — | **not started** |
 | 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |
 | 2026-10-06 | 0.T2 engine count | fresh gen was 119 vs committed 118 | fixed `collect_engines()`; 8 cases; NC → `alpha.backend` counted |
