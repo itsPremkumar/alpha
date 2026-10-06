@@ -117,10 +117,7 @@ def main() -> int:
         if key in md:
             print(f"    {key:26} {json.dumps(md[key])[:140]}")
     if md.get("acceptance_passed") is True:
-        failures.append(
-            "metadata.acceptance_passed is TRUE on a digest-projection run: the graph finished, "
-            "no domain work was performed, and acceptance was claimed anyway"
-        )
+        failures.append("metadata.acceptance_passed is TRUE on a digest-projection run: the graph finished, no domain work was performed, and acceptance was claimed anyway")
     elif md.get("acceptance_passed") is False:
         print("  -> acceptance_passed = false, as the digest projection requires")
     if not run_id:

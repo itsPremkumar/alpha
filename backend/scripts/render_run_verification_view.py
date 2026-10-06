@@ -90,8 +90,7 @@ def main() -> int:
             return 1
         ex = r.json()
         run_id = ex.get("run_id")
-        print(f"run {run_id}  status={ex.get('status')!r}  "
-              f"completed={ex.get('completed_count')!r}/{ex.get('task_count')!r}")
+        print(f"run {run_id}  status={ex.get('status')!r}  completed={ex.get('completed_count')!r}/{ex.get('task_count')!r}")
 
         # Wait for the journal to be readable, then read the REAL events.
         events: list = []
@@ -112,7 +111,10 @@ def main() -> int:
         try:
             done = subprocess.run(
                 ["node", driver, jsfile, payload_path],
-                capture_output=True, text=True, encoding="utf-8", timeout=120,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=120,
             )
         finally:
             os.unlink(payload_path)
