@@ -722,6 +722,19 @@ const uiUrl = toUrl(
 );
 const timeUrl = toUrl(transpile(read("./time.ts")));
 const teamopsProgressUrl = toUrl(transpile(read("./teamops-progress.ts")));
+/**
+ * The swarm structure view module.
+ *
+ * `loadSection` maps every `@/lib/*` import the section uses onto a data URL,
+ * because a data-URL module has no hierarchical base to resolve a bare specifier
+ * against. Adding an import to the section without adding its mapping here threw
+ * `Invalid relative URL or base scheme is not hierarchical` — reported by the
+ * test runner as "asynchronous activity after the test ended", which is why the
+ * message does not name the module.
+ */
+const swarmStructureViewUrl = toUrl(
+  transpile(read("./swarm-structure-view.ts")),
+);
 const teamopsUrl = toUrl(compileTs("teamops", { http: httpStubUrl }));
 const subagentsUrl = toUrl(compileTs("subagents", { http: httpStubUrl }));
 const kanbanBoardUrl = toUrl(compileTs("kanban-board", { kanban: kanbanUrl }));
@@ -749,6 +762,10 @@ const loadSection = async (file) => {
     .replace(
       /from\s+"@\/lib\/teamops-progress"/,
       `from "${teamopsProgressUrl}"`,
+    )
+    .replace(
+      /from\s+"@\/lib\/swarm-structure-view"/,
+      `from "${swarmStructureViewUrl}"`,
     )
     .replace(/from\s+"@\/lib\/teamops"/, `from "${teamopsUrl}"`)
     .replace(/from\s+"@\/lib\/kanban"/, `from "${kanbanUrl}"`)
