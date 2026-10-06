@@ -44,6 +44,26 @@ export function normalizeBot(raw: Record<string, unknown>): BotProfile {
 export async function fetchBots(params?: { status?: string; department?: string; activity?: boolean }): Promise<BotProfile[]> {
   // Live data only: an unreachable backend or an empty fleet returns [],
   // and the UI shows its honest empty state. No fabricated bots.
+  const result = await fetchBotsResult(params);
+  return result.ok ? result.value : [];
+}
+
+/**
+ * The roster read, keeping "the server said there is nothing" apart from
+ * "the read failed".
+ *
+ * `fetchBots` collapses both into `[]`, which is the right default for a
+ * sidebar showing an empty state and the wrong one for the composer's `@` tag
+ * palette: a picker that answers "no agents available" after a failed read is
+ * claiming the fleet is empty. This returns the same `FetchResult` shape
+ * `api.ts::fetchThreadsResult` established, so a surface that must disclose a
+ * degraded read has one vocabulary for it.
+ */
+export async function fetchBotsResult(params?: {
+  status?: string;
+  department?: string;
+  activity?: boolean;
+}): Promise<{ ok: true; value: BotProfile[] } | { ok: false; error: string }> {
   try {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
@@ -55,10 +75,11 @@ export async function fetchBots(params?: { status?: string; department?: string;
     const res = await apiFetch(`/bots${suffix}`);
     const data = await res.json();
     const list = Array.isArray(data.bots) ? data.bots : [];
-    return list.map((b: Record<string, unknown>) => normalizeBot(b));
+    return { ok: true, value: list.map((b: Record<string, unknown>) => normalizeBot(b)) };
   } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
     console.error("Failed to fetch bots:", err);
-    return [];
+    return { ok: false, error };
   }
 }
 

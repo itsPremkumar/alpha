@@ -38,7 +38,8 @@ import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
-import { fetchBots, touchBot } from "@/lib/bots";
+import { fetchBots, fetchBotsResult, touchBot } from "@/lib/bots";
+import type { MentionAgent } from "@/lib/agent-mentions";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
 import { listThreadRuns, cancelRun, prepareRegenerate, prepareEditRegenerate } from "@/lib/runs";
 import { rateMessage } from "@/lib/feedback";
@@ -379,6 +380,15 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   // Multi-bot-profile state
   const [bots, setBots] = useState<BotProfile[]>([]);
   const [botsLoading, setBotsLoading] = useState<boolean>(true);
+  /**
+   * Why the last roster read failed, or null.
+   *
+   * Separate from `bots` because the two answer different questions. Empty
+   * `bots` with a null error is "the server said there are no agents"; empty
+   * `bots` with an error is "nobody could look". The composer's `@` palette
+   * renders the second as unreadable rather than as an empty fleet.
+   */
+  const [botsError, setBotsError] = useState<string | null>(null);
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
   /**
    * Deep-linkable workspace view.
@@ -739,7 +749,7 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         fetchModelCatalog(),
         // The roster is the one surface that renders last-message previews and
         // unread badges, so it is the caller that opts into the projection.
-        fetchBots({ activity: true }),
+        fetchBotsResult({ activity: true }),
         fetchFeatures(),
         suggestionsEnabled(),
       ]);
@@ -790,7 +800,16 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       } catch {}
       setReasoningEffort(initialEffort);
       setActiveThreadId((prev) => prev || (merged.length > 0 ? merged[0].thread_id : null));
-      setBots(bList);
+      // A failed roster read is disclosed, never turned into an empty fleet. The `@`
+      // tag palette reads this: "no agents available" after a failed read is a
+      // claim about the workspace that nothing measured.
+      if (bList.ok) {
+        setBots(bList.value);
+        setBotsError(null);
+      } else {
+        setBotsError(bList.error);
+        flash(`Agent roster unavailable. ${bList.error}`);
+      }
       setBotsLoading(false);
       setFeatures(feats);
       // A `null` here means the Gateway did not report the setting, so the
@@ -870,17 +889,21 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     // rejection in the console. The failure is now surfaced with the server's
     // reason and the loading state always clears in `finally`.
     try {
-      const bList = await fetchBots({ activity: true });
-      setBots(bList);
+      const result = await fetchBotsResult({ activity: true });
+      if (!result.ok) {
+        // The existing roster stays on screen: an empty grid would be
+        // indistinguishable from "the workspace has no agents", which is a claim
+        // the failed read cannot make. The reason is kept for the tag palette.
+        setBotsError(result.error);
+        flash(`Agent roster unavailable. ${result.error}`);
+        return;
+      }
+      setBots(result.value);
+      setBotsError(null);
       if (activeBot) {
-        const fresh = bList.find((b) => b.name === activeBot.name);
+        const fresh = result.value.find((b) => b.name === activeBot.name);
         if (fresh) setActiveBot(fresh);
       }
-    } catch (error) {
-      // The existing roster stays on screen: an empty grid would be
-      // indistinguishable from "the workspace has no agents", which is a claim
-      // the failed read cannot make.
-      flash(`Agent roster unavailable. ${errMsg(error)}`);
     } finally {
       setBotsLoading(false);
     }
@@ -1129,6 +1152,60 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     setRequestError(null);
     setView("chat");
   };
+
+  /**
+   * Roster rows reduced to what a tag needs.
+   *
+   * `normalizeBot` already guarantees `name`, `role`, `status` and `department`
+   * are strings, so nothing here invents a value. `model` stays null when the
+   * server did not report one rather than becoming a fabricated model name.
+   */
+  const mentionAgents = useMemo<MentionAgent[]>(
+    () =>
+      bots.map((b) => ({
+        handle: b.name,
+        displayName: b.display_name || b.name,
+        role: b.role,
+        department: b.department,
+        status: b.status,
+        avatar: b.avatar || "",
+        model: typeof b.model === "string" ? b.model : null,
+        capabilities: Array.isArray(b.capabilities) ? b.capabilities : [],
+      })),
+    [bots],
+  );
+
+  /**
+   * Whether the roster behind the tag palette is readable.
+   *
+   * `botsLoading` is reported as `loading` rather than folded into `ready`: a
+   * palette answering "no agents available" during the first read would claim an
+   * empty fleet before anyone asked the server.
+   */
+  const mentionAgentsState: "loading" | "ready" | "unavailable" =
+    botsLoading ? "loading" : botsError ? "unavailable" : "ready";
+
+  /**
+   * Make `handle` the agent this chat runs on, from a `@` tag.
+   *
+   * Reuses `rememberBot`, so a tag switch and a sidebar pick take the same path
+   * — including re-scoping history to that agent's conversations. A handle the
+   * roster did not report is refused with a disclosure rather than switching to
+   * a profile nobody loaded.
+   */
+  const switchAgentFromTag = useCallback(
+    (handle: string) => {
+      const target = bots.find((b) => b.name === handle);
+      if (!target) {
+        flash(`No agent named "${handle}" is in the roster, so the conversation was not switched.`);
+        return;
+      }
+      rememberBot(target);
+      flash(`This chat now runs on ${target.display_name || target.name}.`);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bots, flash],
+  );
 
   /** Core send: streams one answer, attaches its run id, stores everything locally. */
   /**
@@ -2870,6 +2947,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                   flash("Models updated with new API key configuration.");
                 }}
                 slashCommands={slashCommands}
+                mentionAgents={mentionAgents}
+                mentionAgentsState={mentionAgentsState}
+                mentionAgentsError={botsError}
+                activeAgentHandle={activeBot?.name ?? null}
+                onMentionSwitchAgent={switchAgentFromTag}
               />
             </footer>
           </div>
