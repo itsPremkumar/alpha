@@ -69,7 +69,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 
 ## Architecture
 
-- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, the sandbox tiers, and the 118 harness engine packages.
+- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, the sandbox tiers, and the 117 harness engine packages.
 - [Deep research](https://github.com/itsPremkumar/alpha/blob/main/docs/DEEP_RESEARCH.md): the 5-pass search pipeline, gap filling, and the citation contract.
 - [Workforce](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, and Kanban.
 - [Per-bot model configuration](https://github.com/itsPremkumar/alpha/blob/main/docs/BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling panel and mixture panel, named only from `config.yaml` `models[]`.

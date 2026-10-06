@@ -113,7 +113,7 @@ in this repository:
 
 ### 2.4 Collapsible depth
 
-The README keeps exhaustive catalogs - 118 engines, 24 skills, the full
+The README keeps exhaustive catalogs - 117 engines, 24 skills, the full
 architecture — inside `<details>` blocks, so the answer-first content dominates the
 first screen while the reference depth stays one click away. This serves humans and
 retrieval-based agents equally.

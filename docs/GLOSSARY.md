@@ -210,7 +210,7 @@ brainstorm, challenge assumptions, and produce a unified deliverable.
 multi-line edit drift and merge conflicts.
 
 **Harness (alpha-harness)** — the importable agent framework package
-(import name `alpha.*`) containing 118 engine modules. Alpha the product is built on
+(import name `alpha.*`) containing 117 engine modules. Alpha the product is built on
 top of it. → [backend/AGENTS.md](../backend/AGENTS.md)
 
 **Handoff** — a recorded transfer of work between agents, part of the workforce
