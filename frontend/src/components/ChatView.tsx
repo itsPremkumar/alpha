@@ -117,6 +117,7 @@ const TeamOpsSection = dynamic(() => import("@/components/sections/TeamOpsSectio
 const ChannelsSection = dynamic(() => import("@/components/sections/ChannelsSection").then((m) => ({ default: m.ChannelsSection })), { loading: () => <SectionFallback /> });
 const SystemSection = dynamic(() => import("@/components/sections/SystemSection").then((m) => ({ default: m.SystemSection })), { loading: () => <SectionFallback /> });
 const IntegrationSection = dynamic(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })), { loading: () => <SectionFallback /> });
+const ApexSection = dynamic(() => import("@/components/sections/ApexSection").then((m) => ({ default: m.ApexSection })), { loading: () => <SectionFallback /> });
 const WorkforceSection = dynamic(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })), { loading: () => <SectionFallback /> });
 const WarRoomSection = dynamic(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })), { loading: () => <SectionFallback /> });
 const WarRoomRunsSection = dynamic(() => import("@/components/sections/WarRoomRunsSection").then((m) => ({ default: m.WarRoomRunsSection })), { loading: () => <SectionFallback /> });
@@ -2429,6 +2430,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         ) : view === "integration" ? (
           <Suspense fallback={<SectionFallback />}>
             <IntegrationSection />
+          </Suspense>
+        ) : view === "apex" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ApexSection />
           </Suspense>
         ) : view === "settings" ? (
           <Suspense fallback={<SectionFallback />}>

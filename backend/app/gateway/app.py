@@ -24,6 +24,7 @@ from app.gateway.routers import (
     a2a,
     agent_messages,
     agents,
+    apex,
     artifacts,
     assistants_compat,
     auth,
@@ -1233,6 +1234,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(jobs.router)
     app.include_router(supervision.router)
     app.include_router(autonomy.router)
+    # APEX declares its collection routes before the /sessions/{id} catch-all
+    # inside the router; mount order here follows autonomy/ops for readability.
+    app.include_router(apex.router)
     app.include_router(goal_contracts.router)
     app.include_router(goal_integrity.router)
     app.include_router(a2a.router)

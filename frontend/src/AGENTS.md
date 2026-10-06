@@ -344,6 +344,47 @@ Coverage: `src/lib/network.test.mjs` (routes, verbs, envelope mapping, every
 honesty inversion), and the new entries are also subject to
 `src/lib/ui-legibility.test.mjs`'s dash-with-disclosure rule.
 
+## APEX control panel (`apex` workspace view)
+
+`lib/apex.ts` + `components/sections/ApexSection.tsx`, over `GET /api/apex/*`.
+The `apex` id must exist in **four** places — the `WorkspaceView` union in
+`NavTabs.tsx`, the `WORKSPACE_TABS` row, `WORKSPACE_VIEW_IDS` in
+`lib/workspace-view.ts`, and `ChatView.tsx`'s lazy import plus render case.
+`workspace-nav.test.mjs` checks the first three against each other in both
+directions; it exists because `run-inspector` and `reliability` each shipped
+with a tab and a render case while `WORKSPACE_VIEW_IDS` still said the view did
+not exist, which made `?view=<id>` fall back to `chat`.
+
+- **Absent is not zero, and the mappers enforce it.** Every count in `apex.ts`
+  goes through `optNum`, which returns `null` rather than `0`. The backend
+  reports an unreadable session store as `available: false` with a reason and a
+  `count: null`; a mapper that reached for `?? 0` would turn "we could not read
+  the store" into "there are zero sessions", and the operator would read the
+  second as a working system.
+- **`live` and `declared` travel together on the invariant card.** Rendering
+  "12 invariants" over 9 live sites is a fabricated count, so the badge is
+  `live/declared` and a missing enforcement site renders `live: false` with the
+  server's reason — never a green tick.
+- **`policy_sites_missing` is the panel's most important row.** APEX delegates
+  every policy verdict (`alpha.tools.governance`, `alpha.guardrails`,
+  `alpha.bots.authority_ceiling`, `alpha.runtime.control`), so a delegated kernel
+  that is absent is an *unenforced boundary* and has to be visible rather than
+  inferred from the panel rendering at all.
+- **The emergency stop is a fact, not a control.** The card renders `always on`
+  in words and offers no toggle, because `ApexControls` raises on
+  `emergency_stop=False` — there is no setting to send.
+- **"Run one cycle" is labelled for what it does.** It records a decision and
+  re-reads the status. It does not run a tool, start a run, or complete a
+  mission, and the panel says so in its own `Notice` rather than leaving it to a
+  doc — that button is the one most likely to be read as "do the work".
+- **Drift is surfaced, not smoothed.** A session whose `contract_digest`
+  differs from the active contract renders a `Policy drift` warning naming both,
+  because a mission silently continuing under changed policy is the failure the
+  digest exists to catch.
+
+Coverage: `src/lib/apex.test.mjs` (routes, verbs, the null-preserving counters,
+and the honesty inversions for each block).
+
 ## Subagent catalog panel (every field of a definition)
 
 `lib/subagents.ts` + `lib/subagent-catalog-view.ts` +

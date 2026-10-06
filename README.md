@@ -114,19 +114,19 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 66 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 67 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
 | **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
-| **Native tools** | 135 (`contracts/feature_manifest.json`, generated) |
-| **Middleware layers** | 42 |
-| **Background supervisor loops** | 9 |
+| **Native tools** | 136 (`contracts/feature_manifest.json`, generated) |
+| **Middleware layers** | 44 |
+| **Background supervisor loops** | 10 |
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 115 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 118 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -312,6 +312,7 @@ subsystem.
 | :--- | :--- | :--- |
 | **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
 | **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| **One objective, autonomously worked** | **APEX Autopilot**: hand it an objective and a profile; it holds an autonomy contract, decides the next action each cycle, and refuses to complete a mission until every acceptance criterion was evaluated and held. It is a control plane over the engines below, not a second one | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
 | **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
 | **A community of agent groups** | Nest group rooms inside group rooms at any time, staff them by rule instead of by name, inherit membership from a parent, and split direct / inherited / rule-matched members in the roster | [AGENTS.md](AGENTS.md#nested-groups-the-community-shape) |
 | **Scheduled / recurring agents** | Cron scheduler with wake gates, blueprints, incident tracking, and auto-pause; GitHub webhook triggers | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
@@ -715,7 +716,7 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (114 harness engines)</b></summary>
+<summary><b>Full subsystem map (118 harness engines)</b></summary>
 
 Every directory under `backend/packages/harness/alpha/` (102 packages, counted by
 `backend/scripts/generate_feature_manifest.py`) is a dedicated engine:
@@ -946,7 +947,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 136 tools, 66 routers, 44 middlewares, and 9 supervisor loops. CI fails
+  pins all 136 tools, 67 routers, 44 middlewares, and 10 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

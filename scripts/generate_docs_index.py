@@ -175,6 +175,21 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Free Alpha-to-Alpha peer network: pairing, transport, and deployment.",
     ),
+    "ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md": DocumentSpec(
+        "plans",
+        "Master design specification for APEX Autopilot: the autonomy contract, executive cycle, "
+        "policy kernel, verification gate, and the 198 sections the implementation is checked against.",
+    ),
+    "APEX_INTEGRATION_MAP.md": DocumentSpec(
+        "architecture",
+        "Phase 0 inventory: which APEX specification sections already exist in this repository, "
+        "which enforcement site owns each invariant, and what was deliberately not built.",
+    ),
+    "APEX_AUTOPILOT.md": DocumentSpec(
+        "operations",
+        "Operating APEX: enabling the loop, profiles and budgets, the API and SSE surface, "
+        "and the honesty boundaries a status reader must know.",
+    ),
     "AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md": DocumentSpec(
         "plans",
         "Live agent activity ledger, work claims, and crash-honest status for group rooms.",

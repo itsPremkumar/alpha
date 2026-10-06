@@ -9,6 +9,7 @@
 
 - [ALPHA-WORKFLOW-ARCHITECTURE.md](ALPHA-WORKFLOW-ARCHITECTURE.md) — Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.
 - [ALPHA_ARCHITECTURE_AUDIT.md](ALPHA_ARCHITECTURE_AUDIT.md) — Phase 0 discovery audit: confirmed system map, component cards, capability matrix, and a code-evidenced risk register.
+- [APEX_INTEGRATION_MAP.md](APEX_INTEGRATION_MAP.md) — Phase 0 inventory: which APEX specification sections already exist in this repository, which enforcement site owns each invariant, and what was deliberately not built.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and major runtime components.
 - [BOT_MODEL_CONFIG.md](BOT_MODEL_CONFIG.md) — Per-bot model configuration: primary, fallback chain, counselling and mixture, plus the one precedence ladder.
 - [CHAT_SHELL_DESIGN.md](CHAT_SHELL_DESIGN.md) — Chat shell design: the Bot to Project to Conversation hierarchy, layout, and honesty rules.
@@ -52,6 +53,7 @@
 ## Operations
 
 - [ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) — Free Alpha-to-Alpha peer network: pairing, transport, and deployment.
+- [APEX_AUTOPILOT.md](APEX_AUTOPILOT.md) — Operating APEX: enabling the loop, profiles and budgets, the API and SSE surface, and the honesty boundaries a status reader must know.
 - [AUTHORITY_MODEL.md](AUTHORITY_MODEL.md) — Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.
 - [AUTONOMY_TRUTH.md](AUTONOMY_TRUTH.md) — Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure classification, and bounded recovery briefs.
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
@@ -69,13 +71,6 @@
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
-- [audit/frontend-contracts.md](audit/frontend-contracts.md) — Operations, deployment, and reliability documentation.
-- [audit/infra.md](audit/infra.md) — Operations, deployment, and reliability documentation.
-- [audit/memory.md](audit/memory.md) — Operations, deployment, and reliability documentation.
-- [audit/qa.md](audit/qa.md) — Operations, deployment, and reliability documentation.
-- [audit/runtime.md](audit/runtime.md) — Operations, deployment, and reliability documentation.
-- [audit/security.md](audit/security.md) — Operations, deployment, and reliability documentation.
-- [audit/sprawl.md](audit/sprawl.md) — Operations, deployment, and reliability documentation.
 - [audits/AGENT_SELF_SERVICE.md](audits/AGENT_SELF_SERVICE.md) — Agent self-service record: the subagent_registry tool that lets an agent create its own specialised subagent, four bugs in that tool found by running it, the grounding-classification defect its author introduced and fixed, and the live re-verification left unverified.
 - [audits/BOT_FORGE_VERIFICATION.md](audits/BOT_FORGE_VERIFICATION.md) — Bot forge verification record: the agent forges its own new specialist, the bot is verified on four independent surfaces including a real addressed run, the duplicate-role guard is negative-controlled, and the duplicated SOUL identity heading it produced is fixed.
 - [audits/FLEET_VERIFICATION.md](audits/FLEET_VERIFICATION.md) — Fleet verification record: five real tasks run concurrently against five named bot profiles, every output opened and checked, and the coerce_iso OverflowError the review bot found and that was then reproduced, fixed and negative-controlled.
@@ -83,6 +78,7 @@
 - [audits/FULL_VERIFICATION_REPORT.md](audits/FULL_VERIFICATION_REPORT.md) — Full verification report: per-subsystem verdicts, the complete bug inventory, three-source cross-verification, and an explicit limitations list.
 - [audits/ORCHESTRATION_PROBES.md](audits/ORCHESTRATION_PROBES.md) — Orchestration probe record: ten probes across swarms, subagent delegation, the ralph loop, bot roster and group rosters, plus the grounding-gate defect that made delegation succeed or fail depending on model prose.
 - [audits/SUBAGENT_CREATION.md](audits/SUBAGENT_CREATION.md) — Subagent creation record: an agent asked to create one claimed success it did not achieve, the admin create route was found to answer 201 to a typo'd field, and the UI's separate live-activity plane is explained with the limits of what could be verified.
+- [audits/SUBAGENT_VISIBILITY.md](audits/SUBAGENT_VISIBILITY.md) — Operations, deployment, and reliability documentation.
 - [audits/SYSTEM_MAP.md](audits/SYSTEM_MAP.md) — Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.
 - [audits/WRITE_PATH_VERIFICATION.md](audits/WRITE_PATH_VERIFICATION.md) — Write-path verification record: the group nesting probes are green after the MAX_DEPTH cap was found absent from the subgroup creation route and wired in, with the inheritance projection, the depth and delete refusals, and the probe's own wrong assumptions all pinned.
 - [audits/screenshots/2026-10-05/bots-after-fix.md](audits/screenshots/2026-10-05/bots-after-fix.md) — Operations, deployment, and reliability documentation.
@@ -115,6 +111,7 @@
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
+- [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.

@@ -32,6 +32,11 @@ export const WORKSPACE_VIEW_IDS = [
   "forge",
   "supervisor",
   "protocols",
+  // The APEX executive control plane. Listed here for the same reason the two
+  // ids below are: `WORKSPACE_VIEW_IDS` is a second list of the `WorkspaceView`
+  // union, so an id that reaches the nav but not this file makes `?view=apex`
+  // silently fall back to `chat`.
+  "apex",
   // `reliability` was missing here while `NavTabs.tsx` declared it, so
   // `isWorkspaceView("reliability")` returned false and `?view=reliability`
   // silently fell back to `chat` — the same defect `run-inspector` had above.
