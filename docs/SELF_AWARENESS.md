@@ -35,7 +35,7 @@ alpha_capability(action="inventory")
 }
 ```
 
-Every section is bounded, so one call cannot flood a context window. 461 commands
+Every section is bounded, so one call cannot flood a context window. 466 commands
 and 131 tools is roughly 40k characters that nobody should pay for to answer one
 yes/no question.
 
@@ -236,7 +236,7 @@ string occurs in the file.
 
 **The registries endpoint silently truncated.** `GET /api/workflows/system/registries`
 had a bare `[:100]` descriptor slice. That was fine for five small registries and
-wrong the moment `commands` (461 rows) and `engines` (115) joined: the slice dropped
+wrong the moment `commands` (466 rows) and `engines` (115) joined: the slice dropped
 rows with nothing in the response saying so. Every kind now reports `returned`
 beside its measured `count` and sets `truncated`.
 

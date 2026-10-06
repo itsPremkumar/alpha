@@ -18,13 +18,15 @@ the numbers below can be reproduced.
 
 | quantity | value |
 | --- | --- |
-| raw rows in `catalog.get_default_catalog_entries()` | 428 |
-| unique command names (what the registry keys on) | **426** |
-| names registered in the registry | 461 |
+| raw rows in `catalog.get_default_catalog_entries()` | 433 |
+| unique command names (what the registry keys on) | **431** |
+| names registered in the registry | 466 |
 | duplicate rows (first one silently discarded) | `/learn`, `/usage` |
 
-426 is confirmed. The 428 vs 426 gap is the two duplicated rows, which the
-existing parity test already pins as `DUPLICATE_CATALOG_ROWS`.
+431 is confirmed. The 433 vs 431 gap is the two duplicated rows, which the
+existing parity test already pins as `DUPLICATE_CATALOG_ROWS`. The five
+`/apex` rows are unique and handler-backed, so they raise every count above
+without touching the duplicate set.
 
 ### Handler bindings, by module
 
@@ -32,14 +34,18 @@ existing parity test already pins as `DUPLICATE_CATALOG_ROWS`.
 alpha.commands.backend_handlers      : 35
 alpha.commands.module_a_handlers     :  5
 alpha.mission.goalloop.bindings      : 14   <-- invisible to the parity test
+alpha.apex.commands                  :  5
 ```
 
 `test_discovery_plane_parity._production_handlers()` filters on
 `handler.__module__.startswith("alpha.commands.")`. That filter throws away the 14
 `alpha.mission.goalloop.bindings` handlers, which are real production handlers
 (`/goal`, `/goal show`, `/goal step`, `/goal verify`, `/goal draft`,
-`/goal clear`, `/goal gate *`, `/subgoal*`). Three of them
-(`/goal`, `/goal clear`, `/goal verify`) are catalog rows.
+`/goal clear`, `/goal gate *`, `/subgoal*`), and the 5 `alpha.apex.commands`
+handlers (`/apex`, `/apex on`, `/apex off`, `/apex status`, `/apex policy`).
+Three of the goal-loop ones
+(`/goal`, `/goal clear`, `/goal verify`) are catalog rows, and all five
+`/apex` ones are.
 
 ### Two counts of "rows with no handler"
 

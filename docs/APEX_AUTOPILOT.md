@@ -31,6 +31,18 @@ objective → session → cycle { decide, record, checkpoint } → host adapter 
 
 Off by default, like all ten Alpha background loops.
 
+**The switch.** Three ways to turn it on, all the same code path:
+
+- **The UI** — the APEX panel's ON/OFF toggle (the `apex` workspace view).
+- **Chat** — `/apex on [assist|autonomous|apex_max]`, `/apex off`.
+- **HTTP** — `POST /api/apex/enable`, `POST /api/apex/disable` (admin).
+
+The toggle is per conversation, persists for that session, and defaults to
+the `assist` profile. `/apex` on its own reports status; it never enables.
+See [§7](#7-api) for the mode routes and [the command table](#the-apex-commands).
+
+It can also be enabled for the background loop in `config.yaml`:
+
 ```yaml
 # config.yaml
 autonomy:
@@ -176,13 +188,73 @@ stop.
 | `GET` | `/api/apex/status` | the §59 projection (read-only) |
 | `GET` | `/api/apex/policy?profile=…` | contract + attributed policy sites |
 | `GET` | `/api/apex/invariants` | §188 I1–I12 and their live sites |
+| `GET` | `/api/apex/mode` | the ON/OFF state for a scope |
+| `POST` | `/api/apex/enable` | turn APEX on; admin |
+| `POST` | `/api/apex/disable` | turn APEX off; admin |
 
 Collection routes are declared before `/sessions/{id}`; Starlette matches in
 registration order, and the reverse order answers
-`404 Session 'invariants' not found`. Pinned by
-`tests/test_apex_api.py::TestRouteOrder`.
+`404 Session 'invariants' not found`. The three `/mode`, `/enable` and
+`/disable` routes are declared before it for the same reason — a catch-all
+first would answer `405 Session 'enable' not found` for a feature that
+exists. Pinned by `tests/test_apex_api.py::TestRouteOrder` and
+`tests/test_apex_mode.py`.
 
 Control endpoints (`POST`) require an administrator. Reads do not.
+
+### The mode toggle
+
+`GET /api/apex/mode` is the read the UI switch renders from. Two fields in
+it are deliberately not one:
+
+- **`enabled`** — the recorded intent. Did anything switch this scope on?
+- **`contract_enabled`** — what the frozen contract actually grants, and so
+  what gates work.
+
+They disagree in the cases that matter: an unreadable mode store answers
+`enabled: false` for every scope (fail-closed), and a record persisted by a
+newer build under a profile this one does not know degrades to `assist` — so
+`enabled` can be true while the authority is not what was asked for. The
+response also carries `durable` (whether the write reached disk), `load_error`
+(a degraded read, never a clean OFF) and `load_note` (an unrecognised stored
+profile).
+
+State lives at `runtime_home()/apex/mode.json`, one row per scope, plus an
+append-only `mode_events.jsonl` journal recording who enabled what, at which
+profile, and when. A scope with no row reads as OFF — an unknown session is
+not enabled.
+
+`POST /api/apex/disable` retains the profile, so a later enable restores the
+authority the operator had rather than resetting them to a default. Both
+writes are idempotent and report `changed: false` on a repeat.
+
+### The `/apex` commands
+
+The same switch, reachable from chat, from `POST /api/commands/execute`, and
+from the model-facing `execute_slash_command` tool — one implementation behind
+all three, because two independently written toggles would eventually disagree
+about what "on" means.
+
+| Command | Effect |
+|---|---|
+| `/apex` | status — on/off, profile, contract, invariants, fleet control |
+| `/apex on [assist\|autonomous\|apex_max]` | enable for this conversation |
+| `/apex off` | disable, preserving mission state |
+| `/apex status` | same as `/apex` |
+| `/apex policy [profile]` | what a profile grants, budgets, and refuses |
+
+Three properties worth knowing:
+
+- **`/apex` alone never enables.** A bare or truncated line routes to status.
+  The one control that grants autonomy is the explicit `on`.
+- **The default profile is `assist`, not `apex_max`.** Turning APEX on is not
+  a request for maximum authority; raising it is a separate, explicit act.
+- **Scoping follows the conversation.** The handler resolves the session,
+  thread or conversation id from the dispatch context, so two conversations
+  never share a toggle, and `/apex on` in one never reaches another.
+
+A bad profile is refused with the valid ones named, so a typo cannot silently
+grant a different authority than the operator asked for.
 
 ---
 
@@ -263,10 +335,15 @@ or an unreadable journal.
 | `tests/test_apex_contract.py` | profiles, budgets, fail-closed, narrowing, attribution |
 | `tests/test_apex_executive.py` | decide-only, acceptance gate, fleet control, invariants, status |
 | `tests/test_apex_api.py` | route order, refusals, SSE, the supervisor loop |
+| `tests/test_apex_mode.py` | the ON/OFF switch: fail-closed, the `/apex` commands, the mode routes |
 
 Gates that must also stay green: `test_feature_manifest_wiring.py`,
 `test_no_orphan_modules.py`, `test_harness_boundary.py`,
-`test_autonomy_supervisor.py`, and `scripts/check_generated_drift.py`.
+`test_autonomy_supervisor.py`, `test_discovery_plane_parity.py`,
+`test_command_honesty.py`, and `scripts/check_generated_drift.py`.
+
+Frontend: `frontend/src/lib/apex.test.mjs` (routes, the null-preserving
+counters, and the toggle's honesty inversions).
 
 ---
 
