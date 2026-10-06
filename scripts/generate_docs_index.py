@@ -91,6 +91,7 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     # generator closed.
     "reliability": "operations",
     "audits": "operations",
+    "audit": "operations",
     "roadmaps": "plans",
 }
 
@@ -244,6 +245,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "audits/AGENT_SELF_SERVICE.md": DocumentSpec(
         "operations",
         "Agent self-service record: the subagent_registry tool that lets an agent create its own specialised subagent, four bugs in that tool found by running it, the grounding-classification defect its author introduced and fixed, and the live re-verification left unverified.",
+    ),
+    "audits/FRONTEND_PRE_COMMIT_HOOK.md": DocumentSpec(
+        "operations",
+        "The frontend-eslint pre-commit hook cannot pass: it runs a bare npx eslint against a frontend that has no ESLint configuration and declares its lint as a typecheck, so every commit touching frontend/ is refused. Root cause, evidence, and the two fix options.",
     ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
