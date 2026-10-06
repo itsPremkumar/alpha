@@ -828,6 +828,8 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | swarm structure panel | `swarmDetails`/`swarmMetrics` had NO importer; 35 task fields, leader election, 15 event types all unread | **built + live-verified**; 46 tests, 36 controls |
 | 2026-10-06 | swarm panel self-inflicted | key-presence test threw on `{token_usage: undefined}`; claimed "raw model output" for empty text | caught by its own tests; fixed with `objectOr()` |
 | 2026-10-06 | swarm wiring controls | 3 of 11 controls mis-targeted by `.replace()` first-match; 2 pins matched a bare name in a comment | all fixed; 11/11 behave |
+| 2026-10-06 | 5.T2 dynamic plan preview | printed 12-17 tools while the payload listed 9-14 unavailable; "Assembled" over `provisioned: false` | **fixed**; 31 tests, 22 controls, shipped-module render |
+| 2026-10-06 | 5.T2 executor binding | `bound=[alpha.local.digest]`, `domain_bound=[]`, policy `configurable: false` | already honest in API **and** UI; binding itself still open |
 | 2026-10-06 | 3.T1 deep-agent runner | measured: no deep agent constructs a `SubagentExecutor`; executor needs only 2 kwargs | **not started** - scope corrected in plan |
 | 2026-10-06 | Prompt-only assignment | — | **not started** |
 | 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |
