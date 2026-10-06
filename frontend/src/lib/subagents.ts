@@ -148,10 +148,29 @@ export interface LiveSubagent {
 }
 
 function toLiveSubagent(s: Record<string, unknown>, i: number): LiveSubagent {
+  // `GET /api/subagents/control` returns `SubagentRecord.to_dict()`, and the
+  // contract fields are NESTED: the live payload carries
+  // `contract: {objective, role, instructions, timeout_seconds, ...}` beside a
+  // top-level `status`, `parent_agent_id` and `subagent_id`.
+  //
+  // This mapper read `objective` and `role` from the TOP level, where they never
+  // appear, so both were always the empty string. `SubagentsSection` then
+  // rendered its honest fallback — "Objective not reported by the server." — for
+  // a record that carried a perfectly good objective. Observed in a rendered
+  // screenshot on 2026-10-06: two live rows, both labelled that way, both
+  // actually carrying `contract.objective`.
+  //
+  // The fallback order is `contract` first, then the flat shape. That keeps the
+  // panel working against an older Gateway that answered flat, instead of
+  // trading one wrong reading for another.
+  const contract =
+    s.contract && typeof s.contract === "object" && !Array.isArray(s.contract)
+      ? (s.contract as Record<string, unknown>)
+      : null;
   return {
     id: String(pick(s, ["id", "subagent_id"], `subagent-${i}`)),
-    role: String(pick(s, ["role"], "")),
-    objective: String(pick(s, ["objective", "task"], "")),
+    role: String(pick(contract ?? s, ["role"], "")),
+    objective: String(pick(contract ?? s, ["objective", "task"], "")),
     status: String(pick(s, ["status", "state"], "unknown")),
     parent: String(pick(s, ["parent_agent_id", "parent"], "")),
   };
