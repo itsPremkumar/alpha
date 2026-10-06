@@ -34,15 +34,27 @@ test("the tab is declared exactly once, with a label and a blurb", () => {
   // anywhere".
   const entries = navTabs.match(/\{ id: "reliability"/g) ?? [];
   assert.equal(entries.length, 1);
-  assert.match(navTabs, /\{ id: "reliability", label: "Validation"[^}]*blurb: "[^"]+"/);
+  assert.match(
+    navTabs,
+    /\{ id: "reliability", label: "Validation"[^}]*blurb: "[^"]+"/,
+  );
 });
 
 test("the section is lazy-imported and rendered for its view id", () => {
   // `next/dynamic`, not `React.lazy`: a lazy section cannot be server-rendered,
   // so the server shipped the Suspense fallback and React discarded the whole
   // server tree on hydration. Both are on-demand loads.
-  assert.match(chatView, /dynamic\(\(\) => import\("@\/components\/sections\/ReliabilitySection"\)/);
-  assert.match(chatView, /view === "reliability" \? \([\s\S]*?<ReliabilitySection \/>/);
+  // `\s*` between the tokens: a section the formatter split across lines is the
+  // same on-demand load. Pinning the single-line shape turns a `prettier` reflow
+  // into a red suite, which is a formatting change reported as a regression.
+  assert.match(
+    chatView,
+    /dynamic\(\s*\(\) =>\s*import\("@\/components\/sections\/ReliabilitySection"\)/,
+  );
+  assert.match(
+    chatView,
+    /view === "reliability" \? \([\s\S]*?<ReliabilitySection \/>/,
+  );
 });
 
 test("the panel polls, because a wave is running somewhere else", () => {
@@ -58,24 +70,39 @@ test("a failed read is disclosed as a failed read, never as an empty result", ()
 });
 
 test("an unreadable ledger renders the server's notice rather than a table", () => {
-  assert.match(section, /\{!matrix\.reported && <Notice message=\{matrix\.reasonText\} \/>\}/);
+  assert.match(
+    section,
+    /\{!matrix\.reported && <Notice message=\{matrix\.reasonText\} \/>\}/,
+  );
 });
 
 test("a readable but empty ledger says nothing was validated yet", () => {
   assert.match(section, /No workloads have run yet/);
   // And it must not be phrased as an absence of problems.
-  assert.doesNotMatch(section, /No workloads have run yet[^"]*all (clear|good|passing)/i);
+  assert.doesNotMatch(
+    section,
+    /No workloads have run yet[^"]*all (clear|good|passing)/i,
+  );
 });
 
 test("absent measurements render as a dash, never as 0", () => {
   assert.match(section, /const NOT_REPORTED = "—"/);
-  assert.match(section, /matrix\.total === null \? "not reported" : String\(matrix\.total\)/);
-  assert.match(section, /matrix\.broken === null \? "not reported" : String\(matrix\.broken\)/);
+  assert.match(
+    section,
+    /matrix\.total === null \? "not reported" : String\(matrix\.total\)/,
+  );
+  assert.match(
+    section,
+    /matrix\.broken === null \? "not reported" : String\(matrix\.broken\)/,
+  );
 });
 
 test("a truncated ledger discloses the bound instead of hiding it", () => {
   assert.match(section, /matrix\.truncated/);
-  assert.match(section, /Showing \{matrix\.returned\} of \{matrix\.total\} recorded workloads/);
+  assert.match(
+    section,
+    /Showing \{matrix\.returned\} of \{matrix\.total\} recorded workloads/,
+  );
 });
 
 test("the broken workloads are named, so a red row is actionable", () => {

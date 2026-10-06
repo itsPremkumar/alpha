@@ -1,34 +1,195 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useMemo } from "react";
-import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight, Zap, Settings, Key, ExternalLink, Check, X, Image as ImageIcon, Code2 } from "lucide-react";
+import {
+  Send,
+  Square,
+  Wand2,
+  Paperclip,
+  Terminal,
+  ChevronRight,
+  Zap,
+  Settings,
+  Key,
+  ExternalLink,
+  Check,
+  X,
+  Image as ImageIcon,
+  Code2,
+  Network,
+} from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
-import { fetchCommands, BUILTIN_FREE_MODELS, configureProviderCredentials } from "@/lib/api";
+import {
+  fetchCommands,
+  BUILTIN_FREE_MODELS,
+  configureProviderCredentials,
+} from "@/lib/api";
 import { errMsg } from "@/lib/http";
 import { ReasoningEffortPicker } from "@/components/ReasoningEffortPicker";
 import { VoiceControls } from "@/components/VoiceControls";
 import { SlashCommand } from "@/lib/commands";
 import { branding } from "@/lib/branding";
-import { DEFAULT_EFFORT, FALLBACK_LABELS, FALLBACK_LADDER, type EffortChoice } from "@/lib/reasoning-effort";
-import { formatContextWindow, modelCapabilities } from "@/lib/model-capabilities";
+import {
+  DEFAULT_EFFORT,
+  FALLBACK_LABELS,
+  FALLBACK_LADDER,
+  type EffortChoice,
+} from "@/lib/reasoning-effort";
+import {
+  formatContextWindow,
+  modelCapabilities,
+} from "@/lib/model-capabilities";
+import {
+  buildSlashCommandPalette,
+  describePalette,
+  type PaletteCommand,
+} from "@/lib/slash-command-palette";
 
 const DEFAULT_CORE_COMMANDS: SlashCommandInfo[] = [
-  { command: "/goal", category: "mission", description: "Define and orchestrate autonomous goals", usage: "/goal <objective>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
-  { command: "/plan", category: "planning", description: "Compile 8-dimensional strategic meta-plan", usage: "/plan <prompt>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
-  { command: "/swarm", category: "swarm", description: "Orchestrate multi-agent specialized swarms", usage: "/swarm create <name>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
-  { command: "/agent", category: "agent", description: "Spawn, inspect, or manage autonomous agents", usage: "/agent spawn <role>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
-  { command: "/research", category: "research", description: "Deep multi-stage web and codebase research", usage: "/research <query>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
-  { command: "/code", category: "coding", description: "Inspect, write, and refactor code modules", usage: "/code <task>", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/memory", category: "memory", description: "Query and store episodic and semantic memory", usage: "/memory query <key>", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/context", category: "context", description: "Inspect context tokens, budget, and prune", usage: "/context inspect", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/skills", category: "skills", description: "Manage agent procedural skills and extensions", usage: "/skills list", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/model", category: "model", description: "Inspect or switch active LLM reasoning model", usage: "/model switch <model_id>", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/tools", category: "tools", description: "List and execute agentic tool calls", usage: "/tools list", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/mcp", category: "tools", description: "Model Context Protocol servers and resources", usage: "/mcp list", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/verify", category: "verification", description: "Run automated tests, linters, and invariants", usage: "/verify all", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/browser", category: "browser", description: "Launch and inspect headless browser sessions", usage: "/browser open <url>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
-  { command: "/learn", category: "rsi", description: "Extract and store operational learnings", usage: "/learn save", is_core: true, is_autonomous_trigger: false, requires_approval: false },
-  { command: "/session", category: "session", description: "Manage thread history, checkpoints, and rollback", usage: "/session rollback", is_core: true, is_autonomous_trigger: false, requires_approval: false },
+  {
+    command: "/goal",
+    category: "mission",
+    description: "Define and orchestrate autonomous goals",
+    usage: "/goal <objective>",
+    is_core: true,
+    is_autonomous_trigger: true,
+    requires_approval: false,
+  },
+  {
+    command: "/plan",
+    category: "planning",
+    description: "Compile 8-dimensional strategic meta-plan",
+    usage: "/plan <prompt>",
+    is_core: true,
+    is_autonomous_trigger: true,
+    requires_approval: false,
+  },
+  {
+    command: "/swarm",
+    category: "swarm",
+    description: "Orchestrate multi-agent specialized swarms",
+    usage: "/swarm create <name>",
+    is_core: true,
+    is_autonomous_trigger: true,
+    requires_approval: false,
+  },
+  {
+    command: "/agent",
+    category: "agent",
+    description: "Spawn, inspect, or manage autonomous agents",
+    usage: "/agent spawn <role>",
+    is_core: true,
+    is_autonomous_trigger: true,
+    requires_approval: false,
+  },
+  {
+    command: "/research",
+    category: "research",
+    description: "Deep multi-stage web and codebase research",
+    usage: "/research <query>",
+    is_core: true,
+    is_autonomous_trigger: true,
+    requires_approval: false,
+  },
+  {
+    command: "/code",
+    category: "coding",
+    description: "Inspect, write, and refactor code modules",
+    usage: "/code <task>",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/memory",
+    category: "memory",
+    description: "Query and store episodic and semantic memory",
+    usage: "/memory query <key>",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/context",
+    category: "context",
+    description: "Inspect context tokens, budget, and prune",
+    usage: "/context inspect",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/skills",
+    category: "skills",
+    description: "Manage agent procedural skills and extensions",
+    usage: "/skills list",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/model",
+    category: "model",
+    description: "Inspect or switch active LLM reasoning model",
+    usage: "/model switch <model_id>",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/tools",
+    category: "tools",
+    description: "List and execute agentic tool calls",
+    usage: "/tools list",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/mcp",
+    category: "tools",
+    description: "Model Context Protocol servers and resources",
+    usage: "/mcp list",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/verify",
+    category: "verification",
+    description: "Run automated tests, linters, and invariants",
+    usage: "/verify all",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/browser",
+    category: "browser",
+    description: "Launch and inspect headless browser sessions",
+    usage: "/browser open <url>",
+    is_core: true,
+    is_autonomous_trigger: true,
+    requires_approval: false,
+  },
+  {
+    command: "/learn",
+    category: "rsi",
+    description: "Extract and store operational learnings",
+    usage: "/learn save",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
+  {
+    command: "/session",
+    category: "session",
+    description: "Manage thread history, checkpoints, and rollback",
+    usage: "/session rollback",
+    is_core: true,
+    is_autonomous_trigger: false,
+    requires_approval: false,
+  },
 ];
 
 interface ComposerProps {
@@ -76,6 +237,16 @@ interface ComposerProps {
    */
   effort?: EffortChoice;
   onEffortChange?: (effort: EffortChoice) => void;
+  /**
+   * Whether this message may delegate work to background subagents.
+   *
+   * Sent as the server's `autonomous` run flag, which is what applies
+   * `subagent_enabled` and puts the `task` tool in the toolset. Defaults off:
+   * delegation spends tokens and starts workers, so it is opt-in and the control
+   * renders its own state rather than implying a capability that is not active.
+   */
+  delegationEnabled?: boolean;
+  onDelegationChange?: (enabled: boolean) => void;
   /** Canonical ladder + labels from `GET /api/models` (weakest → strongest). */
   effortLadder?: readonly string[];
   effortLabels?: Readonly<Record<string, string>>;
@@ -114,12 +285,34 @@ export function Composer({
   slashCommands,
   effort = DEFAULT_EFFORT,
   onEffortChange,
+  delegationEnabled = false,
+  onDelegationChange,
   effortLadder = FALLBACK_LADDER,
   effortLabels = FALLBACK_LABELS,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [availableCommands, setAvailableCommands] = useState<SlashCommandInfo[]>(DEFAULT_CORE_COMMANDS);
+  /**
+   * The scroll container holding the palette rows.
+   *
+   * The list is no longer eight rows, so keyboard navigation can move the
+   * highlight past the visible window; without scrolling it into view the
+   * selected row exists somewhere off-screen and the palette looks stuck.
+   */
+  const paletteListRef = useRef<HTMLDivElement>(null);
+  /**
+   * The command token just completed by picking a row.
+   *
+   * `selectCommand` writes `/<command> ` back into the draft, and the reset
+   * effect below fires on every input change — so without this the palette
+   * would reopen the instant a row was chosen, showing the very row that was
+   * just picked. Recording what was completed lets the effect tell "the
+   * operator typed more" (reopen) from "we filled it in" (stay closed).
+   */
+  const completedTokenRef = useRef<string | null>(null);
+  const [availableCommands, setAvailableCommands] = useState<
+    SlashCommandInfo[]
+  >(DEFAULT_CORE_COMMANDS);
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
@@ -147,7 +340,9 @@ export function Composer({
         }
       } catch (err) {
         if (cancelled) return;
-        setRegistryError(`Backend command registry unavailable — ${errMsg(err)}`);
+        setRegistryError(
+          `Backend command registry unavailable — ${errMsg(err)}`,
+        );
       }
     }
     void load();
@@ -174,15 +369,20 @@ export function Composer({
   }, [availableCommands, slashCommands]);
 
   // Filter slash commands
-  const suggestions = useMemo(() => {
-    if (isDismissed || !input.startsWith("/") || input.includes(" ")) {
-      return [];
-    }
-    const q = input.toLowerCase();
-    return mergedCommands
-      .filter((c) => c.command.toLowerCase().startsWith(q) || c.command.toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [input, mergedCommands, isDismissed]);
+  //
+  // Every command the registry holds for the token being typed — no cap. The
+  // old `slice(0, 8)` showed eight of ~125 with nothing saying so, and closing
+  // on the first space made every multi-word subcommand (`/agent ask`,
+  // `/verify deep`) unreachable. The bound now lives in the renderer's scroll
+  // container, which can disclose what it hid.
+  const palette = useMemo(
+    () => buildSlashCommandPalette(mergedCommands, input),
+    [mergedCommands, input],
+  );
+  const suggestions = useMemo(
+    () => (isDismissed ? [] : palette.rows),
+    [isDismissed, palette.rows],
+  );
 
   const { standardModels, keylessModels, quotaModels } = useMemo(() => {
     const effectiveModels = models.length > 0 ? models : BUILTIN_FREE_MODELS;
@@ -212,7 +412,11 @@ export function Composer({
         standard.push(m);
       }
     }
-    return { standardModels: standard, keylessModels: keyless, quotaModels: quota };
+    return {
+      standardModels: standard,
+      keylessModels: keyless,
+      quotaModels: quota,
+    };
   }, [models]);
 
   /**
@@ -246,11 +450,14 @@ export function Composer({
   };
 
   useEffect(() => {
-    if (input.startsWith("/")) {
+    // Reopen on a token we did not just fill in ourselves. A bare `/` clears
+    // the record, because from an empty token every command is reachable again
+    // and a stale completion must not silence the whole palette.
+    if (input.startsWith("/") && palette.prefix !== completedTokenRef.current) {
       setIsDismissed(false);
     }
     setSelectedIndex(0);
-  }, [input]);
+  }, [input, palette.prefix]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -259,16 +466,32 @@ export function Composer({
     }
   }, [input]);
 
-  const selectCommand = (cmd: SlashCommandInfo) => {
+  const selectCommand = (cmd: PaletteCommand) => {
     setInput(`${cmd.command} `);
+    completedTokenRef.current = cmd.command;
     setIsDismissed(true);
     textareaRef.current?.focus();
   };
 
+  /**
+   * Keep the highlighted row inside the visible window.
+   *
+   * Only runs on keyboard navigation: `block: "nearest"` is a no-op when the row
+   * is already on screen, so this cannot yank the list around while the
+   * operator is typing a filter.
+   */
+  useEffect(() => {
+    if (suggestions.length === 0) return;
+    const node = paletteListRef.current?.querySelector<HTMLElement>(
+      `[data-palette-index="${selectedIndex}"]`,
+    );
+    node?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, suggestions]);
+
   // Paste images/files straight from the clipboard (screenshots, copied files).
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(e.clipboardData?.files || []).filter((f) =>
-      f.type.startsWith("image/") || f.size > 0
+    const files = Array.from(e.clipboardData?.files || []).filter(
+      (f) => f.type.startsWith("image/") || f.size > 0,
     );
     if (files.length > 0 && onPasteFiles) {
       e.preventDefault();
@@ -286,12 +509,17 @@ export function Composer({
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+        setSelectedIndex(
+          (prev) => (prev - 1 + suggestions.length) % suggestions.length,
+        );
         return;
       }
       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        selectCommand(suggestions[selectedIndex]);
+        // The list is re-derived from the draft on every keystroke, so a stale
+        // index must not throw mid-draft and swallow the operator's Enter.
+        const row = suggestions[selectedIndex];
+        if (row) selectCommand(row);
         return;
       }
       if (e.key === "Escape") {
@@ -326,14 +554,20 @@ export function Composer({
               {registryError} — showing the built-in commands only.
             </div>
           )}
-          <div className="max-h-60 overflow-y-auto p-1 divide-y divide-border/20">
+          <div
+            ref={paletteListRef}
+            className="max-h-80 overflow-y-auto p-1 divide-y divide-border/20"
+          >
             {suggestions.map((cmd, idx) => (
               <button
                 key={cmd.command}
+                data-palette-index={idx}
                 type="button"
                 onClick={() => selectCommand(cmd)}
                 className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between transition-colors ${
-                  idx === selectedIndex ? "bg-accent text-accent-foreground" : "hover:bg-muted/60"
+                  idx === selectedIndex
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-muted/60"
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -343,6 +577,14 @@ export function Composer({
                   <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground font-semibold">
                     {cmd.category}
                   </span>
+                  {cmd.hasHandler === false && (
+                    <span
+                      className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-destructive/15 text-destructive font-semibold shrink-0"
+                      title="The registry reports no bound handler, so this row answers 'unimplemented' instead of running"
+                    >
+                      no handler
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground truncate max-w-md">
                     {cmd.description}
                   </span>
@@ -350,6 +592,9 @@ export function Composer({
                 <ChevronRight className="size-3.5 text-muted-foreground shrink-0 opacity-60" />
               </button>
             ))}
+          </div>
+          <div className="px-3 py-1.5 border-t border-border/60 bg-muted/40 text-[11px] text-muted-foreground">
+            {describePalette(palette)}
           </div>
         </div>
       )}
@@ -359,7 +604,9 @@ export function Composer({
           <div className="flex items-center justify-between border-b border-border/50 pb-2">
             <div className="flex items-center gap-2">
               <Key className="size-4 text-primary" />
-              <span className="text-xs font-bold text-foreground">Quick API Key & Provider Setup</span>
+              <span className="text-xs font-bold text-foreground">
+                Quick API Key & Provider Setup
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
               {onOpenModelSettings && (
@@ -371,7 +618,8 @@ export function Composer({
                   }}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline px-2 py-0.5 rounded-md bg-primary/10"
                 >
-                  <Settings className="size-3" /> Full Model & Key Studio <ExternalLink className="size-2.5" />
+                  <Settings className="size-3" /> Full Model & Key Studio{" "}
+                  <ExternalLink className="size-2.5" />
                 </button>
               )}
               <button
@@ -400,11 +648,17 @@ export function Composer({
                   <option value="groq">GroqCloud (14,400 RPD Free)</option>
                   <option value="sambanova">SambaNova Cloud (Free Tier)</option>
                   <option value="mistral">Mistral La Plateforme (Free)</option>
-                  <option value="cohere">Cohere Coral (1,000 req/mo Free)</option>
-                  <option value="cloudflare">Cloudflare Workers AI (Free)</option>
+                  <option value="cohere">
+                    Cohere Coral (1,000 req/mo Free)
+                  </option>
+                  <option value="cloudflare">
+                    Cloudflare Workers AI (Free)
+                  </option>
                 </optgroup>
                 <optgroup label="🌐 Free-Model Gateways">
-                  <option value="openrouter">OpenRouter (:free & Union Alpha)</option>
+                  <option value="openrouter">
+                    OpenRouter (:free & Union Alpha)
+                  </option>
                 </optgroup>
                 <optgroup label="🎟️ Free Trial Credits">
                   <option value="nvidia">NVIDIA NIM (1,000 Credits)</option>
@@ -412,7 +666,9 @@ export function Composer({
                 </optgroup>
                 <optgroup label="🚀 Commercial Frontier">
                   <option value="openai">OpenAI (GPT-4o / o3-mini)</option>
-                  <option value="anthropic">Anthropic (Claude 3.7 Sonnet)</option>
+                  <option value="anthropic">
+                    Anthropic (Claude 3.7 Sonnet)
+                  </option>
                   <option value="deepseek">DeepSeek Official (V3 & R1)</option>
                 </optgroup>
               </select>
@@ -441,17 +697,22 @@ export function Composer({
                         api_key: quickApiKey.trim(),
                       });
                       setQuickApiKey("");
-                      setKeyStatusMsg(`✅ Saved & unlocked ${quickProvider.toUpperCase()} models!`);
+                      setKeyStatusMsg(
+                        `✅ Saved & unlocked ${quickProvider.toUpperCase()} models!`,
+                      );
                       if (onModelsUpdated) await onModelsUpdated();
                     } catch (err: any) {
-                      setKeyStatusMsg(`❌ ${err?.message || "Failed to save key"}`);
+                      setKeyStatusMsg(
+                        `❌ ${err?.message || "Failed to save key"}`,
+                      );
                     } finally {
                       setSavingKey(false);
                     }
                   }}
                   className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95 disabled:opacity-40 shrink-0 flex items-center gap-1"
                 >
-                  <Check className="size-3.5" /> {savingKey ? "Saving…" : "Save Key"}
+                  <Check className="size-3.5" />{" "}
+                  {savingKey ? "Saving…" : "Save Key"}
                 </button>
               </div>
             </div>
@@ -496,7 +757,11 @@ export function Composer({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={botDisplayName ? `Ask ${botDisplayName} anything...` : "Ask anything or type / for Master Slash Commands..."}
+          placeholder={
+            botDisplayName
+              ? `Ask ${botDisplayName} anything...`
+              : "Ask anything or type / for Master Slash Commands..."
+          }
           rows={1}
           aria-label="Message the agent"
           className="w-full resize-none bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-muted-foreground max-h-48 text-foreground"
@@ -521,14 +786,20 @@ export function Composer({
                   onSelectModel(val);
                 }}
                 className="text-xs bg-muted/60 border border-border/80 rounded-lg px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-60 truncate"
-                title={freeNote || "Select LLM reasoning model or configure API keys"}
+                title={
+                  freeNote || "Select LLM reasoning model or configure API keys"
+                }
                 aria-label="Language model"
               >
                 <option value="default">⚡ Default (Auto-Routed)</option>
                 {keylessModels.length > 0 && (
                   <optgroup label="✨ Free Models (No API Key Needed)">
                     {keylessModels.map((m) => (
-                      <option key={m.id} value={m.id} title={modelOptionTitle(m)}>
+                      <option
+                        key={m.id}
+                        value={m.id}
+                        title={modelOptionTitle(m)}
+                      >
                         {optionLabel(m)}
                       </option>
                     ))}
@@ -537,7 +808,11 @@ export function Composer({
                 {quotaModels.length > 0 && (
                   <optgroup label="🎁 Free Tier / Gateway (Quota)">
                     {quotaModels.map((m) => (
-                      <option key={m.id} value={m.id} title={modelOptionTitle(m)}>
+                      <option
+                        key={m.id}
+                        value={m.id}
+                        title={modelOptionTitle(m)}
+                      >
                         {optionLabel(m)}
                       </option>
                     ))}
@@ -546,15 +821,23 @@ export function Composer({
                 {standardModels.length > 0 && (
                   <optgroup label="🚀 Standard & Custom Models">
                     {standardModels.map((m) => (
-                      <option key={m.id} value={m.id} title={modelOptionTitle(m)}>
+                      <option
+                        key={m.id}
+                        value={m.id}
+                        title={modelOptionTitle(m)}
+                      >
                         {optionLabel(m)}
                       </option>
                     ))}
                   </optgroup>
                 )}
                 <optgroup label="⚙️ Configure API Keys & Models">
-                  <option value="__quick_api_key__">🔑 Quick Set API Key (Gemini / Groq / OpenRouter)…</option>
-                  <option value="__configure_models__">⚙️ Open Model & API Key Configuration Page…</option>
+                  <option value="__quick_api_key__">
+                    🔑 Quick Set API Key (Gemini / Groq / OpenRouter)…
+                  </option>
+                  <option value="__configure_models__">
+                    ⚙️ Open Model & API Key Configuration Page…
+                  </option>
                 </optgroup>
               </select>
               {onRefreshFree && (
@@ -566,14 +849,18 @@ export function Composer({
                   title="⚡ Find & Probe Today's Free Models (Live health probe and catalog refresh)"
                   aria-label="Find and probe today's free models"
                 >
-                  <Zap className={`size-3.5 ${refreshingFree ? "animate-spin text-amber-400" : ""}`} />
+                  <Zap
+                    className={`size-3.5 ${refreshingFree ? "animate-spin text-amber-400" : ""}`}
+                  />
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setShowKeyPopover((v) => !v)}
                 className={`p-1.5 rounded-lg transition-colors ${
-                  showKeyPopover ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  showKeyPopover
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
                 title="🔑 Quick Configure Provider API Key"
                 aria-label="Quick configure API key"
@@ -622,7 +909,8 @@ export function Composer({
                   multiple
                   className="hidden"
                   onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) onAttach(e.target.files);
+                    if (e.target.files && e.target.files.length > 0)
+                      onAttach(e.target.files);
                     e.target.value = "";
                   }}
                 />
@@ -633,7 +921,9 @@ export function Composer({
             <button
               type="button"
               onClick={() => {
-                setInput((prev) => (prev ? `${prev}\n\`\`\`\n\n\`\`\`` : "```\n\n```"));
+                setInput((prev) =>
+                  prev ? `${prev}\n\`\`\`\n\n\`\`\`` : "```\n\n```",
+                );
                 setTimeout(() => textareaRef.current?.focus(), 50);
               }}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
@@ -652,7 +942,46 @@ export function Composer({
                 title={polishing ? "Polishing…" : "Improve my draft with AI"}
                 aria-label="Improve draft with AI"
               >
-                <Wand2 className={`size-4 ${polishing ? "animate-pulse text-primary" : ""}`} />
+                <Wand2
+                  className={`size-4 ${polishing ? "animate-pulse text-primary" : ""}`}
+                />
+              </button>
+            )}
+
+            {/* Delegation opt-in. This control exists because the composer could
+                not delegate at all: `sendMessage` sent `model_name`,
+                `is_plan_mode` and `reasoning_effort`, and never the server's
+                `autonomous` flag, so `subagent_enabled` stayed false and the
+                `task` tool was never in the toolset. Measured against the live
+                Gateway: `autonomous=false` -> tools `alpha_capability,
+                catalog_tool_search`; `autonomous=true` -> `alpha_capability,
+                task`. Typing a prompt therefore could not produce a working
+                subagent, and that was the wiring rather than the operator.
+
+                It defaults OFF and says so. Delegation spends tokens and starts
+                workers, so silently enabling it would change what a prompt does;
+                a control that is off must look off, not idle. */}
+            {onDelegationChange && (
+              <button
+                type="button"
+                onClick={() => onDelegationChange(!delegationEnabled)}
+                disabled={isLoading}
+                aria-pressed={delegationEnabled}
+                aria-label="Allow this message to delegate work to subagents"
+                title={
+                  delegationEnabled
+                    ? "Subagents ON — the agent may split this into helpers that run in the background. Costs extra tokens."
+                    : "Subagents OFF — the agent answers this itself. Turn on to let it delegate work to background helpers."
+                }
+                className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
+                  delegationEnabled
+                    ? "text-primary bg-primary/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <Network
+                  className={`size-4 ${delegationEnabled ? "" : "opacity-60"}`}
+                />
               </button>
             )}
             <VoiceControls
@@ -707,8 +1036,22 @@ export function Composer({
         </div>
       </div>
       <div className="text-[11px] text-center text-muted-foreground mt-2">
-        {branding.name} • Type <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">/</kbd> for commands • <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd> to send • <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Shift + Enter</kbd> for new line
-        {dictating && <span className="block text-primary mt-1">Transcribing voice…</span>}
+        {branding.name} • Type{" "}
+        <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">
+          /
+        </kbd>{" "}
+        for commands •{" "}
+        <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">
+          Enter
+        </kbd>{" "}
+        to send •{" "}
+        <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">
+          Shift + Enter
+        </kbd>{" "}
+        for new line
+        {dictating && (
+          <span className="block text-primary mt-1">Transcribing voice…</span>
+        )}
       </div>
     </div>
   );
