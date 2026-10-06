@@ -493,13 +493,25 @@ export function VitalsStrip({
             <Metric
               icon={
                 <span
-                  className={`size-1.5 rounded-full ${host.ram.percent >= 90 ? "bg-red-500" : host.ram.percent >= 70 ? "bg-amber-500" : "bg-emerald-500"}`}
+                  className={`size-1.5 rounded-full ${
+                    host.ram.percent === null
+                      ? "bg-muted-foreground/40"
+                      : host.ram.percent >= 90
+                        ? "bg-red-500"
+                        : host.ram.percent >= 70
+                          ? "bg-amber-500"
+                          : "bg-emerald-500"
+                  }`}
                 />
               }
               value={`${formatGiB(host.ram.used_mb)}/${formatGiB(host.ram.total_mb)}`}
-              label={`RAM ${host.ram.percent.toFixed(0)}%`}
+              label={host.ram.percent === null ? "RAM % not reported" : `RAM ${host.ram.percent.toFixed(0)}%`}
               emphasis
-              title={`Host RAM: ${formatGiB(host.ram.used_mb)} used of ${formatGiB(host.ram.total_mb)} installed (${host.ram.percent.toFixed(1)}%), from GET /api/system/vitals (memory.ram). Units are GiB, converted from the server's MB.`}
+              title={
+                host.ram.percent === null
+                  ? `Host RAM: ${formatGiB(host.ram.used_mb)} used of ${formatGiB(host.ram.total_mb)} installed. The percentage was not reported by the server, so this is not a measured 0%. From GET /api/system/vitals (memory.ram). Units are GiB, converted from the server's MB.`
+                  : `Host RAM: ${formatGiB(host.ram.used_mb)} used of ${formatGiB(host.ram.total_mb)} installed (${host.ram.percent.toFixed(1)}%), from GET /api/system/vitals (memory.ram). Units are GiB, converted from the server's MB.`
+              }
             />
             <Metric
               icon={<Gauge className="size-3" />}

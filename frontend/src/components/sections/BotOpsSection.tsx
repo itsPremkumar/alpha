@@ -176,7 +176,9 @@ export function BotOpsSection(props: { bots: BotProfile[]; onRefreshBots: () => 
                     <div key={b.name} className="flex items-center gap-2 rounded-xl bg-muted/40 px-2.5 py-2">
                       <span className="text-base">{b.avatar || "🤖"}</span>
                       <span className="text-[11px] font-semibold flex-1 truncate">{b.display_name || b.name}</span>
-                      <Badge tone={b.status === "active" ? "green" : b.status === "paused" ? "amber" : "gray"}>{b.status}</Badge>
+                      <Badge tone={b.status === "active" ? "green" : b.status === "paused" ? "amber" : "gray"}>
+                        {b.status ?? "status not reported"}
+                      </Badge>
                       {b.status === "paused" ? (
                         <button type="button" onClick={() => act(() => resumeBot(b.name), `${b.name} resumed.`)} className="p-1.5 rounded-lg hover:bg-muted" title={`Resume ${b.name}`}>
                           <Play className="size-3.5" />

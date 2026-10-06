@@ -147,9 +147,29 @@ function nullableStr(record: Record<string, unknown>, key: string): string | nul
   return typeof value === "string" ? value : null;
 }
 
+/**
+ * A finite number, or `0` when the field was absent.
+ *
+ * Kept for counters where `0` is a valid fallback (message counts, event
+ * totals). For fields where absent must NOT read as zero — `totals.messages`,
+ * `retention_days` — use `numOrNull` below.
+ */
 function num(record: Record<string, unknown>, key: string): number {
   const value = record[key];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * A finite number, or `null` when the field was absent.
+ *
+ * Used for `totals.messages` and `retention_days`: an absent `total_tokens`
+ * reads as "this run cost nothing", and an absent `retention_days` reads as
+ * "this peer keeps no history". Both are claims about a measurement that was
+ * never taken.
+ */
+function numOrNull(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function bool(record: Record<string, unknown>, key: string): boolean {
@@ -314,7 +334,11 @@ export interface TranscriptAnalytics {
   directions: Record<string, number>;
   statuses: Record<string, number>;
   fts_available: boolean;
-  retention_days: number;
+  /**
+   * Days of history retained, or `null` when the server did not report it.
+   * Zero would claim "this peer keeps no history" for a measurement never taken.
+   */
+  retention_days: number | null;
 }
 
 export interface TraceEnvelope {
@@ -382,7 +406,7 @@ export async function getTranscriptAnalytics(): Promise<TranscriptAnalytics> {
     directions: countMap(body.directions),
     statuses: countMap(body.statuses),
     fts_available: body.fts_available === true,
-    retention_days: num(body, "retention_days"),
+    retention_days: numOrNull(body, "retention_days"),
   };
 }
 

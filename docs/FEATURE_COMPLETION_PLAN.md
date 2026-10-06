@@ -706,10 +706,32 @@ UI cannot be fully trusted yet.
 | 10 | `lib/external-alpha.ts:150-153` | `num()` returns `0` → `totals.messages`, `retention_days` |
 | 11 | `lib/notifications.ts:47-50` | absent `unread_count` → `0` → no badge, no error |
 
-- [ ] Fix each to `null` + an explicit disclosure.
-- [ ] Negative-control each: omit the field, confirm no green and no `0`.
-- [ ] Gate: `src/lib/ui-legibility.test.mjs` and a new dash-with-disclosure case
-      per site.
+- [x] Fix each to `null` + an explicit disclosure. Done 2026-10-07, all six sites:
+  #1 `SystemRam.percent`/`SystemSwap.percent` → `number | null` via existing `optNum`
+  (`systemMonitor.ts:14,21,214,220`); `WorkspaceVitals.tsx` renders "RAM % not
+  reported" with a muted dot and "not a measured 0%" title; `SystemMonitorSection.tsx`
+  `ramTone`/`RamBar` accept null (gray bar, "load not reported", "not reported"
+  badge — never "healthy"). #2 `normalizeBot` returns `status: null`
+  (`bots.ts:16`); `BotProfile.status` widened to `string | null`; all four
+  renderers disclose ("status not reported"). #3 `botDetail`/`skillDetail` count
+  only exact `"active"`/`true` (`overview.ts:101,106`). #4 `toScope` validates
+  against the five known states else null (`comm.ts:418`); `RoomScope.state`
+  widened to `RoomState | null`; both badge call sites already guard on a
+  reported state. #10 `retention_days: number | null` + `numOrNull`
+  (`external-alpha.ts`); analytics panel shows "—" + "retention not reported" /
+  "not reported by server". #11 `fetchUnreadNotificationCount: Promise<number | null>`
+  (`notifications.ts:47-50`); bell state already `number | null`.
+- [x] Negative-control each: omit the field, confirm no green and no `0`.
+  `frontend/scripts/nc-absent-value-honesty.mjs`: 11/11 — all six runtime
+  behaviors reproduced on pre-fix `HEAD` code (0, "active", "2/2 active",
+  "2/2 enabled") with zero working-tree mutation. `bots-files-client.test.mjs`
+  caught the change live (fixture without status asserted "active") and was
+  updated: fixture now carries a status plus a new dedicated null case.
+- [x] Gate: `src/lib/absent-value-honesty.test.mjs` (23 cases, all passing in the
+  full suite) — one runtime + disclosure case per site. `tsc --noEmit`: 0 errors.
+  Full suite: only the 6 pre-existing failures remain (7 ChatView line-shape pins
+  + 1 intentional qr-decode gate, all unrelated to these files). Prettier is not
+  a repo gate (no dep/config/script); diffs kept minimal instead.
 
 ### 6.T2 A failed read rendered as an empty list
 
@@ -869,3 +891,4 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |
 | 2026-10-06 | 0.T2 engine count | fresh gen was 119 vs committed 118 | fixed `collect_engines()`; 8 cases; NC → `alpha.backend` counted |
 | 2026-10-06 | 0.T3a loop comment | 9 registered, comment said eight | 3 cases; NC stale comment → red |
+| 2026-10-07 | 6.T1 absent-as-zero (6 sites) | ram.percent null + "RAM % not reported"; status null + "status not reported"; uncounted absent status/enabled; room state null + validated; retention_days null + "retention not reported"; unread null | 23 cases + 11 NCs (all fail on HEAD, pass on fix); tsc 0; full suite keeps only the 6 pre-existing failures |

@@ -13,7 +13,7 @@ export function normalizeBot(raw: Record<string, unknown>): BotProfile {
     toolsets: Array.isArray(raw.toolsets) ? (raw.toolsets as string[]) : [],
     skills: Array.isArray(raw.skills) ? (raw.skills as string[]) : [],
     avatar: typeof raw.avatar === "string" ? raw.avatar : "",
-    status: typeof raw.status === "string" ? raw.status : "active",
+    status: typeof raw.status === "string" && raw.status ? raw.status : null,
     last_active: typeof raw.last_active === "string" ? raw.last_active : null,
     version: typeof raw.version === "number" ? raw.version : 1,
     epoch: typeof raw.epoch === "string" ? raw.epoch : null,

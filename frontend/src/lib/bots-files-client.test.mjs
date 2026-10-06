@@ -63,7 +63,7 @@ test("bots preserve normalized fleet, detail, templates and departments", async 
   const f = fixture((url) => Response.json(url.includes("templates")
     ? { templates: { coder: { role: "Engineer" } } }
     : url.includes("departments") ? { departments: ["engineering"] }
-    : url.includes("alice") ? { name: "alice" } : { bots: [{ name: "alice" }] }));
+    : url.includes("alice") ? { name: "alice", status: "active" } : { bots: [{ name: "alice", status: "active" }] }));
   const bots = await f.bots.fetchBots({ status: "active", department: "R&D" });
   assert.equal(bots[0].display_name, "alice");
   assert.equal(bots[0].status, "active");
@@ -72,6 +72,14 @@ test("bots preserve normalized fleet, detail, templates and departments", async 
   assert.deepEqual(await f.bots.fetchBotTemplates(), [{ name: "coder", role: "Engineer" }]);
   assert.deepEqual(await f.bots.fetchDepartments(), ["engineering"]);
   assertRequest(f.calls[0], "GET", "/api/bots?status=active&department=R%26D");
+});
+
+test("a bot row without a status normalizes to null, never 'active'", async () => {
+  // A missing status used to default to "active", painting a bot nobody could
+  // read as a live worker. The absence is unknown and must stay unknown.
+  const f = fixture(() => Response.json({ bots: [{ name: "ghost" }] }));
+  const bots = await f.bots.fetchBots();
+  assert.equal(bots[0].status, null);
 });
 
 test("bot match mutation uses CSRF and credentials with encoded names", async () => {

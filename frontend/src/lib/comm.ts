@@ -413,7 +413,16 @@ function toScope(raw: Record<string, unknown>): RoomScope {
     // Server-derived. Displayed verbatim, never recomputed here.
     path: String(pick(raw, ["path"], "")),
     depth: Number(pick(raw, ["depth"], 0)) || 0,
-    state: String(pick(raw, ["state"], "active")) as RoomState,
+    // An absent `state` is not "active" — it is unknown. Defaulting to "active"
+    // would paint a room nobody could read as a live conversation. Unknown
+    // strings are also null, not guessed: snapping a future state to a known
+    // one would mislabel it.
+    state: ((): RoomScope["state"] => {
+      const s = raw.state;
+      return s === "draft" || s === "active" || s === "parked" || s === "archived" || s === "dissolved"
+        ? s
+        : null;
+    })(),
     inbound: String(pick(raw, ["inbound"], "parent")) as RoomScope["inbound"],
     outbound: String(pick(raw, ["outbound"], "none")) as RoomScope["outbound"],
     max_hop: Number(pick(raw, ["max_hop"], 3)) || 3,

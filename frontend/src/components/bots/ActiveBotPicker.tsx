@@ -43,8 +43,8 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
   });
   const departments = uniqueDepartments(filtered);
 
-  const statusDot = (s: string) =>
-    s === "active" ? "bg-emerald-500" : s === "paused" ? "bg-amber-500" : "bg-muted-foreground";
+  const statusDot = (s: string | null) =>
+    s === "active" ? "bg-emerald-500" : s === "paused" ? "bg-amber-500" : "bg-muted-foreground/40";
 
   return (
     <div ref={rootRef} className="relative">

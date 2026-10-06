@@ -70,14 +70,27 @@ function formatUptime(totalSeconds: number): string {
   return `${m}m`;
 }
 
-/** RAM load color: green below 70%, amber below 90%, red at or above 90%. */
-function ramTone(percent: number): "green" | "amber" | "red" {
+/** RAM load color: green below 70%, amber below 90%, red at or above 90%. Null (unreported) is gray — never green. */
+function ramTone(percent: number | null): "green" | "amber" | "red" | "gray" {
+  if (percent === null) return "gray";
   if (percent >= 90) return "red";
   if (percent >= 70) return "amber";
   return "green";
 }
 
-function RamBar({ percent }: { percent: number }) {
+function RamBar({ percent }: { percent: number | null }) {
+  if (percent === null)
+    return (
+      <div
+        className="h-2.5 w-full rounded-full bg-muted overflow-hidden"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext="RAM load not reported by the server"
+      >
+        <div className="h-full rounded-full bg-muted-foreground/40" style={{ width: "0%" }} />
+      </div>
+    );
   const tone = ramTone(percent);
   const cls =
     tone === "red" ? "bg-red-500" : tone === "amber" ? "bg-amber-500" : "bg-emerald-500";
@@ -286,7 +299,9 @@ export function SystemMonitorSection() {
             RAM — primary
           </span>
           <span className="ml-auto">
-            <Badge tone={tone}>{tone === "red" ? "critical" : tone === "amber" ? "elevated" : "healthy"}</Badge>
+            <Badge tone={tone === "gray" ? "gray" : tone}>
+              {tone === "red" ? "critical" : tone === "amber" ? "elevated" : tone === "gray" ? "not reported" : "healthy"}
+            </Badge>
           </span>
         </div>
         <div className="mt-2 flex items-end gap-2 flex-wrap">
@@ -294,7 +309,8 @@ export function SystemMonitorSection() {
             {formatGiB(ram.used_mb)}
           </span>
           <span className="text-sm text-muted-foreground tabular-nums pb-0.5">
-            of {formatGiB(ram.total_mb)} • {ram.percent.toFixed(1)}%
+            of {formatGiB(ram.total_mb)} •{" "}
+            {ram.percent === null ? "load not reported" : `${ram.percent.toFixed(1)}%`}
           </span>
           <span className="text-xs text-muted-foreground tabular-nums pb-1 ml-auto">
             {formatGiB(ram.free_mb)} free
