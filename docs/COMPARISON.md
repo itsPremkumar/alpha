@@ -66,7 +66,7 @@ consumes that same primitive and adds:
 - **safety and budget controls** — approval gate, Estop, token ceilings, flight
   recorder;
 - **nine messaging channels** and GitHub webhook triggers;
-- **135 native tools**, 24 public skills, and MCP.
+- **136 native tools**, 24 public skills, and MCP.
 
 **Choose LangGraph when** you are embedding an agent inside a larger application,
 you want the smallest possible dependency, and you are content to build the UI,
@@ -75,7 +75,7 @@ persistence, and safety layers yourself.
 **Choose Alpha when** you want the whole system, self-hosted, on day one.
 
 Alpha also ships the harness as an importable package
-(`alpha-harness`, import name `alpha.*`) with 115 engine modules, so
+(`alpha-harness`, import name `alpha.*`) with 118 engine modules, so
 "LangGraph plus Alpha's engines, no Alpha UI" is a supported shape.
 
 → [ARCHITECTURE.md](ARCHITECTURE.md)

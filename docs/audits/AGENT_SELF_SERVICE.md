@@ -172,7 +172,7 @@ working delegation as a failure is the failure.
 Adding a tool is drift-gated:
 
 - `contracts/feature_manifest.json` regenerated → **136 tools**, 66 routers,
-  44 middlewares, 9 loops, 117 engines.
+  44 middlewares, 9 loops, 118 engines.
 - `README.md`, `llms.txt`, `llms-full.txt`, `docs/COMPARISON.md`: **135 → 136
   tools** (5 occurrences). `docs/FAQ.md` states no tool count.
 - `scripts/check_generated_drift.py` → **0 file(s) drift**.

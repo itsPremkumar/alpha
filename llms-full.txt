@@ -3,7 +3,7 @@
 > Alpha is an open-source autonomous multi-agent AI operating system. A LangGraph
 > agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
 > Electron Windows desktop app, executing long-horizon work with sandboxed code
-> execution, persistent memory, 135 native tools, MCP extensions, and 24 public
+> execution, persistent memory, 136 native tools, MCP extensions, and 24 public
 > skills. Self-hosted, MIT licensed, no proprietary backend.
 
 This file is the expanded, single-document context for AI agents. It is longer than
@@ -25,7 +25,7 @@ asynchronous, distributed Python 3.12+ system built on LangGraph and served by a
 FastAPI Gateway exposing 66 routers; the front ends are a Next.js 15 (App Router,
 React 19, Tailwind) web workspace and an Electron Windows desktop app that bundles
 its own Node.js and `uv` runtimes. A single Nginx reverse proxy on port `2026` is
-the only public surface. It ships 135 native tools, 44 middleware layers, 9
+the only public surface. It ships 136 native tools, 44 middleware layers, 9
 background supervisor loops, 24 public skills, MCP support, nine messaging
 channels, and an OpenAI-compatible chat endpoint.
 
@@ -192,7 +192,7 @@ data tables.
 
 ## 6. Harness engine map
 
-115 engine packages live under `backend/packages/harness/alpha/`:
+118 engine packages live under `backend/packages/harness/alpha/`:
 
 `action` `agency` `agent` `agents` `authz` `autoconfig` `avo` `benchmarks`
 `blackboard` `bots` `browser` `canvas` `capabilities` `channels` `coding`

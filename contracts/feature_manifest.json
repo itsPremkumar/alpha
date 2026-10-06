@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-05T13:14:14Z",
+ "generated_at": "2026-10-06T05:10:12Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2595,6 +2595,11 @@
   {
    "id": "alpha.scorecard",
    "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.scratch",
+   "kind": "namespace",
    "submodules": []
   },
   {

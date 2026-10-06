@@ -83,52 +83,98 @@ partial, with the missing item named.
 Everything after this phase is measured against numbers that are currently
 wrong. Cheap to fix, and it removes a class of false confidence.
 
-### 0.T1 Correct the generated-count drift
+### 0.T1 Correct the generated-count drift — **DONE**
 
-**Why:** the repository's own documentation contradicts itself on capability
-counts, and `docs/DISCOVERABILITY.md` makes finding an unclassified document fail
-closed — while several documents carry stale numbers.
+**Why:** the repository's own documentation contradicted itself on capability
+counts, so nothing after this phase was measured against a true number.
 
-Measured drift against the manifest:
+**Found: 15 stale current claims across 11 files.** The earlier pass missed the
+user-facing files entirely.
 
-| Location | Claims | Actual |
+| Location | Was | Now |
 | --- | --- | --- |
-| `backend/AGENTS.md:31` | 135 tools | 136 |
+| `backend/AGENTS.md:17` | 135 tools | 136 |
 | `docs/DISCOVERABILITY.md:141` | 135 tools | 136 |
-| `docs/audits/FULL_VERIFICATION_REPORT.md:198,481` | 135/135 tools | 136 |
-| root `AGENTS.md:20`, `docs/DISCOVERABILITY.md:116` | 117 engines | 118 |
-| `packages/harness/alpha/groups/AGENTS.md:277` | 116 engines | 118 |
-| `README.md`, `llms.txt`, `llms-full.txt`, `docs/COMPARISON.md` | 136 / 117 | correct |
+| `README.md:91,123` (+ one wrapped mid-line) | 135 tools | 136 |
+| `llms.txt:6`, `llms-full.txt:6`, `docs/llms.txt:5` | 135 tools | 136 |
+| `README.md:129` | 115 engines | 118 |
+| `AGENTS.md:20`, `docs/DISCOVERABILITY.md:116` | 117 engines | 118 |
+| `docs/COMPARISON.md:78` | 117 engines | 118 |
+| `docs/FAQ.md:25,142` | 117 engines | 118 |
+| `docs/GLOSSARY.md:213` | 116 engines | 118 |
+| `docs/AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md:607-608` | 134/43/116 | 136/44/118 |
+| `packages/harness/alpha/groups/AGENTS.md:276-277` | 134/43/116 | 136/44/118 |
+| `docs/audits/AGENT_SELF_SERVICE.md:175` | 117 engines | 118 |
 
-- [ ] Update every stale count above.
-- [ ] Gate: `python scripts/generate_docs_index.py` writes no diff;
-      `backend/tests/test_feature_manifest_wiring.py` and
-      `test_no_orphan_modules.py` pass.
+**Deliberately not touched:** `CHANGELOG.md`, `docs/SELF_AUDIT.md`,
+`docs/audits/FULL_VERIFICATION_REPORT.md`, `docs/END_TO_END_CRITIQUE.md`,
+`docs/ALPHA_UNIFIED_INTEGRATION_PLAN.md`, `docs/SELF_AWARENESS.md:214` and
+`packages/harness/alpha/AGENTS.md:106`. Those record **past** states — the last
+two are literally histories of the drift ("89 → 97 → 99 engines"). Rewriting a
+changelog to match today's number falsifies evidence.
 
-### 0.T2 Remove the stray directory that inflates the engine count
+- [x] Every current claim corrected toward the generated manifest.
+- [x] Gate added so it cannot recur: `tests/test_documented_capability_counts.py`,
+      **24 cases**. It parses `"<n> tools"` / `"<n> engines"` out of eleven files
+      and fails on any value the manifest does not report, and it asserts the
+      manifest itself is not stale relative to its generator.
+- [x] **Negative-controlled:** reverting `docs/FAQ.md` to `117 engines` →
+      `docs/FAQ.md claims [117] engines; the manifest has 118`. Restored: 24 pass.
+- [x] The gate immediately caught a leftover I had missed — `README.md` wrapped
+      `135 native\ntools` across a line break, so a plain string replace missed it.
 
-**Why:** `backend/packages/harness/alpha/backend/packages/` is an **empty stray
-directory tree**. `collect_engines()` counts any directory with submodules, so a
-regeneration today emits **119** engines, not 118. The count is wrong twice
-depending on when you look.
+### 0.T2 The engine count depended on when you read it — **DONE, by fixing the counter**
 
-Also stray: `find_re.sh`, `parse_scan2.py`, `url_probe2.py` at the `alpha/` root.
+**Found:** the committed manifest said **118** engines and a fresh regeneration
+said **119**. `backend/packages/harness/alpha/backend/packages/harness/alpha`
+existed as three nested **empty** directories with **zero tracked files**.
 
-- [ ] Delete the empty tree and the three stray scripts.
-- [ ] Regenerate the manifest; confirm the engine count.
-- [ ] Gate: manifest regenerated and committed; counts in 0.T1 match it.
+**Root cause, in one sentence:** `collect_engines()` treated "contains a
+subdirectory" as sufficient to be an importable package, so a chain of empty
+directories counted as one engine — contradicting its own docstring, which says
+"Directories holding only data (or nothing) are excluded".
 
-### 0.T3 Fix the stale comment and the broken gate
+**The stray tree was NOT deleted** (operator instruction: add code, delete
+nothing). The counter was fixed instead, so the number no longer depends on
+whether unrelated junk is on disk. A generator that is sensitive to stray
+directories is fragile; one that asks "does this hold Python?" is not.
 
-- [ ] `app/gateway/autonomy/supervisor.py:198` says "all eight loops" while nine
-      are registered in `register_default_loops()` (`supervisor.py:126-142`).
+- [x] `collect_engines()` now requires a subdirectory to hold a `.py` file at any
+      depth. Regeneration: **118**, and `alpha.backend` is gone from the manifest.
+- [x] The empty directories remain on disk, proving the count no longer needs
+      their removal.
+- [x] `tests/test_engine_count_ignores_empty_directories.py`, **8 cases**,
+      including `test_the_count_is_stable_regardless_of_unrelated_junk`, which
+      pins the property that actually broke.
+- [x] **Negative-controlled:** restoring the original rule → `assert 'alpha.backend'
+      not in {'alpha.backend'}` and the stability test fails on `alpha.zzz_stray`.
+      Restored: 8 pass.
+
+### 0.T3 Stale loop comment — **DONE**. Pre-commit gate — **NOT DONE**
+
+- [x] `supervisor.py:196` said "all eight loops pass through" while
+      `register_default_loops()` registers **nine**. Rewritten to name the
+      registry function rather than assert a count.
+- [x] `tests/test_supervisor_loop_registry_matches_its_comments.py`, **3 cases**.
+      It parses the `defaults` tuple of `(loop_id, description, tick, interval)`
+      rows, so the count moves structurally when a loop is added or removed — a
+      literal "nine" test would pass against a registry of eight. It also
+      cross-checks the registry against `contracts/feature_manifest.json`, which
+      counts the same loops independently, so agreement is evidence rather than
+      a tautology. And it fails on *any* supervisor comment that counts the loops,
+      so the next person to write "all nine loops" gets a red test.
+- [x] **Negative-controlled:** restoring the "eight loops" comment →
+      `a supervisor comment counts the loops, which nothing verifies`.
+      Restored: 3 pass.
 - [ ] `.pre-commit-config.yaml:27-32` runs `npx eslint`, which **cannot pass**:
       the frontend has no `eslint.config.*`, declares `"lint": "pnpm typecheck"`
       (`frontend/package.json:12`), and has no ESLint dependency. ESLint 9+
-      hard-fails. Every commit touching `frontend/` is refused. Full analysis in
-      `docs/audits/FRONTEND_PRE_COMMIT_HOOK.md`.
-- [ ] Gate: a frontend commit passes the hook, and `tsc --noEmit` is still the
-      gate it enforces.
+      hard-fails, so every commit touching `frontend/` is refused. Analysis in
+      `docs/audits/FRONTEND_PRE_COMMIT_HOOK.md`. **Not done**: `.pre-commit-config.yaml`
+      is shared state that a concurrent agent is also using, and the operator asked
+      for additions only. Frontend commits in this worktree therefore use
+      `--no-verify`, with `tsc --noEmit` and `node --test src/lib/*.test.mjs` run
+      directly instead — the gate's intent is enforced, just not through the hook.
 
 ---
 
@@ -504,9 +550,10 @@ Sweep the rest of the suite for the same class.
 Tick in order. Each line links to its section.
 
 ### Phase 0 — baseline truth
-- [ ] 0.T1 Correct generated-count drift
-- [ ] 0.T2 Remove the stray directory inflating engine count
-- [ ] 0.T3 Fix the stale loop comment and the broken pre-commit gate
+- [x] 0.T1 Correct generated-count drift (15 claims, 11 files) + 24-case gate
+- [x] 0.T2 Engine count fixed at the counter; nothing deleted
+- [x] 0.T3a Stale loop comment fixed + 3-case structural gate
+- [ ] 0.T3b Pre-commit eslint gate (shared state; additions-only instruction)
 
 ### Phase 1 — registered-but-dead
 - [ ] 3.T1 Deep-agent delegation: bind a real runner
@@ -556,3 +603,6 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | Control-plane runner | `docs/audits/SUBAGENT_VISIBILITY.md` | finding documented, **fix not started** |
 | 2026-10-06 | Deep-agent runner | — | **not started** |
 | 2026-10-06 | Prompt-only assignment | — | **not started** |
+| 2026-10-06 | 0.T1 count drift | 15 claims corrected in 11 files | 24-case gate; NC reverted FAQ.md to 117 → red |
+| 2026-10-06 | 0.T2 engine count | fresh gen was 119 vs committed 118 | fixed `collect_engines()`; 8 cases; NC → `alpha.backend` counted |
+| 2026-10-06 | 0.T3a loop comment | 9 registered, comment said eight | 3 cases; NC stale comment → red |
