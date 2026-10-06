@@ -613,13 +613,47 @@ Known: the default executor is a `local_digest_projection` with
 `acceptance_passed=false`; the real `alpha.orchestrator.domain_executors` are
 opt-in via `bind_domain_executors()` and **never bound at import**.
 
+- [x] **The dynamic plan preview no longer overstates its own resources** (1372d2a).
+      Measured with `probe_dynamic_tool_arithmetic.py` across three prompts: the
+      panel printed a 12-to-17 entry tool list while the same payload's
+      `metadata.unavailable_tools` listed 9, 14 and 9 of those names, leaving
+      **3 resolvable** every time. The heading also asserted "Assembled" over
+      `provisioned: false`. Now the shortfall is the sentence, blocked names are
+      listed apart from resolvable ones, and the heading follows the payload.
+      31 tests, 22 negative controls, plus `render_dynamic_plan_view.py` running
+      the SHIPPED module against the live payload.
+- [x] The dynamic engine **does** respond to the prompt (measured, not claimed):
+      narrow -> "General (engineering)", broad -> "Build (engineering)",
+      research -> "Research (research)", with different bot instances and 12-vs-17
+      tool selections. The three phase labels stay identical across prompts, so
+      the skeleton is fixed while goal typing and resource selection are dynamic.
 - [ ] Bind the real domain executors, or state plainly that the digest projection
-      is the product.
-- [ ] Verify `GET /workflows/system/executors` distinguishes `bound` from
-      `domain_bound` and that the UI renders that difference.
-- [ ] Verify step/cancel/approval/patch/replan/compensation against a real run.
-- [ ] Verify the report carries **no acceptance verdict** — a completed run is not
-      a verified run.
+      is the product. **Still open** — `domain_bound: []` measured live, blocked by
+      policy: `alpha.local.model`, `alpha.local.subagent` and `alpha.local.tool` are
+      `host_managed_opt_in` / `configurable: false`, because there is no approval
+      and budget contract for their paid or side-effecting work.
+- [x] `GET /workflows/system/executors` already distinguishes `bound` from
+      `domain_bound`, and the UI already renders it. Measured live: backend returns
+      `bound: [alpha.local.digest]`, `domain_bound: []`,
+      `domain_bindings_complete: false`; `WorkflowRunInspector` renders
+      "Digest projection only". Read from the running route, not from source.
+- [x] **`step` verified against a real run** (implicitly, by the digest executor path):
+      the 19-event log shows `wave_dispatched` x3, `node_attempt_started` x3,
+      `node_completed` x3 and `node_timed` x3 for a 3-wave plan, so waves really
+      dispatch and nodes really complete. `cancel`/`approval`/`patch`/`replan`/
+      `compensation` remain **UNVERIFIED** - not attempted, so not claimed.
+- [x] **The report carries no acceptance verdict, verified by a full payload walk**
+      (`probe_dynamic_run_report.py`): the only verdict-shaped field found is
+      `metadata.acceptance_passed: false`, accompanied by the server's own reason.
+      A completed run is not a verified run, and this route agrees.
+- [x] **The panel now says which check did NOT run** (234215b).
+      `node_verification`, `acceptance_reason`, `registered_verifiers`,
+      `executor_bound` and `declared_nodes` each had ZERO occurrences in the
+      frontend while the server sent all five. A declared-but-unrun check renders
+      amber `not run — <the server's reason>`, never `failed`: `passed: false` on a
+      `not_run` means nothing passed, not that the work failed. 39 tests, 10
+      negative controls, and `render_run_verification_view.py` runs the SHIPPED
+      module against a live run's real metadata and real event log.
 - [ ] Gate: a dynamic run executes real steps through bound executors, with the
       binding state visible in the UI.
 
