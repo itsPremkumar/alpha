@@ -1007,9 +1007,18 @@ test("SubagentsSection reads the fleet strictly and locks the spawn control", ()
   const code = codeOnly(read("../components/sections/SubagentsSection.tsx"));
   // The name alone is not enough — a local try/catch around the same reader
   // restores the catch-and-empty. The call itself must be unwrapped.
+  //
+  // The `\s*` and the optional trailing comma are load-bearing, both added after
+  // a prettier reflow broke this pin. Prettier wrapped
+  // `Promise.allSettled([listSubagentCatalog(), fetchLiveSubagentsStrict()])`
+  // across three lines and added a trailing comma, so the single-space literal no
+  // longer matched — turning the suite red while the behaviour it guards was
+  // entirely intact. A pin that asserts *line shape* rather than behaviour fails
+  // the next time any formatter runs, and the failure looks like a regression in
+  // the honesty contract rather than a formatting change.
   assert.match(
     code,
-    /\[listSubagentCatalog\(\), fetchLiveSubagentsStrict\(\)\]/,
+    /\[\s*listSubagentCatalog\(\),\s*fetchLiveSubagentsStrict\(\)\s*,?\s*\]/,
     "the fleet must be read by the strict reader, not a locally re-wrapped one that catches to []",
   );
   assert.doesNotMatch(
@@ -1100,7 +1109,14 @@ test("SubagentsSection distinguishes a failed item read from an empty batch", ()
   assert.ok(start > 0, "BatchesBlock must keep its per-batch verb handler");
   const block = code.slice(start);
   for (const verb of ["pauseBatch", "resumeBatch", "cancelBatch"]) {
-    const at = block.indexOf(`act(b, () => ${verb}(`);
+    // Whitespace-tolerant for the same reason as the `Promise.allSettled` pin
+    // above: prettier reflowed `act(b, () => pauseBatch(...))` onto three lines,
+    // and a literal `indexOf` then failed while the control it guards was still
+    // present and still owned by its `<Btn`. The claim is "this verb is invoked
+    // inside the per-batch handler", so that is what is matched.
+    const at = block.search(
+      new RegExp(`act\\(b,\\s*\\(\\)\\s*=>\\s*${verb}\\(`),
+    );
     assert.ok(at > 0, `expected the ${verb} control`);
     // Walk back to the opening `<Btn` that owns this handler.
     const open = block.lastIndexOf("<Btn", at);
