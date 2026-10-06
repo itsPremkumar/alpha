@@ -50,6 +50,13 @@ from alpha.commands.registry import UNIMPLEMENTED_STATUS, CommandExecutionResult
 # assertion.  Removing one without unbinding the handler is also red.
 IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
     {
+        # APEX autopilot: bound in alpha/apex/commands.py, published in
+        # catalog.py. `/apex` alone is a read-only status read, never an enable.
+        "/apex",
+        "/apex off",
+        "/apex on",
+        "/apex policy",
+        "/apex status",
         "/boost",
         "/compact",
         "/compress",
@@ -86,6 +93,9 @@ IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
 # certified the lie. 410 was also wrong: it excluded the 14 production handlers
 # bound by ``alpha.mission.goalloop.bindings``.
 NO_HANDLER_ROW_COUNT = 407
+# The 5 ``/apex`` rows added for the autopilot are bound to real handlers, so
+# they deliberately do NOT move this number. Shipping working commands is not a
+# reason the known gap shrank; only closing handler-less rows may do that.
 
 # Rows executed per run to prove the handler-less path behaves as documented
 # instead of quietly becoming a real handler.
@@ -267,7 +277,9 @@ def test_no_handler_row_count_is_exact() -> None:
     handler_backed = _handler_backed_catalog_rows()
     no_handler = _no_handler_catalog_rows()
 
-    assert len(catalog) == 426, f"the unique catalog row count changed: {len(catalog)}"
+    # 426 -> 431: the five `/apex` rows. Every one is handler-backed, so the
+    # known-gap count above is unchanged.
+    assert len(catalog) == 431, f"the unique catalog row count changed: {len(catalog)}"
     assert len(no_handler) == NO_HANDLER_ROW_COUNT, (
         f"{len(catalog)} unique catalog rows, {len(handler_backed)} with handlers, "
         f"{len(no_handler)} with none (expected {NO_HANDLER_ROW_COUNT}). A new catalog "

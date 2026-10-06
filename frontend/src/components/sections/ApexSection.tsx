@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cpu, Radio, ShieldCheck } from "lucide-react";
+import { Cpu, Power, Radio, ShieldCheck } from "lucide-react";
 
 import { Badge, Btn, ErrorBox, Notice, Section, SkeletonList } from "@/components/ui";
 import {
   APEX_PROFILES,
+  fetchApexMode,
   fetchApexPolicy,
   fetchApexStatus,
   type ApexBlock,
   type ApexContract,
+  type ApexMode,
   type ApexProfile,
   type ApexStatus,
   runApexCycle,
+  setApexMode,
 } from "@/lib/apex";
 
 /**
@@ -158,6 +161,189 @@ function InvariantsCard({ report }: { report: NonNullable<ApexStatus["invariants
   );
 }
 
+/**
+ * The APEX ON/OFF switch.
+ *
+ * ## The one rule this component is built around
+ *
+ * **The switch is never painted before the server confirms it.** It renders
+ * `mode` — the state a `GET /apex/mode` read returned — and nothing else. There
+ * is no optimistic local flip, because a switch that reads ON against a server
+ * that never enabled anything is the most dangerous single widget in this
+ * package: it tells the operator the executive is running when it is not.
+ *
+ * That is why the write is followed by a re-read rather than by trusting the
+ * POST's own body, and why a rejected write leaves the switch exactly where it
+ * was with the server's reason beside it.
+ *
+ * Four disclosures the switch owes the operator, each reachable:
+ *
+ * - **A degraded store.** An unreadable mode store answers every scope as off.
+ *   That is the correct fail-closed behaviour and a useless thing to show as a
+ *   clean "OFF", so `load_error` is surfaced rather than swallowed.
+ * - **A write that did not persist.** `durable: false` means the toggle changed
+ *   an in-memory row that a restart will forget. The switch says so instead of
+ *   implying a durable setting.
+ * - **An unknown profile.** A record written by a newer build degrades to
+ *   `assist`. `enabled: true` would still be true, so without `load_note` the
+ *   panel would show the operator more authority than they will actually get.
+ * - **`enabled` true while `contract_enabled` false.** The flag says someone
+ *   switched this on; the contract is what actually gates work. When they
+ *   disagree, the authority is what the switch reports as effective.
+ */
+function ApexToggle({ onError }: { onError: (message: string | null) => void }) {
+  const [mode, setMode] = useState<ApexMode | null>(null);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ApexProfile>("assist");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await fetchApexMode();
+        if (!cancelled) {
+          setMode(next);
+          // The picker follows the server's profile when it is one this build
+          // knows, so the next enable does not silently reset an operator who
+          // had deliberately chosen a different rung.
+          if (APEX_PROFILES.includes(next.profile as ApexProfile)) {
+            setProfile(next.profile as ApexProfile);
+          }
+        }
+      } catch (exc) {
+        // A failed read is NOT "off". It is an unknown, and the switch says so
+        // instead of rendering a state nobody measured.
+        if (!cancelled) setLoadError(exc instanceof Error ? exc.message : String(exc));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggle = async (nextEnabled: boolean) => {
+    if (pending !== null) return;
+    setPending(nextEnabled);
+    onError(null);
+    try {
+      const written = await setApexMode(nextEnabled, { profile });
+      // Re-read rather than adopting the POST body: the toggle's contract is
+      // that what it shows is what the server last confirmed.
+      const confirmed = await fetchApexMode();
+      setMode(confirmed);
+      if (!written.durable) {
+        onError("The mode changed in memory but did not reach disk — it will not survive a restart.");
+      }
+    } catch (exc) {
+      // Leave `mode` untouched: a refused write must not move the switch.
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setPending(null);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="space-y-2 rounded-lg border border-amber-300 p-3 dark:border-amber-800">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Power className="size-4" />
+          APEX state unknown
+        </div>
+        <p className="text-xs text-neutral-600">
+          The mode read failed, so whether APEX is on is <strong>not known</strong>. This is not the same as
+          off.
+        </p>
+        <p className="font-mono text-xs text-amber-700">{loadError}</p>
+        <Btn onClick={() => window.location.reload()}>Retry</Btn>
+      </div>
+    );
+  }
+
+  if (!mode) {
+    return <SkeletonList rows={1} />;
+  }
+
+  const on = mode.enabled;
+  const busy = pending !== null;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Power className={`size-5 ${on ? "text-emerald-600" : "text-neutral-400"}`} />
+          <span className="text-sm font-medium">APEX autopilot</span>
+          {/* Defaults-off must look off, so this is grey rather than neutral
+              green when APEX is not running. */}
+          <Badge tone={on ? "green" : "gray"}>{on ? "ON" : "OFF"}</Badge>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-neutral-500">
+            Profile
+            <select
+              aria-label="APEX profile"
+              className="rounded-md border border-border bg-transparent px-2 py-1 text-sm"
+              value={profile}
+              disabled={busy}
+              onChange={(event) => setProfile(event.target.value as ApexProfile)}
+            >
+              {APEX_PROFILES.filter((p) => p !== "off").map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <Btn
+            onClick={() => toggle(!on)}
+            disabled={busy}
+            aria-pressed={on}
+            className={on ? "" : "font-semibold"}
+          >
+            {busy ? (pending ? "Turning on…" : "Turning off…") : on ? "Turn off" : "Turn on"}
+          </Btn>
+        </div>
+      </div>
+
+      <p className="text-xs text-neutral-600">
+        {on ? (
+          <>
+            APEX chooses the strategy and composes existing capabilities. It does not run tools itself, and a
+            mission completes only on measured acceptance evidence. Emergency stop stays outside this control.
+          </>
+        ) : (
+          <>
+            Turn APEX on to let it decide the approach to a high-level objective. With APEX off, Alpha executes
+            requests normally.
+          </>
+        )}
+      </p>
+
+      {/* The disagreement between the recorded intent and the authority the
+          contract actually grants. */}
+      {on && !mode.contract_enabled && (
+        <Notice
+          tone="warn"
+          message="APEX is recorded as on, but the active contract grants nothing. Work will not proceed until this is resolved."
+        />
+      )}
+
+      {mode.load_note && <Notice tone="warn" message={`Stored profile was not recognised — ${mode.load_note}`} />}
+
+      {mode.load_error && (
+        <Notice
+          tone="warn"
+          message={`The mode store could not be read (${mode.load_error}). Every scope is being treated as OFF, which is the fail-closed choice.`}
+        />
+      )}
+
+      {!on && mode.reason && <p className="text-xs text-neutral-500">{mode.reason}</p>}
+    </div>
+  );
+}
+
 export function ApexSection() {
   const [status, setStatus] = useState<ApexStatus | null>(null);
   const [policy, setPolicy] = useState<ApexContract | null>(null);
@@ -251,6 +437,10 @@ export function ApexSection() {
       }
     >
       <div className="space-y-3">
+        {/* The switch owns the first row: it is the one control that decides
+            whether anything below it is live at all. */}
+        <ApexToggle onError={setError} />
+
         <ContractCard contract={policy} />
 
         {status.contract.available ? (

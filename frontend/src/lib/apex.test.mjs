@@ -404,3 +404,136 @@ test("a refused read rejects rather than resolving to an empty status", async ()
 test("the four profiles are exactly the ones the contract defines", () => {
   assert.deepEqual([...apex.APEX_PROFILES], ["off", "assist", "autonomous", "apex_max"]);
 });
+
+/* ── The mode toggle ───────────────────────────────────────────────────── */
+
+/*
+ * The toggle's contract is that it renders what the server last confirmed and
+ * nothing else. Every test below names a payload that would make a plausible
+ * wrong word appear — a green switch over a dead store, an "already on" success
+ * for a write that never landed, an enable that silently keeps the previous
+ * authority.
+ */
+
+const OFF_MODE = {
+  enabled: false,
+  contract_enabled: false,
+  profile: "off",
+  scope_key: "u1",
+  changed: false,
+  contract_digest: "apxc-off",
+  durable: false,
+  reason: "",
+  enabled_at: null,
+  updated_at: 1700000000,
+};
+
+const ON_MODE = {
+  ...OFF_MODE,
+  enabled: true,
+  contract_enabled: true,
+  profile: "assist",
+  contract_digest: "apxc-assist",
+  changed: true,
+  durable: true,
+  enabled_at: 1700000000,
+};
+
+test("the toggle reads GET /apex/mode", async () => {
+  record("GET /apex/mode", { body: OFF_MODE });
+  const mode = await apex.fetchApexMode();
+  assert.equal(lastCall().path, "/apex/mode");
+  assert.equal(lastCall().method, "GET");
+  assert.equal(mode.enabled, false);
+  assert.equal(mode.contract_enabled, false);
+});
+
+test("an unknown scope is sent as a query parameter, not smuggled into the path", async () => {
+  record("GET /apex/mode?scope_key=thread%2F7", { body: OFF_MODE });
+  await apex.fetchApexMode("thread/7");
+  assert.equal(lastCall().path, "/apex/mode?scope_key=thread%2F7");
+});
+
+test("enabling posts to /apex/enable with the named profile", async () => {
+  record("POST /apex/enable", { body: ON_MODE });
+  const mode = await apex.setApexMode(true, { profile: "assist" });
+  assert.equal(lastCall().method, "POST");
+  assert.equal(lastCall().path, "/apex/enable");
+  assert.deepEqual(lastCall().body, { profile: "assist" });
+  assert.equal(mode.enabled, true);
+  assert.equal(mode.changed, true);
+});
+
+test("disabling posts to /apex/disable and sends NO profile", async () => {
+  // Sending a profile on the disable route would imply the field is meaningful
+  // there. The server keeps the previous profile so a later enable restores the
+  // authority the operator had.
+  record("POST /apex/disable", { body: { ...ON_MODE, enabled: false, contract_enabled: false, changed: true } });
+  const mode = await apex.setApexMode(false, { profile: "apex_max" });
+  assert.equal(lastCall().path, "/apex/disable");
+  assert.deepEqual(lastCall().body, {});
+  assert.equal(mode.enabled, false);
+  assert.equal(mode.profile, "assist", "the retained profile is reported, not the one just passed");
+});
+
+test("a second enable reports changed=false rather than a fresh success", async () => {
+  record("POST /apex/enable", { body: { ...ON_MODE, changed: false, reason: "already enabled at this profile" } });
+  const mode = await apex.setApexMode(true, { profile: "assist" });
+  assert.equal(mode.changed, false);
+  assert.equal(mode.reason, "already enabled at this profile");
+});
+
+test("a write that did not persist reports durable=false", async () => {
+  // The toggle changed an in-memory row a restart will forget. Reporting this
+  // as a durable setting would be the "APEX is on" claim surviving a reboot.
+  record("POST /apex/enable", { body: { ...ON_MODE, durable: false } });
+  const mode = await apex.setApexMode(true, { profile: "assist" });
+  assert.equal(mode.enabled, true);
+  assert.equal(mode.durable, false);
+});
+
+test("a degraded mode store keeps its load_error instead of reading as a clean OFF", async () => {
+  record("GET /apex/mode", {
+    body: { ...OFF_MODE, load_error: "JSONDecodeError: Expecting property name enclosed in double quotes" },
+  });
+  const mode = await apex.fetchApexMode();
+  assert.equal(mode.enabled, false, "fail-closed: an unreadable store grants nothing");
+  assert.match(mode.load_error, /JSONDecodeError/, "and it discloses why");
+});
+
+test("an unrecognised stored profile keeps its load_note", async () => {
+  record("GET /apex/mode", { body: { ...ON_MODE, profile: "apex_pro_max", load_note: "unknown profile" } });
+  const mode = await apex.fetchApexMode();
+  assert.equal(mode.enabled, true);
+  assert.equal(mode.profile, "apex_pro_max", "rendered verbatim, never snapped to a known profile");
+  assert.equal(mode.load_note, "unknown profile");
+});
+
+test("enabled and contract_enabled are kept as two separate claims", async () => {
+  // The contradictory record: someone switched this scope on, but the frozen
+  // contract grants nothing. Collapsing these would paint it green.
+  record("GET /apex/mode", { body: { ...ON_MODE, enabled: true, contract_enabled: false } });
+  const mode = await apex.fetchApexMode();
+  assert.equal(mode.enabled, true);
+  assert.equal(mode.contract_enabled, false);
+});
+
+test("a refused toggle rejects with the server's reason", async () => {
+  record("POST /apex/enable", { reject: "HTTP 403: APEX control actions require an administrator" });
+  await assert.rejects(() => apex.setApexMode(true, { profile: "assist" }), /administrator/);
+});
+
+test("an unknown profile's 422 names the valid profiles rather than a generic failure", async () => {
+  record("POST /apex/enable", {
+    reject: "HTTP 422: unknown APEX profile 'god_mode'; expected one of ['off', 'assist', 'autonomous', 'apex_max']",
+  });
+  await assert.rejects(() => apex.setApexMode(true, { profile: "god_mode" }), /apex_max/);
+});
+
+test("a refused mode read rejects rather than resolving to a defaulted OFF switch", async () => {
+  // The dangerous failure: a read that fails and resolves to { enabled: false }
+  // renders a confident OFF, which reads as a deliberate decision rather than
+  // an unknown one.
+  record("GET /apex/mode", { reject: "HTTP 500: mode store unreachable" });
+  await assert.rejects(() => apex.fetchApexMode(), /unreachable/);
+});

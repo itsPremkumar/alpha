@@ -462,5 +462,13 @@ def get_default_catalog_entries():
         ("/grill-me", CommandCategory.PLANNING, "Runs a real model turn that interrogates your goal with hard questions", "/grill-me <goal or plan>", True),
         ("/teamwork-preview", CommandCategory.SWARM, "Read-only preview of the available team: roster, groups and swarm state", "/teamwork-preview", True),
         ("/self-heal", CommandCategory.AUTONOMOUS_OPS, "Diagnoses self-healing state (estop, Sentinel journal) without applying fixes", "/self-heal", True),
+        # APEX autopilot commands (real handlers in alpha/apex/commands.py).
+        # `/apex` alone is status, deliberately NOT enable: a bare or truncated
+        # line must never grant autonomy from a typo.
+        ("/apex", CommandCategory.AUTONOMOUS_OPS, "Shows the APEX autopilot state for this session", "/apex", True),
+        ("/apex on", CommandCategory.AUTONOMOUS_OPS, "Enables APEX autopilot for this session at a named profile", "/apex on [assist|autonomous|apex_max]", True),
+        ("/apex off", CommandCategory.AUTONOMOUS_OPS, "Disables APEX autopilot for this session, preserving mission state", "/apex off", True),
+        ("/apex status", CommandCategory.AUTONOMOUS_OPS, "Shows APEX on/off, profile, contract, invariants and fleet control", "/apex status", True),
+        ("/apex policy", CommandCategory.AUTONOMOUS_OPS, "Shows what the APEX contract grants, budgets, and refuses", "/apex policy [off|assist|autonomous|apex_max]", True),
     ]
     return entries

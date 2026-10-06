@@ -367,3 +367,92 @@ export async function runApexCycle(sessionId: string): Promise<ApexCycleResult> 
 export async function steerApexSession(sessionId: string, instruction: string): Promise<void> {
   await send<Rec>(`/apex/sessions/${encodeURIComponent(sessionId)}/steer`, "POST", { instruction });
 }
+
+// --------------------------------------------------------------------------- //
+// The mode toggle
+// --------------------------------------------------------------------------- //
+//
+// `enabled` and `contract_enabled` are **two different claims** and the client
+// keeps them apart.
+//
+// The backend reports `enabled` as the recorded intent and `contract_enabled` as
+// what the frozen contract actually grants. They disagree in exactly the cases
+// that matter: a corrupt mode store answers `enabled: false` for every scope
+// (fail-closed), and a record persisted by a newer build under a profile this
+// one does not know degrades to `assist` — so `enabled` can be true while the
+// authority is not what was asked for. A toggle that rendered only `enabled`
+// would paint the second case green.
+
+export interface ApexMode {
+  /** The recorded intent: did anything switch this scope on? */
+  enabled: boolean;
+  /** What the contract actually grants. This is what gates work. */
+  contract_enabled: boolean;
+  profile: ApexProfile | string;
+  scope_key: string;
+  /** Whether *this* call changed anything. A second enable is `false`. */
+  changed: boolean;
+  contract_digest: string;
+  /** Whether the write reached disk. `false` means the toggle did not persist. */
+  durable: boolean;
+  /** Why nothing changed, when `changed` is false. */
+  reason: string;
+  enabled_at: number | null;
+  updated_at: number | null;
+  /** Set when the stored profile is not one this build knows. */
+  load_note: string | null;
+  /** Set when the mode store could not be read at all. */
+  load_error: string | null;
+}
+
+function mapMode(v: unknown): ApexMode {
+  const r = rec(v);
+  return {
+    enabled: bool(r.enabled),
+    contract_enabled: bool(r.contract_enabled),
+    profile: str(r.profile) || "off",
+    scope_key: str(r.scope_key),
+    changed: bool(r.changed),
+    contract_digest: str(r.contract_digest),
+    durable: bool(r.durable),
+    reason: str(r.reason),
+    enabled_at: optNum(r.enabled_at),
+    updated_at: optNum(r.updated_at),
+    load_note: optStr(r.load_note),
+    load_error: optStr(r.load_error),
+  };
+}
+
+/**
+ * `GET /apex/mode`. The read the toggle renders from.
+ *
+ * Never resolves to a guessed state: a rejected read throws, so the panel shows
+ * the failure rather than a switch that looks like a working one pointed at
+ * "off".
+ */
+export async function fetchApexMode(scopeKey?: string): Promise<ApexMode> {
+  const query = scopeKey ? `?scope_key=${encodeURIComponent(scopeKey)}` : "";
+  return mapMode(await get<Rec>(`/apex/mode${query}`));
+}
+
+/**
+ * `POST /apex/enable` / `POST /apex/disable`.
+ *
+ * `profile` is sent only when enabling. `/apex/disable` takes no profile — the
+ * server keeps the previous one so re-enabling restores the authority the user
+ * had rather than resetting them to a default, and sending a profile there would
+ * imply the field is meaningful on that route.
+ *
+ * A 422 names the valid profiles and rejects on it, so a typo cannot silently
+ * grant a different authority than the operator asked for.
+ */
+export async function setApexMode(
+  enabled: boolean,
+  opts?: { profile?: ApexProfile; scopeKey?: string },
+): Promise<ApexMode> {
+  const path = enabled ? "/apex/enable" : "/apex/disable";
+  const body: Record<string, string> = {};
+  if (enabled && opts?.profile) body.profile = opts.profile;
+  if (opts?.scopeKey) body.scope_key = opts.scopeKey;
+  return mapMode(await send<Rec>(path, "POST", body));
+}

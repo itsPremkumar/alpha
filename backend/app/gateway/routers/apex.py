@@ -43,6 +43,8 @@ from alpha.apex.contract import (
 )
 from alpha.apex.executive import run_cycle
 from alpha.apex.invariants import check_invariants
+from alpha.apex.mode import DEFAULT_SCOPE as DEFAULT_APEX_SCOPE
+from alpha.apex.mode import get_apex_mode_store, set_mode
 from alpha.apex.status import SUPERVISOR_STATUS_PATH, apex_status, contract_status
 from alpha.apex.store import APEX_EVENTS, ApexSessionState, get_apex_store
 
@@ -83,6 +85,34 @@ class SteerRequest(BaseModel):
 class CycleRequest(BaseModel):
     #: Run the cycle for every non-terminal session when no id is named.
     all_sessions: bool = False
+
+
+class ModeRequest(BaseModel):
+    """The payload for the APEX on/off toggle (spec §3, §33).
+
+    ``scope_key`` is the conversation the toggle applies to. It defaults to the
+    caller's own id, so a toggle with no argument always acts on the caller's
+    own session and can never reach another user's.
+    """
+
+    #: Defaults to ``"assist"`` rather than the most permissive profile: turning
+    #: APEX on is not a request for maximum authority (spec §24).
+    profile: str = "assist"
+    #: Optional explicit scope. A non-admin naming another user's scope is
+    #: refused by ``_require_admin``'s sibling check below rather than trusted.
+    scope_key: str = ""
+
+
+class ModeResponse(BaseModel):
+    enabled: bool
+    profile: str
+    scope_key: str
+    changed: bool
+    contract_digest: str
+    contract_enabled: bool
+    durable: bool = False
+    reason: str = ""
+    load_error: str | None = None
 
 
 def _require_admin(request: Request) -> str:
@@ -133,6 +163,116 @@ def _session_or_404(session_id: str) -> Any:
     if session is None:
         raise HTTPException(status_code=404, detail=f"no APEX session {session_id!r}")
     return session
+
+
+def _resolve_scope(request: Request, requested: str) -> tuple[str, str]:
+    """Resolve the toggle's scope, refusing one caller to name another's.
+
+    Returns ``(scope_key, owner)``. An explicit ``scope_key`` is honoured only
+    for an admin; for anyone else it must equal their own id. Without this the
+    toggle would be a cross-session autonomy grant: any authenticated user could
+    switch on a scope they do not own.
+
+    The same "unknown scope is OFF" rule the store applies is stated in the
+    response, because a client that asked about a scope nobody configured needs
+    to distinguish "not enabled" from "I created it".
+    """
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail="authentication required")
+    owner = str(getattr(user, "id", "") or "")
+    is_admin = bool(getattr(user, "is_admin", False))
+    scope = str(requested or "").strip() or owner or DEFAULT_APEX_SCOPE
+    if requested and scope != owner and not is_admin:
+        raise HTTPException(status_code=403, detail="an APEX toggle may only target your own session")
+    return scope, owner
+
+
+def _mode_body(scope_key: str, *, changed: bool, durable: bool = False, reason: str = "") -> dict[str, Any]:
+    store = get_apex_mode_store()
+    record = store.for_scope(scope_key)
+    contract = record.contract()
+    body: dict[str, Any] = {
+        "enabled": record.enabled,
+        "profile": record.profile,
+        "scope_key": scope_key,
+        "changed": changed,
+        "contract_digest": contract.digest(),
+        # Reported separately from `enabled` on purpose: a corrupt store answers
+        # enabled=False, and a record whose profile this build does not know
+        # degrades to `assist`. `contract_enabled` is the claim that actually
+        # gates work, so it must be visible rather than inferred from the flag.
+        "contract_enabled": contract.enabled,
+        "durable": durable,
+        "reason": reason,
+        "enabled_at": record.enabled_at,
+        "updated_at": record.updated_at,
+    }
+    if record.load_note:
+        body["load_note"] = record.load_note
+    if store.is_degraded:
+        # A mode store that cannot be read is reporting every scope as OFF. That
+        # is the fail-closed choice, but a client must be able to see it is a
+        # degraded read rather than a considered decision.
+        body["load_error"] = store.load_error
+    return body
+
+
+# --------------------------------------------------------------------------- #
+# Mode toggle — the one surface the UI's ON/OFF switch writes
+# --------------------------------------------------------------------------- #
+#
+# Declared before `/sessions/{session_id}` for the same reason `/status` and
+# `/policy` are: Starlette matches in registration order, and a catch-all
+# declared first would answer `405 Session 'enable' not found` for a feature
+# that exists. Pinned by tests/test_apex_router_route_order.py.
+
+
+@router.get("/mode", summary="Read the APEX mode for a scope")
+async def read_apex_mode(request: Request, scope_key: str = Query(default="")) -> dict[str, Any]:
+    """The current on/off state, the profile, and what the contract authorises.
+
+    Read-only, and safe to poll. `changed` is `false` because nothing changed —
+    this route exists so a client can render the toggle from server state
+    rather than from an optimistic local guess.
+    """
+    scope, _owner = _resolve_scope(request, scope_key)
+    return _mode_body(scope, changed=False)
+
+
+@router.post("/enable", summary="Enable APEX autopilot for a scope")
+async def enable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]:
+    """Turn APEX on at a named profile.
+
+    Requires admin, because turning autonomy on is an operator act — the same
+    treatment `POST /mode` (plan mode) receives. A 422 names the valid profiles
+    rather than falling back to one, so a typo cannot silently grant a
+    different authority than the caller asked for.
+    """
+    owner = _require_admin(request)
+    scope, _resolved_owner = _resolve_scope(request, payload.scope_key)
+    try:
+        outcome = set_mode(scope, True, profile=payload.profile, owner=owner)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _mode_body(scope, changed=bool(outcome.get("changed")), durable=bool(outcome.get("durable")), reason=str(outcome.get("reason", "")))
+
+
+@router.post("/disable", summary="Disable APEX autopilot for a scope")
+async def disable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]:
+    """Turn APEX off for a scope, preserving the mission and the profile.
+
+    Idempotent: a second call reports `changed: false` rather than pretending it
+    acted. Mission state is untouched — disabling APEX stops the executive from
+    choosing, it does not cancel work an existing engine already admitted.
+    """
+    owner = _require_admin(request)
+    scope, _resolved_owner = _resolve_scope(request, payload.scope_key)
+    try:
+        outcome = set_mode(scope, False, owner=owner)
+    except ValueError as exc:  # pragma: no cover - disable takes no profile
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _mode_body(scope, changed=bool(outcome.get("changed")), durable=bool(outcome.get("durable")), reason=str(outcome.get("reason", "")))
 
 
 # --------------------------------------------------------------------------- #
