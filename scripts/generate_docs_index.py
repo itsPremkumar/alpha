@@ -184,6 +184,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Group profiles, links, goals, pinning, threading, receipts and notifications — design record plus a per-feature shipped/not-shipped map.",
     ),
+    "ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md": DocumentSpec(
+        "plans",
+        "Alpha's autonomous-autopilot master spec: the single source of truth for the apex autopilot's architecture, capabilities, failure modes, and verification gates (a spec, not implementation).",
+    ),
     "AUTHORITY_MODEL.md": DocumentSpec(
         "operations",
         "Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.",

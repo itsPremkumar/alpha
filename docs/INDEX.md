@@ -70,6 +70,13 @@
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
+- [audit/frontend-contracts.md](audit/frontend-contracts.md) — Operations, deployment, and reliability documentation.
+- [audit/infra.md](audit/infra.md) — Operations, deployment, and reliability documentation.
+- [audit/memory.md](audit/memory.md) — Operations, deployment, and reliability documentation.
+- [audit/qa.md](audit/qa.md) — Operations, deployment, and reliability documentation.
+- [audit/runtime.md](audit/runtime.md) — Operations, deployment, and reliability documentation.
+- [audit/security.md](audit/security.md) — Operations, deployment, and reliability documentation.
+- [audit/sprawl.md](audit/sprawl.md) — Operations, deployment, and reliability documentation.
 - [audits/AGENT_SELF_SERVICE.md](audits/AGENT_SELF_SERVICE.md) — Agent self-service record: the subagent_registry tool that lets an agent create its own specialised subagent, four bugs in that tool found by running it, the grounding-classification defect its author introduced and fixed, and the live re-verification left unverified.
 - [audits/BOT_FORGE_VERIFICATION.md](audits/BOT_FORGE_VERIFICATION.md) — Bot forge verification record: the agent forges its own new specialist, the bot is verified on four independent surfaces including a real addressed run, the duplicate-role guard is negative-controlled, and the duplicated SOUL identity heading it produced is fixed.
 - [audits/FLEET_VERIFICATION.md](audits/FLEET_VERIFICATION.md) — Fleet verification record: five real tasks run concurrently against five named bot profiles, every output opened and checked, and the coerce_iso OverflowError the review bot found and that was then reproduced, fixed and negative-controlled.
@@ -110,6 +117,7 @@
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
+- [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Alpha's autonomous-autopilot master spec: the single source of truth for the apex autopilot's architecture, capabilities, failure modes, and verification gates (a spec, not implementation).
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.

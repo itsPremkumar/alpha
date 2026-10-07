@@ -225,7 +225,7 @@ class ProcessManager:
         try:
             proc = subprocess.Popen(
                 command,
-                shell=True,
+                shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

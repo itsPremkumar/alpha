@@ -75,7 +75,7 @@ jobs:
     # with "command not found". Layer 1 (backend-replay-golden) above is a real
     # gate and still runs. Re-enable this job when a Playwright config and specs
     # are committed; the step bodies below are otherwise unchanged.
-    if: false
+    if: false  # noqa: ERA001
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

@@ -64,7 +64,7 @@ jobs:
   e2e-tests:
     # Disabled with the rest of this workflow: there is no Playwright suite in
     # the tree to run. See the banner at the top of this file.
-    if: false
+    if: false  # noqa: ERA001
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

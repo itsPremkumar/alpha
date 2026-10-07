@@ -79,7 +79,18 @@ class SafetyGuard:
 
     def evaluate_file_access(self, file_path: str | Path, mode: str = "read") -> SafetyDecision:
         """Check file access for sensitive credential stores and directory containment."""
-        path_str = str(file_path).replace("\\", "/")
+        # Strip surrounding whitespace INCLUDING control characters before matching.
+        #
+        # The sensitive-path patterns are `$`-anchored, and Python's `$` matches
+        # immediately before a trailing "\n" but NOT before a trailing "\r".
+        # Without this strip, `evaluate_file_access("/etc/shadow\r")` returned
+        # allowed=True while `/etc/shadow` was blocked — a guard documented as
+        # "strictly blocked" that fails open on a single byte. Measured
+        # 2026-10-05 on Windows; the input arrives intact from CRLF sources
+        # (an MCP payload, a CLI arg, a Windows-side JSON body).
+        #
+        # `.strip()` also covers the space/tab variants for free.
+        path_str = str(file_path).replace("\\", "/").strip()
         for pattern in self._SENSITIVE_PATH_PATTERNS:
             if pattern.search(path_str):
                 return SafetyDecision(

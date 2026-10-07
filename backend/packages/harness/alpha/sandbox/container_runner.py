@@ -155,7 +155,7 @@ class ContainerSandboxRunner:
 
             proc = subprocess.run(
                 cmd_str,
-                shell=True,
+                shell=False,
                 cwd=str(wt_path),
                 capture_output=True,
                 text=True,

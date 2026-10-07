@@ -66,13 +66,18 @@ result = {"badge": badge, "valid": True}
     assert len(exec_res.tool_calls) == 2
 
 
-def test_code_mode_tool_builtin():
+def test_code_mode_tool_builtin_fails_closed_no_runtime():
+    # The isolated code bridge is NOT built on this host. A model that calls
+    # code_mode therefore never reaches execute_code_mode; it gets
+    # CodeModeUnavailable. This is the fail-closed contract: if this assertion
+    # fails, the tool now executes model-authored code inside the Gateway
+    # process with a live ToolBridge, which is exactly the original
+    # arbitrary-code primitive we closed.
     script = """
 msg = tools.echo(text="programmatic execution active")
 print(f"Output: {msg}")
 result = 42
 """
     output = code_mode_tool.invoke({"code": script, "runtime": _tool_runtime()})
-    assert "Programmatic Tool Invocations" in output
-    assert "Output: programmatic execution active" in output
-    assert "Final Result: 42" in output
+    assert "CodeModeUnavailable" in output
+    assert "execute_code_mode" not in output

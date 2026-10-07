@@ -190,6 +190,15 @@ export interface SlashCommandInfo {
   is_core: boolean;
   is_autonomous_trigger: boolean;
   requires_approval: boolean;
+  /**
+   * Whether the registry reported a bound handler for this row.
+   *
+   * Tri-state, and `false` is not the same as absent: the registry returns it
+   * because `execute_slash_command` answers a handler-less row with
+   * `unimplemented` rather than success. Omitted means the read did not report
+   * it, which is not a measurement and must not render as one.
+   */
+  has_handler?: boolean | null;
 }
 
 export interface SlashCommandResult {

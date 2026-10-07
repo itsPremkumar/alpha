@@ -31,7 +31,7 @@ EGRESS_STORE_SCHEMA_VERSION: Final = 1
 #: Keys that would imply inline credential storage. Presence is refused loudly.
 _FORBIDDEN_SECRET_KEYS: Final = frozenset({"cookies", "password", "passwd", "token", "access_token", "refresh_token", "secret", "api_key", "authorization"})
 
-_DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
+_DOMAIN_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+")
 
 
 class EgressError(RuntimeError):
@@ -62,7 +62,7 @@ def _validate_domain(domain: str) -> str:
     clean = (domain or "").strip().lower()
     if not clean:
         raise EgressValidationError("domain must be non-empty")
-    if not _DOMAIN_RE.match(clean):
+    if not _DOMAIN_RE.fullmatch(clean):
         raise EgressValidationError(f"{domain!r} is not a valid domain")
     return clean
 

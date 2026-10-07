@@ -60,6 +60,33 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+# How long the dev persistence loop may take to publish `.langgraph_ops.pckl`
+# after the last assistant write. Measured at ~4.5s after /ok on the development
+# host; the ceiling is generous because this is a timer inside the child, not
+# work the test can influence, and a server that died is caught by the explicit
+# poll rather than by the deadline.
+_OPS_PCKL_FLUSH_BUDGET_SECONDS = 90
+
+
+def _wait_for_ops_pckl(runtime_dir: Path) -> None:
+    """Wait for the dev persistence flush to write `.langgraph_ops.pckl`.
+
+    Called while the server that writes the file is still alive. Failing here
+    names the real cause (the flush never ran) instead of leaving the next
+    assertion to blame the restart that reads the missing file.
+    """
+    pckl = runtime_dir / ".langgraph_api" / ".langgraph_ops.pckl"
+    deadline = time.monotonic() + _OPS_PCKL_FLUSH_BUDGET_SECONDS
+    while time.monotonic() < deadline:
+        if pckl.is_file():
+            return
+        time.sleep(0.25)
+    pytest.fail(
+        f"the dev server never flushed {pckl} within {_OPS_PCKL_FLUSH_BUDGET_SECONDS}s while it was running; "
+        "the cross-version restart below cannot prove anything without it"
+    )
+
+
 @contextmanager
 def _running_studio_server(
     runtime_dir: Path,
@@ -93,6 +120,15 @@ def _running_studio_server(
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(BACKEND_DIR), env.get("PYTHONPATH")]))
     env["LANGSMITH_LANGGRAPH_API_VARIANT"] = "local_dev"
+    # The spawned `langgraph dev` server logs a `->` in its startup banner. On a
+    # Windows host without this, its stdout inherits the ANSI codepage (cp1252
+    # here) and the handler raises UnicodeEncodeError on that character, which
+    # kills the server before it ever answers /ok — so five Studio route tests
+    # failed at SETUP with "dev server failed to start" and the real cause was
+    # only visible in the log tail. The file handle is already utf-8; this is
+    # about the child's own stdout encoding, which no parent-side file object
+    # can set.
+    env["PYTHONIOENCODING"] = "utf-8"
     executable = shutil.which(
         "langgraph",
         path=os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
@@ -121,7 +157,16 @@ def _running_studio_server(
         )
 
         base_url = f"http://127.0.0.1:{port}"
-        deadline = time.monotonic() + 45
+        # Measured, not guessed. `scripts/measure_studio_boot.py` starts this
+        # exact server under this exact fixture config and waits for /ok: on the
+        # development host it answered after **104.3s**. The old 45s bound was
+        # below that, so on a loaded machine the fixture killed a healthy server
+        # and failed five Studio tests at SETUP with "failed to start" while the
+        # log showed it still initializing. 300s leaves the same margin the
+        # measurement implies (~3x) without hiding a genuinely dead process:
+        # the loop also exits the moment `process.poll()` reports an exit, so a
+        # crashed server still fails immediately rather than at the deadline.
+        deadline = time.monotonic() + 300
         last_error: Exception | None = None
         while time.monotonic() < deadline and process.poll() is None:
             try:
@@ -338,6 +383,18 @@ def test_persisted_legacy_assistants_survive_cross_version_restart(
             )
             assert response.status_code == 200, response.text
             assert response.json()["version"] == 2
+
+        # `.langgraph_ops.pckl` is written by LangGraph's *periodic* dev
+        # persistence flush loop, not synchronously with each request. Measured
+        # on the development host (`scripts/probe_studio_ops_pckl.py`): /ok
+        # answers at 27.1s and the file first appears at 31.7s, i.e. it can lag
+        # the last write by seconds. Asserting right after the server stops
+        # therefore raced a timer, and on a loaded host the flush had not run yet
+        # — the restart below then had nothing to read and the test failed at the
+        # `is_file()` line below with a message that pointed at the restart
+        # rather than at the unflushed state. Wait for the flush while the server
+        # that owns it is still running.
+        _wait_for_ops_pckl(tmp_path)
 
     assert (tmp_path / ".langgraph_api" / ".langgraph_ops.pckl").is_file()
 

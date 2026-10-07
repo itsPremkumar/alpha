@@ -9,7 +9,22 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from alpha.agents.memory.l1.paths import l1_root
+# `l1_root` is imported LAZILY inside the methods that use it, not here at
+# module scope.
+#
+# Why: a module-scope `from alpha.agents.memory.l1.paths import l1_root` makes
+# importing this config file execute the `alpha.agents` package __init__, which
+# imports `.features`, which imports `langchain.agents`. Measured with
+# `-X importtime` on 2026-10-05: importing `alpha.config.app_config` (which
+# reaches this file) took 86 s, of which ~59 s was `langchain.agents` and its
+# transitive dependencies — dragged in by a config module for the sake of one
+# path helper. That is long enough that the gateway's startup watchdog kills the
+# process before it finishes importing, and it fails silently (empty logs,
+# nothing bound to the port).
+#
+# `paths.py` itself has no heavy dependencies (re, pathlib, and a function-local
+# import), so deferring the cost until first use is free. Both call sites below
+# are inside methods, never at import time.
 
 
 class FabricConfig(BaseModel):
@@ -90,6 +105,8 @@ class FabricConfig(BaseModel):
     def resolved_root(self) -> Path:
         """Resolve the fabric root using the same runtime-home rule as L1."""
 
+        from alpha.agents.memory.l1.paths import l1_root
+
         return l1_root(self.storage_path)
 
     def read_all_keys(self) -> dict[str, Any]:
@@ -133,6 +150,8 @@ def fabric_enabled(config: FabricConfig | Mapping[str, Any] | None = None) -> bo
 
 def fabric_root(storage_path: str | Path | None = None) -> Path:
     """Resolve a fabric root, mirroring ``l1.paths.l1_root`` exactly."""
+
+    from alpha.agents.memory.l1.paths import l1_root
 
     return l1_root(str(storage_path) if storage_path is not None else None)
 

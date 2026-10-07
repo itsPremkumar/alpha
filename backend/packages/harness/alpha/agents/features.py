@@ -8,10 +8,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from langchain.agents.middleware import AgentMiddleware
-
 if TYPE_CHECKING:
     from alpha.config.memory_config import MemoryConfig
+
+    # Annotation-only use. `from __future__ import annotations` (line 6) makes
+    # every annotation in this module a string, so the dataclass field types below
+    # never need this class at runtime. Keeping it under TYPE_CHECKING is what
+    # stops `alpha.agents` -> this module from importing `langchain.agents`.
+    from langchain.agents.middleware import AgentMiddleware
+
+
+def _agent_middleware_class() -> type:
+    """Import ``AgentMiddleware`` on first real use.
+
+    `Next`/`Prev` genuinely need the class at runtime (issubclass checks), but
+    they are decorators applied while building an agent -- long after config
+    import. Measured 2026-10-05: importing this module eagerly pulled
+    `langchain.agents` and cost ~59s, which every `alpha.memory.*.config` import
+    inherited through `alpha.agents.memory.l1.paths`.
+    """
+
+    global _AgentMiddleware
+    try:
+        return _AgentMiddleware
+    except NameError:
+        from langchain.agents.middleware import AgentMiddleware
+
+        _AgentMiddleware = AgentMiddleware
+        return AgentMiddleware
 
 
 @dataclass
@@ -48,6 +72,7 @@ class RuntimeFeatures:
 
 def Next(anchor: type[AgentMiddleware]):
     """Declare this middleware should be placed after *anchor* in the chain."""
+    AgentMiddleware = _agent_middleware_class()
     if not (isinstance(anchor, type) and issubclass(anchor, AgentMiddleware)):
         raise TypeError(f"@Next expects an AgentMiddleware subclass, got {anchor!r}")
 
@@ -60,6 +85,7 @@ def Next(anchor: type[AgentMiddleware]):
 
 def Prev(anchor: type[AgentMiddleware]):
     """Declare this middleware should be placed before *anchor* in the chain."""
+    AgentMiddleware = _agent_middleware_class()
     if not (isinstance(anchor, type) and issubclass(anchor, AgentMiddleware)):
         raise TypeError(f"@Prev expects an AgentMiddleware subclass, got {anchor!r}")
 

@@ -237,6 +237,15 @@ def auto_test_and_repair(
     # executed as an argv without a shell. A caller-supplied command is the model
     # naming a host command, which is the same act `bash` performs and is therefore
     # gated by the same operator opt-in.
+    # A caller-supplied test_command is host command execution: it is the same
+    # act the `bash` tool performs, and `bash` refuses to run when
+    # `sandbox.allow_host_bash` is false. Windows resolves a shell=True
+    # command through %COMSPEC% (cmd.exe) and applies its own %VAR% and
+    # ${VAR} quoting, so a string that reaches subprocess.run(shell=True) is
+    # the highest-risk interpolation in the tool: a user-supplied token such
+    # as `&& del /q /f C:\*` or `| powershell -e ...` is parsed by the shell
+    # instead of being executed as one argv. We refuse outright rather than
+    # hand the model a shell on the host.
     if requested:
         from alpha.sandbox.security import is_host_bash_allowed
 

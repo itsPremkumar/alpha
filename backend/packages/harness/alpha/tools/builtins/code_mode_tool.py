@@ -9,6 +9,8 @@ from langchain.tools import tool
 
 from alpha.tools.code_mode.bridge import execute_code_mode
 from alpha.tools.code_mode.tool import get_default_bridge
+from alpha.tools.discovery.code_mode import CodeModeGate, CodeModeUnavailable
+from alpha.tools.discovery.config import DiscoveryConfig
 from alpha.tools.types import Runtime
 
 
@@ -32,6 +34,17 @@ def code_mode_tool(
     Args:
         code: Python script orchestrating calls through the `tools` object.
     """
+    # FAIL-CLOSED: the isolated code bridge is NOT built on this host. The only
+    # way a model ever reaches in-process `exec()` with a live ToolBridge is
+    # for the caller to explicitly request CODE mode AND provide a
+    # permission-modeled runtime (Node/Deno/Bun with a filesystem/network grant
+    # system). Anything else gets CodeModeUnavailable and never reaches
+    # execute_code_mode, so an ungated model cannot turn this tool into an
+    # arbitrary-code primitive inside the Gateway process.
+    try:
+        CodeModeGate(DiscoveryConfig()).require_code_mode()
+    except CodeModeUnavailable as exc:
+        return f"CodeModeUnavailable: {exc}"
     bridge = get_default_bridge()
     res = execute_code_mode(code, bridge=bridge)
     return res.format_output()

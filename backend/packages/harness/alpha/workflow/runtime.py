@@ -1033,6 +1033,9 @@ class DynamicWorkflowEngine:
 
         if run.budget_limit is not None and run.tokens_consumed >= run.budget_limit:
             reason = f"Workflow budget exhausted: {run.tokens_consumed}/{run.budget_limit} tokens consumed."
+            # _exhaust_budget journals exactly ONE ``workflow_budget_exhausted``
+            # event (and refuses a second when already terminal), so the direct
+            # emit below is a duplicate and must not fire.
             self._exhaust_budget(run, reason)
             return run
 

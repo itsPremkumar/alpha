@@ -10,6 +10,16 @@
 # Discipline: GET only. A sweep that mutated state would not be a bug hunt.
 # 401/403/404/422 are REPORTED, not fixed -- those are correct answers for a
 # route that needs auth, a path variable, or a body. Only 5xx is a bug.
+#
+# This is what closed out the two unexplained browser 500/503s. Neither was a
+# 5xx at all; measured on a live Gateway:
+#   /api/multimodal/capabilities -> 200, 23.5s (slow: host capability probe)
+#   /api/threads/{id}/token-usage -> 200
+# and one more sweep-only finding:
+#   /api/peer-network/events -> 200 text/event-stream, an OPEN stream
+# A client that waits for a terminating body times out on all three, which is
+# exactly what the browser console showed. No handler defect; the reporting
+# surface was the wrong shape for the work.
 # Path templating: {id}-style segments are filled from the first real row of
 # the matching list endpoint when one exists, so a route with a parameter gets
 # a plausible id instead of the literal "{id}".
@@ -86,8 +96,12 @@ def sse_probe(path):
     """
     url = f"{BASE}{path}"
     req = urllib.request.Request(url, method="GET")
+    # The deadline has to clear this route's own header latency: the SSE handler
+    # runs its auth/preamble work before the first `yield`, so an 8s probe timed
+    # out on a loaded host and mis-reported a working stream as a transport
+    # failure. Measured live: the probe needs ~10s on a busy process.
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return {"status": resp.status, "stream": resp.headers.get("content-type", "")}
     except urllib.error.HTTPError as exc:
         return {"status": exc.code, "stream": exc.headers.get("content-type", "")}

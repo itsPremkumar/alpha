@@ -644,6 +644,10 @@ _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: frozenset[str] = (
             "channel_user_id",
             "langgraph_auth_user",
             "langgraph_auth_user_id",
+            "run",
+            "run_id",
+            "thread_id",
+            "user_id",
         }
     )
     | SANDBOX_SERVER_OWNED_CONTEXT_KEYS
@@ -692,14 +696,23 @@ def strip_internal_context_keys(config: dict[str, Any]) -> None:
 
     Gating :func:`merge_run_context_overrides` is not enough on its own:
     ``build_run_config`` copies a client-supplied ``body.config['context']`` /
-    ``body.config['configurable']`` verbatim, so the same keys must be scrubbed
-    from both sections after the config is assembled.
+    ``body.config['configurable']`` verbatim, and a client-supplied
+    ``body.config`` key falls through to the top-level ``config`` dict. So the
+    same keys must be scrubbed from the two sections and from the top level
+    of the assembled config.
     """
     for section in ("context", "configurable"):
         value = config.get(section)
         if isinstance(value, dict):
             for key in _INTERNAL_ONLY_CONTEXT_KEYS:
                 value.pop(key, None)
+    for key in _INTERNAL_ONLY_CONTEXT_KEYS | {
+        "run",
+        "run_id",
+        "thread_id",
+        "user_id",
+    }:
+        config.pop(key, None)
 
 
 def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, Any] | None, *, internal: bool = False) -> None:
