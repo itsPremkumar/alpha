@@ -344,6 +344,140 @@ Coverage: `src/lib/network.test.mjs` (routes, verbs, envelope mapping, every
 honesty inversion), and the new entries are also subject to
 `src/lib/ui-legibility.test.mjs`'s dash-with-disclosure rule.
 
+## APEX control panel (`apex` workspace view)
+
+`lib/apex.ts` + `components/sections/ApexSection.tsx`, over `GET /api/apex/*`.
+The `apex` id must exist in **four** places — the `WorkspaceView` union in
+`NavTabs.tsx`, the `WORKSPACE_TABS` row, `WORKSPACE_VIEW_IDS` in
+`lib/workspace-view.ts`, and `ChatView.tsx`'s lazy import plus render case.
+`workspace-nav.test.mjs` checks the first three against each other in both
+directions; it exists because `run-inspector` and `reliability` each shipped
+with a tab and a render case while `WORKSPACE_VIEW_IDS` still said the view did
+not exist, which made `?view=<id>` fall back to `chat`.
+
+- **Absent is not zero, and the mappers enforce it.** Every count in `apex.ts`
+  goes through `optNum`, which returns `null` rather than `0`. The backend
+  reports an unreadable session store as `available: false` with a reason and a
+  `count: null`; a mapper that reached for `?? 0` would turn "we could not read
+  the store" into "there are zero sessions", and the operator would read the
+  second as a working system.
+- **`live` and `declared` travel together on the invariant card.** Rendering
+  "12 invariants" over 9 live sites is a fabricated count, so the badge is
+  `live/declared` and a missing enforcement site renders `live: false` with the
+  server's reason — never a green tick.
+- **`policy_sites_missing` is the panel's most important row.** APEX delegates
+  every policy verdict (`alpha.tools.governance`, `alpha.guardrails`,
+  `alpha.bots.authority_ceiling`, `alpha.runtime.control`), so a delegated kernel
+  that is absent is an *unenforced boundary* and has to be visible rather than
+  inferred from the panel rendering at all.
+- **The emergency stop is a fact, not a control.** The card renders `always on`
+  in words and offers no toggle, because `ApexControls` raises on
+  `emergency_stop=False` — there is no setting to send.
+- **The enable picker offers only profiles an enable may carry.**
+  `ENABLE_PROFILES` (`assist`/`autonomous`/`apex_max`) is the single answer to
+  "what may the operator turn it on to", consumed by both the `<option>` list
+  and `profileToAdopt`, the helper that decides which server profile to adopt.
+  `off` is a state, not a rung — `POST /apex/enable` refuses it by name — and a
+  scope nobody has enabled yet reads as exactly `off`, so adopting raw left the
+  controlled select displaying `assist` (no option matched) while the state
+  behind it held `off` and the first-ever "Turn on" posted `{"profile":"off"}`
+  and failed 422. `profileToAdopt` returns `null` for `off` *and* for a profile
+  from a newer build: snapping `god_mode` to a known rung would enable a
+  different authority than the record names.
+- **One switch change re-reads the whole panel, not just the switch.** The badge
+  draws from `/mode` and "Active profile" draws from `/status`; mutating only
+  the first put "off (no mission control)" directly beneath an ON badge. So
+  `ApexToggle` takes an `onChanged` callback fired *after* its confirmed re-read
+  — never on the click — and the section passes `refresh`, so the two reads stay
+  one fact. A refused write fires nothing, leaving the panel as it was.
+- **"Run one cycle" is labelled for what it does.** It records a decision and
+  re-reads the status. It does not run a tool, start a run, or complete a
+  mission, and the panel says so in its own `Notice` rather than leaving it to a
+  doc — that button is the one most likely to be read as "do the work".
+- **The session-control card acts, then re-reads — never on click alone.**
+  `SessionControlCard` posts `pause`/`resume`/`stop` (and approval verdicts),
+  then re-reads the mode — which carries `active_session` — and the approvals
+  list before painting anything; a refused action leaves the card exactly where
+  it was with the server's reason in the error line. The verbs carry **no
+  client-side transition rules** ("resume disabled because paused"): the
+  server's rules are the single authority, so a click that changes nothing
+  reports `applied: false` with the server's own reason instead of a silently
+  dead button, and the approval gate's 409 lands verbatim.
+- **The card's two reads fail independently.** Mode and approvals go through
+  `Promise.allSettled`: a broken approvals store must not blank a healthy
+  session view (or vice versa), because "no verdicts are waiting" and "the
+  verdicts could not be read" lead to opposite actions. Each failure renders as
+  its own `Notice`, and the session badge says `state unknown` rather than
+  inventing an absence.
+- **A bounded approval list says how many rows it is missing.** `GET
+  /apex/approvals` returns at most 200 rows while `count`/`pending` describe the
+  whole backlog, so `returned` and `truncated` travel with the envelope.
+  `fetchApexApprovals` maps both, *derives* `truncated` when a Gateway bounds
+  the list without declaring it (`returned < count`), and the panel renders a
+  `Notice` naming both numbers — otherwise a 200-row list under a `count` of 500
+  would look internally inconsistent, or a panel deriving the total from
+  `approvals.length` would understate the gate by exactly the rows it hid.
+- **The verdicts' asymmetry comes from the response, not the button.** The
+  decision's `resumed` flag is the server's claim: `reject` renders "the
+  session stays parked", and an `approve` that did not resume says so rather
+  than implying a release the server never confirmed.
+- **Drift is surfaced, not smoothed.** A session whose `contract_digest`
+  differs from the active contract renders a `Policy drift` warning naming both,
+  because a mission silently continuing under changed policy is the failure the
+  digest exists to catch.
+
+Coverage: `src/lib/apex.test.mjs` (routes, verbs, the null-preserving counters,
+the control/approval/goal envelope mappings, the approvals truncation mapping,
+and the honesty inversions for each block).
+
+## APEX mode chip (composer)
+
+`components/ApexModePicker.tsx` is the same switch as the panel, sitting beside
+the reasoning picker in `Composer` — the one composer `ChatView` mounts, so bots,
+groups and DMs all get it. Its derivation lives in `lib/apex.ts`
+(`apexChipView`, `liveRung`, `APEX_RUNGS`, `APEX_COMPOSER_DISCLOSURE`) so the
+suite can drive the function that produces each claim instead of scraping prose
+out of JSX.
+
+- **One scope, one fact.** It reads the default scope with no `scope_key`, so the
+  chip and the panel can never show two different "APEX is on" answers. A
+  per-thread switch would be a second claim beside the panel's, and the operator
+  would have to work out which one gated work.
+- **The menu is derived from `APEX_PROFILES`.** `APEX_RUNG_HINTS` is a
+  `Record<ApexProfile, string>`, so a profile added without a hint is a type
+  error rather than a row with nothing under it; each hint states what
+  `alpha.apex.contract` actually grants at that rung (ASSIST withholds the seven
+  capability-changing keys, AUTONOMOUS and APEX_MAX hold every authority and
+  differ only in budgets).
+- **The chip renders `apexChipView`, never a branch of its own.** A rejected read
+  and a `load_error` in a 200 payload are both `unknown`, checked before the
+  enabled flag — the server answers `enabled: false` because it *could not tell*,
+  and rendering that as OFF converts "not known" into "it is off". `enabled` but
+  not `contract_enabled` is a third state, `degraded`, not a green ON. A profile
+  the record retains while off is **not** printed: retained is not in force.
+- **Nothing is painted from the write.** `apply()` sends the mutation, then
+  re-reads `/apex/mode`; the POST's response body is discarded. A refused write
+  closes nothing and shows the server's reason under the rungs.
+- **The disclosure is rendered, not exported.** `APEX_COMPOSER_DISCLOSURE` says
+  the control sets the autonomy contract for the scope and does not start a run,
+  and the menu prints it — the chat screen is where "pick a profile and
+  everything runs itself" is the natural reading, and the false one.
+- **The menu is portalled to `document.body` and placed by
+  `lib/workspace-menu-geometry.ts`.** An `absolute` panel here was clipped by
+  `<main class="overflow-hidden">`: its top sat at 157px inside an ancestor cut
+  at 191px, so the heading was off screen while the rungs were not — the same
+  failure `NavTabs.tsx` documents, and the same fix (`placeFloatingPanel` caps,
+  flips and clamps, and the panel scrolls internally instead of hiding rows).
+  Because the panel leaves the trigger's wrapper, the outside-click check must
+  test **both** refs, and Escape moves to a `document` listener. The height it
+  is given is `ceil(scrollHeight + borders)`: `border-border` is 0.8px here and
+  `placeFloatingPanel` floors, so an under-estimate of a fraction of a pixel
+  still opens the menu with a one-pixel scrollbar.
+
+Coverage: `src/lib/apex.test.mjs` (menu derivation, the five chip states, the
+checkmark rule, and source pins for the re-read, the disclosure and the single
+composer mount).
+
 ## Subagent catalog panel (every field of a definition)
 
 `lib/subagents.ts` + `lib/subagent-catalog-view.ts` +

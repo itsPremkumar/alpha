@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-06T13:27:40Z",
+ "generated_at": "2026-10-07T10:40:50Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1118,6 +1118,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.apex",
+   "module": "app.gateway.routers.apex",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.artifacts",
    "module": "app.gateway.routers.artifacts",
    "symbol": "router",
@@ -1934,6 +1942,13 @@
  ],
  "loops": [
   {
+   "id": "apex",
+   "module": "app.gateway.autonomy.loops:apex_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "company_operations",
    "module": "app.gateway.autonomy.loops:company_operations_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
@@ -2024,6 +2039,11 @@
     "middlewares",
     "task_continuity"
    ]
+  },
+  {
+   "id": "alpha.apex",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.authz",

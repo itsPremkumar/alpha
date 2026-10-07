@@ -244,6 +244,81 @@ def company_operations_tick() -> dict[str, Any]:
     return summary
 
 
+def apex_tick() -> dict[str, Any]:
+    """One APEX executive pass over every non-terminal session.
+
+    Registered through :class:`AutonomySupervisor` like every other loop, so
+    "off unless ``config.yaml`` enables it" and the restart-budget-then-park
+    behaviour apply unchanged — the supervisor is the single owner of background
+    loops and this adapter adds nothing beside it.
+
+    Two properties are load-bearing:
+
+    * **Adapters never raise.** A tick returns a dict summary; a subsystem that
+      cannot be reached degrades to a disclosed row rather than killing the pass.
+    * **It counts rather than hides.** ``skipped_terminal`` and
+      ``cycles_blocked`` are both reported. "I ran one pass" and "three sessions
+      refused to progress" are different operational facts, and a summary that
+      only returned the first would hide the second.
+    """
+    try:
+        from alpha.apex.contract import profile_for
+        from alpha.apex.executive import run_cycle
+        from alpha.apex.store import get_apex_store
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("APEX unavailable for the autonomy tick: %s", exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    try:
+        store = get_apex_store()
+    except Exception as exc:
+        logger.warning("APEX store unavailable for the autonomy tick: %s", exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    if store.is_degraded:
+        # An unreadable store is reported, not treated as "no sessions". The
+        # difference decides whether a reader repairs the file or relaxes.
+        return {
+            "error": "apex_store_unreadable",
+            "store_error": store.load_error,
+            "sessions": None,
+            "cycles": 0,
+        }
+
+    summary: dict[str, Any] = {
+        "sessions": None,
+        "cycles": 0,
+        "skipped_terminal": 0,
+        "cycles_blocked": 0,
+        "decisions": {},
+        "errors": [],
+    }
+    try:
+        sessions = store.list(limit=200)
+    except Exception as exc:
+        summary["error"] = f"{type(exc).__name__}: {exc}"
+        return summary
+
+    summary["sessions"] = len(sessions)
+    for session in sessions:
+        if session.is_terminal:
+            summary["skipped_terminal"] += 1
+            continue
+        try:
+            contract = profile_for(session.profile, mission_id=session.mission_id)
+            result = run_cycle(store, session.session_id, contract)
+        except Exception as exc:
+            summary["errors"].append({"session_id": session.session_id, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        summary["cycles"] += 1
+        action = result.decision.action.value
+        summary["decisions"][action] = summary["decisions"].get(action, 0) + 1
+        if result.decision.blocked:
+            summary["cycles_blocked"] += 1
+
+    return summary
+
+
 def self_update_tick() -> dict[str, Any]:
     """Run the opt-in source-update check/apply policy.
 

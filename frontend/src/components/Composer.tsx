@@ -29,6 +29,7 @@ import {
 } from "@/lib/api";
 import { errMsg } from "@/lib/http";
 import { ReasoningEffortPicker } from "@/components/ReasoningEffortPicker";
+import { ApexModePicker } from "@/components/ApexModePicker";
 import { VoiceControls } from "@/components/VoiceControls";
 import { SlashCommand } from "@/lib/commands";
 import { branding } from "@/lib/branding";
@@ -1387,6 +1388,7 @@ export function Composer({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <ApexModePicker />
             {onEffortChange && (
               <ReasoningEffortPicker
                 models={models}

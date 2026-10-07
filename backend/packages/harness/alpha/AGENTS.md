@@ -118,7 +118,7 @@ routers, 8 → 9 loops).
   look" and "I looked and found nothing" lead to opposite decisions.
 - **Availability is per-entry, not per-registry.** `CommandRegistry` gates on
   `has_handler`, because a catalog row with no handler returns
-  `UNIMPLEMENTED_STATUS`, never `success` — 461 registered commands and 54
+  `UNIMPLEMENTED_STATUS`, never `success` — 475 registered commands and 68
   dispatchable ones are different claims. `BotProfileRegistry` passes
   `include_archived=False` **explicitly**: `list_bots` defaults it to `True` (right
   for a roster view, wrong here), and `retire_bot` is a soft delete, so listing an

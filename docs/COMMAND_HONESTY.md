@@ -18,43 +18,59 @@ the numbers below can be reproduced.
 
 | quantity | value |
 | --- | --- |
-| raw rows in `catalog.get_default_catalog_entries()` | 428 |
-| unique command names (what the registry keys on) | **426** |
-| names registered in the registry | 461 |
+| raw rows in `catalog.get_default_catalog_entries()` | 442 |
+| unique command names (what the registry keys on) | **440** |
+| names registered in the registry | 475 |
 | duplicate rows (first one silently discarded) | `/learn`, `/usage` |
 
-426 is confirmed. The 428 vs 426 gap is the two duplicated rows, which the
-existing parity test already pins as `DUPLICATE_CATALOG_ROWS`.
+440 is confirmed. The 442 vs 440 gap is the two duplicated rows, which the
+existing parity test already pins as `DUPLICATE_CATALOG_ROWS`. The fourteen
+`/apex` rows are unique and handler-backed, so they raise every count above
+without touching the duplicate set.
 
 ### Handler bindings, by module
 
 ```
 alpha.commands.backend_handlers      : 35
 alpha.commands.module_a_handlers     :  5
-alpha.mission.goalloop.bindings      : 14   <-- invisible to the parity test
+alpha.mission.goalloop.bindings      : 14   <-- invisible to the old filter
+alpha.apex.commands                  : 14
 ```
 
-`test_discovery_plane_parity._production_handlers()` filters on
-`handler.__module__.startswith("alpha.commands.")`. That filter throws away the 14
+`test_discovery_plane_parity._production_handlers()` was written to filter on
+`handler.__module__.startswith("alpha.commands.")`. That filter threw away the 14
 `alpha.mission.goalloop.bindings` handlers, which are real production handlers
 (`/goal`, `/goal show`, `/goal step`, `/goal verify`, `/goal draft`,
-`/goal clear`, `/goal gate *`, `/subgoal*`). Three of them
-(`/goal`, `/goal clear`, `/goal verify`) are catalog rows.
+`/goal clear`, `/goal gate *`, `/subgoal*`), and it would have discarded the 14
+`alpha.apex.commands` handlers (`/apex`, `/apex on`, `/apex off`, `/apex status`,
+`/apex policy`, `/apex pause`, `/apex resume`, `/apex stop`, `/apex steer`,
+`/apex take-over`, `/apex approve`, `/apex reject`, `/apex replan`,
+`/apex verify`) the same way. Three of the goal-loop ones
+(`/goal`, `/goal clear`, `/goal verify`) are catalog rows, and all fourteen
+`/apex` ones are. §3 records the correction: the filter now accepts any handler
+not defined in a test module, so it sees every one of them today — which is why
+the fourteen apex rows raise the counts above without moving the 407 below.
 
 ### Two counts of "rows with no handler"
 
 | basis | handler-backed catalog rows | rows with no handler |
 | --- | --- | --- |
-| parity test's filter (`alpha.commands.*` only) | 16 | **410** |
-| every production binding (including goalloop) | 19 | **407** |
+| the filter as originally written (`alpha.commands.*` only) | 16 | **410** |
+| every production binding (including goalloop, apex) | 33 | **407** |
 
-**The audit's 410 is the parity test's number, not the repository's.** The true
-count of catalog rows that reach the fallback path is 407. The three-row
-difference is `/goal`, `/goal clear` and `/goal verify`, which do have handlers.
+**The audit's 410 is the original filter's number, not the repository's.** The
+first row is the audit's 426-row snapshot under the filter as written; the
+second is today's 440-row one under the corrected filter. The true count of
+catalog rows that reach the fallback path is 407 and was at 426 too: the
+audit's three-row difference is `/goal`, `/goal clear` and `/goal verify`,
+which do have handlers, and the fourteen apex rows are all handler-backed, so
+they moved the backed count 19 → 33 without moving 407.
 
 ### What the fallback path actually returns
 
-Over all 426 catalog rows, `command_registry.execute(row)`:
+Over all 426 catalog rows (the snapshot this audit measured, before the
+`/apex` family grew the catalog to 442 raw / 440 unique),
+`command_registry.execute(row)`:
 
 ```
 status histogram: {'success': 416, 'error': 9, 'approval_required': 1}
