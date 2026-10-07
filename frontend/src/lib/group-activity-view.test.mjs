@@ -16,11 +16,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const panel = readFileSync(
-  fileURLToPath(new URL("../components/sections/GroupActivityPanel.tsx", import.meta.url)),
+  fileURLToPath(
+    new URL("../components/sections/GroupActivityPanel.tsx", import.meta.url),
+  ),
   "utf-8",
 );
 const section = readFileSync(
-  fileURLToPath(new URL("../components/sections/MessagesSection.tsx", import.meta.url)),
+  fileURLToPath(
+    new URL("../components/sections/MessagesSection.tsx", import.meta.url),
+  ),
   "utf-8",
 );
 
@@ -30,7 +34,9 @@ test("crashed and unresponsive are not painted the same colour", () => {
   assert.match(panel, /bad:\s*"bg-red-500"/);
   assert.match(panel, /warn:\s*"bg-amber-500"/);
   // `bad` appears only for a tone the server resolved as a confirmed crash.
-  const toneRows = panel.split("\n").filter((l) => /^\s*(busy|ok|warn|bad|off|unknown):/.test(l));
+  const toneRows = panel
+    .split("\n")
+    .filter((l) => /^\s*(busy|ok|warn|bad|off|unknown):/.test(l));
   assert.ok(toneRows.length >= 6, "every declared tone should have one class");
 });
 
@@ -75,7 +81,12 @@ test("orphaned subjects are surfaced as available work", () => {
 test("activity is read on the existing poll, not a second timer", () => {
   // One cadence, one place, no second interval to leak on unmount.
   assert.match(section, /void loadActivity\(activityRoom\)/);
-  assert.match(section, /window\.setInterval\(\(\) => void loadActivity\(activityRoom\), 10000\)/);
+  // `\s+`: the pre-commit prettier hook splits a long call across lines, and a
+  // pin written for one wrapping would fail on formatting, not on cadence.
+  assert.match(
+    section,
+    /window\.setInterval\(\s*\(\) => void loadActivity\(activityRoom\),\s*10000,?\s*\)/,
+  );
   assert.match(section, /window\.clearInterval\(handle\)/);
 });
 

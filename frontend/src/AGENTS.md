@@ -629,6 +629,50 @@ server grammar, including a charset-parity test that runs both regexes over the
 same probes — the mirror drifting is the only failure mode this file can
 introduce).
 
+## Messages view derivations (`messages-view.ts`)
+
+`lib/messages-view.ts` is the pure layer behind `components/sections/
+MessagesSection.tsx` (~1,900 lines of JSX). It owns the *shape* of what the
+Messages tab shows — how the conversation column splits, what a filter chip's
+number means, and when two transcript rows are one author continuing — because
+those decide what a reader sees at a glance and rot quietly inlined in JSX:
+nothing fails, the numbers just stop meaning what the label says.
+
+Four exports, four rules:
+
+| Export | Owns | The failure it stops |
+| --- | --- | --- |
+| `sectionConversations` | Groups → Direct, **empty halves omitted** | a "Direct (0)" header over nothing, which reads as a measured zero |
+| `hiddenSummary` | `Showing 3 of 12 — 9 hidden…`, `null` when nothing hid | a filtered list presenting itself as the whole inbox |
+| `unreadLabel` | the `99+` pill cap | a second inline cap drifting from the one the tests drive |
+| `groupMessageRuns` | author / day / deleted-row run breaks | a sender's name printed six times, reading as six speakers |
+
+- **The component keeps the honest *read* sentences inline, deliberately.**
+  `History not read yet — open the room`, the failed-room-read gate and the
+  unread roster headline stay in the JSX because they are pinned there by
+  `collaboration-surfaces-honesty.test.mjs` and friends — a second copy in a
+  helper is how a transcript and its own helper end up contradicting each
+  other. `messages-view.ts` must stay import-free: its test transpiles it and
+  evaluates it behind a `require` that throws, so an accidental import fails the
+  suite instead of becoming a drifting second implementation.
+- **One predicate counts the chips *and* renders the list.** `matchesFilter` in
+  the component is called with the filter being *asked about*, so each chip
+  reports what it would show if pressed. Two copies of that rule is how a chip
+  claims `4` over a list of three. The unfiltered `allConvs` is the denominator
+  for both the chip counts and `totalUnread` — summing the *filtered* rows
+  meant pressing "Groups" made unread DMs vanish from the workspace badge.
+- **A decisions/blockers filter names the rooms it could not search.** Only
+  history that was read can be searched; excluding the rest silently reads as
+  "no decisions in this workspace", so the excluded count is rendered beside the
+  filter with the reason.
+- **`groupMessageRuns` takes the day vocabulary as an argument** — the
+  component passes its own `dayLabel`, the same clock the transcript dividers
+  use, rather than importing a date library and disagreeing with them.
+
+Coverage: `src/lib/messages-view.test.mjs` (the pure derivations, plus source
+pins on the component for the shared predicate, the pre-filter unread sum, the
+two disclosures, the sectioning, and the still-rendered pinned sentences).
+
 ## Honesty patterns to copy
 
 - A control that is off by default renders as off, with the reason it is off.

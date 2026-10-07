@@ -1226,9 +1226,10 @@ test("MessagesSection distinguishes a failed room read from an empty room", () =
     /disabled=\{props\.postingVerdict\}/,
     "the control must render disabled while the post is in flight",
   );
-  assert.match(code, /postingVerdict \? "Posting…"/);
+  // `\s+`: the pre-commit prettier hook reflows JSX conditionals across lines,
+  // so a pin written for one wrapping would fail on formatting, not on meaning.
+  assert.match(code, /postingVerdict\s*\?\s*"Posting/);
 });
-
 test("the presence dot no longer matches a status by substring", () => {
   const code = codeOnly(read("../components/sections/MessagesSection.tsx"));
   assert.doesNotMatch(
