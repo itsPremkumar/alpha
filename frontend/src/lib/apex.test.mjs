@@ -936,3 +936,145 @@ test("a mode with no bound session keeps active_session null", async () => {
   const older = await apex.fetchApexMode();
   assert.equal(older.active_session, null);
 });
+
+/* ── The composer chip (components/ApexModePicker.tsx) ───────────────────── */
+
+/*
+ * The chip is the APEX switch as it appears on the screen a user actually
+ * lives on, so it inherits the panel's rule and adds one of its own: the chat
+ * screen is where "pick a profile and everything runs itself" is the natural
+ * reading, and it is false — nothing in the chat or run path consults the mode.
+ * Each case below names a payload that would let the chip claim something the
+ * server did not say.
+ */
+
+test("the composer menu is derived from the profile list, not listed again", () => {
+  // A second hand-written list is how the panel and the chip end up offering
+  // different rungs; `Record<ApexProfile, string>` already fails the build when
+  // a profile arrives without a hint, and this fails it when the two lists
+  // disagree about how many rungs there are.
+  assert.deepEqual(
+    apex.APEX_RUNGS.map((rung) => rung.value),
+    [...apex.APEX_PROFILES],
+  );
+  // `off` is a state, not an enable rung, and it still has to be reachable from
+  // this menu — it is the row that turns APEX off.
+  assert.equal(apex.APEX_RUNGS[0].value, "off");
+  for (const rung of apex.APEX_RUNGS) {
+    assert.ok(rung.label.length > 0, `${rung.value} needs a label`);
+    assert.ok(rung.hint.length > 0, `${rung.value} needs a hint`);
+  }
+});
+
+test("a failed mode read renders unknown, never off", () => {
+  const view = apex.apexChipView(null, "gateway unreachable");
+  assert.equal(view.tone, "unknown");
+  assert.equal(view.state, "unknown");
+  assert.equal(view.profile, "", "an unknown reading carries no profile to display");
+  assert.match(view.title, /not known/);
+  assert.match(view.title, /gateway unreachable/, "the tooltip must carry the server's own reason");
+});
+
+test("an unreadable mode store is unknown even though the server reports off", () => {
+  // The gateway answers 200 with `enabled: false` *because* it could not read
+  // the store — a fail-closed default. Rendering that as the OFF state would
+  // convert "we could not tell" into "it is off", which is the one sentence the
+  // chip exists not to say.
+  const view = apex.apexChipView({ ...OFF_MODE, load_error: "mode_events.jsonl is not valid JSON" }, null);
+  assert.equal(view.tone, "unknown");
+  assert.equal(view.state, "unknown");
+  assert.match(view.title, /mode store could not be read/);
+  assert.match(view.title, /not valid JSON/);
+});
+
+test("off renders off with no profile, even one the record retains", () => {
+  // The server keeps the previous profile across a disable so the next enable
+  // restores it. Printing that beside OFF reads as "apex_max, but off" — a
+  // retained profile is not a profile in force.
+  const view = apex.apexChipView({ ...ON_MODE, enabled: false, contract_enabled: false, profile: "apex_max" }, null);
+  assert.equal(view.tone, "off");
+  assert.equal(view.state, "OFF");
+  assert.equal(view.profile, "");
+});
+
+test("on renders the profile in force, its scope, and what the control does not do", () => {
+  const view = apex.apexChipView({ ...ON_MODE, profile: "autonomous", scope_key: "u1" }, null);
+  assert.equal(view.tone, "on");
+  assert.equal(view.state, "ON");
+  assert.equal(view.profile, "autonomous");
+  assert.match(view.title, /scope u1/);
+  // The tooltip is the only always-visible place the boundary can be stated.
+  assert.match(view.title, /does not start a run/);
+});
+
+test("recorded-on-but-not-granted renders degraded rather than a green ON", () => {
+  // `enabled` is the recorded intent and `contract_enabled` is what the contract
+  // actually grants; a chip painting only the first is the same inversion the
+  // panel's switch was fixed for.
+  const view = apex.apexChipView(
+    { ...ON_MODE, enabled: true, contract_enabled: false, profile: "apex_max", reason: "profile unknown to this build" },
+    null,
+  );
+  assert.equal(view.tone, "degraded");
+  assert.match(view.title, /does not grant it/);
+  assert.match(view.title, /unknown to this build/);
+});
+
+test("the checkmark marks what is in force, not what the record remembers", () => {
+  assert.equal(apex.liveRung(null), null, "no read, no claim");
+  assert.equal(apex.liveRung({ ...OFF_MODE, load_error: "unreadable" }), null, "an unreadable store marks nothing");
+  assert.equal(apex.liveRung(OFF_MODE), "off");
+  // A retained profile on an off scope must not check the rung it would enable.
+  assert.equal(apex.liveRung({ ...OFF_MODE, profile: "apex_max" }), "off");
+  assert.equal(apex.liveRung(ON_MODE), "assist");
+  // A profile from a newer build is never snapped onto a rung this build has.
+  assert.equal(apex.liveRung({ ...ON_MODE, profile: "god_mode" }), null);
+});
+
+test("the composer discloses that selecting a profile does not start a run", () => {
+  assert.match(apex.APEX_COMPOSER_DISCLOSURE, /does not start a run/);
+  assert.match(apex.APEX_COMPOSER_DISCLOSURE, /same switch the APEX panel/);
+
+  const source = read("../components/ApexModePicker.tsx");
+  // The sentence is rendered by the menu, not merely exported: a disclosure
+  // nobody prints is a disclosure nobody reads.
+  assert.match(source, /\{APEX_COMPOSER_DISCLOSURE\}/);
+});
+
+test("the chip paints from a re-read, never from the write it just made", () => {
+  const source = read("../components/ApexModePicker.tsx");
+  assert.match(source, /await setApexMode\(/, "it has to send the mutation");
+  assert.match(source, /await load\(\)/, "and re-read afterwards");
+  assert.equal(
+    /setMode\(await setApexMode/.test(source),
+    false,
+    "adopting the write's response body is how this chip and the panel disagree",
+  );
+  assert.match(source, /apexChipView\(mode, readError\)/, "the chip renders the derived view, not an inline branch");
+  // An unreadable read must clear the previous reading rather than leave it
+  // on screen as though it were current.
+  assert.match(source, /setMode\(null\)/, "a failed read clears the state it can no longer stand behind");
+});
+
+test("one composer carries the control to every chat surface", () => {
+  // `Composer` is mounted once in `ChatView`, so bots, groups and DMs share it.
+  // Two instances would also mean two reads of one shared scope.
+  const composer = read("../components/Composer.tsx");
+  const matches = composer.match(/<ApexModePicker \/>/g) ?? [];
+  assert.equal(matches.length, 1, "exactly one APEX control in the composer");
+});
+
+test("the menu is portalled and placed, not left as an absolute child", () => {
+  // Measured in the running app: the in-place panel's top sat at 157px inside
+  // an ancestor clipped at 191px, so `<main class="overflow-hidden">` cut the
+  // heading off a menu whose body was on screen — the failure `NavTabs` and
+  // `FreeCatalogMenu` were already fixed for. An "open" menu with its header
+  // outside the clip box is a defect, not a cosmetic one.
+  const source = read("../components/ApexModePicker.tsx");
+  assert.match(source, /createPortal\(/, "the panel must escape the overflow-hidden ancestors");
+  assert.match(source, /placeFloatingPanel\(/, "it must be positioned by the shared geometry");
+  assert.match(source, /overflow-y-auto/, "a capped panel scrolls rather than hiding its last rows");
+  // With the panel portalled out of the trigger's wrapper, an outside-click
+  // check against the trigger alone would close it on its own first click.
+  assert.match(source, /panelRef\.current\?\.contains\(target\)/, "both refs take part in the outside-click check");
+});

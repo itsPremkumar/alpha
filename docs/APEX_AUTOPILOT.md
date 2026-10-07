@@ -314,6 +314,19 @@ rung and the submitted one disagreeing, so the first-ever "Turn on" posted
 `{"profile":"off"}` and was refused. The refusal itself is correct and stays
 server-side; the panel simply never produces a body the server names as invalid.
 
+The same switch is also **in the composer**, beside the reasoning picker
+(`ApexModePicker`), so it is reachable from every chat surface without opening
+the APEX view — `Composer` is mounted once in `ChatView`, so bots, groups and
+DMs share one control. It reads and writes the **same default scope**, not a
+per-conversation one: a second, thread-scoped switch would be a second "APEX is
+on" claim beside the panel's, and the two surfaces would be free to disagree.
+Its menu lists every profile with what the contract actually grants at it, and
+states inside the menu what the control does **not** do — it sets the autonomy
+contract for the scope and does not start a run, because nothing in the chat or
+run path consults the mode. A read that failed renders `unknown` with the
+server's reason and offers no rung at all; a write that was refused changes
+nothing and keeps its reason on screen.
+
 ### The `/apex` commands
 
 The same switch, reachable from chat, from `POST /api/commands/execute`, and
@@ -415,6 +428,11 @@ Read these before treating a green status as a working system.
   session against a contract it was never created under (`contract_drift: true`
   for all of them). Its `session_id` is owner-scoped: a foreign id is 404, not a
   partial read of someone else's objective.
+- **The composer's APEX chip changes the contract, not what happens next.**
+  Picking a profile in the chat window posts the same `/apex/enable` /
+  `/apex/disable` the panel does and then re-reads; it creates no session, sends
+  no message and starts no run. Reading it as "this chat is now autonomous" is
+  the failure the in-menu disclosure exists to stop.
 - **JSON/JSONL state is process-local.** `sessions.json` and `events.jsonl` are
   atomic and restart-recoverable for one Gateway. They are not a shared
   multi-worker store and not cross-process exactly-once — the same statement

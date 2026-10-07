@@ -91,6 +91,63 @@ export function profileToAdopt(modeProfile: string): ApexProfile | null {
   return (ENABLE_PROFILES as readonly string[]).includes(modeProfile) ? (modeProfile as ApexProfile) : null;
 }
 
+/** One row of the composer's APEX menu: the rung, its name, and what it costs. */
+export interface ApexRung {
+  value: ApexProfile;
+  label: string;
+  hint: string;
+}
+
+const APEX_RUNG_LABELS: Record<ApexProfile, string> = {
+  off: "Off",
+  assist: "Assist",
+  autonomous: "Autonomous",
+  apex_max: "Apex Max",
+};
+
+/**
+ * One line per rung, each a claim `alpha.apex.contract` actually makes, so the
+ * menu cannot promise an authority the contract does not grant:
+ *
+ * - `off` — every authority false, every budget zero.
+ * - `assist` — everything except the seven capability-changing keys
+ *   (`terminal`, `git`, `mcp`, `a2a`, `subagents`, `swarm`, `browser`).
+ * - `autonomous` / `apex_max` — every authority true; they differ only in
+ *   budgets and protected actions, never in what may be reached.
+ *
+ * `Record<ApexProfile, string>` is the drift guard: a profile added to
+ * `ApexProfile` without a hint here is a type error, not an empty menu row.
+ */
+const APEX_RUNG_HINTS: Record<ApexProfile, string> = {
+  off: "APEX is not in force; Alpha executes requests normally.",
+  assist: "Everything except terminal, git, mcp, a2a, subagents, swarm and browser. Smallest budgets.",
+  autonomous: "Every authority, mid-size budgets.",
+  apex_max: "Every authority, widest budgets; protected actions still need a human.",
+};
+
+/**
+ * The menu, derived from `APEX_PROFILES` rather than listed again, so a new
+ * profile cannot ship with a rung the menu forgot — or with two menus that
+ * disagree about how many rungs there are.
+ */
+export const APEX_RUNGS: readonly ApexRung[] = APEX_PROFILES.map((value) => ({
+  value,
+  label: APEX_RUNG_LABELS[value],
+  hint: APEX_RUNG_HINTS[value],
+}));
+
+/**
+ * What the composer chip discloses, in words, about what its menu does.
+ *
+ * The sentence exists because the control is reachable from the chat screen,
+ * where "pick a profile and everything is automated" is the natural reading and
+ * the false one: nothing in the chat or run path consults the APEX mode. It
+ * sets the autonomy contract for the scope — the same switch the APEX panel
+ * shows — and a run still starts when a message is sent.
+ */
+export const APEX_COMPOSER_DISCLOSURE =
+  "Sets the APEX autonomy contract for this scope — the same switch the APEX panel shows. It does not start a run: send a message as usual. A higher profile raises budgets only, never the emergency stop or a protected action.";
+
 /** Budget ceilings for the active contract. Every field is required by the schema. */
 export interface ApexBudget {
   max_active_agents: number;
@@ -754,6 +811,99 @@ function mapMode(v: unknown): ApexMode {
     load_error: optStr(r.load_error),
     active_session: r.active_session === undefined || r.active_session === null ? null : mapSessionRecord(r.active_session),
   };
+}
+
+export type ApexChipTone = "loading" | "unknown" | "off" | "on" | "degraded";
+
+export interface ApexChipView {
+  tone: ApexChipTone;
+  /** What the chip prints as its state: `ON`, `OFF`, `unknown`, or `…` while reading. */
+  state: string;
+  /**
+   * The profile *in force*, or `""` when none is.
+   *
+   * An `off` scope still reports the profile its next enable would use, and
+   * printing that beside `OFF` would read as "apex_max, but off" — a profile
+   * that is retained is not a profile that is in force.
+   */
+  profile: string;
+  /** The whole reading, for the chip's tooltip. */
+  title: string;
+}
+
+/**
+ * Derive the composer chip from a mode read and (separately) its failure.
+ *
+ * Two failure shapes reach here and neither may render as `off`: an HTTP read
+ * that rejected, and a `200` whose payload carries `load_error` because the
+ * mode store itself could not be read (the server then reports `enabled: false`
+ * fail-closed). "Could not tell" and "it is off" lead to opposite actions, so
+ * `load_error` is checked before the enabled flag is ever read.
+ *
+ * `enabled && !contract_enabled` is the third non-binary case: the record says
+ * on while the contract in force grants nothing — an unknown profile degrading,
+ * or a scope whose contract no longer matches. It renders as `degraded` rather
+ * than a green `ON`, because the green claim would be about a grant the server
+ * says was not made.
+ */
+export function apexChipView(mode: ApexMode | null, readError: string | null): ApexChipView {
+  if (readError) {
+    return {
+      tone: "unknown",
+      state: "unknown",
+      profile: "",
+      title: `APEX state is not known — the mode read failed: ${readError}`,
+    };
+  }
+  if (!mode) {
+    return { tone: "loading", state: "…", profile: "", title: "Reading the APEX mode…" };
+  }
+  if (mode.load_error) {
+    return {
+      tone: "unknown",
+      state: "unknown",
+      profile: "",
+      title: `APEX state is not known — the mode store could not be read: ${mode.load_error}`,
+    };
+  }
+  if (mode.enabled && !mode.contract_enabled) {
+    return {
+      tone: "degraded",
+      state: "ON",
+      profile: String(mode.profile),
+      title: `Recorded as on with profile ${mode.profile}, but the contract in force does not grant it${
+        mode.reason ? `: ${mode.reason}` : "."
+      }`,
+    };
+  }
+  if (mode.enabled) {
+    return {
+      tone: "on",
+      state: "ON",
+      profile: String(mode.profile),
+      title: `APEX autopilot is on with profile ${mode.profile} for scope ${mode.scope_key}. ${APEX_COMPOSER_DISCLOSURE}`,
+    };
+  }
+  return {
+    tone: "off",
+    state: "OFF",
+    profile: "",
+    title: `APEX autopilot is off for scope ${mode.scope_key}. ${APEX_COMPOSER_DISCLOSURE}`,
+  };
+}
+
+/**
+ * Which menu row the checkmark marks: what is in force right now, not what the
+ * record remembers.
+ *
+ * `null` marks nothing — a store that could not be read has no rung to show,
+ * and a profile from a newer build is deliberately not snapped onto a rung this
+ * build offers, or the menu would claim a profile the server is not running.
+ */
+export function liveRung(mode: ApexMode | null): ApexProfile | null {
+  if (!mode || mode.load_error) return null;
+  if (!mode.enabled) return "off";
+  return profileToAdopt(mode.profile);
 }
 
 /**
