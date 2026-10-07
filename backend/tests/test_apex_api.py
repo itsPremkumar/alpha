@@ -67,6 +67,26 @@ def client() -> TestClient:
     return _client()
 
 
+@pytest.fixture()
+def mode_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Isolate the per-scope ON/OFF store for the whole request.
+
+    ``GET /apex/status`` resolves the contract **through** the mode store, so
+    any test that drives the switch and then reads the projection needs the same
+    isolation the session store already gets — otherwise it reads whatever the
+    developer's own ``.alpha/apex/mode.json`` happens to say, and the assertions
+    below would pass or fail on someone else's machine state.
+    """
+    import alpha.apex.mode as mode_module
+    from alpha.apex.mode import ApexModeStore
+
+    instance = ApexModeStore(tmp_path / "mode.json")
+    monkeypatch.setattr(mode_module, "_store", instance)
+    monkeypatch.setattr(mode_module, "_default_storage_path", lambda: instance.storage_path)
+    monkeypatch.setattr(apex, "get_apex_mode_store", lambda: instance)
+    return instance
+
+
 def _create(client: TestClient, **overrides) -> dict:
     payload = {"objective": "fix the failing workflow", "profile": "autonomous", **overrides}
     response = client.post("/api/apex/sessions", json=payload)
@@ -254,6 +274,51 @@ class TestControlRequiresAdmin:
         payload = client.get("/api/apex/status").json()
         assert payload["supervisor"]["available"] is True
         assert "apex" in payload["supervisor"]["status"]["loops"]
+
+
+class TestStatusDrift:
+    def test_drift_is_measured_against_the_contract_in_force(self, client: TestClient, store: ApexStore, mode_store) -> None:
+        """``contract_drift`` used to be true for every session, always.
+
+        ``GET /apex/status`` handed the projection the shipped ``OFF``
+        contract, so a session created under ``autonomous`` was compared against
+        a contract no session is ever created under — the panel rendered *Policy
+        drift* over a perfectly ordinary mission, which is the warning an
+        operator learns to ignore. The switch has to be consulted: the same
+        profile in force is not drift, moving the switch under it is.
+        """
+        created = _create(client, profile="autonomous")
+        sid = created["session"]["session_id"]
+
+        client.post("/api/apex/enable", json={"profile": "autonomous"})
+        clean = client.get("/api/apex/status", params={"session_id": sid}).json()
+        assert clean["session"]["contract_matches"] is True
+        assert clean["session"]["contract_drift"] is False
+
+        client.post("/api/apex/enable", json={"profile": "assist"})
+        drifted = client.get("/api/apex/status", params={"session_id": sid}).json()
+        assert drifted["session"]["contract_matches"] is False
+        assert drifted["session"]["contract_drift"] is True
+        # Both digests travel so the panel can name them, and the live one is
+        # the same claim ``/mode`` makes about the switch.
+        assert drifted["session"]["contract_digest"] == created["session"]["contract_digest"]
+        assert drifted["contract"]["digest"] == client.get("/api/apex/mode").json()["contract_digest"]
+
+    def test_a_session_named_here_is_owner_checked(self, client: TestClient, store: ApexStore) -> None:
+        """``?session_id=`` returns the objective and the last 25 events.
+
+        An unchecked id on a projection route is a cross-owner read dressed as
+        an observability convenience, and a disclosed-absent block whose wording
+        differs from the foreign one would be an existence oracle. Both ids
+        therefore answer the same 404 shape the detail route uses.
+        """
+        sid = _create(client, profile="autonomous")["session"]["session_id"]
+        foreign = _client(is_admin=False).get(f"/api/apex/status?session_id={sid}")
+        absent = _client(is_admin=False).get("/api/apex/status?session_id=apx-nope")
+
+        assert foreign.status_code == absent.status_code == 404
+        assert foreign.json()["detail"] == f"no APEX session '{sid}'"
+        assert absent.json()["detail"] == "no APEX session 'apx-nope'"
 
 
 class TestDegradedStoreOverHttp:

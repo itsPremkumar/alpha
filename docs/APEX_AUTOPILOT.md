@@ -212,7 +212,7 @@ stop.
 | `POST` | `/api/apex/sessions/{id}/steer` | record a constraint; owner-scoped (narrowing is not an admin act) |
 | `POST` | `/api/apex/sessions/{id}/state` | non-terminal transition only; admin |
 | `GET` | `/api/apex/sessions/{id}/events` | SSE, journal replay + live tail; owner-scoped |
-| `GET` | `/api/apex/status` | the §59 projection (read-only) |
+| `GET` | `/api/apex/status` | the §59 projection (read-only); its `contract` block is the one in force for `scope_key` (defaulting like `/mode`), and a `session_id` is owner-scoped (a foreign id is 404) |
 | `GET` | `/api/apex/policy?profile=…` | contract + attributed policy sites |
 | `GET` | `/api/apex/invariants` | §188 I1–I12 and their live sites |
 | `GET` | `/api/apex/mode` | the ON/OFF state for a scope, plus its `active_session` |
@@ -306,6 +306,14 @@ no session was ever created" are different facts to render.
 authority the operator had rather than resetting them to a default. Both
 writes are idempotent and report `changed: false` on a repeat.
 
+The picker on that switch offers **only the profiles an enable may carry** —
+`assist`, `autonomous`, `apex_max` — and adopts the server's profile only when
+it is one of those. `off` is a state, not a rung: a scope nobody has enabled
+yet reads as `off`, and adopting it as the picker's value left the displayed
+rung and the submitted one disagreeing, so the first-ever "Turn on" posted
+`{"profile":"off"}` and was refused. The refusal itself is correct and stays
+server-side; the panel simply never produces a body the server names as invalid.
+
 ### The `/apex` commands
 
 The same switch, reachable from chat, from `POST /api/commands/execute`, and
@@ -398,6 +406,15 @@ Read these before treating a green status as a working system.
   `contract_status`, `fleet_status`, `store_status` and the supervisor block each
   report `available: false` with their own reason, so one broken subsystem never
   renders the whole status as healthy.
+- **`/api/apex/status` projects the contract in force, not the shipped one.**
+  It resolves `scope_key` the way `/mode` does and reads `contract_for(scope)`,
+  so a disabled scope answers the OFF contract and an enabled one answers the
+  scope's live profile — either way the digest equals `/mode`'s. It used to be
+  handed `default_contract()` unconditionally, which printed "Active profile:
+  off" beneath an enabled switch *and* made `session_summary` measure every
+  session against a contract it was never created under (`contract_drift: true`
+  for all of them). Its `session_id` is owner-scoped: a foreign id is 404, not a
+  partial read of someone else's objective.
 - **JSON/JSONL state is process-local.** `sessions.json` and `events.jsonl` are
   atomic and restart-recoverable for one Gateway. They are not a shared
   multi-worker store and not cross-process exactly-once — the same statement

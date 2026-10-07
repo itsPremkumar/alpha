@@ -55,6 +55,42 @@ export type ApexProfile = "off" | "assist" | "autonomous" | "apex_max";
 
 export const APEX_PROFILES: readonly ApexProfile[] = ["off", "assist", "autonomous", "apex_max"];
 
+/**
+ * The rungs APEX may be *enabled* at — what the enable picker offers.
+ *
+ * `off` is a state, not a rung: `POST /apex/enable` refuses it by name
+ * ("use disable() for the 'off' profile; enabling requires a real profile").
+ * This list is the single answer to "what may the operator turn it on to", so
+ * the picker's options and the value the toggle adopts cannot disagree.
+ */
+export const ENABLE_PROFILES: readonly ApexProfile[] = ["assist", "autonomous", "apex_max"];
+
+/**
+ * The profile the enable picker should adopt from a server mode read, or
+ * `null` when the server's answer is not a rung it may be enabled at.
+ *
+ * This exists because adopting raw was a defect. A scope nobody has enabled
+ * yet reads as `off`, and the picker — whose option list deliberately excludes
+ * `off` — adopted it as its controlled value anyway: the `<select>` then
+ * *displayed* `assist` (the first option, since no option matched) while the
+ * state behind it held `off`, so a first-ever "Turn on" posted
+ * `{"profile":"off"}` and failed 422. The most common path on a fresh install
+ * was the broken one.
+ *
+ * Two rules follow, both about refusing to manufacture a claim:
+ *
+ * - **`off` is never adopted.** It is what the switch already reports; the
+ *   picker keeps the rung it was showing (or its default), which is the rung
+ *   the next enable will actually send.
+ * - **An unknown profile is never snapped.** A record written by a newer build
+ *   could name a rung this build does not offer; coercing it to a known one
+ *   would enable a *different* authority than the record names, so it falls
+ *   through to the default and the record's `load_note` is what surfaces it.
+ */
+export function profileToAdopt(modeProfile: string): ApexProfile | null {
+  return (ENABLE_PROFILES as readonly string[]).includes(modeProfile) ? (modeProfile as ApexProfile) : null;
+}
+
 /** Budget ceilings for the active contract. Every field is required by the schema. */
 export interface ApexBudget {
   max_active_agents: number;

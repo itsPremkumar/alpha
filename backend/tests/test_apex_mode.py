@@ -448,7 +448,36 @@ def test_a_user_cannot_read_another_session_scope(tmp_path: Path, monkeypatch: p
     client = _client(tmp_path, monkeypatch, uid="alice", is_admin=False)
 
     assert client.get("/api/apex/mode", params={"scope_key": "bob"}).status_code == 403
+    assert client.get("/api/apex/status", params={"scope_key": "bob"}).status_code == 403
     assert client.get("/api/apex/mode").status_code == 200
+    assert client.get("/api/apex/status").status_code == 200
+
+
+def test_status_reports_the_contract_in_force_not_the_shipped_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``/status`` and ``/mode`` must agree, or the panel contradicts its switch.
+
+    The projection used to be handed ``default_contract()`` — the ``OFF``
+    contract this build ships with — so it answered *Active profile: off (no
+    mission control)* on the line directly beneath an enabled switch, while
+    ``GET /mode`` (what the switch renders from) and the ``/apex status`` slash
+    command both reported the scope's live profile. Three surfaces, three
+    answers, one screen.
+    """
+    client = _client(tmp_path, monkeypatch, uid="admin-1", is_admin=True)
+
+    off = client.get("/api/apex/status").json()["contract"]
+    assert off["profile"] == "off"
+    assert off["enabled"] is False
+
+    client.post("/api/apex/enable", json={"profile": "assist"})
+
+    status = client.get("/api/apex/status").json()["contract"]
+    mode = client.get("/api/apex/mode").json()
+
+    assert status["profile"] == "assist"
+    assert status["enabled"] is True
+    # Same claim, same digest: the panel's two reads are one fact.
+    assert status["digest"] == mode["contract_digest"]
 
 
 def test_an_admin_enables_and_the_write_is_durable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

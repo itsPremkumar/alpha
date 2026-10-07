@@ -6,11 +6,13 @@ import { Cpu, PauseCircle, Power, Radio, ShieldCheck } from "lucide-react";
 import { Badge, Btn, ErrorBox, Notice, Section, SkeletonList, inputCls } from "@/components/ui";
 import {
   APEX_PROFILES,
+  ENABLE_PROFILES,
   decideApexApproval,
   fetchApexApprovals,
   fetchApexMode,
   fetchApexPolicy,
   fetchApexStatus,
+  profileToAdopt,
   type ApexApprovals,
   type ApexBlock,
   type ApexContract,
@@ -201,7 +203,14 @@ function InvariantsCard({ report }: { report: NonNullable<ApexStatus["invariants
  *   switched this on; the contract is what actually gates work. When they
  *   disagree, the authority is what the switch reports as effective.
  */
-function ApexToggle({ onError }: { onError: (message: string | null) => void }) {
+function ApexToggle({
+  onError,
+  onChanged,
+}: {
+  onError: (message: string | null) => void;
+  /** Fired after a write the server confirmed, so the panel's *other* reads re-read too. */
+  onChanged?: () => void;
+}) {
   const [mode, setMode] = useState<ApexMode | null>(null);
   const [pending, setPending] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -215,10 +224,13 @@ function ApexToggle({ onError }: { onError: (message: string | null) => void }) 
         if (!cancelled) {
           setMode(next);
           // The picker follows the server's profile when it is one this build
-          // knows, so the next enable does not silently reset an operator who
-          // had deliberately chosen a different rung.
-          if (APEX_PROFILES.includes(next.profile as ApexProfile)) {
-            setProfile(next.profile as ApexProfile);
+          // can be *enabled* at, so the next enable does not silently reset an
+          // operator who had deliberately chosen a different rung — and never
+          // adopts `off`, which the picker's own option list excludes and which
+          // the server refuses to enable at.
+          const adoptable = profileToAdopt(next.profile);
+          if (adoptable) {
+            setProfile(adoptable);
           }
         }
       } catch (exc) {
@@ -242,6 +254,12 @@ function ApexToggle({ onError }: { onError: (message: string | null) => void }) 
       // that what it shows is what the server last confirmed.
       const confirmed = await fetchApexMode();
       setMode(confirmed);
+      // The switch is only half the panel: the "Active profile" line below it
+      // reads `/status`, and leaving that at its mount-time answer put "off
+      // (no mission control)" under a switch the server had just turned on.
+      // Two contradicting claims on one screen is the failure — so the other
+      // read re-runs here, on the server's confirmation, never on the click.
+      onChanged?.();
       if (!written.durable) {
         onError("The mode changed in memory but did not reach disk — it will not survive a restart.");
       }
@@ -298,7 +316,7 @@ function ApexToggle({ onError }: { onError: (message: string | null) => void }) 
               disabled={busy}
               onChange={(event) => setProfile(event.target.value as ApexProfile)}
             >
-              {APEX_PROFILES.filter((p) => p !== "off").map((value) => (
+              {ENABLE_PROFILES.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -738,7 +756,7 @@ export function ApexSection() {
       <div className="space-y-3">
         {/* The switch owns the first row: it is the one control that decides
             whether anything below it is live at all. */}
-        <ApexToggle onError={setError} />
+        <ApexToggle onError={setError} onChanged={refresh} />
 
         {/* Session-scoped verbs and the approval gate, reading their own two
             routes so a failure in one does not blank the other. */}

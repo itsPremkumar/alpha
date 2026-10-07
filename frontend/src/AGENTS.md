@@ -373,6 +373,23 @@ not exist, which made `?view=<id>` fall back to `chat`.
 - **The emergency stop is a fact, not a control.** The card renders `always on`
   in words and offers no toggle, because `ApexControls` raises on
   `emergency_stop=False` — there is no setting to send.
+- **The enable picker offers only profiles an enable may carry.**
+  `ENABLE_PROFILES` (`assist`/`autonomous`/`apex_max`) is the single answer to
+  "what may the operator turn it on to", consumed by both the `<option>` list
+  and `profileToAdopt`, the helper that decides which server profile to adopt.
+  `off` is a state, not a rung — `POST /apex/enable` refuses it by name — and a
+  scope nobody has enabled yet reads as exactly `off`, so adopting raw left the
+  controlled select displaying `assist` (no option matched) while the state
+  behind it held `off` and the first-ever "Turn on" posted `{"profile":"off"}`
+  and failed 422. `profileToAdopt` returns `null` for `off` *and* for a profile
+  from a newer build: snapping `god_mode` to a known rung would enable a
+  different authority than the record names.
+- **One switch change re-reads the whole panel, not just the switch.** The badge
+  draws from `/mode` and "Active profile" draws from `/status`; mutating only
+  the first put "off (no mission control)" directly beneath an ON badge. So
+  `ApexToggle` takes an `onChanged` callback fired *after* its confirmed re-read
+  — never on the click — and the section passes `refresh`, so the two reads stay
+  one fact. A refused write fires nothing, leaving the panel as it was.
 - **"Run one cycle" is labelled for what it does.** It records a decision and
   re-reads the status. It does not run a tool, start a run, or complete a
   mission, and the panel says so in its own `Notice` rather than leaving it to a

@@ -46,7 +46,6 @@ from pydantic import BaseModel, Field
 from alpha.apex.contract import (
     AutonomyProfile,
     ContractViolation,
-    default_contract,
     narrow_contract,
     profile_for,
 )
@@ -872,9 +871,40 @@ async def status(
     request: Request,
     session_id: str | None = Query(default=None),
     include_invariants: bool = Query(default=True),
+    scope_key: str = Query(default=""),
 ) -> dict[str, Any]:
-    """The §59 projection. Read-only, so it is safe from a UI poll loop."""
-    contract = default_contract()
+    """The §59 projection. Read-only, so it is safe from a UI poll loop.
+
+    Two things are **resolved** here rather than defaulted, and each was a
+    defect:
+
+    * *The contract is the one in force for the scope being reported on*, not
+      the ``OFF`` contract this build ships with (``default_contract()``). Two
+      other surfaces already report the scope's live profile — ``GET /mode``
+      and the ``/apex status`` slash command — so a projection answering
+      "Active profile: off (no mission control)" on the line beneath an enabled
+      switch contradicted the panel it belongs to. Because ``session_summary``
+      measures drift against this same contract, the hard-coded default also
+      reported ``contract_drift: true`` for *every* session ever created: a
+      warning with no event behind it.
+    * *A named session is owner-checked* through ``_session_or_404``. This
+      route hands back the objective and the last 25 events, so an unchecked
+      ``?session_id=`` was a cross-owner read of another user's mission log —
+      answering 404 with the same detail an absent id does, so the refusal
+      cannot be used to probe which ids exist.
+
+    ``scope_key`` is resolved by the same helper the toggle uses, so a
+    non-admin naming another scope is 403 here exactly as it is on ``/mode``.
+    """
+    scope, _owner = await _resolve_scope(request, scope_key)
+    if session_id:
+        session = await _session_or_404(request, session_id)
+        # A named session is reported against the contract in force where that
+        # mission runs, not against whichever scope the operator happened to be
+        # looking from — otherwise an admin inspecting someone else's session
+        # would be told it had drifted because of where *they* were standing.
+        scope = session.thread_id or scope
+    contract = get_apex_mode_store().contract_for(scope)
     return apex_status(
         get_apex_store(),
         contract,

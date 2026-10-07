@@ -263,6 +263,15 @@ class TestFailClosedReads:
             response = anonymous.get(path)
             assert response.status_code == 401, f"{path} answered {response.status_code} with rows"
 
+    def test_status_without_a_principal_is_401_not_a_scopeless_projection(self, store: ApexStore) -> None:
+        """``/status`` now resolves a scope, and an anonymous caller has none.
+
+        Every other read on this router already refuses the same way: with no
+        principal there is no owner to scope to, and answering anyway would
+        mean projecting a contract for a scope nobody named.
+        """
+        assert _client(user=None).get("/api/apex/status").status_code == 401
+
     def test_an_unreadable_session_store_is_503_on_a_member_read(self, store: ApexStore) -> None:
         session = _create_session(_admin())
         store._load_error = "JSONDecodeError: sessions.json is not JSON"

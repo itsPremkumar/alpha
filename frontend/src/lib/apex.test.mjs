@@ -405,6 +405,89 @@ test("the four profiles are exactly the ones the contract defines", () => {
   assert.deepEqual([...apex.APEX_PROFILES], ["off", "assist", "autonomous", "apex_max"]);
 });
 
+/* ── The enable picker never adopts a profile it cannot send ────────────── */
+
+/*
+ * `POST /apex/enable` refuses `off` by name, so `off` is not a rung the picker
+ * may hold. Adopting it anyway was a live defect: a scope nobody had enabled
+ * yet reads as `off`, the controlled `<select>` excluded `off` from its own
+ * options, and the value the button sent therefore disagreed with the rung on
+ * screen — a first-ever "Turn on" posted `{"profile":"off"}` and failed 422.
+ * Each case below names a payload that would reintroduce it.
+ */
+
+test("the enable rungs are the contract profiles without off", () => {
+  assert.deepEqual([...apex.ENABLE_PROFILES], ["assist", "autonomous", "apex_max"]);
+  assert.equal(apex.ENABLE_PROFILES.includes("off"), false);
+});
+
+test("an unrecorded scope reads as off and is never adopted as a rung", () => {
+  // The default state of a store nobody has configured — the exact payload
+  // that made the first click on a fresh install fail.
+  assert.equal(apex.profileToAdopt("off"), null);
+});
+
+test("a real profile the server confirmed is adopted verbatim", () => {
+  for (const profile of ["assist", "autonomous", "apex_max"]) {
+    assert.equal(apex.profileToAdopt(profile), profile);
+  }
+});
+
+test("a profile from a newer build falls through rather than being snapped", () => {
+  // Snapping `god_mode` to `assist` would enable a *different* authority than
+  // the record names; an empty string must not silently become one either.
+  assert.equal(apex.profileToAdopt("god_mode"), null);
+  assert.equal(apex.profileToAdopt(""), null);
+});
+
+test("the toggle adopts through the helper and offers only the enable rungs", () => {
+  // The picker and the button read one list. A component that re-open-coded the
+  // adoption test would be free to accept `off` again, and the two would drift
+  // apart exactly where the defect lived — the value sent, the value shown.
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.match(source, /profileToAdopt\(/, "the toggle must adopt through profileToAdopt");
+  assert.equal(
+    /APEX_PROFILES\.includes\(/.test(source),
+    false,
+    "adopting from the full profile list reintroduces the 'off' enable attempt",
+  );
+  assert.match(
+    source,
+    /ENABLE_PROFILES\.map\(/,
+    "the enable picker's options are the same list the adoption helper checks",
+  );
+});
+
+test("a confirmed switch change re-reads the rest of the panel, not just the switch", () => {
+  // Two reads render side by side: `/mode` draws the switch, `/status` draws
+  // "Active profile". Mutating only the first put "off (no mission control)"
+  // directly beneath an ON badge — the same contradiction as the stale-status
+  // defect, produced by staleness instead of by a wrong default. The panel must
+  // re-run its other read on the server's confirmation, never on the click.
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.match(
+    source,
+    /onChanged\?\.\(\)/,
+    "the toggle notifies the panel after the confirmed re-read",
+  );
+  assert.match(
+    source,
+    /onChanged=\{refresh\}/,
+    "the panel's status read is the thing that re-runs",
+  );
+  // The notification must sit inside the success path: a refused write leaves
+  // the panel exactly as it was, so re-reading it there would only repaint the
+  // same answer.
+  const toggleBody = source.slice(source.indexOf("const toggle = async"), source.indexOf("if (loadError)"));
+  assert.match(toggleBody, /onChanged\?\.\(\)/, "the notify lives inside toggle()");
+  assert.ok(
+    toggleBody.indexOf("onChanged?.()") < toggleBody.indexOf("} catch (exc)"),
+    "a failed write must not re-read the panel as though something changed",
+  );
+});
+
 /* ── The mode toggle ───────────────────────────────────────────────────── */
 
 /*
