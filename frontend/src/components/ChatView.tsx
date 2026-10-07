@@ -2565,7 +2565,34 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
            * which is workspace-level and must stay reachable from every view,
            * so the chat-only parts are gated individually below rather than by
            * closing this whole branch on `view === "chat"`. */
-          <div className="flex-1 flex overflow-hidden min-h-0">
+          /* The BOX is sized by the same four conditions its children are.
+           *
+           * Gating the chat column stopped it *drawing* in a view that had
+           * already rendered its own section — but the row it lives in kept
+           * `flex-1` regardless, so an empty instance still claimed half of
+           * `<main>`. Measured on War Room at a 674px viewport: header 179px,
+           * the section 240px, this branch 200px holding ZERO children, and
+           * the panel it squeezed wanted 1750px of content. The result was a
+           * board scrolled inside a letterbox with a blank block under it that
+           * a reader could not account for.
+           *
+           * `null` in the chain below means "nothing to show", so the row must
+           * not be shown either — a box competing for the screen on the
+           * strength of content it declined to render. All four branches are
+           * restated here rather than derived, because the children are a
+           * ternary chain and React cannot ask it what it returned; adding a
+           * fifth branch means adding it here too, and the empty-panel
+           * regression is loud (a blank block returns) rather than silent. */
+          <div
+            className={
+              activeContextTab === "files" ||
+              activeContextTab === "tasks" ||
+              activeContextTab === "knowledge" ||
+              view === "chat"
+                ? "flex-1 flex overflow-hidden min-h-0"
+                : "hidden"
+            }
+          >
             {activeContextTab === "files" ? (
               <Suspense fallback={<SectionFallback />}>
                 <FilesSection threadId={activeThreadId} />

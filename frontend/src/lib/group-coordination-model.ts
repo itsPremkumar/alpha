@@ -408,13 +408,37 @@ export function assignmentWarnings(draft: AssignmentDraft, roster: string[]): st
  * built from what the operator typed is exactly the unconfirmed success this
  * surface must not paint. A claim that came back not-live says so rather than
  * claiming a hold the server did not record.
+ *
+ * It states the lease's **length**, not a countdown. This sentence stays on the
+ * board until the next action, so a relative "expires in 10m" ages into a
+ * contradiction beside the claim row's live countdown — measured on the live
+ * board as `expires in 10m` directly above `expires in 3m 10s` for the same
+ * claim, forty seconds after assignment. The lease length is a fixed property
+ * of the record: it cannot go stale, and it is a *different quantity* from the
+ * remaining time the row beneath it is counting down, so the two can never be
+ * read as competing answers to one question.
  */
 export function assignmentReceipt(claim: WorkClaim, nowSeconds: number): string {
-  const expiry = claimExpiryView(claim, nowSeconds);
   if (!claim.live) {
     return `"${claim.subject}" was recorded for ${claim.holder} as ${claim.state}, so nobody is holding it right now.`;
   }
-  return `${claim.holder} holds "${claim.subject}" — ${claim.intent} ${claim.kind}, ${expiry.label}.`;
+  return `${claim.holder} holds "${claim.subject}" — ${claim.intent} ${claim.kind}, ${leaseLength(claim, nowSeconds)}.`;
+}
+
+/** `10m lease`, `lease already over`, or `expiry not reported`. Never a countdown. */
+function leaseLength(claim: WorkClaim, nowSeconds: number): string {
+  if (!Number.isFinite(claim.expires_at)) return "expiry not reported";
+  // `created_at` is the anchor: verified against the live Gateway, a 600s
+  // claim writes `created_at` and `expires_at` exactly 600 apart. A record
+  // whose creation the server did not report falls back to the read time,
+  // which is the same figure the countdown would have shown.
+  const start = Number.isFinite(claim.created_at) ? claim.created_at : nowSeconds;
+  const length = claim.expires_at - start;
+  // A lease of zero or less cannot be held. Reporting the arithmetic rather
+  // than picking a side keeps `live: true` and this figure from silently
+  // disagreeing in the operator's favour.
+  if (length <= 0) return "lease already over";
+  return `${durationLabel(length)} lease`;
 }
 
 /**
@@ -437,18 +461,29 @@ export function claimExpiryView(claim: WorkClaim, nowSeconds: number): { label: 
   return { label: `expires in ${durationLabel(remaining)}`, tone: remaining <= 30 ? "amber" : "green" };
 }
 
-/** Compact duration. Sub-second input renders as `<1s`, never `0s`. */
+/**
+ * Compact duration. Sub-second input renders as `<1s`, never `0s`.
+ *
+ * The value is rounded to whole seconds **once**, up front, and every larger
+ * unit is derived from that single integer. Rounding each unit independently
+ * is a carry bug: a 600-second lease read 300ms after it was created leaves
+ * 599.7s, which floored to `9` minutes while its remainder rounded to `60`
+ * seconds — so the claim row read `9m 60s`. The same split produced `60s`
+ * instead of `1m` at 59.7, `59m 60s` instead of `1h` at 3599.7, and `1h 60m`
+ * instead of `2h` at 7199.7. One integer, two derivations, no carry.
+ */
 export function durationLabel(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "not reported";
   if (seconds < 1) return "<1s";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) {
-    const m = Math.floor(seconds / 60);
-    const s = Math.round(seconds % 60);
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  if (total < 3600) {
+    const m = Math.floor(total / 60);
+    const s = total % 60;
     return s === 0 ? `${m}m` : `${m}m ${s}s`;
   }
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 

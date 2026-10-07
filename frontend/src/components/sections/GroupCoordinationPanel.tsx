@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   activityBadge,
   ASSIGNMENT_INTENTS,
@@ -129,8 +129,23 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
     props.onRoomChange(rooms[0]);
   }, [rooms, props.room, props.onRoomChange]);
 
+  // The room the panel is *currently* watching, and whether a read is in
+  // flight. Both are refs rather than state on purpose: the poll fires on an
+  // interval, so it has to see a lock the moment it is taken, not after React
+  // has re-rendered. `loadingRef` is what stops a 60-second read under a
+  // five-second interval from stacking twelve requests — and, worse, from
+  // settling out of order, which is how a stale failure can end up displayed
+  // beside a fresh "read 6s ago".
+  const roomRef = useRef(props.room);
+  const loadingRef = useRef(false);
+
   /**
    * Read the room.
+   *
+   * The room comes from `roomRef`, not from the closure, so this function is
+   * stable and there is exactly one of it. That is what lets the `finally`
+   * below re-read after a room change: a closure bound to the old room would
+   * simply fetch the room we just left.
    *
    * The loud form clears the snapshot on failure because that is what runs
    * when the *room* changes: keeping it would render the previous room's
@@ -139,39 +154,60 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
    * blanking a room that was fine one interval ago is worse than disclosing
    * that the newest read is the oldest one.
    */
-  const load = useCallback(
-    async (opts: { quiet?: boolean } = {}) => {
-      if (!props.room) return;
+  const load = useCallback(async (opts: { quiet?: boolean } = {}) => {
+    const room = roomRef.current;
+    if (!room || loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    if (!opts.quiet) setError(null);
+    setPollError(null);
+    try {
+      const next = await fetchRoomCoordination(room);
+      // The operator moved to another room while this read was in flight.
+      // Applying it would paint one room's agents and claims under another
+      // room's name, which is a fabricated roster — drop it instead, and let
+      // the `finally` below fetch wherever the panel now points.
+      if (roomRef.current !== room) return;
+      setSnapshot(next);
+      setLastReadAt(Date.now());
+      if (!opts.quiet) setError(null);
+      else setPollError(null);
+    } catch (err) {
+      if (roomRef.current !== room) return;
+      const why = `${failureTitle(err)} — ${errMsg(err)}`;
       if (opts.quiet) {
-        try {
-          setSnapshot(await fetchRoomCoordination(props.room));
-          setError(null);
-          setPollError(null);
-          setLastReadAt(Date.now());
-        } catch (err) {
-          setPollError(`${failureTitle(err)} — ${errMsg(err)}`);
-        }
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      setPollError(null);
-      try {
-        setSnapshot(await fetchRoomCoordination(props.room));
-        setLastReadAt(Date.now());
-      } catch (err) {
+        setPollError(why);
+      } else {
         setSnapshot(null);
-        setError(`${failureTitle(err)} — ${errMsg(err)}`);
-      } finally {
-        setLoading(false);
+        setError(why);
       }
-    },
-    [props.room],
-  );
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+      // A room change that arrived mid-read would otherwise leave the new
+      // room waiting on a lock nobody is going to release for it.
+      if (roomRef.current !== room) void load();
+    }
+  }, []);
+
+  // The room ref is updated *before* the read effect below runs — both are
+  // declared in this order so React's in-declaration-order effect execution
+  // guarantees it. Reaching the read before the ref would fetch the room the
+  // panel just left.
+  useEffect(() => {
+    roomRef.current = props.room;
+    // Changing rooms invalidates whatever is on screen. A snapshot left over
+    // from the previous room would read as this room's roster, and
+    // `lastReadAt` would describe a room we are no longer watching.
+    setSnapshot(null);
+    setLastReadAt(null);
+    setPollError(null);
+    setError(null);
+  }, [props.room]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [props.room, load]);
 
   // The live re-read.
   //
@@ -378,7 +414,7 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
 
           <label
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2 py-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer select-none"
-            title={`Re-read this room every ${LIVE_POLL_MS / 1000}s while the tab is visible`}
+            title={`Re-read this room every ${LIVE_POLL_MS / 1000}s, in any tab visibility, plus one immediately when the tab becomes visible again. A read already in flight is never stacked on top of.`}
           >
             <input
               type="checkbox"

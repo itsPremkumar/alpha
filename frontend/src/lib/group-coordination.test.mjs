@@ -35,6 +35,10 @@ import {
 } from "./group-coordination-model.ts";
 
 const clientSource = readFileSync(new URL("./group-coordination.ts", import.meta.url), "utf8");
+const panelSource = readFileSync(
+  new URL("../components/sections/GroupCoordinationPanel.tsx", import.meta.url),
+  "utf8",
+);
 
 function agent(over = {}) {
   return {
@@ -347,10 +351,40 @@ test("a roster holder, and an unknown roster, raise no warning", () => {
 test("the receipt is written from the server's response, not from the draft", () => {
   const now = 1_000_000;
   const receipt = assignmentReceipt(
-    claim({ holder: "reviewer", subject: "war-room-ui-refresh", kind: "task", intent: "editing", expires_at: now + 600 }),
+    claim({
+      holder: "reviewer",
+      subject: "war-room-ui-refresh",
+      kind: "task",
+      intent: "editing",
+      created_at: now,
+      expires_at: now + 600,
+    }),
     now,
   );
-  assert.match(receipt, /^reviewer holds "war-room-ui-refresh" — editing task, expires in 10m\.$/);
+  assert.match(receipt, /^reviewer holds "war-room-ui-refresh" — editing task, 10m lease\.$/);
+});
+
+/**
+ * The receipt states the lease's *length*, never a countdown. It stays on the
+ * board until the next action, so a relative time would sit above the claim
+ * row's live countdown and disagree with it — measured live as `expires in
+ * 10m` directly over `expires in 3m 10s` for the same claim.
+ */
+test("the receipt's time claim is a fixed property and cannot age into a contradiction", () => {
+  const created = 1_000_000;
+  const at = (offsetSeconds) => assignmentReceipt(claim({ created_at: created, expires_at: created + 600 }), created + offsetSeconds);
+
+  // Two readings, 240s apart, produce the *same* sentence: nothing in it moves.
+  assert.equal(at(0), at(240));
+  assert.match(at(0), /10m lease/);
+  // And it never borrows the countdown's wording, which is the row's job.
+  assert.doesNotMatch(at(0), /expires in/);
+
+  // An expiry the server never sent stays "not reported", never "forever".
+  assert.match(assignmentReceipt(claim({ created_at: created, expires_at: Number.NaN }), created), /expiry not reported/);
+
+  // The arithmetic is reported rather than resolved in the hold's favour.
+  assert.match(assignmentReceipt(claim({ created_at: created, expires_at: created - 5 }), created), /lease already over/);
 });
 
 test("a claim the server did not confirm as live never claims a hold", () => {
@@ -393,6 +427,25 @@ test("durationLabel distinguishes a sub-second value from a zero", () => {
   assert.equal(durationLabel(Number.NaN), "not reported");
 });
 
+/**
+ * The off-boundary values, each of which per-unit rounding rendered as a
+ * doubled unit. 599.7s is the exact case observed on the live board: a
+ * 600-second lease read ~300ms after creation printed `9m 60s` in the claim
+ * row, because the minutes floored to 9 while the seconds rounded to 60.
+ *
+ * A suite that only ever passed whole minutes (600, 630, 3600) could not see
+ * this — the boundary values are precisely the ones that round correctly.
+ */
+test("a duration just short of a unit boundary carries, never doubles the unit", () => {
+  assert.equal(durationLabel(599.7), "10m"); // was "9m 60s" — observed live
+  assert.equal(durationLabel(59.7), "1m"); // was "60s"
+  assert.equal(durationLabel(3599.7), "1h"); // was "59m 60s"
+  assert.equal(durationLabel(7199.7), "2h"); // was "1h 60m"
+  assert.equal(durationLabel(3659.7), "1h 1m");
+  assert.equal(durationLabel(90), "1m 30s");
+  assert.equal(durationLabel(59.4), "59s"); // rounds down, stays a seconds label
+});
+
 // ── Live freshness ─────────────────────────────────────────────────────────────
 
 test("a room never read says so rather than reading as just-read", () => {
@@ -420,4 +473,50 @@ test("the staleness threshold is two poll intervals, stated in the module", asyn
   const now = 100_000;
   assert.equal(lastReadView(now - LIVE_POLL_MS * 2, now).stale, true);
   assert.equal(lastReadView(now - LIVE_POLL_MS * 2 + 1, now).stale, false);
+});
+
+// ── The poll cannot stack ─────────────────────────────────────────────────────
+
+/**
+ * The interval fires on a fixed cadence no matter how long a read takes, so
+ * without a lock a 60-second coordination read under a 5-second tick opens
+ * twelve concurrent requests. The consequence is not only load: the oldest
+ * request can settle *last*, so its failure lands on top of a newer success
+ * and the panel displays an error beside a freshness chip that says the board
+ * was read six seconds ago. That pairing is self-contradicting, and it was
+ * observed live against the Gateway while it was busy.
+ *
+ * The lock has to be a ref, not `loading` state — state is not visible to the
+ * next tick's closure until React re-renders, which is exactly the window the
+ * second tick lands in.
+ */
+test("a read is never started while one is already in flight", () => {
+  assert.match(panelSource, /if \(!room \|\| loadingRef\.current\) return;/);
+  assert.match(panelSource, /loadingRef\.current = true;/);
+  // Released on *every* exit. Released only after a success would leave the
+  // panel permanently locked out of every future read after one failure.
+  assert.match(panelSource, /finally \{[\s\S]{0,120}?loadingRef\.current = false;/);
+});
+
+test("the guard reads the room from a ref, so there is one load for every room", () => {
+  // A `useCallback` bound to `props.room` produces a new function per room and
+  // cannot re-read the *new* room after a mid-flight change — the `finally`
+  // would call back into the room it just left.
+  assert.match(panelSource, /const room = roomRef\.current;/);
+  assert.match(panelSource, /if \(roomRef\.current !== room\) void load\(\);/);
+});
+
+test("a read that finished after the operator changed rooms is dropped", () => {
+  // Both the success and the failure path must be gated: applying the success
+  // paints one room's agents under another's name, and applying the failure
+  // blanks a room that never failed.
+  const gates = panelSource.match(/if \(roomRef\.current !== room\) return;/g) || [];
+  assert.equal(gates.length, 2, `expected a stale gate on both paths, found ${gates.length}`);
+});
+
+test("changing rooms invalidates the board rather than reusing the old one", () => {
+  // A snapshot left over from the previous room reads as this room's roster,
+  // and a `lastReadAt` carried across would date a room we no longer watch.
+  const effect = /roomRef\.current = props\.room;[\s\S]{0,400}?setLastReadAt\(null\);/;
+  assert.match(panelSource, effect);
 });
