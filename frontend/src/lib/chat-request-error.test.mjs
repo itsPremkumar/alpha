@@ -499,11 +499,11 @@ test("a failure in a navigated-away run archives the partial answer without show
 test("error UI is thread-scoped, accessible, and uses plain text for incomplete content", () => {
   assert.match(
     source,
-    /requestError && requestError.threadId === activeThreadId/,
+    /requestError &&\s+requestError\.threadId === activeThreadId/,
   );
   assert.match(source, /role="alert"/);
   assert.match(source, /<ErrorBox\s+message=\{requestError.message\}/);
-  assert.match(source, /<pre[^>]*>\{requestError.partial\}<\/pre>/);
+  assert.match(source, /<pre[^>]*>\s*\{requestError\.partial\}\s*<\/pre>/);
   assert.doesNotMatch(
     source,
     /has received your request and evaluated the workflow/,

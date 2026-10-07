@@ -85,7 +85,7 @@ test("ChatView maps the real run lifecycle into companion states", () => {
   assert.match(chatSource, /updateLion\("working"/);
   assert.match(chatSource, /updateLion\("success"/);
   assert.match(chatSource, /updateLion\("error"/);
-  assert.match(chatSource, /updateLion\("waiting"/);
+  assert.match(chatSource, /updateLion\(\s*"waiting"/);
   assert.match(chatSource, /<LionPet/);
 });
 

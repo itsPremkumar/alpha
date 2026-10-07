@@ -216,7 +216,7 @@ test("a Gateway outage is one banner, not two disagreeing ones", () => {
   // Suppressing the amber banner must not lose its information: the
   // outage banner itself discloses that the visible list is the local
   // copy rather than a confirmed empty history.
-  assert.match(chatView, /the conversation list below is the complete local copy, not a confirmed empty history/);
+  assert.match(chatView, /the\s+conversation list below is the complete local copy, not a\s+confirmed empty history/);
   // The history error is never force-cleared by the outage path: the
   // probe's success handler re-arms only its own dismissal, so the
   // amber banner re-renders the moment the Gateway answers again.

@@ -143,7 +143,7 @@ const sendMessage = between("const sendMessage = async", "const handleRegenerate
 test("edit and regenerate both ask the Gateway to prepare a replay", () => {
   assert.match(
     editHandler,
-    /prepareEditRegenerate\(activeThreadId, messageId,/,
+    /prepareEditRegenerate\(\s*activeThreadId,\s*messageId,/,
     "edit must pass the edited message id — dropping it is what made the edit an append",
   );
   assert.match(editHandler, /appendUserMessage: true/, "an edit adds the replacement row");
@@ -158,7 +158,7 @@ test("edit and regenerate both ask the Gateway to prepare a replay", () => {
     "appending the replacement after the message it replaces is the defect",
   );
 
-  assert.match(regenerateHandler, /prepareRegenerate\(activeThreadId,/, "regenerate must prepare, not re-send");
+  assert.match(regenerateHandler, /prepareRegenerate\(\s*activeThreadId,/, "regenerate must prepare, not re-send");
   assert.match(regenerateHandler, /appendUserMessage: false/, "regenerate re-asks the question already on screen");
   assert.match(
     regenerateHandler,
@@ -209,7 +209,7 @@ test("a failed replay restores the turn it superseded", () => {
   );
   assert.match(
     sendMessage,
-    /\[\.\.\.kept\.filter\(\(message\) => message\.id !== appendedId\), \.\.\.supersededMessages\]/,
+    /\[\s*\.\.\.kept\.filter\(\(message\) => message\.id !== appendedId\),\s*\.\.\.supersededMessages,?\s*\]/,
     "failure re-appends the original tail after the streamed rows are removed",
   );
 });
