@@ -157,15 +157,9 @@ def refuse_async_operation(operation: Callable[[], Any], *, where: str) -> None:
     In the second case the coroutine is CLOSED before raising, so the refusal
     does not itself leak an un-awaited coroutine warning.
     """
-    if inspect.iscoroutinefunction(operation) or inspect.iscoroutinefunction(
-        getattr(operation, "__call__", None)
-    ):
+    if inspect.iscoroutinefunction(operation) or inspect.iscoroutinefunction(getattr(operation, "__call__", None)):
         name = getattr(operation, "__qualname__", None) or getattr(operation, "__name__", None)
-        msg = (
-            f"{where} received an async operation ({name!r}); the sync resilience "
-            "helpers cannot await it. Await the operation yourself and keep your "
-            "own asyncio.sleep, or use the policy/breaker directly."
-        )
+        msg = f"{where} received an async operation ({name!r}); the sync resilience helpers cannot await it. Await the operation yourself and keep your own asyncio.sleep, or use the policy/breaker directly."
         raise AsyncOperationRefused(msg)
 
 
@@ -382,10 +376,7 @@ def retry_call(
                 # A sync wrapper that returned a coroutine: the work has not
                 # happened, and reporting success would certify nothing.
                 value.close()
-                msg = (
-                    "retry_call received a coroutine back from a sync operation; "
-                    "the work never ran. Await it yourself."
-                )
+                msg = "retry_call received a coroutine back from a sync operation; the work never ran. Await it yourself."
                 raise AsyncOperationRefused(msg)
         except BaseException as exc:  # classified below; terminal/abort re-raised as-is
             stop_reason = ""
