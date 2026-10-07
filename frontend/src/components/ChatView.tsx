@@ -464,6 +464,17 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   const [polishing, setPolishing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [planMode, setPlanMode] = useState(false);
+  /**
+   * Whether a message may delegate work to background subagents.
+   *
+   * Defaults OFF on purpose. The agent can only delegate when the server has
+   * applied `subagent_enabled`, and the composer's request never asked for it —
+   * so a prompt could not produce a working subagent at all, and no amount of
+   * typing would change that. This is the opt-in that makes prompt-driven
+   * delegation reachable, and it is a per-message decision because it spends
+   * tokens and starts background workers.
+   */
+  const [delegationEnabled, setDelegationEnabled] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
   // Project scope for the active chat (creation + permission/selection in-chat).
@@ -1156,9 +1167,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   /**
    * Roster rows reduced to what a tag needs.
    *
-   * `normalizeBot` already guarantees `name`, `role`, `status` and `department`
-   * are strings, so nothing here invents a value. `model` stays null when the
-   * server did not report one rather than becoming a fabricated model name.
+   * `normalizeBot` already guarantees `name`, `role` and `department`
+   * are strings, so nothing here invents a value. `status` stays null when the
+   * server did not report one rather than becoming a fabricated lifecycle word;
+   * `model` stays null when the server did not report one rather than becoming
+   * a fabricated model name.
    */
   const mentionAgents = useMemo<MentionAgent[]>(
     () =>
@@ -1471,6 +1484,15 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                 ...(reasoningEffort !== DEFAULT_EFFORT ? { reasoning_effort: reasoningEffort } : {}),
               },
             },
+            // The delegation opt-in. `RunCreateRequest.autonomous` is the
+            // server-owned switch: `start_run` applies `subagent_enabled` only
+            // after ordinary client context has been sanitized, so this cannot
+            // widen authorization, tool allowlists, sandbox policy, budgets or
+            // ownership - it changes whether the `task` tool exists.
+            //
+            // Sent only when on. `false` is the default posture, and writing the
+            // literal would be indistinguishable from a caller asserting it.
+            ...(delegationEnabled ? { autonomous: true } : {}),
           }),
         },
       });
@@ -2890,6 +2912,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 isLoading={isLoading}
+                delegationEnabled={delegationEnabled}
+                onDelegationChange={setDelegationEnabled}
                 models={models}
                 selectedModel={selectedModel}
                 onSelectModel={(m) => {

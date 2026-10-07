@@ -604,8 +604,8 @@ Per the documentation policy, this is not a follow-up:
 
 **Capability counts do not move** if the plan is followed: no new `@tool` (only
 `group_chat` actions), no new router (extend `routers/groups.py`), no new
-supervisor loop (reconcile-on-read). 134 tools / 66 routers / 43 middlewares /
-9 loops / 116 engines all stay correct, so `contracts/feature_manifest.json` does
+supervisor loop (reconcile-on-read). 136 tools / 66 routers / 44 middlewares /
+9 loops / 117 engines all stay correct, so `contracts/feature_manifest.json` does
 not need regenerating for this work.
 
 > **Pre-existing drift found while scoping this, unrelated to the plan:** the

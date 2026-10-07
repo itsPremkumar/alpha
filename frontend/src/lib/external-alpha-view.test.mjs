@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf8");
+const read = (relative) =>
+  readFileSync(new URL(relative, import.meta.url), "utf8");
 
 const nav = read("../components/NavTabs.tsx");
 const views = read("../lib/workspace-view.ts");
@@ -28,7 +29,11 @@ test("the tab is registered exactly once in WORKSPACE_TABS", () => {
   // Both the primary row and the "More Views" dropdown read this one array, so
   // a second entry would render the tab twice.
   const entries = nav.match(/id:\s*"external-alpha"/g) ?? [];
-  assert.equal(entries.length, 1, `expected exactly one WORKSPACE_TABS entry, found ${entries.length}`);
+  assert.equal(
+    entries.length,
+    1,
+    `expected exactly one WORKSPACE_TABS entry, found ${entries.length}`,
+  );
 });
 
 test("the tab declares a collaboration category that has a dropdown heading", () => {
@@ -36,14 +41,23 @@ test("the tab declares a collaboration category that has a dropdown heading", ()
   // SECONDARY_GROUPS was unreachable from the dropdown.
   const entry = nav.match(/\{ id: "external-alpha"[^\n]*\}/)?.[0] ?? "";
   assert.match(entry, /category: "collaboration"/);
-  assert.match(nav, /\{ category: "collaboration", heading: "Collaboration & Team" \}/);
+  assert.match(
+    nav,
+    /\{ category: "collaboration", heading: "Collaboration & Team" \}/,
+  );
 });
 
 test("the section is loaded on demand", () => {
   // `next/dynamic`, not `React.lazy`: a lazy section cannot be server-rendered,
   // so the server shipped the Suspense fallback and React discarded the whole
   // server tree on hydration. Both forms are on-demand loads.
-  assert.match(chatView, /dynamic\(\(\) => import\("@\/components\/sections\/ExternalAlphaSection"\)/);
+  // `\s*` between the tokens: a section the formatter split across lines is the
+  // same on-demand load. Pinning the single-line shape turns a `prettier` reflow
+  // into a red suite, which is a formatting change reported as a regression.
+  assert.match(
+    chatView,
+    /dynamic\(\s*\(\) =>\s*import\("@\/components\/sections\/ExternalAlphaSection"\)/,
+  );
 });
 
 test("the view has a render branch", () => {
@@ -60,7 +74,13 @@ test("the section is exported both ways ChatView consumes it", () => {
 });
 
 test("the section has every sub-tab", () => {
-  for (const tab of ["overview", "conversations", "search", "timeline", "forensics"]) {
+  for (const tab of [
+    "overview",
+    "conversations",
+    "search",
+    "timeline",
+    "forensics",
+  ]) {
     assert.match(section, new RegExp(`id: "${tab}"`));
   }
 });
@@ -108,8 +128,14 @@ test("peer text is never injected as HTML", () => {
   // another installation script execution in this operator's browser. Built
   // dynamically so the guard's own comment naming the risk cannot satisfy it.
   const sink = ["dangerously", "SetInnerHTML"].join("");
-  assert.ok(!section.includes(sink), `ExternalAlphaSection must not use ${sink}`);
-  assert.ok(!section.includes("<iframe"), "ExternalAlphaSection must not embed peer content in a frame");
+  assert.ok(
+    !section.includes(sink),
+    `ExternalAlphaSection must not use ${sink}`,
+  );
+  assert.ok(
+    !section.includes("<iframe"),
+    "ExternalAlphaSection must not embed peer content in a frame",
+  );
 });
 
 test("the two sides are labelled distinctly", () => {
@@ -130,8 +156,14 @@ test("truncation is rendered rather than silently trimmed", () => {
 
 test("empty states state what they are not proof of", () => {
   const empties = section.match(/<EmptyState[^>]*hint="([^"]*)"/g) ?? [];
-  assert.ok(empties.length >= 3, `expected several empty states, found ${empties.length}`);
-  assert.ok(section.includes("not proof"), "an empty state must say what it does not prove");
+  assert.ok(
+    empties.length >= 3,
+    `expected several empty states, found ${empties.length}`,
+  );
+  assert.ok(
+    section.includes("not proof"),
+    "an empty state must say what it does not prove",
+  );
 });
 
 test("the live stream is torn down on unmount", () => {

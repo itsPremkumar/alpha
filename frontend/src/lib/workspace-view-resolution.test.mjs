@@ -39,7 +39,10 @@ const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
  * comments too".
  */
 function code(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/[ \t]+\/\/.*$/gm, "");
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/[ \t]+\/\/.*$/gm, "");
 }
 
 const pageSource = read("../app/page.tsx");
@@ -48,14 +51,20 @@ const chatView = code(chatViewSource);
 const pageCode = code(pageSource);
 const viewModule = read("./workspace-view.ts");
 
-const dataUrl = (code) => `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
+const dataUrl = (code) =>
+  `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
 const transpile = (src) =>
   ts.transpileModule(src, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+    },
   }).outputText;
 
 // workspace-view.ts has no imports, so it transpiles and loads directly.
-const { isWorkspaceView, workspaceViewFromSearch } = await import(dataUrl(transpile(viewModule)));
+const { isWorkspaceView, workspaceViewFromSearch } = await import(
+  dataUrl(transpile(viewModule))
+);
 
 /* ── The resolution rule, which both sides must share ───────────────────── */
 
@@ -67,7 +76,15 @@ test("an absent or unknown view resolves to chat", () => {
 });
 
 test("every registered view resolves from the query string", () => {
-  for (const view of ["overview", "chat", "system", "bots", "reliability", "workflows", "settings"]) {
+  for (const view of [
+    "overview",
+    "chat",
+    "system",
+    "bots",
+    "reliability",
+    "workflows",
+    "settings",
+  ]) {
     assert.equal(isWorkspaceView(view), true, `${view} should be routable`);
     assert.equal(workspaceViewFromSearch(`?view=${view}`), view);
   }
@@ -83,9 +100,21 @@ test("a repeated view parameter takes the first value", () => {
 /* ── The server must do the resolving ───────────────────────────────────── */
 
 test("the page resolves the view from searchParams instead of the browser", () => {
-  assert.match(pageCode, /searchParams/, "the page must read the request's searchParams");
-  assert.match(pageCode, /isWorkspaceView\(candidate\)/, "and validate the requested id");
-  assert.match(pageCode, /initialView=\{initialView\}/, "and pass the resolved view down");
+  assert.match(
+    pageCode,
+    /searchParams/,
+    "the page must read the request's searchParams",
+  );
+  assert.match(
+    pageCode,
+    /isWorkspaceView\(candidate\)/,
+    "and validate the requested id",
+  );
+  assert.match(
+    pageCode,
+    /initialView=\{initialView\}/,
+    "and pass the resolved view down",
+  );
 });
 
 test("the page never reads window.location", () => {
@@ -110,9 +139,15 @@ test("no state initialiser reads window.location for the view", () => {
   // that captures lazily will happily span a statement boundary and match the
   // *effect* below, which is required to read the URL, and then fail on correct
   // code. The rule is about the initialiser only.
-  assert.doesNotMatch(chatView, /useState<WorkspaceView>\(\(\) =>\s*workspaceViewFromSearch/);
+  assert.doesNotMatch(
+    chatView,
+    /useState<WorkspaceView>\(\(\) =>\s*workspaceViewFromSearch/,
+  );
   // The exact anti-pattern, in code (comments are stripped above).
-  assert.doesNotMatch(chatView, /typeof window === "undefined"\s*\?\s*""\s*:\s*window\.location\.search/);
+  assert.doesNotMatch(
+    chatView,
+    /typeof window === "undefined"\s*\?\s*""\s*:\s*window\.location\.search/,
+  );
 });
 
 test("the browser fallback runs in an effect, never during render", () => {
@@ -126,9 +161,23 @@ test("the browser fallback runs in an effect, never during render", () => {
 });
 
 test("ChatView accepts the prop and defaults it rather than requiring it", () => {
+  // Whitespace-tolerant on purpose. The property under test is the SHAPE — an
+  // optional `initialView` defaulting to `{}` — not the line it is written on.
+  // A single-line regex made a `prettier` reflow (adding `export default` pushes
+  // the signature past the print width) into a red suite, which is a formatting
+  // change reported as a behavioural regression.
   assert.match(
     chatView,
-    /function ChatView\(\{ initialView \}: \{ initialView\?: WorkspaceView \} = \{\}\)/,
+    /function ChatView\(\s*\{\s*initialView,?\s*\}\s*:\s*\{\s*initialView\?:\s*WorkspaceView\s*[,}]?\s*\}\s*=\s*\{\s*\}\s*\)/,
     "the prop is optional so the bot profile route can mount ChatView unchanged",
+  );
+  // And the shape it must NOT have: a required prop, or no default at all, would
+  // break the bot profile route that mounts ChatView with no arguments.
+  // `initialView\s*:` cannot match `initialView?:` — `?` is not whitespace — so
+  // this refuses exactly the required-prop spelling and leaves the optional one.
+  assert.doesNotMatch(
+    chatView,
+    /function ChatView\([\s\S]{0,160}?\binitialView\s*:\s*WorkspaceView\b/,
+    "a required `initialView` prop would break the bot profile route",
   );
 });

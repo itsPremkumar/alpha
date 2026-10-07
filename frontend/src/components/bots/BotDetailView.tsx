@@ -120,7 +120,13 @@ function TagList({ items, empty }: { items: string[]; empty: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string | null }) {
+  if (status === null)
+    return (
+      <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium border-border/60 text-muted-foreground bg-muted/30">
+        status not reported
+      </span>
+    );
   const { value, known } = enumOrUnknown(status, KNOWN_STATUSES);
   const tone: Tone = value === "active" ? "good" : value === "paused" ? "warn" : value === "disabled" ? "bad" : "neutral";
   const cls = {

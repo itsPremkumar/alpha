@@ -128,8 +128,12 @@ export interface MentionAgent {
   displayName: string;
   role: string;
   department: string;
-  /** Roster lifecycle word, kept verbatim; never snapped to a known enum. */
-  status: string;
+  /**
+   * Roster lifecycle word, kept verbatim; never snapped to a known enum.
+   * `null` when the roster did not report one — an unknown liveness, never
+   * an empty string masquerading as a value.
+   */
+  status: string | null;
   avatar: string;
   model: string | null;
   capabilities: string[];
@@ -148,8 +152,8 @@ export interface MentionRow {
   /** Right-hand chip: the handle, the resolved count, or the department. */
   badge: string;
   avatar: string;
-  /** Roster lifecycle word, verbatim. */
-  status: string;
+  /** Roster lifecycle word, verbatim; `null` when unreported. */
+  status: string | null;
   /** Every handle/role this row resolves to — the disclosure behind `badge`. */
   resolves: string[];
   /** Set only on a `switch` row: the handle to make active. */
@@ -236,7 +240,7 @@ export function buildMentionRows(input: {
       subtitle: agent.role || "Agent",
       badge: `@${handle}`,
       avatar: agent.avatar || "",
-      status: agent.status || "",
+      status: agent.status ?? null,
       resolves: [handle],
       refusal: null,
     });
@@ -257,7 +261,7 @@ export function buildMentionRows(input: {
         subtitle: "Make this the agent for this chat",
         badge: "bot mode",
         avatar: agent.avatar || "",
-        status: agent.status || "",
+        status: agent.status ?? null,
         resolves: [handle],
         switchHandle: handle,
         refusal: known ? null : "The roster did not return this agent.",
@@ -283,7 +287,7 @@ export function buildMentionRows(input: {
       subtitle: members.length === 1 ? "1 agent · department tag" : `${members.length} agents · department tag`,
       badge: role,
       avatar: "",
-      status: "",
+      status: null,
       resolves: members,
       refusal:
         members.length > MAX_TARGETS_PER_MESSAGE
@@ -305,7 +309,7 @@ export function buildMentionRows(input: {
           : `${handles.length} agents`,
     badge: "everyone",
     avatar: "",
-    status: "",
+    status: null,
     resolves: handles,
     refusal:
       handles.length === 0

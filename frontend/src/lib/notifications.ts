@@ -44,9 +44,18 @@ export async function fetchNotifications(
   };
 }
 
-export async function fetchUnreadNotificationCount(): Promise<number> {
+/**
+ * The unread notification count, or `null` when the server did not report it.
+ *
+ * Returning `0` for a missing field would claim "you have no unread
+ * notifications" for a read that never happened — the same absent-as-zero
+ * defect this repository has been correcting all session.
+ */
+export async function fetchUnreadNotificationCount(): Promise<number | null> {
   const d = await get<Record<string, unknown>>("/notifications/unread-count");
-  return typeof d.unread_count === "number" ? d.unread_count : 0;
+  return typeof d.unread_count === "number" && Number.isFinite(d.unread_count)
+    ? d.unread_count
+    : null;
 }
 
 export async function markNotificationRead(id: string): Promise<void> {

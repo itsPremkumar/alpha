@@ -247,6 +247,19 @@ export async function swarmMetrics(id: string): Promise<Record<string, unknown>>
   return get<Record<string, unknown>>(`/swarms/${encodeURIComponent(id)}/metrics`);
 }
 
+/**
+ * The swarm's event log (`GET /api/swarms/{swarm_id}/events`).
+ *
+ * Rejects rather than resolving to `[]`. An empty array means "the server
+ * recorded no events", and a failed read that resolved to `[]` would claim the
+ * same thing — which for an event log is the difference between "nothing
+ * happened" and "we could not look". `swarmStructureView` distinguishes the two,
+ * and it can only do that if this throws.
+ */
+export async function swarmEvents(id: string): Promise<Array<Record<string, unknown>>> {
+  return get<Array<Record<string, unknown>>>(`/swarms/${encodeURIComponent(id)}/events`);
+}
+
 /** Optional blackboard filter. Field names mirror the router's query parameters. */
 export interface SwarmMessageQuery {
   topic?: string;

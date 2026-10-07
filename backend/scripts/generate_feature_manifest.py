@@ -199,13 +199,27 @@ def collect_engines() -> list[dict[str, object]]:
     holding only data (or nothing) are excluded, as is ``__pycache__``. The
     definition is deliberately mechanical so the number is reproducible: it
     counts directories, not intent.
+
+    A subdirectory counts only if it actually holds Python at any depth. Measured
+    on 2026-10-06: ``backend/packages/harness/alpha/backend/packages/harness/alpha``
+    existed as three nested *empty* directories with zero tracked files, and the
+    old test (``p.is_dir()``) counted ``alpha.backend`` as an engine. The committed
+    manifest therefore said 118 while a fresh run said 119 - a capability count
+    that changes depending on when it is read, which defeats the point of
+    generating it. Empty-directory chains are not importable packages, so they
+    are excluded, and this directory may be left on disk: the count no longer
+    depends on it.
     """
     engines: list[dict[str, object]] = []
+
+    def _holds_python(directory: Path) -> bool:
+        return any(p.suffix == ".py" for p in directory.rglob("*.py"))
+
     for child in sorted(ALPHA.iterdir()):
         if not child.is_dir() or child.name == "__pycache__":
             continue
         has_init = (child / "__init__.py").is_file()
-        submodules = sorted(p.name for p in child.iterdir() if p.is_dir() and p.name != "__pycache__")
+        submodules = sorted(p.name for p in child.iterdir() if p.is_dir() and p.name != "__pycache__" and _holds_python(p))
         py_files = sorted(p.name for p in child.glob("*.py"))
         if not has_init and not submodules and not py_files:
             # Data-only or empty directory: not an importable engine.
@@ -235,7 +249,18 @@ def main() -> int:
         "excluded_local_only": EXCLUDED_LOCAL_ONLY,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    # json.dumps() emits LF-only separators; write_text() on Windows would
+    # translate the "\n" to CRLF, making a freshly regenerated artifact
+    # byte-different from the committed one (CRLF vs LF). Normalize to LF so a
+    # fresh build matches the committed artifact byte-for-byte.
+    # json.dumps() emits LF-only separators; write_text() on Windows would
+    # translate the "\n" to CRLF, making a freshly regenerated artifact
+    # byte-different from the committed one (CRLF vs LF). Normalize to LF so a
+    # fresh build matches the committed artifact byte-for-byte.
+    OUT.write_text(
+        json.dumps(manifest, indent=1).replace("\r\n", "\n").replace("\r", "\n") + "\n",
+        encoding="utf-8",
+    )
 
     counts = {key: len(manifest[key]) for key in ("tools", "routers", "middlewares", "loops", "engines")}
     print(f"manifest written: {OUT}")

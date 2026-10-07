@@ -573,7 +573,12 @@ export function ExternalAlphaSection() {
               <div className="grid gap-2 md:grid-cols-4">
                 <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Messages stored</div>
-                  <div className="text-[15px] font-semibold">{analytics.totals.messages ?? 0}</div>
+                  <div className="text-[15px] font-semibold">
+                    {analytics.totals.messages ?? "—"}
+                  </div>
+                  {analytics.totals.messages === undefined && (
+                    <div className="text-[10px] text-muted-foreground">not reported by server</div>
+                  )}
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Conversations</div>
@@ -585,7 +590,12 @@ export function ExternalAlphaSection() {
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">History retained</div>
-                  <div className="text-[15px] font-semibold">{analytics.retention_days}d</div>
+                  <div className="text-[15px] font-semibold">
+                    {analytics.retention_days === null ? "—" : `${analytics.retention_days}d`}
+                  </div>
+                  {analytics.retention_days === null && (
+                    <div className="text-[10px] text-muted-foreground">retention not reported</div>
+                  )}
                 </div>
               </div>
               {!analytics.fts_available && (

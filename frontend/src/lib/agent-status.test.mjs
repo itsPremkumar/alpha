@@ -4,11 +4,19 @@ import test from "node:test";
 import { moduleUrl } from "./test-modules.mjs";
 
 const { parseExecutionModeStatus } = await import(moduleUrl("plan"));
-const { parseFleetWorkers, observedReason, isWatching } = await import(moduleUrl("supervision"));
+const { parseFleetWorkers, observedReason, isWatching } = await import(
+  moduleUrl("supervision")
+);
 const { parseLiveSubagents } = await import(moduleUrl("subagents"));
 
-const panelSource = readFileSync(new URL("../components/AgentStatusPanel.tsx", import.meta.url), "utf8");
-const dashboardSource = readFileSync(new URL("../components/sections/DashboardSection.tsx", import.meta.url), "utf8");
+const panelSource = readFileSync(
+  new URL("../components/AgentStatusPanel.tsx", import.meta.url),
+  "utf8",
+);
+const dashboardSource = readFileSync(
+  new URL("../components/sections/DashboardSection.tsx", import.meta.url),
+  "utf8",
+);
 
 test("execution mode: server values pass through verbatim, defaults stay empty", () => {
   const parsed = parseExecutionModeStatus({
@@ -59,7 +67,15 @@ test("execution mode: persisted and context-overridden records keep their real p
 });
 
 test("execution mode: an unknown server value is reported as-is, never coerced to a default", () => {
-  assert.equal(parseExecutionModeStatus({ mode: "banana", source: "default", note: "", persisted: false }).mode, "banana");
+  assert.equal(
+    parseExecutionModeStatus({
+      mode: "banana",
+      source: "default",
+      note: "",
+      persisted: false,
+    }).mode,
+    "banana",
+  );
 });
 
 test("execution mode: unusable payloads throw so the UI can show 'unavailable'", () => {
@@ -103,11 +119,16 @@ test("fleet: keyed map parses into workers with absent metrics staying null", ()
 test("fleet: an empty map is a genuinely empty fleet, envelopes and arrays are accepted", () => {
   assert.deepEqual(parseFleetWorkers({}), []);
   assert.deepEqual(
-    parseFleetWorkers([{ worker_id: "w9", status: "stalled" }]).map((w) => [w.worker_id, w.status]),
+    parseFleetWorkers([{ worker_id: "w9", status: "stalled" }]).map((w) => [
+      w.worker_id,
+      w.status,
+    ]),
     [["w9", "stalled"]],
   );
   assert.deepEqual(
-    parseFleetWorkers({ workers: [{ worker_id: "w7", status: "failed" }] }).map((w) => w.worker_id),
+    parseFleetWorkers({ workers: [{ worker_id: "w7", status: "failed" }] }).map(
+      (w) => w.worker_id,
+    ),
     ["w7"],
   );
 });
@@ -169,7 +190,10 @@ test("fleet: the live no-workers payload is READ, not rejected as unreadable", (
 
   // The reason the server attached is the operator-facing sentence. Losing it is
   // the second half of the same defect.
-  assert.equal(observedReason(live), "no_worker_has_posted_a_heartbeat_to_this_process");
+  assert.equal(
+    observedReason(live),
+    "no_worker_has_posted_a_heartbeat_to_this_process",
+  );
   assert.equal(isWatching(live), false);
 });
 
@@ -188,17 +212,121 @@ test("fleet: reserved metadata keys are stripped from a NON-empty fleet too", ()
     ["w1"],
     "the reserved keys are not workers",
   );
-  assert.equal(workers.length, 1, "and observed_worker_count must not be counted as one");
+  assert.equal(
+    workers.length,
+    1,
+    "and observed_worker_count must not be counted as one",
+  );
 });
 
 test("subagents: bare arrays and envelopes map id, status and parent", () => {
   const bare = parseLiveSubagents([
-    { subagent_id: "sub-1", role: "researcher", objective: "dig", status: "running", parent_agent_id: "ui" },
+    {
+      subagent_id: "sub-1",
+      role: "researcher",
+      objective: "dig",
+      status: "running",
+      parent_agent_id: "ui",
+    },
   ]);
-  assert.deepEqual(bare, [{ id: "sub-1", role: "researcher", objective: "dig", status: "running", parent: "ui" }]);
+  assert.deepEqual(bare, [
+    {
+      id: "sub-1",
+      role: "researcher",
+      objective: "dig",
+      status: "running",
+      parent: "ui",
+    },
+  ]);
 
-  const enveloped = parseLiveSubagents({ subagents: [{ id: "sub-2", status: "completed", parent: "lead" }] });
-  assert.deepEqual(enveloped, [{ id: "sub-2", role: "", objective: "", status: "completed", parent: "lead" }]);
+  const enveloped = parseLiveSubagents({
+    subagents: [{ id: "sub-2", status: "completed", parent: "lead" }],
+  });
+  assert.deepEqual(enveloped, [
+    {
+      id: "sub-2",
+      role: "",
+      objective: "",
+      status: "completed",
+      parent: "lead",
+    },
+  ]);
+});
+
+test("subagents: the REAL control-plane payload nests objective and role under contract", () => {
+  // Captured live from GET /api/subagents/control on 2026-10-06, not invented.
+  // The previous fixture was flat (`{subagent_id, role, objective, ...}`), which
+  // is a shape this route never returns — so it passed while every real row lost
+  // its objective. Found by reading a rendered screenshot, where two live rows
+  // both displayed "Objective not reported by the server" for records that
+  // carried one.
+  const real = parseLiveSubagents([
+    {
+      subagent_id: "sub-64c33ab7",
+      parent_agent_id: "probe",
+      parent_task_id: null,
+      depth: 1,
+      contract: {
+        objective:
+          "control-plane probe: confirm which execution path registers here",
+        role: "specialist",
+        instructions: "",
+        timeout_seconds: 600,
+        lease_duration_seconds: 60,
+      },
+      status: "ready",
+      created_at: "2026-10-06T01:33:11Z",
+      started_at: null,
+      completed_at: null,
+      last_heartbeat: null,
+      result: null,
+    },
+  ]);
+  assert.equal(real[0].id, "sub-64c33ab7");
+  // These two are the regression: empty strings rendered as "not reported".
+  assert.equal(
+    real[0].objective,
+    "control-plane probe: confirm which execution path registers here",
+  );
+  assert.equal(real[0].role, "specialist");
+  // Top-level fields stay top-level; the fix must not move them.
+  assert.equal(real[0].status, "ready");
+  assert.equal(real[0].parent, "probe");
+});
+
+test("subagents: a flat payload still maps, so an older Gateway is not blanked", () => {
+  // The fix prefers `contract` and falls back to the flat shape rather than
+  // trading one wrong reading for another.
+  const flat = parseLiveSubagents([
+    {
+      subagent_id: "sub-1",
+      role: "researcher",
+      objective: "dig",
+      status: "running",
+      parent_agent_id: "ui",
+    },
+  ]);
+  assert.deepEqual(flat, [
+    {
+      id: "sub-1",
+      role: "researcher",
+      objective: "dig",
+      status: "running",
+      parent: "ui",
+    },
+  ]);
+});
+
+test("subagents: a non-object contract does not blank the fields that are present", () => {
+  // `contract` could arrive as null, a string, or an array on a different build.
+  // None of those may erase a top-level objective that IS there.
+  for (const contract of [null, "nope", 42, ["a"]]) {
+    const row = parseLiveSubagents([
+      { subagent_id: "s", contract, objective: "kept", role: "r" },
+    ])[0];
+    assert.equal(row.objective, "kept", `contract=${JSON.stringify(contract)}`);
+    assert.equal(row.role, "r");
+  }
 });
 
 test("subagents: unreadable payloads throw so failures are not shown as 'no subagents'", () => {
@@ -213,7 +341,10 @@ test("panel honesty: no guessed mode, and an explicit 'unavailable' state while 
   assert.match(panelSource, /unavailable/);
   // Every block starts in the loading phase rather than with placeholder data.
   const initialLoading = panelSource.match(/\{ phase: "loading" \}/g) ?? [];
-  assert.ok(initialLoading.length >= 3, `expected >=3 loading initial states, found ${initialLoading.length}`);
+  assert.ok(
+    initialLoading.length >= 3,
+    `expected >=3 loading initial states, found ${initialLoading.length}`,
+  );
   // Each block is fed by a real, strict endpoint call.
   assert.match(panelSource, /fetchExecutionMode/);
   assert.match(panelSource, /fetchFleetWorkers/);

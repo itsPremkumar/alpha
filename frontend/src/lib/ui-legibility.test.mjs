@@ -42,15 +42,24 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const here = (relative) => fileURLToPath(new URL(relative, import.meta.url));
-const resolveUrl = (specifier) => pathToFileURL(require.resolve(specifier)).href;
-const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf8");
+const resolveUrl = (specifier) =>
+  pathToFileURL(require.resolve(specifier)).href;
+const read = (relative) =>
+  readFileSync(new URL(relative, import.meta.url), "utf8");
 const transpile = (source, extra = {}) =>
   ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, ...extra },
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      ...extra,
+    },
   }).outputText;
-const load = async (code) => import(`data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`);
+const load = async (code) =>
+  import(`data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`);
 
-const LUCIDE = pathToFileURL(here("../../node_modules/lucide-react/dist/esm/lucide-react.js")).href;
+const LUCIDE = pathToFileURL(
+  here("../../node_modules/lucide-react/dist/esm/lucide-react.js"),
+).href;
 
 /* ── The real component, rendered for real ──────────────────────────────── */
 
@@ -61,12 +70,16 @@ const LUCIDE = pathToFileURL(here("../../node_modules/lucide-react/dist/esm/luci
 // `ui.tsx` is transpiled too rather than imported by path: Node's ESM loader
 // refuses a `.tsx` extension outright, so a file:// specifier fails before the
 // code ever runs. Transpiling it keeps the real `Badge` markup in the output.
-const dataUrl = (code) => `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
+const dataUrl = (code) =>
+  `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
 
 const uiUrl = dataUrl(
   transpile(read("../components/ui.tsx"), { jsx: ts.JsxEmit.ReactJSX })
     .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
-    .replace(/from\s+"react\/jsx-runtime"/, `from "${resolveUrl("react/jsx-runtime")}"`),
+    .replace(
+      /from\s+"react\/jsx-runtime"/,
+      `from "${resolveUrl("react/jsx-runtime")}"`,
+    ),
 );
 
 // The transport `lib/network.ts` talks through. `errMsg` is re-exported here
@@ -78,12 +91,20 @@ const NET_HTTP_URL = dataUrl(`
 `);
 
 const NET_URL = dataUrl(
-  transpile(read("./network.ts")).replace(/from\s+"\.\/http"/, `from "${NET_HTTP_URL}"`),
+  transpile(read("./network.ts")).replace(
+    /from\s+"\.\/http"/,
+    `from "${NET_HTTP_URL}"`,
+  ),
 );
 
-const vitalsCode = transpile(read("../components/WorkspaceVitals.tsx"), { jsx: ts.JsxEmit.ReactJSX })
+const vitalsCode = transpile(read("../components/WorkspaceVitals.tsx"), {
+  jsx: ts.JsxEmit.ReactJSX,
+})
   .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
-  .replace(/from\s+"react\/jsx-runtime"/, `from "${resolveUrl("react/jsx-runtime")}"`)
+  .replace(
+    /from\s+"react\/jsx-runtime"/,
+    `from "${resolveUrl("react/jsx-runtime")}"`,
+  )
   .replace(/from\s+"lucide-react"/, `from "${LUCIDE}"`)
   .replace(/from\s+"@\/components\/ui"/, `from "${uiUrl}"`)
   // `@/lib/http` and `@/lib/network` came in with the strip's connectivity entry.
@@ -109,7 +130,10 @@ const { VitalsStrip, costView, VITALS_SUBSYSTEM_KEYS } = await load(
   vitalsCode
     .replace(/from\s+"@\/lib\/system"/, `from "${stub("system")}"`)
     .replace(/from\s+"@\/lib\/workspace"/, `from "${stub("workspace")}"`)
-    .replace(/from\s+"@\/lib\/systemMonitor"/, `from "${stub("systemMonitor")}"`),
+    .replace(
+      /from\s+"@\/lib\/systemMonitor"/,
+      `from "${stub("systemMonitor")}"`,
+    ),
 );
 
 const { createElement: h } = await import(resolveUrl("react"));
@@ -119,13 +143,62 @@ const render = (vitals) => renderToStaticMarkup(h(VitalsStrip, { vitals }));
 /* ── Fixtures: the exact payloads the live Gateway returned ─────────────── */
 
 const PROBES = [
-  { key: "gateway", label: "Gateway", blurb: "Core API answering", ok: true, detail: "online", ms: 4 },
-  { key: "memory", label: "Memory", blurb: "Facts the agent remembers", ok: true, detail: "1 fact", ms: 7 },
-  { key: "skills", label: "Skills", blurb: "Toggleable abilities", ok: true, detail: "24 skills", ms: 5 },
-  { key: "scheduled", label: "Scheduler", blurb: "Recurring background work", ok: true, detail: "0 schedules", ms: 6 },
-  { key: "channels", label: "Chat channels", blurb: "Telegram / Slack / Discord…", ok: true, detail: "10 running", ms: 9 },
-  { key: "mcp", label: "App connections (MCP)", blurb: "External tool servers", ok: true, detail: "5 servers", ms: 8 },
-  { key: "watchdog", label: "Safety watchdog", blurb: "Worker health + self-heal", ok: true, detail: "watching", ms: 3 },
+  {
+    key: "gateway",
+    label: "Gateway",
+    blurb: "Core API answering",
+    ok: true,
+    detail: "online",
+    ms: 4,
+  },
+  {
+    key: "memory",
+    label: "Memory",
+    blurb: "Facts the agent remembers",
+    ok: true,
+    detail: "1 fact",
+    ms: 7,
+  },
+  {
+    key: "skills",
+    label: "Skills",
+    blurb: "Toggleable abilities",
+    ok: true,
+    detail: "24 skills",
+    ms: 5,
+  },
+  {
+    key: "scheduled",
+    label: "Scheduler",
+    blurb: "Recurring background work",
+    ok: true,
+    detail: "0 schedules",
+    ms: 6,
+  },
+  {
+    key: "channels",
+    label: "Chat channels",
+    blurb: "Telegram / Slack / Discord…",
+    ok: true,
+    detail: "10 running",
+    ms: 9,
+  },
+  {
+    key: "mcp",
+    label: "App connections (MCP)",
+    blurb: "External tool servers",
+    ok: true,
+    detail: "5 servers",
+    ms: 8,
+  },
+  {
+    key: "watchdog",
+    label: "Safety watchdog",
+    blurb: "Worker health + self-heal",
+    ok: true,
+    detail: "watching",
+    ms: 3,
+  },
   {
     key: "company",
     label: "Autonomous company",
@@ -142,18 +215,52 @@ const HEALTHY = {
   online: true,
   version: "2.1.0",
   // GET /api/console/stats → {"total_runs":7,...,"total_cost":null,"currency":null}
-  stats: { runs: 7, threads: 8, agents: 0, tokens: 1284663, cost: null, currency: null, raw: {} },
+  stats: {
+    runs: 7,
+    threads: 8,
+    agents: 0,
+    tokens: 1284663,
+    cost: null,
+    currency: null,
+    raw: {},
+  },
   probes: PROBES,
   probesFailed: false,
   host: {
-    ram: { total_mb: 5996.1, used_mb: 5439.4, available_mb: 556.7, free_mb: 556.7, percent: 90.7 },
+    ram: {
+      total_mb: 5996.1,
+      used_mb: 5439.4,
+      available_mb: 556.7,
+      free_mb: 556.7,
+      percent: 90.7,
+    },
     swap: { total_mb: 12288, used_mb: 1138, free_mb: 11150, percent: 9.3 },
     disks: [],
-    cpu: { percent: 81, cores: 16, physical_cores: null, frequency_mhz: 2555, min_frequency_mhz: null, max_frequency_mhz: null, load: null, per_core: [] },
+    cpu: {
+      percent: 81,
+      cores: 16,
+      physical_cores: null,
+      frequency_mhz: 2555,
+      min_frequency_mhz: null,
+      max_frequency_mhz: null,
+      load: null,
+      per_core: [],
+    },
     gpus: [],
-    network: { bytes_sent: 0, bytes_recv: 0, upload_mbps: 0, download_mbps: 0, interfaces: [] },
+    network: {
+      bytes_sent: 0,
+      bytes_recv: 0,
+      upload_mbps: 0,
+      download_mbps: 0,
+      interfaces: [],
+    },
     internet: { reachable: true, rtt_ms: 15, host: "" },
-    system: { hostname: "laptop", os: "Windows", os_version: "", uptime_seconds: 5220 },
+    system: {
+      hostname: "laptop",
+      os: "Windows",
+      os_version: "",
+      uptime_seconds: 5220,
+    },
     psutil_available: true,
     alerts: [],
     timestamp: 1790647313,
@@ -164,10 +271,12 @@ const HEALTHY = {
 const STATS_FAILED = { ...HEALTHY, stats: null };
 
 /** Every rendered `title` attribute, in document order. */
-const titles = (markup) => [...markup.matchAll(/title="([^"]*)"/g)].map((m) => m[1]);
+const titles = (markup) =>
+  [...markup.matchAll(/title="([^"]*)"/g)].map((m) => m[1]);
 
 /** The `data-vital` label of each `Metric`, i.e. every named measurement. */
-const vitalLabels = (markup) => [...markup.matchAll(/data-vital="([^"]*)"/g)].map((m) => m[1]);
+const vitalLabels = (markup) =>
+  [...markup.matchAll(/data-vital="([^"]*)"/g)].map((m) => m[1]);
 
 /**
  * Every rendered `Metric`, split into its value and its label.
@@ -203,22 +312,45 @@ const visibleText = (markup) =>
 test("no label is hidden behind a responsive breakpoint", () => {
   // This is the exact defect: fourteen `hidden lg:inline` / `hidden xl:inline`
   // spans. A noun the user cannot read is not a label.
-  for (const markup of [render(HEALTHY), render(STATS_FAILED), render({ ...HEALTHY, probesFailed: true })]) {
-    const hidden = [...markup.matchAll(/class="[^"]*\bhidden\b[^"]*"[^>]*>([^<]*)</g)].map((m) => m[1].trim());
-    assert.deepEqual(hidden, [], `labels hidden at narrow widths: ${JSON.stringify(hidden)}`);
+  for (const markup of [
+    render(HEALTHY),
+    render(STATS_FAILED),
+    render({ ...HEALTHY, probesFailed: true }),
+  ]) {
+    const hidden = [
+      ...markup.matchAll(/class="[^"]*\bhidden\b[^"]*"[^>]*>([^<]*)</g),
+    ].map((m) => m[1].trim());
+    assert.deepEqual(
+      hidden,
+      [],
+      `labels hidden at narrow widths: ${JSON.stringify(hidden)}`,
+    );
   }
 });
 
 test("every named measurement spells out what it is", () => {
   const text = visibleText(render(HEALTHY));
   // The nouns that were `display: none` in the live DOM.
-  for (const noun of ["Alpha", "RAM", "CPU", "runs", "chats", "agents", "tokens", "cost", "ready"]) {
+  for (const noun of [
+    "Alpha",
+    "RAM",
+    "CPU",
+    "runs",
+    "chats",
+    "agents",
+    "tokens",
+    "cost",
+    "ready",
+  ]) {
     assert.ok(text.includes(noun), `"${noun}" must be readable, got: ${text}`);
   }
   // …and the seven subsystem names, which were all `hidden xl:inline`.
   for (const key of VITALS_SUBSYSTEM_KEYS) {
     const probe = PROBES.find((p) => p.key === key);
-    assert.ok(text.includes(probe.label), `subsystem "${probe.label}" must be readable, got: ${text}`);
+    assert.ok(
+      text.includes(probe.label),
+      `subsystem "${probe.label}" must be readable, got: ${text}`,
+    );
   }
 });
 
@@ -231,7 +363,10 @@ test("every dash in the strip says which of zero/unknown/not-applicable it is", 
     "no host": { ...HEALTHY, host: null },
     "probes failed": { ...HEALTHY, probesFailed: true, probes: [] },
     offline: { ...HEALTHY, online: false },
-    priced: { ...HEALTHY, stats: { ...HEALTHY.stats, cost: 3.5, currency: "USD" } },
+    priced: {
+      ...HEALTHY,
+      stats: { ...HEALTHY.stats, cost: 3.5, currency: "USD" },
+    },
   };
   for (const [name, vitals] of Object.entries(variants)) {
     for (const { value, label } of parseMetrics(render(vitals))) {
@@ -255,18 +390,23 @@ test("the five usage metrics and the readiness ratio are five distinct labels", 
     labels.filter((l) => ["runs", "chats", "agents", "tokens"].includes(l)),
     ["runs", "chats", "agents", "tokens"],
   );
-  assert.ok(labels.some((l) => l.startsWith("cost")), "cost needs its own label");
+  assert.ok(
+    labels.some((l) => l.startsWith("cost")),
+    "cost needs its own label",
+  );
   assert.ok(labels.includes("ready"), "the readiness ratio needs a label");
 });
 
 test("tokens and cost no longer share a glyph", () => {
   const glyphOf = (labelRe) => {
-    const m = render(HEALTHY).match(new RegExp(`data-vital="${labelRe}"[\\s\\S]*?lucide-[a-z0-9-]+`));
+    const m = render(HEALTHY).match(
+      new RegExp(`data-vital="${labelRe}"[\\s\\S]*?lucide-[a-z0-9-]+`),
+    );
     assert.ok(m, `no glyph found for ${labelRe}`);
     return m[0].match(/lucide-[a-z0-9-]+/g);
   };
   const tokens = glyphOf("tokens");
-  const cost = glyphOf("cost[^\"]*");
+  const cost = glyphOf('cost[^"]*');
   assert.notDeepEqual(tokens, cost, "tokens and cost must not share one icon");
   // …and neither is the generic Coin glyph the old code used for both.
   assert.doesNotMatch(tokens.join(","), /lucide-coins/);
@@ -283,7 +423,9 @@ test("the readiness ratio carries a title, which it did not before", () => {
   const at = markup.indexOf('data-vital="ready"');
   assert.ok(at > 0, "expected a ready metric");
   // `title` is emitted on the same element, before `data-vital`.
-  const title = markup.slice(Math.max(0, at - 800), at).match(/title="([^"]*)"/);
+  const title = markup
+    .slice(Math.max(0, at - 800), at)
+    .match(/title="([^"]*)"/);
   assert.ok(title, "the 6/7 ratio must have a title attribute");
   assert.match(title[1], /of 7/, "the title must state the counts");
   assert.match(title[1], /success/i, "the title must say what counts as ready");
@@ -292,7 +434,9 @@ test("the readiness ratio carries a title, which it did not before", () => {
 test("every subsystem entry names its probe reason and its route", () => {
   const markup = render(HEALTHY);
   const all = titles(markup).join("\n");
-  for (const probe of PROBES.filter((p) => VITALS_SUBSYSTEM_KEYS.includes(p.key))) {
+  for (const probe of PROBES.filter((p) =>
+    VITALS_SUBSYSTEM_KEYS.includes(p.key),
+  )) {
     assert.ok(
       all.includes(probe.detail),
       `subsystem "${probe.label}" must surface its own detail "${probe.detail}"`,
@@ -300,8 +444,16 @@ test("every subsystem entry names its probe reason and its route", () => {
   }
   // Units named, sources named.
   assert.match(all, /GiB/, "a RAM entry must name its unit");
-  assert.match(all, /GET \/api\/console\/stats/, "a usage entry must name its route");
-  assert.match(all, /GET \/api\/system\/vitals/, "a host entry must name its route");
+  assert.match(
+    all,
+    /GET \/api\/console\/stats/,
+    "a usage entry must name its route",
+  );
+  assert.match(
+    all,
+    /GET \/api\/system\/vitals/,
+    "a host entry must name its route",
+  );
 });
 
 test("a failing subsystem shows its reason in the row, not only on hover", () => {
@@ -315,8 +467,14 @@ test("a failing subsystem shows its reason in the row, not only on hover", () =>
   );
   assert.match(markup, /data-subsystem="company" data-ready="false"/);
   // A healthy row stays quiet: 24 skills is not repeated next to "Skills".
-  const skills = markup.match(/data-subsystem="skills"[\s\S]*?<\/span>\s*<\/span>/)[0];
-  assert.doesNotMatch(skills, /24 skills/, "a passing subsystem must not add noise");
+  const skills = markup.match(
+    /data-subsystem="skills"[\s\S]*?<\/span>\s*<\/span>/,
+  )[0];
+  assert.doesNotMatch(
+    skills,
+    /24 skills/,
+    "a passing subsystem must not add noise",
+  );
 });
 
 test("no subsystem renders as a bare dot with no glyph and no name", () => {
@@ -324,7 +482,9 @@ test("no subsystem renders as a bare dot with no glyph and no name", () => {
   // either key, so they collapsed to a lone status dot.
   const markup = render(HEALTHY);
   for (const key of VITALS_SUBSYSTEM_KEYS) {
-    const entry = markup.match(new RegExp(`data-subsystem="${key}"[\\s\\S]*?</span>\\s*</span>`));
+    const entry = markup.match(
+      new RegExp(`data-subsystem="${key}"[\\s\\S]*?</span>\\s*</span>`),
+    );
     assert.ok(entry, `missing subsystem entry for ${key}`);
     assert.match(entry[0], /lucide-/, `${key} must draw a glyph`);
     const words = visibleText(entry[0]);
@@ -337,26 +497,44 @@ test("no subsystem renders as a bare dot with no glyph and no name", () => {
 test("an unreported cost says so in words, and never claims a zero", () => {
   const view = costView(null, null);
   assert.equal(view.value, "—");
-  assert.match(view.label, /not reported/i, "the label must carry the disambiguation");
+  assert.match(
+    view.label,
+    /not reported/i,
+    "the label must carry the disambiguation",
+  );
   assert.match(view.title, /total_cost: null/);
   assert.match(view.title, /NOT a measured \$0\.00/);
   // And the rendered row must not read as "$0".
   const text = visibleText(render(HEALTHY));
-  assert.ok(!/\$0\.00/.test(text), "an unreported cost must not render as a priced zero");
-  assert.ok(text.includes("cost not reported"), `expected the worded cost, got: ${text}`);
+  assert.ok(
+    !/\$0\.00/.test(text),
+    "an unreported cost must not render as a priced zero",
+  );
+  assert.ok(
+    text.includes("cost not reported"),
+    `expected the worded cost, got: ${text}`,
+  );
 });
 
 test("a measured cost, including a real zero, renders as a price", () => {
   // Zero is a real answer from the server and must look like one — the inverse
   // error (rendering a measured 0 as "not reported") would be its own lie.
   assert.deepEqual(
-    ["zero", "small", "large"].map((k) => costView({ zero: 0, small: 0.0042, large: 12.5 }[k], "USD")).map((v) => v.value),
+    ["zero", "small", "large"]
+      .map((k) => costView({ zero: 0, small: 0.0042, large: 12.5 }[k], "USD"))
+      .map((v) => v.value),
     ["$0.0000 USD", "$0.0042 USD", "$12.50 USD"],
   );
-  const markup = render({ ...HEALTHY, stats: { ...HEALTHY.stats, cost: 12.5, currency: "USD" } });
+  const markup = render({
+    ...HEALTHY,
+    stats: { ...HEALTHY.stats, cost: 12.5, currency: "USD" },
+  });
   const text = visibleText(markup);
   assert.ok(text.includes("$12.50"), `expected the priced cost, got: ${text}`);
-  assert.ok(text.includes("cost in USD"), `expected the currency named, got: ${text}`);
+  assert.ok(
+    text.includes("cost in USD"),
+    `expected the currency named, got: ${text}`,
+  );
   assert.doesNotMatch(text, /cost not reported/);
 });
 
@@ -372,14 +550,19 @@ test("an unreported cost keeps its currency caveat when the server sent one", ()
 test("failed stats render as unknown totals, never as zeros", () => {
   const markup = render(STATS_FAILED);
   const text = visibleText(markup);
-  assert.ok(text.includes("totals not reported"), `expected worded unknown totals, got: ${text}`);
+  assert.ok(
+    text.includes("totals not reported"),
+    `expected worded unknown totals, got: ${text}`,
+  );
   // A failed read must not render counts of zero. Parse the real `Metric`
   // structure instead of regexing text: for each entry, read the value span and
   // the label span, and require that a dash is always accompanied by words
   // saying it means "not reported" — never a bare `0` and never a bare `—`.
   for (const { value, label } of parseMetrics(markup)) {
     if (value === "0" || value === "") {
-      assert.fail(`a failed stats read rendered ${JSON.stringify(value)} for "${label}"`);
+      assert.fail(
+        `a failed stats read rendered ${JSON.stringify(value)} for "${label}"`,
+      );
     }
     if (value === "—") {
       assert.match(
@@ -392,7 +575,10 @@ test("failed stats render as unknown totals, never as zeros", () => {
   // The tooltip must name every stat that is now unknown, not just say so once.
   const all = titles(markup).join("\n");
   for (const noun of ["Runs", "chats", "agents", "tokens", "Cost"]) {
-    assert.ok(all.includes(noun), `missing "${noun}" from the failed-stats tooltip`);
+    assert.ok(
+      all.includes(noun),
+      `missing "${noun}" from the failed-stats tooltip`,
+    );
   }
   assert.match(all, /NOT zero/, "the failed read must say these are not zeros");
 });
@@ -400,8 +586,15 @@ test("failed stats render as unknown totals, never as zeros", () => {
 test("a failed host read renders as unknown load, not 0%", () => {
   const markup = render({ ...HEALTHY, host: null });
   const text = visibleText(markup);
-  assert.ok(text.includes("host load not reported"), `expected worded unknown load, got: ${text}`);
-  assert.doesNotMatch(text, /CPU 0%|RAM 0G/, "a failed host read must not render zeros");
+  assert.ok(
+    text.includes("host load not reported"),
+    `expected worded unknown load, got: ${text}`,
+  );
+  assert.doesNotMatch(
+    text,
+    /CPU 0%|RAM 0G/,
+    "a failed host read must not render zeros",
+  );
   assert.match(titles(markup).join("\n"), /NOT a measured 0%/);
 });
 
@@ -421,8 +614,15 @@ test("a probe that succeeded but reported nothing says so, rather than showing 0
   // denominator is zero, so the ratio carries no information at all.
   const markup = render({ ...HEALTHY, probesFailed: false, probes: [] });
   const text = visibleText(markup);
-  assert.doesNotMatch(text, /0\/0/, "a zero-denominator ratio is not information");
-  assert.ok(text.includes("none to probe"), `expected the empty-but-measured wording, got: ${text}`);
+  assert.doesNotMatch(
+    text,
+    /0\/0/,
+    "a zero-denominator ratio is not information",
+  );
+  assert.ok(
+    text.includes("none to probe"),
+    `expected the empty-but-measured wording, got: ${text}`,
+  );
   assert.match(titles(markup).join("\n"), /not a missing measurement/);
   // And the gateway badge is unaffected: the probe request itself did succeed.
   assert.ok(text.includes("Gateway online"));
@@ -447,28 +647,61 @@ const CONNECTIVITY = {
   monitoring: true,
   observed_age_seconds: 2,
   targets: [
-    { name: "cloudflare", reachable: true, latency_ms: 16, failure_kind: "unknown", detail: "" },
-    { name: "google", reachable: true, latency_ms: 20, failure_kind: "unknown", detail: "" },
+    {
+      name: "cloudflare",
+      reachable: true,
+      latency_ms: 16,
+      failure_kind: "unknown",
+      detail: "",
+    },
+    {
+      name: "google",
+      reachable: true,
+      latency_ms: 20,
+      failure_kind: "unknown",
+      detail: "",
+    },
   ],
-  retry: { automatic: true, retrying: false, next_probe_seconds: 15, poll_interval_seconds: 15, backoff_max_seconds: 300 },
+  retry: {
+    automatic: true,
+    retrying: false,
+    next_probe_seconds: 15,
+    poll_interval_seconds: 15,
+    backoff_max_seconds: 300,
+  },
   parked_durability: "installed",
   parked_sessions: null,
   recheck: null,
   notes: [],
 };
 
-const withLink = (over) => ({ ...HEALTHY, connectivity: { ...CONNECTIVITY, ...over }, connectivityFailed: false });
+const withLink = (over) => ({
+  ...HEALTHY,
+  connectivity: { ...CONNECTIVITY, ...over },
+  connectivityFailed: false,
+});
 
 /** Render with the retry control wired, which is the production wiring. */
 const renderLinked = (vitals, props = {}) =>
-  renderToStaticMarkup(h(VitalsStrip, { vitals, onRetryConnectivity: () => {}, ...props }));
+  renderToStaticMarkup(
+    h(VitalsStrip, { vitals, onRetryConnectivity: () => {}, ...props }),
+  );
 
 test("a measured link shows its round-trip with a label, not a bare number", () => {
   const text = visibleText(render(withLink({})));
-  assert.ok(text.includes("18 ms"), `expected the measured round-trip, got: ${text}`);
-  assert.ok(text.includes("internet"), `the figure needs its noun, got: ${text}`);
+  assert.ok(
+    text.includes("18 ms"),
+    `expected the measured round-trip, got: ${text}`,
+  );
+  assert.ok(
+    text.includes("internet"),
+    `the figure needs its noun, got: ${text}`,
+  );
   // The route and the unit are both named on hover.
-  assert.match(titles(render(withLink({}))).join("\n"), /GET \/api\/ops\/network/);
+  assert.match(
+    titles(render(withLink({}))).join("\n"),
+    /GET \/api\/ops\/network/,
+  );
   // A healthy link offers nothing to press.
   assert.doesNotMatch(renderLinked(withLink({})), /data-internet-retry/);
 });
@@ -478,21 +711,50 @@ test("a lost link is red, names the backend's own retry, and offers a Retry", ()
     state: "offline",
     latency_ms: null,
     allows_network_attempt: false,
-    state_detail: "No connectivity. Work is paused and will resume automatically when the link returns.",
+    state_detail:
+      "No connectivity. Work is paused and will resume automatically when the link returns.",
     targets: [
-      { name: "cloudflare", reachable: false, latency_ms: 2000, failure_kind: "timeout", detail: "connect timeout" },
-      { name: "google", reachable: false, latency_ms: 2000, failure_kind: "timeout", detail: "connect timeout" },
+      {
+        name: "cloudflare",
+        reachable: false,
+        latency_ms: 2000,
+        failure_kind: "timeout",
+        detail: "connect timeout",
+      },
+      {
+        name: "google",
+        reachable: false,
+        latency_ms: 2000,
+        failure_kind: "timeout",
+        detail: "connect timeout",
+      },
     ],
-    retry: { automatic: true, retrying: true, next_probe_seconds: 240, poll_interval_seconds: 15, backoff_max_seconds: 300 },
+    retry: {
+      automatic: true,
+      retrying: true,
+      next_probe_seconds: 240,
+      poll_interval_seconds: 15,
+      backoff_max_seconds: 300,
+    },
   });
   const markup = renderLinked(offline);
   const text = visibleText(markup);
   assert.match(markup, /data-connectivity-state="offline"/);
   assert.ok(text.includes("offline"), `got: ${text}`);
-  assert.ok(text.includes("Unreachable: cloudflare, google"), `the failing endpoints must be named, got: ${text}`);
-  assert.ok(text.includes("keeps trying until the link returns"), `the backend's own retry promise must be in the row, got: ${text}`);
+  assert.ok(
+    text.includes("Unreachable: cloudflare, google"),
+    `the failing endpoints must be named, got: ${text}`,
+  );
+  assert.ok(
+    text.includes("keeps trying until the link returns"),
+    `the backend's own retry promise must be in the row, got: ${text}`,
+  );
   assert.match(markup, /data-internet-retry="idle"/);
-  assert.match(markup, /Retry the internet connection check/, "the control needs an accessible name");
+  assert.match(
+    markup,
+    /Retry the internet connection check/,
+    "the control needs an accessible name",
+  );
   // A null latency is never drawn as 0 ms.
   assert.doesNotMatch(text, /0 ms internet/);
 });
@@ -503,13 +765,17 @@ test("an unknown link never renders as offline, and still offers Retry", () => {
       state: "unknown",
       latency_ms: null,
       allows_network_attempt: true, // the asymmetry the whole vocabulary exists for
-      state_detail: "Connectivity has not been determined yet; network operations will be attempted and handled by the ordinary retry path.",
+      state_detail:
+        "Connectivity has not been determined yet; network operations will be attempted and handled by the ordinary retry path.",
       targets: [],
-    })
+    }),
   );
   const text = visibleText(markup);
   assert.match(markup, /data-connectivity-state="unknown"/);
-  assert.ok(!/offline/.test(text), `unknown must never read as offline, got: ${text}`);
+  assert.ok(
+    !/offline/.test(text),
+    `unknown must never read as offline, got: ${text}`,
+  );
   assert.ok(text.includes("unknown"), `got: ${text}`);
   assert.match(markup, /data-internet-retry="idle"/);
 });
@@ -527,41 +793,91 @@ test("a backend that is not measuring connectivity says so and offers nothing to
       latency_ms: null,
       monitoring: false,
       targets: [],
-      retry: { automatic: false, retrying: false, next_probe_seconds: null, poll_interval_seconds: null, backoff_max_seconds: null },
+      retry: {
+        automatic: false,
+        retrying: false,
+        next_probe_seconds: null,
+        poll_interval_seconds: null,
+        backoff_max_seconds: null,
+      },
     },
     connectivityFailed: false,
   });
   const text = visibleText(markup);
   assert.match(markup, /data-connectivity-state="unmeasured"/);
-  assert.ok(text.includes("network monitoring is disabled by configuration"), `the server's reason must be visible, got: ${text}`);
+  assert.ok(
+    text.includes("network monitoring is disabled by configuration"),
+    `the server's reason must be visible, got: ${text}`,
+  );
   // A button here could only ever come back with the same refusal.
-  assert.doesNotMatch(markup, /data-internet-retry/, "an unmeasurable link must not offer a Retry that cannot help");
+  assert.doesNotMatch(
+    markup,
+    /data-internet-retry/,
+    "an unmeasurable link must not offer a Retry that cannot help",
+  );
 });
 
 test("a failed connectivity read is retryable, because that is a real transient fault", () => {
-  const markup = renderLinked({ ...HEALTHY, connectivity: null, connectivityFailed: true });
+  const markup = renderLinked({
+    ...HEALTHY,
+    connectivity: null,
+    connectivityFailed: true,
+  });
   const text = visibleText(markup);
   assert.ok(text.includes("internet not reported"), `got: ${text}`);
   assert.match(markup, /data-internet-retry="idle"/);
 });
 
 test("the retry control is disabled and honest while a probe is in flight", () => {
-  const markup = renderLinked(withLink({ state: "offline", latency_ms: null, retry: { automatic: true, retrying: true, next_probe_seconds: 240, poll_interval_seconds: 15, backoff_max_seconds: 300 } }), {
-    rechecking: true,
-  });
+  const markup = renderLinked(
+    withLink({
+      state: "offline",
+      latency_ms: null,
+      retry: {
+        automatic: true,
+        retrying: true,
+        next_probe_seconds: 240,
+        poll_interval_seconds: 15,
+        backoff_max_seconds: 300,
+      },
+    }),
+    {
+      rechecking: true,
+    },
+  );
   assert.match(markup, /data-internet-retry="in-flight"/);
-  assert.match(markup, /disabled=""/, "a second click would be a second probe of the same link");
+  assert.match(
+    markup,
+    /disabled=""/,
+    "a second click would be a second probe of the same link",
+  );
   assert.match(markup, /Re-checking the internet connection/);
-  assert.ok(visibleText(markup).includes("Retrying"), `got: ${visibleText(markup)}`);
+  assert.ok(
+    visibleText(markup).includes("Retrying"),
+    `got: ${visibleText(markup)}`,
+  );
 });
 
 test("a failed retry surfaces the server's reason rather than swallowing it", () => {
   const markup = renderLinked(
-    withLink({ state: "offline", latency_ms: null, retry: { automatic: true, retrying: true, next_probe_seconds: 240, poll_interval_seconds: 15, backoff_max_seconds: 300 } }),
-    { recheckError: "Request failed (HTTP 503). Network monitor unavailable." }
+    withLink({
+      state: "offline",
+      latency_ms: null,
+      retry: {
+        automatic: true,
+        retrying: true,
+        next_probe_seconds: 240,
+        poll_interval_seconds: 15,
+        backoff_max_seconds: 300,
+      },
+    }),
+    { recheckError: "Request failed (HTTP 503). Network monitor unavailable." },
   );
   const text = visibleText(markup);
-  assert.ok(text.includes("Network monitor unavailable"), `the reason must be visible, got: ${text}`);
+  assert.ok(
+    text.includes("Network monitor unavailable"),
+    `the reason must be visible, got: ${text}`,
+  );
   assert.match(markup, /data-internet-retry-error/);
 });
 
@@ -569,8 +885,14 @@ test("a failed retry surfaces the server's reason rather than swallowing it", ()
 
 test("the strip is three bordered clusters, not one flat run", () => {
   const markup = render(HEALTHY);
-  const groups = [...markup.matchAll(/role="group" aria-label="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(groups, ["Backend connection", "Workspace totals", "Subsystem readiness"]);
+  const groups = [...markup.matchAll(/role="group" aria-label="([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(groups, [
+    "Backend connection",
+    "Workspace totals",
+    "Subsystem readiness",
+  ]);
   // One border style and one separator style, so the row scans as three things.
   const clusters = markup.split('role="group"').slice(1);
   for (const cluster of clusters) {
@@ -588,21 +910,37 @@ test("the readiness ratio counts only the seven declared subsurfaces", () => {
   );
   const markup = render(HEALTHY);
   // One company failure out of seven probed subsurfaces.
-  assert.ok(visibleText(markup).includes("6/7 ready"), `expected 6/7, got: ${visibleText(markup)}`);
-  assert.equal([...markup.matchAll(/data-subsystem="/g)].length, VITALS_SUBSYSTEM_KEYS.length);
+  assert.ok(
+    visibleText(markup).includes("6/7 ready"),
+    `expected 6/7, got: ${visibleText(markup)}`,
+  );
+  assert.equal(
+    [...markup.matchAll(/data-subsystem="/g)].length,
+    VITALS_SUBSYSTEM_KEYS.length,
+  );
   // The `gateway` probe is NOT one of the seven: it is the connection badge.
   assert.doesNotMatch(markup, /data-subsystem="gateway"/);
 });
 
 test("a partially-ready workspace emphasises the ratio and names the failure", () => {
-  const failing = PROBES.map((p) => (p.key === "skills" ? { ...p, ok: false, detail: "Skills list failed (HTTP 503)." } : p));
+  const failing = PROBES.map((p) =>
+    p.key === "skills"
+      ? { ...p, ok: false, detail: "Skills list failed (HTTP 503)." }
+      : p,
+  );
   const markup = render({ ...HEALTHY, probes: failing });
   const text = visibleText(markup);
   // Company was already failing in HEALTHY, so skills is the second failure.
   assert.ok(text.includes("5/7"), `expected the reduced ratio, got: ${text}`);
-  assert.ok(text.includes("Skills list failed (HTTP 503)."), "the server's reason must be visible");
+  assert.ok(
+    text.includes("Skills list failed (HTTP 503)."),
+    "the server's reason must be visible",
+  );
   // Both failures are named, so the ratio can be accounted for.
-  assert.ok(text.includes("No active organizations found"), "the first failure must still be named");
+  assert.ok(
+    text.includes("No active organizations found"),
+    "the first failure must still be named",
+  );
 });
 
 /* ══ 5. `companyStatus` must not swallow the 404 ═════════════════════════ */
@@ -638,8 +976,10 @@ function dataStub() {
 const STUB_URL = dataStub();
 const { setHttpHandler } = await import(STUB_URL);
 
-const teamopsCode = transpile(read("./teamops.ts"))
-  .replace(/from\s+"\.\/http"/, `from "${STUB_URL}"`);
+const teamopsCode = transpile(read("./teamops.ts")).replace(
+  /from\s+"\.\/http"/,
+  `from "${STUB_URL}"`,
+);
 
 const teamops = await load(teamopsCode);
 
@@ -647,7 +987,9 @@ test("companyStatus propagates the 404 detail instead of resolving null", async 
   // What the Gateway really answers:
   setHttpHandler((path) => {
     if (path === "/company/status") {
-      const e = new Error("Request failed (HTTP 404). No active organizations found. Bootstrap a company first.");
+      const e = new Error(
+        "Request failed (HTTP 404). No active organizations found. Bootstrap a company first.",
+      );
       throw e;
     }
     throw new Error(`unexpected path ${path}`);
@@ -668,13 +1010,28 @@ test("the Team Ops company box no longer vanishes on a 404", () => {
   // The doc comment on this very box quotes the old line it replaced, so the
   // check runs against the code with comments removed.
   const code = stripComments(src);
-  assert.doesNotMatch(code, /companyStatus\(\)\.then\(setStatus\)\.catch/, "the box still catches to null");
+  assert.doesNotMatch(
+    code,
+    /companyStatus\(\)\.then\(setStatus\)\.catch/,
+    "the box still catches to null",
+  );
   // The reason must be shown, and the doc comment that names the old string
   // must not be what satisfies the check.
-  const box = code.slice(code.indexOf("function CompanyStatusBox"), code.indexOf("function KanbanBoard"));
+  const box = code.slice(
+    code.indexOf("function CompanyStatusBox"),
+    code.indexOf("function KanbanBoard"),
+  );
   assert.ok(box, "could not locate CompanyStatusBox");
-  assert.match(box, /The Gateway did not report a company/, "the box must render the server's reason");
-  assert.match(box, /errMsg\(e\)/, "the reason must be the server's, not a fixed string");
+  assert.match(
+    box,
+    /The Gateway did not report a company/,
+    "the box must render the server's reason",
+  );
+  assert.match(
+    box,
+    /errMsg\(e\)/,
+    "the reason must be the server's, not a fixed string",
+  );
   // It is not a catch-and-empty: a failure has to produce a rendered state, so
   // the failure branch is checked before the `!status` early return.
   assert.ok(
@@ -690,7 +1047,10 @@ test("a genuinely present company still maps through", async () => {
     if (path === "/company/status") return { org_id: "org-1", departments: [] };
     throw new Error(`unexpected path ${path}`);
   });
-  assert.deepEqual(await teamops.companyStatus(), { org_id: "org-1", departments: [] });
+  assert.deepEqual(await teamops.companyStatus(), {
+    org_id: "org-1",
+    departments: [],
+  });
 });
 
 /**
@@ -763,7 +1123,11 @@ test("the probe reason is the server's sentence, not a UI adjective", () => {
   // This is what `runProbe` writes into `Probe.detail`, which is what both the
   // header row and the System control centre render.
   assert.equal(
-    probeReason(new Error("Request failed (HTTP 404). No active organizations found. Bootstrap a company first.")),
+    probeReason(
+      new Error(
+        "Request failed (HTTP 404). No active organizations found. Bootstrap a company first.",
+      ),
+    ),
     "Request failed (HTTP 404). No active organizations found. Bootstrap a company first.",
   );
   // A non-Error throw still gets a sentence, but never a fake state.
@@ -803,10 +1167,16 @@ test("the invented 'Company engine idle' wording survives nowhere in the UI", ()
  * can be handed straight to `read()`.
  */
 function walkSrc() {
-  const root = fileURLToPath(new URL("../", import.meta.url)).replace(/[\\/]+$/, "");
+  const root = fileURLToPath(new URL("../", import.meta.url)).replace(
+    /[\\/]+$/,
+    "",
+  );
   return readdirSync(root, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
-    .map((entry) => `../${relative(root, join(entry.parentPath, entry.name)).replace(/\\/g, "/")}`);
+    .map(
+      (entry) =>
+        `../${relative(root, join(entry.parentPath, entry.name)).replace(/\\/g, "/")}`,
+    );
 }
 
 /* ══ 6. The same class of defect in four more surfaces ═══════════════════ */
@@ -905,7 +1275,10 @@ test("the run inspector's file-changes tile marks an unknown as a word, not a gl
   assert.match(tile, /comparison not available for this run/);
   assert.match(tile, /file changes not reported/);
   // The measured branch is a real number, not a dash.
-  assert.match(code, /<div className="text-sm font-bold mt-1">\{changeCount\}<\/div>/);
+  assert.match(
+    code,
+    /<div className="text-sm font-bold mt-1">\{changeCount\}<\/div>/,
+  );
   // NB: this file also uses em-dashes as sentence punctuation inside user-facing
   // prose (e.g. "…detail — messages/file changes are unavailable, not zero").
   // Those are not values and are not what this rule governs, so the test does
@@ -923,7 +1296,9 @@ test("a formatter dash is always paired with a worded label", () => {
     // files are CRLF on this checkout, so a literal `\n\}` cannot terminate a
     // function body and the extractor would silently return an empty list - a
     // vacuous scan that reads as "nothing to fix".
-    const formatters = [...code.matchAll(/function (\w+)\([^)]*\)[^{]*\{([\s\S]*?)\r?\n\}/g)]
+    const formatters = [
+      ...code.matchAll(/function (\w+)\([^)]*\)[^{]*\{([\s\S]*?)\r?\n\}/g),
+    ]
       .filter(([, , body]) => /return "—"/.test(body))
       .map(([, fn]) => fn);
     for (const fn of formatters) {
@@ -949,7 +1324,10 @@ test("Supervisor's duration column distinguishes never-run from unmeasured", () 
   // The trigger cell names the absence too.
   assert.match(code, /entry\.trigger \?\? "not reported"/);
   // …and a real zero-second pass is still rendered as a real, tiny duration.
-  assert.match(code, /if \(sec < 1\) return `\$\{Math\.round\(sec \* 1000\)\} ms`/);
+  assert.match(
+    code,
+    /if \(sec < 1\) return `\$\{Math\.round\(sec \* 1000\)\} ms`/,
+  );
 });
 
 test("System monitor distinguishes a measured zero from an absent reading", () => {
@@ -959,12 +1337,19 @@ test("System monitor distinguishes a measured zero from an absent reading", () =
   assert.match(code, /if \(mb === 0\) return "0 GiB"/);
   // Uptime is labelled "up …", so a dash there claimed a duration that does not
   // exist. An absent measurement is now worded.
-  assert.match(code, /if \(!Number\.isFinite\(totalSeconds\) \|\| totalSeconds < 0\) return "unknown"/);
+  assert.match(
+    code,
+    /if \(!Number\.isFinite\(totalSeconds\) \|\| totalSeconds < 0\) return "unknown"/,
+  );
 });
 
 test("the Usage per-model table names an unpriced model instead of omitting the cell", () => {
   const code = stripComments(read(DASH_SURFACES.dashboard));
-  assert.doesNotMatch(code, /\{m\.cost !== null && <span/, "an unpriced model still renders no cost cell");
+  assert.doesNotMatch(
+    code,
+    /\{m\.cost !== null && <span/,
+    "an unpriced model still renders no cost cell",
+  );
   assert.match(code, /"cost not priced"/);
 });
 
@@ -973,7 +1358,11 @@ test("the recent-runs row renders a zero-token run instead of an empty cell", ()
   // server reported as 0 tokens. Measured on the live app, where the row read
   // `Untitled | — | error` with the token position simply absent.
   const code = stripComments(read(DASH_SURFACES.dashboard));
-  assert.doesNotMatch(code, /tokens > 0 \?/, "a zero-token run still renders nothing");
+  assert.doesNotMatch(
+    code,
+    /tokens > 0 \?/,
+    "a zero-token run still renders nothing",
+  );
   assert.match(code, /\$\{r\.tokens\.toLocaleString\(\)\} tok/);
   // The model column has the same shape of problem: a bare `—` when the server
   // omitted the model name, which collided with every other dash in the UI.
@@ -985,7 +1374,11 @@ test("a run with no model name is null in the client, never the string '—'", (
   // carried a glyph that also meant "no cost" and "unknown status" in other
   // columns. The type is now `string | null`, and the view words the absence.
   const client = stripComments(read("./workspace.ts"));
-  assert.doesNotMatch(client, /\["model", "model_name"\], "—"/, "the client still invents a dash for a missing model");
+  assert.doesNotMatch(
+    client,
+    /\["model", "model_name"\], "—"/,
+    "the client still invents a dash for a missing model",
+  );
   assert.match(client, /model: string \| null;/);
   const section = stripComments(read(DASH_SURFACES.dashboard));
   assert.match(section, /r\.model \?\? "not reported"/);
@@ -997,7 +1390,10 @@ test("Runs keeps its own honest empty and error states", () => {
   // reason, and the unselected state is an explicit EmptyState. Pinned so a
   // later edit cannot quietly regress them.
   const code = stripComments(read(DASH_SURFACES.runs));
-  assert.match(code, /Couldn&#39;t load this run&#39;s detail|Couldn't load this run's detail/);
+  assert.match(
+    code,
+    /Couldn&#39;t load this run&#39;s detail|Couldn't load this run's detail/,
+  );
   assert.match(code, /setDetail\(null\)/);
   assert.match(code, /No conversation selected/);
 });
@@ -1020,21 +1416,34 @@ test("a catalog the server calls 1/10 healthy is not drawn green", () => {
   // The live capture: `Free models: 1/10 healthy, 8 eligible.` behind a
   // hardcoded `bg-emerald-500`.
   const providers = [
-    { healthy: true }, { healthy: false }, { healthy: false }, { healthy: false },
-    { healthy: false }, { healthy: false }, { healthy: false }, { healthy: false },
-    { healthy: false }, { healthy: false },
+    { healthy: true },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
+    { healthy: false },
   ];
   assert.equal(freeCatalogTone(providers), "partial");
   assert.notEqual(FREE_TONE_DOT[freeCatalogTone(providers)], "bg-emerald-500");
 });
 
 test("zero healthy is red, fully healthy is green, unmeasured is neither", () => {
-  assert.equal(freeCatalogTone([{ healthy: false }, { healthy: false }]), "bad");
+  assert.equal(
+    freeCatalogTone([{ healthy: false }, { healthy: false }]),
+    "bad",
+  );
   assert.equal(FREE_TONE_DOT.bad, "bg-red-500");
   assert.equal(freeCatalogTone([{ healthy: true }, { healthy: true }]), "good");
   assert.equal(FREE_TONE_DOT.good, "bg-emerald-500");
   // The server has not probed any provider: unknown, so it must not be green.
-  assert.equal(freeCatalogTone([{ healthy: null }, { healthy: null }]), "unknown");
+  assert.equal(
+    freeCatalogTone([{ healthy: null }, { healthy: null }]),
+    "unknown",
+  );
   assert.notEqual(FREE_TONE_DOT.unknown, "bg-emerald-500");
   // A mixed measured/unmeasured catalog grades on the measured ones only.
   assert.equal(freeCatalogTone([{ healthy: true }, { healthy: null }]), "good");
@@ -1064,18 +1473,29 @@ test("the settings control is not a bare gear below the lg breakpoint", () => {
   // that names `hidden lg:inline` in prose, and a naive class check would read
   // that sentence as the defect it describes.
   const markup = stripComments(settingsButton());
-  assert.match(markup, /aria-label="Open Settings/, "an icon-only control needs an accessible name");
+  assert.match(
+    markup,
+    /aria-label="Open Settings/,
+    "an icon-only control needs an accessible name",
+  );
   // The word is rendered in a span with no responsive visibility class.
   const label = markup.match(/<span className="([^"]*)">Settings<\/span>/);
   assert.ok(label, `expected an unconditional Settings label in:\n${markup}`);
-  assert.doesNotMatch(label[1], /\bhidden\b/, `the label is still breakpoint-hidden (${label[1]})`);
+  assert.doesNotMatch(
+    label[1],
+    /\bhidden\b/,
+    `the label is still breakpoint-hidden (${label[1]})`,
+  );
   // The model name is preserved, and announced, rather than doubling as the label.
   assert.match(markup, /sr-only/);
   assert.match(markup, /no model selected/);
   // No element in the control hides the word itself.
   for (const [, cls] of markup.matchAll(/<span className="([^"]*)">/g)) {
     if (/\bhidden\b/.test(cls)) {
-      assert.doesNotMatch(markup.slice(markup.indexOf(`<span className="${cls}">`)), /^[^<]*Settings/);
+      assert.doesNotMatch(
+        markup.slice(markup.indexOf(`<span className="${cls}">`)),
+        /^[^<]*Settings/,
+      );
     }
   }
 });
@@ -1102,14 +1522,27 @@ test("the free-models control has an accessible name and a state-derived dot", (
   // unchanged — only the file they read moved. `free-catalog-view.test.mjs`
   // covers the panel this one now points away from.
   const source = read("../components/FreeCatalogMenu.tsx");
-  const button = source.match(/<button[\s\S]{0,600}?Free keyless models[\s\S]{0,900}?<\/button>/);
+  const button = source.match(
+    /<button[\s\S]{0,600}?Free keyless models[\s\S]{0,900}?<\/button>/,
+  );
   assert.ok(button, "expected the free-models trigger button");
-  assert.match(button[0], /aria-label=/, "a 6px dot plus a truncated word needs an accessible name");
-  assert.match(button[0], /FREE_TONE_DOT\[tone\]/, "the dot must come from the measured tone, not a literal colour");
+  assert.match(
+    button[0],
+    /aria-label=/,
+    "a 6px dot plus a truncated word needs an accessible name",
+  );
+  assert.match(
+    button[0],
+    /FREE_TONE_DOT\[tone\]/,
+    "the dot must come from the measured tone, not a literal colour",
+  );
   // It opens a dialog rather than firing a probe: clicking to read the numbers
   // must not mutate the health state the numbers report.
   assert.match(button[0], /aria-expanded=\{open\}/);
-  assert.match(button[0], /onClick=\{\(\) => \(open \? close\(\) : setOpen\(true\)\)\}/);
+  assert.match(
+    button[0],
+    /onClick=\{\(\) => \(open \? close\(\) : setOpen\(true\)\)\}/,
+  );
 });
 
 /**
@@ -1132,20 +1565,74 @@ test("the transcript is bottom-anchored rather than reserving a screenful", () =
   // answer, with the blank region between the last message and the composer.
   // The scroller stays `flex-1`; the fix is the inner column, so both the outer
   // and the inner class lists are read from the real source.
+  //
+  // Each element is found by WHAT IT IS, not by where it sits. This used to read
+  // "the first two `<div className=` after the `{/* Messages Viewport` comment",
+  // which silently couples a layout test to the line the markup happens to be
+  // on: when the scroller div moved away and the explanatory comment stayed
+  // behind, the lookup handed back the INNER COLUMN as the scroller and the
+  // suite went red on a regression that did not exist. What is under test is the
+  // pair of class lists, not their adjacency.
   const at = chatViewSource.indexOf("{/* Messages Viewport");
-  assert.ok(at > 0, "expected the messages viewport");
-  const open = chatViewSource.indexOf("<div className=\"", at);
-  const inner = chatViewSource.indexOf("<div className=\"", open + 1);
-  const cls = (i) => chatViewSource.slice(i + '<div className="'.length, chatViewSource.indexOf('"', i + 20));
-  const scroller = cls(open);
-  const column = cls(inner);
+  // `>= 0`, not `> 0`: index 0 is a perfectly valid position for the marker and
+  // treating it as "missing" is an off-by-one that would refuse a correct file.
+  assert.ok(at >= 0, "expected the messages viewport");
 
-  assert.match(scroller, /flex-1/, "the scroller still fills the region between header and composer");
-  assert.match(scroller, /overflow-y-auto/);
-  assert.doesNotMatch(scroller, /space-y-/, "space-y on a bottom-anchored column renders as leading blank");
-  assert.match(column, /min-h-full/, "the content must be able to reach the bottom of the scroller");
-  assert.match(column, /justify-end/, "a short transcript must sit next to the composer, not above a blank region");
+  const classLists = [
+    ...chatViewSource.matchAll(/<div className="([^"]*)"/g),
+  ].map((m) => ({
+    at: m.index ?? 0,
+    cls: m[1],
+  }));
+  const scroller = classLists.find(
+    (d) => /\bflex-1\b/.test(d.cls) && /\boverflow-y-auto\b/.test(d.cls),
+  );
+  // The column is the bottom-anchored one inside the viewport region, so it is
+  // picked by source position relative to the comment as well as by class.
+  const column = classLists
+    .filter((d) => d.at > at)
+    .find((d) => /\bmin-h-full\b/.test(d.cls));
+
+  assert.ok(
+    scroller,
+    "expected a `flex-1 overflow-y-auto` transcript scroller in ChatView",
+  );
+  assert.ok(
+    column,
+    "expected the `min-h-full` inner column beside the messages viewport",
+  );
+  // The structural guarantee the old positional lookup gave for free: the
+  // bottom-anchored column has to live INSIDE the scroller, because that is what
+  // makes `justify-end` bottom-anchor the transcript rather than the page.
+  assert.ok(
+    scroller.at < column.at,
+    "the bottom-anchored column must sit inside the scroller region, not above it",
+  );
+
+  const scrollerCls = scroller.cls;
+  const columnCls = column.cls;
+  assert.match(
+    scrollerCls,
+    /flex-1/,
+    "the scroller still fills the region between header and composer",
+  );
+  assert.match(scrollerCls, /overflow-y-auto/);
+  assert.doesNotMatch(
+    scrollerCls,
+    /space-y-/,
+    "space-y on a bottom-anchored column renders as leading blank",
+  );
+  assert.match(
+    columnCls,
+    /min-h-full/,
+    "the content must be able to reach the bottom of the scroller",
+  );
+  assert.match(
+    columnCls,
+    /justify-end/,
+    "a short transcript must sit next to the composer, not above a blank region",
+  );
   // `space-y-4` was moved to the column as `gap-4`: on a flex column,
   // `space-y` adds top margins that bottom-anchoring would show as blank.
-  assert.match(column, /gap-4/);
+  assert.match(columnCls, /gap-4/);
 });

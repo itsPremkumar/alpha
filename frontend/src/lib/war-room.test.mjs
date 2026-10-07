@@ -27,7 +27,10 @@ import {
 // The client contract lives in a separate file (it imports @/lib/http, which
 // plain Node cannot resolve), so its routes and verbs are pinned by reading the
 // source. This is the same technique branding.test.mjs uses.
-const clientSource = readFileSync(new URL("./war-room.ts", import.meta.url), "utf8");
+const clientSource = readFileSync(
+  new URL("./war-room.ts", import.meta.url),
+  "utf8",
+);
 
 test("the client calls only real war-room routes", () => {
   for (const path of [
@@ -43,10 +46,19 @@ test("the client calls only real war-room routes", () => {
 });
 
 test("only evaluate is a POST, and it goes through send not get", () => {
-  assert.match(clientSource, /send<\{ ok: boolean; decision: TriggerDecision \}>\("\/api\/war-rooms\/evaluate", "POST"/);
+  assert.match(
+    clientSource,
+    /send<\{ ok: boolean; decision: TriggerDecision \}>\("\/api\/war-rooms\/evaluate", "POST"/,
+  );
   // The room is opened by the model-facing tool, never by the UI.
-  assert.doesNotMatch(clientSource, /method:\s*"POST"[\s\S]{0,80}war-rooms\/open/);
-  assert.ok(!clientSource.includes("/api/war-rooms/open"), "the UI must not be able to open a room");
+  assert.doesNotMatch(
+    clientSource,
+    /method:\s*"POST"[\s\S]{0,80}war-rooms\/open/,
+  );
+  assert.ok(
+    !clientSource.includes("/api/war-rooms/open"),
+    "the UI must not be able to open a room",
+  );
 });
 
 test("a failed read is not turned into an empty list", () => {
@@ -56,32 +68,55 @@ test("a failed read is not turned into an empty list", () => {
 });
 
 test("the view id is registered in all three required places", () => {
-  const views = readFileSync(new URL("./workspace-view.ts", import.meta.url), "utf8");
-  const nav = readFileSync(new URL("../components/NavTabs.tsx", import.meta.url), "utf8");
-  const chat = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
+  const views = readFileSync(
+    new URL("./workspace-view.ts", import.meta.url),
+    "utf8",
+  );
+  const nav = readFileSync(
+    new URL("../components/NavTabs.tsx", import.meta.url),
+    "utf8",
+  );
+  const chat = readFileSync(
+    new URL("../components/ChatView.tsx", import.meta.url),
+    "utf8",
+  );
   for (const [name, source] of [
     ["workspace-view.ts", views],
     ["NavTabs.tsx", nav],
     ["ChatView.tsx", chat],
   ]) {
-    assert.ok(source.includes('"deliberation"'), `deliberation is not registered in ${name}`);
+    assert.ok(
+      source.includes('"deliberation"'),
+      `deliberation is not registered in ${name}`,
+    );
   }
   // The section must load on demand, not be eagerly pulled into the bundle.
   // `next/dynamic` replaced `React.lazy` here: a lazy section cannot be
   // server-rendered, so the server shipped the Suspense fallback and React
   // discarded the whole server tree on hydration. Both forms are on-demand
   // loads; only `dynamic` participates in the App Router module graph.
-  assert.match(chat, /dynamic\(\(\) => import\("@\/components\/sections\/WarRoomRunsSection"\)/);
+  assert.match(
+    chat,
+    /dynamic\(\s*\(\) =>\s*import\("@\/components\/sections\/WarRoomRunsSection"\)/,
+  );
+  // No lookbehind here. `React.lazy(() => import(...))` is the SAME defect this
+  // assertion exists to catch, so both the bare and the qualified call form must
+  // be refused. A `(?<!React\.)` guard was added once and had to be removed: it
+  // silently let the `React.lazy` spelling through, which is the more common
+  // one.
   assert.doesNotMatch(
     chat,
-    /lazy\(\(\) => import\("@\/components\/sections\/WarRoomRunsSection"\)/,
+    /\blazy\(\s*\(\) =>\s*import\("@\/components\/sections\/WarRoomRunsSection"\)/,
     "a React.lazy section cannot be server-rendered and reintroduces the hydration mismatch",
   );
   assert.match(chat, /view === "deliberation"/);
 });
 
 test("the enterprise war room tab is not hijacked", () => {
-  const nav = readFileSync(new URL("../components/NavTabs.tsx", import.meta.url), "utf8");
+  const nav = readFileSync(
+    new URL("../components/NavTabs.tsx", import.meta.url),
+    "utf8",
+  );
   // The pre-existing `warroom` view belongs to the enterprise platform; the
   // deliberation surface gets its own id rather than overwriting it.
   assert.match(nav, /id: "warroom", label: "War Room"/);
@@ -113,7 +148,12 @@ function quorum(overrides = {}) {
       correlation_adjusted: false,
       agreement_ratio: 1,
     },
-    collusion: { flagged: false, similarity: 0, reasons: [], redundant_members: [] },
+    collusion: {
+      flagged: false,
+      similarity: 0,
+      reasons: [],
+      redundant_members: [],
+    },
     taint_findings: [],
     human_line: "agree=2",
     ...overrides,
@@ -133,7 +173,19 @@ function run(overrides = {}) {
     started_at: "2026-01-01T00:00:00Z",
     finished_at: "2026-01-01T00:00:05Z",
     killed_by: "",
-    stages: [{ name: "positions", status: "completed", budget: {}, receipts: [], quorum: quorum(), synthesis: "", error: "", started_at: "", finished_at: "" }],
+    stages: [
+      {
+        name: "positions",
+        status: "completed",
+        budget: {},
+        receipts: [],
+        quorum: quorum(),
+        synthesis: "",
+        error: "",
+        started_at: "",
+        finished_at: "",
+      },
+    ],
     minority_dissent: {},
     taint_findings: [],
     tainted: false,
@@ -224,7 +276,11 @@ test("summariseRun labels a tainted run instead of presenting a clean pass", () 
 });
 
 test("summariseRun discloses an unreadable record instead of inventing a verdict", () => {
-  const line = summariseRun({ status: "unreadable", error: "JSONDecodeError", stages: [] });
+  const line = summariseRun({
+    status: "unreadable",
+    error: "JSONDecodeError",
+    stages: [],
+  });
   assert.match(line, /unreadable/);
   assert.match(line, /JSONDecodeError/);
   assert.doesNotMatch(line, /agreed/);
@@ -242,7 +298,17 @@ test("summariseRun says so when no quorum was recorded at all", () => {
 test("unmetStages lists every stage whose quorum did not pass", () => {
   const withFailure = run({
     stages: [
-      { name: "positions", status: "completed", budget: {}, receipts: [], quorum: quorum(), synthesis: "", error: "", started_at: "", finished_at: "" },
+      {
+        name: "positions",
+        status: "completed",
+        budget: {},
+        receipts: [],
+        quorum: quorum(),
+        synthesis: "",
+        error: "",
+        started_at: "",
+        finished_at: "",
+      },
       {
         name: "cross_exam",
         status: "failed",
@@ -262,7 +328,19 @@ test("unmetStages lists every stage whose quorum did not pass", () => {
 
 test("unmetStages tolerates a stage with no quorum", () => {
   const synthesisOnly = run({
-    stages: [{ name: "synthesis", status: "completed", budget: {}, receipts: [], quorum: null, synthesis: "x", error: "", started_at: "", finished_at: "" }],
+    stages: [
+      {
+        name: "synthesis",
+        status: "completed",
+        budget: {},
+        receipts: [],
+        quorum: null,
+        synthesis: "x",
+        error: "",
+        started_at: "",
+        finished_at: "",
+      },
+    ],
   });
   assert.deepEqual(unmetStages(synthesisOnly), []);
 });
@@ -279,7 +357,10 @@ test("taintedReceipts collects flagged contributions across every stage", () => 
         error: "",
         started_at: "",
         finished_at: "",
-        receipts: [receipt({ participant: "a" }), receipt({ participant: "evil", taint: "infected", tainted: true })],
+        receipts: [
+          receipt({ participant: "a" }),
+          receipt({ participant: "evil", taint: "infected", tainted: true }),
+        ],
         quorum: quorum(),
       },
       {
@@ -304,7 +385,17 @@ test("taintedReceipts collects flagged contributions across every stage", () => 
 test("agreeingMembers de-duplicates across stages and sorts", () => {
   const multi = run({
     stages: [
-      { name: "positions", status: "completed", budget: {}, receipts: [], synthesis: "", error: "", started_at: "", finished_at: "", quorum: quorum() },
+      {
+        name: "positions",
+        status: "completed",
+        budget: {},
+        receipts: [],
+        synthesis: "",
+        error: "",
+        started_at: "",
+        finished_at: "",
+        quorum: quorum(),
+      },
       {
         name: "cross_exam",
         status: "completed",
@@ -334,7 +425,11 @@ test("dissentEntries flattens every preserved non-agreeing view", () => {
   });
   const entries = dissentEntries(withDissent);
   assert.equal(entries.length, 2);
-  assert.deepEqual(entries[0], { stage: "positions", member: "bob", text: "adopt mysql" });
+  assert.deepEqual(entries[0], {
+    stage: "positions",
+    member: "bob",
+    text: "adopt mysql",
+  });
   assert.deepEqual(dissentEntries(run()), []);
 });
 
@@ -348,7 +443,12 @@ test("formatDuration handles sub-second, second, minute and nonsense input", () 
 });
 
 test("every verification label has a badge colour", () => {
-  for (const key of ["consensus_supported", "consensus_degraded", "tainted", "unverified"]) {
+  for (const key of [
+    "consensus_supported",
+    "consensus_degraded",
+    "tainted",
+    "unverified",
+  ]) {
     assert.ok(VERIFICATION_BADGE[key], `missing badge colour for ${key}`);
   }
 });

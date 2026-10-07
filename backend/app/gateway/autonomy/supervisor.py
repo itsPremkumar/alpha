@@ -193,9 +193,12 @@ class AutonomySupervisor:
         if state.running or state.parked:
             return
         # Fleet control is checked here because this is the single choke point all
-        # eight loops pass through. A tick that starts while the operator has
-        # engaged ESTOP must not run, and a tick admitted before the stop must not
-        # act on a superseded generation. This loop previously had no stop
+        # registered loops pass through — nine of them, per `register_default_loops`
+        # below. The count is written as a word and not a numeral on purpose: it was
+        # "eight" here while nine were registered, and a numeral in a comment about a
+        # registry is a claim nothing checks. A tick that starts while the operator
+        # has engaged ESTOP must not run, and a tick admitted before the stop must
+        # not act on a superseded generation. This loop previously had no stop
         # mechanism at all: `autonomy.loops.*` flags decide whether a loop is
         # *registered*, not whether it is *allowed to run right now*.
         if not _fleet_admits_tick(loop_id):

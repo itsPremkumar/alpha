@@ -41,7 +41,7 @@ interface BotProfileCardProps {
   rosterLabel?: string;
 }
 
-function statusBadge(status: string) {
+function statusBadge(status: string | null) {
   if (status === "active")
     return (
       <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600">
@@ -52,6 +52,15 @@ function statusBadge(status: string) {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
         <PauseCircle className="size-3" /> Paused
+      </span>
+    );
+  if (status === null)
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+        title="The server did not report a status for this bot, so liveness is unknown — not active."
+      >
+        <XCircle className="size-3" /> status not reported
       </span>
     );
   return (

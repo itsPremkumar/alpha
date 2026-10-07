@@ -33,6 +33,8 @@ import {
   getJobLogs,
   cancelJob,
 } from "@/lib/workflows";
+import { planResourceView } from "@/lib/dynamic-plan-view";
+import { runVerificationView } from "@/lib/run-verification-view";
 import type {
   WorkflowListItem,
   WorkflowDefinition,
@@ -732,6 +734,12 @@ function WorkflowsPanel(props: {
 
         {dynamicPreview && (
           <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2 text-xs">
+            {/* Every resource sentence comes from the pure module, so the panel
+                holds no claim of its own about what is available. */}
+            {(() => {
+              const planResources = planResourceView(dynamicPreview.resources);
+              return (
+                <>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold">Perceived Goal:</span>
               <span className="font-mono">
@@ -779,25 +787,52 @@ function WorkflowsPanel(props: {
                 )}
               </div>
               <div className="rounded-md border border-border/40 bg-background/60 p-2 space-y-1">
+                {/* The heading follows the payload, not the other way round.
+                    "Assembled" is a claim about provisioning; the live payload
+                    returns `metadata.provisioned: false`, so the honest heading
+                    says "Planned". */}
                 <p className="text-[11px] font-semibold">
-                  Assembled Bot Specialists &amp; Tools
+                  {planResources.heading}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   Specialists:{" "}
                   <span className="font-mono text-foreground">
                     {Object.keys(dynamicPreview.resources.bots).join(", ") ||
-                      "default"}
+                      "none named by the server"}
                   </span>
                 </p>
+                {/* `Tools: {tools.join(", ")}` printed 12-17 names of which at
+                    most three could resolve: the same payload's
+                    `metadata.unavailable_tools` listed the rest. It read as a
+                    capability list and was a wish list. The shortfall is now the
+                    sentence, and only the resolvable names are listed as tools. */}
                 <p className="text-[11px] text-muted-foreground">
-                  Tools:{" "}
-                  <span className="font-mono text-foreground">
-                    {dynamicPreview.resources.tools.join(", ") || "alpha.tools"}
-                  </span>
+                  {planResources.tools.sentence}
+                </p>
+                {planResources.tools.available.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Available:{" "}
+                    <span className="font-mono text-foreground">
+                      {planResources.tools.available.join(", ")}
+                    </span>
+                  </p>
+                )}
+                {planResources.tools.blocked.length > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                    Unavailable:{" "}
+                    <span className="font-mono">{planResources.tools.blocked.join(", ")}</span>
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground">{planResources.provisioning.sentence}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Skills: {planResources.provisioning.skillSentence}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  MCP: {planResources.provisioning.mcpSentence}
                 </p>
                 {dynamicPreview.resources.mcp_servers.length > 0 && (
                   <p className="text-[11px] text-muted-foreground">
-                    MCP:{" "}
+                    MCP servers:{" "}
                     <span className="font-mono text-foreground">
                       {dynamicPreview.resources.mcp_servers.join(", ")}
                     </span>
@@ -805,6 +840,9 @@ function WorkflowsPanel(props: {
                 )}
               </div>
             </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -842,17 +880,72 @@ function WorkflowsPanel(props: {
                 )
               </span>
             </div>
-            <p
-              className={
-                dynamicResult.metadata.acceptance_passed === true
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-amber-600 dark:text-amber-400"
-              }
-            >
-              {dynamicResult.metadata.acceptance_passed === true
-                ? "Domain acceptance verified by the bound executor."
-                : "Graph mechanics completed only; the default digest executor does not claim domain-task acceptance."}
-            </p>
+            {/* The acceptance posture and the verification posture come from the
+                server's own words. The panel previously said only "Graph
+                mechanics completed only", which is true and names none of:
+                which nodes declared a verification, that the named check was NOT
+                RUN, or that the posture is the digest projection's deliberate
+                limitation rather than a judgement on the work. */}
+            {(() => {
+              const verification = runVerificationView(
+                dynamicResult.metadata,
+                // The same events the run inspector renders. `loadRun(res.run_id)`
+                // already fetched them above, so this reads state rather than
+                // issuing a second request for the same log.
+                events?.events,
+              );
+              return (
+                <>
+                  <p
+                    className={
+                      verification.acceptance.tone === "green"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : verification.acceptance.tone === "amber"
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {verification.acceptance.sentence}
+                  </p>
+                  {verification.acceptance.executionLabel && (
+                    <p className="text-[11px] text-muted-foreground">
+                      executor: <span className="font-mono">{verification.acceptance.executionLabel}</span>
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Verification: {verification.posture.sentence}
+                  </p>
+                  {verification.posture.declaredNodes.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Declared on:{" "}
+                      <span className="font-mono">{verification.posture.declaredNodes.join(", ")}</span>
+                    </p>
+                  )}
+                  {verification.declaredNote && (
+                    <p className="text-[11px] text-muted-foreground">{verification.declaredNote}</p>
+                  )}
+                  {verification.nodes.map((n, i) => (
+                    <p
+                      key={`${n.nodeId ?? "unknown"}-${i}`}
+                      className={
+                        n.tone === "green"
+                          ? "text-[11px] text-emerald-600 dark:text-emerald-400"
+                          : n.tone === "red"
+                            ? "text-[11px] text-destructive"
+                            : n.tone === "amber"
+                              ? "text-[11px] text-amber-600 dark:text-amber-500"
+                              : "text-[11px] text-muted-foreground"
+                      }
+                    >
+                      <span className="font-mono">{n.nodeId ?? "unknown node"}</span>
+                      {n.command ? <> · <span className="font-mono">{n.command}</span></> : null}
+                      {" — "}
+                      {n.sentence}
+                    </p>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

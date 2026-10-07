@@ -96,14 +96,18 @@ async function readDomain(
 function botDetail(body: unknown): string | null {
   const list = asList(body, ["bots", "data"]);
   if (list.length === 0 && !Array.isArray(body)) return null;
-  const active = list.filter((b) => String(b.status ?? "active") === "active").length;
+  // An absent `status` is not "active" — it is unknown. Counting it as active
+  // would dress a failed read up as a healthy fleet.
+  const active = list.filter((b) => b.status === "active").length;
   return `${active}/${list.length} active`;
 }
 
 function skillDetail(body: unknown): string | null {
   const list = asList(body, ["skills", "data"]);
   if (list.length === 0 && !Array.isArray(body)) return null;
-  const on = list.filter((s) => Boolean(s.enabled ?? true)).length;
+  // An absent `enabled` is not "enabled" — it is unknown. Counting it as enabled
+  // would dress a failed read up as a full catalogue.
+  const on = list.filter((s) => s.enabled === true).length;
   return `${on}/${list.length} enabled`;
 }
 

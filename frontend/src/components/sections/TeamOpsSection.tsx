@@ -5,9 +5,14 @@ import {
   listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm,
   swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW,
   swarmProgress, swarmProgressLabel,
+  swarmDetails, swarmEvents,
   type Swarm, type SwarmAction, type SwarmMessage, listMcpTasks, listJobs, cancelJob,
   companyStatus, executiveDigest, companyKpis,
 } from "@/lib/teamops";
+import {
+  swarmStructureView,
+  type SwarmStructureView,
+} from "@/lib/swarm-structure-view";
 import {
   listKanbanTasks, moveKanbanTask, KANBAN_COLUMNS, UNMAPPED_COLUMN_ID,
   kanbanStatusLabel, nextKanbanStatus, unmappedKanbanTasks,
@@ -94,6 +99,16 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [swarms, setSwarms] = useState<Swarm[]>([]);
   const [swarmObjective, setSwarmObjective] = useState("");
   const [openSwarmBoard, setOpenSwarmBoard] = useState<string | null>(null);
+  /**
+   * Which swarm's structure panel is open.
+   *
+   * This panel exists because the data was already on the wire and unread:
+   * `swarmDetails()` and `swarmMetrics()` were exported from `lib/teamops.ts`
+   * with **no importer anywhere**, so a swarm rendered as one line of aggregate
+   * counters. The task DAG, the assigned workers, the elected leader and the
+   * event log were all being fetched by nobody.
+   */
+  const [openSwarmStructure, setOpenSwarmStructure] = useState<string | null>(null);
   /**
    * Swarm whose lifecycle request is in flight.
    *
@@ -479,6 +494,13 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <Btn
                     variant="ghost"
+                    onClick={() => setOpenSwarmStructure((cur) => (cur === s.id ? null : s.id))}
+                    aria-expanded={openSwarmStructure === s.id}
+                  >
+                    Structure
+                  </Btn>
+                  <Btn
+                    variant="ghost"
                     onClick={() => setOpenSwarmBoard((cur) => (cur === s.id ? null : s.id))}
                     aria-expanded={openSwarmBoard === s.id}
                   >
@@ -497,6 +519,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                   ))}
                 </div>
                 {openSwarmBoard === s.id && <SwarmMessagesPanel swarmId={s.id} />}
+                {openSwarmStructure === s.id && <SwarmStructurePanel swarmId={s.id} />}
               </div>
               );
             })
@@ -616,6 +639,164 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
  * or renamed route would render as "this swarm has posted nothing", which is a
  * lie about a feature the operator cannot use.
  */
+/**
+ * One swarm's structure: the task DAG, who is working, who leads, and what
+ * happened.
+ *
+ * The three reads are independent and each can fail alone, so each renders its
+ * own reason. A failed detail read must never look like a swarm with no tasks —
+ * those are opposite claims, and this is the surface where a reader is trying to
+ * find out whether the swarm is actually working.
+ */
+function SwarmStructurePanel(props: { swarmId: string }) {
+  const [view, setView] = useState<SwarmStructureView | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    // Both reads start together and settle independently. `Promise.allSettled`
+    // rather than `all`, because a swarm whose event log 404s still has a DAG
+    // worth showing.
+    const [detail, events] = await Promise.allSettled([
+      swarmDetails(props.swarmId),
+      swarmEvents(props.swarmId),
+    ]);
+    setDetailError(detail.status === "rejected" ? errMsg(detail.reason) : null);
+    setEventsError(events.status === "rejected" ? errMsg(events.reason) : null);
+    setView(
+      swarmStructureView(
+        detail.status === "fulfilled" ? detail.value : undefined,
+        // `undefined` (not `[]`) on failure, so the view reports "could not be
+        // read" instead of "the server reported no events".
+        events.status === "fulfilled" ? events.value : undefined,
+      ),
+    );
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.swarmId]);
+
+  if (loading) {
+    return (
+      <div className="mt-2 pt-2 border-t border-border/50">
+        <SkeletonList rows={3} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50 space-y-3">
+      {detailError && (
+        <ErrorBox
+          message={`This swarm's structure could not be read — the DAG below is empty because the read failed, not because the plan has no tasks. (${detailError})`}
+          onRetry={load}
+        />
+      )}
+      {eventsError && (
+        <ErrorBox
+          message={`This swarm's event log could not be read, so no timeline is shown. (${eventsError})`}
+          onRetry={load}
+        />
+      )}
+
+      {view && (
+        <>
+          <div className="flex flex-wrap gap-3 text-[10px]">
+            <span className="text-muted-foreground">
+              leader{" "}
+              {view.leader.leader ? (
+                <span className="text-foreground font-medium">{view.leader.leader}</span>
+              ) : (
+                view.leader.note
+              )}
+              {view.leader.score !== null && (
+                <span className="text-muted-foreground"> · score {view.leader.score}</span>
+              )}
+            </span>
+            <span className="text-muted-foreground">
+              {view.team.note
+                ? view.team.note
+                : `team: ${view.team.assigned} assigned · ${view.team.unassigned} unassigned`}
+            </span>
+            <span className="text-muted-foreground">
+              {view.eventReadNote ?? `${view.events.length} event(s)`}
+            </span>
+          </div>
+          {view.leader.method && (
+            <p className="text-[10px] text-muted-foreground">
+              elected by {view.leader.method}
+              {view.leader.reason ? ` — ${view.leader.reason}` : ""}
+            </p>
+          )}
+
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold">Tasks ({view.tasks.length})</p>
+            {view.taskReadNote && (
+              <p className="text-[11px] text-muted-foreground">{view.taskReadNote}</p>
+            )}
+            {view.tasks.map((t) => (
+              <div key={t.taskId} className="rounded-lg border border-border/50 px-2.5 py-2 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-mono">{t.taskId}</span>
+                  <Badge tone={t.stateTone}>{t.state ?? "state not reported"}</Badge>
+                  {t.workerType && <Badge tone="gray">{t.workerType}</Badge>}
+                  <span className="text-[10px] text-muted-foreground">
+                    {t.worker ? `worker ${t.worker}` : t.workerNote}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {t.objective ?? t.objectiveNote}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {t.dependencyNote}
+                  {" · "}
+                  {t.durationSeconds === null
+                    ? t.durationNote
+                    : `${t.durationSeconds.toFixed(2)}s`}
+                  {" · "}
+                  {t.totalTokens === null ? t.tokenNote : `${t.totalTokens} tokens`}
+                  {" · "}
+                  {t.toolCalls === null ? t.toolCallNote : `${t.toolCalls} tool call(s)`}
+                </p>
+                {t.error && <p className="text-[10px] text-destructive">failed: {t.error}</p>}
+                {t.summary && <p className="text-[10px] text-muted-foreground">{t.summary}</p>}
+                {/* Not a summary: the server wrote raw model channel output here.
+                    Saying so is the point — quoting it as the worker's answer
+                    would present noise as a finding. */}
+                {!t.summary && t.summaryNote === "the server stored raw model output here, not a summary written for display" && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-500">{t.summaryNote}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {view.events.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold">Events ({view.events.length})</p>
+              <div className="space-y-0.5">
+                {view.events.map((e, i) => (
+                  <p key={`${e.sequence ?? "noseq"}-${i}`} className="text-[10px] text-muted-foreground font-mono">
+                    {e.sequence === null ? "—" : e.sequence}{" "}
+                    <span className="text-foreground">{e.eventType}</span>
+                    {e.taskId ? ` · ${e.taskId}` : ""}
+                    {e.worker ? ` · ${e.worker}` : ""}
+                    {e.at ? ` · ${absoluteStamp(e.at) ?? e.at}` : ""}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function SwarmMessagesPanel(props: { swarmId: string }) {
   const [messages, setMessages] = useState<SwarmMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);

@@ -3,7 +3,7 @@
 > Alpha is an open-source autonomous multi-agent AI operating system. A LangGraph
 > agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
 > Electron Windows desktop app, executing long-horizon work with sandboxed code
-> execution, persistent memory, 135 native tools, MCP extensions, and 24 public
+> execution, persistent memory, 136 native tools, MCP extensions, and 24 public
 > skills. Self-hosted, MIT licensed, no proprietary backend.
 
 Canonical repository: https://github.com/itsPremkumar/alpha

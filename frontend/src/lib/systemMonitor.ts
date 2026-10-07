@@ -6,14 +6,19 @@ export interface SystemRam {
   used_mb: number;
   available_mb: number;
   free_mb: number;
-  percent: number;
+  /**
+   * `null` when the server did not report it. Zero is a real measurement
+   * (an empty machine), so collapsing an absent value to `0` would paint
+   * "RAM 0%" — the fastest-looking reading — out of a missing field.
+   */
+  percent: number | null;
 }
 
 export interface SystemSwap {
   total_mb: number;
   used_mb: number;
   free_mb: number;
-  percent: number;
+  percent: number | null;
 }
 
 export interface SystemCpuCore {
@@ -206,13 +211,13 @@ export async function fetchSystemVitals(): Promise<SystemVitals> {
       used_mb: num(ram.used_mb),
       available_mb: num(ram.available_mb ?? ram.free_mb),
       free_mb: num(ram.free_mb),
-      percent: num(ram.percent),
+      percent: optNum(ram.percent),
     },
     swap: {
       total_mb: num(swap.total_mb),
       used_mb: num(swap.used_mb),
       free_mb: num(swap.free_mb),
-      percent: num(swap.percent),
+      percent: optNum(swap.percent),
     },
     disks: Array.isArray(d.disks)
       ? d.disks.map((x) => {

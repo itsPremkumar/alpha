@@ -29,7 +29,12 @@ export interface BotProfile {
   toolsets: string[];
   skills: string[];
   avatar: string;
-  status: "active" | "paused" | "disabled" | string;
+  /**
+   * Lifecycle state, or `null` when the server did not report it.
+   * Never default an absent value to `"active"` — that paints a bot
+   * nobody could read as a live worker.
+   */
+  status: string | null;
   last_active?: string | null;
   version: number;
   epoch?: string | null;

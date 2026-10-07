@@ -44,7 +44,12 @@ export interface RoomScope {
   authority_parent: string | null;
   path: string;
   depth: number;
-  state: RoomState;
+  /**
+   * Lifecycle state, or `null` when the server did not report it.
+   * Never default an absent value to `"active"` — that paints a room
+   * nobody could read as a live conversation.
+   */
+  state: RoomState | null;
   inbound: "none" | "parent" | "broadcast";
   outbound: "none" | "parents" | "siblings" | "org";
   max_hop: number;
