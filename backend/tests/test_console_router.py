@@ -186,6 +186,46 @@ class TestConsoleStats:
         assert data["total_threads"] == 2
         assert data["total_agents"] == 2
         assert data["total_tokens"] == 1200 + 300 + 50 + 999 + 70
+        # A measured count carries no reason to explain itself.
+        assert data["total_agents_reason"] is None
+
+    def test_an_unreadable_agent_count_is_null_not_zero(self, client, monkeypatch):
+        """A failed filesystem scan must not claim the user has no agents.
+
+        The other five counters are SQL COUNT()/SUM() aggregates: they either
+        return a row or fail the whole route. `total_agents` is a filesystem scan
+        that degrades instead, so it is the one counter that can be unreadable
+        without the caller knowing -- and it answered `0`, which the frontend then
+        formatted as a measured "0 custom agent profiles". "I could not read it"
+        and "there are none" are different facts.
+        """
+        boom = PermissionError("agents dir is locked")
+
+        def explode():
+            raise boom
+
+        monkeypatch.setattr(console, "list_custom_agents", explode)
+
+        resp = client.get("/api/console/stats")
+        # The dashboard must still answer: one unreadable counter cannot blank
+        # the whole stats surface.
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_agents"] is None, "an unreadable count is null, never 0"
+        assert data["total_agents_reason"]
+        assert "PermissionError" in data["total_agents_reason"]
+        # The SQL counters that did answer are unaffected.
+        assert data["total_runs"] == 5
+        assert data["total_threads"] == 2
+
+    def test_a_measured_zero_stays_zero(self, client, monkeypatch):
+        """The fix must not make every zero look like a failure."""
+        monkeypatch.setattr(console, "list_custom_agents", list)
+        resp = client.get("/api/console/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_agents"] == 0
+        assert data["total_agents_reason"] is None
 
 
 class TestConsoleRuns:

@@ -543,7 +543,16 @@ export function VitalsStrip({
           <>
             <Metric icon={<Activity className="size-3" />} value={compactNumber(s.runs)} label="runs" title={`${s.runs} runs recorded on this Gateway, from GET /api/console/stats (total_runs).`} />
             <Metric icon={<Database className="size-3" />} value={compactNumber(s.threads)} label="chats" title={`${s.threads} conversations stored on this Gateway, from GET /api/console/stats (total_threads).`} />
-            <Metric icon={<Blocks className="size-3" />} value={compactNumber(s.agents)} label="agents" title={`${s.agents} custom agent profiles, from GET /api/console/stats (total_agents). Zero means none are defined; a failure to read it would render as "not reported" instead.`} />
+            <Metric
+              icon={<Blocks className="size-3" />}
+              value={s.agents === null ? "—" : compactNumber(s.agents)}
+              label="agents"
+              title={
+                s.agents === null
+                  ? `Custom agent profiles not reported: ${s.agentsReason ?? "GET /api/console/stats returned total_agents: null"}. This is a failed filesystem read, not zero profiles.`
+                  : `${s.agents} custom agent profiles, from GET /api/console/stats (total_agents). Zero means none are defined; a failure to read it renders as "not reported" instead.`
+              }
+            />
             <Metric icon={<Sigma className="size-3" />} value={compactNumber(s.tokens)} label="tokens" title={`${s.tokens} model tokens billed to this workspace, from GET /api/console/stats (total_tokens).`} />
             <Metric icon={<CircleDollarSign className="size-3" />} value={cost.value} label={cost.label} title={cost.title} />
           </>

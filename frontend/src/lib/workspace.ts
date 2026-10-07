@@ -42,7 +42,21 @@ export async function fetchFeatures(): Promise<FeatureFlags> {
 export interface ConsoleStats {
   runs: number;
   threads: number;
-  agents: number;
+  /**
+   * `null` is NOT zero.
+   *
+   * The Gateway counts runs/threads/tokens with SQL COUNT()/SUM(), so a failure
+   * there fails the whole route instead of answering a number — `?? 0` below is
+   * unreachable for them. `total_agents` is the exception: it comes from a
+   * filesystem scan that degrades to `null` + `total_agents_reason` rather than
+   * 500ing the dashboard, so it is the one counter that can arrive unreadable.
+   * It stayed `number` here and was coerced with `?? 0`, which turned a failed
+   * read into a measured "0 custom agent profiles" — while the vitals tooltip
+   * claimed the opposite. It is nullable now, and both callers say
+   * "not reported".
+   */
+  agents: number | null;
+  agentsReason: string | null;
   tokens: number;
   cost: number | null;
   currency: string | null;
@@ -69,7 +83,8 @@ export async function fetchConsoleStats(): Promise<ConsoleStats> {
   return {
     runs: count(d, ["runs", "total_runs"]) ?? 0,
     threads: count(d, ["threads", "total_threads"]) ?? 0,
-    agents: count(d, ["agents", "total_agents"]) ?? 0,
+    agents: count(d, ["agents", "total_agents"]),
+    agentsReason: (d.total_agents_reason as string | null) ?? null,
     tokens: count(d, ["tokens", "total_tokens"]) ?? 0,
     // `null` here means the server reported no total. It is NOT a zero, and it
     // is the only honest reading of an unpriced workspace.

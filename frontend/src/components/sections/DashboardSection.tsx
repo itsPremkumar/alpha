@@ -87,7 +87,15 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <StatCard label="Runs" value={stats.runs.toLocaleString()} />
             <StatCard label="Conversations" value={stats.threads.toLocaleString()} />
-            <StatCard label="Agents" value={stats.agents.toLocaleString()} />
+            <StatCard
+              label="Agents"
+              value={stats.agents === null ? "—" : stats.agents.toLocaleString()}
+              sub={
+                stats.agents === null
+                  ? stats.agentsReason ?? "the Gateway did not report a count"
+                  : undefined
+              }
+            />
             <StatCard label="Tokens" value={stats.tokens.toLocaleString()} />
             <StatCard
               label="Cost"

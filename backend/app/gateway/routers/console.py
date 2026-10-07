@@ -51,7 +51,14 @@ class ConsoleStatsResponse(BaseModel):
     active_runs: int = Field(..., description="Runs currently pending or running")
     failed_runs: int = Field(..., description="Runs that ended in error or timeout")
     total_threads: int = Field(..., description="Conversation threads owned by the current user")
-    total_agents: int = Field(..., description="Custom agents owned by the current user")
+    total_agents: int | None = Field(
+        default=None,
+        description="Custom agents owned by the current user, or null when the filesystem read failed. null means NOT REPORTED, never 'zero agents exist': the two are different facts.",
+    )
+    total_agents_reason: str | None = Field(
+        default=None,
+        description="Why total_agents is null; absent when the count was measured.",
+    )
     total_tokens: int = Field(..., description="Tokens consumed across all recorded runs")
     total_cost: float | None = Field(default=None, description="Estimated spend across priced runs; null when no models[*].pricing is configured")
     currency: str | None = Field(default=None, description="Display currency taken from the first configured pricing entry")
@@ -380,14 +387,24 @@ async def console_stats(request: Request) -> ConsoleStatsResponse:
                     cost_sum += cost
             total_cost = round(cost_sum, 6)
 
+    # The other five counters come from COUNT()/SUM() queries, which return a
+    # row or raise; a failure there fails the whole route (503) rather than
+    # answering a zero. This one is a filesystem scan that degrades instead, so
+    # it is the only counter that can be unreadable without the caller knowing.
+    # An unreadable count is `null` + a reason: reporting `0` here claimed "this
+    # user has no custom agent profiles" for a read that never completed, and
+    # WorkspaceVitals rendered that as a measured zero next to real numbers.
+    total_agents: int | None
+    total_agents_reason: str | None = None
     try:
         # Filesystem scan; resolves the effective user internally (AuthMiddleware
         # sets the context for real requests, "default" in no-auth mode).
         agents = await asyncio.to_thread(list_custom_agents)
         total_agents = len(agents)
-    except Exception:  # pragma: no cover - defensive: stats must not 500 on a bad agents dir
+    except Exception as exc:  # pragma: no cover - defensive: stats must not 500 on a bad agents dir
         logger.warning("console_stats: failed to list custom agents", exc_info=True)
-        total_agents = 0
+        total_agents = None
+        total_agents_reason = f"custom agent profiles could not be read: {type(exc).__name__}"
 
     return ConsoleStatsResponse(
         total_runs=total_runs,
@@ -395,6 +412,7 @@ async def console_stats(request: Request) -> ConsoleStatsResponse:
         failed_runs=failed_runs,
         total_threads=total_threads,
         total_agents=total_agents,
+        total_agents_reason=total_agents_reason,
         total_tokens=total_tokens,
         total_cost=total_cost,
         currency=_pricing_currency(pricing),
