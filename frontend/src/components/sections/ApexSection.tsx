@@ -401,7 +401,14 @@ const SESSION_TONE: Record<string, "green" | "amber" | "red" | "gray"> = {
  * healthy session view, and vice versa, because "no verdicts are waiting" and
  * "the verdicts could not be read" lead to opposite actions.
  */
-function SessionControlCard({ onError }: { onError: (message: string | null) => void }) {
+function SessionControlCard({
+  onError,
+  reloadKey = 0,
+}: {
+  onError: (message: string | null) => void;
+  /** Bumped by a completed cycle so this card re-reads rather than rendering the pre-cycle state. */
+  reloadKey?: number;
+}) {
   const [mode, setMode] = useState<ApexMode | null>(null);
   const [modeError, setModeError] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<ApexApprovals | null>(null);
@@ -437,7 +444,7 @@ function SessionControlCard({ onError }: { onError: (message: string | null) => 
     return () => {
       mountedRef.current = false;
     };
-  }, [reload]);
+  }, [reload, reloadKey]);
 
   const control = async (verb: ApexControlAction) => {
     if (busy) return;
@@ -661,18 +668,61 @@ function SessionControlCard({ onError }: { onError: (message: string | null) => 
   );
 }
 
+/**
+ * Which session this panel acts on.
+ *
+ * `/status` reports a `session` block only when it is *named*, and `/mode` is
+ * the only route carrying `active_session` for this scope. So the subject has
+ * to be resolved from `/mode` before a status read — otherwise the session
+ * block, its policy-drift warning and the id "Run one cycle" posts to are all
+ * silently absent, and `runCycle` reading its target back out of
+ * `status.session` was a no-op that returned before `setBusy` ever ran.
+ *
+ * A rejected read comes back as a reason, never as `null` with no reason:
+ * "the read failed" and "there is no session" lead to opposite actions.
+ */
+async function resolveSessionSubject(): Promise<{
+  id: string | null;
+  reason: string | null;
+}> {
+  try {
+    const mode = await fetchApexMode();
+    return { id: mode.active_session?.session_id ?? null, reason: null };
+  } catch (exc) {
+    return {
+      id: null,
+      reason: exc instanceof Error ? exc.message : String(exc),
+    };
+  }
+}
+
 export function ApexSection() {
   const [status, setStatus] = useState<ApexStatus | null>(null);
   const [policy, setPolicy] = useState<ApexContract | null>(null);
   const [profile, setProfile] = useState<ApexProfile>("autonomous");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** `/mode` failed, so no session block is being shown — say which. */
+  const [subjectError, setSubjectError] = useState<string | null>(null);
+  /**
+   * Bumped after a cycle. The session card reads its two routes once on
+   * mount, so a cycle that parks the session and raises an approval would
+   * otherwise leave `idle` and an empty verdict list rendered beside a live
+   * approval — two claims, one of them stale.
+   */
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const subject = await resolveSessionSubject();
+      if (cancelled) return;
+      setSubjectError(subject.reason);
       try {
-        const [next, nextPolicy] = await Promise.all([fetchApexStatus(), fetchApexPolicy(profile)]);
+        const [next, nextPolicy] = await Promise.all([
+          fetchApexStatus(subject.id ? { sessionId: subject.id } : undefined),
+          fetchApexPolicy(profile),
+        ]);
         if (!cancelled) {
           setStatus(next);
           setPolicy(nextPolicy);
@@ -688,22 +738,47 @@ export function ApexSection() {
 
   const refresh = async () => {
     setError(null);
+    const subject = await resolveSessionSubject();
+    setSubjectError(subject.reason);
     try {
-      setStatus(await fetchApexStatus());
+      setStatus(
+        await fetchApexStatus(
+          subject.id ? { sessionId: subject.id } : undefined,
+        ),
+      );
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
     }
   };
 
   const runCycle = async () => {
-    const sessionId = status?.session?.available ? status.session.session_id : null;
-    if (!sessionId) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
+      // Resolved at click time: a session created since the panel loaded must
+      // be reachable, and reading the target back out of `status.session` is
+      // what made this button a silent no-op.
+      const subject = await resolveSessionSubject();
+      if (subject.reason) {
+        setError(
+          `The active session could not be resolved, so no cycle was run: ${subject.reason}`,
+        );
+        return;
+      }
+      setSubjectError(null);
+      if (!subject.id) {
+        setError(
+          "There is no active APEX session in this scope, so there is no cycle to run. Create a session first.",
+        );
+        return;
+      }
       // Records a decision only. No tool runs and no run is created here.
-      await runApexCycle(sessionId);
-      setStatus(await fetchApexStatus({ sessionId }));
+      await runApexCycle(subject.id);
+      // Re-read *named*, so the session block and any policy drift it carries
+      // become part of the payload rather than staying absent.
+      setStatus(await fetchApexStatus({ sessionId: subject.id }));
+      setReloadKey((key) => key + 1);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
     } finally {
@@ -759,8 +834,11 @@ export function ApexSection() {
         <ApexToggle onError={setError} onChanged={refresh} />
 
         {/* Session-scoped verbs and the approval gate, reading their own two
-            routes so a failure in one does not blank the other. */}
-        <SessionControlCard onError={setError} />
+            routes so a failure in one does not blank the other. It re-reads
+            whenever a cycle completes: a cycle can park the session and raise
+            an approval, and a card that read only on mount would render the
+            pre-cycle state beside the panel's own fresh status. */}
+        <SessionControlCard onError={setError} reloadKey={reloadKey} />
 
         <ContractCard contract={policy} />
 
@@ -806,6 +884,16 @@ export function ApexSection() {
         <PolicySitesCard contract={policy} />
 
         {status.invariants ? <InvariantsCard report={status.invariants} /> : null}
+
+        {/* No session block was requested because `/mode` would not say which
+            session this scope controls. Say so rather than leaving the
+            absence to be read as "no session, no drift to check". */}
+        {subjectError && (
+          <Notice
+            tone="warn"
+            message={`The active session could not be resolved, so no session record or policy-drift check is shown: ${subjectError}`}
+          />
+        )}
 
         {status.session && !status.session.available && (
           <Unavailable block={status.session} label="Session" />

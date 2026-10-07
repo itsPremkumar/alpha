@@ -282,11 +282,19 @@ class TestParkedCycle:
         """A parked session's repeated cycles change nothing and ask twice."""
         store.set_state(session.session_id, ApexSessionState.PAUSED, reason="operator pause")
         before = store.get(session.session_id).updated_at
+        before_count = store.get(session.session_id).cycle_count
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
         assert result.decision.action is NextAction.NONE
         assert result.decision.reason == REASON_SESSION_PAUSED
         assert store.pending_approval(session.session_id) is None
         assert store.get(session.session_id).updated_at == before
+        # …and that includes the cycle counter: a pass that decided to do
+        # nothing must not accrue a cycle, or the row changes on every tick
+        # while the answer stays the same.
+        assert store.get(session.session_id).cycle_count == before_count
+        checkpoint = next(s for s in result.steps if s.name == "checkpoint")
+        assert checkpoint.outcome == "skipped"
+        assert checkpoint.detail == "no decision to record"
 
     def test_an_approved_session_cycles_again(self, store: ApexStore, session: Any) -> None:
         session.acceptance_criteria = ["tests pass"]

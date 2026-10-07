@@ -23,6 +23,7 @@ import pytest
 from alpha.apex.contract import narrow_contract, profile_for
 from alpha.apex.executive import (
     REASON_ACCEPTANCE_FAILED,
+    REASON_ACCEPTANCE_PENDING,
     REASON_ACCEPTED,
     REASON_BUDGET_EXHAUSTED,
     REASON_FLEET_STOPPED,
@@ -41,6 +42,7 @@ from alpha.apex.invariants import (
 )
 from alpha.apex.status import apex_status, contract_status, fleet_status
 from alpha.apex.store import ApexSession, ApexSessionState, ApexStore
+from alpha.mission.acceptance import REASON_NO_CRITERIA, REASON_NOT_EVALUATED
 
 
 @pytest.fixture()
@@ -98,6 +100,38 @@ class TestCycleIsDecideOnly:
         assert names == ["load_session", "check_policy", "apply_decision", "checkpoint"]
         assert all(s.outcome != "error" for s in result.steps)
 
+    def test_the_cycle_counts_itself_and_the_checkpoint_names_that_count(self, store: ApexStore) -> None:
+        """Both numbers the checkpoint reports are measurements, not decorations.
+
+        ``cycle_count`` used to be a field nothing ever incremented, so the API
+        answered ``cycle_count: 0`` after any number of cycles — a measured
+        zero. The step detail was ``f"cycle {len(steps)}"``, which is how many
+        probes ran *in this pass*: a session on its very first cycle reported
+        ``cycle 3`` (three steps recorded before the lambda's own append), so a
+        reader saw a cycle ordinal that named the step count instead.
+        """
+        session = _session(store)
+        assert store.get(session.session_id).cycle_count == 0
+
+        first = run_cycle(store, session.session_id, profile_for("autonomous"))
+        assert store.get(session.session_id).cycle_count == 1
+        first_checkpoint = next(s for s in first.steps if s.name == "checkpoint")
+        assert first_checkpoint.outcome == "recorded"
+        assert first_checkpoint.detail == "cycle 1"
+
+        second = run_cycle(store, session.session_id, profile_for("autonomous"))
+        assert store.get(session.session_id).cycle_count == 2
+        second_checkpoint = next(s for s in second.steps if s.name == "checkpoint")
+        assert second_checkpoint.detail == "cycle 2"
+
+    def test_a_cycle_for_a_session_that_is_gone_records_no_count(self, store: ApexStore) -> None:
+        # Counting a cycle against no row would be inventing a subject: the
+        # checkpoint has to say the row vanished rather than report a total
+        # for a session the store no longer holds.
+        result = run_cycle(store, "apx-does-not-exist", profile_for("autonomous"))
+        checkpoint = next(s for s in result.steps if s.name == "checkpoint")
+        assert checkpoint.outcome == "absent"
+
     def test_cycle_does_not_create_a_run_or_touch_a_sandbox(self, store: ApexStore, monkeypatch: pytest.MonkeyPatch) -> None:
         """The cycle must not reach execution. Trip-wires prove it did not."""
 
@@ -146,6 +180,25 @@ class TestCompletionRequiresAcceptance:
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
         assert result.decision.action is NextAction.AWAIT_VERIFICATION
         assert result.decision.blocked is True
+        assert store.get(session.session_id).state is not ApexSessionState.COMPLETED
+
+    def test_declared_criteria_are_reported_unverified_never_absent(self, store: ApexStore) -> None:
+        # The session declares its criteria, so an un-evaluated one is "nobody
+        # has measured it yet" — a third fact, distinct from both "they failed"
+        # and "there are none". The refusal used to be REASON_NO_CRITERIA,
+        # because the cycle handed `assert_acceptance_passed` a report that did
+        # not exist yet: a refusal denying three criteria sitting in the very
+        # record it was read from, sending the operator to declare a second set.
+        session = _session(store, acceptance_criteria=["tests pass", "docs pass"])
+        result = run_cycle(store, session.session_id, profile_for("autonomous"))
+
+        refusal = str(result.decision.detail["refusal"])
+        assert REASON_NO_CRITERIA not in refusal, "declared criteria must never be reported as absent"
+        assert REASON_NOT_EVALUATED in refusal
+        assert "2 of 2" in refusal, "the refusal names how many are outstanding"
+        # The verdict itself is unchanged: unevaluated is a block, not a failure.
+        assert result.decision.action is NextAction.AWAIT_VERIFICATION
+        assert result.decision.reason == REASON_ACCEPTANCE_PENDING
         assert store.get(session.session_id).state is not ApexSessionState.COMPLETED
 
     def test_failed_criteria_recover_rather_than_complete(self, store: ApexStore) -> None:

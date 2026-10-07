@@ -117,7 +117,7 @@ One pass runs four steps and returns all of them, which is what makes spec §177
 | `load_session` | resolve the row; **absent** blocks rather than guessing |
 | `check_policy` | compare the session's contract digest with the live one |
 | `apply_decision` | record the decision; transition state only where the decision implies it |
-| `checkpoint` | seal the cycle |
+| `checkpoint` | re-read the row and increment `cycle_count`, reporting **absent** (never a count) if the row is gone, and **skipped** when the decision was `none` — a parked session's pass writes nothing |
 
 ```bash
 curl -X POST localhost:8001/api/apex/sessions/<id>/cycle

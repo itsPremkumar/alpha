@@ -204,7 +204,13 @@ test("create posts to /apex/sessions with the objective and profile", async () =
   assert.deepEqual(lastCall().body.acceptance_criteria, ["suite passes"]);
 });
 
-test("cycle posts to the session route with no body", async () => {
+test("cycle posts an empty body rather than none, because the route declares a body", async () => {
+  // FastAPI answers 422 `loc=["body"]` "Field required" to a request carrying
+  // no body when the handler declares `payload: CycleRequest`, so a client
+  // that posted nothing had a "Run one cycle" button whose every click was
+  // refused before `run_cycle` ran — the panel's own tests had pinned that
+  // absence as the contract. The route reads only `all_sessions`, so `{}` is
+  // the whole body, and it is what the backend's tests post.
   record("POST /apex/sessions/apx-77/cycle", {
     body: {
       session_id: "apx-77",
@@ -219,6 +225,12 @@ test("cycle posts to the session route with no body", async () => {
   assert.equal(result.decision.action, "plan");
   assert.equal(result.steps[0].name, "load_session");
   assert.equal(result.changed, false);
+  assert.equal(lastCall().method, "POST");
+  assert.deepEqual(
+    lastCall().body,
+    {},
+    "an absent body is a 422; the route wants a JSON object",
+  );
 });
 
 test("steer posts the instruction and never a prompt rewrite", async () => {
@@ -394,6 +406,80 @@ test("policy drift on a session is surfaced as a boolean, not guessed", async ()
   assert.equal(status.session.contract_drift, true);
 });
 
+test("a session block with no cycle count reports null, never a measured zero", async () => {
+  // The backend increments `cycle_count` per completed cycle, but the mapper
+  // must not invent the number when the field is absent — a payload without it
+  // rendered as `0` claims "no cycles have run", which is a different fact
+  // from "the count was not reported". This is the same inversion the
+  // counters above guard, on the one field a reader is most likely to treat
+  // as a progress meter.
+  // The key must carry the query string: the stub matches on the full path,
+  // so a bare `GET /apex/status` here would fall through to whatever an
+  // earlier test left behind and assert against *its* payload.
+  record("GET /apex/status?session_id=apx-1", {
+    body: {
+      schema: "alpha.apex.status.v1",
+      contract: { available: true, ...HEALTHY_CONTRACT },
+      fleet: { available: true, mode: "watch", admits_work: true },
+      sessions: {
+        available: true,
+        total: 1,
+        by_state: {},
+        active: 1,
+        terminal: 0,
+      },
+      session: {
+        available: true,
+        session_id: "apx-1",
+        objective: "obj",
+        state: "active",
+        profile: "autonomous",
+        contract_digest: "apxc-abc123",
+        mission_id: "",
+        contract_drift: false,
+        blocked_reason: "",
+        acceptance_criteria: [],
+        // no cycle_count
+      },
+    },
+  });
+  const status = await apex.fetchApexStatus({ sessionId: "apx-1" });
+  assert.equal(status.session.cycle_count, null);
+  assert.notEqual(status.session.cycle_count, 0);
+
+  // And when it *is* reported it survives verbatim — null-preservation must
+  // not become a mapper that always answers null.
+  record("GET /apex/status?session_id=apx-1", {
+    body: {
+      schema: "alpha.apex.status.v1",
+      contract: { available: true, ...HEALTHY_CONTRACT },
+      fleet: { available: true, mode: "watch", admits_work: true },
+      sessions: {
+        available: true,
+        total: 1,
+        by_state: {},
+        active: 1,
+        terminal: 0,
+      },
+      session: {
+        available: true,
+        session_id: "apx-1",
+        objective: "obj",
+        state: "active",
+        profile: "autonomous",
+        contract_digest: "apxc-abc123",
+        mission_id: "",
+        contract_drift: false,
+        blocked_reason: "",
+        cycle_count: 3,
+        acceptance_criteria: [],
+      },
+    },
+  });
+  const counted = await apex.fetchApexStatus({ sessionId: "apx-1" });
+  assert.equal(counted.session.cycle_count, 3);
+});
+
 /* ── A refused request rejects with the server's reason ────────────────── */
 
 test("a refused read rejects rather than resolving to an empty status", async () => {
@@ -485,6 +571,160 @@ test("a confirmed switch change re-reads the rest of the panel, not just the swi
   assert.ok(
     toggleBody.indexOf("onChanged?.()") < toggleBody.indexOf("} catch (exc)"),
     "a failed write must not re-read the panel as though something changed",
+  );
+});
+
+test("'Run one cycle' resolves its subject at click time instead of reading it out of a status block that never had one", () => {
+  // `/status` reports a `session` block only when it is *named*, and this panel
+  // used to read status without a name — so `status.session` was always
+  // undefined and `runCycle` returned before `setBusy`. The button rendered
+  // live, did nothing, and said nothing: the worst version of a dead control,
+  // because silence there reads as "nothing to do" rather than "nothing
+  // happened". The subject has to come from `/mode`, which carries
+  // `active_session`, resolved fresh at the moment of the click so a session
+  // created since the panel loaded is still reachable.
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.equal(
+    /status\?\.session\?\.available\s*\?\s*status\.session\.session_id/.test(
+      source,
+    ),
+    false,
+    "the cycle target must not be read back out of a status payload taken without a session id",
+  );
+  assert.match(
+    source,
+    /async function resolveSessionSubject\(\)/,
+    "the subject is resolved from /mode through one helper, so mount, refresh and the cycle agree",
+  );
+
+  const cycleBody = source.slice(
+    source.indexOf("const runCycle = async"),
+    source.indexOf("if (error && !status)"),
+  );
+  assert.ok(
+    cycleBody.indexOf("setBusy(true)") <
+      cycleBody.indexOf("await resolveSessionSubject()"),
+    "busy is set before the subject read, so a slow resolve cannot double-fire the button",
+  );
+  assert.match(
+    cycleBody,
+    /runApexCycle\(subject\.id\)/,
+    "the cycle posts to the id the click-time read returned, not a stale one",
+  );
+  // The two failures that used to collapse into one silent return have to stay
+  // apart: a read that failed and a scope with genuinely no session lead to
+  // opposite next actions.
+  assert.match(
+    cycleBody,
+    /could not be resolved, so no cycle was run/,
+    "a failed /mode read reports its reason rather than reading as 'no session'",
+  );
+  assert.match(
+    cycleBody,
+    /There is no active APEX session in this scope/,
+    "a scope with no session says so instead of returning silently",
+  );
+  assert.ok(
+    cycleBody.indexOf("setSubjectError(subject.reason)") <
+      cycleBody.indexOf("if (!subject.id)"),
+    "the failure is recorded before either branch acts on it",
+  );
+  // The status re-read has to be *named*, or the session block and its policy
+  // drift stay unreachable even after a cycle that just created them.
+  assert.match(
+    cycleBody,
+    /fetchApexStatus\(\{\s*sessionId:\s*subject\.id\s*\}\)/,
+    "the post-cycle status read names the session so drift becomes renderable",
+  );
+});
+
+test("a completed cycle re-reads the session card rather than leaving the pre-cycle state on screen", () => {
+  // A cycle can park the session behind an approval. The card reads mode and
+  // approvals once on mount, so without a bump it renders `idle` and an empty
+  // verdict list beside a live pending approval — two contradicting claims,
+  // one of them the very state the operator just created.
+  const source = read("../components/sections/ApexSection.tsx");
+
+  const cardSignature = source.slice(
+    source.indexOf("function SessionControlCard("),
+    source.indexOf("const mountedRef = useRef(true)"),
+  );
+  assert.match(
+    cardSignature,
+    /reloadKey/,
+    "the card accepts a re-read trigger",
+  );
+  assert.match(
+    cardSignature,
+    /reloadKey\?: number/,
+    "the trigger is an explicit optional prop, not an implicit one",
+  );
+
+  const cardEffect = source.slice(
+    source.indexOf("const reload = useCallback("),
+    source.indexOf("const control = async"),
+  );
+  assert.match(
+    cardEffect,
+    /\[reload, reloadKey\]/,
+    "the card's read effect depends on the trigger, or a bump changes nothing",
+  );
+
+  assert.match(
+    source,
+    /<SessionControlCard onError=\{setError\} reloadKey=\{reloadKey\} \/>/,
+    "the panel actually passes the trigger it bumps",
+  );
+
+  const cycleBody = source.slice(
+    source.indexOf("const runCycle = async"),
+    source.indexOf("if (error && !status)"),
+  );
+  assert.match(
+    cycleBody,
+    /setReloadKey\(\(key\) => key \+ 1\)/,
+    "the cycle bumps the trigger only after its own confirmed re-read",
+  );
+  assert.ok(
+    cycleBody.indexOf("await runApexCycle(") <
+      cycleBody.indexOf("setReloadKey("),
+    "nothing bumps before the cycle has actually completed",
+  );
+});
+
+test("an unresolvable session subject is disclosed, not left as a silent absence", () => {
+  // The panel requests no session block when `/mode` will not name one. An
+  // absent block renders nothing, which is honest — but an operator reading a
+  // panel with no drift warning has no way to tell "no drift" from "the check
+  // never ran". The absence has to carry its reason.
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.match(
+    source,
+    /const \[subjectError, setSubjectError\]/,
+    "the failure is kept as its own piece of state",
+  );
+  assert.match(
+    source,
+    /no session record or policy-drift check is shown/,
+    "the notice names exactly which claims are missing and why",
+  );
+  assert.match(
+    source,
+    /setSubjectError\(subject\.reason\)/,
+    "mount records the failure rather than dropping it",
+  );
+  // A successful resolve must clear it, or a transient failure would keep
+  // warning after the read started working.
+  const cycleBody = source.slice(
+    source.indexOf("const runCycle = async"),
+    source.indexOf("if (error && !status)"),
+  );
+  assert.match(
+    cycleBody,
+    /setSubjectError\(null\)/,
+    "a successful resolve clears the stale warning",
   );
 });
 

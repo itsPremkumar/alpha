@@ -236,7 +236,8 @@ export interface ApexSessionSummary {
   mission_id: string;
   contract_drift: boolean;
   blocked_reason: string;
-  cycle_count: number;
+  /** Absent is not zero: an unreadable count is `null`, never a measured `0`. */
+  cycle_count: number | null;
   acceptance_criteria: string[];
   updated_at: number | null;
 }
@@ -383,7 +384,7 @@ export function mapStatus(v: unknown): ApexStatus {
       mission_id: str(inner.mission_id),
       contract_drift: bool(inner.contract_drift),
       blocked_reason: str(inner.blocked_reason),
-      cycle_count: optNum(inner.cycle_count) ?? 0,
+      cycle_count: optNum(inner.cycle_count),
       acceptance_criteria: Array.isArray(inner.acceptance_criteria)
         ? (inner.acceptance_criteria as unknown[]).map(String)
         : [],
@@ -451,9 +452,17 @@ export async function createApexSession(input: CreateApexSession): Promise<{ ses
   return { session_id: str(rec(body.session).session_id) };
 }
 
-/** `POST /apex/sessions/{id}/cycle`. Admin-gated; executes no domain work. */
+/**
+ * `POST /apex/sessions/{id}/cycle`. Admin-gated; executes no domain work.
+ *
+ * The body is `{}` rather than absent: the route declares `payload: CycleRequest`
+ * with no default, so FastAPI answers 422 `loc=["body"]` "Field required" to a
+ * request with no body at all — every click of the panel's button was refused
+ * before `run_cycle` was reached. `{}` is what the backend's own tests post; the
+ * route reads only `all_sessions` from it.
+ */
 export async function runApexCycle(sessionId: string): Promise<ApexCycleResult> {
-  return mapCycle(await send<Rec>(`/apex/sessions/${encodeURIComponent(sessionId)}/cycle`, "POST"));
+  return mapCycle(await send<Rec>(`/apex/sessions/${encodeURIComponent(sessionId)}/cycle`, "POST", {}));
 }
 
 /** `POST /apex/sessions/{id}/steer`. A mission constraint, never a prompt rewrite. */

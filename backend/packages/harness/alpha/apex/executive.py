@@ -258,10 +258,24 @@ def select_next_action(
     # hold is done, and one whose criteria failed needs recovery, not more work.
     if session.acceptance_criteria:
         try:
-            from alpha.mission.acceptance import AcceptanceReport, assert_acceptance_passed
+            from alpha.mission.acceptance import (
+                AcceptanceReport,
+                CriterionResult,
+                CriterionVerdict,
+                assert_acceptance_passed,
+            )
 
             stored = getattr(session, "acceptance", None)
             report = AcceptanceReport.from_dict(stored) if isinstance(stored, dict) else None
+            if report is None or not report.criteria:
+                # This branch is guarded on `session.acceptance_criteria`, so an
+                # absent report means "nobody has measured them yet" — a third
+                # fact, distinct from both "they failed" and "there are none".
+                # Handing `assert_acceptance_passed` nothing at all answered
+                # REASON_NO_CRITERIA, denying the criteria sitting in this same
+                # record. Seeding them as UNVERIFIED yields the refusal that is
+                # actually true: declared, and un-evaluated.
+                report = AcceptanceReport(criteria=[CriterionResult(criterion=c, verdict=CriterionVerdict.UNVERIFIED) for c in session.acceptance_criteria])
             try:
                 assert_acceptance_passed(report)
             except Exception as exc:
@@ -386,7 +400,32 @@ def run_cycle(
         return "dispatched", decision.action.value
 
     step("apply_decision", _apply)
-    step("checkpoint", lambda: ("recorded", f"cycle {len(steps)}"))
+
+    def _checkpoint() -> tuple[str, str]:
+        # Both numbers a reader sees here have to be measurements. This used
+        # to be ``lambda: ("recorded", f"cycle {len(steps)}")``, where
+        # ``len(steps)`` is how many probes ran *in this pass* — a first cycle
+        # reported "cycle 3" while the API's ``cycle_count`` stayed 0 forever,
+        # because nothing anywhere incremented it. One is the step count
+        # wearing a cycle's name; the other is a measured zero.
+        current = store.get(session_id)
+        if current is None:
+            return "absent", "session row is gone"
+        if decision.action is NextAction.NONE:
+            # A cycle that decided to do nothing writes nothing. Parking is
+            # reached from here (paused, blocked on an approval, profile off,
+            # no session), and "a parked session's repeated cycles change
+            # nothing" is the invariant those paths are tested against: an
+            # unconditional increment bumped ``updated_at`` on every pass
+            # while the decision — and the state it left behind — stayed
+            # identical. The count measures cycles that decided something.
+            return "skipped", "no decision to record"
+        updated = store.update(session_id, cycle_count=current.cycle_count + 1)
+        if updated is None:
+            return "absent", "session row is gone"
+        return "recorded", f"cycle {updated.cycle_count}"
+
+    step("checkpoint", _checkpoint)
 
     updated = store.get(session_id)
     state_after = updated.state.value if updated is not None else ""
