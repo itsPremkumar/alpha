@@ -431,12 +431,24 @@ nothing was executed"* with `executed: False`.
 The refusal is honest. The **catalogued count** is the problem: a palette
 advertising 461 commands of which 407 cannot run.
 
-- [ ] Publish both numbers in the UI: total catalogued **and** dispatchable, with
-      the difference named. Never present 461 as usable.
-- [ ] Add a gate test that fails if the two numbers ever diverge silently.
+- [x] Publish both numbers in the UI: total catalogued **and** dispatchable, with
+      the difference named. Never present 461 as usable. Done 2026-10-07
+      (`ea01f6b`): the palette header reads "54 runnable of 461 listed" from the
+      live registry, plus a "runnable only" toggle (off by default) that hides
+      only `hasHandler === false` rows and names the hidden count in the footer.
+      Verified live against `total=461, executable=54`.
+- [x] Add a gate test that fails if the two numbers ever diverge silently.
+      `slash-palette-runnable.test.mjs` (13 cases incl. a 461/54-shaped fixture)
+      + `nc-slash-palette-runnable.mjs` (7 controls).
 - [ ] Decide per command: bind a handler, or move it out of the palette.
-- [ ] Gate: the palette's headline count is the dispatchable count; the
-      catalogued total appears beside it, labelled.
+- [x] Gate: the palette's headline count is the dispatchable count; the
+      catalogued total appears beside it, labelled. Screenshot
+      `docs/audits/screenshots/2026-10-07/slash-palette-runnable-toggle.png`.
+      Done 2026-10-07 (`ea01f6b`): "54 runnable of 461 listed" + runnable-only
+      toggle + palette dedupe fix, all verified live.
+- [x] Palette dedupe fix (same change): `listCommands()` rows carry the slash in
+      `name`, so the merge built `//about` and listed all 461 twice. Verified
+      live: zero `//` rows.
 
 ### 3.T4 Self-repair never repairs
 
@@ -849,7 +861,7 @@ Tick in order. Each line links to its section.
 - [ ] 5.T4 Messages, projects, board
 
 ### Phase 4 — honesty defects
-- [ ] 6.T1 Absent value rendered as a healthy zero
+- [x] 6.T1 Absent value rendered as a healthy zero (6 sites fixed, 23 cases + 11 NCs)
 - [ ] 6.T2 A failed read rendered as an empty list
 - [ ] 6.T3 Counts that become `0`
 - [ ] 6.T4 Company tiles rendering `undefined`
@@ -892,3 +904,7 @@ Tick one row per task, newest last. A row without evidence is not an entry.
 | 2026-10-06 | 0.T2 engine count | fresh gen was 119 vs committed 118 | fixed `collect_engines()`; 8 cases; NC → `alpha.backend` counted |
 | 2026-10-06 | 0.T3a loop comment | 9 registered, comment said eight | 3 cases; NC stale comment → red |
 | 2026-10-07 | 6.T1 absent-as-zero (6 sites) | ram.percent null + "RAM % not reported"; status null + "status not reported"; uncounted absent status/enabled; room state null + validated; retention_days null + "retention not reported"; unread null | 23 cases + 11 NCs (all fail on HEAD, pass on fix); tsc 0; full suite keeps only the 6 pre-existing failures |
+| 2026-10-07 | Sentinel full details (Supervisor) | report.summary + per-outcome rows (kind/stage/status/detail/fingerprint/verify) were fetched but never rendered; now expandable per pass with verbatim server words | outcome-passthrough test; tsc 0; verified live on dev :3001 (screenshot) |
+| 2026-10-07 | Slash palette headline + runnable toggle (3.T3 UI) | header "54 runnable of 461 listed" from live registry; off-by-default toggle hides only `hasHandler === false`, footer names hidden count | 13 tests + 7 NCs; tsc 0; verified live (screenshot) |
+| 2026-10-07 | Palette double-listing `//about` | `listCommands()` rows carry the slash in `name`, merge built `//about` for all 461 prop rows | fixed at merge point; verified live: 0 `//` rows, "54 runnable of 461 listed" |
+| 2026-10-07 | @ tagging (feat/agent-tag-picker) | feature exists only on its branch, absent from main; merged + verified as `3f7f0b0` in its worktree (tsc 0, mentions 35/35) incl. null-status alignment with 6.T1 | landing into main BLOCKED by other agents' uncommitted ChatView.tsx — merge would overwrite their work |
