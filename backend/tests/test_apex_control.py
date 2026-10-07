@@ -103,7 +103,11 @@ def _client(is_admin: bool = True) -> TestClient:
 
     @app.middleware("http")
     async def _inject_user(request, call_next):
-        request.state.user = SimpleNamespace(id="admin-1" if is_admin else "user-2", is_admin=is_admin)
+        # ``system_role``, never ``is_admin``: the real ``User`` model and the
+        # auth-disabled principal carry the former and have no such attribute
+        # as the latter, so stamping it here would let the router keep reading
+        # a field production never sets and still pass.
+        request.state.user = SimpleNamespace(id="admin-1" if is_admin else "user-2", system_role="admin" if is_admin else "user")
         return await call_next(request)
 
     from app.gateway.routers import apex

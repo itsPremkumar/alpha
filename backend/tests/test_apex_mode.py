@@ -417,7 +417,7 @@ def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, uid: str, is_adm
 
     @app.middleware("http")
     async def _inject(request, call_next):
-        request.state.user = SimpleNamespace(id=uid, is_admin=is_admin)
+        request.state.user = SimpleNamespace(id=uid, system_role="admin" if is_admin else "user")
         return await call_next(request)
 
     return TestClient(app)
@@ -511,7 +511,7 @@ def test_a_degraded_store_is_disclosed_over_http(tmp_path: Path, monkeypatch: py
 
     @app.middleware("http")
     async def _inject(request, call_next):
-        request.state.user = SimpleNamespace(id="admin-1", is_admin=True)
+        request.state.user = SimpleNamespace(id="admin-1", system_role="admin")
         return await call_next(request)
 
     body = TestClient(app).get("/api/apex/mode").json()

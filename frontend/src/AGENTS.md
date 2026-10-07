@@ -392,6 +392,14 @@ not exist, which made `?view=<id>` fall back to `chat`.
   verdicts could not be read" lead to opposite actions. Each failure renders as
   its own `Notice`, and the session badge says `state unknown` rather than
   inventing an absence.
+- **A bounded approval list says how many rows it is missing.** `GET
+  /apex/approvals` returns at most 200 rows while `count`/`pending` describe the
+  whole backlog, so `returned` and `truncated` travel with the envelope.
+  `fetchApexApprovals` maps both, *derives* `truncated` when a Gateway bounds
+  the list without declaring it (`returned < count`), and the panel renders a
+  `Notice` naming both numbers — otherwise a 200-row list under a `count` of 500
+  would look internally inconsistent, or a panel deriving the total from
+  `approvals.length` would understate the gate by exactly the rows it hid.
 - **The verdicts' asymmetry comes from the response, not the button.** The
   decision's `resumed` flag is the server's claim: `reject` renders "the
   session stays parked", and an `approve` that did not resume says so rather
@@ -402,8 +410,8 @@ not exist, which made `?view=<id>` fall back to `chat`.
   digest exists to catch.
 
 Coverage: `src/lib/apex.test.mjs` (routes, verbs, the null-preserving counters,
-the control/approval/goal envelope mappings, and the honesty inversions for
-each block).
+the control/approval/goal envelope mappings, the approvals truncation mapping,
+and the honesty inversions for each block).
 
 ## Subagent catalog panel (every field of a definition)
 

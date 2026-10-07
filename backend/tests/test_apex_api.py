@@ -47,9 +47,14 @@ def _client(is_admin: bool = True) -> TestClient:
 
     @app.middleware("http")
     async def _inject_user(request, call_next):
+        # ``system_role`` is the field the real ``User`` model and the
+        # auth-disabled principal actually carry. Deliberately NOT ``is_admin``:
+        # stamping that would let the router keep reading an attribute no
+        # production user has and still pass here — which is exactly how the
+        # control plane came to answer 403 to every admin.
         request.state.user = SimpleNamespace(
             id="admin-1" if is_admin else "user-2",
-            is_admin=is_admin,
+            system_role="admin" if is_admin else "user",
         )
         return await call_next(request)
 
@@ -280,8 +285,25 @@ class TestDegradedStoreOverHttp:
         assert body["sessions"]["count"] is None
 
 
+@pytest.fixture()
+def short_stream(monkeypatch: pytest.MonkeyPatch):
+    """Close the SSE stream after seconds instead of the 300s production bound.
+
+    Both streaming tests read the response body to EOF, so each one blocks for
+    the *whole* stream lifetime — 300s apiece, roughly twelve minutes for this
+    file — while asserting only on frames the replay emits before the tail loop
+    starts. The bound is a module constant read at call time, so shortening it
+    here costs no coverage: the assertions are unchanged, only the dead wait
+    is removed. Restored automatically by ``monkeypatch``.
+    """
+    from app.gateway.routers import apex as apex_router
+
+    monkeypatch.setattr(apex_router, "MAX_STREAM_SECONDS", 3.0)
+    monkeypatch.setattr(apex_router, "STREAM_POLL_SECONDS", 0.25)
+
+
 class TestEventStream:
-    def test_replays_the_durable_journal_then_reports_ready(self, client: TestClient, store: ApexStore) -> None:
+    def test_replays_the_durable_journal_then_reports_ready(self, client: TestClient, store: ApexStore, short_stream) -> None:
         """The stream must show the durable history a subscriber would have seen.
 
         One pass over the response body: ``iter_lines`` cannot be called twice
@@ -297,11 +319,13 @@ class TestEventStream:
         assert "event: session.created" in body
         # The creation event is journalled, so its durability marker is visible.
         assert '"durable": true' in body
+        # The tail loop must close rather than run to the production ceiling.
+        assert "event: stream_closed" in body
 
     def test_streaming_an_unknown_session_is_404(self, client: TestClient, store: ApexStore) -> None:
         assert client.get("/api/apex/sessions/apx-nope/events").status_code == 404
 
-    def test_event_replay_honours_after_seq(self, client: TestClient, store: ApexStore) -> None:
+    def test_event_replay_honours_after_seq(self, client: TestClient, store: ApexStore, short_stream) -> None:
         session = _create(client)["session"]
         # Record a second event so `after_seq` has something to exclude.
         store.record_constraint(session["session_id"], "prioritise reliability")

@@ -682,6 +682,44 @@ test("a measured zero pending stays a real zero", async () => {
   assert.equal(list.pending, 0);
 });
 
+test("a bounded approvals list keeps the whole count beside the rows it sent", async () => {
+  // The route bounds the rows but counts the whole backlog, so a panel that
+  // derived `count` from `approvals.length` would understate the gate by
+  // exactly the rows it hid.
+  record("GET /apex/approvals", {
+    body: { available: true, count: 500, pending: 3, returned: 200, truncated: true, approvals: [PENDING_APPROVAL] },
+  });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(list.count, 500, "the backlog is the whole set, not the returned rows");
+  assert.equal(list.returned, 200);
+  assert.equal(list.truncated, true);
+  assert.notEqual(list.count, list.approvals.length);
+});
+
+test("truncation is derived when the Gateway sends no flag", async () => {
+  // An older Gateway that bounds the list without declaring it must still be
+  // disclosed — deriving it keeps the panel honest against a server bug.
+  record("GET /apex/approvals", { body: { available: true, count: 500, returned: 200, approvals: [] } });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(list.truncated, true);
+});
+
+test("an unbounded approvals list is not reported as truncated", async () => {
+  record("GET /apex/approvals", { body: APPROVALS_BODY });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(list.returned, null, "an unbounded read reports no bound rather than guessing one");
+  assert.equal(list.truncated, false);
+});
+
+test("a degraded approvals read reports no bound rather than a zero bound", async () => {
+  record("GET /apex/approvals", {
+    body: { available: false, reason: "JSONDecodeError: approvals.json is not JSON", count: null, approvals: [] },
+  });
+  const list = await apex.fetchApexApprovals();
+  assert.equal(list.returned, null);
+  assert.equal(list.truncated, false);
+});
+
 test("a verdict posts to the approval's approve route with the note", async () => {
   record("POST /apex/approvals/apr-1/approve", {
     body: {

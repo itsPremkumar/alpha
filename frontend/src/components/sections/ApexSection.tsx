@@ -593,6 +593,13 @@ function SessionControlCard({ onError }: { onError: (message: string | null) => 
                 : `${approvals.pending} awaiting an operator verdict.`}
           </p>
 
+          {approvals.truncated && (
+            <Notice
+              tone="warn"
+              message={`Showing ${approvals.returned ?? "?"} of ${approvals.count ?? "?"} recorded approvals — the rest are not displayed. The count above covers the whole backlog, so fewer rows than the count are expected here.`}
+            />
+          )}
+
           {pending.length > 0 && (
             <>
               <label className="block space-y-1">

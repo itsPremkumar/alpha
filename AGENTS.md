@@ -354,13 +354,16 @@ in another layer; follow the pointer.
   `narrow_contract` refuses to widen, and a `BLOCKED` session is the approval
   gate's to move — the fourteen `/apex` verbs' `pause`/`resume`/`stop`/
   `take-over` and their HTTP twins refuse it by name with the pending approval
-  named, so pause-then-resume cannot un-park parked work in two commands. The
-  Phase 0 inventory —
+  named, so pause-then-resume cannot un-park parked work in two commands. Route
+  authorisation is one shared decision: `is_admin_user` for admin (a PAT never
+  qualifies), owner-scoped `404` for member routes, `503` for an unreadable
+  store, and a bounded `/approvals`. The Phase 0 inventory —
   `docs/APEX_INTEGRATION_MAP.md` — records which of the 198 specification
   sections already existed, and is the reason this package is a control plane
   rather than the ~35 modules the spec's module list implies. Tests:
   `tests/test_apex_contract.py`, `test_apex_executive.py`, `test_apex_api.py`,
-  `test_apex_control.py`; frontend `src/lib/apex.test.mjs`.
+  `test_apex_control.py`, `test_apex_authz.py`; frontend
+  `src/lib/apex.test.mjs`.
 - **Cognitive memory** — server-resolved owner, per-owner/per-directory process
   cache, atomic fsync-backed snapshots and fail-closed owner/corrupt-state
   handling:

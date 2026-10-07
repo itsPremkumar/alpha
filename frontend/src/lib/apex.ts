@@ -496,8 +496,14 @@ export interface ApexApprovals {
   available: boolean;
   /** The server's reason when the store could not be read. */
   reason: string;
+  /** The whole matching backlog — not the length of `approvals`. */
   count: number | null;
+  /** Pending verdicts across the whole backlog, not just the rows shown. */
   pending: number | null;
+  /** How many rows the server actually sent. Absent → `null`, never `count`. */
+  returned: number | null;
+  /** True when `approvals` is a bounded slice of a larger backlog. */
+  truncated: boolean;
   approvals: ApexApprovalRecord[];
 }
 
@@ -507,14 +513,27 @@ export interface ApexApprovals {
  * `count` and `pending` are `null` — never `0` — when the store could not be
  * read: "we could not look" and "nothing is pending" lead to opposite
  * decisions, so the difference survives the mapping.
+ *
+ * The route bounds the returned list while counting the *whole* backlog, so
+ * `returned`/`truncated` travel with it. Without them a panel showing 200 rows
+ * beside `count: 500` would look internally inconsistent, and one that derived
+ * the total from `approvals.length` would understate the gate by exactly the
+ * rows it hid.
  */
 export async function fetchApexApprovals(): Promise<ApexApprovals> {
   const r = rec(await get<Rec>("/apex/approvals"));
+  const count = optNum(r.count);
+  const returned = optNum(r.returned);
   return {
     available: bool(r.available),
     reason: optStr(r.reason) ?? "",
-    count: optNum(r.count),
+    count,
     pending: optNum(r.pending),
+    returned,
+    // Derived as well as declared: a Gateway that bounds the list but omits
+    // the flag would otherwise render a 200-row panel with no mention of the
+    // 300 it hid. Absent bounds on both sides mean "not bounded" → false.
+    truncated: r.truncated === true || (returned !== null && count !== null && returned < count),
     approvals: (Array.isArray(r.approvals) ? r.approvals : []).map((row) => mapApprovalRecord(row)),
   };
 }
