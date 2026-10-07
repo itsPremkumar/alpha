@@ -225,6 +225,59 @@ test("getSentinelReports maps the journal envelope and passes disclosures throug
   assert.equal(h.disclosures.length, 2);
 });
 
+test("report outcomes pass through verbatim — kind, stage, detail, fingerprint, verify", async () => {
+  // The detail panel renders these fields; if the client dropped or coerced
+  // any of them the panel would show blanks for a record that has content.
+  // Mirrors the live shape (2026-10-07): kind/stage/status/detail/fingerprint
+  // with verify/commit empty.
+  const f = fixture(() =>
+    Response.json({
+      reports: [
+        {
+          recorded_at: "2026-10-05T15:37:29.828675+00:00",
+          trigger: null,
+          auto_heal: false,
+          report: {
+            duration_s: 16.305,
+            scanned: 3,
+            summary: "scanned 3 signal(s): 0 fixed, 0 reverted, 3 escalated",
+            fixed: 0,
+            reverted: 0,
+            escalated: 3,
+            errors: [],
+            outcomes: [
+              {
+                kind: "warning",
+                stage: "diagnose",
+                status: "escalated",
+                detail: "no repair strategy registered for kind 'warning'",
+                fingerprint: "b4e074f13668",
+                verify: null,
+                commit: null,
+              },
+            ],
+          },
+        },
+      ],
+      order: "oldest_first",
+      total: 1,
+      cap: 50,
+      source: "C:/state/sentinel-reports/reports.jsonl",
+      disclosures: [],
+    }),
+  );
+  const h = await f.supervisor.getSentinelReports();
+  const o = h.reports[0].report.outcomes[0];
+  assert.equal(o.kind, "warning");
+  assert.equal(o.stage, "diagnose");
+  assert.equal(o.status, "escalated");
+  assert.equal(o.detail, "no repair strategy registered for kind 'warning'");
+  assert.equal(o.fingerprint, "b4e074f13668");
+  assert.ok("verify" in o);
+  assert.ok("commit" in o);
+  assert.equal(h.reports[0].report.summary, "scanned 3 signal(s): 0 fixed, 0 reverted, 3 escalated");
+});
+
 test("an empty journal maps to an empty list — no fabricated passes", async () => {
   const f = fixture(() =>
     Response.json({

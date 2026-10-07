@@ -360,7 +360,8 @@ function SentinelPanel(props: { refreshKey: number; onNotice: (m: string) => voi
                 </thead>
                 <tbody>
                   {[...reports.reports].reverse().map((entry) => (
-                    <tr key={entry.recorded_at} className="border-t border-border/60 align-top">
+                    <React.Fragment key={entry.recorded_at}>
+                    <tr className="border-t border-border/60 align-top">
                       <td className="py-1.5 pr-3">{entry.recorded_at}</td>
                       <td className="py-1.5 pr-3">
                         {/* The server omitted the trigger. "not reported" says
@@ -392,6 +393,93 @@ function SentinelPanel(props: { refreshKey: number; onNotice: (m: string) => voi
                         )}
                       </td>
                     </tr>
+                    {/* Full detail: the pass summary plus one row per observed
+                        outcome. The counts above say how many; only the outcomes
+                        say what was seen and what happened to it. */}
+                    <tr className="border-t border-border/30">
+                      <td colSpan={8} className="py-1.5 pr-3">
+                        {entry.report.summary ? (
+                          <p className="text-[11px]">{entry.report.summary}</p>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">
+                            The pass recorded no summary.
+                          </p>
+                        )}
+                        {entry.report.outcomes.length === 0 ? (
+                          <p className="text-[10px] text-muted-foreground">
+                            No per-outcome detail recorded — the counts above are the whole record.
+                          </p>
+                        ) : (
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-[10px] text-muted-foreground">
+                              {entry.report.outcomes.length} outcome(s): what was seen and what happened
+                            </summary>
+                            <ul className="mt-1 space-y-1">
+                              {entry.report.outcomes.map((o, i) => {
+                                const status = typeof o.status === "string" ? o.status : null;
+                                const kind = typeof o.kind === "string" ? o.kind : null;
+                                const stage = typeof o.stage === "string" ? o.stage : null;
+                                const detail = typeof o.detail === "string" ? o.detail : null;
+                                const fingerprint = typeof o.fingerprint === "string" ? o.fingerprint : null;
+                                const verify =
+                                  o.verify === null || o.verify === undefined
+                                    ? null
+                                    : typeof o.verify === "string"
+                                      ? o.verify
+                                      : JSON.stringify(o.verify);
+                                const commit =
+                                  o.commit === null || o.commit === undefined
+                                    ? null
+                                    : typeof o.commit === "string"
+                                      ? o.commit
+                                      : JSON.stringify(o.commit);
+                                return (
+                                  <li
+                                    key={`${fingerprint ?? "outcome"}-${i}`}
+                                    className="rounded-lg border border-border/50 px-2 py-1.5 text-[10px]"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge
+                                        tone={
+                                          status === "fixed"
+                                            ? "green"
+                                            : status === "escalated"
+                                              ? "amber"
+                                              : status === "failed" || status === "error"
+                                                ? "red"
+                                                : "gray"
+                                        }
+                                      >
+                                        {status ?? "status not reported"}
+                                      </Badge>
+                                      {kind && <span className="font-semibold">{kind}</span>}
+                                      {stage && <span className="text-muted-foreground">stage: {stage}</span>}
+                                      {fingerprint && (
+                                        <span className="font-mono text-muted-foreground">{fingerprint}</span>
+                                      )}
+                                    </div>
+                                    {detail ? (
+                                      <p className="mt-0.5">{detail}</p>
+                                    ) : (
+                                      <p className="mt-0.5 text-muted-foreground">
+                                        No detail recorded for this outcome.
+                                      </p>
+                                    )}
+                                    {(verify !== null || commit !== null) && (
+                                      <p className="mt-0.5 font-mono text-muted-foreground">
+                                        {verify !== null && <span>verify: {verify || "—"} </span>}
+                                        {commit !== null && <span>commit: {commit || "—"}</span>}
+                                      </p>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </details>
+                        )}
+                      </td>
+                    </tr>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

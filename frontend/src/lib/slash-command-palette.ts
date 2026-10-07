@@ -82,6 +82,44 @@ export function toPaletteCommand(raw: unknown): PaletteCommand | null {
 }
 
 /**
+ * Split palette rows for the "runnable only" toggle.
+ *
+ * Only `hasHandler === false` rows are hidden — the server positively reported
+ * no bound handler for those. `null` (the read did not say) stays visible:
+ * unknown is not negative, and hiding it would present an unverified subset as
+ * "all runnable". Returns both halves so the footer can name what it hid.
+ */
+export function splitRunnableRows(rows: readonly PaletteCommand[]): {
+  visible: PaletteCommand[];
+  hidden: number;
+} {
+  // A malformed list degrades to empty rather than throwing mid-render: the
+  // palette already handles "no rows" as a closed state.
+  const list = Array.isArray(rows) ? rows : [];
+  const visible = list.filter((r) => r && r.hasHandler !== false);
+  return { visible, hidden: list.length - visible.length };
+}
+
+/**
+ * Headline counts for "N runnable of M listed".
+ *
+ * `runnable` counts only `hasHandler === true`; everything else — `false` and
+ * `null` alike — is not claimed runnable. When the registry read failed the
+ * caller must not render counts at all (the list is the built-in fallback, and
+ * "0 runnable" would claim a health nobody measured).
+ */
+export function runnableHeadline(rows: ReadonlyArray<{ hasHandler?: boolean | null }>): {
+  runnable: number;
+  listed: number;
+} {
+  const list = Array.isArray(rows) ? rows : [];
+  return {
+    runnable: list.filter((r) => r && r.hasHandler === true).length,
+    listed: list.length,
+  };
+}
+
+/**
  * Whether `command` is reachable by completing `prefix`.
  *
  * The rule is asymmetric on purpose, and both halves are load-bearing:
