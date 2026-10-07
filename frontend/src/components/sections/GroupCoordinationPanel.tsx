@@ -75,8 +75,31 @@ import { AlertTriangle, Hand, RefreshCw, Send, ShieldAlert, Users } from "lucide
  *    which age it is showing, rather than blanking a room that was fine one
  *    interval ago.
  */
+/**
+ * Backoff between room-discovery attempts, in milliseconds.
+ *
+ * Six delays span 126 seconds of wall clock, which covers the case this ladder
+ * exists for: the panel mounting while the Gateway is still booting, whose
+ * first compile was measured at ~117s. Discovery used to run exactly once, on
+ * mount, so that race left the picker empty and the board on "No rooms were
+ * readable" until a full page reload — a permanent failure caused by a
+ * transient one. The ladder is bounded on purpose: a Gateway that never comes
+ * up should end with its reason on screen and a Retry, not an endless probe.
+ */
+const ROOM_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 32_000, 64_000];
+
 export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (room: string) => void }) {
   const [rooms, setRooms] = useState<string[]>([]);
+  // Why the room list could not be read, or null when it could. This is a
+  // different fact from `rooms.length === 0`, which means the server *said*
+  // there are no rooms — so the two are never merged into one empty list.
+  const [roomsError, setRoomsError] = useState<string | null>(null);
+  // A discovery attempt is in flight. Drives the Retry control's in-flight
+  // lock so a double click cannot open two ladders.
+  const [roomsDiscovering, setRoomsDiscovering] = useState(false);
+  // Bumped by the manual Retry; a new key tears down the running ladder and
+  // starts a fresh one from its first delay.
+  const [roomDiscovery, setRoomDiscovery] = useState(0);
   const [snapshot, setSnapshot] = useState<RoomCoordination | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,28 +125,65 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
 
-  // Discover rooms so this is a picker rather than a free-text box. A failure
-  // here is not fatal: the operator may know the room name and type it, so the
-  // panel stays usable and the room list simply stays empty.
+  // Discover rooms so this is a picker rather than a free-text box.
+  //
+  // There is deliberately no free-text fallback: `liveRoom` in WarRoomSection
+  // starts as `""` and the <select> below is the only writer of it. Discovery
+  // therefore has to *work* for the panel to be usable at all, which is why a
+  // rejected read is retried rather than accepted.
+  //
+  // Two ways of ending up with no rooms, deliberately not collapsed:
+  //
+  //   * a rejected read — the Gateway was not answerable. Retried on the
+  //     bounded ladder above, because this panel mounting during boot was
+  //     enough to strand the board on an empty picker until reload;
+  //   * a read that *succeeded* with no rows — the server reported no rooms.
+  //     No amount of retrying changes that, so it is neither retried nor
+  //     dressed as a failure.
+  //
+  // Merging them would tell an installation with genuinely no groups that its
+  // read broke, and would tell one with a broken read that it simply has none.
   useEffect(() => {
-    let active = true;
-    fetchGroupTree()
-      .then((nodes) => {
-        if (!active) return;
-        setRooms(nodes.map((n) => n.name).sort());
-      })
-      .catch(() => {
-        if (active) setRooms([]);
-      });
-    return () => {
-      active = false;
+    let cancelled = false;
+    let timer: number | undefined;
+    let attempt = 0;
+
+    const discover = () => {
+      if (!cancelled) setRoomsDiscovering(true);
+      fetchGroupTree()
+        .then((nodes) => {
+          if (cancelled) return;
+          setRooms(nodes.map((n) => n.name).sort());
+          setRoomsError(null);
+          setRoomsDiscovering(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setRoomsError(errMsg(err));
+          // A failed read never had a list to keep. Leaving rows from a
+          // previous attempt would offer a picker built on an answer that
+          // did not arrive.
+          setRooms([]);
+          setRoomsDiscovering(false);
+          const delay = ROOM_RETRY_DELAYS_MS[attempt];
+          attempt += 1;
+          if (delay !== undefined) timer = window.setTimeout(discover, delay);
+        });
     };
-  }, []);
+
+    discover();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [roomDiscovery]);
 
   // Land on a real room rather than an empty panel. The first visit used to
   // stop at "No room selected" while holding the very list it would have
   // picked from — a picker that declines to pick. This only ever *adds* a
-  // default: when rooms cannot be discovered the free-text path is unchanged.
+  // default: with no rooms to offer it changes nothing, whether the server
+  // reported none or the read never answered. A list is only ever picked
+  // from a read that succeeded.
   useEffect(() => {
     if (props.room || rooms.length === 0 || !props.onRoomChange) return;
     props.onRoomChange(rooms[0]);
@@ -397,6 +457,35 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
             </select>
           )}
 
+          {/* The picker's *absence* is ambiguous: an installation with no
+              rooms and a Gateway that would not answer both render as no
+              dropdown. This names which one it is, with the server's own
+              reason, and offers the read again — a Gateway that was still
+              booting when this mounted is the ordinary reason it is here. */}
+          {roomsError !== null && (
+            <>
+              <span
+                className="inline-flex items-center gap-1.5 text-[11px] text-amber-500"
+                title={`The room list could not be read: ${roomsError}`}
+              >
+                <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+                Room list unreadable — {roomsError}
+              </span>
+              <Btn
+                variant="ghost"
+                onClick={() => setRoomDiscovery((n) => n + 1)}
+                disabled={roomsDiscovering}
+                title="Read the room list again"
+              >
+                <RefreshCw
+                  className={`size-3 ${roomsDiscovering ? "animate-spin" : ""}`}
+                  aria-hidden="true"
+                />
+                Retry rooms
+              </Btn>
+            </>
+          )}
+
           {/* Freshness is reported from the age of the last *successful* read,
               so this chip can never claim a recency the data does not have. A
               stale board says so even while auto-refresh is switched on. */}
@@ -445,9 +534,34 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
         <EmptyState
           title="No room selected"
           hint={
-            rooms.length === 0
-              ? "No rooms were readable, so this panel cannot watch one. The Group Tree view creates them."
-              : "Pick a room to see its live activity and work claims."
+            // Three states, three different sentences. Rendering the failed
+            // read as "no rooms" would tell an operator whose Gateway had not
+            // finished booting that this installation has no groups at all —
+            // and there is no free-text fallback here, so the Retry in the
+            // control row is the only way out without a reload.
+            roomsError !== null
+              ? `The room list could not be read — ${roomsError}. With no list there is no room to pick; use Retry rooms.`
+              : roomsDiscovering && rooms.length === 0
+                ? "Reading the room list…"
+                : rooms.length === 0
+                  ? "The server reported no rooms. The Group Tree view creates them."
+                  : "Pick a room to see its live activity and work claims."
+          }
+          action={
+            roomsError !== null ? (
+              <Btn
+                variant="ghost"
+                onClick={() => setRoomDiscovery((n) => n + 1)}
+                disabled={roomsDiscovering}
+                title="Read the room list again"
+              >
+                <RefreshCw
+                  className={`size-3 ${roomsDiscovering ? "animate-spin" : ""}`}
+                  aria-hidden="true"
+                />
+                Retry rooms
+              </Btn>
+            ) : null
           }
         />
       ) : (

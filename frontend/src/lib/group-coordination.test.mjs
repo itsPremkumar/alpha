@@ -520,3 +520,84 @@ test("changing rooms invalidates the board rather than reusing the old one", () 
   const effect = /roomRef\.current = props\.room;[\s\S]{0,400}?setLastReadAt\(null\);/;
   assert.match(panelSource, effect);
 });
+
+// ── Room discovery ────────────────────────────────────────────────────────────
+
+/**
+ * Discovery ran exactly once, on mount, and that single run was the whole bug.
+ *
+ * The Gateway's first compile was measured at ~117s, so a panel mounted during
+ * it received a rejection, wrote `setRooms([])` and never asked again — the
+ * board then sat on "No rooms were readable" until a full page reload, for a
+ * failure that had resolved seconds earlier. There is no free-text fallback in
+ * this panel (`liveRoom` in WarRoomSection starts `""` and the <select> is its
+ * only writer), so that state was unrecoverable without a reload.
+ */
+test("a rejected room read is retried rather than accepted as the final answer", () => {
+  // Was `}, []);` — one attempt, ever. The ladder is what makes boot survivable.
+  assert.match(panelSource, /\}, \[roomDiscovery\]\);/);
+  const declared = (panelSource.match(/const ROOM_RETRY_DELAYS_MS = \[([^\]]*)\];/) || [])[1];
+  assert.ok(declared, "the retry ladder must be declared");
+  const rungs = declared.split(",").map((s) => s.trim()).filter(Boolean);
+  // Bounded in both directions: enough attempts to outlast a cold boot, and a
+  // finite count so a Gateway that never comes up stops probing.
+  assert.equal(rungs.length, 6, `expected a bounded ladder, found ${rungs.length} rungs`);
+  // The retry is scheduled from the *rejection* only — a successful read has
+  // nothing to retry, and scheduling one there would probe forever.
+  const schedules = panelSource.match(/window\.setTimeout\(discover, delay\)/g) || [];
+  assert.equal(schedules.length, 1, `expected one scheduled retry, found ${schedules.length}`);
+  assert.match(panelSource, /if \(delay !== undefined\) timer = window\.setTimeout\(discover, delay\);/);
+});
+
+/**
+ * Two ways to end up with no rooms, and they lead to opposite conclusions.
+ *
+ * A rejected read means the Gateway would not answer; `[]` from a resolved read
+ * means the server said there are no rooms. Merging them tells an installation
+ * with genuinely no groups that its read broke — and, worse, tells one with a
+ * broken read that it simply has none and needs no fixing.
+ */
+test("a failed room read and an empty server answer are never the same sentence", () => {
+  // The failure branch must be checked first and must carry the server's own
+  // reason, not a generic "could not load".
+  assert.match(panelSource, /roomsError !== null\s*\?\s*`The room list could not be read — \$\{roomsError\}/);
+  const titleIdx = panelSource.indexOf('title="No room selected"');
+  assert.ok(titleIdx > 0, "the empty state must exist");
+  const errCheck = panelSource.indexOf("roomsError !== null", titleIdx);
+  const emptySentence = panelSource.indexOf("The server reported no rooms");
+  assert.ok(errCheck > 0, "the failure must be checked before the empty answer");
+  assert.ok(
+    emptySentence > errCheck,
+    "the server-reported-empty sentence must sit behind the failure check",
+  );
+  // The old wording merged the two facts into one claim; it must not survive.
+  assert.doesNotMatch(panelSource, /No rooms were readable/);
+});
+
+test("the room-list failure is disclosed even when a room is already selected", () => {
+  // The <select> only renders once rooms are known, so without this line a
+  // failed read while watching a room would be invisible — the panel would
+  // quietly lose its picker and say nothing.
+  assert.match(panelSource, /Room list unreadable — \{roomsError\}/);
+  // With the reason, and with the read offered again.
+  assert.match(panelSource, /title=\{`The room list could not be read: \$\{roomsError\}`\}/);
+  assert.match(panelSource, /onClick=\{\(\) => setRoomDiscovery\(\(n\) => n \+ 1\)\}/);
+});
+
+test("discovery settles on both paths so the Retry control never sticks disabled", () => {
+  // Cleared only on success would leave the control permanently dead after one
+  // rejection, which is the state this whole ladder exists to escape.
+  const settles = panelSource.match(/setRoomsDiscovering\(false\);/g) || [];
+  assert.equal(settles.length, 2, `expected the flag cleared on both paths, found ${settles.length}`);
+  // In flight, so a double click cannot open two competing ladders.
+  assert.match(panelSource, /disabled=\{roomsDiscovering\}/);
+  // A manual retry cancels the running ladder's pending timer instead of
+  // stacking a second one beside it.
+  assert.match(panelSource, /window\.clearTimeout\(timer\);/);
+});
+
+test("a room read that succeeds clears the failure it replaced", () => {
+  // Leaving the stale reason up after a good read would report a failure the
+  // panel has already recovered from.
+  assert.match(panelSource, /setRoomsError\(null\);/);
+});
