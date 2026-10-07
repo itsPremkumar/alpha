@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useMemo } from "react";
+import React, { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Send,
   Square,
@@ -17,6 +17,9 @@ import {
   Image as ImageIcon,
   Code2,
   Network,
+  AtSign,
+  Users,
+  ArrowLeftRight,
 } from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
 import {
@@ -40,10 +43,20 @@ import {
   modelCapabilities,
 } from "@/lib/model-capabilities";
 import {
+  applyMention,
+  buildMentionRows,
+  countMentionTokens,
+  departmentRoleIndex,
+  filterMentionRows,
+  findMentionAtCaret,
+  parseMentions,
+  rosterHandles,
+  type MentionAgent,
+  type MentionRow,
+} from "@/lib/agent-mentions";
+import {
   buildSlashCommandPalette,
   describePalette,
-  splitRunnableRows,
-  runnableHeadline,
   type PaletteCommand,
 } from "@/lib/slash-command-palette";
 
@@ -234,6 +247,34 @@ interface ComposerProps {
   /** All shortcut commands (for the "/" palette). */
   slashCommands?: SlashCommand[];
   /**
+   * Roster rows the `@` tag palette offers (`GET /api/bots`).
+   *
+   * Deliberately distinct from `slashCommands`: a command is a verb the server
+   * executes, a tag is a recipient the server's mention grammar resolves. They
+   * come from different surfaces and are never merged into one list.
+   */
+  mentionAgents?: MentionAgent[];
+  /**
+   * Whether the roster behind `mentionAgents` is readable.
+   *
+   * `unavailable` is a real state and renders as such. A failed roster read must
+   * never answer "no agents available", which claims the fleet is empty — a
+   * claim about the workspace that nothing measured.
+   */
+  mentionAgentsState?: "loading" | "ready" | "unavailable";
+  /** The server's own reason when `mentionAgentsState` is `unavailable`. */
+  mentionAgentsError?: string | null;
+  /** Handle of the agent currently driving this chat, so it is not offered again. */
+  activeAgentHandle?: string | null;
+  /**
+   * Make `handle` the agent this conversation runs on.
+   *
+   * Omit this and the "bot mode" rows disappear entirely. A switch control with
+   * no handler could only ever be a no-op, and a control that can never succeed
+   * is not a control.
+   */
+  onMentionSwitchAgent?: (handle: string) => void;
+  /**
    * Selected reasoning effort. Omit `onEffortChange` to hide the picker
    * entirely — a read-only surface should not show a control it cannot drive.
    */
@@ -285,6 +326,11 @@ export function Composer({
   onOpenModelSettings,
   onModelsUpdated,
   slashCommands,
+  mentionAgents = [],
+  mentionAgentsState = "ready",
+  mentionAgentsError = null,
+  activeAgentHandle = null,
+  onMentionSwitchAgent,
   effort = DEFAULT_EFFORT,
   onEffortChange,
   delegationEnabled = false,
@@ -318,6 +364,25 @@ export function Composer({
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  /**
+   * The `@` picker's own selection and dismissal.
+   *
+   * Separate from the `/` palette's `selectedIndex` because one shared index
+   * would highlight the wrong row in whichever palette happened to be open. The
+   * two can never be open together — `/` only matches while the value starts
+   * with it and holds no space, so `/goal ship @bo` has already closed it.
+   */
+  const [mentionIndex, setMentionIndex] = useState<number>(0);
+  const [mentionDismissed, setMentionDismissed] = useState<boolean>(false);
+  /**
+   * Caret offset, tracked explicitly.
+   *
+   * `@` opens mid-sentence, so the palette cannot be derived from the whole
+   * value the way `/` is — it must know where the caret actually is. A
+   * controlled `<textarea>` keeps its caret in the DOM, which a render cannot
+   * read, so every event that can move it reports it here.
+   */
+  const [caret, setCaret] = useState<number>(0);
 
   // Quick API Key configuration popover state
   const [showKeyPopover, setShowKeyPopover] = useState(false);
@@ -354,28 +419,19 @@ export function Composer({
   }, []);
 
   // Unified command source: backend registry wins, prop shortcuts fill gaps.
-  //
-  // The prop rows carry the registry's own `command` spelling (leading slash
-  // included) under `name`, so the prefix is stripped before comparing and
-  // re-added exactly once. Without this every prop row missed the `seen` set
-  // and the palette listed the whole registry twice, the copy as `//about`.
   const mergedCommands = useMemo(() => {
     const seen = new Set(availableCommands.map((c) => c.command.toLowerCase()));
-    const extra: SlashCommandInfo[] = [];
-    for (const c of slashCommands || []) {
-      const bare = c.name.replace(/^\/+/, "");
-      if (!bare || seen.has(`/${bare}`.toLowerCase())) continue;
-      seen.add(`/${bare}`.toLowerCase());
-      extra.push({
-        command: `/${bare}`,
+    const extra: SlashCommandInfo[] = (slashCommands || [])
+      .filter((c) => !seen.has(`/${c.name}`.toLowerCase()))
+      .map((c) => ({
+        command: `/${c.name}`,
         category: c.category || "general",
         description: c.description || "Run this shortcut",
-        usage: c.usage || `/${bare}`,
+        usage: c.usage || `/${c.name}`,
         is_core: false,
         is_autonomous_trigger: false,
         requires_approval: false,
-      });
-    }
+      }));
     return [...availableCommands, ...extra];
   }, [availableCommands, slashCommands]);
 
@@ -395,34 +451,92 @@ export function Composer({
     [isDismissed, palette.rows],
   );
 
+  // ── `@` tag palette ────────────────────────────────────────────────────────
+  //
+  // Three separate derivations, because they answer three different questions
+  // and each has its own honest failure state:
+  //
+  //   rosterRows — what CAN be tagged        (a failed read answers nothing)
+  //   trigger    — is the caret inside `@…`  (pure caret geometry)
+  //   filtered   — what should be offered    (bounded, and says what it hid)
+
+  /** Every tag this roster supports, in pick order. */
+  const rosterRows = useMemo(
+    () =>
+      buildMentionRows({
+        agents: mentionAgents,
+        activeHandle: activeAgentHandle,
+        allowSwitch: typeof onMentionSwitchAgent === "function",
+      }),
+    [mentionAgents, activeAgentHandle, onMentionSwitchAgent],
+  );
+
+  /** The `@` token the caret is in, or null. */
+  const mentionTrigger = useMemo(() => {
+    if (mentionDismissed) return null;
+    return findMentionAtCaret(input, caret);
+  }, [input, caret, mentionDismissed]);
+
+  const mentionFilter = useMemo(() => {
+    if (!mentionTrigger) return null;
+    return filterMentionRows(rosterRows, mentionTrigger);
+  }, [rosterRows, mentionTrigger]);
+
+  const mentionRows: MentionRow[] = mentionFilter ? mentionFilter.visible : [];
+
+  /** Rows grouped under their section heading, for the palette body. */
+  const mentionSections = useMemo(() => {
+    if (mentionRows.length === 0) return [];
+    const groups: Array<{ id: string; label: string; icon: React.ReactNode; rows: Array<{ row: MentionRow; index: number }> }> = [
+      { id: "tag", label: "Tag an agent", icon: <AtSign className="size-3.5 text-primary" />, rows: [] },
+      { id: "mode", label: "Bot mode — switch this chat's agent", icon: <ArrowLeftRight className="size-3.5 text-primary" />, rows: [] },
+      { id: "broad", label: "Broad tags", icon: <Users className="size-3.5 text-primary" />, rows: [] },
+    ];
+    mentionRows.forEach((row, index) => {
+      const bucket = row.mode === "switch" ? 1 : row.mode === "mention" ? 0 : 2;
+      groups[bucket].rows.push({ row, index });
+    });
+    return groups.filter((g) => g.rows.length > 0);
+  }, [mentionRows]);
+
   /**
-   * "Runnable only" — hide rows the registry positively reports as handler-less.
+   * The persistent strip under the input, and why it is not optional.
    *
-   * Off by default: the palette is the complete catalog, and filtering it on
-   * load would re-hide the 407 rows this surface exists to disclose. When on,
-   * only `hasHandler === false` rows are hidden — `null` (the read did not say)
-   * stays visible, because unknown is not negative. The footer names how many
-   * rows the toggle hid, so a short list never reads as the whole catalog.
+   * A tag that addresses nobody is silent by construction: the server resolves
+   * an unknown handle to nothing rather than to a near match, so the message
+   * goes out and nobody is called. Previewing that before send is the only point
+   * at which the operator can still fix it.
    */
-  const [runnableOnly, setRunnableOnly] = useState(false);
-  const { visible: visibleSuggestions, hidden: hiddenByToggle } = useMemo(
-    () => (runnableOnly ? splitRunnableRows(suggestions) : { visible: suggestions, hidden: 0 }),
-    [runnableOnly, suggestions],
-  );
+  const tagStatus = useMemo(() => {
+    if (countMentionTokens(input) === 0) return null;
+    return parseMentions(input, rosterHandles(mentionAgents), departmentRoleIndex(mentionAgents));
+  }, [input, mentionAgents]);
 
-  /** Registry-level truth for the headline: runnable of listed. */
-  const listedCount = mergedCommands.length;
-  const runnableCount = useMemo(
-    () => runnableHeadline(mergedCommands.map((c) => ({ hasHandler: c.has_handler ?? null }))).runnable,
-    [mergedCommands],
-  );
+  /**
+   * The palette header's one-line state.
+   *
+   * Three states, and the third is the one a picker usually gets wrong: a
+   * failed roster read must say so. Rendering "no agents available" after a read
+   * that failed is a claim about the fleet that nothing measured.
+   */
+  const mentionHeaderNote = (() => {
+    if (mentionAgentsState === "loading") return "Reading the agent roster…";
+    if (mentionAgentsState === "unavailable") {
+      return mentionAgentsError
+        ? `Agent roster unavailable — ${mentionAgentsError}. Nothing can be tagged from this list.`
+        : "Agent roster unavailable — nothing can be tagged from this list.";
+    }
+    return null;
+  })();
 
-  // A new filter changes which row index 0 points at; without a reset, Enter
-  // would commit the row that *used* to be highlighted — a different command
-  // than the one on screen.
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [runnableOnly]);
+  /** What an empty result means, which differs by roster state and query. */
+  const mentionEmptyNote = (() => {
+    if (mentionHeaderNote) return null;
+    if (mentionAgents.length === 0) {
+      return "The agent roster is empty, so there is nothing to tag. Add a bot in the Bots view first.";
+    }
+    return `No agent matches ${mentionTrigger?.kind ? `@${mentionTrigger.kind}:` : ""}${mentionTrigger?.query || "—"} exactly. A tag must name a real handle; use @role: for a whole department.`;
+  })();
 
   const { standardModels, keylessModels, quotaModels } = useMemo(() => {
     const effectiveModels = models.length > 0 ? models : BUILTIN_FREE_MODELS;
@@ -499,6 +613,20 @@ export function Composer({
     setSelectedIndex(0);
   }, [input, palette.prefix]);
 
+  /**
+   * Re-open the `@` picker whenever the caret re-enters a token.
+   *
+   * A sticky dismissal would mean one `Escape` silenced `@` for the rest of the
+   * draft — and an `Escape` pressed at the end of a sentence, with no palette
+   * open, would disarm a token the operator had not finished typing.
+   */
+  useEffect(() => {
+    if (findMentionAtCaret(input, caret)) {
+      setMentionDismissed(false);
+    }
+    setMentionIndex(0);
+  }, [input, caret]);
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -513,6 +641,48 @@ export function Composer({
     textareaRef.current?.focus();
   };
 
+  /** Put the caret where `applyMention` says it belongs, after React commits. */
+  const placeCaret = (position: number) => {
+    setCaret(position);
+    // The value has not rendered yet inside this event, so setting
+    // `selectionStart` synchronously would be overwritten by the commit.
+    window.setTimeout(() => {
+      const node = textareaRef.current;
+      if (!node) return;
+      node.focus();
+      try {
+        node.setSelectionRange(position, position);
+      } catch {
+        /* a detached textarea is not worth failing the insertion over */
+      }
+    }, 0);
+  };
+
+  /**
+   * Commit one tag.
+   *
+   * The switch mode is a separate, deliberate effect rather than a silent side
+   * effect of insertion: tagging an agent and re-pointing the whole conversation
+   * at it are different decisions, so the picker offers them as different rows.
+   * Both write the identical token, which means a switch that failed to apply
+   * leaves a tag the operator can still see and correct.
+   */
+  const selectMention = useCallback(
+    (row: MentionRow) => {
+      if (row.refusal) return;
+      const trigger = findMentionAtCaret(input, caret);
+      if (!trigger) return;
+      const applied = applyMention(input, trigger, row);
+      setInput(applied.text);
+      setMentionDismissed(true);
+      if (row.mode === "switch" && row.switchHandle && onMentionSwitchAgent) {
+        onMentionSwitchAgent(row.switchHandle);
+      }
+      placeCaret(applied.caret);
+    },
+    [input, caret, onMentionSwitchAgent],
+  );
+
   /**
    * Keep the highlighted row inside the visible window.
    *
@@ -521,12 +691,12 @@ export function Composer({
    * operator is typing a filter.
    */
   useEffect(() => {
-    if (visibleSuggestions.length === 0) return;
+    if (suggestions.length === 0) return;
     const node = paletteListRef.current?.querySelector<HTMLElement>(
       `[data-palette-index="${selectedIndex}"]`,
     );
     node?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, visibleSuggestions]);
+  }, [selectedIndex, suggestions]);
 
   // Paste images/files straight from the clipboard (screenshots, copied files).
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -541,16 +711,46 @@ export function Composer({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (visibleSuggestions.length > 0) {
+    setCaret(e.currentTarget.selectionStart ?? input.length);
+
+    // The `@` palette is checked first because it is the one that can be open
+    // mid-sentence. A value holding both can only be a `/` command with a space
+    // in it, which already closed the `/` palette, so this order never has to
+    // choose between two open palettes.
+    if (mentionRows.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % visibleSuggestions.length);
+        setMentionIndex((prev) => (prev + 1) % mentionRows.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev - 1 + mentionRows.length) % mentionRows.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        const row = mentionRows[mentionIndex];
+        if (row && !row.refusal) selectMention(row);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionDismissed(true);
+        return;
+      }
+    }
+
+    if (suggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % suggestions.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex(
-          (prev) => (prev - 1 + visibleSuggestions.length) % visibleSuggestions.length,
+          (prev) => (prev - 1 + suggestions.length) % suggestions.length,
         );
         return;
       }
@@ -558,7 +758,7 @@ export function Composer({
         e.preventDefault();
         // The list is re-derived from the draft on every keystroke, so a stale
         // index must not throw mid-draft and swallow the operator's Enter.
-        const row = visibleSuggestions[selectedIndex];
+        const row = suggestions[selectedIndex];
         if (row) selectCommand(row);
         return;
       }
@@ -579,36 +779,110 @@ export function Composer({
 
   return (
     <div className="w-full max-w-4xl mx-auto p-3 relative">
+      {/* `@` Agent Tag Palette.
+
+          Opens mid-sentence, which `/` cannot, so it derives from the caret
+          rather than from the start of the value. It renders its own honest
+          states — loading, unreadable roster, no matches, a disclosed hidden
+          count, and a refused row carrying the reason it cannot be used. A
+          picker that quietly shows nothing is indistinguishable from a fleet
+          with no agents. */}
+      {mentionTrigger && (
+        <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl elev-3 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 dur-fast">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <AtSign className="size-3.5 text-primary" />
+              <span>Tag an AI agent</span>
+            </div>
+            <span>↑↓ to navigate • Tab or Enter to tag • Esc to dismiss</span>
+          </div>
+
+          {mentionHeaderNote && (
+            <div className="px-3 py-2 border-b border-border/60 bg-muted/30 text-[11px] text-muted-foreground">
+              {mentionHeaderNote}
+            </div>
+          )}
+
+          {mentionEmptyNote && (
+            <div className="px-3 py-3 border-b border-border/60 bg-muted/30 text-[11px] text-muted-foreground">
+              {mentionEmptyNote}
+            </div>
+          )}
+
+          <div className="max-h-64 overflow-y-auto p-1">
+            {mentionSections.map((section) => (
+              <div key={section.id} className="mb-1 last:mb-0">
+                <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  {section.icon}
+                  <span>{section.label}</span>
+                </div>
+                {section.rows.map(({ row, index }) => {
+                  const disabled = row.refusal !== null;
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => selectMention(row)}
+                      title={row.refusal || `Insert ${row.token}`}
+                      aria-selected={index === mentionIndex}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 transition-colors ${
+                        disabled
+                          ? "opacity-55 cursor-not-allowed"
+                          : index === mentionIndex
+                            ? "bg-accent text-accent-foreground"
+                            : "hover:bg-muted/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="size-6 shrink-0 rounded-full bg-muted/70 text-[10px] font-semibold flex items-center justify-center">
+                          {(row.avatar || row.title || "?").trim().slice(0, 1).toUpperCase() || "?"}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-medium truncate">{row.title}</span>
+                            {row.status && row.status !== "active" && (
+                              <span className="text-[9px] uppercase tracking-wider px-1 py-px rounded bg-muted/80 text-muted-foreground font-semibold shrink-0">
+                                {row.status}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10.5px] text-muted-foreground truncate max-w-sm">
+                            {row.refusal || row.subtitle}
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 ${
+                          row.mode === "switch" ? "bg-primary/15 text-primary" : "bg-muted/80 text-muted-foreground"
+                        }`}
+                      >
+                        {row.badge}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {mentionFilter && mentionFilter.hidden > 0 && (
+            <div className="px-3 py-1.5 border-t border-border/60 bg-muted/40 text-[10.5px] text-muted-foreground">
+              {mentionFilter.hidden} more tag{mentionFilter.hidden === 1 ? "" : "s"} matched — keep typing to narrow the list.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Slash Command Suggestions Palette */}
-      {visibleSuggestions.length > 0 && (
+      {suggestions.length > 0 && (
         <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl elev-3 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 dur-fast">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Terminal className="size-3.5 text-primary" />
               <span>Master Slash Commands</span>
-              {/* The headline is the dispatchable count, never the catalogued
-                  total presented as usable. When the registry read failed the
-                  list is the 16-row built-in fallback, so counts would claim
-                  a health nobody measured — the fallback says so instead. */}
-              <span className="font-normal">
-                {registryError
-                  ? "built-in fallback — registry unavailable"
-                  : `${runnableCount} runnable of ${listedCount} listed`}
-              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1 font-normal cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={runnableOnly}
-                  onChange={(e) => setRunnableOnly(e.target.checked)}
-                  className="size-3"
-                  aria-label="Show only commands the registry reports as runnable"
-                />
-                <span>runnable only</span>
-              </label>
-              <span>Use ↑↓ to navigate • Tab to select • Esc to dismiss</span>
-            </div>
+            <span>Use ↑↓ to navigate • Tab to select • Esc to dismiss</span>
           </div>
           {registryError && (
             <div className="px-3 py-1.5 border-b border-border/60 bg-destructive/10 text-[11px] text-destructive">
@@ -619,7 +893,7 @@ export function Composer({
             ref={paletteListRef}
             className="max-h-80 overflow-y-auto p-1 divide-y divide-border/20"
           >
-            {visibleSuggestions.map((cmd, idx) => (
+            {suggestions.map((cmd, idx) => (
               <button
                 key={cmd.command}
                 data-palette-index={idx}
@@ -656,9 +930,6 @@ export function Composer({
           </div>
           <div className="px-3 py-1.5 border-t border-border/60 bg-muted/40 text-[11px] text-muted-foreground">
             {describePalette(palette)}
-            {runnableOnly && hiddenByToggle > 0 && (
-              <> · hiding {hiddenByToggle} row(s) the registry reports with no bound handler</>
-            )}
           </div>
         </div>
       )}
@@ -818,18 +1089,70 @@ export function Composer({
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            // Read the caret off the event, not off `input`: this fires after the
+            // DOM already holds the new value, so `selectionStart` is the
+            // post-insertion position rather than the stale prop.
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          onBlur={() => setCaret(textareaRef.current?.selectionStart ?? caret)}
           placeholder={
             botDisplayName
-              ? `Ask ${botDisplayName} anything...`
-              : "Ask anything or type / for Master Slash Commands..."
+              ? `Ask ${botDisplayName} anything…  @ to tag an agent`
+              : "Ask anything • / for commands • @ to tag an agent"
           }
           rows={1}
           aria-label="Message the agent"
+          aria-describedby={tagStatus ? "composer-tag-status" : undefined}
           className="w-full resize-none bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-muted-foreground max-h-48 text-foreground"
         />
+
+        {/* Tag status strip.
+
+            It renders only when the draft actually holds an `@token`, so "no
+            tags yet" and "a tag that addresses nobody" never look the same. The
+            dead-tag case is the one that matters: the server resolves an unknown
+            handle to nothing rather than to a near match, so the message would go
+            out and call nobody. Naming the reason is the only point at which the
+            operator can still fix it. */}
+        {tagStatus && (
+          <div id="composer-tag-status" className="mx-2 mb-1.5 flex items-center gap-2 flex-wrap text-[10.5px]">
+            {tagStatus.unresolved.length > 0 ? (
+              <>
+                <span className="inline-flex items-center gap-1 text-destructive font-medium">
+                  <X className="size-3" />
+                  {tagStatus.unresolved.length} tag{tagStatus.unresolved.length === 1 ? "" : "s"} address nobody
+                </span>
+                {tagStatus.unresolved.slice(0, 3).map((bad) => (
+                  <span key={bad.raw} className="text-muted-foreground">
+                    <code className="font-mono text-destructive">{bad.raw}</code>{" "}
+                    <span className="text-muted-foreground/80">{bad.reason}</span>
+                  </span>
+                ))}
+                {tagStatus.unresolved.length > 3 && (
+                  <span className="text-muted-foreground/70">+{tagStatus.unresolved.length - 3} more</span>
+                )}
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <Check className="size-3 text-primary" />
+                {tagStatus.resolvedHandles.length === 1
+                  ? `Tagging ${tagStatus.resolvedHandles[0]}`
+                  : `Tagging ${tagStatus.resolvedHandles.length} agents`}
+                {tagStatus.resolvedHandles.length > 0 && (
+                  <span className="text-muted-foreground/70 font-mono">
+                    {tagStatus.resolvedHandles.map((h) => `@${h}`).join(" ")}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between pt-2 border-t border-border/40 px-2 mt-1 gap-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
@@ -1105,6 +1428,10 @@ export function Composer({
           /
         </kbd>{" "}
         for commands •{" "}
+        <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">
+          @
+        </kbd>{" "}
+        to tag an agent •{" "}
         <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">
           Enter
         </kbd>{" "}

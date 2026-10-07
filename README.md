@@ -862,6 +862,42 @@ it sees that.
 
 → [Reasoning effort in docs/CONFIGURATION.md](docs/CONFIGURATION.md#reasoning-effort-thinking-depth)
 
+### Tagging an agent with `@`
+
+Type `@` in the chat composer and you get a live list of the AI agents in your
+roster. Pick one and it lands in the sentence wherever your cursor was —
+`ask @bo about the outage` works, not just a bare `@` on an empty line. `/` and
+`@` are independent, so both palettes keep working side by side.
+
+Three tag shapes, all written the way the Gateway's own mention parser reads
+them:
+
+| You type | It means |
+| :--- | :--- |
+| `@bo` → `Bob` | one agent, by handle |
+| `@role:` → `design` | every agent in that department, with the count shown |
+| `@everyone` | the whole roster |
+
+There is a second row set, **bot mode**, which does more than tag: it also
+re-points the current conversation at that agent, the same way picking one in
+the sidebar does. Tagging someone and switching to them are two different
+decisions, so the picker offers them as two rows instead of quietly doing both.
+
+**A tag that resolves to nobody is the failure worth knowing about.** The server
+deliberately refuses to guess: `@rev` does not match `reviewer`, because a
+near-match is how a message ends up on a bot you never named. A typo therefore
+means your message goes out and calls nobody — silently. The composer shows a
+strip naming the dead tag and the reason, before you send:
+
+```
+2 tags address nobody   @rev unknown handle; this tag addresses nobody.
+```
+
+If the roster itself cannot be read, the palette says so with the server's
+reason rather than claiming you have no agents.
+
+→ [Bot addressing in docs/WORKFORCE.md](docs/WORKFORCE.md)
+
 ---
 
 ## Documentation

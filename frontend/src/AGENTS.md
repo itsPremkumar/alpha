@@ -423,6 +423,78 @@ pins in `src/lib/collaboration-surfaces-honesty.test.mjs`.
 with the repo's own TypeScript compiler and renders the live Gateway payload, so
 "the panel will show this" is checkable without a browser.
 
+## `@` tag palette (composer)
+
+`lib/agent-mentions.ts` + the `@` branch of `components/Composer.tsx`. Type `@`
+anywhere in the composer to list the AI agents you can tag.
+
+**It is a mirror of the Gateway's ONE mention grammar**
+(`alpha.channels.mentions`), and the mirror has to be exact. That module's own
+docstring states the rule: a handle resolves **exactly** after case folding,
+never by prefix, substring or fuzzy match, because `@rev` silently landing on
+`reviewer` is how a message reaches a bot nobody named. So:
+
+- **Every token inserted is a token the server can resolve.** Insertion writes
+  the canonical `@bot:<handle>` / `@role:<name>` / `@everyone` spelling taken
+  from the roster row, **never the characters the operator typed**. That is what
+  lets `scoreRow` rank generously (exact > prefix > word-boundary > substring >
+  subsequence) without any match being able to write the wrong handle.
+- **Punctuation is not stripped.** `rev-1` and `rev_1` are different handles.
+- **The fan-out ceiling is 32** (`MAX_TARGETS_PER_MESSAGE`). A selector above it
+  renders *refused with the numbers*, never clamped.
+
+Four rules the trigger detection owns, each with a plausible wrong reading:
+
+| Situation | Why it must behave this way |
+| --- | --- |
+| `user@example.com` | Not a mention. The `@` needs a word boundary — start of input, or after whitespace/an opening delimiter. A picker that opens on every `@` is hijacking text it does not own. |
+| Caret moved back into an earlier token | The palette follows the caret, not the end of the value. It is derived from `selectionStart` on every event that can move it, because `/` deriving from the value start cannot work mid-sentence. |
+| `Escape` then typing more | Dismissal is **per-token, not sticky**. An `Escape` at the end of a sentence, with no palette open, must not disarm a token not yet finished. |
+| `@all` / `@everyone` | The fan-out selector, never a handle. An unknown bare token is still refused, never fanned out. |
+
+**Bot mode is a separate row set, not a side effect of insertion.** Tagging an
+agent and re-pointing the conversation at it are different decisions, so
+`buildMentionRows` emits a `mention` row *and* a `switch` row per agent. Both
+write the identical token, which is deliberate: a switch that fails to apply
+still leaves a visible, correctable tag. `onMentionSwitchAgent` is the gate — a
+surface without a handler gets **no** switch rows, and the active agent is never
+offered a switch back to itself. A control that could only be a no-op is not a
+control.
+
+**The status strip is not decoration.** The server resolves an unknown handle to
+*nothing*, so a typo means the message goes out and calls nobody, silently. The
+strip runs the same resolution client-side and names the dead token with the
+server's own reason before send. It renders **only** when the draft holds an
+`@token`, so "no tags yet" and "a tag that addresses nobody" never look alike.
+
+### What is mirrored, and what is not
+
+Mirrored: token charset, case folding (only), the `bot:`/`role:`/`everyone`
+selectors, the `all`/`everyone` aliases, exact resolution, the ceiling.
+
+**Not mirrored — roles are client-derived.** `buildMentionRows` groups by the
+roster's `department` column because that is a real column group rules also match
+against, but `GroupChatService.post_message` passes **no** role index to
+`parse_mentions` at all, so a `@role:` token addressed through a group room
+resolves to nothing server-side. The rows state how many agents they reach
+*locally* and never claim a dispatch. A **resolved handle is not a delivered
+run**, either — resolution is pure string work; only `switch` changes routing,
+because only that moves `assistant_id` / `bot_name`.
+
+`fetchBotsResult` exists for this surface: `fetchBots` returns `[]` on failure,
+which a picker would render as "no agents available" — a claim about the fleet
+that nothing measured. Four states render separately: loading, `unavailable`
+(with the server's reason), empty roster, and no-exact-match. A picker that
+quietly shows nothing is indistinguishable from a fleet with no agents.
+
+No lookbehind anywhere in the module — Safari below 16.4 cannot parse it and
+this is browser code.
+
+Coverage: `src/lib/agent-mentions.test.mjs` (35 cases, each paired against the
+server grammar, including a charset-parity test that runs both regexes over the
+same probes — the mirror drifting is the only failure mode this file can
+introduce).
+
 ## Honesty patterns to copy
 
 - A control that is off by default renders as off, with the reason it is off.

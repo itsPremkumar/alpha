@@ -52,6 +52,44 @@ The Workforce layer adds multi-agent collaboration, project management, and cont
 - **Execution**: Parallel bot execution, moderator synthesis
 - **Use case**: Complex tasks requiring diverse expertise
 
+### Addressing an agent with `@`
+
+One grammar, defined once in `alpha.channels.mentions`, decides who a message is
+addressed to. It applies wherever bots address each other — group rooms, IM
+channels, and the chat composer's `@` picker.
+
+```
+mention  := AT kind COLON body   -- explicit, unambiguous
+          | AT body              -- bare handle, resolved against the roster
+kind     := "bot" | "role" | "everyone"
+body     := one or more of [A-Za-z0-9_.-]
+```
+
+`@bot:researcher` · `@role:review` · `@everyone` (or `@all`).
+
+**A handle resolves exactly, or resolves to nothing.** Case folding only —
+never a prefix, substring or fuzzy match, because `@rev` silently landing on
+`reviewer` is precisely how a message reaches a bot nobody named. An unknown or
+ambiguous handle produces **no target** and reports why; it never falls through
+to a default speaker. Role and roster selectors must be explicit (`@role:`),
+because guessing which namespace a bare token belongs to is the other half of
+that ambiguity. Fan-out above 32 handles is refused rather than truncated.
+
+In the chat composer, typing `@` opens a live picker over `GET /api/bots` and
+writes the canonical spelling into the sentence at the caret. Three tag shapes
+are offered — one agent, a department, or the roster — plus a separate **bot
+mode** row set that re-points the current conversation at that agent rather than
+only mentioning it. Because resolution is silent when it fails, the composer
+previews it and names any tag that will address nobody before the message is
+sent.
+
+> `@role:` groups by each bot's `department` field. That index is derived
+> client-side: `GroupChatService.post_message` passes no role index to
+> `parse_mentions`, so a `@role:` token addressed **through a group room** has no
+> server-side role to resolve against today and resolves to nothing. A tag that
+> resolves is not a dispatched run either — only the bot-mode switch changes
+> routing, because that changes the run's `assistant_id` / `bot_name`.
+
 ## Bots System
 
 ### Bot Structure
