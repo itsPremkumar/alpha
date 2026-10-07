@@ -728,3 +728,38 @@ class TestAwrapModelCall:
         assert isinstance(injected, HumanMessage)
         assert injected.name == "todo_completion_reminder"
         assert injected.additional_kwargs["hide_from_ui"] is True
+
+
+class TestToolWrapperBindsItsOwnOriginal:
+    """Regression for the streaming wrapper's closure.
+
+    The wrapper is stored on the tool object and called long after the wrapping
+    loop has advanced. It must capture its *own* original function; closing over
+    the loop variable made every wrapped tool invoke the last tool's function as
+    soon as more than one tool carried a ``func``/``coroutine``.
+    """
+
+    class _FakeTool:
+        def __init__(self, name: str, calls: list[str]) -> None:
+            self.name = name
+            self._calls = calls
+            self.func = self._original
+
+        def _original(self) -> str:
+            self._calls.append(self.name)
+            return f"{self.name}-result"
+
+    def test_each_wrapped_tool_calls_its_own_original(self, monkeypatch):
+        monkeypatch.setattr(
+            "alpha.agents.middlewares.todo_middleware.emit_custom_event",
+            lambda *args, **kwargs: None,
+        )
+        calls: list[str] = []
+        mw = TodoMiddleware()
+        mw.tools = [self._FakeTool("alpha", calls), self._FakeTool("beta", calls)]
+
+        mw._wrap_todo_tool_for_streaming()
+
+        assert mw.tools[0].func() == "alpha-result"
+        assert mw.tools[1].func() == "beta-result"
+        assert calls == ["alpha", "beta"]

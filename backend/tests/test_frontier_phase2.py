@@ -7,15 +7,13 @@
 
 import json
 from pathlib import Path
-import tempfile
-import pytest
 
 from alpha.config.agent_preset_config import resolve_agent_preset
-from alpha.tools.builtins.visual_verification_tool import visual_verify_artifact
 from alpha.learning.reflexion import ReflexionEngine, get_reflexion_engine
-from alpha.tools.builtins.reflexion_tool import manage_reflexion_memory
-from alpha.state.handoff import SessionHandoffManager, SessionHandoffPackage, get_handoff_manager
+from alpha.state.handoff import SessionHandoffManager, SessionHandoffPackage
 from alpha.tools.builtins.boulder_checkpoint_tool import boulder_checkpoint_manage
+from alpha.tools.builtins.reflexion_tool import manage_reflexion_memory
+from alpha.tools.builtins.visual_verification_tool import visual_verify_artifact
 
 
 class TestAutopilotGatewayPresetResolution:
@@ -54,12 +52,9 @@ class TestVisualVerificationTool:
   <script>const ctx = document.getElementById('chart').getContext('2d');</script>
 </body>
 </html>""",
-            encoding="utf-8"
+            encoding="utf-8",
         )
-        res_raw = visual_verify_artifact.invoke({
-            "artifact_path": str(html_file),
-            "expected_elements": ["main-content", "chart"]
-        })
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(html_file), "expected_elements": ["main-content", "chart"]})
         res = json.loads(res_raw)
         assert res["passed"] is True
         assert res["score"] >= 80
@@ -87,15 +82,37 @@ class TestVisualVerificationTool:
 
     def test_verify_valid_svg_artifact(self, tmp_path: Path):
         svg_file = tmp_path / "graphic.svg"
-        svg_file.write_text(
-            '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="blue"/></svg>',
-            encoding="utf-8"
-        )
+        svg_file.write_text('<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="blue"/></svg>', encoding="utf-8")
         res_raw = visual_verify_artifact.invoke({"artifact_path": str(svg_file)})
         res = json.loads(res_raw)
         assert res["passed"] is True
         assert res["checks"]["valid_svg"] is True
         assert res["checks"]["viewbox_defined"] is True
+
+    def test_html_without_doctype_is_reported(self, tmp_path: Path):
+        """Regression: the doctype was matched but the result was discarded, so
+        the advertised "Check Doctype & HTML structure" never actually ran. An
+        artifact with <html>/<body> but no <!DOCTYPE html> must now be flagged
+        while `valid_html_structure` keeps its original meaning."""
+        html_file = tmp_path / "no_doctype.html"
+        html_file.write_text(
+            '<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><div class=\'c\'>hi</div></body></html>',
+            encoding="utf-8",
+        )
+        res = json.loads(visual_verify_artifact.invoke({"artifact_path": str(html_file)}))
+        assert res["checks"]["doctype_declared"] is False
+        assert res["checks"]["valid_html_structure"] is True
+        assert any("DOCTYPE" in w for w in res["warnings"])
+
+    def test_html_with_doctype_reports_it(self, tmp_path: Path):
+        html_file = tmp_path / "with_doctype.html"
+        html_file.write_text(
+            '<!DOCTYPE html>\n<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><div class=\'c\'>hi</div></body></html>',
+            encoding="utf-8",
+        )
+        res = json.loads(visual_verify_artifact.invoke({"artifact_path": str(html_file)}))
+        assert res["checks"]["doctype_declared"] is True
+        assert not any("DOCTYPE" in w for w in res["warnings"])
 
     def test_verify_unsupported_format_is_not_applicable(self, tmp_path: Path):
         """A non-visual file must never score 100/PASS from a mere non-empty check."""
@@ -122,12 +139,14 @@ class TestVisualVerificationTool:
   <div id="main-content">hello</div>
 </body>
 </html>""",
-            encoding="utf-8"
+            encoding="utf-8",
         )
-        res_raw = visual_verify_artifact.invoke({
-            "artifact_path": str(html_file),
-            "expected_elements": ["main-content", "sidebar-drawer"],
-        })
+        res_raw = visual_verify_artifact.invoke(
+            {
+                "artifact_path": str(html_file),
+                "expected_elements": ["main-content", "sidebar-drawer"],
+            }
+        )
         res = json.loads(res_raw)
         assert res["checks"]["expected_elements_present"] is False
         assert res["passed"] is False
@@ -147,7 +166,7 @@ class TestReflexionMemoryEngine:
             root_cause="Unquoted path with spaces executed in PowerShell without call operator",
             lesson="Always wrap paths containing spaces in quotes and use PowerShell call operator &",
             confidence=0.95,
-            workspace=str(tmp_path)
+            workspace=str(tmp_path),
         )
         assert entry.id is not None
         assert entry.problem_signature == "pytest_windows_path_error"
@@ -168,22 +187,21 @@ class TestReflexionMemoryEngine:
         get_reflexion_engine(db_path)
 
         # Record via tool
-        record_res = manage_reflexion_memory.invoke({
-            "action": "record",
-            "problem_signature": "git_detached_head_commit",
-            "observed_failure": "Commit made on detached HEAD lost after checkout",
-            "root_cause": "Direct git checkout of SHA instead of branch creation",
-            "lesson": "Always create a named candidate branch or micro-checkpoint before edits",
-            "confidence": 0.90
-        })
+        record_res = manage_reflexion_memory.invoke(
+            {
+                "action": "record",
+                "problem_signature": "git_detached_head_commit",
+                "observed_failure": "Commit made on detached HEAD lost after checkout",
+                "root_cause": "Direct git checkout of SHA instead of branch creation",
+                "lesson": "Always create a named candidate branch or micro-checkpoint before edits",
+                "confidence": 0.90,
+            }
+        )
         rec = json.loads(record_res)
         assert rec["status"] == "RECORDED"
 
         # Query via tool
-        query_res = manage_reflexion_memory.invoke({
-            "action": "query",
-            "query": "detached HEAD commit"
-        })
+        query_res = manage_reflexion_memory.invoke({"action": "query", "query": "detached HEAD commit"})
         q = json.loads(query_res)
         assert q["matches_found"] >= 1
         assert "git_detached_head_commit" in q["reflections"][0]["problem_signature"]
@@ -195,17 +213,11 @@ class TestSessionHandoffManager:
         pkg = SessionHandoffPackage(
             work_id="mission_alpha_01",
             task_objective="Architect enterprise gateway with zero false completion",
-            completed_milestones=[
-                {"step": "Setup AST Repo Mapper", "evidence": "Tested with ast.parse"},
-                {"step": "Implement FinishFirst Verifier", "evidence": "Tested with test_autopilot_and_verifier.py"}
-            ],
-            pending_milestones=[
-                "Build visual verification engine",
-                "Deploy frontend mode selector"
-            ],
+            completed_milestones=[{"step": "Setup AST Repo Mapper", "evidence": "Tested with ast.parse"}, {"step": "Implement FinishFirst Verifier", "evidence": "Tested with test_autopilot_and_verifier.py"}],
+            pending_milestones=["Build visual verification engine", "Deploy frontend mode selector"],
             active_hypotheses=["Visual verification detects broken layout bounds"],
             key_artifacts=["outputs/dashboard.html", "src/core/threads/hooks.ts"],
-            next_action="Build visual verification engine"
+            next_action="Build visual verification engine",
         )
         saved_file = mgr.save_handoff(pkg)
         assert saved_file.exists()
@@ -224,33 +236,16 @@ class TestSessionHandoffManager:
 
     def test_boulder_checkpoint_tool_handoff_actions(self, tmp_path: Path):
         custom_boulder_file = str(tmp_path / "boulder.json")
-        boulder_checkpoint_manage.invoke({
-            "action": "create",
-            "task": "Migrate system to frontier agent architecture",
-            "checklist": ["Design core tools", "Test integration", "Verify doctor"],
-            "custom_path": custom_boulder_file
-        })
-        boulder_checkpoint_manage.invoke({
-            "action": "update_step",
-            "step_index": 0,
-            "completed": True,
-            "evidence": "Tools implemented and exported",
-            "custom_path": custom_boulder_file
-        })
+        boulder_checkpoint_manage.invoke({"action": "create", "task": "Migrate system to frontier agent architecture", "checklist": ["Design core tools", "Test integration", "Verify doctor"], "custom_path": custom_boulder_file})
+        boulder_checkpoint_manage.invoke({"action": "update_step", "step_index": 0, "completed": True, "evidence": "Tools implemented and exported", "custom_path": custom_boulder_file})
 
         # Test create_handoff action
-        handoff_res = boulder_checkpoint_manage.invoke({
-            "action": "create_handoff",
-            "custom_path": custom_boulder_file
-        })
+        handoff_res = boulder_checkpoint_manage.invoke({"action": "create_handoff", "custom_path": custom_boulder_file})
         assert "Successfully created session handoff package" in handoff_res
         assert "<session_handoff_continuation>" in handoff_res
         assert "[x] Design core tools" in handoff_res
 
         # Test restore_handoff action
-        restore_res = boulder_checkpoint_manage.invoke({
-            "action": "restore_handoff",
-            "custom_path": custom_boulder_file
-        })
+        restore_res = boulder_checkpoint_manage.invoke({"action": "restore_handoff", "custom_path": custom_boulder_file})
         assert "<session_handoff_continuation>" in restore_res
         assert "Active Objective: Migrate system to frontier agent architecture" in restore_res

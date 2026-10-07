@@ -74,6 +74,42 @@ def _adopt_signature(wrapper: Callable[..., Any], original: Callable[..., Any]) 
         pass
 
 
+def _make_todo_streaming_wrapper(
+    original: Callable[..., Any],
+    publish: Callable[[Any], None],
+    find_todos: Callable[[tuple[Any, ...], dict[str, Any]], Any],
+) -> Callable[..., Any]:
+    """Build a sync wrapper that publishes the plan, then calls *original*.
+
+    ``original`` is taken as a *parameter*, never read from an enclosing loop
+    variable. The wrapper outlives the iteration that created it — it is stored
+    on the tool object and called later — so closing over a loop-scoped name
+    would make every wrapped tool invoke the *last* tool's function once more
+    than one tool is wrapped. Binding it here makes each wrapper call its own
+    original by construction.
+    """
+
+    def wrapped_func(*args: Any, **kwargs: Any) -> Any:
+        publish(find_todos(args, kwargs))
+        return original(*args, **kwargs)
+
+    return wrapped_func
+
+
+def _make_async_todo_streaming_wrapper(
+    original: Callable[..., Any],
+    publish: Callable[[Any], None],
+    find_todos: Callable[[tuple[Any, ...], dict[str, Any]], Any],
+) -> Callable[..., Any]:
+    """Async twin of :func:`_make_todo_streaming_wrapper`."""
+
+    async def wrapped_coroutine(*args: Any, **kwargs: Any) -> Any:
+        publish(find_todos(args, kwargs))
+        return await original(*args, **kwargs)
+
+    return wrapped_coroutine
+
+
 def _todos_in_messages(messages: list[Any]) -> bool:
     """Return True if any AIMessage in *messages* contains a write_todos tool call."""
     for msg in messages:
@@ -286,20 +322,12 @@ class TodoMiddleware(TodoListMiddleware):
                     logger.warning("failed to publish the todo plan to the stream", exc_info=True)
 
             if original_func is not None:
-
-                def wrapped_func(*args: Any, **kwargs: Any) -> Any:
-                    _publish(_find_todos(args, kwargs))
-                    return original_func(*args, **kwargs)
-
+                wrapped_func = _make_todo_streaming_wrapper(original_func, _publish, _find_todos)
                 _adopt_signature(wrapped_func, original_func)
                 tool.func = wrapped_func  # type: ignore[attr-defined]
 
             if original_coroutine is not None:
-
-                async def wrapped_coroutine(*args: Any, **kwargs: Any) -> Any:
-                    _publish(_find_todos(args, kwargs))
-                    return await original_coroutine(*args, **kwargs)
-
+                wrapped_coroutine = _make_async_todo_streaming_wrapper(original_coroutine, _publish, _find_todos)
                 _adopt_signature(wrapped_coroutine, original_coroutine)
                 tool.coroutine = wrapped_coroutine  # type: ignore[attr-defined]
 

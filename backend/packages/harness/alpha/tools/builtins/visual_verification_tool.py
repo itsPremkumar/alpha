@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 from langchain.tools import tool
 
@@ -64,7 +63,17 @@ def visual_verify_artifact(
         has_doctype = bool(re.search(r"<!DOCTYPE\s+html>", content, re.IGNORECASE))
         has_html_tags = bool(re.search(r"<html[\s>]", content, re.IGNORECASE)) and bool(re.search(r"</html>", content, re.IGNORECASE))
         has_body_tags = bool(re.search(r"<body[\s>]", content, re.IGNORECASE)) and bool(re.search(r"</body>", content, re.IGNORECASE))
+        # The doctype is part of "Check Doctype & HTML structure" above. It is
+        # reported as its own check rather than folded into valid_html_structure
+        # so an existing consumer that reads that key keeps its exact meaning,
+        # while the doctype finding stops being computed and then discarded.
+        checks["doctype_declared"] = has_doctype
         checks["valid_html_structure"] = has_html_tags and has_body_tags
+
+        if not has_doctype:
+            score -= 5
+            warnings.append("Missing <!DOCTYPE html> declaration; browsers may render the artifact in quirks mode.")
+            recommendations.append("Add <!DOCTYPE html> as the first line so the document renders in standards mode.")
 
         if not checks["valid_html_structure"]:
             score -= 20

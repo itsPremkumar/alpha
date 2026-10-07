@@ -35,8 +35,6 @@ from alpha.peer_network.invite import (
     parse_invite,
 )
 
-from alpha.peer_network.invite import INVITE_HOST, INVITE_PREFIX_HINT, INVITE_SCHEME, INVITE_VERSION, build_invite, parse_invite
-
 # `parents[0]` is `tests/`, so the repo root is two levels up from it.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_INVITE = REPO_ROOT / "frontend" / "src" / "lib" / "invite.ts"
