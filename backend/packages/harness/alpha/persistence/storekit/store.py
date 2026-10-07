@@ -738,11 +738,7 @@ class ScopedStore:
                     )
                 assert state.document is not None
                 raw_records = self._readable_records(state)
-                records = [
-                    self._deserialize_record(record)
-                    for record in raw_records
-                    if isinstance(record, Mapping)
-                ]
+                records = [self._deserialize_record(record) for record in raw_records if isinstance(record, Mapping)]
                 has_content = bool(records) if self.record_key is not None else bool(state.document.payload)
                 status = "succeeded" if has_content else "empty"
                 reason = state.reason if state.load_status == "migration_required" else ("scope_empty" if not has_content else "")
