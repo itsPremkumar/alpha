@@ -1,6 +1,6 @@
 """Regression anchor: the intelligence router must not block the event loop.
 
-``app.gateway.routers.intelligence`` exposes 17 read-only routes whose bodies
+``app.gateway.routers.intelligence`` exposes 21 read-only routes whose bodies
 read real state — ``get_app_config()`` parses a YAML file,
 ``LearningJournal`` opens and scans a JSONL file, ``ExpertFabric`` reads and
 validates a JSON document, and the regression coverage reads
@@ -81,6 +81,7 @@ async def test_intelligence_routes_stay_off_the_event_loop(tmp_path: Path, monke
         results: list[tuple[str, int]] = []
         for path in (
             "/api/intelligence/health",
+            "/api/intelligence/control-plane",
             "/api/intelligence/experts/expert_000001/prune-eligibility",
             "/api/intelligence/journal",
             "/api/intelligence/replay",

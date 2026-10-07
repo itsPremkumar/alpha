@@ -358,72 +358,40 @@ async def loop_health() -> dict[str, Any]:
     is read from a subsystem that already owns it, so this endpoint cannot become
     a seventh source of truth.
 
+    The composition itself lives in
+    :func:`alpha.intelligence.control_plane.build_loop_health_report`, which the
+    control plane calls too — one composition, one answer, so ``/health`` and
+    ``/control-plane`` cannot drift into two opinions about the same state.
+
     ``regime: "insufficient_data"`` is a first-class answer. A loop with no scored
     attempts has not been measured, and reporting ``"stable"`` there would be
     fabricated reassurance.
     """
-    from alpha.intelligence.config import intelligence_config
-    from alpha.intelligence.evaluator_stability import NoiseFloor
-    from alpha.intelligence.evidence_ledger import Subsystem, get_evidence_ledger
-    from alpha.intelligence.journal import LearningJournal
-    from alpha.intelligence.loop_health import SaturationDetector, assess_loop_health
+    from alpha.intelligence.control_plane import build_loop_health_report
     from alpha.intelligence.self_knowledge import get_self_knowledge
 
-    def build() -> Any:
-        # Synchronous on purpose: _read() runs it via asyncio.to_thread, so it
-        # must not itself be a coroutine. intelligence_config() parses a file, so
-        # it is read here in the worker thread rather than on the event loop. A
-        # config that will not parse must surface as a disclosed unavailability
-        # rather than a 500 that hides the health endpoint entirely.
-        try:
-            config = intelligence_config()
-        except Exception as exc:  # noqa: BLE001 - the disclosure IS the answer
-            return {
-                "report": {
-                    "regime": "insufficient_data",
-                    "reason": f"loop health could not be computed: {type(exc).__name__}: {exc}",
-                },
-                "required_subsystems": [],
-                "ledger": {},
-                "observed_events": 0,
-            }
-
-        ledger = get_evidence_ledger()
-        ledger.configure([Subsystem(name) for name in config.required_subsystems])
-        journal = LearningJournal()
-        entries, _corrupt = journal.recent(
-            kinds=("loop_observed", "pathway_verified", "noise_measured", "diversity_compared"),
-            limit=config.regression.max_retries * 4,
-        )
-        detector = SaturationDetector()
-        for entry in entries:
-            after = entry.event.after
-            if not isinstance(after, dict) or "improved" not in after:
-                continue
-            detector.observe(bool(after.get("improved")), gain=after.get("gain"))
-        report = assess_loop_health(
-            detector=detector,
-            noise=NoiseFloor(
-                metric="score",
-                floor=0.0,
-                samples=0,
-                observed=False,
-                reason="no stability probe has been run in this process yet; run measure_noise_floor() before trusting any delta",
-                source="unmeasured",
-            ),
-            convergence=None,
-            noise_floor_source=config.regression.noise_floor_source,
-        )
-        return {
-            "report": report.to_dict(),
-            "required_subsystems": list(config.required_subsystems),
-            "ledger": ledger.stats(),
-            "observed_events": len(entries),
-        }
-
-    result = await _read(build)
+    result = await _read(build_loop_health_report)
     mode = await _read(get_self_knowledge().mode)
     return {"mode": mode, **result}
+
+
+@router.get("/control-plane", summary="Composed intelligence status: mode, loop health, evidence, metrics")
+async def intelligence_control_plane() -> dict[str, Any]:
+    """One bounded read of every intelligence source, with per-source disclosure.
+
+    The P0 composition over the engines that already exist: mode, loop health,
+    evidence ledger, journal integrity, capability fabric, replay reservoir and
+    goal store, each in the ``{"available", "reason", "data"}`` envelope, plus
+    one metric list whose ``basis`` distinguishes ``measured`` from
+    ``unmeasured`` / ``unavailable`` / ``unowned``. A figure nobody measures is
+    declared with its owning subsystem, never defaulted to zero.
+
+    Read-only like every route in this router, and run through ``_read`` so the
+    config parse, journal scan and JSON reads stay off the event loop.
+    """
+    from alpha.intelligence.control_plane import build_control_plane
+
+    return await _read(build_control_plane)
 
 
 @router.get("/difficulty", summary="Estimate task difficulty and return the bounded compute plan")

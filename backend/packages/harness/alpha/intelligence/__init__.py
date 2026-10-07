@@ -133,6 +133,15 @@ __all__ = [
     # self-knowledge
     "SelfKnowledgeService",
     "get_self_knowledge",
+    # control plane
+    "SCHEMA_VERSION",
+    "SOURCE_SECTIONS",
+    "UNOWNED_METRICS",
+    "VALID_BASIS",
+    "MetricReading",
+    "UnownedMetric",
+    "build_control_plane",
+    "build_loop_health_report",
     # Phase A - pathway evidence
     "Mechanism",
     "PathwayEvidence",
@@ -314,6 +323,15 @@ _EXPORTS = {
     "replay_path": "replay",
     "should_continue_reasoning": "difficulty",
     "snapshot_dir": "snapshots",
+    # control plane
+    "MetricReading": "control_plane",
+    "SCHEMA_VERSION": "control_plane",
+    "SOURCE_SECTIONS": "control_plane",
+    "UNOWNED_METRICS": "control_plane",
+    "UnownedMetric": "control_plane",
+    "VALID_BASIS": "control_plane",
+    "build_control_plane": "control_plane",
+    "build_loop_health_report": "control_plane",
 }
 
 if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface

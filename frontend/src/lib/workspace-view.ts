@@ -43,6 +43,9 @@ export const WORKSPACE_VIEW_IDS = [
   // `workspace-nav.test.mjs` now pins this list against the tab list in both
   // directions so neither can drift again.
   "reliability",
+  // The intelligence control plane: `?view=intelligence` must resolve like
+  // every other id, so this list stays a sibling of the `WorkspaceView` union.
+  "intelligence",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];
