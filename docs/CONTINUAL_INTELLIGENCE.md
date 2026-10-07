@@ -416,6 +416,7 @@ filled in from a default that would read as a fact.
 | `GET /api/intelligence/snapshots` | stored snapshots |
 | `GET /api/intelligence/paging` | tiers and residency |
 | `GET /api/intelligence/difficulty` | estimate + compute plan |
+| `GET /api/intelligence/control-plane` | loop health + evidence + journal + replay + goals in one payload, every metric labelled `measured` / `unmeasured` / `unavailable` / `unowned` |
 
 **Read-only by design.** No route mutates intelligence state. The learning
 actions the brief describes (`dry-run`, `evaluate`, `snapshot`, `rollback`) are
@@ -440,7 +441,7 @@ about itself.
 | Cross-process journal | process-local, same as the swarm/workflow sinks — declared, not implied |
 | HTTP mutation routes | see §13 |
 | RSI promotion-path wiring | the evidence gate's own docstring marks this as unlanded; kept out of this change |
-| Frontend section | `pnpm test` globs `src/lib/*.test.mjs` only; a section without its own script + CI step silently never runs. The API is complete; the UI is not built. |
+| Frontend section | **Built.** `frontend/src/lib/intelligence.ts` + `components/sections/IntelligenceSection.tsx` render `GET /api/intelligence/control-plane` as the `intelligence` workspace view; the contract tests live at `src/lib/intelligence.test.mjs`, inside the `pnpm test` glob, so they run with the rest of the suite |
 
 ---
 

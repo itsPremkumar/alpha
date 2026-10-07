@@ -599,9 +599,17 @@ exactly-once execution.
   instruction-override and exfiltration patterns, a detected payload is redacted
   before it re-enters another participant's prompt, and an unaddressed match
   downgrades the run instead of letting it report a clean pass.
+- **Intelligence control plane** — open the **Intelligence** view to read loop
+  health, evidence ledger, journal integrity, replay reservoir and goal counts
+  in one panel (`GET /api/intelligence/control-plane`). Every metric travels
+  with its basis — `measured`, `unmeasured`, `unavailable` or `unowned` — so a
+  figure nobody measures (mission success, cost per success) shows the reason
+  it has no owner rather than a reassuring `0`, and an unreadable subsystem
+  shows its failure reason rather than an empty card.
 
 → [docs/COGNITIVE_ENGINES.md](docs/COGNITIVE_ENGINES.md) ·
-[docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md)
+[docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md) ·
+[docs/CONTINUAL_INTELLIGENCE.md](docs/CONTINUAL_INTELLIGENCE.md)
 </details>
 
 <details>

@@ -478,6 +478,70 @@ Coverage: `src/lib/apex.test.mjs` (menu derivation, the five chip states, the
 checkmark rule, and source pins for the re-read, the disclosure and the single
 composer mount).
 
+## Intelligence control panel (`intelligence` workspace view)
+
+`lib/intelligence.ts` + `components/sections/IntelligenceSection.tsx`, over
+`GET /api/intelligence/control-plane` — one payload carrying seven source
+sections (mode, loop health, evidence ledger, journal integrity, capability
+fabric, replay reservoir, goals), a `metrics[]` list and a `summary`. The
+`intelligence` id follows the four-place wiring rule (union, `WORKSPACE_TABS`
+row, `WORKSPACE_VIEW_IDS`, ChatView import + render case); the union entry sits
+*before* `reliability` because `reliability-view.test.mjs` pins that `reliability`
+stays the terminal member.
+
+The panel exists to answer "is the loop actually working, and what is each
+answer based on?" — so the **basis is the only thing that licenses a value**,
+and the client enforces the same rule the backend enforces at construction:
+
+- **The basis decides the value cell.** `metricValueText()` switches on the
+  basis before it ever looks at the number: a non-measured basis renders words
+  (unmeasured → `not measured`, unavailable → `source unavailable`, unowned →
+  `no aggregate owner`, unknown basis → `value not reported`, missing basis →
+  `basis not reported`). A `0` smuggled onto an `unavailable` metric renders
+  those words, not `0` — the backend already forces `value = null` there, and
+  this is the client's half of that pin. A measured `0` renders `0`; a measured
+  `null` renders `not reported`.
+- **Missing summary counts are `null`, never `0`.** The mapper returns `null`
+  for an absent count, and the view renders it as `—` with the counts line
+  saying what was not reported. An absent `metrics` list maps to `null`
+  (distinct from `[]`): "the Gateway sent no metric list" and "the list is
+  empty" are different facts and get different empty states.
+- **A section key missing from the payload becomes `available: false` with a
+  reason** — "the Gateway did not include this section in the payload" — so a
+  schema that dropped a section reads as unavailable rather than as a card
+  grid with a hole in it. A section the server marks unavailable renders the
+  server's own reason on the card, and every `SectionFacts` absence is words,
+  never a bare dash.
+- **`schema_version` is disclosed, not trusted.** A payload whose
+  `schema_version` differs from `CONTROL_PLANE_SCHEMA` (`alpha.control-plane.v1`)
+  raises a notice naming both strings instead of silently dropping fields it
+  does not recognise.
+- **The health badge is never green by default.** `healthStateTone()` maps
+  improving/stable → green, saturating → amber, regressing → red, and *every
+  other string* → gray; a missing health state renders `health state not
+  reported`. An unfamiliar regime from a newer Gateway renders verbatim in
+  gray rather than snapping to a state this build knows.
+- **The loop-health fallback keeps `scored_attempts` at `null`.** When the
+  report is the config-failure shape (`{regime, reason}`, no attempts field),
+  the reader maps the absent field to `null` — it must never read as `0`
+  scored attempts, which would claim the loop measured zero work rather than
+  that it could not measure.
+- **The client is read-only.** `fetchControlPlane()` imports `get` only, and
+  the test suite pins the single `GET /intelligence/control-plane` call plus a
+  source-level refusal of `send` — the intelligence router has no mutation
+  route, so a client that could post would be describing a surface the server
+  does not have.
+
+The section header carries the health badge and a Refresh button that disables
+in flight; a failed refresh keeps the previously read plane on screen with the
+error stated, never blanking measured data into an empty panel. Unavailable
+sources and the `unowned` metrics each get their own notice explaining *why*
+they have no number.
+
+Coverage: `src/lib/intelligence.test.mjs` (route/verb pin, read-only source
+pins, `SCHEMA_VERSION`/basis/section contract pins, envelope mapping including
+the omitted-section state, and the honesty inversions above).
+
 ## Subagent catalog panel (every field of a definition)
 
 `lib/subagents.ts` + `lib/subagent-catalog-view.ts` +

@@ -186,12 +186,59 @@ caller supplies `evidence` and no source attribution. Do not make it mandatory
 without migrating those callers first. When enabled, an unrecognised level is
 refused, not assumed safe.
 
+## Control plane (`control_plane.py`)
+
+`GET /api/intelligence/control-plane` is the one bounded read that answers "is
+the loop working, and what is each answer based on?" — seven source sections
+(`mode`, `loop_health`, `ledger`, `journal`, `capability_fabric`, `replay`,
+`goals`), a `metrics[]` list and a `summary`. The module owns two functions:
+`build_loop_health_report()` (extracted from the `/loop-health` route so the
+route and the panel cannot disagree) and `build_control_plane()`.
+
+Four rules decide every review:
+
+- **Every metric carries its basis, and the basis is the only thing that
+  licenses a value.** `VALID_BASIS` is `measured | unmeasured | unavailable |
+  unowned`, and `MetricReading.__post_init__` **forces `value = None`** for any
+  non-measured basis — a number smuggled onto an `unavailable` reading is
+  dropped at construction, not at render. P14 metrics with no aggregate owner
+  (mission success, cost per success, regression rate, …) ship as `unowned`
+  with a reason, never as a fabricated `0`.
+- **A reader that raises becomes an unavailable section, not a failed
+  payload.** Each section is `{available, reason, data}`; the exception text is
+  the reason. The honesty rule is symmetric: an unreadable source must never
+  read as an empty one, and one broken subsystem must not blank the six that
+  answered.
+- **Section build order is load-bearing.** The `loop_health` section is built
+  *before* `ledger` because that composition configures the ledger quorum as a
+  side effect; reordering them yields a ledger read taken before quorum and a
+  verdict nobody configured. Tests pin the order.
+- **`summary.health_state` is the report's `regime`, else `unknown`** — never a
+  default of `stable`. The regime wire values are
+  `improving/stable/saturating/regressing/insufficient_data`, and the
+  config-failure fallback report is `{regime, reason}` with **no**
+  `scored_attempts` field (absent, not `0`).
+
+Mission counts are deliberately **excluded** from `metrics[]`: `MissionStore`
+swallows load failures, so a count from it cannot be given an honest basis.
+Goal counts are included because `GoalStore` exposes `load_error` /
+`is_degraded` and the section reader raises on a degraded store. The eight new
+package exports ride `install_lazy_exports` (runtime `__all__` is overwritten
+with `sorted(_EXPORTS)`), pinned by `TestPackageExports`.
+
+The frontend consumer is `frontend/src/lib/intelligence.ts` +
+`IntelligenceSection.tsx` (the `intelligence` workspace view); its contract
+tests mirror `SCHEMA_VERSION` and `VALID_BASIS` so a rename on either side
+fails a test rather than a panel's card grid.
+
 ## Tests
 
 ```bash
 cd backend
 uv run pytest tests/test_intelligence_layer.py tests/test_intelligence_phases.py -q
 # 168 + 116 tests
+uv run pytest tests/test_intelligence_control_plane.py -q
+# 23 tests — schema, basis forcing, per-section refusal, summary, exports
 ```
 
 The class names map to the audit's "genuinely absent" list and then to the
