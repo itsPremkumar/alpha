@@ -24,8 +24,19 @@ import {
   submitDebateArgument,
   evaluateRFCGating,
 } from "@/lib/enterprise";
-import { Section, EmptyState, ErrorBox, StatCard, Btn, Badge, SkeletonList } from "@/components/ui";
+import { Section, EmptyState, ErrorBox, Notice, StatCard, Btn, Badge, SkeletonList } from "@/components/ui";
 import { GroupCoordinationPanel } from "@/components/sections/GroupCoordinationPanel";
+import {
+  sectionEmptyTitle,
+  sectionErrorTitle,
+  sectionHasData,
+  provenanceTone,
+  tabBadge,
+  TAB_SECTION,
+  WAR_ROOM_TABS,
+  type WarRoomSectionKey,
+  type WarRoomTabId,
+} from "@/lib/war-room-view";
 import { errMsg } from "@/lib/http";
 import {
   Activity,
@@ -48,19 +59,44 @@ import {
   Users,
 } from "lucide-react";
 
+/**
+ * Chip backgrounds for the provenance label.
+ *
+ * The *decision* — which tone a provenance earns — lives in
+ * `war-room-view.ts` so it can be tested; only the CSS lives here. Splitting
+ * them is what stops the tab bar and the test from disagreeing about whether
+ * "preview" is amber.
+ */
+const CHIP_CLASS: Record<string, string> = {
+  blue: "bg-blue-500/15 text-blue-500 dark:text-blue-400",
+  amber: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+};
+
+/** One icon per tab, so the bar reads as six destinations rather than six words. */
+const TAB_ICONS: Record<WarRoomTabId, React.ReactNode> = {
+  coordination: <Users className="size-4" />,
+  org_chart: <Building className="size-4" />,
+  rfcs: <FileCode className="size-4" />,
+  treasury: <Coins className="size-4" />,
+  missions: <GitBranch className="size-4" />,
+  council: <ShieldCheck className="size-4" />,
+};
+
 export function WarRoomSection() {
   // `coordination` is the default because it is the only tab that reports
   // measured execution. Everything below it is synthetic preview telemetry, so
   // landing on it first would put the least honest number in the header slot.
-  const [subTab, setSubTab] = useState<"coordination" | "org_chart" | "rfcs" | "treasury" | "missions" | "council">(
-    "coordination",
-  );
+  const [subTab, setSubTab] = useState<WarRoomTabId>("coordination");
   // The live room the coordination panel watches. Separate from the synthetic
   // enterprise views above, which have no room of their own.
   const [liveRoom, setLiveRoom] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One entry per section whose read failed, keyed by section. This is the
+  // shape that replaces a single `setError`: six routes, six independent
+  // outcomes, so one 404 cannot blank a tab that answered perfectly well.
+  const [sectionErrors, setSectionErrors] = useState<Partial<Record<WarRoomSectionKey, string>>>({});
 
   // Core Data States
   const [telemetry, setTelemetry] = useState<EnterpriseTelemetry | null>(null);
@@ -76,31 +112,58 @@ export function WarRoomSection() {
   const [newRfcProposal, setNewRfcProposal] = useState("");
   const [showRfcModal, setShowRfcModal] = useState(false);
 
+  /**
+   * Read every enterprise surface, each free to fail alone.
+   *
+   * The single `Promise.all` this replaced had two failure modes: one rejected
+   * route blanked all six, and because the treasury tab's body was gated on
+   * `treasury &&`, a null treasury rendered *nothing* — no error, no empty
+   * state, no skeleton. A blank panel is the worst possible answer to "what is
+   * the treasury?", because it is indistinguishable from a UI that never
+   * loaded. Each section now carries its own reason, and its own wording for
+   * "the server said there is nothing here".
+   */
   const loadAll = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [tel, hier, rfcList, treas, pipeline, rels] = await Promise.all([
-        fetchEnterpriseTelemetry(),
-        fetchEnterpriseHierarchy(),
-        fetchEnterpriseRFCs(),
-        fetchEnterpriseTreasury(),
-        fetchMissionPipeline(),
-        fetchCouncilReleases(),
-      ]);
+    setSectionErrors({});
 
-      if (tel) setTelemetry(tel);
-      if (hier) setHierarchy(hier);
-      setRfcs(rfcList);
-      if (rfcList.length > 0 && !selectedRfcId) setSelectedRfcId(rfcList[0].rfc_id);
-      if (treas) setTreasury(treas);
-      setSprints(pipeline?.sprints || []);
-      setReleases(rels);
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setLoading(false);
+    const [tel, hier, rfcList, treas, pipeline, rels] = await Promise.allSettled([
+      fetchEnterpriseTelemetry(),
+      fetchEnterpriseHierarchy(),
+      fetchEnterpriseRFCs(),
+      fetchEnterpriseTreasury(),
+      fetchMissionPipeline(),
+      fetchCouncilReleases(),
+    ]);
+
+    const failed: Partial<Record<WarRoomSectionKey, string>> = {};
+    const settle = <T,>(key: WarRoomSectionKey, result: PromiseSettledResult<T>) => {
+      if (result.status === "rejected") failed[key] = errMsg(result.reason);
+    };
+    settle("telemetry", tel);
+    settle("hierarchy", hier);
+    settle("rfcs", rfcList);
+    settle("treasury", treas);
+    settle("missions", pipeline);
+    settle("council", rels);
+    setSectionErrors(failed);
+
+    // A rejected read leaves the previous value in place rather than clearing
+    // it: this tab worked a moment ago, and "the newest attempt failed" is a
+    // different fact from "there is nothing here". The error beside it says
+    // which one the operator is looking at.
+    if (tel.status === "fulfilled") setTelemetry(tel.value);
+    if (hier.status === "fulfilled") setHierarchy(hier.value);
+    if (rfcList.status === "fulfilled") {
+      setRfcs(rfcList.value);
+      if (rfcList.value.length > 0 && !selectedRfcId) setSelectedRfcId(rfcList.value[0].rfc_id);
     }
+    if (treas.status === "fulfilled") setTreasury(treas.value);
+    if (pipeline.status === "fulfilled") setSprints(pipeline.value?.sprints || []);
+    if (rels.status === "fulfilled") setReleases(rels.value);
+
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -199,6 +262,22 @@ export function WarRoomSection() {
 
   const selectedRfc = rfcs.find((r) => r.rfc_id === selectedRfcId);
 
+  // Which independent read the open tab draws from, and whether that read has
+  // produced anything. Computed once so the tab bar, the status block and the
+  // body can never disagree about which of the three states applies.
+  const activeSection = TAB_SECTION[subTab];
+  const activeHasData =
+    activeSection == null
+      ? false
+      : sectionHasData(activeSection, {
+          telemetry,
+          hierarchy,
+          rfcs,
+          treasury,
+          sprints,
+          releases,
+        });
+
   return (
     <Section
       title="Enterprise War Room Preview"
@@ -218,6 +297,9 @@ export function WarRoomSection() {
       {error && <ErrorBox message={error} onRetry={loadAll} />}
 
       {/* Live Enterprise Telemetry Strip */}
+      {sectionErrors.telemetry && !telemetry && (
+        <ErrorBox message={`${sectionErrorTitle("telemetry")} — ${sectionErrors.telemetry}`} onRetry={() => void loadAll()} />
+      )}
       {telemetry && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <StatCard
@@ -227,7 +309,7 @@ export function WarRoomSection() {
           />
           <StatCard
             label="System Latency (p95)"
-            value={telemetry.system_latency_p95_ms == null ? "—" : `${telemetry.system_latency_p95_ms}ms`}
+            value={telemetry.system_latency_p95_ms == null ? "not recorded" : `${telemetry.system_latency_p95_ms}ms`}
             sub={telemetry.system_latency_p95_ms == null ? "No latency profile recorded yet" : "Synthetic preview; not measured latency"}
           />
           <StatCard
@@ -253,37 +335,84 @@ export function WarRoomSection() {
         </div>
       )}
 
-      {/* War Room Sub-Navigation Tabs */}
-      <div className="flex gap-1 border-b border-border/60 pb-2 overflow-x-auto">
-        {[
-          { id: "coordination", label: "Live Coordination", icon: <Users className="size-3.5" /> },
-          { id: "org_chart", label: "C-Suite & Org Tree", icon: <Building className="size-3.5" /> },
-          { id: "rfcs", label: "Blackboard & RFCs", icon: <FileCode className="size-3.5" /> },
-          { id: "treasury", label: "Fiscal Treasury", icon: <Coins className="size-3.5" /> },
-          { id: "missions", label: "Mission-to-Sprint DAG", icon: <GitBranch className="size-3.5" /> },
-          { id: "council", label: "Quality Council & Releases", icon: <ShieldCheck className="size-3.5" /> },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setSubTab(tab.id as any)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              subTab === tab.id
-                ? "bg-primary text-primary-foreground shadow"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
+      {/* War Room Sub-Navigation Tabs.
+          Each tab carries its provenance, because the bar is where an operator
+          decides what to trust — and before the chips, six visually identical
+          tabs hid that exactly one of them reads live execution. A tab whose
+          own read failed says so in the bar rather than rendering an empty body. */}
+      <div className="flex items-end gap-1.5 border-b border-border/60 pb-2 overflow-x-auto">
+        {WAR_ROOM_TABS.map((tab) => {
+          const active = subTab === tab.id;
+          const badge = tabBadge(tab.id, telemetry);
+          const section = TAB_SECTION[tab.id];
+          const unread = section != null && sectionErrors[section] != null;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSubTab(tab.id)}
+              title={tab.provenanceHint}
+              aria-current={active ? "page" : undefined}
+              className={`shrink-0 inline-flex flex-col items-start gap-1 px-3 py-2 rounded-xl text-left transition-colors ${
+                active
+                  ? "bg-primary text-primary-foreground shadow"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap">
+                {TAB_ICONS[tab.id]}
+                {tab.label}
+                {badge !== null && (
+                  <span
+                    className={`text-[9px] px-1.5 py-px rounded-full font-mono leading-relaxed ${
+                      active ? "bg-primary-foreground/25" : "bg-muted text-foreground/70"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span
+                  className={`text-[9px] px-1 py-px rounded font-bold uppercase tracking-wider ${
+                    active ? "bg-primary-foreground/20" : CHIP_CLASS[provenanceTone(tab.provenance)] ?? CHIP_CLASS.blue
+                  }`}
+                >
+                  {tab.provenanceLabel}
+                </span>
+                {unread && (
+                  <span className="text-[9px] px-1 py-px rounded font-bold uppercase tracking-wider bg-destructive/20 text-destructive">
+                    unread
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+        <p className="ml-auto pl-3 pb-1 text-[10px] text-muted-foreground whitespace-nowrap hidden md:block">
+          measured = live execution · preview = synthetic enterprise model
+        </p>
       </div>
 
       {subTab === "coordination" && <GroupCoordinationPanel room={liveRoom} onRoomChange={setLiveRoom} />}
 
-      {subTab !== "coordination" && loading && !hierarchy ? (
-        <SkeletonList rows={6} />
-      ) : subTab !== "coordination" ? (
+      {/* Three states, three renderings, for whichever preview tab is open.
+          Before this block they collapsed into one blank panel: a 404, a slow
+          read and a treasury with genuinely no rows all produced identical
+          whitespace, so "there is nothing" and "we do not know" were the same
+          picture. When the section *does* have data only the warning renders,
+          and the body below keeps the last confirmed read. */}
+      {activeSection && (
+        <SectionStatus
+          section={activeSection}
+          error={sectionErrors[activeSection] ?? null}
+          loading={loading}
+          hasData={activeHasData}
+          onRetry={() => void loadAll()}
+        />
+      )}
+
+      {subTab !== "coordination" ? (
         <>
           {/* TAB 1: C-Suite & Org Tree */}
           {subTab === "org_chart" && hierarchy && (
@@ -844,4 +973,51 @@ export function WarRoomSection() {
       ) : null}
     </Section>
   );
+}
+
+/**
+ * The status of whichever preview tab is open, resolved to one of four
+ * mutually exclusive renderings.
+ *
+ * The ordering is the whole point: a failed read is checked before "has data",
+ * because a section that answered before and failed now must show *both* the
+ * failure and its last good read — never just the data (which would hide that
+ * the newest attempt failed) and never just the failure (which would throw
+ * away a treasury the server already gave us).
+ */
+function SectionStatus(props: {
+  section: WarRoomSectionKey;
+  error: string | null;
+  loading: boolean;
+  hasData: boolean;
+  onRetry: () => void;
+}) {
+  const { section, error, loading, hasData } = props;
+
+  if (error && !hasData) {
+    return (
+      <ErrorBox
+        message={`${sectionErrorTitle(section)} — ${error}`}
+        onRetry={props.onRetry}
+      />
+    );
+  }
+
+  if (loading && !hasData) return <SkeletonList rows={6} />;
+
+  if (!hasData) {
+    return (
+      <EmptyState
+        title={sectionEmptyTitle(section)}
+        hint="The Gateway answered this read successfully and reported nothing to show."
+      />
+    );
+  }
+
+  return error ? (
+    <Notice
+      tone="warn"
+      message={`${sectionErrorTitle(section)} — ${error}. The panel below is the last read that succeeded, so it may be out of date.`}
+    />
+  ) : null;
 }

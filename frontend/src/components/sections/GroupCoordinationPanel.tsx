@@ -3,19 +3,32 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   activityBadge,
+  ASSIGNMENT_INTENTS,
+  ASSIGNMENT_KINDS,
+  assignmentProblems,
+  assignmentReceipt,
+  assignmentWarnings,
   ATTENTION_STATES,
   byUrgency,
+  claimExpiryView,
   claimsBySubject,
   conflictIndex,
+  createClaim,
+  DETAIL_MAX_LENGTH,
+  emptyAssignmentDraft,
   failureTitle,
   fetchGroupTree,
   fetchRoomCoordination,
   healthBadge,
+  lastReadView,
+  LIVE_POLL_MS,
   reclaimAffordance,
   reclaimClaim,
   reconcileRoom,
   releaseClaim,
   roomHeadline,
+  TTL_MAX_SECONDS,
+  type AssignmentDraft,
   type AgentActivity,
   type RoomCoordination,
   type SoftConflict,
@@ -23,7 +36,7 @@ import {
 } from "@/lib/group-coordination";
 import { Badge, Btn, EmptyState, ErrorBox, inputCls, Notice, StatCard } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { AlertTriangle, Hand, RefreshCw, ShieldAlert, Users } from "lucide-react";
+import { AlertTriangle, Hand, RefreshCw, Send, ShieldAlert, Users } from "lucide-react";
 
 /**
  * Live coordination for one room: who is doing what, and what is stuck.
@@ -49,6 +62,18 @@ import { AlertTriangle, Hand, RefreshCw, ShieldAlert, Users } from "lucide-react
  * 4. **A failed read is not an empty room.** Every panel here renders an
  *    `ErrorBox` naming the failure. It never degrades to "no agents, no
  *    claims, all clear".
+ * 5. **Watching work and starting work were not the same gap.** The panel
+ *    could release and reclaim a claim, but the one verb an operator needs —
+ *    *assign* — had no control, even though `POST /{name}/claims` and the
+ *    client for it both existed. The form below closes that: it writes a real
+ *    claim and then re-reads, so the board and the receipt describe the same
+ *    server-confirmed row.
+ * 6. **"Live" is a claim about the last successful read, not about the
+ *    toggle.** The interval keeps firing while reads fail, so a green LIVE dot
+ *    over a five-minute-old snapshot would be the exact lie `lastReadView`
+ *    exists to catch. A failed poll keeps the board it already has and says
+ *    which age it is showing, rather than blanking a room that was fine one
+ *    interval ago.
  */
 export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (room: string) => void }) {
   const [rooms, setRooms] = useState<string[]>([]);
@@ -58,41 +83,132 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
   const [receipt, setReceipt] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Live re-read state. `lastReadAt` only advances on a *successful* read, so
+  // the freshness chip reports the age of the data and never the age of the
+  // last attempt. `pollError` is kept apart from `error`: the first means "the
+  // board you are looking at is the last good one", the second means "we have
+  // nothing to show".
+  const [live, setLive] = useState(true);
+  const [lastReadAt, setLastReadAt] = useState<number | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+
+  // A 1s clock so lease countdowns and the freshness chip move without waiting
+  // for the next poll. Only ticks while there is a board to describe.
+  const [now, setNow] = useState(() => Date.now());
+
+  // The assignment draft. Separate from `receipt` so a refused write can never
+  // leave a half-cleared form behind.
+  const [draft, setDraft] = useState<AssignmentDraft>(emptyAssignmentDraft);
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
   // Discover rooms so this is a picker rather than a free-text box. A failure
   // here is not fatal: the operator may know the room name and type it, so the
   // panel stays usable and the room list simply stays empty.
   useEffect(() => {
-    let live = true;
+    let active = true;
     fetchGroupTree()
       .then((nodes) => {
-        if (!live) return;
+        if (!active) return;
         setRooms(nodes.map((n) => n.name).sort());
       })
       .catch(() => {
-        if (live) setRooms([]);
+        if (active) setRooms([]);
       });
     return () => {
-      live = false;
+      active = false;
     };
   }, []);
 
-  const load = useCallback(async () => {
-    if (!props.room) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setSnapshot(await fetchRoomCoordination(props.room));
-    } catch (err) {
-      setSnapshot(null);
-      setError(`${failureTitle(err)} — ${errMsg(err)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [props.room]);
+  // Land on a real room rather than an empty panel. The first visit used to
+  // stop at "No room selected" while holding the very list it would have
+  // picked from — a picker that declines to pick. This only ever *adds* a
+  // default: when rooms cannot be discovered the free-text path is unchanged.
+  useEffect(() => {
+    if (props.room || rooms.length === 0 || !props.onRoomChange) return;
+    props.onRoomChange(rooms[0]);
+  }, [rooms, props.room, props.onRoomChange]);
+
+  /**
+   * Read the room.
+   *
+   * The loud form clears the snapshot on failure because that is what runs
+   * when the *room* changes: keeping it would render the previous room's
+   * agents under the new room's name. The quiet form is the poll — it keeps
+   * the board it already has and reports the failure separately, because
+   * blanking a room that was fine one interval ago is worse than disclosing
+   * that the newest read is the oldest one.
+   */
+  const load = useCallback(
+    async (opts: { quiet?: boolean } = {}) => {
+      if (!props.room) return;
+      if (opts.quiet) {
+        try {
+          setSnapshot(await fetchRoomCoordination(props.room));
+          setError(null);
+          setPollError(null);
+          setLastReadAt(Date.now());
+        } catch (err) {
+          setPollError(`${failureTitle(err)} — ${errMsg(err)}`);
+        }
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      setPollError(null);
+      try {
+        setSnapshot(await fetchRoomCoordination(props.room));
+        setLastReadAt(Date.now());
+      } catch (err) {
+        setSnapshot(null);
+        setError(`${failureTitle(err)} — ${errMsg(err)}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [props.room],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The live re-read.
+  //
+  // Deliberately NOT gated on `document.visibilityState`. This surface is a
+  // war room: an operator who switches away for ten minutes and comes back
+  // wants the room they are looking at to be the room that exists, not the
+  // room that existed. Skipping hidden tabs buys a bounded amount of local
+  // work and costs exactly that. The freshness chip is what keeps this honest
+  // either way — if reads do start failing, it ages into `stale` and says so
+  // while the toggle stays on.
+  //
+  // Coming back to a tab that was hidden for a long stretch gets an immediate
+  // catch-up read rather than waiting out the remainder of an interval.
+  useEffect(() => {
+    if (!live || !props.room) return;
+    const id = window.setInterval(() => void load({ quiet: true }), LIVE_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load({ quiet: true });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [live, props.room, load]);
+
+  const hasSnapshot = snapshot != null;
+  useEffect(() => {
+    if (!hasSnapshot) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [hasSnapshot]);
+
+  const freshness = useMemo(() => lastReadView(lastReadAt, now), [lastReadAt, now]);
+  const roster = useMemo(() => (snapshot ? snapshot.agents.map((a) => a.bot_name) : []), [snapshot]);
+  const problems = useMemo(() => assignmentProblems(draft), [draft]);
+  const warnings = useMemo(() => assignmentWarnings(draft, roster), [draft, roster]);
 
   const headline = useMemo(() => (snapshot ? roomHeadline(snapshot) : null), [snapshot]);
   const conflicts = useMemo(() => (snapshot ? conflictIndex(snapshot) : new Map<string, SoftConflict>()), [snapshot]);
@@ -178,6 +294,47 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
   const groups = useMemo(() => (snapshot ? claimsBySubject(snapshot.claims) : []), [snapshot]);
   const orphanedCount = snapshot?.orphaned.length ?? 0;
 
+  /**
+   * Assign work to an agent.
+   *
+   * Two rules this handler is built around. The receipt is written from the
+   * *server's* response and only after the re-read that follows it, so the
+   * sentence and the board underneath it describe the same confirmed row —
+   * never the draft the operator typed. And the draft is only cleared on
+   * success: a 422 leaves every field exactly where it was, because a form
+   * that empties itself on failure loses the input the operator has to fix.
+   */
+  const onAssign = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!props.room || problems.length > 0 || assigning) return;
+      setAssigning(true);
+      setAssignError(null);
+      try {
+        const created = await createClaim(props.room, {
+          holder: draft.holder.trim(),
+          kind: draft.kind as WorkClaim["kind"],
+          subject: draft.subject.trim(),
+          intent: draft.intent as WorkClaim["intent"],
+          detail: draft.detail.trim(),
+          ttl_seconds: draft.ttl_seconds,
+        });
+        // Keep the holder: assigning three subjects to one bot is the common
+        // case, and re-typing it each time is friction with no honesty in it.
+        setDraft({ ...emptyAssignmentDraft(), holder: draft.holder });
+        setReceipt(assignmentReceipt(created, Date.now() / 1000));
+        await load();
+      } catch (err) {
+        // The Gateway's own 422 detail lands here verbatim — it names the
+        // field and the allowed values, which is more than "HTTP 422".
+        setAssignError(errMsg(err));
+      } finally {
+        setAssigning(false);
+      }
+    },
+    [props.room, problems.length, assigning, draft, load],
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -203,6 +360,35 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
               ))}
             </select>
           )}
+
+          {/* Freshness is reported from the age of the last *successful* read,
+              so this chip can never claim a recency the data does not have. A
+              stale board says so even while auto-refresh is switched on. */}
+          <Badge
+            tone={freshness.tone}
+            title={
+              lastReadAt == null
+                ? "No successful read has completed for this room yet"
+                : `Last successful read ${new Date(lastReadAt).toLocaleTimeString()}`
+            }
+          >
+            {live && !freshness.stale ? "● Live · " : ""}
+            {freshness.label}
+          </Badge>
+
+          <label
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2 py-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer select-none"
+            title={`Re-read this room every ${LIVE_POLL_MS / 1000}s while the tab is visible`}
+          >
+            <input
+              type="checkbox"
+              className="size-3 accent-primary"
+              checked={live}
+              onChange={(e) => setLive(e.target.checked)}
+            />
+            Auto-refresh
+          </label>
+
           <Btn variant="ghost" onClick={() => void load()} disabled={loading} title="Re-read the room">
             <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
             Refresh
@@ -232,6 +418,16 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
         <div className="space-y-4">
           {error && <ErrorBox message={error} onRetry={() => void load()} />}
           {receipt && <Notice message={receipt} />}
+          {/* A failed *poll* is not a failed read: the board below is the last
+              one the server confirmed, and this says so instead of blanking it. */}
+          {pollError && (
+            <Notice
+              tone="warn"
+              message={`Auto-refresh could not re-read this room — ${pollError}. The board still shows ${
+                lastReadAt == null ? "no confirmed read" : `the read from ${freshness.label.replace(/^read /, "")}`
+              }.`}
+            />
+          )}
 
           {loading && !snapshot ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -277,6 +473,18 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
                 </div>
               )}
 
+              <AssignWorkForm
+                room={props.room}
+                roster={roster}
+                draft={draft}
+                onDraft={setDraft}
+                problems={problems}
+                warnings={warnings}
+                assigning={assigning}
+                assignError={assignError}
+                onSubmit={(e) => void onAssign(e)}
+              />
+
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <ActivityColumn agents={snapshot.agents} />
                 <ClaimsColumn
@@ -284,6 +492,7 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
                   groups={groups}
                   conflicts={conflicts}
                   busy={busy}
+                  now={now}
                   onReclaim={(c) => void onReclaim(c)}
                   onRelease={(c) => void onRelease(c)}
                 />
@@ -293,6 +502,252 @@ export function GroupCoordinationPanel(props: { room: string; onRoomChange?: (ro
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The write half of this panel: record that an agent is taking a subject.
+ *
+ * Deliberately always open rather than tucked behind an "Add" button. The
+ * War Room could release and reclaim a claim but had no way to *create* one,
+ * so the one verb an operator needs was the one with no control — and a
+ * feature hidden behind a disclosure on a surface nobody had opened is the
+ * same as not shipping it.
+ *
+ * Three properties this form keeps:
+ *
+ * - **The problems render live, beside the control that produced them.** They
+ *   are a mirror of the Gateway's `ClaimRequest` bounds, so an operator is
+ *   told which field and which limit before a round trip. The Gateway stays
+ *   the authority: its 422 is rendered verbatim if the two ever disagree.
+ * - **A roster miss is a warning, not a block.** The store accepts any holder
+ *   string, so refusing here would invent a rule the server does not have.
+ *   It is disclosed because the claim would land with no member to match it.
+ * - **The TTL presets are bounds, not suggestions.** Each maps to a value the
+ *   server's `Field(gt=0, le=3600)` accepts, so no preset can produce a 422.
+ */
+function AssignWorkForm(props: {
+  room: string;
+  roster: string[];
+  draft: AssignmentDraft;
+  onDraft: (draft: AssignmentDraft) => void;
+  problems: { field: string; problem: string }[];
+  warnings: string[];
+  assigning: boolean;
+  assignError: string | null;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  const { draft, onDraft, problems } = props;
+  const set = (patch: Partial<AssignmentDraft>) => onDraft({ ...draft, ...patch });
+  const problemFor = (field: string) => problems.find((p) => p.field === field)?.problem ?? null;
+  const ttlPresets: { label: string; seconds: number }[] = [
+    { label: "2m", seconds: 120 },
+    { label: "10m", seconds: 600 },
+    { label: "30m", seconds: 1800 },
+    { label: "1h", seconds: 3600 },
+  ];
+
+  const row = "flex flex-col gap-1 min-w-0";
+
+  return (
+    <form
+      onSubmit={props.onSubmit}
+      className="rounded-xl border border-primary/25 bg-card/70 p-4 space-y-3"
+      aria-label="Assign work"
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+            <Send className="size-3.5 text-primary" aria-hidden="true" />
+            Assign work in {props.room}
+          </h4>
+          <p className="text-[11px] text-muted-foreground mt-0.5 max-w-2xl">
+            Records a real claim through <code className="font-mono">POST /api/groups/&#123;room&#125;/claims</code>. A claim
+            records intent to touch a subject — it is advisory, does not start a run, and never refuses two agents from
+            holding the same one. That overlap is reported as contested on the board below.
+          </p>
+        </div>
+        <Badge tone="blue" title="This control performs a real write against the Gateway">
+          real write
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={row}>
+          <label htmlFor="assign-holder" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Holder <span className="text-destructive">*</span>
+          </label>
+          <input
+            id="assign-holder"
+            name="holder"
+            list="assign-holder-options"
+            className={inputCls}
+            value={draft.holder}
+            placeholder="agent name"
+            onChange={(e) => set({ holder: e.target.value })}
+            aria-invalid={problemFor("holder") !== null}
+          />
+          <datalist id="assign-holder-options">
+            {props.roster.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          {problemFor("holder") && <p className="text-[10px] text-destructive">{problemFor("holder")}</p>}
+        </div>
+
+        <div className={row}>
+          <label htmlFor="assign-kind" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Kind
+          </label>
+          <select
+            id="assign-kind"
+            name="kind"
+            className={inputCls}
+            value={draft.kind}
+            onChange={(e) => set({ kind: e.target.value })}
+          >
+            {ASSIGNMENT_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
+          {problemFor("kind") && <p className="text-[10px] text-destructive">{problemFor("kind")}</p>}
+        </div>
+
+        <div className={row}>
+          <label htmlFor="assign-intent" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Intent
+          </label>
+          <select
+            id="assign-intent"
+            name="intent"
+            className={inputCls}
+            value={draft.intent}
+            onChange={(e) => set({ intent: e.target.value })}
+          >
+            {ASSIGNMENT_INTENTS.map((i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </select>
+          {problemFor("intent") && <p className="text-[10px] text-destructive">{problemFor("intent")}</p>}
+        </div>
+
+        <div className={row}>
+          <label htmlFor="assign-ttl" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Lease
+          </label>
+          <input
+            id="assign-ttl"
+            name="ttl_seconds"
+            type="number"
+            min={1}
+            max={TTL_MAX_SECONDS}
+            className={inputCls}
+            value={String(draft.ttl_seconds)}
+            onChange={(e) => set({ ttl_seconds: Number(e.target.value) })}
+          />
+          <div className="flex flex-wrap gap-1">
+            {ttlPresets.map((p) => (
+              <button
+                key={p.seconds}
+                type="button"
+                onClick={() => set({ ttl_seconds: p.seconds })}
+                className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                  draft.ttl_seconds === p.seconds
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border/60 text-muted-foreground hover:text-foreground"
+                }`}
+                title={`${p.seconds} seconds — within the ${1}s..${TTL_MAX_SECONDS}s the server accepts`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {problemFor("ttl_seconds") && <p className="text-[10px] text-destructive">{problemFor("ttl_seconds")}</p>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        <div className={row}>
+          <label htmlFor="assign-subject" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Subject <span className="text-destructive">*</span>
+            <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">
+              {draft.subject.length}/{2000}
+            </span>
+          </label>
+          <input
+            id="assign-subject"
+            name="subject"
+            className={inputCls}
+            value={draft.subject}
+            placeholder="what is being worked on — a file path, task id, or requirement"
+            onChange={(e) => set({ subject: e.target.value })}
+            aria-invalid={problemFor("subject") !== null}
+          />
+          {problemFor("subject") && <p className="text-[10px] text-destructive">{problemFor("subject")}</p>}
+        </div>
+
+        <div className={row}>
+          <label htmlFor="assign-detail" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Detail
+            <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">
+              {draft.detail.length}/{DETAIL_MAX_LENGTH}
+            </span>
+          </label>
+          <input
+            id="assign-detail"
+            name="detail"
+            className={inputCls}
+            value={draft.detail}
+            placeholder="optional — shown on the claim row"
+            maxLength={DETAIL_MAX_LENGTH + 1}
+            onChange={(e) => set({ detail: e.target.value })}
+            aria-invalid={problemFor("detail") !== null}
+          />
+          {problemFor("detail") && <p className="text-[10px] text-destructive">{problemFor("detail")}</p>}
+        </div>
+      </div>
+
+      {props.warnings.map((w) => (
+        <div key={w} className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="size-3 inline mr-1.5 -mt-0.5" aria-hidden="true" />
+          {w}
+        </div>
+      ))}
+
+      {props.assignError && <ErrorBox message={`Assignment refused — ${props.assignError}`} />}
+
+      <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-border/50">
+        <p className="text-[11px] text-muted-foreground">
+          {problems.length > 0
+            ? `${problems.length} field${problems.length === 1 ? "" : "s"} must be fixed before this can be sent.`
+            : "Sent as-is; the Gateway's own validation is the final word."}
+        </p>
+        <Btn
+          variant="primary"
+          type="submit"
+          disabled={props.assigning || !props.room || problems.length > 0}
+          title={
+            problems.length > 0
+              ? "Fix the fields listed above"
+              : `POST /api/groups/${props.room}/claims`
+          }
+        >
+          {props.assigning ? (
+            <>
+              <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" /> Assigning…
+            </>
+          ) : (
+            <>
+              <Send className="size-3.5" aria-hidden="true" /> Assign work
+            </>
+          )}
+        </Btn>
+      </div>
+    </form>
   );
 }
 
@@ -371,6 +826,8 @@ function ClaimsColumn(props: {
   groups: { subject: string; claims: WorkClaim[] }[];
   conflicts: Map<string, SoftConflict>;
   busy: string | null;
+  /** Epoch ms. Drives the lease countdown so an assigned claim visibly ages. */
+  now: number;
   onReclaim: (claim: WorkClaim) => void;
   onRelease: (claim: WorkClaim) => void;
 }) {
@@ -414,11 +871,22 @@ function ClaimsColumn(props: {
                   {group.claims.map((claim) => {
                     const affordance = reclaimAffordance(claim, props.conflicts.get(claim.claim_id) ?? conflict);
                     const working = props.busy === claim.claim_id;
+                    // Lease age, ticked by the panel's 1s clock. An assigned
+                    // claim visibly counts down, and an expired one says how
+                    // long ago rather than showing a stale "active".
+                    const expiry = claimExpiryView(claim, props.now / 1000);
+                    const expiryTitle =
+                      typeof claim.expires_at === "number" && Number.isFinite(claim.expires_at)
+                        ? `Lease ends ${new Date(claim.expires_at * 1000).toLocaleString()}`
+                        : "The server sent no expiry for this claim";
                     return (
                       <li key={claim.claim_id} className="flex items-center gap-2 flex-wrap text-[11px]">
                         <span className="font-semibold">{claim.holder}</span>
                         <Badge tone="gray" title={`Claim kind: ${claim.kind}`}>
                           {claim.intent}
+                        </Badge>
+                        <Badge tone={expiry.tone} title={expiryTitle}>
+                          {expiry.label}
                         </Badge>
                         {claim.state !== "active" && (
                           <Badge tone={claim.state === "orphaned" ? "red" : "gray"} title={JSON.stringify(claim.orphan_evidence ?? {})}>

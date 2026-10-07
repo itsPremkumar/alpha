@@ -16,11 +16,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  ASSIGNMENT_INTENTS,
+  ASSIGNMENT_KINDS,
   activityBadge,
+  assignmentProblems,
+  assignmentReceipt,
+  assignmentWarnings,
   byUrgency,
+  claimExpiryView,
   claimsBySubject,
+  durationLabel,
+  emptyAssignmentDraft,
   failureTitle,
   healthBadge,
+  lastReadView,
   reclaimAffordance,
   roomHeadline,
 } from "./group-coordination-model.ts";
@@ -248,4 +257,167 @@ test("a failed read gets a specific title, never a generic one", () => {
   assert.match(failureTitle(new Error("Failed to fetch")), /Could not reach the Gateway/);
   assert.match(failureTitle(new Error("The operation was aborted")), /cancelled/i);
   assert.match(failureTitle(new Error("boom")), /Could not load coordination/);
+});
+
+// ── Work assignment ─────────────────────────────────────────────────────────────
+
+/**
+ * The assign form mirrors `POST /api/groups/{name}/claims`. Every bound below
+ * is the server's own: if this mirror drifts, the form either offers what the
+ * Gateway 422s on or hides a claim the Gateway would have taken.
+ */
+test("the assignment vocabulary is the server's, not the client's", () => {
+  assert.deepEqual([...ASSIGNMENT_KINDS], ["file", "dir", "symbol", "task", "artifact", "requirement"]);
+  assert.deepEqual([...ASSIGNMENT_INTENTS], ["reading", "editing", "reviewing"]);
+});
+
+test("a blank draft starts on the server's own defaults", () => {
+  const draft = emptyAssignmentDraft();
+  assert.equal(draft.holder, "");
+  assert.equal(draft.subject, "");
+  assert.equal(draft.ttl_seconds, 120);
+  assert.equal(draft.kind, "task");
+  assert.equal(draft.intent, "editing");
+  // Nothing filled in, so nothing may be submitted yet.
+  const fields = assignmentProblems(draft).map((p) => p.field);
+  assert.ok(fields.includes("holder"));
+  assert.ok(fields.includes("subject"));
+  assert.ok(!fields.includes("kind"));
+  assert.ok(!fields.includes("intent"));
+  assert.ok(!fields.includes("ttl_seconds"));
+});
+
+test("every assignment problem names its field, so the message can sit beside the control", () => {
+  const problems = assignmentProblems({
+    ...emptyAssignmentDraft(),
+    holder: "x".repeat(65),
+    subject: "y".repeat(2001),
+    detail: "z".repeat(501),
+    kind: "portal",
+    intent: "destroying",
+    ttl_seconds: 4000,
+  });
+  const fields = new Set(problems.map((p) => p.field));
+  for (const expected of ["holder", "subject", "detail", "kind", "intent", "ttl_seconds"]) {
+    assert.ok(fields.has(expected), `expected a problem for ${expected}, got ${[...fields].join(", ")}`);
+  }
+  for (const p of problems) assert.ok(p.problem.length > 0, `${p.field} has an empty message`);
+});
+
+test("a claim with no holder would record nothing, and says so before the round trip", () => {
+  const problems = assignmentProblems({ ...emptyAssignmentDraft(), holder: "   ", subject: "src/api.py" });
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0].field, "holder");
+  assert.match(problems[0].problem, /hold it/);
+});
+
+test("the ttl mirror refuses both ends of the server's open interval", () => {
+  const base = { ...emptyAssignmentDraft(), holder: "scout", subject: "a" };
+  // Field(gt=0, le=3600): zero is refused as firmly as an hour and a half.
+  for (const ttl of [0, -5, 3601, Number.NaN]) {
+    const problems = assignmentProblems({ ...base, ttl_seconds: ttl });
+    assert.ok(
+      problems.some((p) => p.field === "ttl_seconds"),
+      `ttl ${ttl} should be refused`,
+    );
+  }
+  for (const ttl of [1, 120, 3600]) {
+    assert.deepEqual(assignmentProblems({ ...base, ttl_seconds: ttl }), []);
+  }
+});
+
+test("a holder outside the roster is a warning, never a refusal", () => {
+  // The store accepts any non-empty string, so refusing here would be the
+  // client inventing a rule the server does not have. The disclosure is about
+  // what happens *after*: the claim lands with nobody to match it.
+  const draft = { ...emptyAssignmentDraft(), holder: "ghost", subject: "src/api.py" };
+  const warnings = assignmentWarnings(draft, ["architect", "coder", "reviewer", "tester"]);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /ghost is not in this room's roster/);
+  assert.match(warnings[0], /architect, coder, reviewer, tester/);
+  assert.match(warnings[0], /will be recorded/);
+});
+
+test("a roster holder, and an unknown roster, raise no warning", () => {
+  assert.deepEqual(assignmentWarnings({ ...emptyAssignmentDraft(), holder: "coder", subject: "a" }, ["coder", "ghost"]), []);
+  // An unreadable roster means we do not know — not that the holder is absent.
+  assert.deepEqual(assignmentWarnings({ ...emptyAssignmentDraft(), holder: "anyone", subject: "a" }, []), []);
+});
+
+test("the receipt is written from the server's response, not from the draft", () => {
+  const now = 1_000_000;
+  const receipt = assignmentReceipt(
+    claim({ holder: "reviewer", subject: "war-room-ui-refresh", kind: "task", intent: "editing", expires_at: now + 600 }),
+    now,
+  );
+  assert.match(receipt, /^reviewer holds "war-room-ui-refresh" — editing task, expires in 10m\.$/);
+});
+
+test("a claim the server did not confirm as live never claims a hold", () => {
+  const receipt = assignmentReceipt(claim({ live: false, state: "expired" }), 0);
+  assert.match(receipt, /nobody is holding it/);
+  assert.doesNotMatch(receipt, /holds "src\/api\.py"/);
+});
+
+test("an expiry the server never sent is reported, never read as forever", () => {
+  const view = claimExpiryView(claim({ expires_at: Number.NaN }), 1000);
+  assert.equal(view.label, "expiry not reported");
+  assert.equal(view.tone, "gray");
+});
+
+test("a live lease counts down and tightens to amber in its last 30s", () => {
+  const now = 1000;
+  assert.deepEqual(claimExpiryView(claim({ expires_at: now + 600 }), now), { label: "expires in 10m", tone: "green" });
+  assert.deepEqual(claimExpiryView(claim({ expires_at: now + 45 }), now), { label: "expires in 45s", tone: "green" });
+  assert.deepEqual(claimExpiryView(claim({ expires_at: now + 10 }), now), { label: "expires in 10s", tone: "amber" });
+});
+
+test("an expired claim reports how long ago, and stops counting", () => {
+  const view = claimExpiryView(claim({ state: "expired", expires_at: 1000 }), 1600);
+  assert.equal(view.label, "expired 10m ago");
+  assert.equal(view.tone, "gray");
+  // Just-expired does not read as "0s remaining", which looks like a full lease.
+  assert.equal(claimExpiryView(claim({ expires_at: 1000 }), 1000.4).label, "expired just now");
+});
+
+test("durationLabel distinguishes a sub-second value from a zero", () => {
+  assert.equal(durationLabel(0.4), "<1s");
+  assert.equal(durationLabel(0), "<1s");
+  assert.equal(durationLabel(42), "42s");
+  assert.equal(durationLabel(600), "10m");
+  assert.equal(durationLabel(630), "10m 30s");
+  assert.equal(durationLabel(3600), "1h");
+  assert.equal(durationLabel(5400), "1h 30m");
+  // Nonsense input is "not reported", not a number someone could mistake for a reading.
+  assert.equal(durationLabel(-1), "not reported");
+  assert.equal(durationLabel(Number.NaN), "not reported");
+});
+
+// ── Live freshness ─────────────────────────────────────────────────────────────
+
+test("a room never read says so rather than reading as just-read", () => {
+  const view = lastReadView(null, 10_000);
+  assert.equal(view.label, "no read yet");
+  assert.equal(view.stale, true);
+  assert.equal(view.tone, "gray");
+});
+
+test("a fresh read is green and an aged one is disclosed as stale", () => {
+  const now = 60_000;
+  assert.deepEqual(lastReadView(now - 200, now), { label: "read just now", tone: "green", stale: false });
+  assert.deepEqual(lastReadView(now - 4_000, now), { label: "read 4s ago", tone: "green", stale: false });
+  // Past two poll intervals the LIVE toggle is still on while the reads are
+  // failing — the one healthy-looking case that can still be lying.
+  const stale = lastReadView(now - 11_000, now);
+  assert.equal(stale.stale, true);
+  assert.equal(stale.tone, "amber");
+  assert.match(stale.label, /read 11s ago/);
+});
+
+test("the staleness threshold is two poll intervals, stated in the module", async () => {
+  const { LIVE_POLL_MS } = await import("./group-coordination-model.ts");
+  assert.equal(LIVE_POLL_MS, 5000);
+  const now = 100_000;
+  assert.equal(lastReadView(now - LIVE_POLL_MS * 2, now).stale, true);
+  assert.equal(lastReadView(now - LIVE_POLL_MS * 2 + 1, now).stale, false);
 });

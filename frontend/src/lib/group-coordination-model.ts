@@ -275,3 +275,205 @@ export function failureTitle(error: unknown): string {
   if (/network|fetch|failed to fetch/i.test(message)) return "Could not reach the Gateway";
   return "Could not load coordination";
 }
+
+// ── Work assignment ─────────────────────────────────────────────────────────
+//
+// The War Room can *release* and *reclaim* a claim, but until now it could not
+// create one — so "assign work" was the one verb an operator could not perform
+// from the surface built to watch work. These helpers mirror the request
+// contract of `POST /api/groups/{name}/claims` so the form can explain a
+// refusal before it sends, while the Gateway stays the authority: its 422 is
+// still rendered verbatim if the mirror and the server ever disagree.
+
+/** The server's own vocabulary. `create_claim` 422s on anything outside it. */
+export const ASSIGNMENT_KINDS = ["file", "dir", "symbol", "task", "artifact", "requirement"] as const;
+
+export const ASSIGNMENT_INTENTS = ["reading", "editing", "reviewing"] as const;
+
+/** Bounds mirrored from the `ClaimRequest` model. */
+export const HOLDER_MAX_LENGTH = 64;
+export const SUBJECT_MAX_LENGTH = 2000;
+export const DETAIL_MAX_LENGTH = 500;
+/** `ttl_seconds: Field(default=120.0, gt=0, le=3600)` — an open-ended claim never expires. */
+export const TTL_MIN_SECONDS = 1;
+export const TTL_MAX_SECONDS = 3600;
+export const TTL_DEFAULT_SECONDS = 120;
+
+export interface AssignmentDraft {
+  holder: string;
+  kind: string;
+  subject: string;
+  intent: string;
+  detail: string;
+  ttl_seconds: number;
+}
+
+/** A blank draft. The kind and intent start on the server's own defaults. */
+export function emptyAssignmentDraft(): AssignmentDraft {
+  return {
+    holder: "",
+    kind: "task",
+    subject: "",
+    intent: "editing",
+    detail: "",
+    ttl_seconds: TTL_DEFAULT_SECONDS,
+  };
+}
+
+export interface AssignmentProblem {
+  /** Matches the form control's `name`, so the message can be rendered beside it. */
+  field: string;
+  problem: string;
+}
+
+/**
+ * Blocking problems, each naming the field and the bound it broke.
+ *
+ * This is a pre-flight mirror, never a gate on its own: the form stays
+ * submittable and the server's own 422 is what actually decides. The point is
+ * that an operator gets told *which field* and *which limit* before a round
+ * trip, instead of "Request failed (HTTP 422)".
+ */
+export function assignmentProblems(draft: AssignmentDraft): AssignmentProblem[] {
+  const problems: AssignmentProblem[] = [];
+  const holder = draft.holder.trim();
+  const subject = draft.subject.trim();
+
+  if (!holder) {
+    problems.push({ field: "holder", problem: "a claim needs an agent to hold it" });
+  } else if (holder.length > HOLDER_MAX_LENGTH) {
+    problems.push({
+      field: "holder",
+      problem: `${holder.length} characters — the server accepts at most ${HOLDER_MAX_LENGTH}`,
+    });
+  }
+
+  if (!subject) {
+    problems.push({ field: "subject", problem: "name what is being worked on" });
+  } else if (subject.length > SUBJECT_MAX_LENGTH) {
+    problems.push({
+      field: "subject",
+      problem: `${subject.length} characters — the server accepts at most ${SUBJECT_MAX_LENGTH}`,
+    });
+  }
+
+  if (draft.detail.length > DETAIL_MAX_LENGTH) {
+    problems.push({
+      field: "detail",
+      problem: `${draft.detail.length} characters — the server accepts at most ${DETAIL_MAX_LENGTH}`,
+    });
+  }
+
+  if (!ASSIGNMENT_KINDS.includes(draft.kind as (typeof ASSIGNMENT_KINDS)[number])) {
+    problems.push({ field: "kind", problem: `"${draft.kind}" is not one of ${ASSIGNMENT_KINDS.join(", ")}` });
+  }
+
+  if (!ASSIGNMENT_INTENTS.includes(draft.intent as (typeof ASSIGNMENT_INTENTS)[number])) {
+    problems.push({ field: "intent", problem: `"${draft.intent}" is not one of ${ASSIGNMENT_INTENTS.join(", ")}` });
+  }
+
+  const ttl = draft.ttl_seconds;
+  if (typeof ttl !== "number" || !Number.isFinite(ttl) || ttl <= 0 || ttl > TTL_MAX_SECONDS) {
+    problems.push({
+      field: "ttl_seconds",
+      problem: `${String(ttl)}s is outside the ${TTL_MIN_SECONDS}s..${TTL_MAX_SECONDS}s the server accepts`,
+    });
+  }
+
+  return problems;
+}
+
+/**
+ * Non-blocking disclosures — things the server will happily record that would
+ * nevertheless mislead an operator reading the board back.
+ *
+ * Deliberately separate from `assignmentProblems`: an unknown holder is *legal*
+ * (the store takes any string) and refusing it would be the client inventing a
+ * rule the server does not have. It is a warning because the claim would land
+ * with no member of this room to match it.
+ */
+export function assignmentWarnings(draft: AssignmentDraft, roster: string[]): string[] {
+  const holder = draft.holder.trim();
+  if (!holder || roster.length === 0) return [];
+  if (roster.includes(holder)) return [];
+  return [
+    `${holder} is not in this room's roster (${roster.join(", ")}) — the claim will be recorded, but no member of this room will match it.`,
+  ];
+}
+
+/**
+ * The receipt after the server has confirmed a claim.
+ *
+ * Written from the *response*, never from the draft: an optimistic sentence
+ * built from what the operator typed is exactly the unconfirmed success this
+ * surface must not paint. A claim that came back not-live says so rather than
+ * claiming a hold the server did not record.
+ */
+export function assignmentReceipt(claim: WorkClaim, nowSeconds: number): string {
+  const expiry = claimExpiryView(claim, nowSeconds);
+  if (!claim.live) {
+    return `"${claim.subject}" was recorded for ${claim.holder} as ${claim.state}, so nobody is holding it right now.`;
+  }
+  return `${claim.holder} holds "${claim.subject}" — ${claim.intent} ${claim.kind}, ${expiry.label}.`;
+}
+
+/**
+ * When a claim's lease runs out, in words.
+ *
+ * `expires_at` is epoch **seconds** (verified against the live Gateway: a
+ * 600s claim wrote `created_at` and `expires_at` 600 apart). An absent or
+ * non-finite expiry is "not reported" — never rendered as never-expiring,
+ * which is the one reading that would leave an operator trusting a dead lease.
+ */
+export function claimExpiryView(claim: WorkClaim, nowSeconds: number): { label: string; tone: BadgeTone } {
+  if (typeof claim.expires_at !== "number" || !Number.isFinite(claim.expires_at)) {
+    return { label: "expiry not reported", tone: "gray" };
+  }
+  const remaining = claim.expires_at - nowSeconds;
+  if (claim.state === "expired" || remaining <= 0) {
+    const over = Math.max(0, -remaining);
+    return { label: over < 1 ? "expired just now" : `expired ${durationLabel(over)} ago`, tone: "gray" };
+  }
+  return { label: `expires in ${durationLabel(remaining)}`, tone: remaining <= 30 ? "amber" : "green" };
+}
+
+/** Compact duration. Sub-second input renders as `<1s`, never `0s`. */
+export function durationLabel(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "not reported";
+  if (seconds < 1) return "<1s";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/** How often a live room re-reads itself while the toggle is on. */
+export const LIVE_POLL_MS = 5000;
+
+/**
+ * How old the coordination read on screen is.
+ *
+ * A "live" board whose last successful read is older than two poll intervals
+ * is the one healthy-looking case that can still be lying: the toggle stays on
+ * while the reads fail, and a green LIVE dot over a five-minute-old snapshot
+ * is the failure this discloses. `null` is "no read yet", which is a different
+ * claim from "read a moment ago" and gets its own grey word.
+ */
+export function lastReadView(
+  lastReadAtMs: number | null,
+  nowMs: number,
+): { label: string; tone: BadgeTone; stale: boolean } {
+  if (lastReadAtMs == null || !Number.isFinite(lastReadAtMs)) {
+    return { label: "no read yet", tone: "gray", stale: true };
+  }
+  const age = nowMs - lastReadAtMs;
+  const ago = age < 1000 ? "just now" : durationLabel(age / 1000);
+  const label = ago === "just now" ? "read just now" : `read ${ago} ago`;
+  const stale = age >= LIVE_POLL_MS * 2;
+  return { label, tone: stale ? "amber" : "green", stale };
+}
