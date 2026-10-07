@@ -47,7 +47,7 @@ def main() -> int:
         shown = json.dumps(val, default=str)
         print(f"  {key:26} {shown[:70]}")
 
-    print(f"\n=== every task ===")
+    print("\n=== every task ===")
     for tid, t in tasks.items():
         print(
             f"  {tid:18} status={str(t.get('status')):11} worker={str(t.get('assigned_worker')):12} "

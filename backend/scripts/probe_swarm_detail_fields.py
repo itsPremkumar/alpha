@@ -13,7 +13,6 @@ Read-only. No swarm is created, started, paused or cancelled.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 

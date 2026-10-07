@@ -43,7 +43,10 @@ def main() -> int:
         tar_path = os.path.join(tmp, "tree.tar")
         r = subprocess.run(
             ["git", "archive", "--format=tar", "-o", tar_path, "HEAD"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if r.returncode != 0:
             print(f"FAIL  git archive: {r.stderr[:200]}")
