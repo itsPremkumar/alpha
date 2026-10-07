@@ -58,6 +58,8 @@ import {
 import {
   buildSlashCommandPalette,
   describePalette,
+  splitRunnableRows,
+  runnableHeadline,
   type PaletteCommand,
 } from "@/lib/slash-command-palette";
 
@@ -420,19 +422,28 @@ export function Composer({
   }, []);
 
   // Unified command source: backend registry wins, prop shortcuts fill gaps.
+  //
+  // The prop rows carry the registry's own `command` spelling (leading slash
+  // included) under `name`, so the prefix is stripped before comparing and
+  // re-added exactly once. Without this every prop row missed the `seen` set
+  // and the palette listed the whole registry twice, the copy as `//about`.
   const mergedCommands = useMemo(() => {
     const seen = new Set(availableCommands.map((c) => c.command.toLowerCase()));
-    const extra: SlashCommandInfo[] = (slashCommands || [])
-      .filter((c) => !seen.has(`/${c.name}`.toLowerCase()))
-      .map((c) => ({
-        command: `/${c.name}`,
+    const extra: SlashCommandInfo[] = [];
+    for (const c of slashCommands || []) {
+      const bare = c.name.replace(/^\/+/, "");
+      if (!bare || seen.has(`/${bare}`.toLowerCase())) continue;
+      seen.add(`/${bare}`.toLowerCase());
+      extra.push({
+        command: `/${bare}`,
         category: c.category || "general",
         description: c.description || "Run this shortcut",
-        usage: c.usage || `/${c.name}`,
+        usage: c.usage || `/${bare}`,
         is_core: false,
         is_autonomous_trigger: false,
         requires_approval: false,
-      }));
+      });
+    }
     return [...availableCommands, ...extra];
   }, [availableCommands, slashCommands]);
 
@@ -451,6 +462,35 @@ export function Composer({
     () => (isDismissed ? [] : palette.rows),
     [isDismissed, palette.rows],
   );
+
+  /**
+   * "Runnable only" — hide rows the registry positively reports as handler-less.
+   *
+   * Off by default: the palette is the complete catalog, and filtering it on
+   * load would re-hide the 407 rows this surface exists to disclose. When on,
+   * only `hasHandler === false` rows are hidden — `null` (the read did not say)
+   * stays visible, because unknown is not negative. The footer names how many
+   * rows the toggle hid, so a short list never reads as the whole catalog.
+   */
+  const [runnableOnly, setRunnableOnly] = useState(false);
+  const { visible: visibleSuggestions, hidden: hiddenByToggle } = useMemo(
+    () => (runnableOnly ? splitRunnableRows(suggestions) : { visible: suggestions, hidden: 0 }),
+    [runnableOnly, suggestions],
+  );
+
+  /** Registry-level truth for the headline: runnable of listed. */
+  const listedCount = mergedCommands.length;
+  const runnableCount = useMemo(
+    () => runnableHeadline(mergedCommands.map((c) => ({ hasHandler: c.has_handler ?? null }))).runnable,
+    [mergedCommands],
+  );
+
+  // A new filter changes which row index 0 points at; without a reset, Enter
+  // would commit the row that *used* to be highlighted — a different command
+  // than the one on screen.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [runnableOnly]);
 
   // ── `@` tag palette ────────────────────────────────────────────────────────
   //
@@ -692,12 +732,12 @@ export function Composer({
    * operator is typing a filter.
    */
   useEffect(() => {
-    if (suggestions.length === 0) return;
+    if (visibleSuggestions.length === 0) return;
     const node = paletteListRef.current?.querySelector<HTMLElement>(
       `[data-palette-index="${selectedIndex}"]`,
     );
     node?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, suggestions]);
+  }, [selectedIndex, visibleSuggestions]);
 
   // Paste images/files straight from the clipboard (screenshots, copied files).
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -742,16 +782,16 @@ export function Composer({
       }
     }
 
-    if (suggestions.length > 0) {
+    if (visibleSuggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+        setSelectedIndex((prev) => (prev + 1) % visibleSuggestions.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex(
-          (prev) => (prev - 1 + suggestions.length) % suggestions.length,
+          (prev) => (prev - 1 + visibleSuggestions.length) % visibleSuggestions.length,
         );
         return;
       }
@@ -759,7 +799,7 @@ export function Composer({
         e.preventDefault();
         // The list is re-derived from the draft on every keystroke, so a stale
         // index must not throw mid-draft and swallow the operator's Enter.
-        const row = suggestions[selectedIndex];
+        const row = visibleSuggestions[selectedIndex];
         if (row) selectCommand(row);
         return;
       }
@@ -876,14 +916,35 @@ export function Composer({
       )}
 
       {/* Slash Command Suggestions Palette */}
-      {suggestions.length > 0 && (
+      {visibleSuggestions.length > 0 && (
         <div className="absolute bottom-full mb-2 left-3 right-3 bg-popover/95 backdrop-blur-md border border-border rounded-xl elev-3 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 dur-fast">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Terminal className="size-3.5 text-primary" />
               <span>Master Slash Commands</span>
+              {/* The headline is the dispatchable count, never the catalogued
+                  total presented as usable. When the registry read failed the
+                  list is the 16-row built-in fallback, so counts would claim
+                  a health nobody measured — the fallback says so instead. */}
+              <span className="font-normal">
+                {registryError
+                  ? "built-in fallback — registry unavailable"
+                  : `${runnableCount} runnable of ${listedCount} listed`}
+              </span>
             </div>
-            <span>Use ↑↓ to navigate • Tab to select • Esc to dismiss</span>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 font-normal cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={runnableOnly}
+                  onChange={(e) => setRunnableOnly(e.target.checked)}
+                  className="size-3"
+                  aria-label="Show only commands the registry reports as runnable"
+                />
+                <span>runnable only</span>
+              </label>
+              <span>Use ↑↓ to navigate • Tab to select • Esc to dismiss</span>
+            </div>
           </div>
           {registryError && (
             <div className="px-3 py-1.5 border-b border-border/60 bg-destructive/10 text-[11px] text-destructive">
@@ -894,7 +955,7 @@ export function Composer({
             ref={paletteListRef}
             className="max-h-80 overflow-y-auto p-1 divide-y divide-border/20"
           >
-            {suggestions.map((cmd, idx) => (
+            {visibleSuggestions.map((cmd, idx) => (
               <button
                 key={cmd.command}
                 data-palette-index={idx}
@@ -931,6 +992,9 @@ export function Composer({
           </div>
           <div className="px-3 py-1.5 border-t border-border/60 bg-muted/40 text-[11px] text-muted-foreground">
             {describePalette(palette)}
+            {runnableOnly && hiddenByToggle > 0 && (
+              <> · hiding {hiddenByToggle} row(s) the registry reports with no bound handler</>
+            )}
           </div>
         </div>
       )}

@@ -14,8 +14,8 @@
 //   client   ConsoleStats.agents: number -> number | null (no ?? 0)
 //   view     both callers render "—" with the reason instead of a number
 //
-// The negative control at the bottom loads the pre-fix code from HEAD and shows
-// it produces the dishonest value.
+// The negative control at the bottom loads the pre-fix code and shows it
+// produces the dishonest value.
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
@@ -24,8 +24,17 @@ import ts from "typescript";
 
 const ROOT = "C:\\Users\\PREM KUMAR\\Videos\\alpha";
 const read = (rel) => readFileSync(`${ROOT}\\frontend\\${rel}`, "utf8");
-const head = (rel) =>
-  execFileSync("git", ["show", `HEAD:frontend/${rel}`], {
+
+// Pinned to the parent of 4edede6, the commit that fixed this defect, rather
+// than to HEAD. Reading HEAD made this control self-destruct the moment the fix
+// landed: HEAD then *is* the fixed code, it correctly returns null, and the
+// assertion that the old code returned 0 failed — with the file's own message
+// saying "re-derived from git". Pinning the pre-fix snapshot keeps the claim
+// checkable forever: that exact revision still coerces an unreported count to
+// a measured zero, which is what proves the assertion above can fail at all.
+const PRE_FIX = "4edede6^:frontend/";
+const preFix = (rel) =>
+  execFileSync("git", ["show", `${PRE_FIX}${rel}`], {
     cwd: ROOT,
     encoding: "utf8",
   });
@@ -133,16 +142,17 @@ test("both call sites render the absence instead of a number", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Negative control: the pre-fix client, straight from HEAD. A control that
-// passes against HEAD proves nothing, so this asserts the OLD code returns 0.
+// Negative control: the pre-fix client, read straight from the revision that
+// last contained it. A control that passes against the fixed code proves
+// nothing, so this asserts the OLD code returns 0.
 // ---------------------------------------------------------------------------
-test("NEGATIVE CONTROL  HEAD's client turned total_agents: null into 0", async () => {
-  const mod = loadWorkspace(head("src/lib/workspace.ts"));
+test("NEGATIVE CONTROL  the pre-fix client turned total_agents: null into 0", async () => {
+  const mod = loadWorkspace(preFix("src/lib/workspace.ts"));
   globalThis.__statsHandler = () => statsPayload({ total_agents: null, total_agents_reason: "boom" });
   const stats = await mod.fetchConsoleStats();
   assert.equal(
     stats.agents,
     0,
-    "HEAD coerced the absent count to 0 — if this ever fails, HEAD changed and the control must be re-derived from git",
+    "the pre-fix snapshot coerced the absent count to 0 — if this ever fails, that revision's source changed and the pinned SHA must be re-derived from git",
   );
 });
