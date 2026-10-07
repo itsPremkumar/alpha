@@ -81,10 +81,7 @@ def _wait_for_ops_pckl(runtime_dir: Path) -> None:
         if pckl.is_file():
             return
         time.sleep(0.25)
-    pytest.fail(
-        f"the dev server never flushed {pckl} within {_OPS_PCKL_FLUSH_BUDGET_SECONDS}s while it was running; "
-        "the cross-version restart below cannot prove anything without it"
-    )
+    pytest.fail(f"the dev server never flushed {pckl} within {_OPS_PCKL_FLUSH_BUDGET_SECONDS}s while it was running; the cross-version restart below cannot prove anything without it")
 
 
 @contextmanager

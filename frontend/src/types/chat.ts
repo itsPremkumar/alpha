@@ -7,7 +7,8 @@
  * a tool result is `ToolCallVerdict`; `sse-reducer.ts` translates one into the
  * other and is the single place that mapping lives.
  */
-export type ToolCallStatus = "running" | "completed" | "failed" | "partial" | "error" | "unknown";
+export type ToolCallStatus =
+  "running" | "completed" | "failed" | "partial" | "error" | "unknown";
 
 /**
  * Verdict vocabulary the backend writes onto a tool result, in precedence
@@ -21,7 +22,8 @@ export type ToolCallStatus = "running" | "completed" | "failed" | "partial" | "e
  * to `completed` only after nothing stronger said otherwise, and a result whose
  * status is absent/unrecognized resolves to `"unknown"` — never to `completed`.
  */
-export type ToolCallVerdict = "success" | "partial_success" | "error" | "failed" | "unknown";
+export type ToolCallVerdict =
+  "success" | "partial_success" | "error" | "failed" | "unknown";
 
 export interface ToolCall {
   id: string;
@@ -219,5 +221,3 @@ export interface AutonomousDetection {
   autonomous_directives?: string[];
   execution_result?: SlashCommandResult;
 }
-
-

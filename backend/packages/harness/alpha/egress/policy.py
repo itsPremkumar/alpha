@@ -20,11 +20,12 @@ import json
 import os
 import re
 import threading
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Mapping
+from typing import Any, Final
 
 EGRESS_STORE_SCHEMA_VERSION: Final = 1
 
@@ -55,7 +56,7 @@ class EgressRoute(str, Enum):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _validate_domain(domain: str) -> str:

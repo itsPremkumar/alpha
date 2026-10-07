@@ -9,13 +9,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from alpha.config.memory_config import MemoryConfig
-
     # Annotation-only use. `from __future__ import annotations` (line 6) makes
     # every annotation in this module a string, so the dataclass field types below
     # never need this class at runtime. Keeping it under TYPE_CHECKING is what
     # stops `alpha.agents` -> this module from importing `langchain.agents`.
     from langchain.agents.middleware import AgentMiddleware
+
+    from alpha.config.memory_config import MemoryConfig
 
 
 def _agent_middleware_class() -> type:

@@ -112,11 +112,7 @@ class ContainerSandboxRunner:
                     text=True,
                     timeout=self.timeout_seconds,
                 )
-                if proc.returncode == 0 or (
-                    "cannot find the file specified" not in proc.stderr
-                    and "daemon is running" not in proc.stderr
-                    and "failed to connect" not in proc.stderr.lower()
-                ):
+                if proc.returncode == 0 or ("cannot find the file specified" not in proc.stderr and "daemon is running" not in proc.stderr and "failed to connect" not in proc.stderr.lower()):
                     duration_ms = (time.perf_counter() - start_time) * 1000
                     return ContainerExecutionResult(
                         exit_code=proc.returncode,
