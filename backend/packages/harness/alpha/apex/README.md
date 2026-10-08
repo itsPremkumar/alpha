@@ -103,6 +103,10 @@ dispatch generation and run id on the session, and projects RunManager status
 and measured token totals. All enabled profiles set token, tool-call, and
 runtime spending ceilings to `null` (unlimited). The ordinary `task` tool enforces APEX parallel-task and
 active-agent ceilings. Acceptance-failure replan counts are durable and bounded.
+Both background passes scan the durable session set in stable pages of 200;
+new sessions cannot shift the cursor and starve older work, and an explicit
+session dispatch resolves the id directly. Scan failures are surfaced in the
+loop result instead of escaping the supervisor callback.
 The per-failure-class retry ceiling is durably counted by
 `SafeRunRecoveryService` for safe checkpoint resumes. Ordinary terminal run
 errors are surfaced as `failed` for operator-directed recovery and are not
