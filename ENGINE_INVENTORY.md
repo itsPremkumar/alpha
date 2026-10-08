@@ -5,9 +5,9 @@
 > `backend/packages/harness/alpha/`; `AGENTS.md` should point here rather than
 > hand-maintaining a list that drifts.
 
-- **Packages:** 116
-- **Python files:** 1845
-- **Total lines:** 470555
+- **Packages:** 117
+- **Python files:** 1867
+- **Total lines:** 480672
 - **Packages with preview/simulated markers:** 27
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -16,26 +16,27 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | Package | Files | Lines | Tier |
 |---|---:|---:|---|
 | `alpha/memory` | 148 | 43100 | core |
-| `alpha/agents` | 134 | 42712 | preview/partial |
-| `alpha/runtime` | 107 | 31153 | preview/partial |
-| `alpha/tools` | 161 | 27495 | preview/partial |
+| `alpha/agents` | 135 | 43032 | preview/partial |
+| `alpha/runtime` | 107 | 31334 | preview/partial |
+| `alpha/tools` | 163 | 28369 | preview/partial |
 | `alpha/community` | 85 | 25951 | preview/partial |
 | `alpha/persistence` | 103 | 18283 | preview/partial |
-| `alpha/bots` | 34 | 13972 | preview/partial |
-| `alpha/config` | 78 | 13021 | core |
-| `alpha/models` | 36 | 11399 | preview/partial |
+| `alpha/bots` | 35 | 14661 | preview/partial |
+| `alpha/workflow` | 42 | 14557 | preview/partial |
+| `alpha/config` | 78 | 13082 | core |
+| `alpha/models` | 36 | 11456 | preview/partial |
 | `alpha/observability` | 23 | 11371 | core |
-| `alpha/groups` | 22 | 11162 | core |
-| `alpha/skills` | 57 | 11126 | core |
-| `alpha/workflow` | 32 | 11092 | preview/partial |
+| `alpha/groups` | 22 | 11213 | core |
+| `alpha/skills` | 57 | 11107 | core |
 | `alpha/sandbox` | 33 | 10752 | core |
 | `alpha/subagents` | 34 | 10048 | core |
-| `alpha/intelligence` | 23 | 9417 | preview/partial |
+| `alpha/intelligence` | 24 | 9872 | preview/partial |
 | `alpha/safety` | 26 | 8869 | core |
 | `alpha/swarm` | 25 | 8800 | core |
 | `alpha/evolution` | 23 | 8332 | preview/partial |
 | `alpha/rsi` | 22 | 7337 | preview/partial |
 | `alpha/projects` | 32 | 6039 | preview/partial |
+| `alpha/peer_network` | 12 | 5414 | core |
 | `alpha/mcp` | 19 | 4829 | preview/partial |
 | `alpha/reasoning` | 16 | 4776 | core |
 | `alpha/mission` | 16 | 4639 | core |
@@ -46,42 +47,41 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/security` | 28 | 3931 | core |
 | `alpha/coding` | 10 | 3753 | core |
 | `alpha/company` | 17 | 3710 | core |
-| `alpha/peer_network` | 10 | 3709 | core |
+| `alpha/grounding` | 10 | 3677 | core |
 | `alpha/orchestrator` | 18 | 3673 | core |
-| `alpha/grounding` | 10 | 3592 | core |
 | `alpha/avo` | 15 | 3533 | core |
 | `alpha/integrations` | 4 | 3458 | core |
 | `alpha/commands` | 7 | 3159 | preview/partial |
+| `alpha/multimodal` | 12 | 2706 | core |
 | `alpha/orchestration` | 13 | 2546 | core |
 | `alpha/tui` | 15 | 2540 | core |
 | `alpha/learning` | 18 | 2503 | core |
 | `alpha/computer_use` | 6 | 2490 | preview/partial |
 | `alpha/verification` | 13 | 2426 | core |
-| `alpha/multimodal` | 12 | 2345 | core |
 | `alpha/channels` | 8 | 2204 | core |
 | `alpha/enterprise` | 9 | 2200 | preview/partial |
+| `alpha/ops` | 8 | 2053 | core |
 | `alpha/deliberation` | 12 | 1998 | core |
 | `alpha/errors` | 3 | 1790 | preview/partial |
+| `alpha/knowledge` | 5 | 1790 | core |
 | `alpha/research` | 5 | 1772 | core |
+| `alpha/guardrails` | 7 | 1757 | core |
 | `alpha/metacompiler` | 7 | 1735 | preview/partial |
 | `alpha/script_bridge_child` | 3 | 1725 | core |
 | `alpha/evaluation` | 4 | 1699 | core |
-| `alpha/ops` | 7 | 1589 | core |
-| `alpha/guardrails` | 6 | 1584 | core |
-| `alpha/utils` | 12 | 1428 | core |
+| `alpha/utils` | 12 | 1450 | core |
 | `alpha/lineage` | 3 | 1390 | core |
-| `alpha/capabilities` | 5 | 1359 | core |
+| `alpha/capabilities` | 5 | 1357 | core |
 | `alpha/blackboard` | 6 | 1355 | core |
+| `alpha/harness` | 10 | 1261 | core |
 | `alpha/workspace_changes` | 7 | 1235 | core |
 | `alpha/system1` | 5 | 1202 | core |
-| `alpha/knowledge` | 4 | 1175 | core |
-| `alpha/harness` | 10 | 1167 | core |
 | `alpha/authz` | 10 | 1116 | core |
 | `alpha/scheduler` | 9 | 911 | core |
 | `alpha/context` | 11 | 807 | core |
 | `alpha/testing` | 2 | 739 | core |
+| `alpha/notifications` | 2 | 707 | core |
 | `alpha/selfrepair` | 5 | 685 | preview/partial |
-| `alpha/notifications` | 2 | 678 | core |
 | `alpha/editing` | 3 | 677 | core |
 | `alpha/deepagent` | 3 | 649 | preview/partial |
 | `alpha/perpetual` | 6 | 640 | preview/partial |
@@ -98,6 +98,7 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/supervision` | 4 | 457 | preview/partial |
 | `alpha/reproduction` | 5 | 452 | core |
 | `alpha/routines` | 3 | 451 | core |
+| `alpha/reasoning_bank` | 2 | 438 | core |
 | `alpha/connectors` | 3 | 418 | core |
 | `alpha/uploads` | 2 | 416 | core |
 | `alpha/experts` | 3 | 396 | core |
@@ -110,7 +111,7 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/ledger` | 3 | 310 | core |
 | `alpha/skills_market` | 3 | 309 | core |
 | `alpha/goals` | 3 | 299 | core |
-| `alpha/protocols` | 3 | 296 | preview/partial |
+| `alpha/protocols` | 3 | 295 | preview/partial |
 | `alpha/canvas` | 4 | 281 | core |
 | `alpha/critique` | 3 | 276 | core |
 | `alpha/scorecard` | 3 | 269 | core |

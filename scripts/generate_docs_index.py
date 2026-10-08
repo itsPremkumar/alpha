@@ -61,6 +61,7 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     "adr": "decisions",
     "adrs": "decisions",
     "api": "api",
+    "audits": "operations",
     # Measured research dossier on ASI/AGI/RSI plus the gap analysis against
     # this codebase. Classified as plans for the same reason
     # AGENT_LANDSCAPE_AND_ROADMAP.md is: it is a survey of the external
@@ -153,6 +154,14 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "audits/SYSTEM_MAP.md": DocumentSpec(
+        "operations",
+        "Code-evidenced Alpha service, execution, persistence, self-inventory, and workspace view map with environment limits.",
+    ),
+    "audits/FULL_VERIFICATION_REPORT.md": DocumentSpec(
+        "operations",
+        "Evidence-backed reliability validation results, failed gates, environment blockers, and explicitly unverified production claims.",
+    ),
     "ALPHA-WORKFLOW-ARCHITECTURE.md": DocumentSpec(
         "architecture",
         "Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.",

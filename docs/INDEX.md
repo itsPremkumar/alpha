@@ -69,6 +69,8 @@
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
+- [audits/FULL_VERIFICATION_REPORT.md](audits/FULL_VERIFICATION_REPORT.md) — Evidence-backed reliability validation results, failed gates, environment blockers, and explicitly unverified production claims.
+- [audits/SYSTEM_MAP.md](audits/SYSTEM_MAP.md) — Code-evidenced Alpha service, execution, persistence, self-inventory, and workspace view map with environment limits.
 - [reliability/ALPHA_SYSTEM_MAP.md](reliability/ALPHA_SYSTEM_MAP.md) — Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.
 - [reliability/ERROR_CATALOG.md](reliability/ERROR_CATALOG.md) — Stable error codes with severity, retry policy, recovery action and the user-facing wording each code owns.
 - [reliability/FAILURE_RECOVERY_MATRIX.md](reliability/FAILURE_RECOVERY_MATRIX.md) — Per-failure detection, classification, retry decision, recovery strategy and the evidence each one leaves behind.
