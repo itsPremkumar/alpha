@@ -197,8 +197,11 @@ host adapter dispatches admitted work through the shared `RunManager`, observes
 durable run state, and projects measured input/output tokens and LLM calls back to
 the session. Owners can submit a complete measured report to
 `POST /api/apex/sessions/{id}/acceptance`; failed evidence is journaled and
-selects a fresh dispatch generation. Alpha has no automatic test/artifact/HTTP
-evidence collectors and does not infer success from model summaries.
+selects a fresh dispatch generation. After a run completes, registered
+`AcceptanceRegistry` probes may submit fully measured reports; absent or
+inconclusive probes leave the session awaiting owner evidence. Alpha ships no
+default probe for arbitrary natural-language criteria and does not infer
+success from model summaries.
 Every enabled APEX profile has unlimited token, tool-call, and runtime spending ceilings
 while engine capacity, approvals, and the emergency stop remain. The ordinary
 `task` tool enforces persisted active-agent and parallel-task ceilings, but
@@ -214,6 +217,16 @@ acceptance evidence. Session JSON locking is process-local, CPU/RAM budgets and
 resource telemetry are not yet part of the APEX ledger, and RunManager errors or
 interruptions remain parked for operator action. See
 [the APEX operating guide](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md).
+
+### 5.10 Alpha Mod Kernel
+The native Mod Kernel runs ordered middleware on lead-agent tool/model lifecycle
+events and run admission. First-party emergency-stop, blast-radius, verification,
+task-routing, bot-mode, and failure-sentinel modules use explicit capability
+grants; external declarations do not grant their own capabilities. ESTOP read
+failures refuse work. Journals, approval holds, capability storage, and timers
+remain process-local. Durable event replay and operator-resumed deferred actions
+are not implemented. See
+[the Mod Kernel design and production gates](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md).
 
 ## 6. Harness engine map
 
