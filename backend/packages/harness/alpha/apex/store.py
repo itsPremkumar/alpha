@@ -111,12 +111,20 @@ class UsageLedger:
     #: This makes a retry reservation replay-safe across a process restart.
     retry_reservations: dict[str, str] = field(default_factory=dict)
     measured_run_ids: list[str] = field(default_factory=list)
-    #: Latest cumulative RunManager counters for runs whose event stream has
-    #: not published usage rows. Replacing snapshots makes live polling safe.
+    #: Latest cumulative RunManager counters for runs without complete token
+    #: usage events. Replacing snapshots makes live polling safe.
     run_snapshots: dict[str, dict[str, int]] = field(default_factory=dict)
     #: Last durable Gateway event sequence incorporated for each run. The
     #: cursor and counters commit together so a restart cannot double count.
     event_cursors: dict[str, int] = field(default_factory=dict)
+    #: Runs whose event stream has supplied measured token usage. For runs
+    #: without that evidence, cumulative RunManager snapshots remain authoritative
+    #: even after usage-less events advance the event cursor.
+    event_usage_runs: list[str] = field(default_factory=list)
+    #: Per-run event totals make it possible to switch to a complete cumulative
+    #: snapshot if a later event omits usage, without double-counting earlier
+    #: event deltas.
+    event_usage_totals: dict[str, dict[str, int]] = field(default_factory=dict)
     started_at: float = field(default_factory=time.time)
     last_counted_at: float | None = None
 
@@ -237,7 +245,14 @@ class ApexSession:
             payload["contract_snapshot"] = None
         payload["constraints"] = [SteeringConstraint.from_dict(c) for c in payload.get("constraints", []) or []]
         if not isinstance(payload.get("usage"), UsageLedger):
-            payload["usage"] = UsageLedger(**(payload.get("usage") or {}))
+            raw_usage = payload.get("usage") or {}
+            payload["usage"] = UsageLedger(**raw_usage)
+            # Pre-marker rows treated any positive event cursor as proof that
+            # event usage was authoritative. Preserve that conservative rule
+            # for old snapshots; new rows persist an explicit empty list when
+            # events had no usage payload.
+            if isinstance(raw_usage, dict) and "event_usage_runs" not in raw_usage:
+                payload["usage"].event_usage_runs = [run_id for run_id, seq in payload["usage"].event_cursors.items() if int(seq) > 0]
         # Older snapshots lacked an explicit replan counter. Retained failed
         # acceptance reports correspond one-for-one with recovery cycles; the
         # bounded history of 20 matches the largest shipped profile ceiling.
@@ -834,10 +849,10 @@ class ApexStore:
             session = self._rows.get(session_id)
             if session is None or session.run_id != run_id:
                 return False
-            # Event rows are the live source of truth when available. Run
-            # totals are cumulative, so adding them after event accounting
-            # would count the same tokens twice.
-            if int(session.usage.event_cursors.get(run_id, 0)) > 0:
+            # A usage-less event advances event_cursors for replay safety, but
+            # does not prove that the event stream measured token usage. Only
+            # a run with an actual usage-bearing event suppresses snapshots.
+            if run_id in session.usage.event_usage_runs:
                 return True
             usage = UsageLedger(**session.usage.to_dict())
             current = {
@@ -880,23 +895,41 @@ class ApexStore:
             cursor = int(usage.event_cursors.get(run_id, 0))
             if int(seq) <= cursor:
                 return True
-            # If live polling used RunManager snapshots before durable event
-            # rows became visible, replace that run's snapshot contribution
-            # with the now-available event stream before adding its first row.
-            if cursor == 0:
-                previous = usage.run_snapshots.pop(run_id, None)
-                if previous is not None:
-                    usage.input_tokens = max(0, int(usage.input_tokens or 0) - int(previous.get("input_tokens", 0)))
-                    usage.output_tokens = max(0, int(usage.output_tokens or 0) - int(previous.get("output_tokens", 0)))
-                    usage.total_tokens = max(0, int(usage.total_tokens or 0) - int(previous.get("input_tokens", 0)) - int(previous.get("output_tokens", 0)))
-                    usage.llm_calls = max(0, int(usage.llm_calls or 0) - int(previous.get("llm_calls", 0)))
-            in_count = max(0, int(input_tokens or 0))
-            out_count = max(0, int(output_tokens or 0))
-            usage.input_tokens = (usage.input_tokens or 0) + in_count
-            usage.output_tokens = (usage.output_tokens or 0) + out_count
-            usage.total_tokens = (usage.total_tokens or 0) + in_count + out_count
-            if llm_call:
-                usage.llm_calls = (usage.llm_calls or 0) + 1
+            token_usage_measured = input_tokens is not None and output_tokens is not None
+            # If cumulative snapshots have already become this run's source,
+            # keep them: they cover usage-less calls too. Switching sources on
+            # the first later event could discard earlier calls omitted from
+            # the event payload.
+            snapshot_is_source = run_id in usage.run_snapshots
+            if not snapshot_is_source:
+                if token_usage_measured:
+                    in_count = max(0, int(input_tokens))
+                    out_count = max(0, int(output_tokens))
+                    totals = usage.event_usage_totals.setdefault(run_id, {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0})
+                    totals["input_tokens"] += in_count
+                    totals["output_tokens"] += out_count
+                    if llm_call:
+                        totals["llm_calls"] += 1
+                    usage.input_tokens = (usage.input_tokens or 0) + in_count
+                    usage.output_tokens = (usage.output_tokens or 0) + out_count
+                    usage.total_tokens = (usage.total_tokens or 0) + in_count + out_count
+                    if run_id not in usage.event_usage_runs:
+                        usage.event_usage_runs.append(run_id)
+                    if llm_call:
+                        usage.llm_calls = (usage.llm_calls or 0) + 1
+                elif run_id in usage.event_usage_runs:
+                    # An incomplete row means event accounting cannot represent
+                    # the whole run. Retract this run's known event contribution;
+                    # the host tick immediately replaces it with the cumulative
+                    # RunManager snapshot. Legacy rows without per-run totals
+                    # keep their prior conservative event source.
+                    totals = usage.event_usage_totals.pop(run_id, None)
+                    if totals is not None:
+                        usage.input_tokens = max(0, int(usage.input_tokens or 0) - totals["input_tokens"])
+                        usage.output_tokens = max(0, int(usage.output_tokens or 0) - totals["output_tokens"])
+                        usage.total_tokens = max(0, int(usage.total_tokens or 0) - totals["input_tokens"] - totals["output_tokens"])
+                        usage.llm_calls = max(0, int(usage.llm_calls or 0) - totals["llm_calls"])
+                        usage.event_usage_runs.remove(run_id)
             usage.event_cursors[run_id] = int(seq)
             usage.last_counted_at = time.time()
             session.usage = usage

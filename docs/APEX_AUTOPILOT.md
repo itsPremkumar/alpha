@@ -218,8 +218,11 @@ probe that can verify arbitrary natural-language criteria. The Gateway host
 adapter reads durable `llm.ai.response` and `subagent.end` events
 with a persisted per-run sequence cursor, so a repeated supervisor tick or
 restart does not count an event twice. If the event store is unavailable or has
-not emitted usage events, it upserts cumulative RunManager snapshots for live
-usage instead. These values are observations from the linked run, not
+not emitted token usage, it upserts cumulative RunManager snapshots for live
+usage instead. A usage-less event advances the cursor without claiming zero
+tokens; if a later row makes event accounting incomplete, its event totals are
+reconciled to a cumulative snapshot. The two sources are never added together.
+These values are observations from the linked run, not
 estimates. At each supervisor tick the adapter checks a persisted finite runtime
 quota, when one was explicitly configured, and asks RunManager to interrupt an
 over-budget run; the tick interval determines how late that check can be.

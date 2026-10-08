@@ -279,7 +279,8 @@ def test_run_event_usage_cursor_is_durable_and_prevents_summary_double_count(sto
     assert store.record_dispatch_run(session.session_id, generation=generation, run_id="run-events", status="running")
 
     # A cumulative live snapshot can arrive before durable observer events are
-    # queryable. The first event row must replace that snapshot contribution.
+    # queryable. Keep that complete snapshot as the source when event rows later
+    # appear, because some earlier event payloads may omit usage.
     assert store.record_run_usage(session.session_id, run_id="run-events", input_tokens=90, output_tokens=10, llm_calls=1)
     assert store.record_run_usage_event(session.session_id, run_id="run-events", seq=4, input_tokens=90, output_tokens=10, llm_call=True)
     assert store.record_run_usage_event(session.session_id, run_id="run-events", seq=4, input_tokens=90, output_tokens=10, llm_call=True)
@@ -288,6 +289,7 @@ def test_run_event_usage_cursor_is_durable_and_prevents_summary_double_count(sto
     usage = ApexStore(store.storage_path).get(session.session_id).usage
     assert (usage.input_tokens, usage.output_tokens, usage.total_tokens, usage.llm_calls) == (90, 10, 100, 1)
     assert usage.event_cursors == {"run-events": 4}
+    assert usage.event_usage_runs == []
 
 
 def test_live_run_usage_snapshots_replace_prior_observations(store: ApexStore) -> None:

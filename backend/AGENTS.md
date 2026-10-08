@@ -84,6 +84,11 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   start or terminalize APEX work from the executive, router, or another loop.
   Dispatch generations and RunStore idempotency recover the admission window;
   the process-local JSON session lock is not cross-process exactly-once.
+  Usage cursors and counters are durable together. A cursor advances for a
+  usage-less event, but it does not count as zero; incomplete event accounting
+  is replaced by cumulative RunManager snapshots, without double-counting.
+  Preserve source-selection, mixed-event, and restart regressions in
+  `tests/test_apex_dispatcher.py` and `tests/test_apex_store_durability.py`.
   Completed RunManager work enters `awaiting_verification`; it is never
   promoted to APEX completion without a complete measured acceptance report.
   The owner-scoped `/sessions/{id}/acceptance` route accepts one result per

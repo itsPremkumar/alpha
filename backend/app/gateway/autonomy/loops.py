@@ -439,7 +439,6 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                 status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
                 if event_store is not None:
                     cursor = int(session.usage.event_cursors.get(session.run_id, 0))
-                    received_usage_events = False
                     for _ in range(20):
                         events = await event_store.list_events(
                             session.thread_id,
@@ -461,7 +460,6 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                             seq = int(event.get("seq", 0) or 0)
                             if seq <= cursor:
                                 continue
-                            received_usage_events = True
                             store.record_run_usage_event(
                                 session.session_id,
                                 run_id=session.run_id,
@@ -473,17 +471,17 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                             cursor = seq
                         if len(events) < 200:
                             break
-                    # Some run stores do not persist observer events. Keep the
-                    # live APEX budget visible from RunManager's cumulative
-                    # counters in that case; snapshots are upserted by run id.
-                    if not received_usage_events and cursor == 0:
-                        store.record_run_usage(
-                            session.session_id,
-                            run_id=session.run_id,
-                            input_tokens=int(getattr(run, "total_input_tokens", 0) or 0),
-                            output_tokens=int(getattr(run, "total_output_tokens", 0) or 0),
-                            llm_calls=int(getattr(run, "llm_call_count", 0) or 0),
-                        )
+                    # Keep cumulative counters as a fallback when event rows
+                    # omit usage. ApexStore chooses one source per run and
+                    # refuses to add snapshots after measured event usage, so
+                    # polling this on every tick cannot double-count.
+                    store.record_run_usage(
+                        session.session_id,
+                        run_id=session.run_id,
+                        input_tokens=int(getattr(run, "total_input_tokens", 0) or 0),
+                        output_tokens=int(getattr(run, "total_output_tokens", 0) or 0),
+                        llm_calls=int(getattr(run, "llm_call_count", 0) or 0),
+                    )
                 else:
                     store.record_run_usage(
                         session.session_id,

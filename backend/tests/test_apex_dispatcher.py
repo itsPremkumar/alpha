@@ -361,9 +361,97 @@ async def test_apex_counts_persisted_usage_events_once(tmp_path: Path, monkeypat
     app.state.run_manager = FakeRunManager()
     await apex_execution_tick(app, session_id=session.session_id)
     await apex_execution_tick(app, session_id=session.session_id)
-    usage = store.get(session.session_id).usage
+    usage = ApexStore(store.storage_path).get(session.session_id).usage
     assert (usage.input_tokens, usage.output_tokens, usage.total_tokens, usage.llm_calls) == (80, 20, 100, 1)
     assert usage.event_cursors == {"run-events": 8}
+    assert usage.event_usage_runs == ["run-events"]
+    assert usage.event_usage_totals == {"run-events": {"input_tokens": 80, "output_tokens": 20, "llm_calls": 1}}
+
+
+@pytest.mark.asyncio
+async def test_usage_less_events_do_not_suppress_cumulative_run_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner, thread_id = "operator", "thread-apex-usage-less-events"
+    contract = profile_for("apex_max")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "apex_max", owner=owner)
+    session = store.create(owner=owner, objective="inspect", profile="apex_max", contract_digest=contract.digest(), contract_snapshot=contract.to_dict(), thread_id=thread_id)
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id="run-usage-less", status="running")
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    class FakeEventStore:
+        async def list_events(self, thread, run, *, event_types, limit, after_seq):
+            assert (thread, run) == (thread_id, "run-usage-less")
+            return [{"seq": 3, "event_type": "llm.ai.response", "metadata": {}, "content": {}}] if after_seq < 3 else []
+
+    class FakeRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            return SimpleNamespace(run_id=run_id, status=SimpleNamespace(value="running"), total_input_tokens=91, total_output_tokens=9, llm_call_count=1)
+
+    app = SimpleNamespace(state=SimpleNamespace(run_manager=FakeRunManager(), run_event_store=FakeEventStore()))
+    await apex_execution_tick(app, session_id=session.session_id)
+    await apex_execution_tick(app, session_id=session.session_id)
+
+    usage = ApexStore(store.storage_path).get(session.session_id).usage
+    assert (usage.input_tokens, usage.output_tokens, usage.total_tokens, usage.llm_calls) == (91, 9, 100, 1)
+    assert usage.event_cursors == {"run-usage-less": 3}
+    assert usage.event_usage_runs == []
+
+
+@pytest.mark.asyncio
+async def test_later_usage_less_event_reconciles_to_cumulative_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner, thread_id = "operator", "thread-apex-mixed-usage-events"
+    contract = profile_for("apex_max")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "apex_max", owner=owner)
+    session = store.create(owner=owner, objective="inspect", profile="apex_max", contract_digest=contract.digest(), contract_snapshot=contract.to_dict(), thread_id=thread_id)
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id="run-mixed-usage", status="running")
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    class FakeEventStore:
+        async def list_events(self, thread, run, *, event_types, limit, after_seq):
+            assert (thread, run) == (thread_id, "run-mixed-usage")
+            return (
+                [
+                    {"seq": 1, "event_type": "llm.ai.response", "metadata": {"usage": {"input_tokens": 40, "output_tokens": 4}}, "content": {}},
+                    {"seq": 2, "event_type": "llm.ai.response", "metadata": {}, "content": {}},
+                ]
+                if after_seq < 2
+                else []
+            )
+
+    class FakeRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            return SimpleNamespace(run_id=run_id, status=SimpleNamespace(value="running"), total_input_tokens=91, total_output_tokens=9, llm_call_count=2)
+
+    app = SimpleNamespace(state=SimpleNamespace(run_manager=FakeRunManager(), run_event_store=FakeEventStore()))
+    await apex_execution_tick(app, session_id=session.session_id)
+    await apex_execution_tick(app, session_id=session.session_id)
+
+    usage = ApexStore(store.storage_path).get(session.session_id).usage
+    assert (usage.input_tokens, usage.output_tokens, usage.total_tokens, usage.llm_calls) == (91, 9, 100, 2)
+    assert usage.event_cursors == {"run-mixed-usage": 2}
+    assert usage.event_usage_runs == []
+    assert usage.event_usage_totals == {}
 
 
 @pytest.mark.parametrize("runtime_limit", [0, 1])
