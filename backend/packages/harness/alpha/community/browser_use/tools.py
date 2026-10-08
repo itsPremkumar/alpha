@@ -272,10 +272,13 @@ async def browser_use_run_tool(
 def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: str | None) -> str:
     """Turn the child's JSON envelope into the text the model reads.
 
-    A failure is never dressed as a result: ``ok: false`` always leads with the
-    reason, because browser-use reporting "task incomplete" and this reporting
-    "the subprocess died" are different facts and the model acts differently on
-    each.
+    A failure is never dressed as a result, and **an unfinished run is not
+    reported as a completed one**. ``ok`` only means the subprocess returned a
+    coherent envelope; whether browser-use actually finished the task is
+    ``completed`` (upstream's own ``is_done``). A real run that failed on every
+    model call still returned ``ok: true`` with no answer, and reporting that as
+    "completed" is the most expensive kind of wrong — the caller moves on
+    believing it has a result.
     """
     version = envelope.get("version") or version
     steps = envelope.get("steps")
@@ -292,8 +295,21 @@ def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: st
         reason = envelope.get("error") or "browser-use reported a failure without a reason."
         return f"{header} did NOT complete.\n\n{reason}"
 
-    result = envelope.get("result") or ""
-    body = _truncate(result) if result.strip() else "(browser-use finished without producing any text — check the pages it visited.)"
+    errors = [str(e) for e in envelope.get("errors") or [] if e]
+    completed = envelope.get("completed")
+
+    # `completed` is None only for an older runner; treat unknown as "don't claim
+    # success" only when there is also no answer, so an old envelope cannot make a
+    # silent failure look like a success.
+    answer = envelope.get("result") or ""
+    if completed is False or (completed is None and errors and not answer.strip()):
+        reasons = ""
+        if errors:
+            unique = list(dict.fromkeys(errors))
+            reasons = "\n\nReasons reported by browser-use:\n" + "\n".join(f"  - {err}" for err in unique[:5])
+        return f"{header} did NOT finish the task (it stopped without producing a final answer).{reasons}"
+
+    body = _truncate(answer) if answer.strip() else "(browser-use finished without producing any text — check the pages it visited.)"
 
     urls = [row.get("url") for row in envelope.get("history") or [] if isinstance(row, dict) and row.get("url")]
     visited = ""

@@ -71,6 +71,15 @@ MAX_RESULT_CHARS = 8000
 MAX_HISTORY_ROWS = 20
 #: Tail of the child's stderr kept for a failure report.
 _STDERR_TAIL_CHARS = 2000
+#: Packages installed alongside browser-use itself, beyond the operator's
+#: ``extra_packages``. ``litellm`` is here for a reason found by running the real
+#: thing: browser-use ships no provider adapter for OpenAI-compatible endpoints
+#: except ``ChatLiteLLM``, which imports ``litellm`` **lazily at call time**. So
+#: without it every model call raises ``No module named 'litellm'`` from inside
+#: the agent loop — after the browser has already navigated and burned the whole
+#: step budget, surfacing only as "Result failed 1/6 times". It is a runtime
+#: requirement of the supported path, not an optional extra.
+DEFAULT_EXTRA_PACKAGES: tuple[str, ...] = ("litellm",)
 
 #: Keys that belong to Alpha's config schema rather than to a LangChain model
 #: constructor. Forwarding them would raise a confusing ``TypeError`` inside the
@@ -300,18 +309,21 @@ class BrowserUseManager:
         which is what "install its latest version" means after a new upstream
         release.
         """
+        # The supported provider path needs litellm (see DEFAULT_EXTRA_PACKAGES),
+        # so it is part of "installed" rather than an operator's afterthought.
+        wanted = list(DEFAULT_EXTRA_PACKAGES) + [str(pkg) for pkg in extra_packages if str(pkg).strip()]
         with self._lock:
             self.venv_dir.mkdir(parents=True, exist_ok=True)
             if not self.python_path.exists():
                 self._create_venv(timeout_seconds=timeout_seconds)
 
             version = self.probe_version()
-            if version is not None and not upgrade:
+            if version is not None and not upgrade and self._probe_import("litellm"):
                 status = self.status()
                 return status
 
             log: list[str] = []
-            self._pip_install(extra_packages=extra_packages, timeout_seconds=timeout_seconds, log=log)
+            self._pip_install(extra_packages=wanted, timeout_seconds=timeout_seconds, log=log)
             self._install_browser(timeout_seconds=timeout_seconds, log=log)
 
             version = self.probe_version()
