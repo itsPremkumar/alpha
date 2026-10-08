@@ -660,6 +660,7 @@ class RunManager:
         callers should use :meth:`create_or_reject`.
         """
         run_id = str(uuid.uuid4())
+        await self._require_mod_admission(run_id, thread_id, "run")
         now = _now_iso()
         lease_expires_at = self._compute_lease_expires_at()
         record = RunRecord(
@@ -1657,6 +1658,11 @@ class RunManager:
         if multitask_strategy not in _supported_strategies:
             raise UnsupportedStrategyError(f"Multitask strategy '{multitask_strategy}' is not yet supported. Supported strategies: {', '.join(_supported_strategies)}")
 
+        # Evaluate safety policy before cancelling an existing operation or
+        # inserting a replacement row. A failed policy read must leave the
+        # current run untouched.
+        await self._require_mod_admission(run_id, thread_id, operation_kind.value)
+
         lease_expires_at = self._compute_lease_expires_at()
         grace_seconds = self._run_ownership_config.grace_seconds if self._run_ownership_config else 10
 
@@ -1849,6 +1855,26 @@ class RunManager:
 
         logger.info("Run created: run_id=%s thread_id=%s", run_id, thread_id)
         return record
+
+    async def _require_mod_admission(self, run_id: str, thread_id: str, operation_kind: str) -> None:
+        """Fail closed on the shared Mod Kernel before admitting new work."""
+        try:
+            from alpha.mods.kernel import get_mod_kernel, require_mod_admission
+            from alpha.mods.types import AlphaEvent, CorrelationContext
+
+            await require_mod_admission(
+                get_mod_kernel(),
+                AlphaEvent(
+                    name="run.admit",
+                    payload={"thread_id": thread_id, "operation_kind": operation_kind},
+                    correlation=CorrelationContext.create(run_id=run_id),
+                    source="runtime:run_manager",
+                ),
+            )
+        except Exception as exc:
+            if isinstance(exc, ConflictError):
+                raise
+            raise ConflictError(str(exc)) from exc
 
     @asynccontextmanager
     async def reserve_thread_operation(

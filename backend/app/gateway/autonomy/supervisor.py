@@ -59,6 +59,25 @@ def _fleet_admits_tick(loop_id: str) -> bool:
         return False
 
 
+async def _mod_admits_tick(loop_id: str) -> bool:
+    """Run the shared Mods admission policy before executing an autonomy tick."""
+    try:
+        from alpha.mods.kernel import get_mod_kernel, require_mod_admission
+        from alpha.mods.types import AlphaEvent, CorrelationContext
+
+        event = AlphaEvent(
+            name="autonomy.tick",
+            payload={"loop_id": loop_id},
+            correlation=CorrelationContext.create(task_id=loop_id),
+            source="runtime:autonomy_supervisor",
+        )
+        await require_mod_admission(get_mod_kernel(), event)
+        return True
+    except Exception as exc:
+        logger.error("Mod policy refused autonomy loop %s (fail-closed): %s", loop_id, exc)
+        return False
+
+
 @dataclass
 class LoopSpec:
     """Registration entry for one background loop."""
@@ -206,6 +225,8 @@ class AutonomySupervisor:
             return
         async with self._semaphores[loop_id]:
             if state.running or self._stopping:
+                return
+            if not _fleet_admits_tick(loop_id) or not await _mod_admits_tick(loop_id):
                 return
             state.running = True
             started = time.time()

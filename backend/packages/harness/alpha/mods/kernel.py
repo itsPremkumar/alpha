@@ -137,11 +137,23 @@ class ModKernel:
             ctx = self._create_context(mod)
 
             next_called = False
+            next_task: asyncio.Task[EventResult] | None = None
 
             async def _next(next_ev: AlphaEvent) -> EventResult:
-                nonlocal next_called
-                next_called = True
-                return await _compose(index + 1, next_ev)
+                nonlocal next_called, next_task
+                if next_task is None:
+                    next_called = True
+                    # A handler may accidentally await next() more than once or
+                    # issue concurrent continuations. Share one downstream
+                    # execution so a tool side effect cannot be duplicated.
+                    next_task = asyncio.create_task(_compose(index + 1, next_ev))
+                elif next_ev.event_id != current_event.event_id or next_ev.name != current_event.name:
+                    logger.warning(
+                        "Mod '%s' attempted to continue event %s more than once with a different event; reusing the first result",
+                        mod.name,
+                        current_event.event_id,
+                    )
+                return await next_task
 
             try:
                 res = await mod.handle(ctx, current_event, _next)

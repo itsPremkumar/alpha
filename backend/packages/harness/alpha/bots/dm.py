@@ -280,6 +280,26 @@ def send_dm(
     sender_profile = reg.get_bot(sender_key)
     if sender_profile is None:
         return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Sender bot '{sender_key}' is not on the roster.", now)
+    # Apply the shared fleet/policy Mods before any local or peer delivery. A
+    # kernel failure is a refusal; delivery is the irreversible side effect.
+    try:
+        from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+        from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+
+        policy = sync_dispatch(
+            get_mod_kernel(),
+            AlphaEvent(
+                name="bot.dm_requested",
+                payload={"sender": sender_key, "target": name, "target_kind": kind, "message": body},
+                correlation=CorrelationContext.create(agent_id=sender_key),
+                source="runtime:bot_dm",
+            ),
+        )
+        if policy.outcome not in (EventOutcome.CONTINUE, EventOutcome.OBSERVE):
+            return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, policy.reason or policy.outcome.value, now)
+    except Exception as exc:
+        logger.error("Mod policy refused bot DM (fail-closed): %s", exc)
+        return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Policy could not be evaluated: {exc}", now)
     if kind != "local":
         peer_id = _peer or name
         return _send_peer_dm(peer_id, name, apply_attribution(sender_key, body), sender_key)

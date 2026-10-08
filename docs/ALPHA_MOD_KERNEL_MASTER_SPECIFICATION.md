@@ -12,7 +12,7 @@
 
 Claude Code introduces a seminal concept in agentic runtime design: **Mods**—programmable, event-driven middleware extensions that receive an ambient capability interface (`$`), typed event payloads (`e`), and an asynchronous continuation function (`next`). Handlers can **observe**, **rewrite**, or **answer/short-circuit** operations across tool execution, prompt composition, turn iterations, and subagent spawns.
 
-Alpha now has a native ordered Mod Kernel, connected to the lead-agent tool/model middleware chain and selected run/autonomy admission boundaries. The first-party package includes ESTOP, tool-risk, evidence, bot-mode, task-routing, and failure-sentinel modules. This is a partial control plane, not a general or durable workflow engine. The kernel journal, held actions, UI cards, key-value storage, and timers are process-local; deferred actions have no durable operator-resume route; the synthetic harness is not a sandbox; and several external side-effect paths are governed separately. See `docs/PRODUCTION_READINESS_INVENTORY.md` before making production-readiness claims.
+Alpha now has a native ordered Mod Kernel, connected to the lead-agent tool/model middleware chain, run admission, autonomy ticks, bot DMs and task claims, and channel dispatch. The first-party package includes ESTOP, tool-risk, evidence, bot-mode, task-routing, and failure-sentinel modules. This is a partial control plane, not a general or durable workflow engine. The kernel journal, held actions, UI cards, key-value storage, and timers are process-local; deferred actions have no durable operator-resume route; the synthetic harness is not a sandbox; and several external side-effect paths are governed separately. See `docs/PRODUCTION_READINESS_INVENTORY.md` before making production-readiness claims.
 
 ---
 
@@ -74,6 +74,11 @@ class ModPriority(IntEnum):
 ### 3.2 Mod Event Outcomes
 When handling an event, a mod must return an explicit `EventResult` variant:
 - **`CONTINUE`**: Mod observed or logged the event and passes control to `next(event)`.
+
+The kernel executes a handler's downstream continuation at most once. Repeated or
+concurrent calls to `next()` share the same downstream task and result, preventing
+an accidental duplicate tool side effect. This is an in-process dispatch invariant;
+it does not provide cross-process idempotency for external effects.
 - **`REWRITE`**: Mod modified the event payload (e.g. injected policy reminders or normalized paths) and passes `next(mutated_event)`.
 - **`ANSWER`**: Mod short-circuits execution and returns a terminal response immediately without invoking downstream handlers or tools.
 - **`DENY`**: Mod explicitly refuses the operation due to security/policy violations.
