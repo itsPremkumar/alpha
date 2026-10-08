@@ -102,8 +102,12 @@ and through the configured `apex` supervisor loop. It uses
 dispatch generation and run id on the session, and projects RunManager status
 and measured token totals. All enabled profiles set token, tool-call, and
 runtime spending ceilings to `null` (unlimited). The ordinary `task` tool enforces APEX parallel-task and
-active-agent ceilings. Acceptance-failure replan counts are durable and bounded;
-per-failure-class retry ceilings still have no runtime counters. The Gateway task path relies on the lifecycle manager's depth limit instead of
+active-agent ceilings. Acceptance-failure replan counts are durable and bounded.
+The per-failure-class retry ceiling is durably counted by
+`SafeRunRecoveryService` for safe checkpoint resumes. Ordinary terminal run
+errors are surfaced as `failed` for operator-directed recovery and are not
+automatically replayed, because a retry could repeat a completed external side
+effect. The Gateway task path relies on the lifecycle manager's depth limit instead of
 the contract depth field; engine admission limits still apply independently;
 the host adapter interrupts explicitly narrowed over-budget runs at its polling
 boundary, while the tool gate refuses additional actions only when a finite
