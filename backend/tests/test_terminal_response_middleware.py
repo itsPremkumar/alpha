@@ -253,15 +253,45 @@ def test_before_agent_clears_same_run_state_for_resumed_invocation():
 def test_tool_history_without_real_user_message_does_not_trigger_recovery():
     middleware = TerminalResponseMiddleware()
     runtime = type("RuntimeStub", (), {"context": {"thread_id": "thread-8", "run_id": "run-8"}})()
+    historical_tool_result = ToolMessage(content="tool completed", tool_call_id="call-8")
+    initial_state = {
+        "messages": [
+            HumanMessage(content="internal", additional_kwargs={"hide_from_ui": True}),
+            historical_tool_result,
+        ]
+    }
+    middleware.before_agent(initial_state, runtime)
     state = {
         "messages": [
             HumanMessage(content="internal", additional_kwargs={"hide_from_ui": True}),
-            ToolMessage(content="tool completed", tool_call_id="call-8"),
+            historical_tool_result,
             AIMessage(content="", response_metadata={"finish_reason": "stop"}),
         ]
     }
 
     assert middleware.after_model(state, runtime) is None
+
+
+def test_post_tool_recovery_survives_compaction_of_the_current_user_message():
+    middleware = TerminalResponseMiddleware()
+    runtime = type("RuntimeStub", (), {"context": {"thread_id": "thread-9", "run_id": "run-9"}})()
+    initial_state = {"messages": [HumanMessage(content="Audit this repository")]}
+    middleware.before_agent(initial_state, runtime)
+
+    # Context management can remove the original user message after a long run.
+    # The newly produced ToolMessage still proves this run needs a final answer.
+    compacted_state = {
+        "messages": [
+            ToolMessage(content="read completed", tool_call_id="call-9"),
+            AIMessage(content="\n\n", response_metadata={"finish_reason": "stop"}),
+        ]
+    }
+
+    update = middleware.after_model(compacted_state, runtime)
+
+    assert update is not None
+    assert update["jump_to"] == "model"
+    assert middleware._pending_prompts[("thread-9", "run-9")] is True
 
 
 def test_abandoned_run_state_is_bounded():
@@ -271,8 +301,11 @@ def test_abandoned_run_state_is_bounded():
         key = (f"thread-{index}", f"run-{index}")
         middleware._retry_counts[key] = 1
         middleware._pending_prompts[key] = True
+        middleware._initial_tool_message_ids[key] = frozenset()
 
     assert len(middleware._retry_counts) == 1000
     assert len(middleware._pending_prompts) == 1000
+    assert len(middleware._initial_tool_message_ids) == 1000
     assert ("thread-0", "run-0") not in middleware._retry_counts
     assert ("thread-0", "run-0") not in middleware._pending_prompts
+    assert ("thread-0", "run-0") not in middleware._initial_tool_message_ids
