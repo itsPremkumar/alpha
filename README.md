@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 67 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 68 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -538,6 +538,17 @@ exactly-once execution.
   disconnects never cancel work; resumes after crash, expired lease, restart, or
   recoverable model failure. Ambiguous external effects pause for confirmation so
   irreversible side effects are not duplicated.
+- **Effect journal & reconciliation console** — the **Effects** view works the
+  side-effect queue that pause exists to feed: counts by status and by level, the
+  oldest unaccounted-for effect's age, and `POST /api/side-effects/{id}/reconcile`
+  to record `confirmed_success` / `confirmed_failure` / `undetermined` with a
+  required reason (`GET /api/side-effects`, `/summary`, `/{id}`). Digests only —
+  arguments and results never cross the API — and the console **reads and
+  reconciles only**: it never cancels, resumes or replays a run. Rows are
+  owner-scoped, the verdict is admin-only, and an entry somebody already settled
+  refuses with the ledger's own words rather than taking a second verdict. One
+  effect family (durable MCP-task submit) announces to the ledger today; the
+  remaining families stay named in the ratchet that keeps that gap honest.
 - **Kibitzer metacognitive supervision** — background supervision that detects
   loops, thrashing, and prompt drift.
 - **Dynamic workflow plane** — intent perception, capability discovery, task
@@ -562,6 +573,7 @@ exactly-once execution.
   until a real executor is bound.
 
 → [docs/RUN_RECOVERY.md](docs/RUN_RECOVERY.md) ·
+[docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md) ·
 [docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md) ·
 [docs/ALPHA-WORKFLOW-ARCHITECTURE.md](docs/ALPHA-WORKFLOW-ARCHITECTURE.md) ·
 [docs/ALPHA-WORKFLOW-CURRENT-STATE.md](docs/ALPHA-WORKFLOW-CURRENT-STATE.md)
@@ -693,6 +705,9 @@ exactly-once execution.
   `uv`; launches straight into chat with no setup wizard.
 - **Next.js 15 web workspace** — Chat, Overview, Workforce, Projects, Kanban,
   Skills, Peers, and Settings views.
+- **Agent response workspace** — readable terminal, file-diff, search, browser,
+  artifact, and subagent cards; transcript search and Markdown export; and a
+  side pane for the files, commands, pages, and artifacts a run produced.
 - **Complete on-device chat history** — uncapped IndexedDB archive, full server
   history pagination, migration from the old capped cache, and honest degraded
   states (a banner when you are reading the local copy, a partial-load notice, and
@@ -1038,7 +1053,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 136 tools, 67 routers, 44 middlewares, and 10 supervisor loops. CI fails
+  pins all 136 tools, 68 routers, 44 middlewares, and 10 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

@@ -16,6 +16,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 ## Start here
 
 - [Getting started](GETTING_STARTED.md): prerequisites, install methods for every platform, first run, and verification.
+- [Agent response workspace](https://github.com/itsPremkumar/alpha/blob/main/README.md#8-presentation-layer-desktop--web-ui): inspectable tool cards, transcript search/export, and the run-product side pane.
 - [FAQ](FAQ.md): short, citable answers to the most common questions.
 - [Comparison](COMPARISON.md): Alpha vs LangGraph, AutoGen, CrewAI, OpenHands, and Dify, plus a selection decision guide.
 - [Use cases](USE_CASES.md): concrete end-to-end jobs mapped to the subsystem that delivers each.
@@ -55,7 +56,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## API
 
-- [API reference](API_REFERENCE.md): all 66 Gateway routers, authentication, and SSE event streaming.
+- [API reference](API_REFERENCE.md): authentication and the core Gateway router endpoints, plus SSE event streaming.
 - [API overview](API.md): entry points, base URLs, routing, and versioning contracts.
 
 ## Operations

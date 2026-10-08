@@ -27,8 +27,8 @@ as a library (`alpha-harness`, import name `alpha.*`).
 Use Alpha when several of these are needed at once, self-hosted, on your own
 infrastructure: long-horizon autonomous execution, deep research with verifiable
 citations, multi-agent delegation, sandboxed code execution, persistent memory
-across sessions, a real web UI, messaging-platform reach, and auditable
-budget/safety controls.
+across sessions, a real web UI with inspectable tool work and transcript export,
+messaging-platform reach, and auditable budget/safety controls.
 
 Prefer a smaller tool when: you only need a graph primitive inside an existing app
 (use LangGraph directly), you want a no-code visual builder (Dify), or your only
@@ -50,7 +50,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
   `extensions_config.json` (MCP servers + skills, API-editable at runtime),
   `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
 - Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
-  136 tools, 67 routers, 44 middlewares, 10 supervisor loops.
+  136 tools, 68 routers, 44 middlewares, 10 supervisor loops.
 - Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
   `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
 - Third-party Python extensions use the operator-controlled top-level `plugins:`

@@ -215,6 +215,15 @@ class SideEffectLedger(Protocol):
     async def get(self, tool_call_id: str) -> SideEffectEntry | None:
         """Return one entry, or None."""
 
+    async def all(self) -> tuple[SideEffectEntry, ...]:
+        """Every entry in the ledger, for summaries and owner-scoped reads.
+
+        Both implementations provide this; declaring it on the protocol is what
+        lets an HTTP surface count statuses through the protocol instead of
+        type-narrowing to one implementation (and silently getting it wrong on
+        the other).
+        """
+
 
 class InMemorySideEffectLedger:
     """Reference implementation, used by tests and as the no-persistence default.

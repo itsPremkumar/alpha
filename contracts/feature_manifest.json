@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-08T18:08:38Z",
+ "generated_at": "2026-10-08T19:18:35Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1504,6 +1504,14 @@
   {
    "id": "app.gateway.routers.scheduled_tasks",
    "module": "app.gateway.routers.scheduled_tasks",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.side_effects",
+   "module": "app.gateway.routers.side_effects",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,

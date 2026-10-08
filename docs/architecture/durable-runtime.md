@@ -489,32 +489,45 @@ make:
   restart budget or diagnostics. The launcher/watchdog paths have focused
   contract tests, but proving the installed chain still requires a deliberate
   reboot/crash recovery drill.
-- **Nothing in production writes the side-effect ledger.** This is the honest
-  version of a gap that is easy to state wrongly. `SqlSideEffectLedger` exists,
-  is migration-backed (`0027_side_effect_ledger`), and satisfies the
-  `SideEffectLedger` protocol with conditional cross-process transitions — but no
-  module under `backend/app/` or the harness constructs it. Only
-  `tests/test_side_effect_ledger_sql.py` and
-  `tests/test_durable_runtime_realtime.py` do. So the table is empty in a real
-  deployment, `list_unknown()` always returns `()`, and **there is no
-  cross-process exactly-once for side effects**, because the ledger that would
-  provide it is never fed. Announcing an effect is a caller decision in the tool
-  path, and no caller makes it. Everything the ledger documents about leases,
-  reclaim, and reconciliation is therefore a *proven contract*, not an observed
-  behaviour.
-- **No per-tool-call reconciliation API or UI.** The unknown set is queryable via
-  `list_unknown()` and durable in SQL, but there is no route or frontend surface
-  for a human to work the queue off.
+- **One effect family writes the side-effect ledger; the rest still do not.**
+  This gap is easy to state wrongly in *either* direction, so here it is with
+  its evidence. On a SQL backend `app/gateway/deps.py` constructs
+  `SqlSideEffectLedger` (migration `0027_side_effect_ledger`) alongside a
+  `SideEffectReclaimer`, and exactly one production site calls
+  `announce_effect`: the durable MCP-task *submit* in
+  `app/mcp_tasks/service.py`. `tests/test_side_effect_unrecorded_ratchet.py`
+  pins that count to one and keeps every remaining family named in
+  `UNRECORDED_IRREVERSIBLE_EFFECTS` (shell, ordinary MCP calls, workspace file
+  writes, git publish, host computer-use, IM outbound, …), so a second wired
+  site cannot appear without editing the ratchet and a site unwired from the
+  list cannot quietly stay unwired. A `database.backend: memory` deployment
+  installs no ledger at all. **Cross-process exactly-once therefore exists only
+  for the one wired family**; everything else about leases, reclaim and
+  reconciliation remains a *proven contract* rather than an observed behaviour,
+  and an empty journal means "nothing announced", never "nothing went wrong".
+- **The queue has an API and a UI, and neither writes an effect.**
+  `GET /api/side-effects/summary`, `GET /api/side-effects`,
+  `GET /api/side-effects/{tool_call_id}` and
+  `POST /api/side-effects/{tool_call_id}/reconcile`
+  (`app/gateway/routers/side_effects.py`) are the route; the `effects`
+  workspace view (`frontend/src/lib/side-effects.ts` +
+  `components/sections/EffectsSection.tsx`) is the human surface. Both read and
+  reconcile only: neither announces an effect, neither cancels, resumes or
+  replays a run, and both carry SHA-256 digests rather than payloads.
+  Reconciliation stays a caller decision and a verdict is a record of what
+  *was* — an operator recording `confirmed_success` does not tell the runtime
+  anything about a run.
 - **No `replay(session_id)` over the run-event log.** The workflow/DWE log is
   replayable (`alpha.orchestrator.replay.replay_run`); the thread `run_events`
   feed is a message feed and audit trace, and nothing folds it back into a
   session state. `alpha.runtime.sessions` derives that state from live signals
   instead.
-- **The parked-session registry has no resume launcher by design.** A definitive
-  network error is persisted on the run and in the wait registry;
-  `SafeRunRecoveryService` defers it during a confirmed outage and rechecks the
-  same safe checkpoint gate as connectivity returns. The registry records and
-  bounds attempts; it does not create a second continuation authority.
+- **The parked-session registry has no per-thread resume API.** The
+  continuation path exists and stays fail-closed: `SafeRunRecoveryService`'s
+  scan is stop-reason driven, and `network_waiting` is in
+  `RECOVERABLE_RUN_STOP_REASONS`, so a network-parked run is picked up by the
+  service that already owns safe continuation. The registry records and bounds
+  attempts; it does not create a second continuation authority.
 - **A `memory` database backend gets no parked-session registry.** There is
   nowhere durable to record a park, so only the connectivity measurement runs and
   the degradation is logged rather than silently absorbed.

@@ -65,8 +65,8 @@ For machine-readable context, see [`/llms.txt`](llms.txt) (this directory),
 
 ## API and integration
 
-- **[API reference](API_REFERENCE.md)** - all 66 Gateway routers, authentication,
-  and SSE event streaming.
+- **[API reference](API_REFERENCE.md)** - authentication and the core Gateway
+  router endpoints, including SSE event streaming.
 - **[API overview](API.md)** — entry points, base URLs, routing, and versioning.
 - **[Extensions & MCP](EXTENSIONS.md)** — MCP over stdio, HTTP, and SSE, plus the
   Python extension contract (middleware, task lifecycle, model observers, Gateway
