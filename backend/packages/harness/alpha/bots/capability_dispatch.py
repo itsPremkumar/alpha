@@ -401,6 +401,85 @@ class CapabilityDispatcher:
         registry = self.registry
         issuer = self._context.node_id or ALPHA_LEADER_NAME
 
+        # 0. Emergency Stop & Mod Kernel Admission Gate
+        try:
+            from alpha.runtime.estop import get_estop_manager
+
+            if get_estop_manager().is_engaged():
+                return _refusal(
+                    task_id,
+                    REFUSAL_AUTHORITY,
+                    "fleet emergency stop active: task dispatch refused",
+                    issuer=issuer,
+                    required=required_capability_tags or (),
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    context=self._context,
+                )
+        except Exception as exc:
+            return _refusal(
+                task_id,
+                REFUSAL_AUTHORITY,
+                f"fleet ESTOP state unavailable: task dispatch refused ({type(exc).__name__})",
+                issuer=issuer,
+                required=required_capability_tags or (),
+                attempt=attempt,
+                max_attempts=max_attempts,
+                context=self._context,
+            )
+
+        try:
+            from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+            from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+
+            kernel = get_mod_kernel()
+            ev = AlphaEvent(
+                name="task.routed",
+                payload={"task_id": task_id, "objective": objective, "attempt": attempt},
+                correlation=CorrelationContext.create(task_id=task_id, agent_id=issuer),
+                source="bots.capability_dispatch",
+            )
+            res = sync_dispatch(kernel, ev)
+            if res.outcome not in (EventOutcome.CONTINUE, EventOutcome.OBSERVE, EventOutcome.ANSWER):
+                return _refusal(
+                    task_id,
+                    REFUSAL_AUTHORITY,
+                    f"task dispatch refused by policy ({res.outcome.value}): {res.reason}",
+                    issuer=issuer,
+                    required=required_capability_tags or (),
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    context=self._context,
+                )
+            if res.outcome == EventOutcome.ANSWER:
+                mod_bot = str((res.response_payload or {}).get("selected_bot") or "").strip()
+                if not mod_bot:
+                    return _refusal(
+                        task_id,
+                        REFUSAL_NO_ELIGIBLE_AGENT,
+                        res.reason or "task router found no eligible agent",
+                        issuer=issuer,
+                        required=required_capability_tags or (),
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        context=self._context,
+                    )
+                if candidate_names:
+                    candidate_names = (mod_bot, *[c for c in candidate_names if c.lower() != mod_bot.lower()])
+                else:
+                    candidate_names = (mod_bot,)
+        except Exception as exc:
+            return _refusal(
+                task_id,
+                REFUSAL_AUTHORITY,
+                f"Mod Kernel could not evaluate task.routed; task dispatch refused ({type(exc).__name__})",
+                issuer=issuer,
+                required=required_capability_tags or (),
+                attempt=attempt,
+                max_attempts=max_attempts,
+                context=self._context,
+            )
+
         # 1. Required capability tags, in strict precedence order:
         #      a. supplied by the caller;
         #      b. derived from the TASK TEXT (the only non-circular source — a

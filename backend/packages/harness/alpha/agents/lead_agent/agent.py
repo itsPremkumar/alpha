@@ -557,6 +557,12 @@ def build_middlewares(
         runtime_middleware_kwargs["deferred_setup"] = deferred_setup
     middlewares = build_lead_runtime_middlewares(**runtime_middleware_kwargs)
 
+    # Connect the native Mod Kernel to the actual agent tool/model lifecycle;
+    # standalone kernel tests alone do not protect production tool execution.
+    from alpha.mods.middleware import ModKernelMiddleware
+
+    middlewares.append(ModKernelMiddleware())
+
     # Always inject current date (and optionally memory) as <system-reminder> into the
     # first HumanMessage to keep the system prompt fully static for prefix-cache reuse.
     from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware

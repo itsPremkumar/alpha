@@ -34,6 +34,17 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   them through `GET /api/ops/integration-health`. Flags off = zero tasks;
   lifespan start after scheduler/channel services, stop first on shutdown.
   `tests/test_autonomy_supervisor.py` pins the invariants.
+- **Alpha Mod Kernel** — ordered event middleware is wired into the lead agent's
+  tool/model lifecycle and run admission. A mod's `required_capabilities` is a
+  declaration, never an operator grant; external mods need an explicit grant at
+  registration. ESTOP state read failures refuse work. `RunManager` remains the
+  run lifecycle owner, and `AutonomySupervisor` remains the loop owner. The
+  current kernel journal, approval holds, capability storage, and timers are
+  process-local; do not describe them as durable or cross-worker exactly-once.
+  Keep `tests/test_mod_kernel.py`, `test_mod_context.py`,
+  `test_mod_middleware.py`, `test_mod_enforcers.py`, and
+  `test_mod_runtime_wiring.py` aligned. See
+  [`packages/harness/alpha/mods/AGENTS.md`](packages/harness/alpha/mods/AGENTS.md).
 
 ## Run verification, autonomy, and self-repair contracts
 

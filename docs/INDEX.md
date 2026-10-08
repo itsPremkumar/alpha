@@ -121,6 +121,7 @@
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Alpha's autonomous-autopilot master spec: the single source of truth for the apex autopilot's architecture, capabilities, failure modes, and verification gates (a spec, not implementation).
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
+- [ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) — Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.
 - [GROK_VS_ALPHA_GAP_ANALYSIS.md](GROK_VS_ALPHA_GAP_ANALYSIS.md) — Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.

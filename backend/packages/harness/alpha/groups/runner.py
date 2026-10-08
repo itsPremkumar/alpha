@@ -372,6 +372,36 @@ class GroupRunService:
         resolved_moderator = (moderator or room.moderator or active_members[0]).lower().strip()
         max_parallel = max(1, min(max_parallel, _MAX_PARALLEL_MEMBERS))
 
+        # ── Alpha Mod Kernel & Fleet ESTOP admission ──
+        try:
+            from alpha.runtime.estop import get_estop_manager
+
+            if get_estop_manager().is_engaged():
+                raise RuntimeError("Fleet ESTOP active: group run refused.")
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError("Fleet ESTOP state is unavailable; group run refused.") from exc
+
+        try:
+            from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+            from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+
+            kernel = get_mod_kernel()
+            ev = AlphaEvent(
+                name="group.run_admit",
+                payload={"room_name": room.name, "objective": objective, "members": active_members},
+                correlation=CorrelationContext.create(metadata={"room_name": room.name}),
+                source="groups.runner",
+            )
+            res = sync_dispatch(kernel, ev)
+            if res.outcome not in (EventOutcome.CONTINUE, EventOutcome.OBSERVE):
+                raise RuntimeError(f"Group run refused by mod policy: {res.reason or res.outcome.value}")
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError("Mod Kernel could not evaluate group.run_admit; group run refused.") from exc
+
         run = GroupRun(
             run_id=f"grun_{uuid4().hex[:12]}",
             room_name=room.name,
@@ -549,6 +579,20 @@ class GroupRunService:
                         event = self._cancel_events.get(run_id)
                         if event is not None and event.is_set():
                             return
+                        try:
+                            from alpha.mods.kernel import get_mod_kernel
+                            from alpha.mods.types import AlphaEvent, CorrelationContext
+
+                            await get_mod_kernel().dispatch(
+                                AlphaEvent(
+                                    name="bot.turn_started",
+                                    payload={"run_id": run_id, "member": member, "attempt": attempt + 1, "room": run.room_name},
+                                    correlation=CorrelationContext.create(run_id=run_id, agent_id=member),
+                                    source="groups.runner",
+                                )
+                            )
+                        except Exception:
+                            pass
                         execution_id = executor.execute_async(prompt, task_id=f"{run_id}:{member}:attempt{attempt + 1}")
                         with self._lock:
                             self._member_executions.setdefault(run_id, []).append(execution_id)
@@ -561,6 +605,20 @@ class GroupRunService:
                             if result.status.is_terminal:
                                 if result.status is SubagentStatus.COMPLETED and result.result:
                                     member_outputs[member] = result.result
+                                    try:
+                                        from alpha.mods.kernel import get_mod_kernel
+                                        from alpha.mods.types import AlphaEvent, CorrelationContext
+
+                                        await get_mod_kernel().dispatch(
+                                            AlphaEvent(
+                                                name="bot.turn_completed",
+                                                payload={"run_id": run_id, "member": member, "output": result.result, "status": "completed"},
+                                                correlation=CorrelationContext.create(run_id=run_id, agent_id=member),
+                                                source="groups.runner",
+                                            )
+                                        )
+                                    except Exception:
+                                        pass
                                     break
                                 if result.status is SubagentStatus.CANCELLED:
                                     event = self._cancel_events.get(run_id)

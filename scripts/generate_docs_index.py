@@ -179,6 +179,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.",
     ),
+    "ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md": DocumentSpec(
+        "plans",
+        "Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.",
+    ),
     "APEX_INTEGRATION_MAP.md": DocumentSpec(
         "architecture",
         "Phase 0 inventory: which APEX specification sections already exist in this repository, which enforcement site owns each invariant, and what was deliberately not built.",
