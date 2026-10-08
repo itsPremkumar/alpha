@@ -2011,6 +2011,50 @@ tools:
   #   group: browser
   #   use: alpha.community.browser_automation.tools:browser_close_tool
 
+  # Optional: browser-use (https://github.com/browser-use/browser-use), the
+  # leading open-source autonomous browser agent.
+  #
+  # browser-use is a DIFFERENT shape from the tools above. Those are a host-driven
+  # loop where you see and choose every step; browser-use is a second planner
+  # that plans and executes its own steps against a page. Use it for a whole
+  # well-scoped task ("export this quarter's report"), not for single clicks.
+  #
+  # Why it is opt-in rather than default:
+  #   - Installing it downloads browser-use + a Chromium build into a private
+  #     virtualenv (minutes, once). It runs in its own venv so its pinned
+  #     playwright/langchain versions never fight the Gateway's lockfile.
+  #   - It runs in a SUBPROCESS under a step and time budget, so a stuck page or
+  #     an upstream crash cannot take down the Gateway.
+  #   - browser-use may act as an authenticated session and can submit forms.
+  #     Side effects on third-party sites are not reversible, so both tools are
+  #     governance-classed `ask` (confirm before unattended use).
+  #
+  # Uncomment the block below to enable. The first browser_use_run call installs
+  # browser-use automatically; use browser_use_setup to do it up front or to
+  # pull a newer upstream release.
+  # - name: browser_use_setup
+  #   group: browser
+  #   use: alpha.community.browser_use.tools:browser_use_setup_tool
+  #   upgrade: false                    # true = always pip install -U to the newest version
+  #   install_timeout_seconds: 900      # ceiling for the install (pip + browser download)
+  #   # extra_packages: []              # only needed for a non-OpenAI-compatible model
+  #   #   browser-use drives your configured `models[]` entry through its own
+  #   #   # provider adapter, so an OpenAI-compatible endpoint (OpenAI, OpenRouter,
+  #   #   # most gateways) needs nothing extra. For another provider, name its
+  #   #   # client here; extras are installed against browser-use's resolved pins
+  #   #   # and verified with `pip check`, so a conflict fails at install time
+  #   #   # rather than halfway through a browsing task.
+  # - name: browser_use_run
+  #   group: browser
+  #   use: alpha.community.browser_use.tools:browser_use_run_tool
+  #   auto_install: true                # install browser-use on first use instead of refusing
+  #   max_steps: 10                     # default step budget (model may request up to 50)
+  #   timeout_seconds: 300              # whole-run wall clock (max 900)
+  #   headless: true                    # false opens a visible browser (local/trusted only)
+  #   use_vision: false                 # true = screenshots per step; pricier, but reads canvas/maps
+  #   # venv_path: .alpha/browser-use   # managed venv location (default: runtime home)
+  #   # allow_private_addresses: false  # SSRF guard for start_url; keep false in production
+
   # Web fetch tool (uses Exa)
   # NOTE: Only one web_fetch provider can be active at a time.
   # Comment out the Jina AI web_fetch entry below before enabling this one.
