@@ -141,6 +141,12 @@ from finite spending quotas to unlimited, sessions created by an older release
 may encounter this check and need a fresh session to adopt the new defaults;
 their frozen contracts are never silently widened.
 
+If the policy check itself cannot read or validate the stored digest, APEX also
+parks the session as `policy_drift`; it does not continue under the active
+contract. That park has no approval record because approval cannot repair a
+frozen contract. Failures reading other decision inputs are reported in the
+cycle steps and park the session with an operator approval request.
+
 ```bash
 curl -X POST localhost:8001/api/apex/sessions/<id>/cycle
 ```
@@ -303,7 +309,9 @@ side door. The refusal also says the park already stops the work, so an
 operator arriving with stop intent is told the session decides nothing rather
 than being sent to un-park it first. `steer` still works while parked — a
 constraint is a record, not a control — and a rejected park is moved only by
-`replan`.
+   `replan`. Policy drift is the exception: it parks without an approval
+   because no verdict can make the frozen contract match; review and create a
+   new session instead.
 
 Pending verdicts are listed at `GET /api/apex/approvals` (and rendered by the
 APEX panel's session-control card, which re-reads after every action).

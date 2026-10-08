@@ -126,8 +126,46 @@ class TestCycleIsDecideOnly:
         assert result.decision.blocked is True
         assert "session policy" in result.decision.detail["refusal"]
         assert next(step for step in result.steps if step.name == "check_policy").outcome == "drift"
-        assert store.get(session.session_id).state is ApexSessionState.IDLE
+        assert store.get(session.session_id).state is ApexSessionState.BLOCKED
         assert store.pending_approval(session.session_id) is None
+
+    def test_unreadable_policy_blocks_instead_of_using_the_current_contract(self, store: ApexStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = _session(store)
+
+        def _policy_unreadable(*_args, **_kwargs):
+            raise OSError("policy storage unavailable")
+
+        import alpha.apex.contract as contract_module  # noqa: PLC0415
+
+        monkeypatch.setattr(contract_module, "contract_digest_matches", _policy_unreadable)
+        result = run_cycle(store, session.session_id, profile_for("autonomous"))
+
+        assert result.decision.action is NextAction.NONE
+        assert result.decision.reason == REASON_POLICY_DRIFT
+        assert result.decision.blocked is True
+        assert "could not be checked" in result.decision.detail["refusal"]
+        assert next(step for step in result.steps if step.name == "check_policy").outcome == "error"
+        assert store.get(session.session_id).state is ApexSessionState.BLOCKED
+        assert store.pending_approval(session.session_id) is None
+
+    def test_decision_input_failure_is_reported_as_a_block(self, store: ApexStore) -> None:
+        session = _session(store)
+
+        def _usage_unreadable(_session):
+            raise OSError("usage store unavailable")
+
+        result = run_cycle(
+            store,
+            session.session_id,
+            profile_for("autonomous"),
+            usage_provider=_usage_unreadable,
+        )
+
+        assert result.decision.action is NextAction.NONE
+        assert result.decision.blocked is True
+        assert "decision inputs could not be read" in result.decision.detail["refusal"]
+        assert next(step for step in result.steps if step.name == "select_decision").outcome == "error"
+        assert store.get(session.session_id).state is ApexSessionState.BLOCKED
 
     def test_the_cycle_counts_itself_and_the_checkpoint_names_that_count(self, store: ApexStore) -> None:
         """Both numbers the checkpoint reports are measurements, not decorations.

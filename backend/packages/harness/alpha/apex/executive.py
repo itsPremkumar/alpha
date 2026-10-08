@@ -413,11 +413,37 @@ def run_cycle(
             detail={"refusal": policy_detail},
             blocked=True,
         )
+    elif policy_outcome == "error":
+        # The frozen contract is an authority boundary. If it cannot be
+        # checked, selecting work with the caller's current contract would
+        # silently widen or replace the session's policy.
+        decision = ExecutiveDecision(
+            action=NextAction.NONE,
+            reason=REASON_POLICY_DRIFT,
+            confidence=1.0,
+            detail={"refusal": "stored session policy could not be checked", "error": policy_detail},
+            blocked=True,
+        )
     else:
-        decision = select_next_action(contract=contract, session=session, store=store, usage_provider=usage_provider)
+        try:
+            decision = select_next_action(contract=contract, session=session, store=store, usage_provider=usage_provider)
+        except Exception as exc:
+            # Status/usage providers are host adapters. Their failure must not
+            # take down the supervisor tick or be mistaken for permission to
+            # continue without the observation they were asked to supply.
+            detail = f"{type(exc).__name__}: {exc}"
+            logger.warning("APEX decision selection failed for %s: %s", session_id, detail)
+            decision = ExecutiveDecision(
+                action=NextAction.NONE,
+                reason=REASON_BLOCKED,
+                confidence=1.0,
+                detail={"refusal": "decision inputs could not be read", "error": detail},
+                blocked=True,
+            )
+            steps.append(CycleStep(name="select_decision", outcome="error", detail=detail))
 
     def _apply() -> tuple[str, str]:
-        if session is None or decision.action is NextAction.NONE:
+        if session is None:
             return "noop", decision.reason
         if decision.blocked:
             # A blocked decision parks the session and asks an operator
@@ -427,10 +453,12 @@ def run_cycle(
             # the ask a real approval record. Autonomy cannot un-park
             # itself: the exits are an approval, a replan, or a stop.
             store.set_state(session_id, ApexSessionState.BLOCKED, reason=decision.reason)
-            if decision.reason != REASON_REPLAN_LIMIT:
+            if decision.reason not in {REASON_REPLAN_LIMIT, REASON_POLICY_DRIFT}:
                 store.request_approval(session_id, note=decision.reason, requester="apex.executive")
             store.emit(session_id, "cycle.blocked", decision=decision.to_dict())
             return "blocked", decision.reason
+        if decision.action is NextAction.NONE:
+            return "noop", decision.reason
         if decision.action is NextAction.REPORT:
             store.set_state(session_id, ApexSessionState.COMPLETED, reason="acceptance passed")
             return "completed", "acceptance passed"
