@@ -1,8 +1,10 @@
 <div align="center">
 
-# Alpha 🐺
+# 🦁 Alpha
 
-### The Open-Source Autonomous Multi-Agent AI Operating System
+### Alpha — The King of AI Agents
+
+**The open-source, self-hosted autonomous multi-agent AI operating system.**
 
 **Alpha is a self-hosted, local-first AI agent platform that plans and executes
 long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
@@ -99,7 +101,7 @@ In one sentence:
 | **What does it do?** | Turns one prompt into a verified, multi-step execution: research, plan, delegate to subagents, run sandboxed code, write files, ship results to Slack/Telegram/Feishu. |
 | **How is it different from a chatbot?** | It has a durable run lifecycle, a sandbox, a memory plane, budgets, approval gates, and a full audit trail — it keeps working after you close the laptop. |
 | **How is it different from a coding CLI?** | It is not tied to a repo or a language. Research, ops, data, docs, and messaging are first-class, not afterthoughts. |
-| **Do I need a paid backend?** | No. Apache-2.0/MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
+| **Do I need a paid backend?** | No. MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
 | **Which models?** | Any provider you put in `config.yaml` — OpenRouter, OpenAI, Anthropic, Google, DeepSeek, Moonshot, Ollama, and self-hosted endpoints. |
 | **Does it run offline?** | Local models, local speech (Whisper + Piper), and local SQLite/PostgreSQL are all supported. |
 | **What happens when the internet drops?** | Alpha measures its own connectivity and says so — the workspace header shows the link state and its measured round-trip. Work that needs the link is *parked*, not lost, and the backend keeps re-probing automatically (5s → 300s backoff, no give-up) until it returns, then resumes on its own. A **Retry** button on that reading asks for an immediate measurement. See [durable runtime](./docs/architecture/durable-runtime.md). |
@@ -724,10 +726,86 @@ exactly-once execution.
 </details>
 
 <details>
+<summary><b>9. Self-knowledge, durability &amp; autonomous operations</b></summary>
+
+- **Self-inventory plane (self-knowledge)** — one bounded answer to "what can Alpha
+  do?": eleven read-only registries (tools, skills, MCP, models, bots, commands,
+  capabilities, engines, wiring, memory) behind the `alpha_capability` tool and
+  `GET /api/intelligence/inventory`. A source that cannot be read reports
+  `count: null`, never `0`, and every descriptor carries `health: unverified`,
+  because listing a capability is not executing it.
+- **Code index** — bounded, query-driven symbol lookup returning names, signatures,
+  `path:line` and one-line docstrings — deliberately **never a function body** (an
+  interface map measured 67.8% reuse against 29.2% from a source dump), with
+  TypeScript rows labelled `extraction="regex"` so a regex signature is never
+  presented as parser-derived.
+- **Cognitive memory** — owner-server-resolved storage under
+  `users/{owner}/cognitive_memory`, with a per-owner/per-directory process cache
+  and atomic fsync-backed snapshots; a store that cannot be read fails closed
+  instead of bootstrapping over existing data.
+- **ReasoningBank** — durable, evidence-gated procedure memory: strategies that
+  worked are stored with their verdict and measured wins/attempts, then recalled
+  deterministically for similar tasks. The `ralph_loop` self-improvement tool is
+  its production consumer.
+- **APEX executive control plane** — one autonomy contract, one bounded decision
+  cycle, one read-only status projection and one control surface over engines that
+  already exist: additive and deliberately thin, never a second execution path. The
+  emergency stop, terminal-state and approval-gate refusals are enforced rather
+  than suggested.
+- **Durable runtime** — the guarantee that a process, UI, network, provider or
+  Windows restart never becomes a task failure: session lifecycle, connectivity as
+  a first-class state, a per-effect `UNKNOWN` + reconciliation ledger, a
+  crash-loop-bounded process supervisor, and an ordered, honestly reported shutdown.
+- **Workflow fork, dry run & templates** — fork a new run from any point in an
+  event history without repeating inherited work, dry-run a graph on a throwaway
+  engine (zero side effects, zero tokens, labelled `dry_run_simulation`), and gate
+  templates through `draft → verified → promoted`.
+- **Failure classification** — 19 deterministic `NodeFailureClass` values (auth,
+  rate limit, security block, worker lost, …) answering "retry — and is this the
+  same fault?", each disclosing the rule that matched and bridging onto the
+  existing recovery vocabulary instead of adding an error-code taxonomy.
+- **Company OS** — durable multi-tenant organizations *indexed over* real
+  subsystems rather than duplicating them: employees are bot profiles, projects are
+  project rows, work items are Kanban cards, rooms are group rooms — and every
+  figure carries a `MeasurementBasis`, because a proposal is never an action.
+- **Autonomous AI Software Enterprise** — C-Suite hierarchy with department
+  capability contracts, mission-to-sprint DAG execution, RFC/blackboard consensus
+  gating, a token treasury with circuit breakers, and multi-sig release
+  attestations.
+- **Nested groups** — "visibility may fan out to many parents; authority is at most
+  ONE": `parents` is a list while `authority_parent` is a single room, so policy
+  inheritance is a pointer rather than a negotiation between rooms. Relay copies a
+  message with `forwarded_from` provenance (never reusing the source id) and is
+  bounded by a hop guard.
+- **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
+  pairing, transport, delivery receipts and DM bridging scoped to one
+  installation. Discovery grants no credentials, pairing uses a high-entropy
+  out-of-band code, and libp2p reports *unavailable* until a real authenticated
+  adapter is wired.
+- **Free model gateways & fail-closed routing** — keyless `alpha-free` routing
+  over daily-refreshed free catalogs (free is **computed**, not trusted), with
+  automatic failover, while a routing table that resolves to nothing returns an
+  empty chain plus a reason instead of an invented model.
+- **System One computer control** — opt-in Windows desktop control where the model
+  returns only semantic element indexes — never coordinates, selectors, keys or
+  typed text — which are re-observed and locally resolved before a sentinel-guarded
+  dispatch; low-confidence, stale or shadow decisions dispatch nothing. Disabled by
+  default.
+
+→ [docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md) ·
+[docs/MEMORY.md](docs/MEMORY.md) · [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) ·
+[docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) ·
+[docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md) ·
+[docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md) ·
+[docs/WORKFORCE.md](docs/WORKFORCE.md)
+</details>
+
+<details>
 <summary><b>Full subsystem map (118 harness engines)</b></summary>
 
-Every directory under `backend/packages/harness/alpha/` (102 packages, counted by
-`backend/scripts/generate_feature_manifest.py`) is a dedicated engine:
+Each of the 118 engine packages under `backend/packages/harness/alpha/` (counted by
+`backend/scripts/generate_feature_manifest.py`; `backend/` and `scratch/` sit there
+but are not engines) is a dedicated engine:
 
 `action` `agency` `agent` `agents` `authz` `autoconfig` `avo` `benchmarks`
 `blackboard` `bots` `browser` `canvas` `capabilities` `channels` `coding`
