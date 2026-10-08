@@ -707,9 +707,18 @@ function AssignWorkForm(props: {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+          {/* The room id stays verbatim — it is the real key the POST targets —
+              but `uppercase` on the heading was transforming the identifier too,
+              so `company-co-464f064f00` rendered as COMPANY-CO-464F064F00: a slug
+              shouting, and harder to match against the room picker above. Mono,
+              normal case and muted mark it as the identifier it is, and the
+              flex-wrap keeps a long id on its own line instead of overflowing. */}
+          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5 flex-wrap">
             <Send className="size-3.5 text-primary" aria-hidden="true" />
-            Assign work in {props.room}
+            <span>
+              Assign work in{" "}
+              <span className="font-mono normal-case tracking-normal text-muted-foreground break-all">{props.room}</span>
+            </span>
           </h4>
           <p className="text-[11px] text-muted-foreground mt-0.5 max-w-2xl">
             Records a real claim through <code className="font-mono">POST /api/groups/&#123;room&#125;/claims</code>. A claim

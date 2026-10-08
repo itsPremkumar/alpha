@@ -102,6 +102,25 @@ export function provenanceTone(provenance: TabProvenance): BadgeTone {
   return provenance === "measured" ? "blue" : "amber";
 }
 
+/**
+ * The provenance sentence on the collapsed preview-telemetry strip.
+ *
+ * The six preview cards used to be the first content in the section — above the
+ * tab bar — so the least honest numbers on the surface sat in the header slot
+ * even while `coordination` (the one measured tab) was the tab open beneath
+ * them. Collapsing the strip keeps every card reachable while the sentence here
+ * says what they are *before* anything expands.
+ *
+ * `present` is whether a telemetry payload actually arrived. A strip with no
+ * payload says so rather than rendering six absent values, and it never claims
+ * a metric count it was not sent.
+ */
+export function telemetryStripProvenance(present: boolean): string {
+  return present
+    ? "Synthetic enterprise telemetry — preview evidence only, not measured execution, not security verification, not release authorization."
+    : "Preview telemetry has not been read, so no preview metric is shown.";
+}
+
 /** Which independent read a tab renders from. `null` means "none of them". */
 export type WarRoomSectionKey = "telemetry" | "hierarchy" | "rfcs" | "treasury" | "missions" | "council";
 

@@ -23,6 +23,7 @@ import {
   sectionErrorTitle,
   sectionHasData,
   tabBadge,
+  telemetryStripProvenance,
 } from "./war-room-view.ts";
 
 const IDS = ["coordination", "org_chart", "rfcs", "treasury", "missions", "council"];
@@ -188,4 +189,64 @@ test("a hierarchy the server sent with nobody in it is nothing published", () =>
 
 test("an unknown section key reports no data rather than throwing", () => {
   assert.equal(sectionHasData("something_new", FULL_DATA), false);
+});
+
+// ---------------------------------------------------------------------------
+// The collapsed preview strip
+//
+// It sits directly above the tab bar, so whatever it says is read as a verdict
+// on the tabs underneath it — which is exactly why it can never carry the word
+// "measured" without denying it.
+// ---------------------------------------------------------------------------
+
+test("the preview strip names what the cards are, in both states", () => {
+  const present = telemetryStripProvenance(true);
+  assert.match(present, /synthetic/i, "must say the telemetry is synthetic");
+  assert.match(present, /preview/i, "must call it preview evidence");
+  assert.match(present, /not measured execution/i, "must deny measured execution outright");
+  assert.match(present, /not security verification/i, "must deny a security verdict");
+  assert.match(present, /not release authorization/i, "must deny release authorization");
+
+  const absent = telemetryStripProvenance(false);
+  assert.match(absent, /not been read/i, "unread telemetry must say it was not read");
+});
+
+test("neither strip sentence asserts measured execution", () => {
+  for (const present of [true, false]) {
+    const sentence = telemetryStripProvenance(present);
+    // Strip the one denial and nothing measured may remain.
+    const denials = ["not measured execution", "not security verification", "not release authorization"];
+    const remainder = denials.reduce((acc, phrase) => acc.split(phrase).join(""), sentence);
+    assert.doesNotMatch(
+      remainder,
+      /\bmeasured\b/i,
+      `the strip must not claim measurement anywhere: ${sentence}`,
+    );
+  }
+});
+
+test("the strip claims no metric count it was not sent", () => {
+  // The six cards are structural, not reported. A payload arriving does not
+  // mean six metrics were measured, so neither sentence may quote a number.
+  for (const present of [true, false]) {
+    assert.doesNotMatch(
+      telemetryStripProvenance(present),
+      /\b\d+\s+metrics?\b/i,
+      "a metric count would claim the preview measured something",
+    );
+  }
+});
+
+test("an absent preview says what is missing rather than reporting an empty one", () => {
+  const absent = telemetryStripProvenance(false);
+  assert.match(absent, /no preview metric/i, "must name what is absent");
+  assert.doesNotMatch(absent, /\b0\b/, "absent must never render as a zero value");
+});
+
+test("the two strip states are different sentences, not one default", () => {
+  assert.notEqual(
+    telemetryStripProvenance(true),
+    telemetryStripProvenance(false),
+    "a read payload and no payload are different facts and must read differently",
+  );
 });

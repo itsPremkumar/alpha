@@ -32,6 +32,7 @@ import {
   sectionHasData,
   provenanceTone,
   tabBadge,
+  telemetryStripProvenance,
   TAB_SECTION,
   WAR_ROOM_TABS,
   type WarRoomSectionKey,
@@ -90,6 +91,15 @@ export function WarRoomSection() {
   // The live room the coordination panel watches. Separate from the synthetic
   // enterprise views above, which have no room of their own.
   const [liveRoom, setLiveRoom] = useState("");
+  /**
+   * Whether the synthetic preview telemetry is expanded.
+   *
+   * Starts closed: the six preview cards used to render before the tab bar, so
+   * a surface whose one measured tab is `coordination` opened on synthetic
+   * numbers — the exact inversion the default-tab comment below describes.
+   * Closing it puts navigation first and leaves every card one click away.
+   */
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -296,51 +306,29 @@ export function WarRoomSection() {
     >
       {error && <ErrorBox message={error} onRetry={loadAll} />}
 
-      {/* Live Enterprise Telemetry Strip */}
+      {/* A telemetry read that failed stays loud even though its cards are now
+          collapsed: the collapsed strip can only say *that* no payload arrived,
+          never why — and "the preview did not answer" and "there is no preview"
+          lead to opposite conclusions about the Gateway. */}
       {sectionErrors.telemetry && !telemetry && (
         <ErrorBox message={`${sectionErrorTitle("telemetry")} — ${sectionErrors.telemetry}`} onRetry={() => void loadAll()} />
       )}
-      {telemetry && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <StatCard
-            label="Heartbeat Cycle"
-            value={`#${telemetry.heartbeat_cycle}`}
-            sub={`Uptime: ${Math.round(telemetry.uptime_seconds)}s`}
-          />
-          <StatCard
-            label="System Latency (p95)"
-            value={telemetry.system_latency_p95_ms == null ? "not recorded" : `${telemetry.system_latency_p95_ms}ms`}
-            sub={telemetry.system_latency_p95_ms == null ? "No latency profile recorded yet" : "Synthetic preview; not measured latency"}
-          />
-          <StatCard
-            label="Security Posture"
-            value={telemetry.security_posture_score == null ? "No scan" : `${telemetry.security_posture_score}%`}
-            sub="Synthetic preview; not a security audit"
-          />
-          <StatCard
-            label="Holdout Benchmark"
-            value={telemetry.holdout_pass_rate_percent == null ? "No active release" : `${telemetry.holdout_pass_rate_percent}%`}
-            sub="Synthetic preview; no release verified"
-          />
-          <StatCard
-            label="Treasury Burn Rate"
-            value={`${Math.round(telemetry.treasury_overall_burn_rate_tpm)} TPM`}
-            sub={telemetry.treasury_circuit_breakers_tripped > 0 ? "Circuit Breaker Active" : "Nominal Budget"}
-          />
-          <StatCard
-            label="Autonomous Recovery"
-            value={(telemetry.stagnation_recovery_status || "nominal").toUpperCase()}
-            sub="Perpetual Keel Watchdog"
-          />
-        </div>
-      )}
 
-      {/* War Room Sub-Navigation Tabs.
-          Each tab carries its provenance, because the bar is where an operator
-          decides what to trust — and before the chips, six visually identical
-          tabs hid that exactly one of them reads live execution. A tab whose
-          own read failed says so in the bar rather than rendering an empty body. */}
-      <div className="flex items-end gap-1.5 border-b border-border/60 pb-2 overflow-x-auto">
+      {/* War Room Sub-Navigation Tabs — rendered first, so navigation precedes
+          content and the one measured tab is reachable without scrolling past
+          synthetic preview cards. Each tab carries its provenance, because the
+          bar is where an operator decides what to trust — and before the chips,
+          six visually identical tabs hid that exactly one of them reads live
+          execution. A tab whose own read failed says so in the bar rather than
+          rendering an empty body.
+
+          The row wraps rather than scrolls: `overflow-x-auto` clipped the sixth
+          tab with no affordance, and the legend explaining the chips shared
+          that row with `ml-auto`, which pushed the disclosure past the right
+          edge — so it was invisible at every width the six tabs did not fit.
+          Wrapping means nothing is ever cut off and the legend gets its own
+          full-width line. */}
+      <div className="flex flex-wrap items-end gap-1.5 border-b border-border/60 pb-2">
         {WAR_ROOM_TABS.map((tab) => {
           const active = subTab === tab.id;
           const badge = tabBadge(tab.id, telemetry);
@@ -389,9 +377,79 @@ export function WarRoomSection() {
             </button>
           );
         })}
-        <p className="ml-auto pl-3 pb-1 text-[10px] text-muted-foreground whitespace-nowrap hidden md:block">
-          measured = live execution · preview = synthetic enterprise model
-        </p>
+      </div>
+      <p className="mt-1.5 text-[10px] text-muted-foreground">
+        measured = live execution · preview = synthetic enterprise model
+      </p>
+
+      {/* Preview telemetry, collapsed by default.
+
+          These six cards are synthetic. They used to render *above* the tab bar,
+          which put the least honest numbers on the surface into the header slot
+          even though `coordination` — the tab actually open beneath them — is the
+          only one that reads live execution. Collapsed, the strip still discloses
+          what it is, and every card stays one click away.
+
+          Expansion is the operator's choice and never automatic: a strip that
+          opened itself when telemetry arrived would change height underneath
+          them between renders, which is how a closed panel comes to be read as
+          an open one. */}
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5">
+        <button
+          type="button"
+          onClick={() => setPreviewOpen((open) => !open)}
+          aria-expanded={previewOpen}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-colors hover:bg-amber-500/10"
+        >
+          <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+          <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+            {telemetryStripProvenance(telemetry != null)}
+          </span>
+          <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600/80 dark:text-amber-400/80 shrink-0">
+            {previewOpen ? "hide preview" : "show preview"}
+            <Layers className={`size-3 transition-transform ${previewOpen ? "rotate-180" : ""}`} />
+          </span>
+        </button>
+
+        {previewOpen &&
+          (telemetry ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 p-2 pt-0">
+              <StatCard
+                label="Heartbeat Cycle"
+                value={`#${telemetry.heartbeat_cycle}`}
+                sub={`Uptime: ${Math.round(telemetry.uptime_seconds)}s`}
+              />
+              <StatCard
+                label="System Latency (p95)"
+                value={telemetry.system_latency_p95_ms == null ? "not recorded" : `${telemetry.system_latency_p95_ms}ms`}
+                sub={telemetry.system_latency_p95_ms == null ? "No latency profile recorded yet" : "Synthetic preview; not measured latency"}
+              />
+              <StatCard
+                label="Security Posture"
+                value={telemetry.security_posture_score == null ? "No scan" : `${telemetry.security_posture_score}%`}
+                sub="Synthetic preview; not a security audit"
+              />
+              <StatCard
+                label="Holdout Benchmark"
+                value={telemetry.holdout_pass_rate_percent == null ? "No active release" : `${telemetry.holdout_pass_rate_percent}%`}
+                sub="Synthetic preview; no release verified"
+              />
+              <StatCard
+                label="Treasury Burn Rate"
+                value={`${Math.round(telemetry.treasury_overall_burn_rate_tpm)} TPM`}
+                sub={telemetry.treasury_circuit_breakers_tripped > 0 ? "Circuit Breaker Active" : "Nominal Budget"}
+              />
+              <StatCard
+                label="Autonomous Recovery"
+                value={(telemetry.stagnation_recovery_status || "nominal").toUpperCase()}
+                sub="Perpetual Keel Watchdog"
+              />
+            </div>
+          ) : (
+            <p className="px-3 pb-2.5 text-[11px] text-muted-foreground">
+              No telemetry payload arrived, so there is no preview metric to show.
+            </p>
+          ))}
       </div>
 
       {subTab === "coordination" && <GroupCoordinationPanel room={liveRoom} onRoomChange={setLiveRoom} />}
