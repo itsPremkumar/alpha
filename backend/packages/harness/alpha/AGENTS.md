@@ -45,6 +45,51 @@ PNG); the explicit `browser_screenshot` tool stays PNG because it is a
 user-requested artifact. New automatic capture entry points must reuse the shared
 progress encoding in `tools.py` so byte encoding and `.jpg` suffix cannot drift.
 
+### Managed browser-use runtime (`community/browser_use/`)
+
+The opt-in [browser-use](https://github.com/browser-use/browser-use) integration, and the
+one place in the tree where a **second agent loop** is deliberately admitted. The
+division is a single sentence: Alpha keeps the planning role and hands browser-use
+one bounded task; everything about the inner loop — its context, its tokens, its
+crashes — stays in a subprocess.
+
+**Why a subprocess and not an in-process library call.** browser-use's own
+`Agent(task, llm).run()` is a full planner. Called in-process it would put a second
+planner inside LangGraph (the analysis behind `AGENT_TOOLING_IMPLEMENTATION_PLAN.md`
+§1.4, and the reason `browser_automation/` is a `[ref]`-indexed host-driven loop at
+all). Running it as a subprocess of a **separate managed venv** solves three problems
+at once: the nested loop cannot stall or corrupt the Gateway event loop, its pinned
+`playwright`/`langchain` versions cannot fight `uv sync`'s lockfile, and a hard
+timeout can kill it **as a process tree** so an orphaned Chromium cannot keep a
+display, a port and a profile lock. It costs a cold first run (pip plus a Chromium
+download, minutes) — which is why the cost is documented and the venv is
+idempotent rather than hidden.
+
+**Installed is a fact to measure, never a file to trust.** `status()` answers by
+*importing* browser-use in the venv. The marker file (`alpha_browser_use_state.json`)
+records what a successful install did, but it can outlive a deleted package
+directory, so a marker that says `installed` while the import fails is exactly the
+fabricated status this repo keeps rejecting elsewhere. `BrowserUseStatus.installed`
+follows the probe; the marker only supplies `installed_at` for display.
+
+**Every failure is data, and the two kinds stay distinguishable.** A task browser-use
+could not finish and a subprocess that died both arrive as `ok: false` with a reason,
+never as an exception, because the model must be able to tell "the page needs a
+login" from "the process crashed". A run that produced no envelope at all is reported
+as *that*, with the output tail — not softened into a task failure. Conversely a
+successful run with an empty result reports "finished without producing any text"
+instead of reading as an answer. The API key crosses to the child inside the request
+payload and is redacted from every returned error (`redact_secrets`); never echo an
+LLM spec back into a result or a log line.
+
+Governance is declared, not implied: `browser_use_setup` is `execute`/`ask` (it
+installs a package — filesystem, network, third-party setup code) and
+`browser_use_run` is `external`/`ask` with `reversibility: unknown`, because a task
+may submit forms on an authenticated account and no rollback exists from here. The
+install lock is process-local only, so this inherits `browser_automation/`'s
+`GATEWAY_WORKERS=1` constraint. Full contract:
+[tools/AGENTS.md](tools/AGENTS.md). Tests: `tests/test_browser_use_tools.py`.
+
 ### AgentEye live-source adapter (`community/agent_eye/`)
 
 The harness pins AgentEye to an immutable upstream commit (not a branch, legacy

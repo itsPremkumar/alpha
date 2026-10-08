@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-08T07:20:26Z",
+ "generated_at": "2026-10-08T18:02:01Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2124,6 +2124,7 @@
     "boxlite",
     "brave",
     "browser_automation",
+    "browser_use",
     "browserless",
     "crawl4ai",
     "ddg_search",
@@ -2427,6 +2428,14 @@
    "id": "alpha.modes",
    "kind": "package",
    "submodules": []
+  },
+  {
+   "id": "alpha.mods",
+   "kind": "package",
+   "submodules": [
+    "controllers",
+    "enforcers"
+   ]
   },
   {
    "id": "alpha.multimodal",

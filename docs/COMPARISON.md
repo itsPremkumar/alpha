@@ -75,7 +75,7 @@ persistence, and safety layers yourself.
 **Choose Alpha when** you want the whole system, self-hosted, on day one.
 
 Alpha also ships the harness as an importable package
-(`alpha-harness`, import name `alpha.*`) with 118 engine modules, so
+(`alpha-harness`, import name `alpha.*`) with 119 engine modules, so
 "LangGraph plus Alpha's engines, no Alpha UI" is a supported shape.
 
 → [ARCHITECTURE.md](ARCHITECTURE.md)

@@ -24,7 +24,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## Architecture
 
-- [Architecture](ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 118 harness engine packages.
+- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 119 harness engine packages.
 - [Dynamic workflows](DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
 - [APEX Autopilot](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md): goal sessions, Gateway RunManager dispatch, run/token observation, registered acceptance probes for measured criteria, owner evidence when probes are absent/inconclusive, unlimited token/tool-call/runtime ceilings in enabled profiles, APEX active-agent/parallel caps on ordinary `task` delegation, separate durable `batch_task` limits, and missing replan/retry counters.
 - [Alpha Mod Kernel](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md): ordered lead-agent lifecycle middleware, explicit capability grants, fail-closed emergency stop and risk gates; journals and approval holds remain process-local, with durable replay and operator-resumed holds not implemented.

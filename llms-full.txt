@@ -230,7 +230,7 @@ are not implemented. See
 
 ## 6. Harness engine map
 
-118 engine packages live under `backend/packages/harness/alpha/`:
+119 engine packages live under `backend/packages/harness/alpha/`:
 
 `action` `agency` `agent` `agents` `apex` `authz` `autoconfig` `automations`
 `avo` `benchmarks` `blackboard` `bots` `browser` `canvas` `capabilities`
