@@ -1,6 +1,14 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
 // `next/dynamic`, not `React.lazy`: a lazy section cannot be server-rendered, so the
 // server shipped the Suspense fallback and React discarded the whole server tree on
 // hydration (error #418 on every non-chat view). `dynamic` participates in the App
@@ -10,6 +18,12 @@ import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { ActivityStatus } from "@/components/ActivityStatus";
 import { SubagentList } from "@/components/SubagentList";
+import { SwarmBoard } from "@/components/agent-ui/SwarmBoard";
+import { TranscriptSearch } from "@/components/TranscriptSearch";
+import { WorkspaceSheet } from "@/components/WorkspaceSheet";
+import { findTranscriptMatches, toSearchable } from "@/lib/transcript-search";
+import { exportTranscript, exportFilename } from "@/lib/transcript-export";
+import { collectWorkspaceContent } from "@/lib/workspace-sheet";
 import { TaskList } from "@/components/TaskList";
 import type { SubagentTask } from "@/lib/sse-reducer";
 import { emptyTodoPlan, type TodoPlan } from "@/lib/sse-reducer";
@@ -19,7 +33,14 @@ import { NavTabs, WorkspaceView } from "@/components/NavTabs";
 import { workspaceViewFromSearch } from "@/lib/workspace-view";
 import { ChatMessage, Thread, AIModel } from "@/types/chat";
 import { BotProfile } from "@/types/bots";
-import { fetchThreadsResult, createThread, fetchThreadHistoryResult, fetchAvailableModels, fetchModelCatalog, autoTriggerCommand } from "@/lib/api";
+import {
+  fetchThreadsResult,
+  createThread,
+  fetchThreadHistoryResult,
+  fetchAvailableModels,
+  fetchModelCatalog,
+  autoTriggerCommand,
+} from "@/lib/api";
 import { apiFetch, ApiClientError } from "@/lib/api-client";
 import {
   DEFAULT_EFFORT,
@@ -31,7 +52,10 @@ import {
 import { consumeChatStream, StreamRunFailure } from "@/lib/chat-stream";
 import { newIdempotencyKey, sendIdempotent } from "@/lib/idempotency";
 import type { StreamMessage } from "@/lib/sse-reducer";
-import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
+import {
+  chatRequestErrorMessage,
+  ChatRequestFailure,
+} from "@/lib/chat-request-error";
 import { chatSupportId } from "@/lib/chat-support-id";
 import { branding } from "@/lib/branding";
 import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
@@ -41,12 +65,27 @@ import { WorkspaceVitals } from "@/components/WorkspaceVitals";
 import { fetchBots, fetchBotsResult, touchBot } from "@/lib/bots";
 import type { MentionAgent } from "@/lib/agent-mentions";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
-import { listThreadRuns, cancelRun, prepareRegenerate, prepareEditRegenerate } from "@/lib/runs";
+import {
+  listThreadRuns,
+  cancelRun,
+  prepareRegenerate,
+  prepareEditRegenerate,
+} from "@/lib/runs";
 import { rateMessage } from "@/lib/feedback";
-import { suggestionsEnabled, suggestFollowUps, polishDraft } from "@/lib/assist";
+import {
+  suggestionsEnabled,
+  suggestFollowUps,
+  polishDraft,
+} from "@/lib/assist";
 import { listCommands, executeCommand, SlashCommand } from "@/lib/commands";
 import { readAutoplayEnabled, autoplaySpeak, speak } from "@/lib/voice";
-import { SpeechSegmenter, cancelSpeech, enqueueSpeech, isSpeechCancellation, waitForSpeechIdle } from "@/lib/speech";
+import {
+  SpeechSegmenter,
+  cancelSpeech,
+  enqueueSpeech,
+  isSpeechCancellation,
+  waitForSpeechIdle,
+} from "@/lib/speech";
 import {
   loadStore,
   upsertLocalThread,
@@ -63,7 +102,16 @@ import {
   type ThreadMeta,
 } from "@/lib/history-store";
 import { uploadFiles, listUploads } from "@/lib/files";
-import { fetchGoal, setGoal, clearGoal, compactThread, fetchTokenUsage, TokenUsage, moveThread, deleteThread } from "@/lib/threads-ext";
+import {
+  fetchGoal,
+  setGoal,
+  clearGoal,
+  compactThread,
+  fetchTokenUsage,
+  TokenUsage,
+  moveThread,
+  deleteThread,
+} from "@/lib/threads-ext";
 import { listProjects, Project } from "@/lib/projects";
 import { fetchFreeCatalog, type FreeProviderHealth } from "@/lib/freeModels";
 import { freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
@@ -82,7 +130,17 @@ import {
 } from "@/components/chat-shell/ChatShell";
 import { ErrorBox, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
+import {
+  Shrink,
+  Target,
+  ClipboardList,
+  Settings,
+  Search,
+  Copy,
+  Check,
+  FileDown,
+  PanelRight,
+} from "lucide-react";
 
 /**
  * Health of the keyless free-model catalog, as the header should draw it.
@@ -93,41 +151,237 @@ import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
  * working; a second copy would let the trigger's dot disagree with the per-
  * provider dots it is a summary of.
  */
-export { FREE_TONE_DOT, freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
+export {
+  FREE_TONE_DOT,
+  freeCatalogTone,
+  type FreeCatalogTone,
+} from "@/lib/freeCatalogTone";
 
 // Sections load on demand so the first paint stays light.
-const OverviewSection = dynamic(() => import("@/components/sections/OverviewSection").then((m) => ({ default: m.OverviewSection })), { loading: () => <SectionFallback /> });
-const BotOpsSection = dynamic(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })), { loading: () => <SectionFallback /> });
-const MessagesSection = dynamic(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })), { loading: () => <SectionFallback /> });
-const PeerNetworkSection = dynamic(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })), { loading: () => <SectionFallback /> });
-const ExternalAlphaSection = dynamic(() => import("@/components/sections/ExternalAlphaSection").then((m) => ({ default: m.ExternalAlphaSection })), { loading: () => <SectionFallback /> });
-const KanbanSection = dynamic(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })), { loading: () => <SectionFallback /> });
-const CompanySection = dynamic(() => import("@/components/sections/CompanySection").then((m) => ({ default: m.CompanySection })), { loading: () => <SectionFallback /> });
-const RunsSection = dynamic(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })), { loading: () => <SectionFallback /> });
-const RunInspectorSection = dynamic(() => import("@/components/sections/RunInspectorSection").then((m) => ({ default: m.RunInspectorSection })), { loading: () => <SectionFallback /> });
-const FilesSection = dynamic(() => import("@/components/sections/FilesSection").then((m) => ({ default: m.FilesSection })), { loading: () => <SectionFallback /> });
-const ScheduledSection = dynamic(() => import("@/components/sections/ScheduledSection").then((m) => ({ default: m.ScheduledSection })), { loading: () => <SectionFallback /> });
-const SubagentsSection = dynamic(() => import("@/components/sections/SubagentsSection").then((m) => ({ default: m.SubagentsSection })), { loading: () => <SectionFallback /> });
-const SkillsSection = dynamic(() => import("@/components/sections/SkillsSection").then((m) => ({ default: m.SkillsSection })), { loading: () => <SectionFallback /> });
-const ReliabilitySection = dynamic(() => import("@/components/sections/ReliabilitySection").then((m) => ({ default: m.ReliabilitySection })), { loading: () => <SectionFallback /> });
-const MemorySection = dynamic(() => import("@/components/sections/MemorySection").then((m) => ({ default: m.MemorySection })), { loading: () => <SectionFallback /> });
-const ProjectsSection = dynamic(() => import("@/components/sections/ProjectsSection").then((m) => ({ default: m.ProjectsSection })), { loading: () => <SectionFallback /> });
-const DashboardSection = dynamic(() => import("@/components/sections/DashboardSection").then((m) => ({ default: m.DashboardSection })), { loading: () => <SectionFallback /> });
-const AgentsSection = dynamic(() => import("@/components/sections/AgentsSection").then((m) => ({ default: m.AgentsSection })), { loading: () => <SectionFallback /> });
-const TeamOpsSection = dynamic(() => import("@/components/sections/TeamOpsSection").then((m) => ({ default: m.TeamOpsSection })), { loading: () => <SectionFallback /> });
-const ChannelsSection = dynamic(() => import("@/components/sections/ChannelsSection").then((m) => ({ default: m.ChannelsSection })), { loading: () => <SectionFallback /> });
-const SystemSection = dynamic(() => import("@/components/sections/SystemSection").then((m) => ({ default: m.SystemSection })), { loading: () => <SectionFallback /> });
-const IntegrationSection = dynamic(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })), { loading: () => <SectionFallback /> });
-const ApexSection = dynamic(() => import("@/components/sections/ApexSection").then((m) => ({ default: m.ApexSection })), { loading: () => <SectionFallback /> });
-const IntelligenceSection = dynamic(() => import("@/components/sections/IntelligenceSection").then((m) => ({ default: m.IntelligenceSection })), { loading: () => <SectionFallback /> });
-const WorkforceSection = dynamic(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })), { loading: () => <SectionFallback /> });
-const WarRoomSection = dynamic(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })), { loading: () => <SectionFallback /> });
-const WarRoomRunsSection = dynamic(() => import("@/components/sections/WarRoomRunsSection").then((m) => ({ default: m.WarRoomRunsSection })), { loading: () => <SectionFallback /> });
-const SettingsSection = dynamic(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })), { loading: () => <SectionFallback /> });
-const WorkflowsSection = dynamic(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })), { loading: () => <SectionFallback /> });
-const ForgeSection = dynamic(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })), { loading: () => <SectionFallback /> });
-const SupervisorSection = dynamic(() => import("@/components/sections/SupervisorSection").then((m) => ({ default: m.SupervisorSection })), { loading: () => <SectionFallback /> });
-const ProtocolsSection = dynamic(() => import("@/components/sections/ProtocolsSection").then((m) => ({ default: m.ProtocolsSection })), { loading: () => <SectionFallback /> });
+const OverviewSection = dynamic(
+  () =>
+    import("@/components/sections/OverviewSection").then((m) => ({
+      default: m.OverviewSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const BotOpsSection = dynamic(
+  () =>
+    import("@/components/sections/BotOpsSection").then((m) => ({
+      default: m.BotOpsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const MessagesSection = dynamic(
+  () =>
+    import("@/components/sections/MessagesSection").then((m) => ({
+      default: m.MessagesSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const PeerNetworkSection = dynamic(
+  () =>
+    import("@/components/sections/PeerNetworkSection").then((m) => ({
+      default: m.PeerNetworkSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ExternalAlphaSection = dynamic(
+  () =>
+    import("@/components/sections/ExternalAlphaSection").then((m) => ({
+      default: m.ExternalAlphaSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const KanbanSection = dynamic(
+  () =>
+    import("@/components/sections/KanbanSection").then((m) => ({
+      default: m.KanbanSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const CompanySection = dynamic(
+  () =>
+    import("@/components/sections/CompanySection").then((m) => ({
+      default: m.CompanySection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const RunsSection = dynamic(
+  () =>
+    import("@/components/sections/RunsSection").then((m) => ({
+      default: m.RunsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const RunInspectorSection = dynamic(
+  () =>
+    import("@/components/sections/RunInspectorSection").then((m) => ({
+      default: m.RunInspectorSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const FilesSection = dynamic(
+  () =>
+    import("@/components/sections/FilesSection").then((m) => ({
+      default: m.FilesSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ScheduledSection = dynamic(
+  () =>
+    import("@/components/sections/ScheduledSection").then((m) => ({
+      default: m.ScheduledSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const SubagentsSection = dynamic(
+  () =>
+    import("@/components/sections/SubagentsSection").then((m) => ({
+      default: m.SubagentsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const SkillsSection = dynamic(
+  () =>
+    import("@/components/sections/SkillsSection").then((m) => ({
+      default: m.SkillsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ReliabilitySection = dynamic(
+  () =>
+    import("@/components/sections/ReliabilitySection").then((m) => ({
+      default: m.ReliabilitySection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const MemorySection = dynamic(
+  () =>
+    import("@/components/sections/MemorySection").then((m) => ({
+      default: m.MemorySection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ProjectsSection = dynamic(
+  () =>
+    import("@/components/sections/ProjectsSection").then((m) => ({
+      default: m.ProjectsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const DashboardSection = dynamic(
+  () =>
+    import("@/components/sections/DashboardSection").then((m) => ({
+      default: m.DashboardSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const AgentsSection = dynamic(
+  () =>
+    import("@/components/sections/AgentsSection").then((m) => ({
+      default: m.AgentsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const TeamOpsSection = dynamic(
+  () =>
+    import("@/components/sections/TeamOpsSection").then((m) => ({
+      default: m.TeamOpsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ChannelsSection = dynamic(
+  () =>
+    import("@/components/sections/ChannelsSection").then((m) => ({
+      default: m.ChannelsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const SystemSection = dynamic(
+  () =>
+    import("@/components/sections/SystemSection").then((m) => ({
+      default: m.SystemSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const IntegrationSection = dynamic(
+  () =>
+    import("@/components/sections/IntegrationSection").then((m) => ({
+      default: m.IntegrationSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ApexSection = dynamic(
+  () =>
+    import("@/components/sections/ApexSection").then((m) => ({
+      default: m.ApexSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const IntelligenceSection = dynamic(
+  () =>
+    import("@/components/sections/IntelligenceSection").then((m) => ({
+      default: m.IntelligenceSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const WorkforceSection = dynamic(
+  () =>
+    import("@/components/sections/WorkforceSection").then((m) => ({
+      default: m.WorkforceSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const WarRoomSection = dynamic(
+  () =>
+    import("@/components/sections/WarRoomSection").then((m) => ({
+      default: m.WarRoomSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const WarRoomRunsSection = dynamic(
+  () =>
+    import("@/components/sections/WarRoomRunsSection").then((m) => ({
+      default: m.WarRoomRunsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const SettingsSection = dynamic(
+  () =>
+    import("@/components/sections/SettingsSection").then((m) => ({
+      default: m.SettingsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const WorkflowsSection = dynamic(
+  () =>
+    import("@/components/sections/WorkflowsSection").then((m) => ({
+      default: m.WorkflowsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ForgeSection = dynamic(
+  () =>
+    import("@/components/sections/ForgeSection").then((m) => ({
+      default: m.ForgeSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const SupervisorSection = dynamic(
+  () =>
+    import("@/components/sections/SupervisorSection").then((m) => ({
+      default: m.SupervisorSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
+const ProtocolsSection = dynamic(
+  () =>
+    import("@/components/sections/ProtocolsSection").then((m) => ({
+      default: m.ProtocolsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 
 function SectionFallback() {
   return (
@@ -182,21 +436,31 @@ async function hideConfirmedEmptyDrafts(
     }
   }
   const candidates = threads.filter(
-    (thread) => looksLikeUnsentDraft(thread) && (localMessages[thread.thread_id]?.length ?? 0) === 0,
+    (thread) =>
+      looksLikeUnsentDraft(thread) &&
+      (localMessages[thread.thread_id]?.length ?? 0) === 0,
   );
   const empty = new Set<string>();
-  for (let offset = 0; offset < candidates.length; offset += ARCHIVE_BATCH_SIZE) {
+  for (
+    let offset = 0;
+    offset < candidates.length;
+    offset += ARCHIVE_BATCH_SIZE
+  ) {
     const checks = await Promise.all(
-      candidates.slice(offset, offset + ARCHIVE_BATCH_SIZE).map(async (thread) => ({
-        thread,
-        history: await fetchThreadHistoryResult(thread.thread_id),
-      })),
+      candidates
+        .slice(offset, offset + ARCHIVE_BATCH_SIZE)
+        .map(async (thread) => ({
+          thread,
+          history: await fetchThreadHistoryResult(thread.thread_id),
+        })),
     );
     for (const { thread, history } of checks) {
       if (!history.ok) continue;
       if (history.incomplete) {
         // A partial page cannot prove the thread is empty.
-        notes.push(`${threadLabel(thread)}: partial history — ${history.incomplete}`);
+        notes.push(
+          `${threadLabel(thread)}: partial history — ${history.incomplete}`,
+        );
         continue;
       }
       if (history.value.length === 0) {
@@ -205,18 +469,25 @@ async function hideConfirmedEmptyDrafts(
           if (uploads.length === 0) empty.add(thread.thread_id);
         } catch (error) {
           // Failed upload inspection is not proof that the thread is empty.
-          notes.push(`${threadLabel(thread)}: uploads unavailable — ${errMsg(error)}`);
+          notes.push(
+            `${threadLabel(thread)}: uploads unavailable — ${errMsg(error)}`,
+          );
         }
       } else {
         try {
           await setLocalMessages(thread.thread_id, history.value);
         } catch (error) {
-          notes.push(`${threadLabel(thread)}: local write failed — ${errMsg(error)}`);
+          notes.push(
+            `${threadLabel(thread)}: local write failed — ${errMsg(error)}`,
+          );
         }
       }
     }
   }
-  return { visible: threads.filter((thread) => !empty.has(thread.thread_id)), notes };
+  return {
+    visible: threads.filter((thread) => !empty.has(thread.thread_id)),
+    notes,
+  };
 }
 
 /**
@@ -236,7 +507,10 @@ async function archiveServerHistory(threads: Thread[]): Promise<string[]> {
   for (let offset = 0; offset < threads.length; offset += ARCHIVE_BATCH_SIZE) {
     const batch = threads.slice(offset, offset + ARCHIVE_BATCH_SIZE);
     const results = await Promise.all(
-      batch.map(async (thread) => ({ thread, history: await fetchThreadHistoryResult(thread.thread_id) })),
+      batch.map(async (thread) => ({
+        thread,
+        history: await fetchThreadHistoryResult(thread.thread_id),
+      })),
     );
     for (const { thread, history } of results) {
       if (!history.ok) {
@@ -245,14 +519,18 @@ async function archiveServerHistory(threads: Thread[]): Promise<string[]> {
         continue;
       }
       if (history.incomplete) {
-        notes.push(`${threadLabel(thread)}: archived partially — ${history.incomplete}`);
+        notes.push(
+          `${threadLabel(thread)}: archived partially — ${history.incomplete}`,
+        );
       }
       if (history.value.length === 0) continue;
       try {
         await setLocalMessages(thread.thread_id, history.value);
         archived += 1;
       } catch (error) {
-        notes.push(`${threadLabel(thread)}: local write failed — ${errMsg(error)}`);
+        notes.push(
+          `${threadLabel(thread)}: local write failed — ${errMsg(error)}`,
+        );
       }
     }
   }
@@ -287,7 +565,9 @@ function startHistoryArchive(
     });
 }
 
-export default function ChatView({ initialView }: { initialView?: WorkspaceView } = {}) {
+export default function ChatView({
+  initialView,
+}: { initialView?: WorkspaceView } = {}) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -300,18 +580,27 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
    * selected model on every change, so the trigger never shows a rung the
    * server would clamp.
    */
-  const [reasoningEffort, setReasoningEffort] = useState<EffortChoice>(DEFAULT_EFFORT);
+  const [reasoningEffort, setReasoningEffort] =
+    useState<EffortChoice>(DEFAULT_EFFORT);
   /**
    * The canonical effort ladder and its labels, as declared by the server. The
    * fallbacks are the same seven rungs; a degraded read must still render a
    * working picker, so this is never left empty.
    */
-  const [effortLadder, setEffortLadder] = useState<readonly string[]>(FALLBACK_LADDER);
-  const [effortLabels, setEffortLabels] = useState<Readonly<Record<string, string>>>(FALLBACK_LABELS);
+  const [effortLadder, setEffortLadder] =
+    useState<readonly string[]>(FALLBACK_LADDER);
+  const [effortLabels, setEffortLabels] =
+    useState<Readonly<Record<string, string>>>(FALLBACK_LABELS);
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [requestError, setRequestError] = useState<{ threadId: string; message: string; draft: string; partial: string; partialArchived: boolean } | null>(null);
+  const [requestError, setRequestError] = useState<{
+    threadId: string;
+    message: string;
+    draft: string;
+    partial: string;
+    partialArchived: boolean;
+  } | null>(null);
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -321,7 +610,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   // reported for THIS turn only, so a previous turn's tool calls are never
   // counted as current work. Absent (`null`) whenever no run is in flight.
   const activity = useMemo(
-    () => (isLoading ? deriveActivity(messages.slice(currentTurn(messages))) : null),
+    () =>
+      isLoading ? deriveActivity(messages.slice(currentTurn(messages))) : null,
     [messages, isLoading],
   );
 
@@ -360,7 +650,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (lastByteAtRef.current === null) lastByteAtRef.current = Date.now();
     const tick = () => {
       const now = Date.now();
-      if (runStartedAtRef.current !== null) setElapsedMs(now - runStartedAtRef.current);
+      if (runStartedAtRef.current !== null)
+        setElapsedMs(now - runStartedAtRef.current);
       // Same value every second until silence crosses the threshold, so this
       // costs no re-render in the normal case.
       setSilence(silenceNotice(lastByteAtRef.current, now));
@@ -370,7 +661,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     return () => clearInterval(timer);
   }, [isLoading]);
   const activeRunRef = useRef(false);
-  const [voiceConversationEnabled, setVoiceConversationEnabled] = useState(false);
+  const [voiceConversationEnabled, setVoiceConversationEnabled] =
+    useState(false);
   const voiceConversationEnabledRef = useRef(false);
   const [voiceTurnActive, setVoiceTurnActive] = useState(false);
   const [voiceResumeToken, setVoiceResumeToken] = useState(0);
@@ -440,12 +732,19 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
    */
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(null);
   const voiceViewRef = useRef(view);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "models" | "connectivity" | "appearance" | "diagnostics">("general");
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    "general" | "models" | "connectivity" | "appearance" | "diagnostics"
+  >("general");
   const [botsTab, setBotsTab] = useState<"profiles" | "ops">("profiles");
   const [inspectedBot, setInspectedBot] = useState<BotProfile | null>(null);
 
   // Platform state
-  const [features, setFeatures] = useState<FeatureFlags>({ agentsApi: false, browserControl: false, mcpTasks: false, subagentBatches: false });
+  const [features, setFeatures] = useState<FeatureFlags>({
+    agentsApi: false,
+    browserControl: false,
+    mcpTasks: false,
+    subagentBatches: false,
+  });
 
   // Conversation helpers
   const [goal, setGoalText] = useState<string | null>(null);
@@ -462,10 +761,49 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
    * tri-state lets the toggle below say *unknown* rather than assert a value
    * nobody reported.
    */
-  const [suggestionsServerState, setSuggestionsServerState] = useState<boolean | null>(null);
+  const [suggestionsServerState, setSuggestionsServerState] = useState<
+    boolean | null
+  >(null);
   const [polishing, setPolishing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [planMode, setPlanMode] = useState(false);
+  // Transcript search: the bar is open, the query, and the index of
+  // the current hit. Matches derive from `messages` via
+  // `findTranscriptMatches` — no second copy of the list.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState(0);
+  // Whether the reader has scrolled away from the live tail. Mirrors
+  // `stickToBottomRef` as renderable state so the "Latest" pill can
+  // appear exactly when auto-follow disarmed.
+  const [scrolledUp, setScrolledUp] = useState(false);
+  // Last transcript-export outcome, for the button's transient label.
+  const [exported, setExported] = useState(false);
+  // Agent workspace sheet: open state plus whether the operator
+  // deliberately closed it (which disables auto-open for this thread).
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceDismissed, setWorkspaceDismissed] = useState(false);
+  const workspaceContent = useMemo(
+    () => collectWorkspaceContent(messages),
+    [messages],
+  );
+  // A first turn that produces files/commands/pages/artifacts opens
+  // the sheet on its own — the product of the session deserves to be
+  // seen. An explicit close wins permanently for the thread, and a
+  // thread switch re-arms the behaviour for the next conversation.
+  useEffect(() => {
+    setWorkspaceDismissed(false);
+    setWorkspaceOpen(false);
+  }, [activeThreadId]);
+  useEffect(() => {
+    if (workspaceContent.total > 0 && !workspaceDismissed && !workspaceOpen) {
+      setWorkspaceOpen(true);
+    }
+  }, [workspaceContent.total, workspaceDismissed, workspaceOpen]);
+  const closeWorkspace = () => {
+    setWorkspaceOpen(false);
+    setWorkspaceDismissed(true);
+  };
   /**
    * Whether a message may delegate work to background subagents.
    *
@@ -484,7 +822,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const [omnisearchOpen, setOmnisearchOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [activeContextTab, setActiveContextTab] = useState<"conversation" | "files" | "tasks" | "knowledge" | "agent">("conversation");
+  const [activeContextTab, setActiveContextTab] = useState<
+    "conversation" | "files" | "tasks" | "knowledge" | "agent"
+  >("conversation");
 
   const localThreadMetaRef = useRef<Record<string, ThreadMeta>>({});
   const historyLoadGenerationRef = useRef(0);
@@ -499,7 +839,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   // Synchronous attachment lock: two rapid drops must not create two drafts.
   const attachmentLockRef = useRef(false);
   // Server conversation-list failure reason. Null means "the list loaded".
-  const [serverHistoryError, setServerHistoryError] = useState<string | null>(null);
+  const [serverHistoryError, setServerHistoryError] = useState<string | null>(
+    null,
+  );
   // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
   const [freeNote, setFreeNote] = useState<string | null>(null);
   const [freeRefreshing, setFreeRefreshing] = useState(false);
@@ -519,7 +861,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
    */
   const [freeReadError, setFreeReadError] = useState<string | null>(null);
   /** Verbatim server prose about candidate selection and its disclaimer. */
-  const [freeSelectionMethod, setFreeSelectionMethod] = useState<string | null>(null);
+  const [freeSelectionMethod, setFreeSelectionMethod] = useState<string | null>(
+    null,
+  );
   const [freeDisclaimer, setFreeDisclaimer] = useState<string | null>(null);
   /**
    * Health of the keyless catalog, derived from the server's own per-provider
@@ -529,7 +873,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
    * green through `0/10 healthy` and through a failed read.
    */
   const [freeTone, setFreeTone] = useState<FreeCatalogTone>("unknown");
-  const { state: lionState, message: lionMessage, update: updateLion } = useLionPetActivity({
+  const {
+    state: lionState,
+    message: lionMessage,
+    update: updateLion,
+  } = useLionPetActivity({
     isLoading,
     hasApproval: messages.some((message) => Boolean(message.approvalRequest)),
   });
@@ -541,7 +889,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   const noticeTimerRef = useRef<number | null>(null);
   const flash = (msg: string) => {
     setNotice(msg);
-    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    if (noticeTimerRef.current !== null)
+      window.clearTimeout(noticeTimerRef.current);
     noticeTimerRef.current = window.setTimeout(() => {
       setNotice(null);
       noticeTimerRef.current = null;
@@ -612,7 +961,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (previousScope !== null && previousScope !== nextScope) {
       const previousView = previousScope.split(":", 1)[0];
       const nextView = nextScope.split(":", 1)[0];
-      const localThreadRemap = voiceTurnRef.current && previousView === "chat" && nextView === "chat";
+      const localThreadRemap =
+        voiceTurnRef.current && previousView === "chat" && nextView === "chat";
       if (!localThreadRemap) {
         if (voiceTurnRef.current) abortRef.current?.abort();
         voiceTurnGenerationRef.current += 1;
@@ -632,13 +982,16 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     setVoiceResumeToken((token) => token + 1);
   }, [isLoading]);
 
-  useEffect(() => () => {
-    if (voiceTurnRef.current) abortRef.current?.abort();
-    voiceTurnGenerationRef.current += 1;
-    voiceTurnRef.current = false;
-    voiceResumePendingRef.current = false;
-    cancelSpeech();
-  }, []);
+  useEffect(
+    () => () => {
+      if (voiceTurnRef.current) abortRef.current?.abort();
+      voiceTurnGenerationRef.current += 1;
+      voiceTurnRef.current = false;
+      voiceResumePendingRef.current = false;
+      cancelSpeech();
+    },
+    [],
+  );
 
   const stopVoiceForNavigation = () => {
     // Every user-initiated navigation goes through here, so this is the one
@@ -680,11 +1033,15 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       setFreeNote(
         providers.length === 0
           ? "Free catalog empty — the keyless router has no providers right now."
-          : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
+          : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`,
       );
       // Same rule as the mount read: the dot follows the server's count.
       setFreeTone(freeCatalogTone(providers));
-      flash(providers.length === 0 ? "Free catalog refreshed: no providers." : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`);
+      flash(
+        providers.length === 0
+          ? "Free catalog refreshed: no providers."
+          : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`,
+      );
     } catch (error) {
       // The server's reason, not a generic failure, and the previous rows stay
       // on screen — replacing them with an empty list here would present a
@@ -700,14 +1057,24 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
 
   /** Project owning the active thread (server field first, pending pick fallback). */
   const activeProjectId: string | null =
-    threads.find((t) => t.thread_id === activeThreadId)?.projectId || pendingProjectId;
+    threads.find((t) => t.thread_id === activeThreadId)?.projectId ||
+    pendingProjectId;
 
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) ?? null,
     [projects, activeProjectId],
   );
   const activeProjectThreadCount = useMemo(
-    () => (activeProjectId ? threads.filter((t) => (t as unknown as Record<string, unknown>).projectId === activeProjectId || (t as unknown as Record<string, unknown>).project_id === activeProjectId).length : null),
+    () =>
+      activeProjectId
+        ? threads.filter(
+            (t) =>
+              (t as unknown as Record<string, unknown>).projectId ===
+                activeProjectId ||
+              (t as unknown as Record<string, unknown>).project_id ===
+                activeProjectId,
+          ).length
+        : null,
     [threads, activeProjectId],
   );
 
@@ -715,15 +1082,25 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   const handlePickProject = async (projectId: string | null) => {
     if (!activeThreadId || activeThreadId.startsWith("local-")) {
       setPendingProjectId(projectId);
-      flash(projectId ? "This new conversation will open in the selected project." : "Project scope cleared.");
+      flash(
+        projectId
+          ? "This new conversation will open in the selected project."
+          : "Project scope cleared.",
+      );
       return;
     }
     try {
       await moveThread(activeThreadId, projectId);
       setThreads((previous) =>
-        previous.map((thread) => (thread.thread_id === activeThreadId ? { ...thread, projectId } : thread)),
+        previous.map((thread) =>
+          thread.thread_id === activeThreadId
+            ? { ...thread, projectId }
+            : thread,
+        ),
       );
-      flash(projectId ? "Chat moved into project." : "Chat removed from project.");
+      flash(
+        projectId ? "Chat moved into project." : "Chat removed from project.",
+      );
     } catch (error) {
       flash(`Couldn't move this chat. ${errMsg(error)}`);
     }
@@ -732,7 +1109,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   // Keep the resolved identity in step with Settings, and with other browser
   // tabs. `storage` never fires in the tab that wrote the value, so the module
   // also dispatches its own event; subscribing to both covers every case.
-  useEffect(() => subscribeOperatorName(() => setOperator(currentOperatorIdentity())), []);
+  useEffect(
+    () => subscribeOperatorName(() => setOperator(currentOperatorIdentity())),
+    [],
+  );
 
   // Initial load: complete local archive first (instant), then merge every
   // server page. Read failures keep the local archive visible and are surfaced
@@ -746,7 +1126,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         localMessages = local.messages;
         if (local.warning) flash(local.warning);
         if (local.threads.length > 0) {
-          const sorted = [...local.threads].sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+          const sorted = [...local.threads].sort((a, b) =>
+            (b.updated_at || "").localeCompare(a.updated_at || ""),
+          );
           setThreads(sorted);
           setActiveThreadId(sorted[0].thread_id);
         }
@@ -757,18 +1139,20 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         flash(`Local history could not be opened. ${errMsg(error)}`);
       }
 
-      const [threadResult, effortCatalog, bList, feats, suggOn] = await Promise.all([
-        fetchThreadsResult(),
-        fetchModelCatalog(),
-        // The roster is the one surface that renders last-message previews and
-        // unread badges, so it is the caller that opts into the projection.
-        fetchBotsResult({ activity: true }),
-        fetchFeatures(),
-        suggestionsEnabled(),
-      ]);
+      const [threadResult, effortCatalog, bList, feats, suggOn] =
+        await Promise.all([
+          fetchThreadsResult(),
+          fetchModelCatalog(),
+          // The roster is the one surface that renders last-message previews and
+          // unread badges, so it is the caller that opts into the projection.
+          fetchBotsResult({ activity: true }),
+          fetchFeatures(),
+          suggestionsEnabled(),
+        ]);
       const mList = effortCatalog.models;
       const serverThreads = threadResult.ok
-        ? (await hideConfirmedEmptyDrafts(threadResult.value, localMessages)).visible
+        ? (await hideConfirmedEmptyDrafts(threadResult.value, localMessages))
+            .visible
         : [];
       if (!threadResult.ok) {
         setServerHistoryError(threadResult.error);
@@ -776,20 +1160,28 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       } else {
         setServerHistoryError(null);
         if (threadResult.incomplete) {
-          flash(`Chat list is incomplete — ${threadResult.incomplete}. Showing what loaded.`);
+          flash(
+            `Chat list is incomplete — ${threadResult.incomplete}. Showing what loaded.`,
+          );
         }
       }
       const merged = await mergeThreads(serverThreads);
       setThreads(merged);
       // Keep the whole history on this computer without blocking first paint.
-      if (threadResult.ok) startHistoryArchive(serverThreads, archiveInFlightRef, flash);
+      if (threadResult.ok)
+        startHistoryArchive(serverThreads, archiveInFlightRef, flash);
       setModels(mList);
-      if (effortCatalog.reasoningEffortLevels.length > 0) setEffortLadder(effortCatalog.reasoningEffortLevels);
-      if (Object.keys(effortCatalog.reasoningEffortLabels).length > 0) setEffortLabels(effortCatalog.reasoningEffortLabels);
+      if (effortCatalog.reasoningEffortLevels.length > 0)
+        setEffortLadder(effortCatalog.reasoningEffortLevels);
+      if (Object.keys(effortCatalog.reasoningEffortLabels).length > 0)
+        setEffortLabels(effortCatalog.reasoningEffortLabels);
       let initialModel = "default";
       try {
         const savedModel = localStorage.getItem("alpha_selected_model");
-        if (savedModel && (mList.length === 0 || mList.some((m) => m.id === savedModel))) {
+        if (
+          savedModel &&
+          (mList.length === 0 || mList.some((m) => m.id === savedModel))
+        ) {
           initialModel = savedModel;
         } else if (mList.length > 0) {
           initialModel = mList[0].id;
@@ -808,11 +1200,14 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         if (savedEffort) {
           const target = mList.find((m) => m.id === initialModel) ?? null;
           initialEffort = reconcileEffortForModel(savedEffort, target);
-          if (initialEffort === DEFAULT_EFFORT) localStorage.removeItem("alpha_reasoning_effort");
+          if (initialEffort === DEFAULT_EFFORT)
+            localStorage.removeItem("alpha_reasoning_effort");
         }
       } catch {}
       setReasoningEffort(initialEffort);
-      setActiveThreadId((prev) => prev || (merged.length > 0 ? merged[0].thread_id : null));
+      setActiveThreadId(
+        (prev) => prev || (merged.length > 0 ? merged[0].thread_id : null),
+      );
       // A failed roster read is disclosed, never turned into an empty fleet. The `@`
       // tag palette reads this: "no agents available" after a failed read is a
       // claim about the workspace that nothing measured.
@@ -832,10 +1227,12 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       setSuggestionsOn(suggOn === true);
       // Projects for the in-chat scope picker; an unavailable list is not an
       // authoritative empty project set.
-      listProjects().then(setProjects).catch((error) => {
-        setProjects([]);
-        flash(`Projects are unavailable. ${errMsg(error)}`);
-      });
+      listProjects()
+        .then(setProjects)
+        .catch((error) => {
+          setProjects([]);
+          flash(`Projects are unavailable. ${errMsg(error)}`);
+        });
       // Free-model catalog: dynamic server view, never fabricated client-side.
       //
       // The status dot is derived from the server's own health count, not
@@ -845,7 +1242,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       // `null` health (the server did not measure a provider) is its own state
       // and gets the muted dot, because "unmeasured" is neither healthy nor sick.
       const renderFree = (catalog: {
-        providers: { name: string; healthy: boolean | null; eligible: boolean }[];
+        providers: {
+          name: string;
+          healthy: boolean | null;
+          eligible: boolean;
+        }[];
         updatedAt?: string | null;
         selectionMethod?: string | null;
         disclaimer?: string | null;
@@ -862,7 +1263,7 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         setFreeNote(
           providers.length === 0
             ? "Free catalog empty — the keyless router has no providers right now."
-            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
+            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`,
         );
         // No measured provider means the server has not answered for any of
         // them: that is unknown, so the dot stays neutral rather than green.
@@ -880,7 +1281,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       // Lightweight liveness probe for the header status pill — moved out of
       // this mount effect; see `probeGateway` below.
       // Shortcut commands for the "/" palette (quiet if unavailable).
-      listCommands().then(setSlashCommands).catch(() => setSlashCommands([]));
+      listCommands()
+        .then(setSlashCommands)
+        .catch(() => setSlashCommands([]));
       setThreadsLoading(false);
     }
     void init().catch((error) => {
@@ -939,7 +1342,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     } catch (error) {
       console.error("Local chat metadata is unavailable:", error);
     }
-    const byId = new Map<string, Thread>(localThreads.map((thread) => [thread.thread_id, thread]));
+    const byId = new Map<string, Thread>(
+      localThreads.map((thread) => [thread.thread_id, thread]),
+    );
     for (const serverThread of serverList) {
       const local = byId.get(serverThread.thread_id);
       const merged: Thread = { ...(local ?? ({} as Thread)) };
@@ -952,10 +1357,15 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       try {
         await upsertLocalThread(merged);
       } catch (error) {
-        console.error(`Local metadata write failed for thread ${serverThread.thread_id}:`, error);
+        console.error(
+          `Local metadata write failed for thread ${serverThread.thread_id}:`,
+          error,
+        );
       }
     }
-    return Array.from(byId.values()).sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+    return Array.from(byId.values()).sort((a, b) =>
+      (b.updated_at || "").localeCompare(a.updated_at || ""),
+    );
   };
 
   const reloadThreads = async (selectId?: string) => {
@@ -970,17 +1380,23 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       setServerHistoryError(null);
       const { visible, notes } = await hideConfirmedEmptyDrafts(result.value);
       if (result.incomplete) {
-        flash(`Chat list is incomplete — ${result.incomplete}. Showing what loaded.`);
+        flash(
+          `Chat list is incomplete — ${result.incomplete}. Showing what loaded.`,
+        );
       } else if (notes.length > 0) {
         flash(notes[0]);
       }
       const merged = await mergeThreads(visible);
       setThreads(merged);
       if (selectId) setActiveThreadId(selectId);
-      else if (activeThreadId && !merged.some((thread) => thread.thread_id === activeThreadId)) {
+      else if (
+        activeThreadId &&
+        !merged.some((thread) => thread.thread_id === activeThreadId)
+      ) {
         setActiveThreadId(merged.length > 0 ? merged[0].thread_id : null);
       }
-      if (!archiveInFlightRef.current) startHistoryArchive(visible, archiveInFlightRef, flash);
+      if (!archiveInFlightRef.current)
+        startHistoryArchive(visible, archiveInFlightRef, flash);
     } finally {
       setThreadsLoading(false);
     }
@@ -1008,13 +1424,17 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         try {
           cached = (await loadStore()).messages[threadId] || [];
         } catch (error) {
-          flash(`Server history loaded, but the local archive could not be read. ${errMsg(error)}`);
+          flash(
+            `Server history loaded, but the local archive could not be read. ${errMsg(error)}`,
+          );
         }
         if (historyLoadGenerationRef.current !== generation) return;
         // A partial page is real history: show what arrived, but say so, and
         // still archive it so the local copy keeps the messages we do have.
         if (history.incomplete) {
-          flash(`This chat's history is only partially loaded — ${history.incomplete}.`);
+          flash(
+            `This chat's history is only partially loaded — ${history.incomplete}.`,
+          );
         }
         setMessages(history.value.length > 0 ? history.value : cached);
         if (history.value.length > 0) {
@@ -1030,13 +1450,17 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         } catch (error) {
           if (historyLoadGenerationRef.current === generation) {
             setMessages([]);
-            flash(`Neither server nor local history could be loaded. ${history.error}; ${errMsg(error)}`);
+            flash(
+              `Neither server nor local history could be loaded. ${history.error}; ${errMsg(error)}`,
+            );
           }
           return;
         }
         if (historyLoadGenerationRef.current !== generation) return;
         setMessages(cached);
-        flash(`Showing the saved local copy because server history failed. ${history.error}`);
+        flash(
+          `Showing the saved local copy because server history failed. ${history.error}`,
+        );
       }
 
       try {
@@ -1045,7 +1469,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         if (threadGoal.goal) {
           setGoalText(threadGoal.goal);
           localThreadMetaRef.current[threadId] = {
-            ...(localThreadMetaRef.current[threadId] || { botName: null, goal: null }),
+            ...(localThreadMetaRef.current[threadId] || {
+              botName: null,
+              goal: null,
+            }),
             goal: threadGoal.goal,
           };
           void persistLocalHistory(
@@ -1062,7 +1489,8 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       }
       try {
         const tokenUsage = await fetchTokenUsage(threadId);
-        if (historyLoadGenerationRef.current === generation) setUsage(tokenUsage);
+        if (historyLoadGenerationRef.current === generation)
+          setUsage(tokenUsage);
       } catch {
         if (historyLoadGenerationRef.current === generation) setUsage(null);
       }
@@ -1097,8 +1525,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
     const reduce =
-      typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const behavior: ScrollBehavior = reduce || jumpScrollRef.current ? "auto" : "smooth";
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior =
+      reduce || jumpScrollRef.current ? "auto" : "smooth";
     messagesEndRef.current?.scrollIntoView({ behavior });
     jumpScrollRef.current = false;
   }, [messages, isLoading, view]);
@@ -1107,7 +1537,109 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (!el) return;
     // 80px of slack: a trackpad's momentum or a scrollbar drag to the very end
     // must not by itself re-arm following.
-    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickToBottomRef.current = atBottom;
+    // Mirror as state for the "Latest" pill. Same-value sets are cheap.
+    setScrolledUp(!atBottom);
+  };
+
+  /** Scroll the transcript back to the live tail and re-arm auto-follow. */
+  const jumpToLatest = () => {
+    stickToBottomRef.current = true;
+    setScrolledUp(false);
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+  };
+
+  // Transcript search hits, derived from the messages on screen.
+  // A new prompt clears the bar: hits belong to the transcript
+  // that produced them, not to whatever arrives next.
+  const searchMatches = useMemo(
+    () =>
+      searchOpen
+        ? findTranscriptMatches(messages.map(toSearchable), searchQuery)
+        : [],
+    [messages, searchOpen, searchQuery],
+  );
+  const searchCurrent =
+    searchMatches.length > 0
+      ? searchMatches[
+          ((searchIndex % searchMatches.length) + searchMatches.length) %
+            searchMatches.length
+        ]
+      : null;
+  const searchCurrentIndex = searchCurrent
+    ? searchMatches.findIndex((m) => m.messageId === searchCurrent.messageId)
+    : -1;
+
+  /** Step the current hit and scroll it into view. */
+  const stepSearch = (direction: 1 | -1) => {
+    if (searchMatches.length === 0) return;
+    const next =
+      (searchIndex + direction + searchMatches.length) % searchMatches.length;
+    setSearchIndex(next);
+    const target = searchMatches[next];
+    // The message card carries its own anchor; a missing anchor
+    // fails silently rather than throwing the transcript.
+    document
+      .querySelector(`[data-message-id="${CSS.escape(target.messageId)}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  // Keep the index inside the list as the query or transcript changes.
+  useEffect(() => {
+    setSearchIndex(0);
+  }, [searchQuery, messages.length, searchOpen]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchIndex(0);
+  };
+
+  // Ctrl/Cmd+F opens transcript search — except while typing in a
+  // field, where the browser's own find must win.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "f") return;
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (typing) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  /** Download the visible conversation as Markdown. */
+  const downloadTranscript = () => {
+    const markdown = exportTranscript(messages);
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportFilename();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  };
+
+  /** Copy the visible conversation as Markdown. */
+  const copyTranscript = async () => {
+    try {
+      await navigator.clipboard.writeText(exportTranscript(messages));
+      setExported(true);
+      setTimeout(() => setExported(false), 2000);
+    } catch {
+      /* clipboard unavailable — the button simply stays un-checked */
+    }
   };
 
   const handleNewChat = () => {
@@ -1142,7 +1674,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (!pick) setMessages([]);
     if (pick) {
       localThreadMetaRef.current[pick.thread_id] = {
-        ...(localThreadMetaRef.current[pick.thread_id] || { botName: null, goal: null }),
+        ...(localThreadMetaRef.current[pick.thread_id] || {
+          botName: null,
+          goal: null,
+        }),
         botName: bot.name,
       };
       void persistLocalHistory(
@@ -1197,8 +1732,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
    * palette answering "no agents available" during the first read would claim an
    * empty fleet before anyone asked the server.
    */
-  const mentionAgentsState: "loading" | "ready" | "unavailable" =
-    botsLoading ? "loading" : botsError ? "unavailable" : "ready";
+  const mentionAgentsState: "loading" | "ready" | "unavailable" = botsLoading
+    ? "loading"
+    : botsError
+      ? "unavailable"
+      : "ready";
 
   /**
    * Make `handle` the agent this chat runs on, from a `@` tag.
@@ -1212,7 +1750,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     (handle: string) => {
       const target = bots.find((b) => b.name === handle);
       if (!target) {
-        flash(`No agent named "${handle}" is in the roster, so the conversation was not switched.`);
+        flash(
+          `No agent named "${handle}" is in the roster, so the conversation was not switched.`,
+        );
         return;
       }
       rememberBot(target);
@@ -1248,14 +1788,20 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     text: string,
     options: {
       voiceTurn?: boolean;
-      replay?: { prepared: Record<string, unknown>; supersedeIds: string[]; appendUserMessage: boolean };
-    } = {}
+      replay?: {
+        prepared: Record<string, unknown>;
+        supersedeIds: string[];
+        appendUserMessage: boolean;
+      };
+    } = {},
   ): Promise<boolean> => {
     const content = text.trim();
     // Ref is deliberately synchronous: two voice callbacks can arrive before
     // React has committed isLoading=true, and a second run must still be blocked.
-    const runLock = typeof activeRunRef !== "undefined" ? activeRunRef : { current: false };
-    const stopQueuedSpeech = typeof cancelSpeech === "function" ? cancelSpeech : () => undefined;
+    const runLock =
+      typeof activeRunRef !== "undefined" ? activeRunRef : { current: false };
+    const stopQueuedSpeech =
+      typeof cancelSpeech === "function" ? cancelSpeech : () => undefined;
     if (!content || isLoading || runLock.current) return false;
     runLock.current = true;
     // Claim a run generation. Any user navigation bumps it, after which this
@@ -1322,10 +1868,14 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           const savedMeta = await remapThreadId(localId, serverThread);
           if (savedMeta) localThreadMetaRef.current[serverId] = savedMeta;
         } catch (error) {
-          flash(`The server chat was created, but its local id could not be remapped. ${errMsg(error)}`);
+          flash(
+            `The server chat was created, but its local id could not be remapped. ${errMsg(error)}`,
+          );
         }
         setThreads((previous) =>
-          previous.map((thread) => (thread.thread_id === localId ? serverThread : thread)),
+          previous.map((thread) =>
+            thread.thread_id === localId ? serverThread : thread,
+          ),
         );
         setActiveThreadId(serverId);
         setPendingProjectId(null);
@@ -1338,7 +1888,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     // attempt supersedes nothing on the server either, and leaving the
     // transcript with the original answer removed would be a silent deletion.
     const supersededMessages =
-      replay && replay.supersedeIds.length > 0 ? messages.filter((m) => replay.supersedeIds.includes(m.id)) : [];
+      replay && replay.supersedeIds.length > 0
+        ? messages.filter((m) => replay.supersedeIds.includes(m.id))
+        : [];
     if (replay && supersededMessages.length > 0) {
       // The superseded tail leaves the transcript *before* the replacement
       // turn begins, so the transcript shows the turn that is actually
@@ -1346,7 +1898,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       // history once the replay succeeds; a failed attempt restores them (see
       // `showRequestFailure`), so reloading agrees with what is on screen.
       const superseded = new Set(replay.supersedeIds);
-      setMessages((prev) => prev.filter((message) => !superseded.has(message.id)));
+      setMessages((prev) =>
+        prev.filter((message) => !superseded.has(message.id)),
+      );
     }
 
     // Automatically detect and trigger slash command lifecycle at the right time
@@ -1355,7 +1909,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     let detection = undefined;
     if (!replay) {
       try {
-        const d = await autoTriggerCommand(content, undefined, true, { thread_id: tid });
+        const d = await autoTriggerCommand(content, undefined, true, {
+          thread_id: tid,
+        });
         if (d && d.matched) {
           detection = d;
         }
@@ -1400,7 +1956,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       }).catch((error: unknown) => {
         if (!isSpeechCancellation(error) && !speechFailureShown) {
           speechFailureShown = true;
-          flash(`Voice speech failed: ${error instanceof Error ? error.message : String(error)}`);
+          flash(
+            `Voice speech failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       });
     };
@@ -1424,7 +1982,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         // turn back, and drop the replacement row this call appended (its text
         // is in the retry panel, which is where the user can act on it).
         const appendedId = replay?.appendUserMessage ? userMsg.id : null;
-        return [...kept.filter((message) => message.id !== appendedId), ...supersededMessages];
+        return [
+          ...kept.filter((message) => message.id !== appendedId),
+          ...supersededMessages,
+        ];
       });
       setRequestError({
         threadId: tid,
@@ -1435,9 +1996,15 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       });
       setInput((current) => current || text);
       if (failure.kind === "stopped") {
-        updateLion("idle", "Stopping safely. The workspace is ready whenever you are.");
+        updateLion(
+          "idle",
+          "Stopping safely. The workspace is ready whenever you are.",
+        );
       } else {
-        updateLion("error", "That path needs another look. I kept the draft safe.");
+        updateLion(
+          "error",
+          "That path needs another look. I kept the draft safe.",
+        );
       }
     };
 
@@ -1483,7 +2050,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                 // `default` is omitted rather than sent as a level: it means "no
                 // explicit request", and sending the literal string would be
                 // rejected by the run boundary.
-                ...(reasoningEffort !== DEFAULT_EFFORT ? { reasoning_effort: reasoningEffort } : {}),
+                ...(reasoningEffort !== DEFAULT_EFFORT
+                  ? { reasoning_effort: reasoningEffort }
+                  : {}),
               },
             },
             // The delegation opt-in. `RunCreateRequest.autonomous` is the
@@ -1503,7 +2072,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       updateLion("working", "I'm on it. Roaring quietly.");
       const updateStream = (partial: StreamMessage[]) => {
         deliveredMessages = partial.map((message) => ({
-          id: message.runId ? JSON.stringify([message.runId, message.id]) : assistantMsgId,
+          id: message.runId
+            ? JSON.stringify([message.runId, message.id])
+            : assistantMsgId,
           role: "assistant",
           content: message.content,
           thinking: message.thinking,
@@ -1511,15 +2082,21 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           createdAt: assistantCreatedAt,
           runId: message.runId || undefined,
         }));
-        assistantText = deliveredMessages.map((message) => message.content).join("\n\n");
+        assistantText = deliveredMessages
+          .map((message) => message.content)
+          .join("\n\n");
         if (speechSegmenter) {
-          for (const segment of speechSegmenter.pushSnapshot(assistantText)) enqueueVoiceSegment(segment);
+          for (const segment of speechSegmenter.pushSnapshot(assistantText))
+            enqueueVoiceSegment(segment);
         }
         for (const message of deliveredMessages) streamedIds.add(message.id);
         // A run that outlived its conversation must not repaint the thread the
         // user opened next; the transcript is still archived below.
         if (!runIsCurrent()) return;
-        setMessages((prev) => [...prev.filter((message) => !streamedIds.has(message.id)), ...deliveredMessages]);
+        setMessages((prev) => [
+          ...prev.filter((message) => !streamedIds.has(message.id)),
+          ...deliveredMessages,
+        ]);
       };
       const result = await consumeChatStream(res, {
         threadId: tid,
@@ -1544,7 +2121,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           lastByteAtRef.current = Date.now();
         },
         onEvent: (event) => {
-          if (event.type === "replay-gap") flash("Some streamed events could not be replayed. This response is incomplete.");
+          if (event.type === "replay-gap")
+            flash(
+              "Some streamed events could not be replayed. This response is incomplete.",
+            );
         },
       });
       updateStream(result.messages);
@@ -1557,12 +2137,14 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         return false;
       }
       if (speechSegmenter) {
-        for (const segment of speechSegmenter.flush()) enqueueVoiceSegment(segment);
+        for (const segment of speechSegmenter.flush())
+          enqueueVoiceSegment(segment);
       }
       // The answer is committed before optional speech playback. Stopping
       // playback must not erase a response that already streamed successfully.
       completed = true;
-      if (runIsCurrent()) updateLion("success", "Task complete. Nice work, team.", 4200);
+      if (runIsCurrent())
+        updateLion("success", "Task complete. Nice work, team.", 4200);
       try {
         const usage = await fetchTokenUsage(threadId);
         if (runIsCurrent()) setUsage(usage);
@@ -1582,13 +2164,24 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       // already streamed their sentence segments above and must not overlap a
       // second full-response request.
       if (!voiceTurn && readAutoplayEnabled()) {
-        void autoplaySpeak(assistantText, { onFailure: (message) => flash(`Autoplay failed: ${message}`) });
+        void autoplaySpeak(assistantText, {
+          onFailure: (message) => flash(`Autoplay failed: ${message}`),
+        });
       }
 
       // Follow-up suggestions.
       if (suggestionsOn) {
         try {
-          const convo = [...messages, userMsg, { ...userMsg, id: assistantMsgId, role: "assistant" as const, content: assistantText }]
+          const convo = [
+            ...messages,
+            userMsg,
+            {
+              ...userMsg,
+              id: assistantMsgId,
+              role: "assistant" as const,
+              content: assistantText,
+            },
+          ]
             .slice(-6)
             .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
           const s = await suggestFollowUps(threadId, convo);
@@ -1603,12 +2196,19 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       // it. `StreamRunFailure` is the one place it survives the stream layer;
       // a bare ApiClientError carries no run context, so `supportId` stays
       // undefined and the sentence renders exactly as it did before.
-      const supportId = error instanceof StreamRunFailure ? chatSupportId(error.sseError) : null;
-      await showRequestFailure(controller.signal.aborted
-        ? { kind: "stopped", supportId }
-        : !responseStarted && error instanceof ApiClientError && error.kind === "http"
-          ? { kind: "http", status: error.status, supportId }
-          : { kind: responseStarted ? "stream" : "network", supportId });
+      const supportId =
+        error instanceof StreamRunFailure
+          ? chatSupportId(error.sseError)
+          : null;
+      await showRequestFailure(
+        controller.signal.aborted
+          ? { kind: "stopped", supportId }
+          : !responseStarted &&
+              error instanceof ApiClientError &&
+              error.kind === "http"
+            ? { kind: "http", status: error.status, supportId }
+            : { kind: responseStarted ? "stream" : "network", supportId },
+      );
     } finally {
       // isLoading is a workspace-wide "a run is in flight" indicator, not a
       // per-thread view. It must always clear or the composer stays wedged
@@ -1622,7 +2222,12 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
 
   const handleVoiceTranscript = async (text: string) => {
     const content = text.trim();
-    if (!content || !voiceConversationEnabledRef.current || voiceViewRef.current !== "chat") return;
+    if (
+      !content ||
+      !voiceConversationEnabledRef.current ||
+      voiceViewRef.current !== "chat"
+    )
+      return;
     if (activeRunRef.current) {
       // A final endpoint can race a manual run. Keep the session alive without
       // creating a second run; the normal run guard remains authoritative.
@@ -1636,14 +2241,19 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     try {
       await sendMessage(content, { voiceTurn: true });
     } catch (error) {
-      flash(`Voice turn failed: ${error instanceof Error ? error.message : String(error)}`);
+      flash(
+        `Voice turn failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     } finally {
       voiceTurnRef.current = false;
       if (generation === voiceTurnGenerationRef.current) {
         setVoiceTurnActive(false);
         // A navigation/stop during the run owns the outcome; do not resume into
         // a different thread or resurrect a user-disabled conversation.
-        if (voiceConversationEnabledRef.current && voiceViewRef.current === "chat") {
+        if (
+          voiceConversationEnabledRef.current &&
+          voiceViewRef.current === "chat"
+        ) {
           setVoiceResumeToken((token) => token + 1);
         }
       }
@@ -1698,9 +2308,13 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           const savedMeta = await remapThreadId(localId, serverThread);
           if (savedMeta) localThreadMetaRef.current[serverId] = savedMeta;
         } catch (error) {
-          flash(`The shortcut chat exists on the server, but its local id could not be remapped. ${errMsg(error)}`);
+          flash(
+            `The shortcut chat exists on the server, but its local id could not be remapped. ${errMsg(error)}`,
+          );
         }
-        setThreads((prev) => prev.map((t) => (t.thread_id === localId ? serverThread : t)));
+        setThreads((prev) =>
+          prev.map((t) => (t.thread_id === localId ? serverThread : t)),
+        );
         setActiveThreadId(serverId);
         setPendingProjectId(null);
         currentThreadId = serverId;
@@ -1741,7 +2355,9 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       await reply(out);
       updateLion("success", "Shortcut complete. The desk is clear.", 3600);
     } catch (e) {
-      await reply(`Couldn't run that shortcut: ${e instanceof Error ? e.message : "unknown error"}`);
+      await reply(
+        `Couldn't run that shortcut: ${e instanceof Error ? e.message : "unknown error"}`,
+      );
       updateLion("error", "That shortcut hit a snag. Nothing was lost.");
     } finally {
       setIsLoading(false);
@@ -1751,7 +2367,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
 
   /** Stop button: halt the stream, then cancel the run server-side (best effort). */
   const handleStop = async () => {
-    updateLion("waiting", "Stopping safely. Checking the last safe checkpoint...");
+    updateLion(
+      "waiting",
+      "Stopping safely. Checking the last safe checkpoint...",
+    );
     abortRef.current?.abort();
     cancelSpeech();
     if (voiceTurnRef.current) {
@@ -1765,9 +2384,15 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (activeThreadId) {
       try {
         const runs = await listThreadRuns(activeThreadId);
-        const live = runs.find((r) => r.status === "running" || r.status === "pending");
+        const live = runs.find(
+          (r) => r.status === "running" || r.status === "pending",
+        );
         if (live) await cancelRun(activeThreadId, live.run_id);
-        flash(live ? "Cancellation requested — check Runs for status." : "No active run found — check Runs for status.");
+        flash(
+          live
+            ? "Cancellation requested — check Runs for status."
+            : "No active run found — check Runs for status.",
+        );
       } catch {
         /* stream abort alone already halts the UI */
       }
@@ -1787,14 +2412,19 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (!activeThreadId) return;
     const userIndex = messages.map((m) => m.role).lastIndexOf("user");
     if (userIndex < 0) return;
-    const assistantIndex = messages.findIndex((m, i) => i > userIndex && m.role === "assistant");
+    const assistantIndex = messages.findIndex(
+      (m, i) => i > userIndex && m.role === "assistant",
+    );
     if (assistantIndex < 0) {
       flash("There is no answer to regenerate yet.");
       return;
     }
     const supersedeIds = messages.slice(assistantIndex).map((m) => m.id);
     try {
-      const prepared = await prepareRegenerate(activeThreadId, messages[assistantIndex].id);
+      const prepared = await prepareRegenerate(
+        activeThreadId,
+        messages[assistantIndex].id,
+      );
       if (!prepared) {
         flash("This Gateway has no regenerate endpoint, so nothing was sent.");
         return;
@@ -1825,7 +2455,11 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (index < 0) return;
     const supersedeIds = messages.slice(index).map((m) => m.id);
     try {
-      const prepared = await prepareEditRegenerate(activeThreadId, messageId, replacement);
+      const prepared = await prepareEditRegenerate(
+        activeThreadId,
+        messageId,
+        replacement,
+      );
       if (!prepared) {
         flash("This Gateway has no edit-replay endpoint, so nothing was sent.");
         return;
@@ -1844,12 +2478,17 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     const next = msg.rating === rating ? undefined : rating;
     try {
       if (next) await rateMessage(activeThreadId, msg.runId, next);
-      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating: next } : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, rating: next } : m)),
+      );
       await persistLocalHistory(
         () => updateLocalMessage(activeThreadId, messageId, { rating: next }),
         "The rating is saved on the server, but its local copy could not be updated.",
       );
-      if (next) flash(next === 1 ? "Thanks — rated helpful." : "Noted — rated not helpful.");
+      if (next)
+        flash(
+          next === 1 ? "Thanks — rated helpful." : "Noted — rated not helpful.",
+        );
     } catch {
       flash("Couldn't save your rating right now.");
     }
@@ -1859,9 +2498,16 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     if (!input.trim() || polishing) return;
     setPolishing(true);
     try {
-      const { text, changed } = await polishDraft(input, activeThreadId ?? undefined);
+      const { text, changed } = await polishDraft(
+        input,
+        activeThreadId ?? undefined,
+      );
       setInput(text);
-      flash(changed ? "Draft improved — review and send." : "Draft already looks good.");
+      flash(
+        changed
+          ? "Draft improved — review and send."
+          : "Draft already looks good.",
+      );
     } catch {
       flash("Couldn't polish right now — send as-is.");
     } finally {
@@ -1924,9 +2570,13 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           const savedMeta = await remapThreadId(localId, serverThread);
           if (savedMeta) localThreadMetaRef.current[serverId] = savedMeta;
         } catch (error) {
-          flash(`The upload chat exists on the server, but its local id could not be remapped. ${errMsg(error)}`);
+          flash(
+            `The upload chat exists on the server, but its local id could not be remapped. ${errMsg(error)}`,
+          );
         }
-        setThreads((prev) => prev.map((t) => (t.thread_id === localId ? serverThread : t)));
+        setThreads((prev) =>
+          prev.map((t) => (t.thread_id === localId ? serverThread : t)),
+        );
         setActiveThreadId(serverId);
         setPendingProjectId(null);
         threadId = serverId;
@@ -1953,22 +2603,30 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
             if (draftServerId) await removeLocalThread(draftServerId);
             setThreads((previous) =>
               previous.filter(
-                (thread) => thread.thread_id !== draftLocalId && thread.thread_id !== draftServerId,
+                (thread) =>
+                  thread.thread_id !== draftLocalId &&
+                  thread.thread_id !== draftServerId,
               ),
             );
             setActiveThreadId((current) =>
-              current === draftLocalId || current === draftServerId ? null : current,
+              current === draftLocalId || current === draftServerId
+                ? null
+                : current,
             );
             setMessages([]);
             setPendingProjectId(draftProjectId);
-            flash(`Upload failed: ${uploadError}. The empty draft was removed.`);
+            flash(
+              `Upload failed: ${uploadError}. The empty draft was removed.`,
+            );
           } catch (localCleanupFailure) {
             cleanupError = errMsg(localCleanupFailure);
           }
         }
         if (cleanupError) {
           setPendingProjectId(draftProjectId);
-          flash(`Upload failed: ${uploadError}. The empty draft could not be removed: ${cleanupError}`);
+          flash(
+            `Upload failed: ${uploadError}. The empty draft could not be removed: ${cleanupError}`,
+          );
         }
       } else {
         flash(`Upload failed: ${uploadError}`);
@@ -1985,7 +2643,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       setGoalText(goalDraft.trim());
       setGoalEditing(false);
       localThreadMetaRef.current[activeThreadId] = {
-        ...(localThreadMetaRef.current[activeThreadId] || { botName: null, goal: null }),
+        ...(localThreadMetaRef.current[activeThreadId] || {
+          botName: null,
+          goal: null,
+        }),
         goal: goalDraft.trim(),
       };
       await persistLocalHistory(
@@ -2005,7 +2666,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       setGoalText(null);
       setGoalEditing(false);
       localThreadMetaRef.current[activeThreadId] = {
-        ...(localThreadMetaRef.current[activeThreadId] || { botName: null, goal: null }),
+        ...(localThreadMetaRef.current[activeThreadId] || {
+          botName: null,
+          goal: null,
+        }),
         goal: null,
       };
       await persistLocalHistory(
@@ -2019,7 +2683,12 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
 
   const handleCompact = async () => {
     if (!activeThreadId) return;
-    if (!window.confirm("Summarize older messages to free context? Recent messages stay intact.")) return;
+    if (
+      !window.confirm(
+        "Summarize older messages to free context? Recent messages stay intact.",
+      )
+    )
+      return;
     try {
       const summary = await compactThread(activeThreadId);
       flash(summary.slice(0, 200));
@@ -2054,13 +2723,17 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
 
   const handleExportHistory = async () => {
     try {
-      const blob = new Blob([await exportStoreJson()], { type: "application/json" });
+      const blob = new Blob([await exportStoreJson()], {
+        type: "application/json",
+      });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `alpha-history-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      flash("Complete local history downloaded — keep it safe or move it to another browser.");
+      flash(
+        "Complete local history downloaded — keep it safe or move it to another browser.",
+      );
     } catch (error) {
       flash(`Couldn't export history. ${errMsg(error)}`);
     }
@@ -2071,20 +2744,30 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
     const { threads: tCount, messages: mCount } = await importStoreJson(text);
     const threadResult = await fetchThreadsResult();
     if (!threadResult.ok) {
-      flash(`Imported ${tCount} chats and ${mCount} messages, but server history could not be re-read. ${threadResult.error}`);
+      flash(
+        `Imported ${tCount} chats and ${mCount} messages, but server history could not be re-read. ${threadResult.error}`,
+      );
       return `Imported ${tCount} chats and ${mCount} messages. Server refresh is unavailable.`;
     }
     setServerHistoryError(null);
-    const { visible, notes } = await hideConfirmedEmptyDrafts(threadResult.value);
-    if (threadResult.incomplete) flash(`Chat list is incomplete — ${threadResult.incomplete}. Showing what loaded.`);
+    const { visible, notes } = await hideConfirmedEmptyDrafts(
+      threadResult.value,
+    );
+    if (threadResult.incomplete)
+      flash(
+        `Chat list is incomplete — ${threadResult.incomplete}. Showing what loaded.`,
+      );
     else if (notes.length > 0) flash(notes[0]);
     const merged = await mergeThreads(visible);
     setThreads(merged);
     return `Imported ${tCount} chats and ${mCount} messages.`;
   };
 
-  const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
-  const selectedModelName = models.find((m) => m.id === selectedModel)?.name || null;
+  const lastAssistantId = [...messages]
+    .reverse()
+    .find((m) => m.role === "assistant")?.id;
+  const selectedModelName =
+    models.find((m) => m.id === selectedModel)?.name || null;
   // Unread is a measured total only if the roster read asked for it: a row
   // without `unread_count` means "not projected", and mixing an unknown row
   // into a sum would invent a number. `null` (unknown) hides the badge instead
@@ -2104,9 +2787,13 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         gatewayOk={gatewayOk}
         userInitials={operator.name ? operator.initials : null}
         userName={operator.name}
-        botLabel={activeBot ? activeBot.display_name || activeBot.name : "Lead Agent"}
+        botLabel={
+          activeBot ? activeBot.display_name || activeBot.name : "Lead Agent"
+        }
         projectLabel={activeProject ? activeProject.name : "Standalone"}
-        threadLabel={threads.find((t) => t.thread_id === activeThreadId)?.title || null}
+        threadLabel={
+          threads.find((t) => t.thread_id === activeThreadId)?.title || null
+        }
         unreadCount={unreadCount}
       />
 
@@ -2132,91 +2819,105 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
       <div className="flex flex-1 overflow-hidden min-h-0">
         {view === "chat" && (
           <ThreadSidebar
-          threads={activeBot ? threads.filter((t) => threadOwner(t) === activeBot.name) : threads}
-          threadsLoading={threadsLoading}
-          activeThreadId={activeThreadId}
-          scopeLabel={activeBot ? activeBot.display_name || activeBot.name : null}
-          scopeAvatar={activeBot?.avatar || ""}
-          ownerLabel={(t) => {
-            const o = threadOwner(t);
-            if (!o) return null;
-            return bots.find((b) => b.name === o)?.display_name || o;
-          }}
-          onSelectThread={(id) => {
-            openThread(id);
-          }}
-          onNewChat={handleNewChat}
-          onThreadsChanged={() => {
-            void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`));
-          }}
-          onBranchOpened={(id) => {
-            stopVoiceForNavigation();
-            void reloadThreads(id).catch((error) => flash(`Could not open the branched chat. ${errMsg(error)}`));
-          }}
-          onExportHistory={handleExportHistory}
-          onImportHistory={handleImportHistory}
-          serverOnline={gatewayOk === true && serverHistoryError === null}
-          onOpenSettings={() => setView("settings")}
-          onProjectsChanged={async () => {
-            setProjects(await listProjects());
-          }}
-          // Bot -> Project -> Conversation. Rendered inside the sidebar, above
-          // the conversation list. Nothing that was already in this sidebar was
-          // removed to make room for it: the New Chat button, the scope
-          // summary, the search box, the grouped conversation list, the local
-          // message search and the storage footer are all untouched.
-          rail={
-            <ChatShell
-              bots={bots}
-              activeBot={activeBot}
-              threads={activeBot ? threads.filter((t) => threadOwner(t) === activeBot.name) : threads}
-              projects={projects}
-              activeThreadId={activeThreadId}
-              activeProjectId={activeProjectId}
-              onSelectBot={rememberBot}
-              onSelectThread={(id) => {
-                openThread(id);
-              }}
-              onNewConversation={(projectId) => {
-                handleNewChat();
-                if (projectId !== null) void handlePickProject(projectId);
-              }}
-              onPickProject={(projectId) => {
-                void handlePickProject(projectId);
-              }}
-              onOpenView={(target) => setView(target)}
-              onProjectsChanged={async () => {
-                setProjects(await listProjects());
-              }}
-            />
-          }
-        />
-      )}
+            threads={
+              activeBot
+                ? threads.filter((t) => threadOwner(t) === activeBot.name)
+                : threads
+            }
+            threadsLoading={threadsLoading}
+            activeThreadId={activeThreadId}
+            scopeLabel={
+              activeBot ? activeBot.display_name || activeBot.name : null
+            }
+            scopeAvatar={activeBot?.avatar || ""}
+            ownerLabel={(t) => {
+              const o = threadOwner(t);
+              if (!o) return null;
+              return bots.find((b) => b.name === o)?.display_name || o;
+            }}
+            onSelectThread={(id) => {
+              openThread(id);
+            }}
+            onNewChat={handleNewChat}
+            onThreadsChanged={() => {
+              void reloadThreads().catch((error) =>
+                flash(`Could not refresh chat history. ${errMsg(error)}`),
+              );
+            }}
+            onBranchOpened={(id) => {
+              stopVoiceForNavigation();
+              void reloadThreads(id).catch((error) =>
+                flash(`Could not open the branched chat. ${errMsg(error)}`),
+              );
+            }}
+            onExportHistory={handleExportHistory}
+            onImportHistory={handleImportHistory}
+            serverOnline={gatewayOk === true && serverHistoryError === null}
+            onOpenSettings={() => setView("settings")}
+            onProjectsChanged={async () => {
+              setProjects(await listProjects());
+            }}
+            // Bot -> Project -> Conversation. Rendered inside the sidebar, above
+            // the conversation list. Nothing that was already in this sidebar was
+            // removed to make room for it: the New Chat button, the scope
+            // summary, the search box, the grouped conversation list, the local
+            // message search and the storage footer are all untouched.
+            rail={
+              <ChatShell
+                bots={bots}
+                activeBot={activeBot}
+                threads={
+                  activeBot
+                    ? threads.filter((t) => threadOwner(t) === activeBot.name)
+                    : threads
+                }
+                projects={projects}
+                activeThreadId={activeThreadId}
+                activeProjectId={activeProjectId}
+                onSelectBot={rememberBot}
+                onSelectThread={(id) => {
+                  openThread(id);
+                }}
+                onNewConversation={(projectId) => {
+                  handleNewChat();
+                  if (projectId !== null) void handlePickProject(projectId);
+                }}
+                onPickProject={(projectId) => {
+                  void handlePickProject(projectId);
+                }}
+                onOpenView={(target) => setView(target)}
+                onProjectsChanged={async () => {
+                  setProjects(await listProjects());
+                }}
+              />
+            }
+          />
+        )}
 
-      <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        {/* Workspace navigation for non-chat views */}
-        {view !== "chat" && (
-          <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
-            <div className="overflow-x-auto">
-              {/* Each badge is that tab's own measured count. The Projects tab must
+        <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+          {/* Workspace navigation for non-chat views */}
+          {view !== "chat" && (
+            <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
+              <div className="overflow-x-auto">
+                {/* Each badge is that tab's own measured count. The Projects tab must
                   read the project list, not inherit the bot roster: an
                   installation with 42 bots and 2 projects would otherwise show
                   "42" next to Projects. */}
-              <NavTabs
-                view={view}
-                onChange={handleViewChange}
-                badge={{ bots: bots.length, projects: projects.length }}
-              />
-            </div>
+                <NavTabs
+                  view={view}
+                  onChange={handleViewChange}
+                  badge={{ bots: bots.length, projects: projects.length }}
+                />
+              </div>
 
-            {/* Live backend vitals: connectivity, usage and subsystem readiness.
+              {/* Live backend vitals: connectivity, usage and subsystem readiness.
                 Update state moved to `WorkspaceTopBar`, which renders in every
                 view — here it was a second instance of a control the chat view
                 never showed at all. */}
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <WorkspaceVitals />
-              <div className="flex items-center gap-1.5 ml-auto">
-                {/*
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <WorkspaceVitals />
+                <div className="flex items-center gap-1.5 ml-auto">
+                  {/*
                   Clicking the control now opens the provider list rather than
                   re-probing on every click, and the refresh moved inside the
                   panel. Opening a list of what the router currently sees costs
@@ -2226,25 +2927,25 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                   dot, the sentence and the per-provider rows behind them all
                   read the same state via `freeCatalogTone`.
                 */}
-                <FreeCatalogMenu
-                  providers={freeProviders}
-                  note={freeNote}
-                  tone={freeTone}
-                  refreshing={freeRefreshing}
-                  onRefresh={() => void refreshFreeCatalog()}
-                  error={freeReadError}
-                  selectionMethod={freeSelectionMethod}
-                  disclaimer={freeDisclaimer}
-                />
-                <button
-                  type="button"
-                  onClick={() => setView("settings")}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors"
-                  title="Open Settings"
-                  aria-label="Open Settings — model selection, theme and API diagnostics"
-                >
-                  <Settings className="size-3.5" />
-                  {/*
+                  <FreeCatalogMenu
+                    providers={freeProviders}
+                    note={freeNote}
+                    tone={freeTone}
+                    refreshing={freeRefreshing}
+                    onRefresh={() => void refreshFreeCatalog()}
+                    error={freeReadError}
+                    selectionMethod={freeSelectionMethod}
+                    disclaimer={freeDisclaimer}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setView("settings")}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors"
+                    title="Open Settings"
+                    aria-label="Open Settings — model selection, theme and API diagnostics"
+                  >
+                    <Settings className="size-3.5" />
+                    {/*
                     This control used to collapse to a bare 30px gear below the
                     `lg` breakpoint, because its only label was behind
                     `hidden lg:inline` and it carried no `aria-label`. A gear
@@ -2252,46 +2953,53 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                     now stays at every width and the selected model is a separate,
                     explicitly-labelled line underneath.
                   */}
-                  <span className="whitespace-nowrap">Settings</span>
-                  <span className="sr-only">
-                    {selectedModelName ? ` — selected model: ${selectedModelName}` : " — no model selected"}
-                  </span>
-                  {selectedModelName ? (
-                    <span className="hidden lg:inline text-muted-foreground/80 font-normal">· {selectedModelName}</span>
-                  ) : null}
-                </button>
+                    <span className="whitespace-nowrap">Settings</span>
+                    <span className="sr-only">
+                      {selectedModelName
+                        ? ` — selected model: ${selectedModelName}`
+                        : " — no model selected"}
+                    </span>
+                    {selectedModelName ? (
+                      <span className="hidden lg:inline text-muted-foreground/80 font-normal">
+                        · {selectedModelName}
+                      </span>
+                    ) : null}
+                  </button>
+                </div>
               </div>
-            </div>
-          </header>
-        )}
+            </header>
+          )}
 
-        {/* Project Context Header for Chat View (matches reference design) */}
-        {view === "chat" && (
-          <ProjectContextHeader
-            bot={activeBot}
-            bots={bots}
-            project={activeProject}
-            projectKnown={!activeProjectId || activeProject !== null}
-            thread={threads.find((thread) => thread.thread_id === activeThreadId) ?? null}
-            threads={threads}
-            projects={projects}
-            projectThreadCount={activeProjectThreadCount}
-            onSwitchProject={(id) => void handlePickProject(id)}
-            onSelectBot={rememberBot}
-            onSelectThread={(id) => openThread(id)}
-            onNewConversation={() => {
-              handleNewChat();
-            }}
-            onNewProject={() => setView("projects")}
-            onOpenView={(target) => setView(target)}
-            activeTab={activeContextTab}
-            onTabChange={(tab) => setActiveContextTab(tab)}
-            onToggleInspector={() => setInspectorOpen((v) => !v)}
-            inspectorOpen={inspectorOpen}
-          />
-        )}
+          {/* Project Context Header for Chat View (matches reference design) */}
+          {view === "chat" && (
+            <ProjectContextHeader
+              bot={activeBot}
+              bots={bots}
+              project={activeProject}
+              projectKnown={!activeProjectId || activeProject !== null}
+              thread={
+                threads.find((thread) => thread.thread_id === activeThreadId) ??
+                null
+              }
+              threads={threads}
+              projects={projects}
+              projectThreadCount={activeProjectThreadCount}
+              onSwitchProject={(id) => void handlePickProject(id)}
+              onSelectBot={rememberBot}
+              onSelectThread={(id) => openThread(id)}
+              onNewConversation={() => {
+                handleNewChat();
+              }}
+              onNewProject={() => setView("projects")}
+              onOpenView={(target) => setView(target)}
+              activeTab={activeContextTab}
+              onTabChange={(tab) => setActiveContextTab(tab)}
+              onToggleInspector={() => setInspectorOpen((v) => !v)}
+              inspectorOpen={inspectorOpen}
+            />
+          )}
 
-        {/*
+          {/*
           One outage, one banner. When the Gateway probe has failed
           (`gatewayOk === false`), the server-history read failed
           *because* the Gateway is down — that is a single cause,
@@ -2307,396 +3015,507 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           re-renders the amber banner the moment the Gateway
           answers again.
         */}
-        {gatewayOk === false && !offlineDismissed && (
-          <div className="shrink-0 px-4 pt-2">
-            {/* An interruption: `role="alert"` so a screen reader is told now,
+          {gatewayOk === false && !offlineDismissed && (
+            <div className="shrink-0 px-4 pt-2">
+              {/* An interruption: `role="alert"` so a screen reader is told now,
                 not on the next focus move. */}
-            <div role="alert" className="max-w-4xl mx-auto flex items-center gap-2.5 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
-              <span className="size-2 rounded-full bg-destructive animate-pulse shrink-0" aria-hidden="true" />
-              <span className="flex-1 min-w-0">
-                <strong>Backend not connected.</strong>{" "}
-                <span className="text-muted-foreground">Chats stay in this browser until the Gateway runs — the conversation list below is the complete local copy, not a confirmed empty history. Start it with <code className="font-mono">.\start.ps1</code>, then refresh.</span>
-              </span>
-              <button type="button" onClick={() => setView("system")} className="px-2.5 py-1 rounded-lg bg-destructive text-destructive-foreground text-[11px] font-semibold shrink-0">
-                Diagnose
-              </button>
-              <button type="button" onClick={() => setOfflineDismissed(true)} className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:text-foreground shrink-0" aria-label="Dismiss offline warning">
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
-
-        {serverHistoryError && view === "chat" && gatewayOk !== false && (
-          <div className="shrink-0 px-4 pt-2">
-            <div role="alert" className="max-w-4xl mx-auto flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-              <span className="size-2 rounded-full bg-amber-500 shrink-0 mt-1" aria-hidden="true" />
-              <span className="flex-1 min-w-0">
-                <strong>Server conversation list unavailable.</strong>{" "}
-                <span className="text-muted-foreground">
-                  {serverHistoryError} — you are seeing the complete copy saved on this computer, not a confirmed empty history.
+              <div
+                role="alert"
+                className="max-w-4xl mx-auto flex items-center gap-2.5 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs"
+              >
+                <span
+                  className="size-2 rounded-full bg-destructive animate-pulse shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="flex-1 min-w-0">
+                  <strong>Backend not connected.</strong>{" "}
+                  <span className="text-muted-foreground">
+                    Chats stay in this browser until the Gateway runs — the
+                    conversation list below is the complete local copy, not a
+                    confirmed empty history. Start it with{" "}
+                    <code className="font-mono">.\start.ps1</code>, then
+                    refresh.
+                  </span>
                 </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`))}
-                className="px-2.5 py-1 rounded-lg border border-amber-500/40 text-[11px] font-semibold shrink-0"
-              >
-                Retry
-              </button>
-              <button
-                type="button"
-                onClick={() => setServerHistoryError(null)}
-                className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:text-foreground shrink-0"
-                aria-label="Dismiss server history warning"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
-
-        {notice && (
-          <div className="shrink-0 px-4 pt-2">
-            {/* Transient by design, so `status` (polite) rather than `alert`
-                (interruptive): it reports a completed action, not a failure. */}
-            <div
-              role="status"
-              aria-live="polite"
-              className="max-w-4xl mx-auto rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
-            >
-              {notice}
-            </div>
-          </div>
-        )}
-
-        <ErrorBoundary resetKey={view} label={view}>
-        {view === "overview" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <OverviewSection onOpenView={setView} />
-          </Suspense>
-        ) : view === "warroom" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <WarRoomSection />
-          </Suspense>
-        ) : view === "deliberation" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <WarRoomRunsSection />
-          </Suspense>
-        ) : view === "bots" ? (
-          <div className="shrink-0 px-4 sm:px-6 pt-3">
-            <div className="max-w-6xl mx-auto flex gap-1 rounded-xl bg-muted/60 p-1 w-fit">
-              {(["profiles", "ops"] as const).map((t) => (
                 <button
-                  key={t}
                   type="button"
-                  onClick={() => setBotsTab(t)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${botsTab === t ? "bg-card shadow" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => setView("system")}
+                  className="px-2.5 py-1 rounded-lg bg-destructive text-destructive-foreground text-[11px] font-semibold shrink-0"
                 >
-                  {t === "profiles" ? `Profiles (${bots.length})` : "Team ops"}
+                  Diagnose
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setOfflineDismissed(true)}
+                  className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:text-foreground shrink-0"
+                  aria-label="Dismiss offline warning"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
-          </div>
-        ) : null}
+          )}
 
-        {view === "bots" && botsTab === "ops" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <BotOpsSection bots={bots} onRefreshBots={refreshBots} />
-          </Suspense>
-        ) : view === "bots" ? (
-          <BotGallery
-            bots={bots}
-            activeBotName={activeBot?.name || null}
-            isLoading={botsLoading}
-            onSelect={setInspectedBot}
-            onChat={handleChatWithBot}
-            onRefresh={refreshBots}
-          />
-        ) : view === "messages" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <MessagesSection threadId={activeThreadId} botNames={bots.map((b) => b.display_name || b.name)} />
-          </Suspense>
-        ) : view === "peers" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <PeerNetworkSection />
-          </Suspense>
-        ) : view === "external-alpha" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ExternalAlphaSection />
-          </Suspense>
-        ) : view === "kanban" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <KanbanSection bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name, avatar: b.avatar }))} />
-          </Suspense>
-        ) : view === "company" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <CompanySection />
-          </Suspense>
-        ) : view === "runs" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <RunsSection threadId={activeThreadId} />
-          </Suspense>
-        ) : view === "run-inspector" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <RunInspectorSection threadId={activeThreadId} />
-          </Suspense>
-        ) : view === "files" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <FilesSection threadId={activeThreadId} />
-          </Suspense>
-        ) : view === "scheduled" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ScheduledSection bots={bots} />
-          </Suspense>
-        ) : view === "subagents" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <SubagentsSection threadId={activeThreadId} />
-          </Suspense>
-        ) : view === "skills" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <SkillsSection />
-          </Suspense>
-        ) : view === "reliability" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ReliabilitySection />
-          </Suspense>
-        ) : view === "workflows" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <WorkflowsSection />
-          </Suspense>
-        ) : view === "forge" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ForgeSection />
-          </Suspense>
-        ) : view === "supervisor" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <SupervisorSection />
-          </Suspense>
-        ) : view === "protocols" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ProtocolsSection />
-          </Suspense>
-        ) : view === "memory" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <MemorySection />
-          </Suspense>
-        ) : view === "projects" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ProjectsSection
-              onOpenThread={openThread}
-              threads={threads}
-              bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name }))}
-              onOpenLiveProject={(projectId) => {
-                // The Workforce view owns its own project selection and otherwise
-                // defaults to the FIRST project, so switching views alone would land
-                // on a different project than the one the user just opened. Select
-                // it here, then switch.
-                setFocusedProjectId(projectId);
-                setView("workforce");
-              }}
-              onThreadsChanged={() => {
-                void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`));
-              }}
-            />
-          </Suspense>
-        ) : view === "dashboard" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <DashboardSection onOpenThread={openThread} />
-          </Suspense>
-        ) : view === "agents" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <AgentsSection enabled={features.agentsApi} />
-          </Suspense>
-        ) : view === "team" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <TeamOpsSection threadId={activeThreadId} mcpTasksAvailable={features.mcpTasks} />
-          </Suspense>
-        ) : view === "channels" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ChannelsSection />
-          </Suspense>
-        ) : view === "workforce" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <WorkforceSection
-              bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name }))}
-              focusedProjectId={focusedProjectId}
-            />
-          </Suspense>
-        ) : view === "system" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <SystemSection threadId={activeThreadId} browserActive={features.browserControl} />
-          </Suspense>
-        ) : view === "integration" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <IntegrationSection />
-          </Suspense>
-        ) : view === "apex" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <ApexSection />
-          </Suspense>
-        ) : view === "intelligence" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <IntelligenceSection />
-          </Suspense>
-        ) : view === "settings" ? (
-          <Suspense fallback={<SectionFallback />}>
-            <SettingsSection
-              initialTab={settingsInitialTab}
-              currentModel={selectedModel}
-              onModelChange={(m) => {
-                setSelectedModel((current) => {
-                  const next = m;
-                  if (next !== current) {
-                    setReasoningEffort((effort) => reconcileEffortForModel(effort, models.find((x) => x.id === next) ?? null));
+          {serverHistoryError && view === "chat" && gatewayOk !== false && (
+            <div className="shrink-0 px-4 pt-2">
+              <div
+                role="alert"
+                className="max-w-4xl mx-auto flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+              >
+                <span
+                  className="size-2 rounded-full bg-amber-500 shrink-0 mt-1"
+                  aria-hidden="true"
+                />
+                <span className="flex-1 min-w-0">
+                  <strong>Server conversation list unavailable.</strong>{" "}
+                  <span className="text-muted-foreground">
+                    {serverHistoryError} — you are seeing the complete copy
+                    saved on this computer, not a confirmed empty history.
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void reloadThreads().catch((error) =>
+                      flash(`Could not refresh chat history. ${errMsg(error)}`),
+                    )
                   }
-                  return next;
-                });
-                try {
-                  localStorage.setItem("alpha_selected_model", m);
-                } catch {}
-              }}
-              onModelsUpdated={async () => {
-                const mList = await fetchAvailableModels();
-                setModels(mList);
-              }}
-              onOpenView={(v) => setView(v)}
-            />
-          </Suspense>
-        ) : (
-          /* Not gated on the view id on purpose.
-           *
-           * This branch also holds the right-hand Project Inspector drawer,
-           * which is workspace-level and must stay reachable from every view,
-           * so the chat-only parts are gated individually below rather than by
-           * closing this whole branch on `view === "chat"`. */
-          /* The BOX is sized by the same four conditions its children are.
-           *
-           * Gating the chat column stopped it *drawing* in a view that had
-           * already rendered its own section — but the row it lives in kept
-           * `flex-1` regardless, so an empty instance still claimed half of
-           * `<main>`. Measured on War Room at a 674px viewport: header 179px,
-           * the section 240px, this branch 200px holding ZERO children, and
-           * the panel it squeezed wanted 1750px of content. The result was a
-           * board scrolled inside a letterbox with a blank block under it that
-           * a reader could not account for.
-           *
-           * `null` in the chain below means "nothing to show", so the row must
-           * not be shown either — a box competing for the screen on the
-           * strength of content it declined to render. All four branches are
-           * restated here rather than derived, because the children are a
-           * ternary chain and React cannot ask it what it returned; adding a
-           * fifth branch means adding it here too, and the empty-panel
-           * regression is loud (a blank block returns) rather than silent. */
-          <div
-            className={
-              activeContextTab === "files" ||
-              activeContextTab === "tasks" ||
-              activeContextTab === "knowledge" ||
-              view === "chat"
-                ? "flex-1 flex overflow-hidden min-h-0"
-                : "hidden"
-            }
-          >
-            {activeContextTab === "files" ? (
+                  className="px-2.5 py-1 rounded-lg border border-amber-500/40 text-[11px] font-semibold shrink-0"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServerHistoryError(null)}
+                  className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:text-foreground shrink-0"
+                  aria-label="Dismiss server history warning"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {notice && (
+            <div className="shrink-0 px-4 pt-2">
+              {/* Transient by design, so `status` (polite) rather than `alert`
+                (interruptive): it reports a completed action, not a failure. */}
+              <div
+                role="status"
+                aria-live="polite"
+                className="max-w-4xl mx-auto rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
+              >
+                {notice}
+              </div>
+            </div>
+          )}
+
+          <ErrorBoundary resetKey={view} label={view}>
+            {view === "overview" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <OverviewSection onOpenView={setView} />
+              </Suspense>
+            ) : view === "warroom" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <WarRoomSection />
+              </Suspense>
+            ) : view === "deliberation" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <WarRoomRunsSection />
+              </Suspense>
+            ) : view === "bots" ? (
+              <div className="shrink-0 px-4 sm:px-6 pt-3">
+                <div className="max-w-6xl mx-auto flex gap-1 rounded-xl bg-muted/60 p-1 w-fit">
+                  {(["profiles", "ops"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setBotsTab(t)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${botsTab === t ? "bg-card shadow" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {t === "profiles"
+                        ? `Profiles (${bots.length})`
+                        : "Team ops"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {view === "bots" && botsTab === "ops" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <BotOpsSection bots={bots} onRefreshBots={refreshBots} />
+              </Suspense>
+            ) : view === "bots" ? (
+              <BotGallery
+                bots={bots}
+                activeBotName={activeBot?.name || null}
+                isLoading={botsLoading}
+                onSelect={setInspectedBot}
+                onChat={handleChatWithBot}
+                onRefresh={refreshBots}
+              />
+            ) : view === "messages" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <MessagesSection
+                  threadId={activeThreadId}
+                  botNames={bots.map((b) => b.display_name || b.name)}
+                />
+              </Suspense>
+            ) : view === "peers" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <PeerNetworkSection />
+              </Suspense>
+            ) : view === "external-alpha" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ExternalAlphaSection />
+              </Suspense>
+            ) : view === "kanban" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <KanbanSection
+                  bots={bots.map((b) => ({
+                    name: b.name,
+                    display_name: b.display_name || b.name,
+                    avatar: b.avatar,
+                  }))}
+                />
+              </Suspense>
+            ) : view === "company" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <CompanySection />
+              </Suspense>
+            ) : view === "runs" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <RunsSection threadId={activeThreadId} />
+              </Suspense>
+            ) : view === "run-inspector" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <RunInspectorSection threadId={activeThreadId} />
+              </Suspense>
+            ) : view === "files" ? (
               <Suspense fallback={<SectionFallback />}>
                 <FilesSection threadId={activeThreadId} />
               </Suspense>
-            ) : activeContextTab === "tasks" ? (
+            ) : view === "scheduled" ? (
               <Suspense fallback={<SectionFallback />}>
-                <KanbanSection bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name, avatar: b.avatar }))} />
+                <ScheduledSection bots={bots} />
               </Suspense>
-            ) : activeContextTab === "knowledge" ? (
+            ) : view === "subagents" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <SubagentsSection threadId={activeThreadId} />
+              </Suspense>
+            ) : view === "skills" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <SkillsSection />
+              </Suspense>
+            ) : view === "reliability" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ReliabilitySection />
+              </Suspense>
+            ) : view === "workflows" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <WorkflowsSection />
+              </Suspense>
+            ) : view === "forge" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ForgeSection />
+              </Suspense>
+            ) : view === "supervisor" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <SupervisorSection />
+              </Suspense>
+            ) : view === "protocols" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ProtocolsSection />
+              </Suspense>
+            ) : view === "memory" ? (
               <Suspense fallback={<SectionFallback />}>
                 <MemorySection />
               </Suspense>
-            ) : view === "chat" ? (
-              /* The chat column renders ONLY in the chat view.
+            ) : view === "projects" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ProjectsSection
+                  onOpenThread={openThread}
+                  threads={threads}
+                  bots={bots.map((b) => ({
+                    name: b.name,
+                    display_name: b.display_name || b.name,
+                  }))}
+                  onOpenLiveProject={(projectId) => {
+                    // The Workforce view owns its own project selection and otherwise
+                    // defaults to the FIRST project, so switching views alone would land
+                    // on a different project than the one the user just opened. Select
+                    // it here, then switch.
+                    setFocusedProjectId(projectId);
+                    setView("workforce");
+                  }}
+                  onThreadsChanged={() => {
+                    void reloadThreads().catch((error) =>
+                      flash(`Could not refresh chat history. ${errMsg(error)}`),
+                    );
+                  }}
+                />
+              </Suspense>
+            ) : view === "dashboard" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <DashboardSection onOpenThread={openThread} />
+              </Suspense>
+            ) : view === "agents" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <AgentsSection enabled={features.agentsApi} />
+              </Suspense>
+            ) : view === "team" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <TeamOpsSection
+                  threadId={activeThreadId}
+                  mcpTasksAvailable={features.mcpTasks}
+                />
+              </Suspense>
+            ) : view === "channels" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ChannelsSection />
+              </Suspense>
+            ) : view === "workforce" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <WorkforceSection
+                  bots={bots.map((b) => ({
+                    name: b.name,
+                    display_name: b.display_name || b.name,
+                  }))}
+                  focusedProjectId={focusedProjectId}
+                />
+              </Suspense>
+            ) : view === "system" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <SystemSection
+                  threadId={activeThreadId}
+                  browserActive={features.browserControl}
+                />
+              </Suspense>
+            ) : view === "integration" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <IntegrationSection />
+              </Suspense>
+            ) : view === "apex" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ApexSection />
+              </Suspense>
+            ) : view === "intelligence" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <IntelligenceSection />
+              </Suspense>
+            ) : view === "settings" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <SettingsSection
+                  initialTab={settingsInitialTab}
+                  currentModel={selectedModel}
+                  onModelChange={(m) => {
+                    setSelectedModel((current) => {
+                      const next = m;
+                      if (next !== current) {
+                        setReasoningEffort((effort) =>
+                          reconcileEffortForModel(
+                            effort,
+                            models.find((x) => x.id === next) ?? null,
+                          ),
+                        );
+                      }
+                      return next;
+                    });
+                    try {
+                      localStorage.setItem("alpha_selected_model", m);
+                    } catch {}
+                  }}
+                  onModelsUpdated={async () => {
+                    const mList = await fetchAvailableModels();
+                    setModels(mList);
+                  }}
+                  onOpenView={(v) => setView(v)}
+                />
+              </Suspense>
+            ) : (
+              /* Not gated on the view id on purpose.
                *
-               * This branch was the bare `else` of the `activeContextTab`
-               * chain, and `activeContextTab` is chat-scoped state, so for any
-               * view whose id is not one of `files` / `tasks` / `knowledge` it
-               * fell through to `else` and drew the transcript viewport, the
-               * empty-state hero and the composer — in a view that had already
-               * rendered its own section from its own `{view === X ? … : null}`
-               * block above.
+               * This branch also holds the right-hand Project Inspector drawer,
+               * which is workspace-level and must stay reachable from every view,
+               * so the chat-only parts are gated individually below rather than by
+               * closing this whole branch on `view === "chat"`. */
+              /* The BOX is sized by the same four conditions its children are.
                *
-               * The damage was structural, not cosmetic. `<main>` is
-               * `flex flex-col h-full overflow-hidden`, so the section and a
-               * `flex-1` transcript competed for one screen and the section was
-               * clipped. Measured on Overview: the atlas was cut through the
-               * middle of its first card row, with the chat hero and a complete
-               * composer drawn underneath it. Every non-chat tab was affected
-               * and chat looked correct, which is why it read as a per-section
-               * styling bug rather than a layout one.
+               * Gating the chat column stopped it *drawing* in a view that had
+               * already rendered its own section — but the row it lives in kept
+               * `flex-1` regardless, so an empty instance still claimed half of
+               * `<main>`. Measured on War Room at a 674px viewport: header 179px,
+               * the section 240px, this branch 200px holding ZERO children, and
+               * the panel it squeezed wanted 1750px of content. The result was a
+               * board scrolled inside a letterbox with a blank block under it that
+               * a reader could not account for.
                *
-               * The three sibling alternatives stay ungated because those tabs
-               * are reachable both as their own workspace view and as a chat
-               * sub-tab; `view === "chat"` would have made the latter
-               * unreachable. */
-              <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-            {/* Active-bot banner */}
-            {activeBot && (
-              <div className="shrink-0 px-4 pt-3">
-                <div className="max-w-4xl mx-auto flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center font-bold overflow-hidden shrink-0">
-                    {activeBot.avatar || (activeBot.display_name || activeBot.name).slice(0, 2).toUpperCase()}
-                  </div>
-                  <span className="min-w-0">
-                    Chatting as <strong>{activeBot.display_name || activeBot.name}</strong>
-                    <span className="text-muted-foreground"> — {activeBot.role}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => rememberBot(null)}
-                    className="ml-auto text-[11px] font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted shrink-0"
-                  >
-                    Reset to Lead Agent
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Goal bar */}
-            <div className="shrink-0 px-4 pt-2">
-              <div className="max-w-4xl mx-auto">
-                {goalEditing ? (
-                  <div className="flex gap-2 rounded-xl border border-primary/30 bg-card p-2">
-                    <input
-                      value={goalDraft}
-                      onChange={(e) => setGoalDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveGoal();
-                        if (e.key === "Escape") setGoalEditing(false);
-                      }}
-                      placeholder="What is the goal of this conversation? e.g. Ship the landing page"
-                      autoFocus
-                      aria-label="Conversation goal"
-                      className="flex-1 bg-transparent px-2 py-1.5 text-xs focus:outline-none"
+               * `null` in the chain below means "nothing to show", so the row must
+               * not be shown either — a box competing for the screen on the
+               * strength of content it declined to render. All four branches are
+               * restated here rather than derived, because the children are a
+               * ternary chain and React cannot ask it what it returned; adding a
+               * fifth branch means adding it here too, and the empty-panel
+               * regression is loud (a blank block returns) rather than silent. */
+              <div
+                className={
+                  activeContextTab === "files" ||
+                  activeContextTab === "tasks" ||
+                  activeContextTab === "knowledge" ||
+                  view === "chat"
+                    ? "flex-1 flex overflow-hidden min-h-0"
+                    : "hidden"
+                }
+              >
+                {activeContextTab === "files" ? (
+                  <Suspense fallback={<SectionFallback />}>
+                    <FilesSection threadId={activeThreadId} />
+                  </Suspense>
+                ) : activeContextTab === "tasks" ? (
+                  <Suspense fallback={<SectionFallback />}>
+                    <KanbanSection
+                      bots={bots.map((b) => ({
+                        name: b.name,
+                        display_name: b.display_name || b.name,
+                        avatar: b.avatar,
+                      }))}
                     />
-                    <button type="button" onClick={handleSaveGoal} disabled={!goalDraft.trim()} className="px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold disabled:opacity-40">
-                      Set
-                    </button>
-                    <button type="button" onClick={() => setGoalEditing(false)} className="px-2.5 py-1 rounded-lg border border-border text-[11px] hover:bg-muted">
-                      Cancel
-                    </button>
-                  </div>
-                ) : goal ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
-                    <Target className="size-3.5 text-primary shrink-0" />
-                    <span className="flex-1 truncate"><strong>Goal:</strong> {goal}</span>
-                    <button type="button" onClick={() => { setGoalDraft(goal); setGoalEditing(true); }} className="text-[11px] text-muted-foreground hover:text-foreground">Edit</button>
-                    <button type="button" onClick={handleClearGoal} className="text-[11px] text-muted-foreground hover:text-destructive">Clear</button>
-                  </div>
-                ) : activeThreadId ? (
-                  <button type="button" onClick={() => { setGoalDraft(""); setGoalEditing(true); }} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground px-1 py-0.5">
-                    <Target className="size-3.5" /> Set a goal for this conversation
-                  </button>
-                ) : null}
-              </div>
-            </div>
+                  </Suspense>
+                ) : activeContextTab === "knowledge" ? (
+                  <Suspense fallback={<SectionFallback />}>
+                    <MemorySection />
+                  </Suspense>
+                ) : view === "chat" ? (
+                  /* The chat column renders ONLY in the chat view.
+                   *
+                   * This branch was the bare `else` of the `activeContextTab`
+                   * chain, and `activeContextTab` is chat-scoped state, so for any
+                   * view whose id is not one of `files` / `tasks` / `knowledge` it
+                   * fell through to `else` and drew the transcript viewport, the
+                   * empty-state hero and the composer — in a view that had already
+                   * rendered its own section from its own `{view === X ? … : null}`
+                   * block above.
+                   *
+                   * The damage was structural, not cosmetic. `<main>` is
+                   * `flex flex-col h-full overflow-hidden`, so the section and a
+                   * `flex-1` transcript competed for one screen and the section was
+                   * clipped. Measured on Overview: the atlas was cut through the
+                   * middle of its first card row, with the chat hero and a complete
+                   * composer drawn underneath it. Every non-chat tab was affected
+                   * and chat looked correct, which is why it read as a per-section
+                   * styling bug rather than a layout one.
+                   *
+                   * The three sibling alternatives stay ungated because those tabs
+                   * are reachable both as their own workspace view and as a chat
+                   * sub-tab; `view === "chat"` would have made the latter
+                   * unreachable. */
+                  <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+                    {/* Active-bot banner */}
+                    {activeBot && (
+                      <div className="shrink-0 px-4 pt-3">
+                        <div className="max-w-4xl mx-auto flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                          <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center font-bold overflow-hidden shrink-0">
+                            {activeBot.avatar ||
+                              (activeBot.display_name || activeBot.name)
+                                .slice(0, 2)
+                                .toUpperCase()}
+                          </div>
+                          <span className="min-w-0">
+                            Chatting as{" "}
+                            <strong>
+                              {activeBot.display_name || activeBot.name}
+                            </strong>
+                            <span className="text-muted-foreground">
+                              {" "}
+                              — {activeBot.role}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => rememberBot(null)}
+                            className="ml-auto text-[11px] font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted shrink-0"
+                          >
+                            Reset to Lead Agent
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-            {/* Messages Viewport.
+                    {/* Goal bar */}
+                    <div className="shrink-0 px-4 pt-2">
+                      <div className="max-w-4xl mx-auto">
+                        {goalEditing ? (
+                          <div className="flex gap-2 rounded-xl border border-primary/30 bg-card p-2">
+                            <input
+                              value={goalDraft}
+                              onChange={(e) => setGoalDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveGoal();
+                                if (e.key === "Escape") setGoalEditing(false);
+                              }}
+                              placeholder="What is the goal of this conversation? e.g. Ship the landing page"
+                              autoFocus
+                              aria-label="Conversation goal"
+                              className="flex-1 bg-transparent px-2 py-1.5 text-xs focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSaveGoal}
+                              disabled={!goalDraft.trim()}
+                              className="px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold disabled:opacity-40"
+                            >
+                              Set
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGoalEditing(false)}
+                              className="px-2.5 py-1 rounded-lg border border-border text-[11px] hover:bg-muted"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : goal ? (
+                          <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
+                            <Target className="size-3.5 text-primary shrink-0" />
+                            <span className="flex-1 truncate">
+                              <strong>Goal:</strong> {goal}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGoalDraft(goal);
+                                setGoalEditing(true);
+                              }}
+                              className="text-[11px] text-muted-foreground hover:text-foreground"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleClearGoal}
+                              className="text-[11px] text-muted-foreground hover:text-destructive"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : activeThreadId ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGoalDraft("");
+                              setGoalEditing(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground px-1 py-0.5"
+                          >
+                            <Target className="size-3.5" /> Set a goal for this
+                            conversation
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Messages Viewport.
 
                 The scroller is `flex-1`, so it always fills the space between
                 the header and the composer. Its children were laid out from the
@@ -2712,313 +3531,503 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
                 transcript is unchanged. `space-y-4` became the inner wrapper's
                 `gap-4` because `space-y` on a flex column adds top margins that
                 a bottom-anchored layout would render as leading blank. */}
-            {/* `role="log"` + polite live region: without it a screen reader
+                    {/* `role="log"` + polite live region: without it a screen reader
                 gets the transcript as inert markup and hears nothing when an
                 answer arrives. It is a focusable region too, so the scroller can
                 be driven from the keyboard (WCAG 2.1.1) — which also makes the
                 "I scrolled up" state reachable without a pointer, and that state
                 is what disarms auto-follow below. */}
-            <div className="flex-1 overflow-y-auto px-4 py-6"
-              ref={transcriptRef}
-              onScroll={handleTranscriptScroll}
-              tabIndex={0}
-              role="log"
-              aria-live="polite"
-              aria-relevant="additions"
-              aria-label="Conversation transcript"
-            >
-              <div className="min-h-full flex flex-col justify-end gap-4">
-                {messages.length === 0 ? (
-                  <div
-                    className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-4 w-full px-2"
-                    aria-label={branding.name}
-                  >
-                    <h2 className="text-lg font-semibold text-foreground tracking-tight">
-                      <BrandLogo logoSize={44} textClassName="text-lg text-foreground" priority />
-                    </h2>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {activeBot
-                        ? `Talking to ${activeBot.display_name || activeBot.name} (${activeBot.role}). Switch specialists anytime from the Bots tab.`
-                        : branding.intro}
-                    </p>
-                    {bots.length > 0 && (
-                      <div className="flex flex-wrap justify-center gap-1.5 pt-1">
-                        {bots.slice(0, 5).map((b) => (
-                          <button
-                            key={b.name}
-                            type="button"
-                            onClick={() => rememberBot(b)}
-                            className={`text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
-                              activeBot?.name === b.name
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground"
-                            }`}
+                    <div
+                      className="flex-1 overflow-y-auto px-4 py-6"
+                      ref={transcriptRef}
+                      onScroll={handleTranscriptScroll}
+                      tabIndex={0}
+                      role="log"
+                      aria-live="polite"
+                      aria-relevant="additions"
+                      aria-label="Conversation transcript"
+                    >
+                      <div className="min-h-full flex flex-col justify-end gap-4">
+                        {messages.length === 0 ? (
+                          <div
+                            className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-4 w-full px-2"
+                            aria-label={branding.name}
                           >
-                            {b.avatar ? `${b.avatar} ` : ""}{b.display_name || b.name}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setView("bots")}
-                          className="text-[11px] px-2.5 py-1.5 rounded-lg border border-dashed border-border/70 text-muted-foreground hover:text-foreground font-medium"
-                        >
-                          View all {bots.length} →
-                        </button>
-                      </div>
-                    )}
-                    {/* Added beneath the existing welcome block, not in place of
+                            <h2 className="text-lg font-semibold text-foreground tracking-tight">
+                              <BrandLogo
+                                logoSize={44}
+                                textClassName="text-lg text-foreground"
+                                priority
+                              />
+                            </h2>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              {activeBot
+                                ? `Talking to ${activeBot.display_name || activeBot.name} (${activeBot.role}). Switch specialists anytime from the Bots tab.`
+                                : branding.intro}
+                            </p>
+                            {bots.length > 0 && (
+                              <div className="flex flex-wrap justify-center gap-1.5 pt-1">
+                                {bots.slice(0, 5).map((b) => (
+                                  <button
+                                    key={b.name}
+                                    type="button"
+                                    onClick={() => rememberBot(b)}
+                                    className={`text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
+                                      activeBot?.name === b.name
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                                    }`}
+                                  >
+                                    {b.avatar ? `${b.avatar} ` : ""}
+                                    {b.display_name || b.name}
+                                  </button>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => setView("bots")}
+                                  className="text-[11px] px-2.5 py-1.5 rounded-lg border border-dashed border-border/70 text-muted-foreground hover:text-foreground font-medium"
+                                >
+                                  View all {bots.length} →
+                                </button>
+                              </div>
+                            )}
+                            {/* Added beneath the existing welcome block, not in place of
                         it: the logo, the intro sentence and the bot chips above
                         are all still here. This adds the one line that names the
                         bot and the project, and the starter actions, each of
                         which is a real request to this Gateway. */}
-                    <div className="w-full pt-1">
-                      <ChatShellEmptyState
-                        botName={activeBot ? activeBot.display_name || activeBot.name : null}
-                        botRole={activeBot?.role}
-                        botAvatar={activeBot?.avatar}
-                        projectId={activeProjectId}
-                        projectName={
-                          projects.find((p) => p.id === activeProjectId)?.name ?? null
-                        }
-                        userName={operator.name}
-                        returning={threads.length > 0}
-                        onPickStarter={(prompt) => setInput(prompt)}
-                        onReviewProject={() => setInspectorOpen(true)}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((msg) => (
-                    <MessageItem
-                      key={msg.id}
-                      message={msg}
-                      onRate={handleRate}
-                      onRegenerate={handleRegenerate}
-                      showRegenerate={msg.id === lastAssistantId && msg.role === "assistant"}
-                      regenerating={isLoading}
-                      onEdit={handleEditResend}
-                      streaming={isLoading && msg.role === "assistant" && msg.id === lastAssistantId}
-                    />
-                  ))
-                )}
+                            <div className="w-full pt-1">
+                              <ChatShellEmptyState
+                                botName={
+                                  activeBot
+                                    ? activeBot.display_name || activeBot.name
+                                    : null
+                                }
+                                botRole={activeBot?.role}
+                                botAvatar={activeBot?.avatar}
+                                projectId={activeProjectId}
+                                projectName={
+                                  projects.find((p) => p.id === activeProjectId)
+                                    ?.name ?? null
+                                }
+                                userName={operator.name}
+                                returning={threads.length > 0}
+                                onPickStarter={(prompt) => setInput(prompt)}
+                                onReviewProject={() => setInspectorOpen(true)}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          messages.map((msg) => (
+                            <MessageItem
+                              key={msg.id}
+                              message={msg}
+                              onRate={handleRate}
+                              onRegenerate={handleRegenerate}
+                              showRegenerate={
+                                msg.id === lastAssistantId &&
+                                msg.role === "assistant"
+                              }
+                              regenerating={isLoading}
+                              onEdit={handleEditResend}
+                              streaming={
+                                isLoading &&
+                                msg.role === "assistant" &&
+                                msg.id === lastAssistantId
+                              }
+                              searchHit={searchCurrent?.messageId === msg.id}
+                            />
+                          ))
+                        )}
 
-                {requestError && requestError.threadId === activeThreadId && (
-                  <div className="max-w-4xl mx-auto space-y-2">
-                    <div role="alert">
-                      <ErrorBox
-                        message={requestError.message}
-                        onRetry={!isLoading ? () => sendMessage(input.trim() ? input : requestError.draft) : undefined}
-                      />
-                    </div>
-                    {requestError.partial && (
-                      <div className="rounded-xl border border-destructive/40 p-3 text-xs">
-                        <p className="font-semibold mb-2">
-                          Incomplete response — {requestError.partialArchived ? "kept in local history" : "local archive write failed"}
-                        </p>
-                        <pre className="whitespace-pre-wrap break-words font-sans">{requestError.partial}</pre>
-                      </div>
-                    )}
-                  </div>
-                )}
+                        {requestError &&
+                          requestError.threadId === activeThreadId && (
+                            <div className="max-w-4xl mx-auto space-y-2">
+                              <div role="alert">
+                                <ErrorBox
+                                  message={requestError.message}
+                                  onRetry={
+                                    !isLoading
+                                      ? () =>
+                                          sendMessage(
+                                            input.trim()
+                                              ? input
+                                              : requestError.draft,
+                                          )
+                                      : undefined
+                                  }
+                                />
+                              </div>
+                              {requestError.partial && (
+                                <div className="rounded-xl border border-destructive/40 p-3 text-xs">
+                                  <p className="font-semibold mb-2">
+                                    Incomplete response —{" "}
+                                    {requestError.partialArchived
+                                      ? "kept in local history"
+                                      : "local archive write failed"}
+                                  </p>
+                                  <pre className="whitespace-pre-wrap break-words font-sans">
+                                    {requestError.partial}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
-                {isLoading && activity && (
-                  <div className="max-w-4xl mx-auto">
-                    <ActivityStatus
-                      state={activity}
-                      elapsedMs={elapsedMs}
-                      silence={silence}
-                      actor={activeBot ? activeBot.display_name || activeBot.name : branding.assistantLabel}
-                    />
-                  </div>
-                )}
+                        {isLoading && activity && (
+                          <div className="max-w-4xl mx-auto">
+                            <ActivityStatus
+                              state={activity}
+                              elapsedMs={elapsedMs}
+                              silence={silence}
+                              actor={
+                                activeBot
+                                  ? activeBot.display_name || activeBot.name
+                                  : branding.assistantLabel
+                              }
+                            />
+                          </div>
+                        )}
 
-                {/* The agent's own plan, live. It sits ABOVE the transcript because a plan is
+                        {/* The agent's own plan, live. It sits ABOVE the transcript because a plan is
                     read while the run is happening, not after: the user is
                     watching to see what is left. The task receipt below stays
                     where it is because it is read afterwards. */}
-                {livePlan.reportedAtAll && (
-                  <div className="max-w-4xl mx-auto">
-                    <TaskList
-                      todos={livePlan.items}
-                      progress={livePlan.progress}
-                      reported={livePlan.reported}
-                      truncated={livePlan.truncated}
-                      reportedAtAll={livePlan.reportedAtAll}
-                      variant="panel"
-                      title={isLoading ? "Working through this" : "Plan for this answer"}
-                    />
-                  </div>
-                )}
+                        {livePlan.reportedAtAll && (
+                          <div className="max-w-4xl mx-auto">
+                            <TaskList
+                              todos={livePlan.items}
+                              progress={livePlan.progress}
+                              reported={livePlan.reported}
+                              truncated={livePlan.truncated}
+                              reportedAtAll={livePlan.reportedAtAll}
+                              variant="panel"
+                              title={
+                                isLoading
+                                  ? "Working through this"
+                                  : "Plan for this answer"
+                              }
+                            />
+                          </div>
+                        )}
 
-{/* Subagent progress survives the run that produced it, so the
-                    answer lands next to the receipt of the work behind it, and
-                    only the next prompt clears it. */}
-                {subagentTasks.length > 0 && (
-                  <div className="max-w-4xl mx-auto">
-                    <SubagentList tasks={subagentTasks} />
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
+                        {/* Subagent progress survives the run that produced it, so the
+                    answer lands next to the receipt of the work behind it,
+                    and only the next prompt clears it. A wave of two or
+                    more concurrent delegations gets the swarm board first —
+                    the parallel overview — with the per-task rows beneath. */}
+                        {subagentTasks.length >= 2 && (
+                          <div className="max-w-4xl mx-auto">
+                            <SwarmBoard tasks={subagentTasks} />
+                          </div>
+                        )}
+                        {subagentTasks.length > 0 && (
+                          <div className="max-w-4xl mx-auto">
+                            <SubagentList tasks={subagentTasks} />
+                          </div>
+                        )}
+                        {/* The "Latest" pill: sticky to the scroller's bottom edge,
+                    visible only while auto-follow is disarmed. One click
+                    re-arms following and jumps to the live tail. */}
+                        {scrolledUp && messages.length > 0 && (
+                          <div className="sticky bottom-2 z-10 flex justify-center pointer-events-none">
+                            <button
+                              type="button"
+                              onClick={jumpToLatest}
+                              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-card px-3 py-1.5 text-[11px] font-medium text-primary shadow-lg elev-2 hover:bg-primary/10 transition-colors"
+                              title="Jump to the latest message and resume auto-follow"
+                            >
+                              ↓ Latest
+                              {isLoading && (
+                                <span
+                                  className="size-1.5 animate-pulse rounded-full bg-primary"
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </button>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    </div>
 
-            {/* Follow-up suggestions */}
-            {suggestions.length > 0 && !isLoading && (
-              <div className="shrink-0 px-3 pb-1">
-                <div className="max-w-4xl mx-auto flex gap-1.5 flex-wrap">
-                  {suggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => sendMessage(s)}
-                      className="text-[11px] px-2.5 py-1.5 rounded-full border border-border/70 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors text-left"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+                    {/* Transcript search bar, pinned above the composer. */}
+                    {searchOpen && messages.length > 0 && (
+                      <div className="shrink-0 px-3 pb-1">
+                        <TranscriptSearch
+                          open={searchOpen}
+                          query={searchQuery}
+                          onQuery={setSearchQuery}
+                          matches={searchMatches}
+                          current={searchCurrentIndex}
+                          onStep={stepSearch}
+                          onClose={closeSearch}
+                        />
+                      </div>
+                    )}
 
-            {/* Context toolbar */}
-            {activeThreadId && (
-              <div className="shrink-0 px-3 pb-1">
-                <div className="max-w-4xl mx-auto flex items-center gap-2 text-[11px] text-muted-foreground">
-                  {usage && (
-                    <span className="font-mono" title="Tokens used in this conversation">
-                      {usage.totalTokens > 0 ? `${(usage.totalTokens / 1000).toFixed(1)}k tokens` : "fresh context"}
-                      {usage.contextPercent !== null ? ` • ${usage.contextPercent}% of window` : ""}
-                    </span>
-                  )}
-                  <span className="flex-1" />
-                  <button type="button" onClick={handleCompact} className="inline-flex items-center gap-1 hover:text-foreground px-1.5 py-1 rounded-lg hover:bg-muted" title="Summarize older messages to free context">
-                    <Shrink className="size-3.5" /> Compact context
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlanMode((v) => !v)}
-                    title={planMode ? "Plan mode ON: the agent plans complex work with checklists before acting" : "Turn on plan mode for careful multi-step work"}
-                    className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-muted ${planMode ? "text-primary font-semibold" : ""}`}
-                    aria-pressed={planMode}
-                  >
-                    <ClipboardList className="size-3.5" /> Plan {planMode ? "on" : "off"}
-                  </button>
-                  {/* This toggle is a per-session client switch, not the
+                    {/* Follow-up suggestions */}
+                    {suggestions.length > 0 && !isLoading && (
+                      <div className="shrink-0 px-3 pb-1">
+                        <div className="max-w-4xl mx-auto flex gap-1.5 flex-wrap">
+                          {suggestions.map((s, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => sendMessage(s)}
+                              className="text-[11px] px-2.5 py-1.5 rounded-full border border-border/70 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors text-left"
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Context toolbar */}
+                    {activeThreadId && (
+                      <div className="shrink-0 px-3 pb-1">
+                        <div className="max-w-4xl mx-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+                          {usage && (
+                            <span
+                              className="font-mono"
+                              title="Tokens used in this conversation"
+                            >
+                              {usage.totalTokens > 0
+                                ? `${(usage.totalTokens / 1000).toFixed(1)}k tokens`
+                                : "fresh context"}
+                              {usage.contextPercent !== null
+                                ? ` • ${usage.contextPercent}% of window`
+                                : ""}
+                            </span>
+                          )}
+                          <span className="flex-1" />
+                          <button
+                            type="button"
+                            onClick={handleCompact}
+                            className="inline-flex items-center gap-1 hover:text-foreground px-1.5 py-1 rounded-lg hover:bg-muted"
+                            title="Summarize older messages to free context"
+                          >
+                            <Shrink className="size-3.5" /> Compact context
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPlanMode((v) => !v)}
+                            title={
+                              planMode
+                                ? "Plan mode ON: the agent plans complex work with checklists before acting"
+                                : "Turn on plan mode for careful multi-step work"
+                            }
+                            className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-muted ${planMode ? "text-primary font-semibold" : ""}`}
+                            aria-pressed={planMode}
+                          >
+                            <ClipboardList className="size-3.5" /> Plan{" "}
+                            {planMode ? "on" : "off"}
+                          </button>
+                          {/* This toggle is a per-session client switch, not the
                       server setting. The server owns the capability, so when it
                       reports "off" the control is disabled with the reason
                       rather than letting the operator flip a switch that cannot
                       do anything; when the read failed it says "unknown"
                       instead of implying "off". */}
-                  <button
-                    type="button"
-                    onClick={() => setSuggestionsOn((v) => !v)}
-                    disabled={suggestionsServerState !== true}
-                    aria-pressed={suggestionsOn}
-                    className="hover:text-foreground px-1.5 py-1 rounded-lg hover:bg-muted disabled:opacity-60 disabled:cursor-not-allowed"
-                    title={
-                      suggestionsServerState === false
-                        ? "Follow-up suggestions are disabled by the Gateway (suggestions.enabled in config.yaml)."
-                        : suggestionsServerState === null
-                          ? "The Gateway did not report whether suggestions are enabled."
-                          : "Toggle follow-up question suggestions for this session"
-                    }
-                  >
-                    Suggestions{" "}
-                    {suggestionsServerState === null
-                      ? "unknown"
-                      : suggestionsServerState === false
-                        ? "off (server)"
-                        : suggestionsOn
-                          ? "on"
-                          : "off"}
-                  </button>
-                </div>
-              </div>
-            )}
+                          <button
+                            type="button"
+                            onClick={() => setSuggestionsOn((v) => !v)}
+                            disabled={suggestionsServerState !== true}
+                            aria-pressed={suggestionsOn}
+                            className="hover:text-foreground px-1.5 py-1 rounded-lg hover:bg-muted disabled:opacity-60 disabled:cursor-not-allowed"
+                            title={
+                              suggestionsServerState === false
+                                ? "Follow-up suggestions are disabled by the Gateway (suggestions.enabled in config.yaml)."
+                                : suggestionsServerState === null
+                                  ? "The Gateway did not report whether suggestions are enabled."
+                                  : "Toggle follow-up question suggestions for this session"
+                            }
+                          >
+                            Suggestions{" "}
+                            {suggestionsServerState === null
+                              ? "unknown"
+                              : suggestionsServerState === false
+                                ? "off (server)"
+                                : suggestionsOn
+                                  ? "on"
+                                  : "off"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              searchOpen ? closeSearch() : setSearchOpen(true)
+                            }
+                            disabled={messages.length === 0}
+                            aria-pressed={searchOpen}
+                            title="Search this conversation (Ctrl+F)"
+                            className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-muted disabled:opacity-40 ${searchOpen ? "text-primary font-semibold" : ""}`}
+                          >
+                            <Search className="size-3.5" /> Search
+                          </button>
+                          <button
+                            type="button"
+                            onClick={copyTranscript}
+                            disabled={messages.length === 0}
+                            title={
+                              exported
+                                ? "Copied"
+                                : "Copy conversation as Markdown"
+                            }
+                            className="inline-flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-muted hover:text-foreground disabled:opacity-40"
+                          >
+                            {exported ? (
+                              <Check className="size-3.5 text-emerald-500" />
+                            ) : (
+                              <Copy className="size-3.5" />
+                            )}{" "}
+                            Copy chat
+                          </button>
+                          <button
+                            type="button"
+                            onClick={downloadTranscript}
+                            disabled={messages.length === 0}
+                            title={
+                              exported
+                                ? "Downloaded"
+                                : "Download conversation as Markdown (.md)"
+                            }
+                            className="inline-flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-muted hover:text-foreground disabled:opacity-40"
+                          >
+                            {exported ? (
+                              <Check className="size-3.5 text-emerald-500" />
+                            ) : (
+                              <FileDown className="size-3.5" />
+                            )}{" "}
+                            Export
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              workspaceOpen
+                                ? closeWorkspace()
+                                : setWorkspaceOpen(true)
+                            }
+                            aria-pressed={workspaceOpen}
+                            title={
+                              workspaceContent.total > 0
+                                ? `Agent workspace (${workspaceContent.total} items)`
+                                : "Agent workspace — files, commands, pages, artifacts"
+                            }
+                            className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-muted hover:text-foreground ${workspaceOpen ? "text-primary font-semibold" : ""}`}
+                          >
+                            <PanelRight className="size-3.5" /> Workspace
+                            {workspaceContent.total > 0 && (
+                              <span className="rounded-full bg-primary/10 px-1 py-px font-mono text-[10px] tabular-nums text-primary">
+                                {workspaceContent.total}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-            {/* Composer */}
-            {/* On an iPhone the home indicator sits over the bottom ~34px, and a
+                    {/* Composer */}
+                    {/* On an iPhone the home indicator sits over the bottom ~34px, and a
             fixed `pb-3` put the composer's send button underneath it. The
             inset is read from the viewport so the bar clears the indicator
             without padding it on devices that have none. */}
-        <footer className="shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-              <Composer
-                botDisplayName={activeBot ? activeBot.display_name || activeBot.name : undefined}
-                input={input}
-                setInput={setInput}
-                onSubmit={handleSubmit}
-                onStop={handleStop}
-                isLoading={isLoading}
-                delegationEnabled={delegationEnabled}
-                onDelegationChange={setDelegationEnabled}
-                models={models}
-                selectedModel={selectedModel}
-                onSelectModel={(m) => {
-                  setSelectedModel((current) => {
-                    if (m !== current) {
-                      setReasoningEffort((effort) => reconcileEffortForModel(effort, models.find((x) => x.id === m) ?? null));
-                    }
-                    return m;
-                  });
-                  // Persist so the choice survives a reload. The Settings path
-                  // already wrote this key, but a composer-only switch used to
-                  // be session-scoped and silently reverted on the next load.
-                  try {
-                    localStorage.setItem("alpha_selected_model", m);
-                  } catch {
-                    /* a full or blocked store must not fail the selection */
-                  }
-                }}
-                effort={reasoningEffort}
-                onEffortChange={(next) => {
-                  setReasoningEffort(next);
-                  try {
-                    if (next === DEFAULT_EFFORT) localStorage.removeItem("alpha_reasoning_effort");
-                    else localStorage.setItem("alpha_reasoning_effort", next);
-                  } catch {}
-                }}
-                effortLadder={effortLadder}
-                effortLabels={effortLabels}
-                onPolish={handlePolish}
-                polishing={polishing}
-                onAttach={handleAttach}
-                uploading={uploading}
-                onPasteFiles={(files) => handleAttach(files)}
-                onDictate={(text) => flash("Dictation inserted — review and send.")}
-                onVoiceTranscript={handleVoiceTranscript}
-                voiceConversationEnabled={voiceConversationEnabled}
-                voiceConversationScopeKey={`${view}:${activeThreadId || "new"}`}
-                voiceConversationTurnActive={voiceTurnActive}
-                voiceResumeToken={voiceResumeToken}
-                onVoiceConversationStateChange={(active) => {
-                  voiceConversationEnabledRef.current = active;
-                  setVoiceConversationEnabled(active);
-                  if (!active) cancelSpeech();
-                }}
-                freeNote={freeNote}
-                onRefreshFree={refreshFreeCatalog}
-                refreshingFree={freeRefreshing}
-                onOpenModelSettings={() => {
-                  setSettingsInitialTab("models");
-                  setView("settings");
-                }}
-                onModelsUpdated={async () => {
-                  const mList = await fetchAvailableModels();
-                  setModels(mList);
-                  flash("Models updated with new API key configuration.");
-                }}
-                slashCommands={slashCommands}
-                mentionAgents={mentionAgents}
-                mentionAgentsState={mentionAgentsState}
-                mentionAgentsError={botsError}
-                activeAgentHandle={activeBot?.name ?? null}
-                onMentionSwitchAgent={switchAgentFromTag}
-              />
-            </footer>
-          </div>
-        ) : null}
+                    <footer className="shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+                      <Composer
+                        botDisplayName={
+                          activeBot
+                            ? activeBot.display_name || activeBot.name
+                            : undefined
+                        }
+                        input={input}
+                        setInput={setInput}
+                        onSubmit={handleSubmit}
+                        onStop={handleStop}
+                        isLoading={isLoading}
+                        delegationEnabled={delegationEnabled}
+                        onDelegationChange={setDelegationEnabled}
+                        models={models}
+                        selectedModel={selectedModel}
+                        onSelectModel={(m) => {
+                          setSelectedModel((current) => {
+                            if (m !== current) {
+                              setReasoningEffort((effort) =>
+                                reconcileEffortForModel(
+                                  effort,
+                                  models.find((x) => x.id === m) ?? null,
+                                ),
+                              );
+                            }
+                            return m;
+                          });
+                          // Persist so the choice survives a reload. The Settings path
+                          // already wrote this key, but a composer-only switch used to
+                          // be session-scoped and silently reverted on the next load.
+                          try {
+                            localStorage.setItem("alpha_selected_model", m);
+                          } catch {
+                            /* a full or blocked store must not fail the selection */
+                          }
+                        }}
+                        effort={reasoningEffort}
+                        onEffortChange={(next) => {
+                          setReasoningEffort(next);
+                          try {
+                            if (next === DEFAULT_EFFORT)
+                              localStorage.removeItem("alpha_reasoning_effort");
+                            else
+                              localStorage.setItem(
+                                "alpha_reasoning_effort",
+                                next,
+                              );
+                          } catch {}
+                        }}
+                        effortLadder={effortLadder}
+                        effortLabels={effortLabels}
+                        onPolish={handlePolish}
+                        polishing={polishing}
+                        onAttach={handleAttach}
+                        uploading={uploading}
+                        onPasteFiles={(files) => handleAttach(files)}
+                        onDictate={(text) =>
+                          flash("Dictation inserted — review and send.")
+                        }
+                        onVoiceTranscript={handleVoiceTranscript}
+                        voiceConversationEnabled={voiceConversationEnabled}
+                        voiceConversationScopeKey={`${view}:${activeThreadId || "new"}`}
+                        voiceConversationTurnActive={voiceTurnActive}
+                        voiceResumeToken={voiceResumeToken}
+                        onVoiceConversationStateChange={(active) => {
+                          voiceConversationEnabledRef.current = active;
+                          setVoiceConversationEnabled(active);
+                          if (!active) cancelSpeech();
+                        }}
+                        freeNote={freeNote}
+                        onRefreshFree={refreshFreeCatalog}
+                        refreshingFree={freeRefreshing}
+                        onOpenModelSettings={() => {
+                          setSettingsInitialTab("models");
+                          setView("settings");
+                        }}
+                        onModelsUpdated={async () => {
+                          const mList = await fetchAvailableModels();
+                          setModels(mList);
+                          flash(
+                            "Models updated with new API key configuration.",
+                          );
+                        }}
+                        slashCommands={slashCommands}
+                        mentionAgents={mentionAgents}
+                        mentionAgentsState={mentionAgentsState}
+                        mentionAgentsError={botsError}
+                        activeAgentHandle={activeBot?.name ?? null}
+                        onMentionSwitchAgent={switchAgentFromTag}
+                      />
+                    </footer>
+                  </div>
+                ) : null}
 
-        {/* Right-Hand Project Inspector Drawer.
+                {/* Right-Hand Project Inspector Drawer.
 
             Chat-only, and it has to be said explicitly rather than left to fall
             out of the layout. It shares a flex row with the chat column, and it
@@ -3033,28 +4042,42 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
             30 tabs only as a side effect of the chat column leaking into them.
             A section that opens a conversation does so by switching to chat
             (`onOpenThread`), which is where the drawer still lives. */}
-        {view === "chat" && inspectorOpen && (
-          <aside className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">
-            <ProjectDetailPanel
-              project={activeProject}
-              activeBot={activeBot}
-              projects={projects}
-              onOpenView={(target) => setView(target)}
-              onOpenThread={(id) => openThread(id)}
-              onNewConversationInProject={() => {
-                handleNewChat();
-                if (activeProjectId) void handlePickProject(activeProjectId);
-              }}
-              onClose={() => setInspectorOpen(false)}
-              onPickProject={(id) => void handlePickProject(id)}
-              onNewProject={() => setView("projects")}
-            />
-          </aside>
-        )}
-      </div>
-    )}
-        </ErrorBoundary>
-      </main>
+                {/* Agent Workspace sheet: the split-pane beside the chat —
+            files changed, terminal, browser, artifacts. Docks left of
+            the project inspector so the session's product sits closer
+            to the transcript than the project metadata. */}
+                {view === "chat" && workspaceOpen && (
+                  <aside className="w-[400px] shrink-0 h-full hidden xl:block overflow-hidden pl-2">
+                    <WorkspaceSheet
+                      content={workspaceContent}
+                      live={isLoading}
+                      onClose={closeWorkspace}
+                    />
+                  </aside>
+                )}
+                {view === "chat" && inspectorOpen && (
+                  <aside className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">
+                    <ProjectDetailPanel
+                      project={activeProject}
+                      activeBot={activeBot}
+                      projects={projects}
+                      onOpenView={(target) => setView(target)}
+                      onOpenThread={(id) => openThread(id)}
+                      onNewConversationInProject={() => {
+                        handleNewChat();
+                        if (activeProjectId)
+                          void handlePickProject(activeProjectId);
+                      }}
+                      onClose={() => setInspectorOpen(false)}
+                      onPickProject={(id) => void handlePickProject(id)}
+                      onNewProject={() => setView("projects")}
+                    />
+                  </aside>
+                )}
+              </div>
+            )}
+          </ErrorBoundary>
+        </main>
       </div>
 
       <LionPet
@@ -3072,10 +4095,14 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
           try {
             setProjects(await listProjects());
           } catch (error) {
-            flash(`Project ${projectId} was created, but the project list could not refresh. ${errMsg(error)}`);
+            flash(
+              `Project ${projectId} was created, but the project list could not refresh. ${errMsg(error)}`,
+            );
             return;
           }
-          flash(`Project created with ${inspectedBot?.display_name || inspectedBot?.name || "the bot"} as lead (${projectId}).`);
+          flash(
+            `Project created with ${inspectedBot?.display_name || inspectedBot?.name || "the bot"} as lead (${projectId}).`,
+          );
         }}
       />
     </div>
