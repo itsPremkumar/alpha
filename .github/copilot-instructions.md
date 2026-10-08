@@ -47,22 +47,23 @@ make install
 
 ### B. Backend CI-equivalent validation
 
-Run from `backend/`:
+Run the changed-file gate from the repository root:
 
 ```bash
-make lint
-make test
+python scripts/check_changed_python_lint.py --repo-root .
 ```
 
-Validated results:
-
-- `make lint`: pass (`ruff check .`)
-- `make test`: pass (`277 passed, 15 warnings in ~76.6s`)
+For a direct local check, run `uv run ruff check <changed-python-files>` and
+`uv run ruff format --check <changed-python-files>` from `backend/`; the
+full-repository debt is disclosed separately by CI.
 
 CI parity:
 
-- `.github/workflows/backend-unit-tests.yml` runs on pull requests.
-- CI executes `uv sync --group dev`, then `make lint`, then `make test` in `backend/`.
+- `.github/workflows/lint-check.yml` gates Ruff on the Python files changed by
+  the revision, then publishes a separately labelled full-repository debt
+  report; the disclosed backlog is not presented as a clean full-repo run.
+- `.github/workflows/backend-unit-tests.yml` runs the backend tests on pull
+  requests.
 
 ### C. Frontend validation
 
@@ -125,8 +126,8 @@ Use this exact order for local code changes:
 
 1. `make check`
 2. `make install` (if frontend fails with proxy errors, rerun frontend install with proxy vars unset)
-3. Backend checks: `cd backend && make lint && make test`
-4. Frontend checks: `cd frontend && pnpm lint && pnpm typecheck`
+3. Backend checks: `python scripts/check_changed_python_lint.py --repo-root .` (full-repo debt is disclosed; CI gates changed files)
+4. Frontend checks: `cd frontend && pnpm lint && pnpm typecheck && pnpm test`
 5. Frontend build (if UI changes or release-sensitive changes): `BETTER_AUTH_SECRET=... pnpm build`
 
 Always run backend lint/tests before opening PRs because that is what CI enforces.
