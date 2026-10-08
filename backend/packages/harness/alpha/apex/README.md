@@ -129,6 +129,11 @@ requires a new session to continue. Safe RunManager checkpoint recovery charges
 one persisted retry per failed source run and failure class before admission;
 the global runtime retry ceiling and checkpoint safety gate still apply.
 Ambiguous side effects and exhausted runs require operator-directed recovery.
-Alpha does not yet collect test/artifact/HTTP evidence automatically, and
-estimated provider cost plus per-session CPU/RAM remain unmeasured. See
+When a run completes, the Gateway adapter invokes registered
+`alpha.mission.acceptance.AcceptanceRegistry` probes outside the event loop.
+Complete measured results enter the same executive gate and can pass or trigger
+bounded recovery; absent or inconclusive probes leave the run awaiting owner
+evidence. Alpha ships no default probe that can verify arbitrary natural
+language criteria, and estimated provider cost plus per-session CPU/RAM remain
+unmeasured. See
 `docs/APEX_AUTOPILOT.md` for the control contract.

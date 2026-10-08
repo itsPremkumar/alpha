@@ -15,8 +15,10 @@ from alpha.apex.store import ApexSession, ApexSessionState, ApexStore
 async def test_apex_execution_tick_dispatches_once_and_projects_terminal_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import alpha.apex.mode as mode_module
     import alpha.apex.store as store_module
+    import alpha.mission.acceptance as acceptance_module
     import app.gateway.autonomy.supervisor as supervisor_module
     import app.gateway.services as gateway_services
+    from alpha.mission.acceptance import AcceptanceRegistry
     from app.gateway.autonomy.loops import apex_execution_tick
 
     owner = "operator"
@@ -37,6 +39,7 @@ async def test_apex_execution_tick_dispatches_once_and_projects_terminal_usage(t
     monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
     monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
     monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+    monkeypatch.setattr(acceptance_module, "get_acceptance_registry", lambda: AcceptanceRegistry())
 
     admitted: list[tuple[str, int]] = []
 
@@ -197,6 +200,89 @@ async def test_apex_execution_tick_can_dispatch_a_session_outside_the_default_pa
     assert result["sessions"] == 1
     assert result["dispatched"] == 1
     assert admitted == [session.session_id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("measured", [True, False, None])
+async def test_completed_apex_run_uses_registered_acceptance_probes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, measured: bool | None) -> None:
+    import alpha.apex.executive as executive_module
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import alpha.mission.acceptance as acceptance_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    from alpha.mission.acceptance import AcceptanceRegistry
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner = "operator"
+    thread_id = f"apex-acceptance-{measured}"
+    contract = profile_for("autonomous")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "autonomous", owner=owner)
+    session = store.create(
+        owner=owner,
+        objective="finish work and evaluate it",
+        profile="autonomous",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id=thread_id,
+        acceptance_criteria=["the result is correct"],
+    )
+    store.update(
+        session.session_id,
+        state=ApexSessionState.ACTIVE,
+        dispatch_state="running",
+        run_id="run-apex-acceptance",
+        run_status="running",
+    )
+    registry = AcceptanceRegistry()
+    registry.register("test_probe", lambda _criterion: measured)
+    monkeypatch.setattr(acceptance_module, "get_acceptance_registry", lambda: registry)
+    monkeypatch.setattr(executive_module, "_fleet_stopped", lambda: (False, ""))
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    class CompletedRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            assert run_id == "run-apex-acceptance"
+            assert user_id == owner
+            return SimpleNamespace(
+                run_id=run_id,
+                status=SimpleNamespace(value="completed"),
+                total_input_tokens=10,
+                total_output_tokens=5,
+                llm_call_count=1,
+            )
+
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=CompletedRunManager())), session_id=session.session_id)
+
+    updated = store.get(session.session_id)
+    assert updated is not None
+    if measured:
+        assert updated.acceptance["evaluator"] == "test_probe"
+        assert updated.acceptance["passed"] is True
+        assert updated.state is ApexSessionState.COMPLETED
+        assert result["completed"] == 1
+        assert result["awaiting_verification"] == 0
+    elif measured is False:
+        assert updated.acceptance is None
+        assert updated.acceptance_history[-1]["evaluator"] == "test_probe"
+        assert updated.acceptance_history[-1]["passed"] is False
+        assert updated.state is ApexSessionState.ACTIVE
+        assert updated.run_id == ""
+        assert updated.dispatch_state == "idle"
+        assert updated.usage.replans == 1
+        assert result["replanned"] == 1
+    else:
+        assert updated.acceptance is None
+        assert updated.state is ApexSessionState.ACTIVE
+        assert updated.run_id == "run-apex-acceptance"
+        assert updated.dispatch_state == "awaiting_verification"
+        assert result["awaiting_verification"] == 1
+        assert result["completed"] == 0
+    acceptance_events = [event for event in store.read_events(session.session_id) if event.event_type == "acceptance.registry_report_submitted"]
+    assert bool(acceptance_events) is (measured is not None)
 
 
 @pytest.mark.asyncio

@@ -206,7 +206,14 @@ digest no longer matches the active profile must be reviewed and recreated to
 use the new defaults. Alpha still records usage, and engine admission, provider availability, platform
 capacity, governance, approvals, and the emergency stop remain in force; a
 session quota never reserves or creates hardware or provider capacity. The
-Gateway host adapter reads durable `llm.ai.response` and `subagent.end` events
+When a RunManager run completes, the Gateway adapter evaluates registered
+`AcceptanceRegistry` probes off the event loop. Only a fully evaluated report
+is submitted to the executive gate; a pass can complete the session and a
+measured failure can trigger bounded recovery. If no probe is registered or a
+probe cannot decide, APEX remains awaiting owner evidence. Probes must return a
+boolean or `None`; any other result stays unverified. Alpha ships no default
+probe that can verify arbitrary natural-language criteria. The Gateway host
+adapter reads durable `llm.ai.response` and `subagent.end` events
 with a persisted per-run sequence cursor, so a repeated supervisor tick or
 restart does not count an event twice. If the event store is unavailable or has
 not emitted usage events, it upserts cumulative RunManager snapshots for live

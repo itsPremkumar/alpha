@@ -33,7 +33,6 @@ from alpha.mission.acceptance import (
     AcceptanceRegistry,
     assert_acceptance_passed,
     evaluate_acceptance,
-    get_acceptance_registry,
     unevaluated_report,
 )
 from alpha.mission.lifecycle import (
@@ -137,6 +136,20 @@ def test_a_registry_probe_that_cannot_decide_stays_unverified():
     assert report.passed is False
     with pytest.raises(AcceptanceNotSatisfied):
         assert_acceptance_passed(report)
+
+
+def test_non_boolean_evidence_and_probe_results_cannot_pass() -> None:
+    direct = evaluate_acceptance([CRITERIA[0]], {CRITERIA[0]: "false"})  # type: ignore[dict-item]
+    assert direct.passed is False
+    assert direct.unevaluated == [CRITERIA[0]]
+    assert any("not a boolean measurement" in note for note in direct.notes)
+
+    registry = AcceptanceRegistry()
+    registry.register("string_result", lambda _criterion: "false")  # type: ignore[arg-type,return-value]
+    probed = registry.evaluate([CRITERIA[0]])
+    assert probed.passed is False
+    assert probed.unevaluated == [CRITERIA[0]]
+    assert any("expected bool or None" in note for note in probed.notes)
 
 
 # --------------------------------------- the store refuses an unjustified end

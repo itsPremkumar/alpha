@@ -8,6 +8,7 @@ still runs a complete, healthy system.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -384,6 +385,9 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
         "dispatched": 0,
         "running": 0,
         "awaiting_verification": 0,
+        "completed": 0,
+        "replanned": 0,
+        "blocked": 0,
         "failed": 0,
         "budget_exhausted": 0,
         "skipped_terminal": 0,
@@ -518,7 +522,43 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                     status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
                 store.record_run_status(session.session_id, run_id=session.run_id, status=status)
                 if status in {"completed", "success"}:
-                    summary["awaiting_verification"] += 1
+                    latest = store.get(session.session_id)
+                    if latest is not None and latest.state is ApexSessionState.ACTIVE and latest.acceptance is None and latest.acceptance_criteria:
+                        from alpha.mission.acceptance import get_acceptance_registry
+
+                        registry = get_acceptance_registry()
+                        if registry.names():
+                            report = await asyncio.to_thread(registry.evaluate, list(latest.acceptance_criteria))
+                            if report.all_evaluated:
+                                stored = store.update(session.session_id, acceptance=report.to_dict())
+                                if stored is None:
+                                    raise RuntimeError("APEX session disappeared before acceptance could be stored")
+                                store.emit(
+                                    session.session_id,
+                                    "acceptance.registry_report_submitted",
+                                    report=report.to_dict(),
+                                    run_id=session.run_id,
+                                )
+                                latest = stored
+                    # A report may already have been persisted before a prior
+                    # process stopped. Re-run the deterministic executive gate
+                    # so a crash after report storage cannot strand the goal.
+                    if latest is not None and latest.state is ApexSessionState.ACTIVE and latest.acceptance is not None:
+                        contract = contract_from_snapshot(latest.contract_snapshot, expected_digest=latest.contract_digest) if latest.contract_snapshot is not None else profile_for(latest.profile, mission_id=latest.mission_id)
+                        run_cycle(store, latest.session_id, contract)
+                        updated = store.get(latest.session_id)
+                        if updated is not None and updated.state is ApexSessionState.COMPLETED:
+                            summary["completed"] += 1
+                        elif updated is not None and updated.state is ApexSessionState.BLOCKED:
+                            summary["blocked"] += 1
+                        elif updated is not None and not updated.run_id and updated.dispatch_state == "idle":
+                            summary["replanned"] += 1
+                        else:
+                            summary["awaiting_verification"] += 1
+                    elif latest is not None and latest.state is ApexSessionState.BLOCKED:
+                        summary["blocked"] += 1
+                    else:
+                        summary["awaiting_verification"] += 1
                 elif status in {"error", "failed", "interrupted", "cancelled"}:
                     summary["failed"] += 1
                 else:

@@ -109,9 +109,7 @@ class AcceptanceReport:
 
     def __post_init__(self) -> None:
         if not self.report_id:
-            self.report_id = "acc-" + hashlib.sha256(
-                "|".join(f"{c.criterion}={c.verdict.value}" for c in self.criteria).encode("utf-8")
-            ).hexdigest()[:12]
+            self.report_id = "acc-" + hashlib.sha256("|".join(f"{c.criterion}={c.verdict.value}" for c in self.criteria).encode("utf-8")).hexdigest()[:12]
 
     @property
     def all_evaluated(self) -> bool:
@@ -198,7 +196,13 @@ def evaluate_acceptance(
     disappears from the report.  Evidence entries that match no criterion are
     reported as notes so a typo in a key cannot masquerade as coverage.
     """
-    normalized = {str(k).strip(): bool(v) for k, v in evidence.items()}
+    normalized: dict[str, bool] = {}
+    invalid: list[str] = []
+    for key, value in evidence.items():
+        if type(value) is not bool:
+            invalid.append(str(key).strip())
+            continue
+        normalized[str(key).strip()] = value
     results: list[CriterionResult] = []
     for criterion in criteria:
         key = str(criterion).strip()
@@ -217,6 +221,8 @@ def evaluate_acceptance(
     matched = {str(c).strip() for c in criteria}
     unused = [k for k in normalized if k not in matched]
     all_notes = list(notes or [])
+    if invalid:
+        all_notes.append(f"evidence for {len(invalid)} criterion key(s) was not a boolean measurement and was ignored: {sorted(invalid)}")
     if unused:
         all_notes.append(f"evidence supplied for {len(unused)} criterion key(s) that match no criterion: {sorted(unused)}")
     return AcceptanceReport(criteria=results, evaluator=evaluator, notes=all_notes)
@@ -266,7 +272,10 @@ class AcceptanceRegistry:
                     continue
                 if measured is None:
                     continue
-                evidence[key] = bool(measured)
+                if type(measured) is not bool:
+                    notes.append(f"evaluator {name!r} returned {type(measured).__name__} for criterion {criterion!r}; expected bool or None")
+                    continue
+                evidence[key] = measured
                 break
             else:
                 if evaluators:
