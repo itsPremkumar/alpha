@@ -265,7 +265,7 @@ config: |
   # outdated" on every Gateway start when this lags, so a stale number here is a
   # permanent warning in every pod log of every Helm install.
   # tests/test_deploy_surface_parity.py fails when the two diverge.
-  config_version: 55
+  config_version: 59
   log_level: info
 
   models: []
