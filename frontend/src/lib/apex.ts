@@ -726,6 +726,8 @@ export interface ApexApprovalRecord {
   requester: string;
   /** The deciding operator; empty while the ask is pending. */
   operator: string;
+  /** Exact approved operation metadata; raw tool arguments are intentionally not exposed. */
+  action: Record<string, string> | null;
   requested_at: number | null;
   decided_at: number | null;
 }
@@ -739,6 +741,14 @@ function mapApprovalRecord(v: unknown): ApexApprovalRecord {
     note: str(r.note),
     requester: str(r.requester),
     operator: str(r.operator),
+    action:
+      r.action && typeof r.action === "object" && !Array.isArray(r.action)
+        ? Object.fromEntries(
+            Object.entries(r.action as Record<string, unknown>).map(
+              ([key, value]) => [key, String(value)],
+            ),
+          )
+        : null,
     requested_at: optNum(r.requested_at),
     decided_at: optNum(r.decided_at),
   };

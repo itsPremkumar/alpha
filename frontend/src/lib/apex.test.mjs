@@ -1199,6 +1199,12 @@ const PENDING_APPROVAL = {
   note: "acceptance pending: tests pass",
   requester: "apex.executive",
   operator: "",
+  action: {
+    tool_name: "python_repl",
+    action_class: "tool_governance",
+    contract_digest: "contract-1",
+    arguments_digest: "args-1",
+  },
   requested_at: 1700000000,
   decided_at: null,
 };
@@ -1230,6 +1236,15 @@ test("approvals reads GET /apex/approvals and keeps pending separate from count"
   assert.equal(list.approvals.length, 2);
   assert.equal(list.approvals[0].approval_id, "apr-1");
   assert.equal(list.approvals[0].status, "pending");
+  assert.equal(list.approvals[0].action.tool_name, "python_repl");
+  assert.equal(list.approvals[0].action.arguments_digest, "args-1");
+});
+
+test("approval cards show the protected operation and exact-request fingerprint", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /Operation: \{row\.action\.tool_name/);
+  assert.match(source, /Exact arguments fingerprint:/);
+  assert.match(source, /Tool arguments are hidden/);
 });
 
 test("a degraded approval store keeps count and pending null instead of 0", async () => {

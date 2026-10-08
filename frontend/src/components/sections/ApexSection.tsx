@@ -772,6 +772,32 @@ function SessionControlCard({
                       requested by {row.requester || "unknown requester"} ·
                       session {row.session_id}
                     </p>
+                    {row.action && (
+                      <div className="space-y-1 rounded-md bg-neutral-50 p-2 text-[11px] text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+                        <p>
+                          Operation:{" "}
+                          {row.action.tool_name || "unspecified tool"}
+                          {row.action.action_class
+                            ? ` · ${row.action.action_class}`
+                            : ""}
+                        </p>
+                        {row.action.arguments_digest && (
+                          <p className="break-all">
+                            Exact arguments fingerprint:{" "}
+                            {row.action.arguments_digest}
+                          </p>
+                        )}
+                        {row.action.contract_digest && (
+                          <p className="break-all">
+                            Contract: {row.action.contract_digest}
+                          </p>
+                        )}
+                        <p>
+                          Tool arguments are hidden; the fingerprint binds
+                          approval to the exact request.
+                        </p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <Btn
                         onClick={() => decide(row.approval_id, "approve")}
