@@ -29,6 +29,9 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -41,11 +44,16 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "APEX_EVENTS",
     "ApexEvent",
+    "ApexPersistenceError",
     "ApexSession",
     "ApexSessionState",
     "ApexStore",
     "get_apex_store",
 ]
+
+
+class ApexPersistenceError(OSError):
+    """A control change could not be committed to the session snapshot."""
 
 
 class ApexSessionState(StrEnum):
@@ -366,6 +374,33 @@ class ApexStore:
             logger.error("APEX session save failed", exc_info=True)
             return False
 
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        """Commit a control change or restore every live row on failure.
+
+        Callers receive the actual session objects, so replacing the mapping
+        alone would leave existing readers holding an uncommitted change.
+        Restore those objects too, including nested usage and approval state.
+        This lock is process-local; it does not coordinate multiple Gateways.
+        """
+        with self._lock:
+            if self.is_degraded:
+                raise ApexPersistenceError("APEX session store is unreadable; refusing to overwrite it")
+            previous = dict(self._rows)
+            snapshots = {key: deepcopy(row.__dict__) for key, row in previous.items()}
+            try:
+                yield
+                if self._rows.keys() == previous.keys() and all(row.__dict__ == snapshots[key] for key, row in self._rows.items()):
+                    return
+                if not self._save():
+                    raise ApexPersistenceError("Could not persist APEX session changes")
+            except BaseException:
+                for key, row in previous.items():
+                    row.__dict__.clear()
+                    row.__dict__.update(snapshots[key])
+                self._rows = previous
+                raise
+
     # -- events --------------------------------------------------------------
 
     def emit(self, session_id: str, event_type: str, **payload: Any) -> ApexEvent:
@@ -440,9 +475,8 @@ class ApexStore:
             acceptance_criteria=[str(c) for c in (acceptance_criteria or [])],
             state=ApexSessionState.IDLE,
         )
-        with self._lock:
+        with self._transaction():
             self._rows[session.session_id] = session
-            durable = self._save()
         self.emit(
             session.session_id,
             "session.created",
@@ -451,7 +485,7 @@ class ApexStore:
             profile=profile,
             contract_digest=contract_digest,
             acceptance_criteria=list(session.acceptance_criteria),
-            durable_row=durable,
+            durable_row=True,
         )
         return session
 
@@ -474,7 +508,7 @@ class ApexStore:
 
     def update(self, session_id: str, **changes: Any) -> ApexSession | None:
         """Apply field updates. Unknown fields are rejected, not ignored."""
-        with self._lock:
+        with self._transaction():
             session = self._rows.get(session_id)
             if session is None:
                 return None
@@ -486,12 +520,11 @@ class ApexStore:
                     value = ApexSessionState(value)
                 setattr(session, key, value)
             session.updated_at = time.time()
-            self._save()
             return session
 
     def set_state(self, session_id: str, state: ApexSessionState, *, reason: str = "") -> ApexSession | None:
         """Move a session, journaling the transition with the real reason."""
-        with self._lock:
+        with self._transaction():
             session = self._rows.get(session_id)
             if session is None:
                 return None
@@ -506,12 +539,11 @@ class ApexStore:
             session.state = state
             session.blocked_reason = reason if state is ApexSessionState.BLOCKED else ""
             session.updated_at = time.time()
-            self._save()
         self.emit(session_id, "session.state_changed", **{"from": previous.value, "to": state.value, "reason": reason})
         return session
 
     def record_constraint(self, session_id: str, instruction: str, *, source: str = "user", priority: str = "normal") -> SteeringConstraint | None:
-        with self._lock:
+        with self._transaction():
             session = self._rows.get(session_id)
             if session is None:
                 return None
@@ -519,7 +551,6 @@ class ApexStore:
                 self.emit(session_id, "constraint.refused", instruction=instruction, reason="session is terminal")
                 return None
             constraint = session.add_constraint(instruction, source=source, priority=priority)
-            self._save()
         self.emit(session_id, "constraint.recorded", **constraint.to_dict())
         return constraint
 
@@ -568,7 +599,7 @@ class ApexStore:
         second one, so an operator is never asked to clear a backlog
         of duplicates of the same block.
         """
-        with self._lock:
+        with self._transaction():
             session = self._rows.get(session_id)
             if session is None:
                 return None
@@ -585,7 +616,6 @@ class ApexStore:
             )
             session.approvals.append(record.to_dict())
             session.updated_at = time.time()
-            self._save()
         # The record's own ``session_id`` is the journal key, so
         # it is not re-sent as a payload field: ``emit``'s first
         # parameter already carries it, and a same-named keyword
@@ -621,7 +651,9 @@ class ApexStore:
         if wanted not in ("approved", "rejected"):
             raise ValueError(f"unknown verdict {verdict!r}; expected 'approved' or 'rejected'")
         found: ApprovalRecord | None = None
-        with self._lock:
+        resumed: ApexSession | None = None
+        previous: ApexSessionState | None = None
+        with self._transaction():
             for session in self._rows.values():
                 for index, item in enumerate(session.approvals):
                     record = ApprovalRecord.from_dict(item)
@@ -636,7 +668,14 @@ class ApexStore:
                     record.decided_at = time.time()
                     session.approvals[index] = record.to_dict()
                     session.updated_at = time.time()
-                    self._save()
+                    # Consuming the approval and un-parking its session are one
+                    # durable transition. Two saves strand a BLOCKED session
+                    # with no pending approval if the process stops between them.
+                    if wanted == "approved" and not session.is_terminal:
+                        previous = session.state
+                        session.state = ApexSessionState.ACTIVE
+                        session.blocked_reason = ""
+                        resumed = session
                     found = record
                     break
                 if found is not None:
@@ -646,12 +685,11 @@ class ApexStore:
         decided = dict(found.to_dict())
         decided.pop("session_id", None)
         self.emit(found.session_id, "approval.decided", **decided)
-        resumed: ApexSession | None = None
-        if wanted == "approved":
-            resumed = self.set_state(
+        if resumed is not None and previous is not ApexSessionState.ACTIVE:
+            self.emit(
                 found.session_id,
-                ApexSessionState.ACTIVE,
-                reason=f"operator approved {approval_id}",
+                "session.state_changed",
+                **{"from": previous.value, "to": ApexSessionState.ACTIVE.value, "reason": f"operator approved {approval_id}"},
             )
         return found, resumed
 
@@ -669,11 +707,10 @@ class ApexStore:
         return flat
 
     def delete(self, session_id: str) -> bool:
-        with self._lock:
+        with self._transaction():
             if session_id not in self._rows:
                 return False
             del self._rows[session_id]
-            self._save()
         self.emit(session_id, "session.deleted")
         return True
 
