@@ -38,6 +38,7 @@ import {
   setApexMode,
   steerApexSession,
 } from "@/lib/apex";
+import { fetchRun, type RunInfo } from "@/lib/runs";
 
 /**
  * The APEX control panel.
@@ -503,6 +504,11 @@ function SessionControlCard({
   const [acknowledgePossibleSideEffects, setAcknowledgePossibleSideEffects] =
     useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [runDiagnostic, setRunDiagnostic] = useState<{
+    runId: string;
+    detail: string | null;
+    error: string | null;
+  } | null>(null);
   const mountedRef = useRef(true);
   const latestReadRef = useRef(0);
 
@@ -653,6 +659,44 @@ function SessionControlCard({
   };
 
   const session = mode?.active_session ?? null;
+  useEffect(() => {
+    let current = true;
+    const runId = session?.run_id;
+    const threadId = session?.thread_id;
+    if (session?.dispatch_state !== "failed" || !runId || !threadId) {
+      setRunDiagnostic(null);
+      return () => {
+        current = false;
+      };
+    }
+
+    setRunDiagnostic({ runId, detail: null, error: null });
+    void fetchRun(threadId, runId).then(
+      (run: RunInfo) => {
+        if (!current) return;
+        const detail = [run.error, run.stop_reason]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join(" · ");
+        setRunDiagnostic({ runId, detail: detail || null, error: null });
+      },
+      (error: unknown) => {
+        if (!current) return;
+        setRunDiagnostic({
+          runId,
+          detail: null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [
+    session?.dispatch_state,
+    session?.run_id,
+    session?.run_status,
+    session?.thread_id,
+  ]);
   const executionSummary = session ? apexExecutionSummary(session) : null;
   const pending = approvals?.available
     ? approvals.approvals.filter((row) => row.status === "pending")
@@ -703,10 +747,23 @@ function SessionControlCard({
               </p>
             )}
             {session.dispatch_state === "failed" && (
-              <Notice
-                tone="warn"
-                message={`Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. The session remains ${session.state}; inspect the run and recovery outcome before treating this objective as progressing.`}
-              />
+              <div className="space-y-2" aria-live="polite">
+                <Notice
+                  tone="warn"
+                  message={`Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. The session remains ${session.state}; inspect the run and recovery outcome before treating this objective as progressing.`}
+                />
+                {session.run_id && (
+                  <p className="break-words rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-neutral-600 dark:text-neutral-300">
+                    <span className="font-medium">Run diagnostic:</span>{" "}
+                    {runDiagnostic?.runId !== session.run_id
+                      ? "Loading linked run details…"
+                      : runDiagnostic.error
+                        ? `Details unavailable — ${runDiagnostic.error}`
+                        : (runDiagnostic.detail ??
+                          "The run record reported no error or stop reason.")}
+                  </p>
+                )}
+              </div>
             )}
             {session.state === "active" &&
               session.dispatch_state === "failed" &&

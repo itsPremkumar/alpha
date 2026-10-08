@@ -731,11 +731,25 @@ class TestRunnerScript:
 
         envelope, _code = self._run_runner(
             monkeypatch,
-            {"task": "check", "llm": {"use": "langchain_openai:ChatOpenAI", "model_name": "m", "api_key": "k", "base_url": "https://gw.test"}},
+            {"task": "check", "llm": {"use": "langchain_openai:ChatOpenAI", "model_name": "m", "api_key": "k", "base_url": "https://openrouter.ai/api/v1"}},
             capsys,
         )
         assert envelope["ok"] is True
-        assert captured == {"model": "m", "api_key": "k", "api_base": "https://gw.test"}
+        assert captured == {"model": "openrouter/m", "api_key": "k", "api_base": "https://openrouter.ai/api/v1"}
+
+    @pytest.mark.parametrize(
+        ("model", "base_url", "expected"),
+        [
+            ("unbiased/pareto", "https://openrouter.ai/api/v1", "openrouter/unbiased/pareto"),
+            ("openrouter/vendor/model", "https://openrouter.ai/api/v1", "openrouter/vendor/model"),
+            ("my-model", "https://api.groq.com/openai/v1", "groq/my-model"),
+            ("my-model", "https://custom-gateway.test/v1", "openai/my-model"),
+        ],
+    )
+    def test_litellm_model_id_has_exactly_one_provider_prefix(self, model, base_url, expected):
+        from alpha.community.browser_use import runner as runner_mod
+
+        assert runner_mod._litellm_model_id(model, base_url) == expected
 
     def test_base_url_maps_to_api_base_on_the_native_adapter(self, monkeypatch):
         from alpha.community.browser_use import runner as runner_mod
@@ -747,10 +761,10 @@ class TestRunnerScript:
                 captured.update(kwargs)
 
         monkeypatch.setitem(sys.modules, "browser_use.llm.litellm.chat", SimpleNamespace(ChatLiteLLM=FakeChatLiteLLM))
-        llm = runner_mod._try_native_llm({"api_key": "k", "base_url": "https://gw.test", "extra": {}}, "m")
+        llm = runner_mod._try_native_llm({"api_key": "k", "base_url": "https://openrouter.ai/api/v1", "extra": {}}, "m")
 
         assert llm is not None
-        assert captured == {"model": "m", "api_key": "k", "api_base": "https://gw.test"}
+        assert captured == {"model": "openrouter/m", "api_key": "k", "api_base": "https://openrouter.ai/api/v1"}
 
     def test_native_adapter_absent_falls_back_to_the_declared_class(self, monkeypatch):
         """Older browser-use builds have no ChatLiteLLM; the declared class must win."""

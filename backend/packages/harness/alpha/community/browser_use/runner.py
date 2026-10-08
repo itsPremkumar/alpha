@@ -81,6 +81,56 @@ def _browser_use_version() -> str | None:
         return None
 
 
+# LiteLLM requires a provider-qualified model id. Alpha stores provider-side
+# model slugs, so derive LiteLLM's prefix from the configured endpoint.
+_LITELLM_PROVIDER_BY_HOST: dict[str, str] = {
+    "openrouter.ai": "openrouter",
+    "api.anthropic.com": "anthropic",
+    "api.groq.com": "groq",
+    "generativelanguage.googleapis.com": "gemini",
+    "api.mistral.ai": "mistral",
+    "api.deepseek.com": "deepseek",
+    "api.together.xyz": "together_ai",
+    "api.fireworks.ai": "fireworks_ai",
+    "api.cohere.com": "cohere",
+    "api.cerebras.ai": "cerebras",
+}
+
+_KNOWN_LITELLM_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "openrouter",
+        "openai",
+        "anthropic",
+        "gemini",
+        "google",
+        "groq",
+        "mistral",
+        "deepseek",
+        "together_ai",
+        "fireworks_ai",
+        "cohere",
+        "cerebras",
+        "azure",
+        "bedrock",
+        "vertex_ai",
+        "ollama",
+        "litellm_proxy",
+    }
+)
+
+
+def _litellm_model_id(model: str, base_url: str | None) -> str:
+    """Return the provider/model form expected by LiteLLM."""
+    if model.split("/", 1)[0].lower() in _KNOWN_LITELLM_PROVIDERS:
+        return model
+    host = ""
+    if base_url:
+        from urllib.parse import urlparse
+
+        host = (urlparse(base_url).hostname or "").lower()
+    return f"{_LITELLM_PROVIDER_BY_HOST.get(host, 'openai')}/{model}"
+
+
 def _build_llm(spec: dict) -> object:
     """Construct the chat model browser-use will be driven by.
 
@@ -119,7 +169,7 @@ def _try_native_llm(spec: dict, model: str) -> object | None:
     except ImportError:
         return None
 
-    kwargs: dict = {"model": model}
+    kwargs: dict = {"model": _litellm_model_id(model, spec.get("base_url"))}
     if spec.get("api_key"):
         kwargs["api_key"] = spec["api_key"]
     if spec.get("base_url"):

@@ -1581,6 +1581,9 @@ test("a failed host dispatch is shown beside the still-active session state", ()
   assert.match(source, /session\.dispatch_state === "failed"/);
   assert.match(source, /linked run status is/);
   assert.match(source, /inspect the run and recovery outcome/);
+  assert.match(source, /fetchRun\(threadId, runId\)/);
+  assert.match(source, /Run diagnostic:/);
+  assert.match(source, /Details unavailable/);
 });
 
 test("a mode with no bound session keeps active_session null", async () => {
