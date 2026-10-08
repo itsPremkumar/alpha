@@ -2,8 +2,9 @@
 
 ``/boost``, ``/schedule``, ``/grill-me``, ``/teamwork-preview`` and
 ``/self-heal`` resolve as spec commands the catalog did not define; the
-intent resolver reported them as ``registered=False`` (see
-``alpha/orchestration/intent.py`` and the DY-R3 honesty contract). These
+intent resolver can identify them without a catalog row (see
+``alpha/orchestration/intent.py`` and the DY-R3 honesty contract). Bootstrap
+binds each concrete handler into the shared registry before dispatch. These
 handlers give each one a REAL seam and an honest result:
 
 * ``/boost`` — runs the router's OWN deterministic classifier over the task
@@ -225,10 +226,7 @@ def handle_schedule(args: str, context: dict[str, Any] | None = None) -> Command
             return CommandExecutionResult(
                 status="error",
                 command="/schedule",
-                output=(
-                    "Both a schedule and a command/prompt are required.\n"
-                    "Usage: /schedule <cron | every 30m> <command or prompt>"
-                ),
+                output=("Both a schedule and a command/prompt are required.\nUsage: /schedule <cron | every 30m> <command or prompt>"),
             )
         schedule_spec = " ".join(tokens[:2])
         payload = " ".join(tokens[2:]).strip()
@@ -247,18 +245,12 @@ def handle_schedule(args: str, context: dict[str, Any] | None = None) -> Command
             return CommandExecutionResult(
                 status="error",
                 command="/schedule",
-                output=(
-                    f"Schedule rejected: a cron expression needs 5 fields, found {field_count}.\n"
-                    "Usage: /schedule <5-field cron> <command or prompt>\n"
-                    "Example: /schedule */15 * * * * /status"
-                ),
+                output=(f"Schedule rejected: a cron expression needs 5 fields, found {field_count}.\nUsage: /schedule <5-field cron> <command or prompt>\nExample: /schedule */15 * * * * /status"),
             )
         schedule_spec = " ".join(tokens[:5])
         payload = " ".join(tokens[5:]).strip()
     if not payload:
-        return CommandExecutionResult(
-            status="error", command="/schedule", output="The command/prompt to run must not be empty."
-        )
+        return CommandExecutionResult(status="error", command="/schedule", output="The command/prompt to run must not be empty.")
     payload_problem = _validate_schedule_payload(payload)
     if payload_problem is not None:
         return CommandExecutionResult(status="error", command="/schedule", output=f"Schedule rejected: {payload_problem}")
@@ -277,13 +269,7 @@ def handle_schedule(args: str, context: dict[str, Any] | None = None) -> Command
         return CommandExecutionResult(
             status="success",
             command="/schedule",
-            output=(
-                f"DRY RUN — nothing was created.\n"
-                f"  would create: {name}\n"
-                f"  cron: {cron_expression}\n"
-                f"  runs: {payload}\n"
-                "  first run: immediately (the cron manager schedules a new job as due at once)"
-            ),
+            output=(f"DRY RUN — nothing was created.\n  would create: {name}\n  cron: {cron_expression}\n  runs: {payload}\n  first run: immediately (the cron manager schedules a new job as due at once)"),
             data={"action": "schedule_preview", "dry_run": True, "job": {"name": name}, "cron_expression": cron_expression, "thread_id": thread_id},
         )
     try:
@@ -464,9 +450,7 @@ def handle_self_heal(args: str, context: dict[str, Any] | None = None) -> Comman
                 if isinstance(status.get(key), bool):
                     engaged = status[key]
                     break
-        lines.append(
-            f"Emergency stop: {'ENGAGED' if engaged is True else ('clear' if engaged is False else f'state not reported ({status})')}"
-        )
+        lines.append(f"Emergency stop: {'ENGAGED' if engaged is True else ('clear' if engaged is False else f'state not reported ({status})')}")
     except Exception as exc:
         lines.append(f"Emergency stop: unavailable — {type(exc).__name__}: {exc}")
 

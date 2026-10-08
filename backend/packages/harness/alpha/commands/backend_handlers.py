@@ -1047,7 +1047,9 @@ def register_all_backend_handlers() -> None:
                 is_core=True,
                 metadata={"registration_reason": "compatibility alias; canonical command is catalog-backed"},
             )
-            command_registry.register(new_def, handler=handler, registered=False)
+            # `register` is the sole resolver/catalog seam; bind the concrete
+            # handler without passing an unsupported legacy provenance flag.
+            command_registry.register(new_def, handler=handler)
 
     logger.info("Bound %d concrete backend handlers to SlashCommandRegistry.", len(handlers))
 
