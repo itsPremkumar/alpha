@@ -275,3 +275,12 @@ measurements and cross-process coordination for the JSON session store remain
 open. Completed runs wait in `awaiting_verification`; RunManager errors or
 interruptions that cannot pass the safe checkpoint and APEX binding checks
 remain parked for operator recovery.
+
+The APEX-specific `agents.py` factory and specialization assessor are library
+surfaces, not currently called by the Gateway dispatcher. A dispatched run is
+prompted to plan and split independent work, and can use the ordinary `task`
+tool under its persisted active-agent and parallel-task caps; the model chooses
+whether to delegate. APEX does not yet persist or enforce a deterministic
+specialization decision, and the Gateway `task` path still relies on the
+subagent lifecycle manager's own depth ceiling rather than the frozen APEX depth
+value.
