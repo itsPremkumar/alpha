@@ -98,6 +98,93 @@ async def test_apex_execution_tick_dispatches_once_and_projects_terminal_usage(t
 
 
 @pytest.mark.asyncio
+async def test_late_tool_approval_requeues_a_finished_run_for_a_fresh_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    import app.gateway.services as gateway_services
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner, thread_id = "operator", "thread-apex-late-approval"
+    contract = profile_for("apex_max")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "apex_max", owner=owner)
+    session = store.create(
+        owner=owner,
+        objective="complete the approved operation",
+        profile="apex_max",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id=thread_id,
+    )
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    first_generation = store.claim_dispatch(session.session_id)
+    assert first_generation == 1
+    assert store.record_dispatch_run(session.session_id, generation=first_generation, run_id="run-before-approval", status="running")
+    action = {
+        "tool_name": "python_repl",
+        "action_class": "tool_governance",
+        "contract_digest": contract.digest(),
+        "arguments_digest": "sha256-exact-request",
+    }
+    store.set_state(session.session_id, ApexSessionState.BLOCKED, reason="operator approval required")
+    approval = store.request_approval(
+        session.session_id,
+        note="operator approval required",
+        requester="apex.tool_policy",
+        action=action,
+    )
+    assert approval is not None
+    store.decide_approval(approval.approval_id, verdict="approved", operator="admin")
+
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    class CompletedRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            assert run_id in {"run-before-approval", "run-after-approval"}
+            assert user_id == owner
+            return SimpleNamespace(
+                run_id=run_id,
+                status=SimpleNamespace(value="success"),
+                total_input_tokens=0,
+                total_output_tokens=0,
+                llm_call_count=0,
+            )
+
+    admitted: list[tuple[str, int]] = []
+
+    async def launch(*, app, session, generation):
+        admitted.append((session.session_id, generation))
+        return SimpleNamespace(run_id="run-after-approval", status=SimpleNamespace(value="running"))
+
+    monkeypatch.setattr(gateway_services, "launch_apex_session_run", launch)
+    app = SimpleNamespace(state=SimpleNamespace(run_manager=CompletedRunManager()))
+
+    observed = await apex_execution_tick(app, session_id=session.session_id)
+    assert observed["approval_requeued"] == 1
+    requeued = store.get(session.session_id)
+    assert requeued.run_id == ""
+    assert requeued.dispatch_state == "idle"
+    assert requeued.state is ApexSessionState.ACTIVE
+
+    dispatched = await apex_execution_tick(app, session_id=session.session_id)
+    assert dispatched["dispatched"] == 1
+    assert admitted == [(session.session_id, 2)]
+    linked = store.get(session.session_id)
+    assert linked.run_id == "run-after-approval"
+    assert linked.dispatch_generation == 2
+
+    finished_again = await apex_execution_tick(app, session_id=session.session_id)
+    assert finished_again["approval_requeued"] == 0
+    assert finished_again["awaiting_verification"] == 1
+    assert store.get(session.session_id).run_id == "run-after-approval"
+    assert admitted == [(session.session_id, 2)]
+
+
+@pytest.mark.asyncio
 async def test_apex_execution_tick_reaches_sessions_after_the_first_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import alpha.apex.mode as mode_module
     import alpha.apex.store as store_module

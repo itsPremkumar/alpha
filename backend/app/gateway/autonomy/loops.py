@@ -387,6 +387,7 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
         "awaiting_verification": 0,
         "completed": 0,
         "replanned": 0,
+        "approval_requeued": 0,
         "blocked": 0,
         "failed": 0,
         "budget_exhausted": 0,
@@ -538,6 +539,15 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                                     run_id=session.run_id,
                                 )
                                 latest = stored
+                    # An operator may approve an exact tool call after the
+                    # RunManager turn that requested it has already ended.
+                    # Requeue only when that approval remains unused and no
+                    # measured acceptance report is available; otherwise the
+                    # normal acceptance gate owns the next transition.
+                    latest = store.get(session.session_id)
+                    if latest is not None and status in {"completed", "success"} and store.requeue_approved_tool_action(session.session_id, run_id=session.run_id):
+                        summary["approval_requeued"] += 1
+                        continue
                     # A report may already have been persisted before a prior
                     # process stopped. Re-run the deterministic executive gate
                     # so a crash after report storage cannot strand the goal.

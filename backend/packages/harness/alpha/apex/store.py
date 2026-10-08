@@ -306,6 +306,8 @@ class ApprovalRecord:
     #: Exact policy action an approval authorizes; never a session-wide grant.
     action: dict[str, str] | None = None
     consumed_at: float | None = None
+    #: A late approval may release one finished run for a fresh attempt.
+    requeued_at: float | None = None
 
     @property
     def is_pending(self) -> bool:
@@ -327,6 +329,7 @@ class ApprovalRecord:
             decided_at=data.get("decided_at"),
             action={str(k): str(v) for k, v in data["action"].items()} if isinstance(data.get("action"), dict) else None,
             consumed_at=data.get("consumed_at"),
+            requeued_at=data.get("requeued_at"),
         )
 
 
@@ -805,6 +808,52 @@ class ApexStore:
                 session.dispatch_state = "running"
             session.updated_at = time.time()
         self.emit(session_id, "run.status_observed", run_id=run_id, status=normalized, dispatch_state=session.dispatch_state)
+        return True
+
+    def requeue_approved_tool_action(self, session_id: str, *, run_id: str) -> bool:
+        """Release a finished run when an approved tool action was never consumed.
+
+        An operator can approve after the model run that requested approval has
+        already ended. In that case the exact approval is durable, but the
+        terminal RunManager link would otherwise keep the dispatcher parked in
+        ``awaiting_verification`` forever. Only an active session with a
+        successful linked run and an unconsumed ``apex.tool_policy`` approval
+        can be requeued; live runs, rejected approvals, and consumed actions are
+        left alone.
+        """
+        approval_ids: list[str] = []
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if (
+                session is None
+                or session.is_terminal
+                or session.state is not ApexSessionState.ACTIVE
+                or session.run_id != run_id
+                or session.dispatch_state != "awaiting_verification"
+                or session.run_status not in {"completed", "success"}
+                or session.acceptance is not None
+            ):
+                return False
+            for index, item in enumerate(session.approvals):
+                record = ApprovalRecord.from_dict(item)
+                if record.status == "approved" and record.requester == "apex.tool_policy" and record.consumed_at is None and record.requeued_at is None and isinstance(record.action, dict):
+                    record.requeued_at = time.time()
+                    session.approvals[index] = record.to_dict()
+                    approval_ids.append(record.approval_id)
+            if not approval_ids:
+                return False
+            previous_generation = session.dispatch_generation
+            session.run_id = ""
+            session.run_status = ""
+            session.dispatch_state = "idle"
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "run.requeued_after_approval",
+            run_id=run_id,
+            generation=previous_generation,
+            approval_ids=approval_ids,
+        )
         return True
 
     def recover_after_acceptance_failure(self, session_id: str, *, reason: str) -> ApexSession | None:

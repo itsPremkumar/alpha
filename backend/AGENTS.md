@@ -91,6 +91,10 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   `tests/test_apex_dispatcher.py` and `tests/test_apex_store_durability.py`.
   Completed RunManager work enters `awaiting_verification`; it is never
   promoted to APEX completion without a complete measured acceptance report.
+  If an exact `apex.tool_policy` approval is granted after its requesting run
+  already completed, an unconsumed approval releases that terminal run link so
+  the supervisor can dispatch a fresh generation; live runs and consumed or
+  rejected actions are not replayed.
   The owner-scoped `/sessions/{id}/acceptance` route accepts one result per
   criterion; a failed report is journaled before recovery clears the stale run
   link. Keep

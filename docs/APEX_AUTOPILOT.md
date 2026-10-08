@@ -332,6 +332,10 @@ constraint is a record, not a control — and a rejected park is moved only by
 
 Pending verdicts are listed at `GET /api/apex/approvals` (and rendered by the
 APEX panel's session-control card, which re-reads after every action).
+If an approved `apex.tool_policy` action was not consumed before its original
+RunManager run ended, the supervisor clears that terminal run link and starts a
+fresh dispatch generation. A live run can consume the exact approval in place;
+rejected or already-consumed actions do not trigger a replay.
 
 ---
 
