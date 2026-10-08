@@ -331,7 +331,66 @@ function Exit-SupervisorLock {
 }
 
 function Stop-StaleLauncher {
-    # The PID file records only the MOST RECENT launcher. A launcher that
+    # ---------------------------------------------------- managed identity -------
+# A PID proves nothing on Windows: they are recycled, and every PID file this
+# script writes outlives the process it named. So NO kill in this file happens
+# on provenance alone - the target is re-read and must be running THIS
+# installation's script.
+function Test-ManagedScriptProcess {
+    param([int]$ProcessId, [string]$ScriptPath)
+
+    if ($ProcessId -le 0 -or $ProcessId -eq $PID) { return $false }
+    if ([string]::IsNullOrWhiteSpace($ScriptPath)) { return $false }
+
+    $record = $null
+    try {
+        $record = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction Stop
+    } catch {
+        # Gone, or unreadable. Refuse rather than kill something we could not
+        # identify: a wrong kill is unrecoverable, a missed kill is retried.
+        return $false
+    }
+
+    foreach ($item in @($record)) {
+        if ($null -eq $item) { continue }
+        if ([string]$item.Name -notin @("powershell.exe", "pwsh.exe")) { continue }
+        $cmd = [string]$item.CommandLine
+        if ([string]::IsNullOrEmpty($cmd)) { continue }
+
+        # Literal, case-insensitive, token-bounded. `-like`/`-match` would treat
+        # a path such as C:\Alpha [live]\start.ps1 as a wildcard pattern, and a
+        # bare "contains" would also accept ...start.ps1.backup - a backup, not
+        # a launcher. Require the path to end at a token boundary.
+        $search = 0
+        $isOurs = $false
+        while ($search -le $cmd.Length) {
+            $at = $cmd.IndexOf($ScriptPath, $search, [System.StringComparison]::OrdinalIgnoreCase)
+            if ($at -lt 0) { break }
+            $end = $at + $ScriptPath.Length
+            if ($end -ge $cmd.Length) { $isOurs = $true; break }
+            $next = $cmd[$end]
+            if ([char]::IsWhiteSpace($next) -or $next -eq [char]34 -or $next -eq [char]39) {
+                $isOurs = $true
+                break
+            }
+            $search = $end
+        }
+        if ($isOurs) { return $true }
+    }
+    return $false
+}
+
+function Stop-ManagedScriptProcess {
+    param([int]$ProcessId, [string]$ScriptPath)
+
+    if (-not (Test-ManagedScriptProcess -ProcessId $ProcessId -ScriptPath $ScriptPath)) {
+        return $false
+    }
+    & taskkill /PID $ProcessId /T /F 2>&1 | Out-Null
+    return $true
+}
+
+# The PID file records only the MOST RECENT launcher. A launcher that
     # started before the file was last written, or one whose entry a competing
     # launcher has already overwritten, is invisible to a PID-file-only sweep.
     #
@@ -345,10 +404,10 @@ function Stop-StaleLauncher {
     #
     # So: stop the recorded PID *and* discover every other live launcher by
     # command line. The watchdog itself is excluded, or it would kill itself.
-    $targets = @()
+    $candidates = @()
 
     $lp = Get-PidFileValue -Path $AlphaPid
-    if ($lp -gt 0 -and $lp -ne $PID) { $targets += $lp }
+    if ($lp -gt 0 -and $lp -ne $PID) { $candidates += $lp }
 
     try {
         $procs = @(Get-CimInstance Win32_Process -ErrorAction Stop |
@@ -360,19 +419,21 @@ function Stop-StaleLauncher {
             if (-not $cmd) { continue }
             # This watchdog runs from watchdog.ps1; never target ourselves.
             if ($cmd -match 'watchdog\.ps1') { continue }
-            if ($cmd -like "*$StartScript*") { $targets += $pid2 }
+            # Cheap literal pre-filter only. The authoritative identity check is
+            # Stop-ManagedScriptProcess below, which re-reads the process.
+            if ($cmd.IndexOf($StartScript, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+            $candidates += $pid2
         }
     } catch { }
 
-    $targets = @($targets | Where-Object { $_ -gt 0 -and $_ -ne $PID } | Select-Object -Unique)
-    if ($targets.Count -eq 0) { return }
-
-    foreach ($id in $targets) {
-        if (Get-Process -Id $id -ErrorAction SilentlyContinue) {
-            & taskkill /PID $id /T /F 2>&1 | Out-Null
-        }
+    $reaped = $false
+    foreach ($id in @($candidates | Select-Object -Unique)) {
+        if ($id -le 0 -or $id -eq $PID) { continue }
+        # Identity, not provenance: logs/alpha.pid can name a PID Windows has
+        # since recycled for an unrelated process. That is not ours to kill.
+        if (Stop-ManagedScriptProcess -ProcessId $id -ScriptPath $StartScript) { $reaped = $true }
     }
-    Start-Sleep -Seconds 1
+    if ($reaped) { Start-Sleep -Seconds 1 }
 }
 
 # Kill only what holds a port: the smallest recovery that unblocks the
@@ -395,6 +456,11 @@ function Stop-PortTree {
             if ($id -gt 0 -and $id -ne $PID) { & taskkill /PID $id /T /F 2>&1 | Out-Null }
         }
         for ($i = 0; $i -lt 10; $i++) {
+            # Refresh our own liveness across the whole wait. Layer 4 reads this
+            # file to decide the loop is alive; a 60s kill-wait with no beat
+            # looks exactly like a frozen watchdog, so it would be replaced
+            # mid-recovery - by a second copy that races the first.
+            Write-Heartbeat -Status "recovering"
             Start-Sleep -Seconds 2
             if (-not (Test-PortListening -Port $Port)) { $result = "killed"; break }
         }
@@ -715,8 +781,13 @@ function Invoke-WatchdogOfWatchdog {
 function Stop-WatchdogLoop {
     $lp = Get-PidFileValue -Path $WatchdogPid
     if ($lp -gt 0 -and $lp -ne $PID -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
-        & taskkill /PID $lp /T /F 2>&1 | Out-Null
-        Write-WdLog "Stopped watchdog loop (PID $lp) on request"
+        # Identity before kill: the PID file outlives the loop it named, so it
+        # can point at a recycled PID belonging to an unrelated process.
+        if (Stop-ManagedScriptProcess -ProcessId $lp -ScriptPath $WatchdogScript) {
+            Write-WdLog "Stopped watchdog loop (PID $lp) on request"
+        } else {
+            Write-WdLog "Refused to stop PID $lp - it is not this installation's watchdog loop" "WARN"
+        }
     }
     Remove-Item $WatchdogPid -Force -ErrorAction SilentlyContinue
     Remove-Item $WatchdogHeartbeat -Force -ErrorAction SilentlyContinue

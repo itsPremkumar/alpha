@@ -19,7 +19,6 @@ reaped even though the PID file points somewhere else entirely.
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import time
@@ -50,9 +49,7 @@ def _function_body(name: str) -> str:
 
 
 def _alive(pid: int) -> bool:
-    out = subprocess.run(
-        ["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, check=False
-    ).stdout
+    out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, check=False).stdout
     return str(pid) in out
 
 
@@ -61,10 +58,7 @@ def test_stop_stale_launcher_does_not_rely_only_on_the_pid_file() -> None:
     if not WATCHDOG.exists():
         pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     body = _function_body("Stop-StaleLauncher")
-    assert "Get-CimInstance" in body, (
-        "Stop-StaleLauncher must enumerate running processes to find launchers; "
-        "reading only logs/alpha.pid leaves unrecorded launchers alive"
-    )
+    assert "Get-CimInstance" in body, "Stop-StaleLauncher must enumerate running processes to find launchers; reading only logs/alpha.pid leaves unrecorded launchers alive"
     assert "CommandLine" in body, "the sweep must match on the launcher's command line"
     assert "watchdog" in body, "the sweep must exclude the watchdog itself so it cannot kill itself"
 
@@ -83,7 +77,9 @@ def test_stop_stale_launcher_reaps_an_unrecorded_second_launcher(tmp_path: Path)
 
     decoy = subprocess.Popen(
         [
-            POWERSHELL, "-NoProfile", "-Command",
+            POWERSHELL,
+            "-NoProfile",
+            "-Command",
             f"# decoy launcher for {START_PS1}\nStart-Sleep -Seconds 300",
         ],
         stdout=subprocess.DEVNULL,
@@ -93,10 +89,16 @@ def test_stop_stale_launcher_reaps_an_unrecorded_second_launcher(tmp_path: Path)
         # Give the OS a moment to register the process command line.
         for _ in range(20):
             time.sleep(0.25)
-            listing = subprocess.run(
-                ["wmic", "process", "where", f"ProcessId={decoy.pid}", "get", "CommandLine"],
-                capture_output=True, text=True, check=False,
-            ).stdout if shutil.which("wmic") else ""
+            listing = (
+                subprocess.run(
+                    ["wmic", "process", "where", f"ProcessId={decoy.pid}", "get", "CommandLine"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                ).stdout
+                if shutil.which("wmic")
+                else ""
+            )
             if str(START_PS1) in listing or not listing:
                 break
 
@@ -109,12 +111,17 @@ $AlphaPid   = "{pid_file}"
 $StartScript = "{START_PS1}"
 $PID        = $PID
 function Get-PidFileValue {{ param([string]$Path) if (-not (Test-Path $Path)) {{ return 0 }} try {{ return [int](Get-Content $Path -Raw) }} catch {{ return 0 }} }}
+{_function_body("Test-ManagedScriptProcess")}
+{_function_body("Stop-ManagedScriptProcess")}
 {_function_body("Stop-StaleLauncher")}
 Stop-StaleLauncher
 """
         result = subprocess.run(
             [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-            capture_output=True, text=True, timeout=120, check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
         assert result.returncode == 0, f"sweep failed: {result.stderr[:400]}"
 
@@ -123,15 +130,10 @@ Stop-StaleLauncher
                 break
             time.sleep(0.5)
 
-        assert not _alive(decoy.pid), (
-            f"Stop-StaleLauncher left an unrecorded launcher (PID {decoy.pid}) running. "
-            "Two live launchers kill each other's gateway on ports 8001/3000, so the "
-            "stack can never come up."
-        )
+        assert not _alive(decoy.pid), f"Stop-StaleLauncher left an unrecorded launcher (PID {decoy.pid}) running. Two live launchers kill each other's gateway on ports 8001/3000, so the stack can never come up."
     finally:
         if _alive(decoy.pid):
-            subprocess.run(["taskkill", "/PID", str(decoy.pid), "/T", "/F"],
-                           capture_output=True, check=False)
+            subprocess.run(["taskkill", "/PID", str(decoy.pid), "/T", "/F"], capture_output=True, check=False)
         try:
             decoy.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -151,10 +153,7 @@ def test_watchdog_has_a_supervisor_lock() -> None:
         pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     text = WATCHDOG.read_text(encoding="utf-8-sig")
     assert "Enter-SupervisorLock" in text, "the watchdog must gate destructive actions on a lock"
-    assert "FileShare]::None" in text, (
-        "the supervisor lock must be an exclusive open (FileShare.None) so the OS "
-        "releases it if the holder dies"
-    )
+    assert "FileShare]::None" in text, "the supervisor lock must be an exclusive open (FileShare.None) so the OS releases it if the holder dies"
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="powershell/pwsh not on PATH")
@@ -172,7 +171,8 @@ $fs.Close()
 """
     holder = subprocess.Popen(
         [POWERSHELL, "-NoProfile", "-Command", holder_body],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     try:
         for _ in range(40):
@@ -192,16 +192,15 @@ try {{
 """
         out = subprocess.run(
             [POWERSHELL, "-NoProfile", "-Command", probe],
-            capture_output=True, text=True, timeout=60, check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         ).stdout
-        assert "BLOCKED" in out, (
-            f"a second supervisor acquired the lock while another held it (got {out.strip()!r}); "
-            "two watchdogs would then race to rebuild the stack"
-        )
+        assert "BLOCKED" in out, f"a second supervisor acquired the lock while another held it (got {out.strip()!r}); two watchdogs would then race to rebuild the stack"
     finally:
         if _alive(holder.pid):
-            subprocess.run(["taskkill", "/PID", str(holder.pid), "/T", "/F"],
-                           capture_output=True, check=False)
+            subprocess.run(["taskkill", "/PID", str(holder.pid), "/T", "/F"], capture_output=True, check=False)
         try:
             holder.wait(timeout=15)
         except subprocess.TimeoutExpired:
@@ -220,11 +219,7 @@ def test_watchdog_requests_the_production_frontend_when_a_build_exists() -> None
     text = WATCHDOG.read_text(encoding="utf-8-sig")
     start_body = text[text.index("function Start-AlphaStack") :]
     start_body = start_body[: start_body.index("\nfunction ")] if "\nfunction " in start_body else start_body
-    assert "BUILD_ID" in start_body, (
-        "Start-AlphaStack must detect a production build via .next/BUILD_ID"
-    )
+    assert "BUILD_ID" in start_body, "Start-AlphaStack must detect a production build via .next/BUILD_ID"
     assert "-Prod" in start_body, "Start-AlphaStack must pass -Prod to start.ps1 when a build exists"
     # Auto-detected, not forced: editing components must still get the dev server.
-    assert 'if (Test-Path "$RepoRoot\\frontend\\.next\\BUILD_ID")' in start_body, (
-        "-Prod must be conditional on a build being present so HMR still works when editing"
-    )
+    assert 'if (Test-Path "$RepoRoot\\frontend\\.next\\BUILD_ID")' in start_body, "-Prod must be conditional on a build being present so HMR still works when editing"
