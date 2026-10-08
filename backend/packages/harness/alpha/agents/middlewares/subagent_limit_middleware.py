@@ -116,6 +116,13 @@ def _apex_task_call_limit(runtime: Runtime | None, *, fallback: int) -> int | No
         contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest)
         if contract.profile.value != session.profile:
             return 0
+        # The ordinary task tool creates depth-1 children and deliberately
+        # disables nested delegation in those children. APEX may narrow that
+        # capability to depth zero, which must withhold the first child call;
+        # larger values do not enable recursion that this executor does not
+        # expose.
+        if contract.budget.max_delegation_depth is not None and int(contract.budget.max_delegation_depth) < 1:
+            return 0
         limits = [fallback]
         if contract.budget.max_active_agents is not None:
             limits.append(max(0, int(contract.budget.max_active_agents)))

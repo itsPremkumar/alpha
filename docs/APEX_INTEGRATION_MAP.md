@@ -281,6 +281,8 @@ surfaces, not currently called by the Gateway dispatcher. A dispatched run is
 prompted to plan and split independent work, and can use the ordinary `task`
 tool under its persisted active-agent and parallel-task caps; the model chooses
 whether to delegate. APEX does not yet persist or enforce a deterministic
-specialization decision, and the Gateway `task` path still relies on the
-subagent lifecycle manager's own depth ceiling rather than the frozen APEX depth
-value.
+specialization decision. The ordinary `task` path is single-level because
+subagents are built with nested task delegation disabled. APEX depth zero now
+withholds the first child call; a larger frozen depth value does not enable
+recursive delegation. `ApexAgentFactory` has a separate lifecycle-manager depth
+ceiling, but that factory is not called by the Gateway dispatcher.
