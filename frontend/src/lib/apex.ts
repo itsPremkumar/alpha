@@ -221,7 +221,7 @@ export interface ApexFleet {
 /** Session counts. `total` is `null` when the store could not be read. */
 export interface ApexSessions {
   total: number | null;
-  by_state: Record<string, number>;
+  by_state: Record<string, number | null>;
   active: number | null;
   terminal: number | null;
 }
@@ -370,7 +370,7 @@ function mapSessions(v: unknown): ApexSessions {
   return {
     total: optNum(r.total),
     by_state: Object.fromEntries(
-      Object.entries(byState).map(([k, n]) => [k, optNum(n) ?? 0]),
+      Object.entries(byState).map(([k, n]) => [k, optNum(n)]),
     ),
     active: optNum(r.active),
     terminal: optNum(r.terminal),

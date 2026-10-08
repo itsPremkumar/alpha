@@ -374,6 +374,27 @@ test("an absent session total maps to null rather than 0", async () => {
   assert.equal(status.sessions.terminal, null);
 });
 
+test("unreported per-state session counts remain null instead of becoming zero", () => {
+  const status = apex.mapStatus({
+    schema: "alpha.apex.status.v1",
+    contract: { available: true, ...HEALTHY_CONTRACT },
+    fleet: { available: true, mode: "run", admits_work: true },
+    sessions: {
+      available: true,
+      total: 3,
+      by_state: { active: null, completed: "2", failed: 0 },
+      active: 1,
+      terminal: 2,
+    },
+  });
+
+  assert.deepEqual(status.sessions.by_state, {
+    active: null,
+    completed: null,
+    failed: 0,
+  });
+});
+
 test("missing APEX counts stay visibly unreported in operator summaries", async () => {
   const { formatMeasuredCount } = await import(apexUrl);
   assert.equal(formatMeasuredCount(null), "unreported");
