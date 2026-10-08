@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -184,7 +185,7 @@ test('a real child process is actually killed by the tree killer', async () => {
   assert.equal(defaultIsAlive(pid), false, 'the child is still alive after a reported kill');
 });
 
-test('attachChildLogging streams child output into the log file', async () => {
+test('attachChildLogging streams child output into the log file', { timeout: 10_000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-logtest-'));
   const logFile = path.join(dir, 'service.log');
   try {
@@ -199,7 +200,7 @@ test('attachChildLogging streams child output into the log file', async () => {
       log: () => {},
       onUnexpectedExit: (info) => exits.push(info),
     });
-    await sleep(1500);
+    await once(child, 'close');
     const contents = fs.readFileSync(logFile, 'utf8');
     assert.match(contents, /hello from the child/);
     assert.match(contents, /and an error/);

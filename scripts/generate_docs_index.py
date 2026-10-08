@@ -61,6 +61,7 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     "adr": "decisions",
     "adrs": "decisions",
     "api": "api",
+    "audits": "operations",
     # Measured research dossier on ASI/AGI/RSI plus the gap analysis against
     # this codebase. Classified as plans for the same reason
     # AGENT_LANDSCAPE_AND_ROADMAP.md is: it is a survey of the external
@@ -241,6 +242,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "audits/SYSTEM_MAP.md": DocumentSpec(
         "operations",
         "Audited system map: service topology, the agent chain, where each piece of state lives and whether it is cross-process safe, and the view registry.",
+    ),
+    "audits/FULL_VERIFICATION_REPORT_2026-10-08.md": DocumentSpec(
+        "operations",
+        "Evidence-backed reliability validation results, failed gates, environment blockers, and explicitly unverified production claims from the 2026-10-08 audit.",
+    ),
+    "audits/SYSTEM_MAP_2026-10-08.md": DocumentSpec(
+        "operations",
+        "Code-evidenced service, execution, persistence, self-inventory, and workspace view map from the 2026-10-08 audit, with environment limits.",
     ),
     "audits/FLEET_VERIFICATION.md": DocumentSpec(
         "operations",
