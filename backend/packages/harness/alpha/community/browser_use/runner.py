@@ -307,6 +307,16 @@ async def _run_agent(payload: dict) -> dict:
     max_steps = int(payload.get("max_steps") or 10)
     result = await agent.run(max_steps=max_steps)
     history = _history_rows(agent)
+
+    # `is_done`/`errors` are public on AgentHistoryList, and both are load-bearing.
+    # A run that ends without `is_done` did NOT accomplish the task, and `errors`
+    # is where upstream puts the reason: a real run failed on every single model
+    # call with "No module named 'litellm'" while the envelope still said ok, and
+    # the only thing left to report was "no final answer". Reading these two
+    # turns that into "did not complete: <the actual reason>".
+    completed = bool(_safe_call(result, "is_done"))
+    errors = [str(err) for err in (_safe_call(result, "errors") or []) if err]
+
     # ``number_of_steps`` is public on AgentHistoryList and counts real steps;
     # the summarized rows are capped, so they are not a reliable step count.
     steps = _safe_call(result, "number_of_steps")
@@ -314,6 +324,8 @@ async def _run_agent(payload: dict) -> dict:
         steps = len(history)
     return {
         "ok": True,
+        "completed": completed,
+        "errors": errors,
         "result": _as_text(result),
         "steps": steps,
         "history": history,

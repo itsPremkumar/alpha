@@ -178,6 +178,26 @@ class TestEnsureInstalled:
         assert status.version == "1.4.0"
         assert not any("pip" in call for call in seen), "an installed browser-use must not be reinstalled on every run"
 
+    def test_missing_litellm_repairs_existing_runtime(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        seen: list[str] = []
+
+        def fake_run(argv, **kwargs):
+            cmd = " ".join(str(a) for a in argv)
+            seen.append(cmd)
+            if "import browser_use" in cmd:
+                return _completed(json.dumps({"version": "1.4.0"}))
+            if cmd.endswith("import litellm"):
+                return _completed("No module named litellm", code=1)
+            if "freeze" in cmd:
+                return _completed("browser-use==1.4.0\n")
+            return _completed("ok")
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            mgr.ensure_installed()
+
+        assert any("pip install litellm" in cmd for cmd in seen)
+
     def test_upgrade_forces_pip_install(self, tmp_path):
         mgr = _installed_manager(tmp_path)
 
@@ -627,6 +647,12 @@ class TestRunnerScript:
             def action_names(self):
                 return list(actions or [])
 
+            def is_done(self):
+                return finished
+
+            def errors(self):
+                return ["No module named 'litellm'"] if fail else []
+
         class FakeAgent:
             def __init__(self, task, llm, use_vision=True):
                 self.task = task
@@ -645,6 +671,8 @@ class TestRunnerScript:
                 return SimpleNamespace(
                     final_result=lambda: "the answer" if finished else None,
                     number_of_steps=lambda: 7,
+                    is_done=lambda: finished,
+                    errors=lambda: ["No module named 'litellm'"] if fail else [],
                 )
 
         module.Agent = FakeAgent
@@ -674,6 +702,8 @@ class TestRunnerScript:
         envelope, code = self._run_runner(monkeypatch, {"task": "check", "llm": {"use": "langchain_openai:ChatOpenAI", "model_name": "m"}, "max_steps": 4}, capsys)
         assert envelope["ok"] is True
         assert envelope["result"] == "the answer"
+        assert envelope["completed"] is True
+        assert envelope["errors"] == []
         assert envelope["steps"] == 7
         assert envelope["history"][0]["url"] == "https://a.test"
         assert code == 0
@@ -686,6 +716,7 @@ class TestRunnerScript:
         envelope, _code = self._run_runner(monkeypatch, {"task": "check", "llm": {"use": "langchain_openai:ChatOpenAI", "model_name": "m"}}, capsys)
         assert "AgentHistoryList" not in envelope["result"]
         assert "No final answer" in envelope["result"]
+        assert envelope["completed"] is False
 
     def test_native_browser_use_llm_adapter_is_preferred(self, monkeypatch, capsys):
         """0.13.x rejects a bare ChatOpenAI (no `.provider`), so the native one wins."""
