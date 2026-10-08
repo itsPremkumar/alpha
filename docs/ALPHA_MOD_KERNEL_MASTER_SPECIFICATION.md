@@ -85,7 +85,7 @@ When handling an event, a mod must return an explicit `EventResult` variant:
 
 ## 4. The Ambient Capability Context (`$`)
 
-Mods receive a sandboxed capability context granting scoped, audited access to runtime primitives:
+Mods receive a capability context with scoped, audited API access to runtime primitives. Python modules are not isolated from the Gateway process and can still perform ambient side effects; capability checks are not an OS sandbox:
 
 | Namespace | Method | Description |
 |---|---|---|
