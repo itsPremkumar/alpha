@@ -312,13 +312,22 @@ def apex_tick() -> dict[str, Any]:
         "errors": [],
     }
     try:
-        sessions = store.list(limit=200)
+        sessions = (session for page in store.iter_pages(page_size=200) for session in page)
     except Exception as exc:
         summary["error"] = f"{type(exc).__name__}: {exc}"
         return summary
 
-    summary["sessions"] = len(sessions)
-    for session in sessions:
+    summary["sessions"] = 0
+    session_iterator = iter(sessions)
+    while True:
+        try:
+            session = next(session_iterator)
+        except StopIteration:
+            break
+        except Exception as exc:
+            summary["error"] = f"{type(exc).__name__}: {exc}"
+            return summary
+        summary["sessions"] += 1
         if session.is_terminal:
             summary["skipped_terminal"] += 1
             continue
@@ -396,11 +405,23 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
     if run_manager is None:
         return {**summary, "error": "run_manager_unavailable", "sessions": 0}
 
-    sessions = store.list(limit=200)
     if session_id is not None:
-        sessions = [session for session in sessions if session.session_id == session_id]
-    summary["sessions"] = len(sessions)
-    for session in sessions:
+        selected = store.get(session_id)
+        sessions = iter([selected] if selected is not None else [])
+    else:
+        sessions = (session for page in store.iter_pages(page_size=200) for session in page)
+    summary["sessions"] = 0
+    session_iterator = iter(sessions)
+    while True:
+        try:
+            session = next(session_iterator)
+        except StopIteration:
+            break
+        except Exception as exc:
+            summary["errors"].append({"error": f"session_scan_failed: {type(exc).__name__}: {exc}"})
+            logger.warning("APEX session scan failed: %s", exc)
+            break
+        summary["sessions"] += 1
         if session.is_terminal:
             summary["skipped_terminal"] += 1
             continue

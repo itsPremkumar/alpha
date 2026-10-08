@@ -126,6 +126,11 @@ One pass runs four steps and returns all of them, which is what makes spec §177
 | `apply_decision` | record the decision; transition state only where the decision implies it |
 | `checkpoint` | re-read the row and increment `cycle_count`, reporting **absent** (never a count) if the row is gone, and **skipped** when the decision was `none` — a parked session's pass writes nothing |
 
+The background cycle and dispatcher scan sessions in stable, bounded pages so
+older sessions remain reachable as the session count grows. A request to
+dispatch one session resolves that id directly rather than searching only a
+recent-session window.
+
 The `cycle.decision_recorded` event means the executive selected and journaled
 an action; it does not mean a mission or run was dispatched. The Gateway host
 adapter reports run admission separately as `run.dispatched`, which carries the

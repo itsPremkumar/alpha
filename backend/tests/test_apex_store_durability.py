@@ -94,6 +94,22 @@ def test_corrupt_store_cannot_be_replaced_by_a_new_session(tmp_path: Path) -> No
     assert not store.events_path.exists()
 
 
+def test_session_pages_use_a_stable_cursor_when_new_sessions_arrive(store: ApexStore) -> None:
+    original = [_session(store) for _ in range(5)]
+    pages = store.iter_pages(page_size=2)
+    first = next(pages)
+    assert len(first) == 2
+
+    # A new row sorts ahead of the page cursor. It must not shift an offset and
+    # cause an older row to be skipped as the scan continues.
+    newest = _session(store)
+    store.update(newest.session_id, created_at=max(session.created_at for session in original) + 1)
+    remaining = [session for page in pages for session in page]
+
+    assert {session.session_id for session in [*first, *remaining]} == {session.session_id for session in original}
+    assert newest.session_id not in {session.session_id for session in [*first, *remaining]}
+
+
 def test_write_can_be_retried_after_storage_recovers(store: ApexStore, monkeypatch: pytest.MonkeyPatch) -> None:
     session = _session(store)
     with monkeypatch.context() as patch:

@@ -8,7 +8,7 @@ import pytest
 
 from alpha.apex.contract import narrow_contract, profile_for
 from alpha.apex.mode import ApexModeStore
-from alpha.apex.store import ApexSessionState, ApexStore
+from alpha.apex.store import ApexSession, ApexSessionState, ApexStore
 
 
 @pytest.mark.asyncio
@@ -92,6 +92,111 @@ async def test_apex_execution_tick_dispatches_once_and_projects_terminal_usage(t
     assert repeated["awaiting_verification"] == 1
     assert admitted == [(session.session_id, 1)]
     assert store.get(session.session_id).usage.total_tokens == 600
+
+
+@pytest.mark.asyncio
+async def test_apex_execution_tick_reaches_sessions_after_the_first_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    import app.gateway.services as gateway_services
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner = "operator"
+    thread_id = "old-apex-session"
+    contract = profile_for("autonomous")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "autonomous", owner=owner)
+    session = store.create(
+        owner=owner,
+        objective="older goal remains dispatchable",
+        profile="autonomous",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id=thread_id,
+    )
+    store.update(session.session_id, created_at=1.0)
+
+    # Seed a full first page of newer, disabled sessions without turning this
+    # regression into 200 unrelated persistence writes.
+    for index in range(200):
+        placeholder = ApexSession(
+            session_id=f"placeholder-{index:03d}",
+            owner="disabled-owner",
+            objective="not enabled",
+            created_at=1000.0 + index,
+        )
+        store._rows[placeholder.session_id] = placeholder
+
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+    admitted: list[str] = []
+
+    async def launch(*, app, session, generation):
+        admitted.append(session.session_id)
+        return SimpleNamespace(run_id="run-apex-old", status=SimpleNamespace(value="running"))
+
+    monkeypatch.setattr(gateway_services, "launch_apex_session_run", launch)
+    app = SimpleNamespace(state=SimpleNamespace(run_manager=SimpleNamespace()))
+
+    result = await apex_execution_tick(app)
+
+    assert result["sessions"] == 201
+    assert result["dispatched"] == 1
+    assert admitted == [session.session_id]
+
+
+@pytest.mark.asyncio
+async def test_apex_execution_tick_can_dispatch_a_session_outside_the_default_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    import app.gateway.services as gateway_services
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner = "operator"
+    thread_id = "direct-old-apex-session"
+    contract = profile_for("autonomous")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "autonomous", owner=owner)
+    session = store.create(
+        owner=owner,
+        objective="dispatch by direct lookup",
+        profile="autonomous",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id=thread_id,
+    )
+    store.update(session.session_id, created_at=1.0)
+    for index in range(200):
+        placeholder = ApexSession(
+            session_id=f"newer-placeholder-{index:03d}",
+            owner="disabled-owner",
+            objective="not enabled",
+            created_at=1000.0 + index,
+        )
+        store._rows[placeholder.session_id] = placeholder
+
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+    admitted: list[str] = []
+
+    async def launch(*, app, session, generation):
+        admitted.append(session.session_id)
+        return SimpleNamespace(run_id="run-apex-direct-old", status=SimpleNamespace(value="running"))
+
+    monkeypatch.setattr(gateway_services, "launch_apex_session_run", launch)
+    app = SimpleNamespace(state=SimpleNamespace(run_manager=SimpleNamespace()))
+
+    result = await apex_execution_tick(app, session_id=session.session_id)
+
+    assert result["sessions"] == 1
+    assert result["dispatched"] == 1
+    assert admitted == [session.session_id]
 
 
 @pytest.mark.asyncio

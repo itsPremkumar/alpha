@@ -542,7 +542,14 @@ class ApexStore:
         with self._lock:
             return self._rows.get(session_id)
 
-    def list(self, *, owner: str | None = None, state: str | None = None, limit: int = 50) -> list[ApexSession]:
+    def list(
+        self,
+        *,
+        owner: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        after: tuple[float, str] | None = None,
+    ) -> list[ApexSession]:
         with self._lock:
             rows = list(self._rows.values())
         if owner:
@@ -553,7 +560,36 @@ class ApexStore:
             except ValueError:
                 return []
             rows = [s for s in rows if s.state is wanted]
-        return sorted(rows, key=lambda s: -s.created_at)[: max(1, int(limit))]
+        rows.sort(key=lambda s: (-s.created_at, s.session_id))
+        if after is not None:
+            after_key = (-float(after[0]), str(after[1]))
+            rows = [session for session in rows if (-session.created_at, session.session_id) > after_key]
+        return rows[: max(1, int(limit))]
+
+    def iter_pages(
+        self,
+        *,
+        owner: str | None = None,
+        state: str | None = None,
+        page_size: int = 200,
+    ) -> Iterator[list[ApexSession]]:
+        """Yield stable keyset pages so old sessions cannot fall off a fixed limit.
+
+        The cursor is based on immutable session creation time and id. Rows
+        created while a scan is in progress cannot shift offsets and cause an
+        older session to be skipped on every subsequent tick.
+        """
+        page_size = max(1, int(page_size))
+        cursor: tuple[float, str] | None = None
+        while True:
+            page = self.list(owner=owner, state=state, limit=page_size, after=cursor)
+            if not page:
+                return
+            yield page
+            if len(page) < page_size:
+                return
+            last = page[-1]
+            cursor = (last.created_at, last.session_id)
 
     def update(self, session_id: str, **changes: Any) -> ApexSession | None:
         """Apply field updates. Unknown fields are rejected, not ignored."""
