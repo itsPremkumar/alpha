@@ -48,6 +48,38 @@ Both settled verdicts land on `RECONCILED`, not on `COMPLETED`/`FAILED`, because
 the status alone cannot express *which* outcome was established. A reader must
 consult `SideEffectEntry.verdict`.
 
+## The queue has a Gateway surface and a workspace view
+
+`UNKNOWN` being enumerable is only useful if somebody can enumerate it, and for
+a long time the only caller was Python code. Two surfaces exist now:
+
+| Surface | File |
+|---|---|
+| HTTP | `app/gateway/routers/side_effects.py` — `GET /api/side-effects/summary`, `GET /api/side-effects` (filterable), `GET /api/side-effects/{tool_call_id}`, `POST /api/side-effects/{tool_call_id}/reconcile` |
+| UI | the `effects` workspace view — `frontend/src/lib/side-effects.ts` + `frontend/src/components/sections/EffectsSection.tsx` |
+
+Three rules both surfaces keep:
+
+1. **The projection is explicit and payload-free.** `_entry_to_wire` is an
+   18-key whitelist — never `entry.__dict__` — so a new field on `SideEffectEntry`
+   has to be *chosen* to appear, and only digests are payload-shaped. Absent
+   fields travel as `null` on both sides: an unreadable ledger must never render
+   as an empty one, and `0` is a measurement, not a default.
+2. **Reconcile is admin-gated and single-shot.** The route requires
+   `is_admin_user` (a PAT never qualifies), and a second verdict on an entry that
+   already settled is a `409` carrying the ledger's own words rather than a
+   second write — the same conditional transition `reconcile()` performs. The UI
+   re-reads the entry before offering the form so a stale row cannot invite one.
+3. **Neither surface writes an effect.** The router does not call
+   `announce_effect`; the only production caller remains
+   `app/mcp_tasks/service.py`. Reading and reconciling a queue is not the same
+   thing as producing it, and the surfaces are deliberately read-only apart from
+   the verdict.
+
+Route order inside the router is load-bearing: `/summary` is declared before
+`/{tool_call_id}`, or Starlette answers `404 tool_call_id='summary'` — the same
+trap as the `skills/{skill_name}` and `workflows/{workflow_id}` catch-alls.
+
 ## What is deliberately absent
 
 No module here cancels a run, resumes a run, or replays a tool call. The ledger

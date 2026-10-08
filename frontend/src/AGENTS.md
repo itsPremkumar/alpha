@@ -542,6 +542,68 @@ Coverage: `src/lib/intelligence.test.mjs` (route/verb pin, read-only source
 pins, `SCHEMA_VERSION`/basis/section contract pins, envelope mapping including
 the omitted-section state, and the honesty inversions above).
 
+## Effect journal (`effects` workspace view)
+
+`lib/side-effects.ts` + `components/sections/EffectsSection.tsx`, over
+`GET /api/side-effects/*`. The `effects` id follows the four-place wiring rule
+(union, `WORKSPACE_TABS` row, `WORKSPACE_VIEW_IDS`, ChatView lazy import plus
+render case); the union entry sits **before** `reliability`, because
+`reliability-view.test.mjs` pins `reliability` as the terminal member.
+
+The panel answers "which external effects is Alpha unsure about, and what did an
+operator decide about them?" — so an absent field must never become a measured
+one:
+
+| Server says | Panel shows |
+| --- | --- |
+| `reported: false` | its reason, and *not reported* for every count |
+| `oldest_unknown_age_seconds: null` while reported | *no unknown entry waiting* |
+| that same `null` while unreported | *not reported* — never `0s` |
+| `entries: null` | "The Gateway sent no entry list" — not "no effects" |
+| `entries: []` | "No entries match this filter" |
+| either read rejected | its own reason, beside the data the *other* read returned |
+| `reconcilable: true` | the verdict form |
+| `reconcilable: false` | the status, and no button implying a pending verdict |
+| `reconcilable: null` | *reconcilability not reported*, and **no button** |
+| `reopened` / `escalated: null` after a submit | *not reported* — never `false` |
+| an unknown status or level string | rendered verbatim in a grey badge |
+| a 403 or 409 on reconcile | the server's own sentence, verbatim |
+
+Rules that must keep:
+
+- **The two reads fail independently.** Summary and list go through
+  `Promise.allSettled`, so a summary that 503s cannot blank a list that answered;
+  each failure renders its own `Notice` naming which read it was.
+- **A reconcile re-reads the entry before it offers a form.** The table row may
+  be seconds stale, and offering a verdict on an entry somebody else already
+  settled is how a 409 gets blamed on the operator. `fetchSideEffect(id)` decides
+  `reconcilable`, and `null` declines the form rather than guessing.
+- **Nothing is painted from the click.** The submit awaits
+  `reconcileSideEffect(...)`, renders the *response's* `reopened` / `escalated`,
+  then re-reads the entry, the summary and the list. An acknowledgement checkbox
+  that starts unchecked gates it, and the button is disabled in flight.
+- **Authorisation is never inferred.** There is no client-side role check: the
+  button appears for every caller and a member's 403 is rendered through
+  `failureText`, because `errMsg` would replace it with a generic sentence and
+  the refusal *is* the answer.
+- **Bounds are mirrored, not tightened.** `clampLimit` copies the server's
+  `ge=1, le=500`; an unknown `status`/`level` filter and an out-of-bound `reason`
+  are refused **locally with the bound named** — sending them would only earn a
+  422 carrying the same list. Reason length is measured on the raw string, as
+  Pydantic measures it.
+- **`failureText` is not `errMsg`.** `errMsg` paraphrases 401/403/404 on
+  purpose, which is right for an incidental call and wrong for a refusal;
+  `failureText` keeps an `Error` carrying a numeric `status` verbatim and falls
+  back to `errMsg` for anything else.
+- **The panel is otherwise read-only.** It reads, it reconciles, and it says so:
+  recording a verdict never cancels, resumes or replays a run, and only digests
+  cross the API.
+
+Coverage: `src/lib/side-effects.test.mjs` (routes, verbs, the null-preserving
+mappers, the clamp, the local refusals, `failureText`) and
+`src/lib/effects-view.test.mjs` (the four-place wiring and every rendering
+above).
+
 ## Subagent catalog panel (every field of a definition)
 
 `lib/subagents.ts` + `lib/subagent-catalog-view.ts` +

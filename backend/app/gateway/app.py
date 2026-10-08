@@ -73,6 +73,7 @@ from app.gateway.routers import (
     projects,
     runs,
     scheduled_tasks,
+    side_effects,
     skills,
     skills_workshop,
     subagent_batches,
@@ -1259,6 +1260,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # the intelligence mode gate.
     app.include_router(intelligence.router)
     app.include_router(evidence.router)
+    # The effect journal: the reconciliation queue over the same durable ledger
+    # `deps.py` installs (SQL backend only; memory installs none and the routes
+    # say so with 503 rather than an empty list).
+    app.include_router(side_effects.router)
     app.include_router(checkpoints.router)
     app.include_router(skills_workshop.router)
     app.include_router(credentials.router)

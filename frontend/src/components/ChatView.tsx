@@ -120,6 +120,7 @@ const SystemSection = dynamic(() => import("@/components/sections/SystemSection"
 const IntegrationSection = dynamic(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })), { loading: () => <SectionFallback /> });
 const ApexSection = dynamic(() => import("@/components/sections/ApexSection").then((m) => ({ default: m.ApexSection })), { loading: () => <SectionFallback /> });
 const IntelligenceSection = dynamic(() => import("@/components/sections/IntelligenceSection").then((m) => ({ default: m.IntelligenceSection })), { loading: () => <SectionFallback /> });
+const EffectsSection = dynamic(() => import("@/components/sections/EffectsSection").then((m) => ({ default: m.EffectsSection })), { loading: () => <SectionFallback /> });
 const WorkforceSection = dynamic(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })), { loading: () => <SectionFallback /> });
 const WarRoomSection = dynamic(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })), { loading: () => <SectionFallback /> });
 const WarRoomRunsSection = dynamic(() => import("@/components/sections/WarRoomRunsSection").then((m) => ({ default: m.WarRoomRunsSection })), { loading: () => <SectionFallback /> });
@@ -2538,6 +2539,10 @@ export default function ChatView({ initialView }: { initialView?: WorkspaceView 
         ) : view === "intelligence" ? (
           <Suspense fallback={<SectionFallback />}>
             <IntelligenceSection />
+          </Suspense>
+        ) : view === "effects" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <EffectsSection />
           </Suspense>
         ) : view === "settings" ? (
           <Suspense fallback={<SectionFallback />}>

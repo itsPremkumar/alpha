@@ -53,7 +53,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## API
 
-- [API reference](API_REFERENCE.md): all 66 Gateway routers, authentication, and SSE event streaming.
+- [API reference](API_REFERENCE.md): authentication and the core Gateway router endpoints, plus SSE event streaming.
 - [API overview](API.md): entry points, base URLs, routing, and versioning contracts.
 
 ## Operations
