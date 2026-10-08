@@ -197,9 +197,12 @@ ceiling cannot be widened through approval, so a new session is required to
 continue. Safe APEX run recovery durably reserves each retry by failed run id and
 failure class against the session's frozen retry ceiling; the runtime's global
 resume-attempt ceiling remains an outer bound. This reservation shares the
-session store's single-process coordination limit. The Gateway `task` path does
-not apply the APEX depth value; the subagent lifecycle manager's own depth limit
-still applies. Newly created
+session store's single-process coordination limit. The Gateway `task` path is
+single-level because task children are created with nested task delegation
+disabled. An APEX depth of zero refuses the first child call; a positive depth
+value does not enable recursive task calls on this path. The separate
+`ApexAgentFactory` lifecycle depth limit is not wired into the Gateway
+dispatcher. Newly created
 sessions receive unlimited spending defaults. Existing sessions retain their
 frozen contracts and are not silently widened; older sessions whose contract
 digest no longer matches the active profile must be reviewed and recreated to
@@ -207,6 +210,11 @@ use the new defaults. Alpha still records usage, and engine admission, provider
 availability, platform capacity, governance, approvals, and the emergency stop
 remain in force; a session quota never reserves or creates hardware or provider
 capacity.
+
+The supervisor's `last_summary` prioritizes failures, blocked sessions, exhausted
+budgets, and error counts before progress counters. It reports only the number of
+error rows, not their contents, so a long progress summary cannot hide a failing
+run or copy task details into the health view.
 
 When a RunManager run completes, the Gateway adapter evaluates registered
 `AcceptanceRegistry` probes off the event loop. Only a fully evaluated report

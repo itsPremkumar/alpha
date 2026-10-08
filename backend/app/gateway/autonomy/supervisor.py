@@ -109,7 +109,21 @@ def _summarize(summary: Any) -> str:
     if summary is None:
         return ""
     if isinstance(summary, dict):
-        return " ".join(f"{key}={value}" for key, value in list(summary.items())[:6])
+        # Health views must not hide terminal outcomes behind a fixed prefix.
+        # APEX returns several progress counters before `failed` and `blocked`,
+        # so keeping only the first six fields made a busy-but-failing loop look
+        # clean. Put operationally important outcomes first, then retain the
+        # original order for the rest of the summary.
+        priority = ("error", "failed", "blocked", "budget_exhausted", "errors")
+        keys = [key for key in priority if key in summary]
+        keys.extend(key for key in summary if key not in keys)
+        parts: list[str] = []
+        for key in keys:
+            value = summary[key]
+            if isinstance(value, (dict, list, tuple, set, frozenset)):
+                value = len(value)
+            parts.append(f"{key}={value}")
+        return " ".join(parts)[:300]
     return str(summary)[:300]
 
 
