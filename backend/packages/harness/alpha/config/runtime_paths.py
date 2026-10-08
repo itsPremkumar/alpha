@@ -35,7 +35,7 @@ def repository_root() -> Path:
     """Return the repository root, located structurally rather than by cwd.
 
     An explicit ``ALPHA_REPOSITORY_ROOT`` wins when it is set and valid. Otherwise
-    the nearest ancestor of this module containing both ``backend/packages`` and
+    the outermost ancestor of this module containing both ``backend/packages`` and
     a repository marker is the root, which is correct regardless of the working
     directory the process was launched from.
 
@@ -53,9 +53,24 @@ def repository_root() -> Path:
         raise ValueError(f"ALPHA_REPOSITORY_ROOT is set to '{override}', but '{root}' is not a directory.")
 
     here = Path(__file__).resolve()
+    match: Path | None = None
     for candidate in here.parents:
         if (candidate / "backend" / "packages").is_dir() and any((candidate / m).is_file() for m in _REPO_ROOT_MARKERS):
-            return candidate
+            # Keep walking outward rather than returning the first hit.
+            # `_REPO_ROOT_MARKERS` are AGENTS.md/CLAUDE.md, which this repo
+            # deliberately places at every depth, so the *innermost* directory
+            # satisfying the test is not necessarily the repository. A stray
+            # `backend/packages/harness/alpha/backend/packages` directory (a
+            # misdirected mkdir, untracked) made the walk stop inside the
+            # harness package, and every reader then resolved
+            # `contracts/feature_manifest.json` to a path under the package --
+            # the generated manifest lives at the repository root, so
+            # `load_feature_manifest` raised RegistryUnavailable and nine
+            # self-inventory tests failed. `backend/packages` only exists for
+            # real at the repository root, so the outermost match wins.
+            match = candidate
+    if match is not None:
+        return match
     # A relocated/embedded checkout with no marker: the harness package's known
     # depth still lands on the directory that contains `backend/`.
     return here.parents[4]
