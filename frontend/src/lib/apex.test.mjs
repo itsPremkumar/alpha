@@ -669,6 +669,15 @@ test("the toggle adopts through the helper and offers only the enable rungs", ()
   );
 });
 
+test("the read-only contract preview is distinct from the profile that enables APEX", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.match(source, /aria-label="Contract preview profile"/);
+  assert.match(source, /aria-label="Profile to enable"/);
+  assert.match(source, /Contract preview/);
+  assert.match(source, /Changes the policy preview only/);
+});
+
 test("a confirmed switch change re-reads the rest of the panel, not just the switch", () => {
   // Two reads render side by side: `/mode` draws the switch, `/status` draws
   // "Active profile". Mutating only the first put "off (no mission control)"

@@ -373,9 +373,9 @@ function ApexToggle({
 
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 text-xs text-neutral-500">
-            Profile
+            Profile to enable
             <select
-              aria-label="APEX profile"
+              aria-label="Profile to enable"
               className="rounded-md border border-border bg-transparent px-2 py-1 text-sm"
               value={profile}
               disabled={busy}
@@ -831,7 +831,8 @@ async function resolveSessionSubject(): Promise<{
 export function ApexSection() {
   const [status, setStatus] = useState<ApexStatus | null>(null);
   const [policy, setPolicy] = useState<ApexContract | null>(null);
-  const [profile, setProfile] = useState<ApexProfile>("autonomous");
+  const [previewProfile, setPreviewProfile] =
+    useState<ApexProfile>("autonomous");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** `/mode` failed, so no session block is being shown — say which. */
@@ -856,7 +857,7 @@ export function ApexSection() {
       try {
         const [next, nextPolicy] = await Promise.all([
           fetchApexStatus(subject.id ? { sessionId: subject.id } : undefined),
-          fetchApexPolicy(profile),
+          fetchApexPolicy(previewProfile),
         ]);
         if (!cancelled) {
           setStatus(next);
@@ -870,7 +871,7 @@ export function ApexSection() {
     return () => {
       cancelled = true;
     };
-  }, [profile]);
+  }, [previewProfile]);
 
   const refresh = async () => {
     setError(null);
@@ -1016,18 +1017,24 @@ export function ApexSection() {
       hint="One objective in; APEX decides the strategy, existing engines do the work, and verification decides whether it is done."
       actions={
         <>
-          <select
-            aria-label="APEX profile"
-            className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
-            value={profile}
-            onChange={(event) => setProfile(event.target.value as ApexProfile)}
-          >
-            {APEX_PROFILES.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
+          <label className="inline-flex items-center gap-2 text-xs text-neutral-500">
+            Contract preview
+            <select
+              aria-label="Contract preview profile"
+              title="Changes the policy preview only. Use the APEX autopilot control below to change the active profile."
+              className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:text-neutral-100"
+              value={previewProfile}
+              onChange={(event) =>
+                setPreviewProfile(event.target.value as ApexProfile)
+              }
+            >
+              {APEX_PROFILES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
           <Btn onClick={runCycle} disabled={busy}>
             {busy ? "Running…" : "Run one cycle"}
           </Btn>
