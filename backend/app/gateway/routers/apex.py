@@ -1162,6 +1162,11 @@ async def replan_failed_session(
     current = store.get(session_id)
     if current is None:
         raise HTTPException(status_code=404, detail=f"no APEX session {session_id!r}")
+    if current.run_id in current.usage.retry_reservations:
+        raise HTTPException(
+            status_code=409,
+            detail="safe checkpoint recovery has already reserved this failed run; review that recovery outcome before requesting a replan",
+        )
     contract = _session_contract(current)
     updated = store.replan_failed_run(
         session_id,
@@ -1175,7 +1180,10 @@ async def replan_failed_session(
         used = max(0, int(current.usage.replans or 0))
         if limit is not None and used >= limit:
             raise HTTPException(status_code=409, detail=f"APEX replan ceiling reached ({used}/{limit}); create a new session to continue")
-        raise HTTPException(status_code=409, detail="session state changed or a pending approval prevents replanning")
+        raise HTTPException(
+            status_code=409,
+            detail="session state changed, an approval is pending, or safe checkpoint recovery reserved this run; reload and review the current session state",
+        )
     return {
         "replanned": True,
         "session": updated.to_dict(),

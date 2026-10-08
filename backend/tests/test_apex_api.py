@@ -201,6 +201,7 @@ class TestFailedRunReplan:
         )
 
         assert response.status_code == 409
+        assert "safe checkpoint recovery has already reserved" in response.json()["detail"]
         assert store.get(session["session_id"]).dispatch_state == "failed"
 
 
