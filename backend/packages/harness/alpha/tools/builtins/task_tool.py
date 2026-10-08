@@ -976,6 +976,11 @@ async def task_tool(
     oauth_provider = parent_context.get("oauth_provider")
     oauth_id = parent_context.get("oauth_id")
     run_id = parent_context.get("run_id")
+    from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY
+
+    apex_session_id = parent_context.get(APEX_RUNTIME_SESSION_KEY)
+    if not isinstance(apex_session_id, str) or not apex_session_id:
+        apex_session_id = None
     # IM-channel sender identity: group chats share one thread across senders,
     # so delegated bash commands need the dispatching turn's channel_user_id.
     channel_user_id = parent_context.get("channel_user_id")
@@ -1044,6 +1049,7 @@ async def task_tool(
         "oauth_provider": oauth_provider,
         "oauth_id": oauth_id,
         "run_id": run_id,
+        "apex_session_id": apex_session_id,
         "channel_user_id": channel_user_id,
         "is_internal": is_internal,
         "authz_attributes": authz_attributes,

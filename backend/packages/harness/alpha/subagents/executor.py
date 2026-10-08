@@ -853,6 +853,7 @@ class SubagentExecutor:
         oauth_provider: str | None = None,
         oauth_id: str | None = None,
         run_id: str | None = None,
+        apex_session_id: str | None = None,
         channel_user_id: str | None = None,
         is_internal: bool = False,
         authz_attributes: Mapping[str, Any] | None = None,
@@ -888,6 +889,9 @@ class SubagentExecutor:
             oauth_id: Subject id at the external identity provider.
             run_id: Parent run id, so delegated guardrail decisions attribute to
                 the same run as the lead agent.
+            apex_session_id: Gateway-stamped APEX session id. Propagated into
+                the child runtime so its tool middleware revalidates the same
+                owner, mode, contract, budget, governance, and approval policy.
             alpha_trace_id: Alpha request-level correlation id propagated
                 from the parent run for Langfuse metadata correlation. Falls
                 back to the ambient trace so the attribute is always a real
@@ -940,6 +944,7 @@ class SubagentExecutor:
         self.oauth_provider = oauth_provider
         self.oauth_id = oauth_id
         self.run_id = run_id
+        self.apex_session_id = apex_session_id
         # IM-channel sender identity captured at task_tool dispatch: group
         # chats share one thread across senders, so delegated bash commands
         # must export the dispatching turn's id, not none at all.
@@ -1572,6 +1577,12 @@ class SubagentExecutor:
             context["oauth_provider"] = self.oauth_provider
             context["oauth_id"] = self.oauth_id
             context["run_id"] = self.run_id
+            if self.apex_session_id:
+                # Import only for APEX-bound child runs. Ordinary subagent
+                # construction stays independent of the APEX control plane.
+                from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY
+
+                context[APEX_RUNTIME_SESSION_KEY] = self.apex_session_id
             if task_store is not None:
                 from alpha_extension_api import EXTENSION_TASK_STORE_KEY
 

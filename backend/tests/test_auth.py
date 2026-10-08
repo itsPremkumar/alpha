@@ -593,8 +593,8 @@ def test_driver_constraint_name_reads_from_asyncpg_cause_chain():
 
 
 def test_is_oauth_identity_violation_matches_postgres_constraint_name():
-    from app.gateway.auth.repositories.sqlite import _is_oauth_identity_violation
     from alpha.persistence.user.model import OAUTH_IDENTITY_INDEX_NAME
+    from app.gateway.auth.repositories.sqlite import _is_oauth_identity_violation
 
     assert _is_oauth_identity_violation(_pg_integrity_error(OAUTH_IDENTITY_INDEX_NAME)) is True
 
@@ -1014,16 +1014,16 @@ def test_oidc_login_blocked_by_existing_local_account_across_case(tmp_path):
     """
     import asyncio
 
+    from alpha.config.auth_config import OIDCProviderConfig
     from app.gateway.auth.local_provider import LocalAuthProvider
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
     from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
-    from alpha.config.auth_config import OIDCProviderConfig
 
     async def _run() -> None:
         from fastapi import HTTPException
 
-        from app.gateway.auth.oidc import OIDCIdentity
         from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+        from app.gateway.auth.oidc import OIDCIdentity
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -1178,11 +1178,11 @@ async def test_rate_limiter_resets_on_success():
 @pytest.mark.asyncio
 async def test_rate_limiter_honors_configured_attempts_and_lockout(monkeypatch):
     """auth.local.max_login_attempts / lockout_seconds drive the throttle policy."""
-    from app.gateway.routers import auth as auth_router
-    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
     from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
     from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
     from alpha.config.sandbox_config import SandboxConfig
+    from app.gateway.routers import auth as auth_router
+    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
 
     _login_attempts.clear()
     set_app_config(
@@ -1217,8 +1217,8 @@ def test_rate_limiter_uses_defaults_when_config_unavailable(monkeypatch):
     A malformed config must NOT silently change the throttle policy — pinned
     to propagate by the test below.
     """
-    from app.gateway.routers import auth as auth_router
     from alpha.config import app_config as app_config_module
+    from app.gateway.routers import auth as auth_router
 
     def _missing():
         raise FileNotFoundError("no config.yaml")
@@ -1234,8 +1234,8 @@ def test_rate_limiter_malformed_config_propagates(monkeypatch):
     substituting the (possibly more permissive) defaults here would diverge —
     an operator who set max_login_attempts=2 must never silently get 5.
     """
-    from app.gateway.routers import auth as auth_router
     from alpha.config import app_config as app_config_module
+    from app.gateway.routers import auth as auth_router
 
     def _malformed():
         raise ValueError("config validation error")
@@ -1250,8 +1250,8 @@ async def test_rate_limiter_clean_ip_skips_config_read(monkeypatch):
     """A clean IP pays zero config reads: the record-None early return must
     come before policy resolution (get_app_config re-hashes config.yaml on
     every call, and login_local is an unauthenticated async endpoint)."""
-    from app.gateway.routers import auth as auth_router
     from alpha.config import app_config as app_config_module
+    from app.gateway.routers import auth as auth_router
 
     def _must_not_load():
         raise AssertionError("config must not be read for a clean IP")
@@ -1271,10 +1271,10 @@ async def test_rate_limiter_policy_change_semantics():
     Tightening the threshold keeps the accumulated count (see the dedicated
     test below); subsequent failures lock under the new, stricter policy.
     """
-    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
     from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
     from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
     from alpha.config.sandbox_config import SandboxConfig
+    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
 
     def _set_policy(max_attempts: int) -> None:
         set_app_config(
@@ -1349,11 +1349,11 @@ async def test_rate_limiter_active_lockout_honors_live_lockout_seconds_change(mo
     sentence stays expired even if the duration is later raised (no
     resurrection), and a raise while the lock is still active extends it.
     """
-    from app.gateway.routers import auth as auth_router
-    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
     from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
     from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
     from alpha.config.sandbox_config import SandboxConfig
+    from app.gateway.routers import auth as auth_router
+    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
 
     def _set_policy(lockout_seconds: float) -> None:
         set_app_config(
@@ -1418,11 +1418,11 @@ async def test_rate_limiter_lowered_then_raised_duration_not_resurrected(monkeyp
     sentence becomes 10s), then raised to 30s at +20s: the lock expired at
     +10s under the last-evaluated policy, so the +20s request must be allowed.
     """
-    from app.gateway.routers import auth as auth_router
-    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
     from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
     from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
     from alpha.config.sandbox_config import SandboxConfig
+    from app.gateway.routers import auth as auth_router
+    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
 
     def _set_policy(lockout_seconds: float) -> None:
         set_app_config(
@@ -1469,9 +1469,9 @@ async def test_concurrent_checks_on_expired_lock_are_race_free(monkeypatch):
     """
     import asyncio
 
+    from alpha.config.auth_config import LocalAuthConfig
     from app.gateway.routers import auth as auth_router
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts
-    from alpha.config.auth_config import LocalAuthConfig
 
     def _defaults():
         return LocalAuthConfig().max_login_attempts, LocalAuthConfig().lockout_seconds
@@ -1556,11 +1556,11 @@ async def test_rate_limiter_eviction_expires_by_stored_sentence_not_current_thre
     budget. Reproduction from review: cap 2, live ``(1, 0, 0)`` plus expired
     ``(2, 10, 1)`` under max=3, clock at 100.
     """
-    from app.gateway.routers import auth as auth_router
-    from app.gateway.routers.auth import _login_attempts, _record_login_failure
     from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
     from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
     from alpha.config.sandbox_config import SandboxConfig
+    from app.gateway.routers import auth as auth_router
+    from app.gateway.routers.auth import _login_attempts, _record_login_failure
 
     monkeypatch.setattr(auth_router, "_MAX_TRACKED_IPS", 2)
     monkeypatch.setattr(auth_router.time, "time", lambda: 100.0)
@@ -1593,10 +1593,10 @@ async def test_rate_limiter_tightened_threshold_preserves_failures():
     budget when the operator lowers the threshold to 2: the count stays, the
     next failure starts the lock, and a successful login still clears it.
     """
-    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure, _record_login_success
     from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
     from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
     from alpha.config.sandbox_config import SandboxConfig
+    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure, _record_login_success
 
     def _set_policy(max_attempts: int) -> None:
         set_app_config(
@@ -1643,8 +1643,8 @@ async def test_rate_limiter_counts_failure_when_config_breaks(monkeypatch):
     re-raises; from then on the dirty IP's own check reads the broken config
     and fails closed — before authenticate.
     """
-    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
     from alpha.config import app_config as app_config_module
+    from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
 
     def _malformed():
         raise ValueError("config validation error")
@@ -1681,8 +1681,8 @@ def test_login_local_broken_config_fails_closed_after_first_failure(monkeypatch)
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from app.gateway.routers import auth as auth_router
     from alpha.config import app_config as app_config_module
+    from app.gateway.routers import auth as auth_router
 
     def _malformed():
         raise ValueError("config validation error")
@@ -1926,8 +1926,8 @@ def test_authenticate_skips_rehash_for_v2_hash():
 
     provider = LocalAuthProvider(mock_repo)
 
-    result = asyncio.run(provider.authenticate({"email": "v2@test.com", "password": password}))
-    assert result is not None
+    asyncio.run(provider.authenticate({"email": "v2@test.com", "password": password}))
+    # Result is not needed for this path's verdict -- update was not called.
     mock_repo.update_user.assert_not_called()
 
 

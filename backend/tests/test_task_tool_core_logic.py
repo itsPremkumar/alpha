@@ -3263,3 +3263,12 @@ def test_task_tool_forwards_no_criteria_by_default(monkeypatch):
 
     assert executor_kwargs["acceptance_criteria"] is None
     assert "<acceptance_criteria>" not in delegated_prompt
+
+
+def test_task_tool_forwards_gateway_apex_session_to_child_executor(monkeypatch):
+    runtime = _make_runtime()
+    runtime.context["__alpha_apex_session_id"] = "apex-session-1"
+
+    executor_kwargs, _ = _capture_executor_call(monkeypatch, runtime=runtime)
+
+    assert executor_kwargs["apex_session_id"] == "apex-session-1"

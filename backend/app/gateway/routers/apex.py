@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from importlib import import_module
 from typing import Any
@@ -46,6 +47,7 @@ from pydantic import BaseModel, Field
 from alpha.apex.contract import (
     AutonomyProfile,
     ContractViolation,
+    contract_from_snapshot,
     narrow_contract,
     profile_for,
 )
@@ -143,6 +145,18 @@ class CycleRequest(BaseModel):
     all_sessions: bool = False
 
 
+class AcceptanceEvidenceItem(BaseModel):
+    criterion: str = Field(min_length=1, max_length=4000)
+    met: bool
+    evidence: str = Field(min_length=1, max_length=4000)
+
+
+class SessionAcceptanceRequest(BaseModel):
+    """A complete, operator-measured result set for one finished APEX run."""
+
+    results: list[AcceptanceEvidenceItem] = Field(min_length=1, max_length=200)
+
+
 class ModeRequest(BaseModel):
     """The payload for the APEX on/off toggle (spec §3, §33).
 
@@ -215,6 +229,17 @@ def _contract_for(profile: str, *, mission_id: str = "") -> Any:
         raise HTTPException(status_code=422, detail=f"unknown APEX profile {profile!r}; expected one of {[p.value for p in AutonomyProfile]}") from exc
 
 
+def _session_contract(session: Any) -> Any:
+    """Load the validated frozen policy, retaining compatibility for old rows."""
+    snapshot = getattr(session, "contract_snapshot", None)
+    if snapshot is None:
+        return _contract_for(session.profile, mission_id=session.mission_id)
+    try:
+        return contract_from_snapshot(snapshot, expected_digest=session.contract_digest)
+    except (ValueError, ContractViolation) as exc:
+        raise HTTPException(status_code=409, detail="APEX session contract is invalid") from exc
+
+
 def _supervisor_provider() -> Callable[[], dict[str, Any]]:
     """Bind the app-side supervisor into the harness-side projection.
 
@@ -274,7 +299,7 @@ async def _resolve_scope(request: Request, requested: str) -> tuple[str, str]:
     return scope, owner
 
 
-def _mode_body(scope_key: str, *, changed: bool, durable: bool = False, reason: str = "") -> dict[str, Any]:
+def _mode_body(scope_key: str, *, changed: bool, durable: bool | None = None, reason: str = "") -> dict[str, Any]:
     store = get_apex_mode_store()
     record = store.for_scope(scope_key)
     contract = record.contract()
@@ -348,7 +373,8 @@ async def enable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]:
         outcome = set_mode(scope, True, profile=payload.profile, owner=owner)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _mode_body(scope, changed=bool(outcome.get("changed")), durable=bool(outcome.get("durable")), reason=str(outcome.get("reason", "")))
+    durable = outcome.get("durable") if isinstance(outcome.get("durable"), bool) else None
+    return _mode_body(scope, changed=bool(outcome.get("changed")), durable=durable, reason=str(outcome.get("reason", "")))
 
 
 @router.post("/disable", summary="Disable APEX autopilot for a scope")
@@ -365,7 +391,8 @@ async def disable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]
         outcome = set_mode(scope, False, owner=owner)
     except ValueError as exc:  # pragma: no cover - disable takes no profile
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _mode_body(scope, changed=bool(outcome.get("changed")), durable=bool(outcome.get("durable")), reason=str(outcome.get("reason", "")))
+    durable = outcome.get("durable") if isinstance(outcome.get("durable"), bool) else None
+    return _mode_body(scope, changed=bool(outcome.get("changed")), durable=durable, reason=str(outcome.get("reason", "")))
 
 
 # --------------------------------------------------------------------------- #
@@ -841,8 +868,12 @@ async def create_session(payload: SessionCreateRequest, request: Request) -> dic
         objective=payload.objective,
         profile=contract.profile.value,
         contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
         mission_id=payload.mission_id,
-        thread_id=payload.thread_id,
+        # A blank request scope uses the caller's APEX mode scope as its
+        # conversation id. start_run can then create the thread on first
+        # dispatch while subsequent cycles retain one stable per-owner path.
+        thread_id=payload.thread_id or owner,
         acceptance_criteria=payload.acceptance_criteria,
     )
     return {
@@ -965,6 +996,77 @@ async def steer(session_id: str, payload: SteerRequest, request: Request) -> dic
     return {"constraint": constraint.to_dict()}
 
 
+@router.post("/sessions/{session_id}/acceptance", summary="Submit measured evidence for a finished APEX run")
+async def submit_session_acceptance(
+    session_id: str,
+    payload: SessionAcceptanceRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Evaluate every declared criterion and let the executive decide the outcome.
+
+    This is an owner-scoped evidence boundary, not model self-attestation. The
+    caller must provide one measured result and its evidence text for every
+    declared criterion after a RunManager run finishes. Failed evidence is
+    journaled and selects a fresh recovery dispatch; only the acceptance gate
+    can complete the session.
+    """
+    store = get_apex_store()
+    session = await _session_or_404(request, session_id)
+    if session.state is ApexSessionState.BLOCKED:
+        raise HTTPException(status_code=409, detail="blocked sessions require their pending approval before acceptance can be submitted")
+    if session.is_terminal:
+        raise HTTPException(status_code=409, detail="terminal sessions cannot accept new evidence")
+    if session.state is not ApexSessionState.ACTIVE:
+        raise HTTPException(status_code=409, detail="acceptance evidence requires an active session")
+    if session.dispatch_state != "awaiting_verification" or session.run_status not in {"completed", "success"}:
+        raise HTTPException(status_code=409, detail="acceptance evidence is accepted only after a linked RunManager run completes")
+    criteria = [str(criterion) for criterion in session.acceptance_criteria]
+    if not criteria:
+        raise HTTPException(status_code=409, detail="session has no declared acceptance criteria")
+    if len(set(criteria)) != len(criteria):
+        raise HTTPException(status_code=409, detail="session declares duplicate acceptance criteria")
+    supplied = [item.criterion.strip() for item in payload.results]
+    if any(not item.evidence.strip() for item in payload.results):
+        raise HTTPException(status_code=422, detail="each result must cite non-empty measured evidence")
+    if len(set(supplied)) != len(supplied):
+        raise HTTPException(status_code=422, detail="each acceptance criterion must appear exactly once")
+    missing = sorted(set(criteria) - set(supplied))
+    unexpected = sorted(set(supplied) - set(criteria))
+    if missing or unexpected:
+        detail = "evidence must cover every declared criterion exactly once"
+        if missing:
+            detail += f"; missing: {', '.join(missing)}"
+        if unexpected:
+            detail += f"; undeclared: {', '.join(unexpected)}"
+        raise HTTPException(status_code=422, detail=detail)
+
+    from alpha.mission.acceptance import AcceptanceReport, CriterionResult, CriterionVerdict
+
+    by_criterion = {item.criterion.strip(): item for item in payload.results}
+    report = AcceptanceReport(
+        criteria=[
+            CriterionResult(
+                criterion=criterion,
+                verdict=CriterionVerdict.MET if by_criterion[criterion].met else CriterionVerdict.NOT_MET,
+                evidence=by_criterion[criterion].evidence.strip(),
+                evaluated_at=time.time(),
+            )
+            for criterion in criteria
+        ],
+        evaluator="owner_submitted_measured_evidence",
+        notes=["Evidence was submitted by the session owner; verify the cited checks or artifacts independently when required."],
+    )
+    store.update(session_id, acceptance=report.to_dict())
+    store.emit(session_id, "acceptance.report_submitted", report=report.to_dict(), run_id=session.run_id)
+    cycle_result = run_cycle(store, session_id, _session_contract(session))
+    updated = store.get(session_id)
+    return {
+        "report": report.to_dict(),
+        "cycle": cycle_result.to_dict(),
+        "session": updated.to_dict() if updated is not None else None,
+    }
+
+
 @router.post("/sessions/{session_id}/cycle", summary="Run one executive cycle")
 async def cycle(session_id: str, payload: CycleRequest, request: Request) -> dict[str, Any]:
     """Run one bounded cycle and return its steps and decision.
@@ -977,11 +1079,27 @@ async def cycle(session_id: str, payload: CycleRequest, request: Request) -> dic
     await _require_admin(request)
     store = get_apex_store()
     session = await _session_or_404(request, session_id)
-    contract = _contract_for(session.profile, mission_id=session.mission_id)
+    contract = _session_contract(session)
     if payload.all_sessions:
         raise HTTPException(status_code=400, detail="name a session; /api/apex/cycle runs one session")
     result = run_cycle(store, session_id, contract)
     return result.to_dict()
+
+
+@router.post("/sessions/{session_id}/dispatch", summary="Dispatch one APEX objective through RunManager")
+async def dispatch_session(session_id: str, request: Request) -> dict[str, Any]:
+    """Start or observe this session's idempotent host-adapter run.
+
+    This is the consequential counterpart to `/cycle`: it uses the shared
+    Gateway `start_run` choke point, and the `RunManager` remains the lifecycle
+    owner. Repeating the request observes or reuses the same durable dispatch
+    generation; it does not create a second run.
+    """
+    await _require_admin(request)
+    await _session_or_404(request, session_id)
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    return await apex_execution_tick(request.app, session_id=session_id)
 
 
 @router.post("/cycle", summary="Run one cycle per non-terminal session")
@@ -1001,7 +1119,7 @@ async def cycle_all(payload: CycleRequest, request: Request) -> dict[str, Any]:
     for session in store.list(limit=200):
         if session.is_terminal:
             continue
-        contract = _contract_for(session.profile, mission_id=session.mission_id)
+        contract = _session_contract(session)
         results.append(run_cycle(store, session.session_id, contract).to_dict())
     return {"cycles": len(results), "results": results}
 

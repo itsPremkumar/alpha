@@ -1648,10 +1648,13 @@ async def run_agent(
         error_msg = f"{exc}"
         logger.exception("Run %s failed: %s", run_id, error_msg)
         await _ensure_finalizing_before_edit_failure(run_manager, record)
+        network_failure = classify_network_error(exc)
+        recovery_stop_reason = NETWORK_WAIT_RECOVERY_REASON if network_failure.proves_link_down else None
         cancel_action = await run_manager.set_status_if_not_cancelled(
             run_id,
             RunStatus.error,
             error=error_msg,
+            stop_reason=recovery_stop_reason,
             **terminal_status_kwargs,
         )
         # A run that died because the *link* died is alive and parked, not
@@ -1661,7 +1664,7 @@ async def run_agent(
         # provider all produce one), and parking on those would park healthy work.
         # ``park_session_if_available`` never raises and returns False when no
         # service is installed, so this adds no new failure path.
-        if cancel_action is None and classify_network_error(exc).proves_link_down:
+        if cancel_action is None and recovery_stop_reason is not None:
             await park_session_if_available(
                 thread_id=record.thread_id,
                 run_id=run_id,

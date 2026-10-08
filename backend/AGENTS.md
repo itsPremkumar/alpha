@@ -49,6 +49,45 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   context has been sanitized; a client-supplied `context.non_interactive` is not
   equivalent. This changes agent behavior, never authorization, tool allowlists,
   sandbox policy, budgets, cancellation or ownership checks.
+- **Checkpoint thread identity** — after `inject_authenticated_user_context()`
+  removes client-supplied server-owned context keys, `start_run()` must restore
+  the validated route `thread_id` in both `configurable` and `context`. The
+  LangGraph checkpointer requires `configurable.thread_id`; omitting it fails
+  before the first model call. `tests/test_gateway_services.py::test_start_run_restores_trusted_thread_id_after_context_sanitization`
+  exercises this boundary with a spoofed request value.
+- **Internal run identity** — `inject_authenticated_user_context()` may retain
+  a pre-stamped `context.user_id` only when Gateway state identifies an
+  internal principal; external request context is always scrubbed. Keep the
+  internal-role and spoofed-attribution regressions in
+  `tests/test_gateway_services.py` aligned with this boundary.
+- **APEX policy drift** — `alpha.apex.executive.run_cycle()` must use the
+  `check_policy` result before selecting work. A stored session contract digest
+  that differs from the active contract is a fail-closed
+  `policy_drift` decision; it must never proceed to a plan or dispatch. Keep a
+  regression test in `tests/test_apex_executive.py` when changing this cycle.
+  The `apex_tick` adapter must also consult the persisted per-scope mode for
+  each session; a missing or unreadable mode cannot grant background work.
+- **APEX host execution** — `app.gateway.autonomy.loops.apex_execution_tick()`
+  is the only APEX dispatcher and calls
+  `services.launch_apex_session_run()` → `start_run()` → `RunManager`. Do not
+  start or terminalize APEX work from the executive, router, or another loop.
+  Dispatch generations and RunStore idempotency recover the admission window;
+  the process-local JSON session lock is not cross-process exactly-once.
+  Completed RunManager work enters `awaiting_verification`; it is never
+  promoted to APEX completion without a complete measured acceptance report.
+  The owner-scoped `/sessions/{id}/acceptance` route accepts one result per
+  criterion; a failed report is journaled before recovery clears the stale run
+  link. Keep
+  the dispatcher and usage-projection tests in `tests/test_apex_dispatcher.py`
+  and `tests/test_apex_store_durability.py` aligned.
+  The normal `task` tool's middleware also clamps parallel delegation to the
+  persisted APEX profile and fails closed when a stamped session is invalid.
+- APEX acceptance reports are durable session state. Completion requires a
+  measured report that covers every declared criterion exactly once; criteria
+  without a report mean work has not reached verification yet. Keep report
+  coverage and restart persistence tests when changing this path. The API does
+  not infer results from model summaries; automatic evidence collectors remain
+  unimplemented.
 - **Autonomous release gate** — `alpha.benchmarks.release_gate` applies
   fail-closed, provider-neutral numeric promotion gates to versioned benchmark
   measurements, covering task success, authorization isolation, recovery and

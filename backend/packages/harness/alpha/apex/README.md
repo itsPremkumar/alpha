@@ -21,7 +21,7 @@ AutonomyContract ─── what may happen, up to how much, what always needs a 
       ▼
 executive.run_cycle ─── ONE bounded decision pass, recorded with its reason
       │
-      ├── host adapter ── performs the selected action (RunManager, DWE, swarm…)
+      ├── Gateway host adapter ── admits and observes a RunManager-owned run
       └── acceptance gate ── the only path to COMPLETED
 ```
 
@@ -88,7 +88,39 @@ curl -X POST localhost:8001/api/apex/sessions \
        "acceptance_criteria":["backend suite passes"]}'
 ```
 
-Profiles are `off` / `assist` / `autonomous` / `apex_max`. Ascending one raises
-budget ceilings only — never the emergency stop, never the protected actions,
-and never the authority ceiling, which belongs to
+Profiles are `off` / `assist` / `autonomous` / `apex_max`. Every enabled profile
+has unlimited per-session tool-call, token, and elapsed-runtime budgets, so a
+usage quota does not stop goal work. Agent concurrency, delegation depth,
+acceptance-failure replans, and retries remain operationally bounded. Narrowing can add a finite
+mission-specific quota. Profiles never change the emergency stop, protected
+actions, or the authority ceiling, which belongs to
 `alpha.bots.authority_ceiling`.
+
+The Gateway adapter is available as `POST /api/apex/sessions/{id}/dispatch`
+and through the configured `apex` supervisor loop. It uses
+`services.launch_apex_session_run()` and `start_run()`, stores an idempotent
+dispatch generation and run id on the session, and projects RunManager status
+and measured token totals. All enabled profiles set token, tool-call, and
+runtime spending ceilings to `null` (unlimited). The ordinary `task` tool enforces APEX parallel-task and
+active-agent ceilings. Acceptance-failure replan counts are durable and bounded;
+per-failure-class retry ceilings still have no runtime counters. The Gateway task path relies on the lifecycle manager's depth limit instead of
+the contract depth field; engine admission limits still apply independently;
+the host adapter interrupts explicitly narrowed over-budget runs at its polling
+boundary, while the tool gate refuses additional actions only when a finite
+mission quota was configured. A terminal run is never treated as verified: success
+waits in `awaiting_verification`, while error/interruption is disclosed as
+`failed` for operator-directed recovery. The owner can submit a complete
+measured report at `POST /api/apex/sessions/{id}/acceptance`; a failed criterion
+is preserved in the event journal and selects a fresh dispatch generation.
+The ordinary `task` tool obeys persisted APEX parallel-agent ceilings at the
+model-call boundary. Durable APEX `batch_task` leases share the persisted
+per-session cap across batches and Gateway workers; ordinary task children are
+not combined with that database-backed count. Acceptance-failure recovery is
+bounded by the persisted replan ceiling. Exhaustion parks the session and
+requires a new session to continue. Safe RunManager checkpoint recovery charges
+one persisted retry per failed source run and failure class before admission;
+the global runtime retry ceiling and checkpoint safety gate still apply.
+Ambiguous side effects and exhausted runs require operator-directed recovery.
+Alpha does not yet collect test/artifact/HTTP evidence automatically, and
+estimated provider cost plus per-session CPU/RAM remain unmeasured. See
+`docs/APEX_AUTOPILOT.md` for the control contract.

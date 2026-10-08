@@ -1,9 +1,9 @@
 # Operating APEX Autopilot
 
 APEX is Alpha's **executive control plane**. It holds an autonomy contract and
-runs a bounded decision cycle over engines that already exist. It is not an
-execution engine, and reading it as one is the mistake this page exists to
-prevent.
+runs a bounded decision cycle over engines that already exist. The Gateway host
+adapter starts and observes selected runs through the shared `RunManager`; the
+APEX decision cycle itself does not execute tools or touch a sandbox.
 
 Design specification: [`ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md`](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md)
 (198 sections). Inventory and rationale:
@@ -17,9 +17,9 @@ Design specification: [`ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md`](ALPHA_APEX_AUTOPIL
 You give it an objective and a profile. It records the objective as a durable
 **session**, decides what should happen next on each pass, records that decision
 with the reason it chose, and refuses to mark the session complete until an
-acceptance report in which every criterion was evaluated and held. A **host
-adapter** performs the selected action — APEX never runs a tool, starts a run,
-or touches a sandbox.
+acceptance report in which every criterion was evaluated and held. The Gateway
+host adapter dispatches the selected objective through `RunManager`; the run
+uses Alpha's normal tool, sandbox, governance, and subagent boundaries.
 
 ```
 objective → session → cycle { decide, record, checkpoint } → host adapter → acceptance gate → COMPLETED
@@ -66,6 +66,10 @@ curl -X POST localhost:8001/api/apex/sessions \
       }'
 ```
 
+The background `apex` loop also requires that session's own scope to be ON;
+enabling the loop in `config.yaml` only schedules bounded checks. Unknown or
+unreadable mode state never grants work.
+
 Sessions and their event journal live under `runtime_home()/apex/`
 (`sessions.json` + `events.jsonl`).
 
@@ -76,9 +80,9 @@ Sessions and their event journal live under `runtime_home()/apex/`
 | Profile | Authority | Budget shape | Protected actions |
 |---|---|---|---|
 | `off` | nothing granted | all zeros | every class needs approval |
-| `assist` | everything except host/network-reaching authority | 1 agent, 200 tool calls, 60 min | adds `git_commit`, `shell_execution`, `package_install` as **approval** |
-| `autonomous` | everything | 6 agents, 2500 calls, 480 min | those three become **allow**; `package_install` stays approval |
-| `apex_max` | everything | 12 agents, 5000 calls, 1440 min | those three become allow |
+| `assist` | everything except host/network-reaching authority | unlimited spend; 1 agent, depth 1, 2 replans, 1 retry per failure class | adds `git_commit`, `shell_execution`, `package_install` as **approval** |
+| `autonomous` | everything | unlimited spend; 6 agents, depth 3, 10 replans, 3 retries per failure class | those three become **allow**; `package_install` stays approval |
+| `apex_max` | everything | unlimited spend; 12 agents, depth 5, 20 replans, 4 retries per failure class | those three become allow |
 
 Two things never move with the profile:
 
@@ -90,8 +94,11 @@ Two things never move with the profile:
   denied outright. `POST /api/apex/sessions` rejects a request to loosen one
   with a 422 naming it.
 
-Ascending a profile raises **budget ceilings only** — never authority beyond
-the profile's own ceiling, never the stop, never a protected action.
+Ascending a profile raises operational capacity only — never authority beyond
+the profile's own ceiling, never the stop, never a protected action. Every
+enabled profile has unlimited per-session tool-call, token, and elapsed-runtime
+quotas; usage budgets never stop goal work. Agent concurrency, delegation depth,
+retries, and replans remain bounded operational controls.
 
 ### Narrowing
 
@@ -119,6 +126,21 @@ One pass runs four steps and returns all of them, which is what makes spec §177
 | `apply_decision` | record the decision; transition state only where the decision implies it |
 | `checkpoint` | re-read the row and increment `cycle_count`, reporting **absent** (never a count) if the row is gone, and **skipped** when the decision was `none` — a parked session's pass writes nothing |
 
+The `cycle.decision_recorded` event means the executive selected and journaled
+an action; it does not mean a mission or run was dispatched. The Gateway host
+adapter reports run admission separately as `run.dispatched`, which carries the
+RunManager id and dispatch generation. The executive event is intentionally not
+named `cycle.dispatched`.
+
+Before choosing an action, `check_policy` compares the session's stored
+contract digest with the active contract. A mismatch returns a blocked
+`policy_drift` decision and skips planning or dispatch. This session stays
+blocked; create a fresh session under the intended contract after reviewing its
+recorded objective and current state. Since enabled profile defaults changed
+from finite spending quotas to unlimited, sessions created by an older release
+may encounter this check and need a fresh session to adopt the new defaults;
+their frozen contracts are never silently widened.
+
 ```bash
 curl -X POST localhost:8001/api/apex/sessions/<id>/cycle
 ```
@@ -136,6 +158,94 @@ The cycle is **model-free**. That is deliberate: a deterministic substrate is
 what makes the decision reproducible, and model-driven planning enters through
 the adapters a host supplies rather than from inside the loop.
 
+APEX-bound runs now carry a Gateway-stamped session id into the shared runtime
+tool middleware. Ordinary and durable-batch subagents inherit that trusted
+marker, so their own child tool calls enter the same APEX gate after dispatch
+and after worker recovery. Before each tool executes, that gate reloads the persisted
+session and mode, checks owner, active state, contract digest, authority,
+runtime ceiling, and an atomic durable tool-call budget reservation. Tools that
+need approval park the session; an approval is bound to the tool name, action
+class, contract digest, and a digest of its exact arguments, and can be consumed
+once. Ordinary runs without the server-stamped APEX id keep their existing
+policy path. The session store is process-local JSON, so this budget is not a
+cross-process exactly-once guarantee.
+
+The Gateway host adapter admits one objective run through the existing
+`start_run()` service and `RunManager`. `POST /api/apex/sessions/{id}/dispatch`
+starts or observes it immediately; the configured `apex` supervisor loop does
+the same automatically. Each dispatch has a durable generation and a stable
+idempotency key, so a restart between run admission and session-link recording
+reuses the same RunManager record. The session exposes `run_id`, `run_status`,
+`dispatch_state`, and measured input/output tokens and LLM-call totals. All
+enabled profiles set token, tool-call, and elapsed-runtime quotas to `null`,
+meaning unlimited: usage spending ceilings will not stop the mission. Ordinary
+`task` concurrency is capped by the session's finite active-agent and parallel
+task fields. Acceptance-failure recoveries now increment a durable session
+counter and park the session when its frozen replan ceiling is reached; that
+ceiling cannot be widened through approval, so a new session is required to
+continue. Safe APEX run recovery durably reserves each retry by failed run id and
+failure class against the session's frozen retry ceiling; the runtime's global
+resume-attempt ceiling remains an outer bound. This reservation shares the
+session store's single-process coordination limit. The Gateway `task` path does
+not apply the APEX depth value; the subagent lifecycle manager's own depth limit
+still applies. Newly created
+sessions receive unlimited spending defaults. Existing sessions retain their
+frozen contracts and are not silently widened; older sessions whose contract
+digest no longer matches the active profile must be reviewed and recreated to
+use the new defaults. Alpha still records usage, and engine admission, provider availability, platform
+capacity, governance, approvals, and the emergency stop remain in force; a
+session quota never reserves or creates hardware or provider capacity. The
+Gateway host adapter reads durable `llm.ai.response` and `subagent.end` events
+with a persisted per-run sequence cursor, so a repeated supervisor tick or
+restart does not count an event twice. If the event store is unavailable or has
+not emitted usage events, it upserts cumulative RunManager snapshots for live
+usage instead. These values are observations from the linked run, not
+estimates. At each supervisor tick the adapter checks a persisted finite runtime
+quota, when one was explicitly configured, and asks RunManager to interrupt an
+over-budget run; the tick interval determines how late that check can be.
+
+For ordinary `task` calls, `SubagentLimitMiddleware` applies the smaller of
+process capacity, `max_parallel_tasks`, and `max_active_agents` to delegated
+children. It re-reads and validates the owner, mode, active state, and frozen
+contract before each model turn; invalid APEX context allows no child calls.
+APEX `batch_task` submissions persist that session's frozen concurrency ceiling.
+Lease admission serializes by session in the batch database and counts active
+leases across that session's active durable batches, including across Gateway
+workers. The ceiling does not yet combine ordinary `task` children with durable
+batch workers into one shared count; their process admission limits still apply.
+`SafeRunRecoveryService` may continue a failed APEX run only when the current
+checkpoint proves the pending node is safe to resume, the source run is still
+the session's linked run, and owner, thread, active state, and dispatch
+generation still match. It compare-and-set links the newly admitted RunManager
+record back to the same APEX session; if the process stops in that gap, startup
+reconciles the newest run only when its server-stamped recovery lineage and
+APEX generation still match.
+Recovery remains bounded by the runtime retry policy. A stale binding is
+stopped; an unsafe or ambiguous pending side effect remains parked for operator
+review rather than being replayed.
+
+A run ending is not objective completion. A completed run enters
+`awaiting_verification`; failed or interrupted work enters `failed` and is not
+silently re-dispatched. The session owner can submit one measured result with
+evidence for every declared criterion through
+`POST /api/apex/sessions/{id}/acceptance`. Alpha does not infer criterion
+results from the model's summary and does not yet ship automatic test, artifact,
+or HTTP evidence collectors; the submitted evidence must identify the actual
+check or artifact. A report that passes closes through the executive acceptance
+gate. A complete report with a failed criterion is journaled and selects a new
+dispatch generation for recovery. The usage projection still lacks estimated
+cost and per-session CPU/RAM measurements; those remain in separate runtime
+surfaces or unmeasured.
+
+When a finite token ceiling is configured, the Gateway supervisor tick and tool
+gate check it using the latest measured usage. A running model request cannot
+be preempted mid-response, and tick scheduling means the final measured total
+can exceed the ceiling by one in-flight call. A zero token ceiling prevents
+dispatch; `null` means no APEX per-session ceiling. These are token limits, not
+currency limits: provider pricing may be unknown, and APEX still does not enforce
+per-session CPU/RAM ceilings. Inspect
+the run usage and host process telemetry for those dimensions.
+
 ---
 
 ## 5. The acceptance gate
@@ -144,9 +254,28 @@ the adapters a host supplies rather than from inside the loop.
 
 | Criterion state | Decision | Session |
 |---|---|---|
-| none evaluated | `await_verification`, blocked | unchanged |
+| criteria declared, no report | continue to `create_mission` / `plan` / `dispatch` | unchanged |
+| report exists, criteria unevaluated | `await_verification`, blocked | unchanged |
 | evaluated, did not hold | `recover` | `active` |
 | evaluated, all hold | `report` | `completed` |
+
+The owner submits a complete result set after the linked RunManager run ends:
+
+```http
+POST /api/apex/sessions/{id}/acceptance
+Content-Type: application/json
+```
+
+```json
+{"results":[{"criterion":"focused checks pass","met":true,"evidence":"pytest output: 12 passed"}]}
+```
+
+Declaring criteria at session creation cannot itself ask for verification
+before any work has run. The report must cover every declared criterion
+exactly once; missing, duplicate, or undeclared results are rejected. A
+blocked session still requires its pending approval before this control can
+move it. Reports are stored with the session and journaled so a Gateway
+restart does not erase the evidence or failed-run recovery decision.
 
 The HTTP state route refuses **every** terminal value with a 409, not just
 `COMPLETED` — a request body that could assert `failed` or `cancelled` would be
@@ -208,6 +337,8 @@ stop.
 | `GET` | `/api/apex/sessions/{id}` | one session; owner-scoped (a foreign id is 404) |
 | `DELETE` | `/api/apex/sessions/{id}` | remove the row; admin |
 | `POST` | `/api/apex/sessions/{id}/cycle` | one cycle; admin |
+| `POST` | `/api/apex/sessions/{id}/dispatch` | start or observe the session's idempotent RunManager run; admin |
+| `POST` | `/api/apex/sessions/{id}/acceptance` | submit complete measured evidence after a successful run; session owner |
 | `POST` | `/api/apex/cycle` | one cycle per non-terminal session; admin |
 | `POST` | `/api/apex/sessions/{id}/steer` | record a constraint; owner-scoped (narrowing is not an admin act) |
 | `POST` | `/api/apex/sessions/{id}/state` | non-terminal transition only; admin |
@@ -305,6 +436,8 @@ no session was ever created" are different facts to render.
 `POST /api/apex/disable` retains the profile, so a later enable restores the
 authority the operator had rather than resetting them to a default. Both
 writes are idempotent and report `changed: false` on a repeat.
+`durable` reports an actual write outcome; reads and idempotent no-op writes
+return `null`, because neither performed a persistence attempt.
 
 The picker on that switch offers **only the profiles an enable may carry** —
 `assist`, `autonomous`, `apex_max` — and adopts the server's profile only when
@@ -322,8 +455,10 @@ per-conversation one: a second, thread-scoped switch would be a second "APEX is
 on" claim beside the panel's, and the two surfaces would be free to disagree.
 Its menu lists every profile with what the contract actually grants at it, and
 states inside the menu what the control does **not** do — it sets the autonomy
-contract for the scope and does not start a run, because nothing in the chat or
-run path consults the mode. A read that failed renders `unknown` with the
+contract for the scope but does not itself create or dispatch an objective. The
+APEX panel's explicit **Create and dispatch** form uses that enabled server
+profile and scope to create a session and start its run through the Gateway
+adapter. A read that failed renders `unknown` with the
 server's reason and offers no rung at all; a write that was refused changes
 nothing and keeps its reason on screen.
 
@@ -405,10 +540,15 @@ curl -s localhost:8001/api/apex/invariants | jq '{declared, live, all_live}'
 
 Read these before treating a green status as a working system.
 
-- **APEX decides; it does not execute.** Creating a session and running a cycle
-  produce a *decision*. Something else has to perform it. There is no shipped
-  host adapter that drives `RunManager`, the DWE or the swarm — the cycle's
-  outputs are for a host to consume.
+- **The executive decides; the Gateway adapter dispatches.** Creating a session
+  and running a cycle produce a recorded decision. The production adapter starts
+  one objective run through `RunManager`; automatic DWE or swarm scheduling is
+  not part of this adapter.
+- **Delegation caps are not one shared cross-path count yet.** The ordinary
+  `task` tool is limited by the persisted APEX contract at each model turn.
+  Durable APEX `batch_task` leases are aggregated across batches and workers
+  under the persisted session cap, but ordinary task children are not included
+  in that database-backed batch count.
 - **`health` is `unverified` everywhere.** Nothing in this plane probes what it
   lists. This is the self-inventory rule, applied unchanged.
 - **Usage is measured or `None`.** `UsageLedger.tool_calls` is `None` until

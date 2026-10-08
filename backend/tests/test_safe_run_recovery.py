@@ -9,7 +9,9 @@ import pytest
 
 from alpha.config.run_ownership_config import RunOwnershipConfig
 from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError
+from alpha.runtime.network.states import NetworkState
 from alpha.runtime.runs.manager import (
+    NETWORK_WAIT_RECOVERY_REASON,
     ORPHAN_RECOVERY_STOP_REASON,
     RunRecord,
 )
@@ -298,6 +300,32 @@ async def test_recovery_service_resumes_safe_checkpoint_with_next_attempt() -> N
             "owner_user_id": "user-1",
         }
     ]
+    assert manager.transitions == []
+
+
+@pytest.mark.anyio
+async def test_network_recovery_defers_while_monitor_confirms_offline() -> None:
+    record = _record(stop_reason=NETWORK_WAIT_RECOVERY_REASON)
+    manager = _FakeRecoveryManager([record])
+
+    async def unexpected_checkpoint_read(_record: RunRecord):
+        raise AssertionError("offline recovery must wait before inspecting and launching work")
+
+    async def unexpected_launch(**_kwargs):
+        raise AssertionError("network-failed runs must not be relaunched while offline")
+
+    app = SimpleNamespace(state=SimpleNamespace(network_monitor=SimpleNamespace(state=NetworkState.OFFLINE)))
+    service = SafeRunRecoveryService(
+        app=app,
+        run_manager=manager,
+        config=RunOwnershipConfig(auto_resume=True, resume_backoff_seconds=0),
+        checkpoint_reader=unexpected_checkpoint_read,
+        launcher=unexpected_launch,
+    )
+
+    result = await service.recover_once()
+
+    assert result.deferred == ("run-1",)
     assert manager.transitions == []
 
 
@@ -615,6 +643,222 @@ async def test_recovery_launch_uses_current_model_config_instead_of_pinning_fail
     assert body.metadata["auto_recovery"]["source_model_name"] == "old-model"
     assert captured["kwargs"]["idempotency_key"] == "auto-recovery:run-1"
     assert captured["kwargs"]["require_existing_thread"] is True
+
+
+@pytest.mark.anyio
+async def test_recovery_launch_relinks_apex_session_to_resumed_run(tmp_path, monkeypatch) -> None:
+    from alpha.apex.store import ApexSessionState, ApexStore
+
+    record = _record()
+    store = ApexStore(tmp_path / "sessions.json")
+    session = store.create(
+        owner="user-1",
+        objective="finish the job",
+        profile="autonomous",
+        contract_digest="contract",
+        thread_id="thread-1",
+    )
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert generation is not None
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id=record.run_id, status="error")
+    record.metadata.update(
+        apex_session_id=session.session_id,
+        apex_dispatch_generation=generation,
+    )
+    monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+
+    captured: dict = {}
+
+    async def fake_start_run(body, thread_id, request, **kwargs):
+        captured.update(body=body, thread_id=thread_id, request=request, kwargs=kwargs)
+        return SimpleNamespace(run_id="run-2", status=RunStatus.pending)
+
+    monkeypatch.setattr("app.gateway.services.start_run", fake_start_run)
+    service = SafeRunRecoveryService(
+        app=SimpleNamespace(),
+        run_manager=_FakeRecoveryManager([record]),
+        config=RunOwnershipConfig(auto_resume=True),
+    )
+
+    recovered = await service._launch_recovery(
+        source=record,
+        checkpoint_id="cp-1",
+        attempt=1,
+        reason=ORPHAN_RECOVERY_STOP_REASON,
+        owner_user_id="user-1",
+    )
+
+    linked = store.get(session.session_id)
+    assert recovered.run_id == "run-2"
+    assert captured["kwargs"]["apex_session_id"] == session.session_id
+    assert linked.run_id == "run-2"
+    assert linked.run_status == "pending"
+    assert linked.dispatch_state == "running"
+
+
+@pytest.mark.anyio
+async def test_recovery_launch_refuses_stale_apex_generation_before_admission(tmp_path, monkeypatch) -> None:
+    from alpha.apex.store import ApexSessionState, ApexStore
+    from app.gateway.run_recovery import RecoveryBindingError
+
+    record = _record()
+    store = ApexStore(tmp_path / "sessions.json")
+    session = store.create(
+        owner="user-1",
+        objective="finish the job",
+        profile="autonomous",
+        contract_digest="contract",
+        thread_id="thread-1",
+    )
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert generation is not None
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id=record.run_id, status="error")
+    record.metadata.update(
+        apex_session_id=session.session_id,
+        apex_dispatch_generation=generation + 1,
+    )
+    monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+
+    async def unexpected_start_run(*_args, **_kwargs):
+        raise AssertionError("stale APEX generations must not admit a recovered run")
+
+    monkeypatch.setattr("app.gateway.services.start_run", unexpected_start_run)
+    manager = _FakeRecoveryManager([record])
+    service = SafeRunRecoveryService(
+        app=SimpleNamespace(),
+        run_manager=manager,
+        config=RunOwnershipConfig(auto_resume=True),
+    )
+
+    with pytest.raises(RecoveryBindingError):
+        await service._launch_recovery(
+            source=record,
+            checkpoint_id="cp-1",
+            attempt=1,
+            reason=ORPHAN_RECOVERY_STOP_REASON,
+            owner_user_id="user-1",
+        )
+
+    assert manager.transitions[0]["stop_reason"] == RECOVERY_BLOCKED_REASON
+    assert store.get(session.session_id).run_id == record.run_id
+
+
+@pytest.mark.anyio
+async def test_recovery_restart_reconciles_admitted_apex_child_before_superseding_source(tmp_path, monkeypatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    from alpha.apex.mode import ApexModeStore
+    from alpha.apex.store import ApexSessionState, ApexStore
+
+    source = _record()
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    session = store.create(
+        owner="user-1",
+        objective="finish the job",
+        profile="autonomous",
+        contract_digest="contract",
+        thread_id="thread-1",
+    )
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert generation is not None
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id=source.run_id, status="error")
+    modes.enable("thread-1", "autonomous", owner="user-1")
+    source.metadata.update(apex_session_id=session.session_id, apex_dispatch_generation=generation)
+
+    recovered = _record()
+    recovered.run_id = "run-2"
+    recovered.status = RunStatus.running
+    recovered.metadata = {
+        "apex_session_id": session.session_id,
+        "apex_dispatch_generation": generation,
+        "resumed_from_run_id": source.run_id,
+        "auto_recovery": {"source_run_id": source.run_id, "attempt": 1},
+    }
+    manager = _FakeRecoveryManager([source])
+    manager.latest[source.thread_id] = [recovered]
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+
+    async def unexpected_checkpoint_read(_record: RunRecord):
+        raise AssertionError("an already-admitted recovery child only needs link reconciliation")
+
+    service = SafeRunRecoveryService(
+        app=SimpleNamespace(),
+        run_manager=manager,
+        config=RunOwnershipConfig(auto_resume=True, resume_backoff_seconds=0),
+        checkpoint_reader=unexpected_checkpoint_read,
+    )
+
+    result = await service.recover_once()
+
+    assert result.resumed == (source.run_id,)
+    assert store.get(session.session_id).run_id == "run-2"
+    assert manager.transitions == []
+
+    repeated = await service.recover_once()
+    assert repeated.resumed == (source.run_id,)
+    assert store.get(session.session_id).run_id == "run-2"
+    assert manager.transitions == []
+
+
+@pytest.mark.anyio
+async def test_apex_failure_class_retry_ceiling_blocks_safe_resume(tmp_path, monkeypatch) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    from alpha.apex.contract import narrow_contract, profile_for
+    from alpha.apex.mode import ApexModeStore
+    from alpha.apex.store import ApexSessionState, ApexStore
+
+    source = _record()
+    source.error = "model timed out while contacting the provider"
+    contract = narrow_contract(profile_for("autonomous"), budget={"max_retries_per_failure_class": 0})
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    session = store.create(
+        owner="user-1",
+        objective="finish the job",
+        profile="autonomous",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id="thread-1",
+    )
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert generation is not None
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id=source.run_id, status="error")
+    source.metadata.update(apex_session_id=session.session_id, apex_dispatch_generation=generation)
+    modes.enable("thread-1", "autonomous", owner="user-1")
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    manager = _FakeRecoveryManager([source])
+    launches: list[str] = []
+
+    async def read_safe_checkpoint(_record: RunRecord):
+        return _checkpoint(next_nodes=("model",))
+
+    async def unexpected_launch(**_kwargs):
+        launches.append("launched")
+        raise AssertionError("a zero APEX retry ceiling must block before admission")
+
+    service = SafeRunRecoveryService(
+        app=SimpleNamespace(),
+        run_manager=manager,
+        config=RunOwnershipConfig(auto_resume=True, resume_backoff_seconds=0),
+        checkpoint_reader=read_safe_checkpoint,
+        launcher=unexpected_launch,
+    )
+
+    result = await service.recover_once()
+
+    assert result.exhausted == (source.run_id,)
+    assert not launches
+    assert manager.transitions[0]["stop_reason"] == RECOVERY_EXHAUSTED_REASON
+    assert "model_timeout retry ceiling reached (0/0)" in manager.transitions[0]["error"]
+    assert store.get(session.session_id).usage.retries is None
 
 
 @pytest.mark.anyio

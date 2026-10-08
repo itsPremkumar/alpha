@@ -483,10 +483,12 @@ phase so the mistake cannot recur.
 Stated plainly so nobody reads a guarantee into this page that the code does not
 make:
 
-- **The supervisor is not wired into the Windows launcher.** It is a complete,
-  tested library with a production-referenced contract, and the Gateway lifespan
-  drain runs through `alpha.runtime.shutdown` — but `start.ps1` still owns process
-  startup, so nothing yet restarts the backend automatically on Windows.
+- **The Python `ProcessSupervisor` is not wired into the Windows launcher.**
+  Windows startup and automatic restart are handled by the separate four-layer
+  chain in `start.ps1` and `recovery/`; it does not use `ProcessSupervisor`'s
+  restart budget or diagnostics. The launcher/watchdog paths have focused
+  contract tests, but proving the installed chain still requires a deliberate
+  reboot/crash recovery drill.
 - **Nothing in production writes the side-effect ledger.** This is the honest
   version of a gap that is easy to state wrongly. `SqlSideEffectLedger` exists,
   is migration-backed (`0027_side_effect_ledger`), and satisfies the
@@ -508,15 +510,11 @@ make:
   feed is a message feed and audit trace, and nothing folds it back into a
   session state. `alpha.runtime.sessions` derives that state from live signals
   instead.
-- **The parked-session registry has no resume launcher.** The *continuation* path
-  exists and stays fail-closed: `SafeRunRecoveryService`'s scan is stop-reason
-  driven, and `network_waiting` is in `RECOVERABLE_RUN_STOP_REASONS`, so a
-  network-parked run is picked up by the service that already owns safe
-  continuation. What does not exist is a *per-thread* resume API, so the registry
-  records and bounds rather than launching. Inventing one here would create a
-  second continuation authority that bypasses the side-effect gate — which is why
-  `NetworkWaitService` takes its launcher by injection and the Gateway installs
-  none.
+- **The parked-session registry has no resume launcher by design.** A definitive
+  network error is persisted on the run and in the wait registry;
+  `SafeRunRecoveryService` defers it during a confirmed outage and rechecks the
+  same safe checkpoint gate as connectivity returns. The registry records and
+  bounds attempts; it does not create a second continuation authority.
 - **A `memory` database backend gets no parked-session registry.** There is
   nowhere durable to record a park, so only the connectivity measurement runs and
   the degradation is logged rather than silently absorbed.

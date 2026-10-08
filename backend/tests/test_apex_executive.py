@@ -27,7 +27,9 @@ from alpha.apex.executive import (
     REASON_ACCEPTED,
     REASON_BUDGET_EXHAUSTED,
     REASON_FLEET_STOPPED,
+    REASON_POLICY_DRIFT,
     REASON_PROFILE_OFF,
+    REASON_REPLAN_LIMIT,
     NextAction,
     run_cycle,
     select_next_action,
@@ -62,7 +64,7 @@ def _session(store: ApexStore, **kwargs) -> ApexSession:
 
 def _set_acceptance(session: ApexSession, verdict: str) -> None:
     session.acceptance = {
-        "criteria": [{"criterion": "tests pass", "verdict": verdict}],
+        "criteria": [{"criterion": criterion, "verdict": verdict} for criterion in session.acceptance_criteria],
         "evaluator": "probe",
         "report_id": "acc-test",
     }
@@ -99,6 +101,33 @@ class TestCycleIsDecideOnly:
         names = [s.name for s in result.steps]
         assert names == ["load_session", "check_policy", "apply_decision", "checkpoint"]
         assert all(s.outcome != "error" for s in result.steps)
+
+    def test_cycle_journals_a_decision_without_claiming_dispatch(self, store: ApexStore) -> None:
+        session = _session(store)
+
+        result = run_cycle(store, session.session_id, profile_for("autonomous"))
+
+        assert result.decision.action is NextAction.CREATE_MISSION
+        events = store.read_events(session.session_id)
+        decision_events = [event for event in events if event.event_type.startswith("cycle.")]
+        assert [event.event_type for event in decision_events] == ["cycle.decision_recorded"]
+        assert decision_events[0].payload["decision"]["action"] == "create_mission"
+
+    def test_policy_drift_blocks_before_selecting_or_dispatching_work(self, store: ApexStore) -> None:
+        # The stored session was admitted under an unscoped contract; the
+        # current mission-scoped contract has different authority semantics.
+        session = _session(store)
+        active_contract = narrow_contract(profile_for("autonomous"), authority={"browser": False})
+
+        result = run_cycle(store, session.session_id, active_contract)
+
+        assert result.decision.action is NextAction.NONE
+        assert result.decision.reason == REASON_POLICY_DRIFT
+        assert result.decision.blocked is True
+        assert "session policy" in result.decision.detail["refusal"]
+        assert next(step for step in result.steps if step.name == "check_policy").outcome == "drift"
+        assert store.get(session.session_id).state is ApexSessionState.IDLE
+        assert store.pending_approval(session.session_id) is None
 
     def test_the_cycle_counts_itself_and_the_checkpoint_names_that_count(self, store: ApexStore) -> None:
         """Both numbers the checkpoint reports are measurements, not decorations.
@@ -175,11 +204,11 @@ class TestCycleIsDecideOnly:
 
 
 class TestCompletionRequiresAcceptance:
-    def test_unevaluated_criteria_never_complete(self, store: ApexStore) -> None:
+    def test_declared_criteria_do_not_block_work_before_any_evidence_exists(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass"])
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
-        assert result.decision.action is NextAction.AWAIT_VERIFICATION
-        assert result.decision.blocked is True
+        assert result.decision.action is NextAction.CREATE_MISSION
+        assert result.decision.blocked is False
         assert store.get(session.session_id).state is not ApexSessionState.COMPLETED
 
     def test_declared_criteria_are_reported_unverified_never_absent(self, store: ApexStore) -> None:
@@ -190,6 +219,7 @@ class TestCompletionRequiresAcceptance:
         # not exist yet: a refusal denying three criteria sitting in the very
         # record it was read from, sending the operator to declare a second set.
         session = _session(store, acceptance_criteria=["tests pass", "docs pass"])
+        _set_acceptance(session, "unverified")
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
 
         refusal = str(result.decision.detail["refusal"])
@@ -201,6 +231,20 @@ class TestCompletionRequiresAcceptance:
         assert result.decision.reason == REASON_ACCEPTANCE_PENDING
         assert store.get(session.session_id).state is not ApexSessionState.COMPLETED
 
+    def test_partial_acceptance_report_cannot_complete_all_declared_criteria(self, store: ApexStore) -> None:
+        session = _session(store, acceptance_criteria=["tests pass", "docs pass"])
+        session.acceptance = {
+            "criteria": [{"criterion": "tests pass", "verdict": "met"}],
+            "evaluator": "probe",
+        }
+
+        result = run_cycle(store, session.session_id, profile_for("autonomous"))
+
+        assert result.decision.action is NextAction.AWAIT_VERIFICATION
+        assert result.decision.reason == REASON_ACCEPTANCE_PENDING
+        assert "docs pass" in result.decision.detail["refusal"]
+        assert store.get(session.session_id).state is not ApexSessionState.COMPLETED
+
     def test_failed_criteria_recover_rather_than_complete(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass"])
         _set_acceptance(session, "not_met")
@@ -208,6 +252,34 @@ class TestCompletionRequiresAcceptance:
         assert result.decision.reason == REASON_ACCEPTANCE_FAILED
         assert result.decision.action is NextAction.RECOVER
         assert store.get(session.session_id).state is ApexSessionState.ACTIVE
+        assert store.get(session.session_id).usage.replans == 1
+
+    def test_failed_criteria_park_after_contract_replan_limit(self, store: ApexStore) -> None:
+        contract = narrow_contract(profile_for("autonomous"), budget={"max_replans": 2})
+        session = _session(store, acceptance_criteria=["tests pass"], contract_digest=contract.digest())
+        session.usage.replans = 2
+        _set_acceptance(session, "not_met")
+
+        result = run_cycle(store, session.session_id, contract)
+
+        assert result.decision.reason == REASON_REPLAN_LIMIT
+        assert result.decision.blocked is True
+        assert result.decision.detail["replans_used"] == 2
+        assert store.get(session.session_id).state is ApexSessionState.BLOCKED
+        assert store.get(session.session_id).blocked_reason == REASON_REPLAN_LIMIT
+        assert store.pending_approval(session.session_id) is None
+
+    def test_legacy_failed_acceptance_history_seeds_replan_counter(self) -> None:
+        restored = ApexSession.from_dict(
+            {
+                "session_id": "apx-legacy-replans",
+                "owner": "tester",
+                "objective": "continue work",
+                "acceptance_history": [{"report_id": "old-1"}, {"report_id": "old-2"}],
+                "usage": {"replans": None},
+            }
+        )
+        assert restored.usage.replans == 2
 
     def test_passed_criteria_complete_the_session(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass"])
@@ -312,6 +384,29 @@ class TestBudgetCeilings:
         )
         assert decision.reason != REASON_BUDGET_EXHAUSTED
 
+    def test_zero_tool_budget_blocks_even_when_no_calls_have_run(self, store: ApexStore) -> None:
+        contract = narrow_contract(profile_for("apex_max"), budget={"max_tool_calls": 0})
+        session = _session(store, profile="apex_max", contract_digest=contract.digest())
+        decision = select_next_action(
+            contract=contract,
+            session=session,
+            store=store,
+            usage_provider=lambda _s: {"tool_calls": 0},
+        )
+        assert decision.reason == REASON_BUDGET_EXHAUSTED
+        assert decision.detail == {"tool_calls": 0, "max_tool_calls": 0}
+
+    def test_unlimited_default_never_stops_on_measured_tool_usage(self, store: ApexStore) -> None:
+        contract = profile_for("assist")
+        session = _session(store, profile="assist", contract_digest=contract.digest())
+        decision = select_next_action(
+            contract=contract,
+            session=session,
+            store=store,
+            usage_provider=lambda _s: {"tool_calls": 10_000_000},
+        )
+        assert decision.reason != REASON_BUDGET_EXHAUSTED
+
 
 # --------------------------------------------------------------------------- #
 # Steering (spec §57)
@@ -355,6 +450,23 @@ class TestStoreDurability:
         assert restored is not None
         assert restored.state is ApexSessionState.ACTIVE
         assert restored.objective == "obj"
+
+    def test_acceptance_report_survives_a_restart(self, tmp_path: Path) -> None:
+        path = tmp_path / "sessions.json"
+        first = ApexStore(path)
+        session = first.create(
+            owner="o",
+            objective="obj",
+            profile="autonomous",
+            contract_digest="d",
+            acceptance_criteria=["tests pass"],
+        )
+        report = {"criteria": [{"criterion": "tests pass", "verdict": "met"}], "evaluator": "verified-run"}
+        first.update(session.session_id, acceptance=report)
+
+        restored = ApexStore(path).get(session.session_id)
+        assert restored is not None
+        assert restored.acceptance == report
 
     def test_events_replay_after_a_restart(self, tmp_path: Path) -> None:
         path = tmp_path / "sessions.json"

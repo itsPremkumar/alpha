@@ -893,6 +893,11 @@ instead of invoking the WSL shim through bare `bash`.
 without it the launcher starts a second Gateway (`WinError 10048`) that leaves
 the frontend unable to proxy API requests.
 
+After initial readiness, the launcher also treats the listening port as the
+service liveness signal. If a Gateway or frontend process remains alive but no
+longer owns a listener, it is restarted; otherwise a live wrapper could prevent
+the launcher from recovering a dead service while the watchdog waits for it.
+
 ## Agent Guidance Reference: Backend Benchmarks
 
 `backend/scripts/benchmark/` contains standalone, reproducible measurements and

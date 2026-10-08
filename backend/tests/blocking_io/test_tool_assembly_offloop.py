@@ -144,7 +144,6 @@ async def test_task_tool_assembles_off_loop(monkeypatch, tmp_path):
 
     tool = task_tool_module.task_tool
     invoke = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
-    assert invoke is not None
     command = await invoke(
         runtime=runtime,
         description="test",

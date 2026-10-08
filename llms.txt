@@ -78,6 +78,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 - [Skills](https://github.com/itsPremkumar/alpha/blob/main/docs/SKILLS.md): skill packages, the curator lifecycle, and the 24 public skills.
 - [Dynamic workflows](https://github.com/itsPremkumar/alpha/blob/main/docs/DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
 - [Run recovery](https://github.com/itsPremkumar/alpha/blob/main/docs/RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
+- [APEX Autopilot](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md): goal sessions dispatched through the Gateway RunManager; persisted active-agent/parallel caps govern ordinary `task` delegation, owner-submitted measured acceptance evidence; every enabled profile has unlimited token, tool-call, and runtime ceilings. Delegated child tool calls revalidate APEX policy; durable `batch_task` concurrency has separate limits; the Gateway path ignores the APEX depth value (the lifecycle manager cap applies) and lacks replan/retry counters; automatic evidence collectors are absent.
 
 ## API and integration surface
 

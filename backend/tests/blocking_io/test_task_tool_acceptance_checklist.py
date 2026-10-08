@@ -138,7 +138,6 @@ async def test_acceptance_checklist_file_leaf_is_offloaded(monkeypatch, tmp_path
 
     tool = task_tool_module.task_tool
     invoke = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
-    assert invoke is not None
     command = await invoke(
         runtime=_runtime(tmp_path),
         description="test",

@@ -23,8 +23,10 @@ from pydantic import ValidationError
 
 from alpha.config.run_ownership_config import RunOwnershipConfig
 from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError, CheckpointModeReconfigurationError
+from alpha.runtime.network.states import NetworkState
 from alpha.runtime.runs.manager import (
     MODEL_FAILURE_RECOVERY_REASON,
+    NETWORK_WAIT_RECOVERY_REASON,
     RECOVERABLE_RUN_STOP_REASONS,
     RunRecord,
     RunStatus,
@@ -46,6 +48,10 @@ RECOVERY_BLOCKED_REASON = "recovery_blocked"
 
 class RecoveryCheckpointAssemblyError(RuntimeError):
     """The graph needed to prove safe pending work could not be assembled."""
+
+
+class RecoveryBindingError(RuntimeError):
+    """An APEX run no longer matches its durable session authority record."""
 
 
 _TERMINAL_RECOVERY_STATUSES = (RunStatus.error.value, RunStatus.interrupted.value)
@@ -398,7 +404,160 @@ class SafeRunRecoveryService:
         owner = row.get("user_id") or row.get("owner_user_id")
         return owner.strip() if isinstance(owner, str) and owner.strip() else None
 
+    async def _reconcile_apex_recovery_link(
+        self,
+        source: RunRecord,
+        recovered: RunRecord,
+        *,
+        owner_user_id: str,
+    ) -> str:
+        """Recover the session link if a process died after run admission.
+
+        ``start_run`` is idempotent, but a crash can happen after its RunManager
+        write and before ``record_recovered_run``. On restart the new run is
+        newest, so the ordinary superseded check must first recognize the exact
+        trusted recovery child and repair the APEX projection.
+        """
+        source_metadata = source.metadata if isinstance(source.metadata, dict) else {}
+        recovered_metadata = recovered.metadata if isinstance(recovered.metadata, dict) else {}
+        session_id = source_metadata.get("apex_session_id")
+        generation = source_metadata.get("apex_dispatch_generation")
+        recovery = recovered_metadata.get("auto_recovery")
+        if (
+            not isinstance(session_id, str)
+            or not session_id
+            or isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or recovered_metadata.get("resumed_from_run_id") != source.run_id
+            or not isinstance(recovery, dict)
+            or recovery.get("source_run_id") != source.run_id
+            or recovered_metadata.get("apex_session_id") != session_id
+            or isinstance(recovered_metadata.get("apex_dispatch_generation"), bool)
+            or not isinstance(recovered_metadata.get("apex_dispatch_generation"), int)
+            or recovered_metadata.get("apex_dispatch_generation") != generation
+        ):
+            return "not_recovery"
+
+        from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
+        from alpha.apex.store import ApexSessionState, get_apex_store
+
+        store = get_apex_store()
+        mode_store = get_apex_mode_store()
+        if store.is_degraded or mode_store.is_degraded:
+            return "unavailable"
+        session = store.get(session_id)
+        mode = mode_store.for_scope(session.thread_id or session.owner or DEFAULT_SCOPE) if session else None
+        authorized = (
+            session is not None
+            and session.owner == owner_user_id
+            and session.thread_id == source.thread_id == recovered.thread_id
+            and session.dispatch_generation == generation
+            and session.run_id in {source.run_id, recovered.run_id}
+            and session.state is ApexSessionState.ACTIVE
+            and recovered.user_id == owner_user_id
+            and mode is not None
+            and mode.enabled
+            and mode.profile == session.profile
+        )
+        if authorized:
+            status = getattr(getattr(recovered, "status", None), "value", str(getattr(recovered, "status", "unknown")))
+            if store.record_recovered_run(
+                session_id,
+                generation=generation,
+                source_run_id=source.run_id,
+                run_id=recovered.run_id,
+                status=str(status),
+            ):
+                return "linked"
+
+        # The child was admitted from a valid recovery request, but authority
+        # changed before the durable link could be repaired. Stop it before
+        # marking the source so a restart cannot leave an untracked continuation.
+        try:
+            await self._run_manager.cancel(recovered.run_id, action="interrupt")
+        finally:
+            await self._transition(
+                source,
+                RECOVERY_BLOCKED_REASON,
+                "An admitted APEX recovery run could not be linked to its still-active session; the continuation was fenced.",
+            )
+        return "stale"
+
+    async def _reserve_apex_retry(self, record: RunRecord, *, owner_user_id: str) -> str:
+        """Apply the frozen APEX retry-per-failure-class ceiling before resume."""
+        metadata = record.metadata if isinstance(record.metadata, dict) else {}
+        session_id = metadata.get("apex_session_id")
+        generation = metadata.get("apex_dispatch_generation")
+        if session_id is None and generation is None:
+            return "not_apex"
+
+        from alpha.apex.contract import ContractViolation, contract_from_snapshot
+        from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
+        from alpha.apex.store import ApexSessionState, get_apex_store
+        from alpha.recovery.policies import classify_failure
+
+        store = get_apex_store()
+        modes = get_apex_mode_store()
+        if store.is_degraded or modes.is_degraded:
+            return "unavailable"
+        session = store.get(str(session_id)) if isinstance(session_id, str) and session_id else None
+        if (
+            session is None
+            or isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or session.dispatch_generation != generation
+            or session.run_id != record.run_id
+            or session.owner != owner_user_id
+            or session.thread_id != record.thread_id
+            or session.state is not ApexSessionState.ACTIVE
+            or session.contract_snapshot is None
+        ):
+            await self._transition(
+                record,
+                RECOVERY_BLOCKED_REASON,
+                "APEX session binding or contract could not be verified before reserving a recovery retry.",
+            )
+            return "stale"
+        mode = modes.for_scope(session.thread_id or session.owner or DEFAULT_SCOPE)
+        if not mode.enabled or mode.profile != session.profile:
+            await self._transition(record, RECOVERY_BLOCKED_REASON, "APEX mode changed before recovery; the checkpoint was not resumed.")
+            return "stale"
+        try:
+            contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest)
+        except (ContractViolation, ValueError):
+            await self._transition(record, RECOVERY_BLOCKED_REASON, "APEX contract is invalid; the checkpoint was not resumed.")
+            return "stale"
+
+        failure_class = classify_failure(str(record.error or record.stop_reason or "unknown"))
+        limit = contract.budget.max_retries_per_failure_class
+        allowed, used = store.reserve_failure_retry(
+            session.session_id,
+            failure_class=failure_class,
+            limit=limit,
+            source_run_id=record.run_id,
+            generation=generation,
+        )
+        if not allowed:
+            await self._transition(
+                record,
+                RECOVERY_EXHAUSTED_REASON,
+                f"APEX {failure_class} retry ceiling reached ({used}/{limit}); inspect the failure and replan manually.",
+            )
+            return "exhausted"
+        return "reserved"
+
     async def _recover_one(self, record: RunRecord) -> tuple[str, str]:
+        # A provider connection failure is retryable only after the monitor has
+        # confirmed the link is usable again. Recovery polling may run while the
+        # Gateway itself is still offline; repeatedly launching those candidates
+        # would burn model attempts and immediately create another failure.
+        # UNKNOWN, a missing monitor, or any other state is not proof of an
+        # outage, so the ordinary safe checkpoint and admission path still runs.
+        app_state = getattr(self._app, "state", None)
+        network_monitor = getattr(app_state, "network_monitor", None)
+        if record.stop_reason == NETWORK_WAIT_RECOVERY_REASON and getattr(network_monitor, "state", None) is NetworkState.OFFLINE:
+            return record.run_id, "deferred"
+
         source_metadata = record.metadata if isinstance(record.metadata, dict) else {}
         if any(key in source_metadata for key in ("scheduled_task_id", "scheduled_task_run_id", "mcp_task_notification")):
             await self._transition(
@@ -437,6 +596,15 @@ class SafeRunRecoveryService:
             limit=1,
         )
         if not latest or latest[0].run_id != record.run_id:
+            owner_user_id = await self._resolve_owner(record)
+            if owner_user_id is not None and source_metadata.get("apex_session_id") is not None:
+                reconciliation = await self._reconcile_apex_recovery_link(record, latest[0], owner_user_id=owner_user_id) if latest else "not_recovery"
+                if reconciliation == "linked":
+                    return record.run_id, "resumed"
+                if reconciliation == "unavailable":
+                    return record.run_id, "failed"
+                if reconciliation == "stale":
+                    return record.run_id, "stopped"
             await self._transition(
                 record,
                 RECOVERY_SUPERSEDED_REASON,
@@ -496,6 +664,14 @@ class SafeRunRecoveryService:
             )
             return record.run_id, "stopped"
 
+        retry_reservation = await self._reserve_apex_retry(record, owner_user_id=owner_user_id)
+        if retry_reservation == "unavailable":
+            return record.run_id, "failed"
+        if retry_reservation == "exhausted":
+            return record.run_id, "exhausted"
+        if retry_reservation == "stale":
+            return record.run_id, "stopped"
+
         try:
             await self._launcher(
                 source=record,
@@ -504,6 +680,9 @@ class SafeRunRecoveryService:
                 reason=record.stop_reason or "recoverable_failure",
                 owner_user_id=owner_user_id,
             )
+        except RecoveryBindingError as exc:
+            logger.warning("Safe recovery refused stale APEX binding for run %s: %s", record.run_id, exc)
+            return record.run_id, "stopped"
         except HTTPException as exc:
             if exc.status_code == 409:
                 return record.run_id, "deferred"
@@ -575,6 +754,32 @@ class SafeRunRecoveryService:
         from app.gateway.services import start_run
 
         source_metadata = source.metadata if isinstance(source.metadata, dict) else {}
+        apex_session_id = source_metadata.get("apex_session_id")
+        apex_generation = source_metadata.get("apex_dispatch_generation")
+        apex_bound = apex_session_id is not None or apex_generation is not None
+        if apex_bound:
+            from alpha.apex.store import ApexSessionState, get_apex_store
+
+            store = get_apex_store()
+            if store.is_degraded:
+                raise HTTPException(status_code=503, detail="APEX session store is unreadable during run recovery")
+            session = store.get(str(apex_session_id)) if isinstance(apex_session_id, str) and apex_session_id else None
+            if (
+                session is None
+                or isinstance(apex_generation, bool)
+                or not isinstance(apex_generation, int)
+                or session.dispatch_generation != apex_generation
+                or session.run_id != source.run_id
+                or session.owner != owner_user_id
+                or session.thread_id != source.thread_id
+                or session.state is not ApexSessionState.ACTIVE
+            ):
+                await self._transition(
+                    source,
+                    RECOVERY_BLOCKED_REASON,
+                    "APEX session authority no longer matches this run; the stale checkpoint was not resumed.",
+                )
+                raise RecoveryBindingError("session id, owner, thread, state, generation, or source run changed")
         raw_criteria = source_metadata.get("acceptance_criteria")
         criteria = raw_criteria if isinstance(raw_criteria, list) else None
         recovery_context: dict[str, Any] = {"user_id": owner_user_id}
@@ -604,10 +809,28 @@ class SafeRunRecoveryService:
         )
         request = self._internal_request(owner_user_id)
         with ensure_trace_context():
-            return await start_run(
+            recovered = await start_run(
                 body,
                 source.thread_id,
                 request,
                 idempotency_key=f"auto-recovery:{source.run_id}",
                 require_existing_thread=True,
+                apex_session_id=str(apex_session_id) if apex_bound else None,
             )
+        if apex_bound:
+            recovered_status = getattr(getattr(recovered, "status", None), "value", str(getattr(recovered, "status", "pending")))
+            from alpha.apex.store import get_apex_store
+
+            linked = get_apex_store().record_recovered_run(
+                str(apex_session_id),
+                generation=apex_generation,
+                source_run_id=source.run_id,
+                run_id=str(recovered.run_id),
+                status=str(recovered_status),
+            )
+            if not linked:
+                # The APEX session changed after start_run validated it. Fence
+                # the just-admitted continuation instead of running detached.
+                await self._run_manager.cancel(str(recovered.run_id), action="interrupt")
+                raise RecoveryBindingError("session changed after recovered-run admission")
+        return recovered

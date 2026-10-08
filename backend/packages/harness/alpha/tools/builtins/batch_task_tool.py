@@ -203,10 +203,31 @@ async def batch_task(
         return _result(tool_call_id, content="Durable batches require a thread_id.", error=True)
     user_id = resolve_runtime_user_id(runtime)
     run_id = context.get("run_id")
+    from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY
+
+    apex_session_id = context.get(APEX_RUNTIME_SESSION_KEY)
+    apex_concurrency_limit = None
+    if apex_session_id:
+        try:
+            from alpha.agents.middlewares.subagent_limit_middleware import _apex_task_call_limit
+
+            apex_concurrency_limit = _apex_task_call_limit(runtime, fallback=64)
+        except Exception:  # noqa: BLE001 - a marked APEX batch must fail closed
+            apex_concurrency_limit = 0
+        if not isinstance(apex_session_id, str) or not apex_session_id or not isinstance(apex_concurrency_limit, int) or apex_concurrency_limit <= 0:
+            return _result(
+                tool_call_id,
+                content="APEX session policy could not authorize durable subagent concurrency; the batch was not submitted.",
+                error=True,
+            )
     submission_key = f"{run_id or thread_id}:{tool_call_id}"
     execution_spec = {
         "subagent_config": asdict(config),
         "parent_model": metadata.get("model_name"),
+        # This came from the Gateway-stamped parent context. The batch service
+        # persists it with the execution spec so every delayed/recovered child
+        # can apply the same APEX tool gate after a worker restart.
+        "apex_session_id": apex_session_id,
         "tool_groups": metadata.get("tool_groups"),
         "user_role": context.get("user_role"),
         "oauth_provider": context.get("oauth_provider"),
@@ -229,6 +250,8 @@ async def batch_task(
                 max_live_items=max_live_items,
                 max_running_items=max_running_items,
                 execution_spec=execution_spec,
+                apex_session_id=apex_session_id,
+                apex_concurrency_limit=apex_concurrency_limit,
             )
         )
     except Exception as exc:

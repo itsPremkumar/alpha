@@ -1,10 +1,13 @@
 """Tool error handling middleware and shared runtime middleware builders."""
 
 import asyncio
+import hashlib
+import json
 import logging
 import secrets
+import time
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Any, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
@@ -39,6 +42,214 @@ _MISSING_TOOL_CALL_ID = "missing_tool_call_id"
 _TASK_TOOL_NAME = "task"
 _RECOVERY_HINT = "Continue with available context, or choose an alternative tool."
 _AUTONOMY_RECOVERY_KEY = "alpha_autonomy_recovery"
+
+
+class ApexContractToolMiddleware(AgentMiddleware[AgentState]):
+    """Enforce the persisted APEX contract at the actual tool-call boundary.
+
+    Ordinary runs have no APEX marker and pass through unchanged. APEX-bound
+    runs carry a Gateway-stamped marker; missing state, policy drift, mode-off,
+    or a budget reservation failure refuses the tool call before execution.
+    """
+
+    def release_policy_parameters(self) -> dict[str, object]:
+        return {"source": "persisted_apex_session", "fail_closed": True}
+
+    @staticmethod
+    def _context(request: ToolCallRequest) -> dict[str, Any]:
+        runtime = getattr(request, "runtime", None)
+        context = getattr(runtime, "context", None) if runtime is not None else None
+        return context if isinstance(context, dict) else {}
+
+    @staticmethod
+    def _authority(tool_name: str, metadata: dict[str, Any], permissions: set[str]) -> str:
+        name = tool_name.lower()
+        if metadata.get("alpha_mcp") or name.startswith("mcp__"):
+            return "mcp"
+        if name in {"task", "batch_task"} or "subagent" in name:
+            return "subagents"
+        if "swarm" in name:
+            return "swarm"
+        if "browser" in name:
+            return "browser"
+        if name.startswith("a2a") or "peer" in name:
+            return "a2a"
+        if name.startswith("git_") or name.startswith("git-"):
+            return "git"
+        if name in {"bash", "shell", "run_command", "terminal", "python_repl"}:
+            return "terminal"
+        for key in ("scheduling", "workflows", "research", "memory", "coding", "model_routing"):
+            if key in permissions:
+                return key
+        if "schedule" in name or "cron" in name:
+            return "scheduling"
+        if "research" in name or name.startswith("web_search"):
+            return "research"
+        if "workflow" in name:
+            return "workflows"
+        if "memory" in name:
+            return "memory"
+        if any(word in name for word in ("write", "edit", "patch", "code", "file")):
+            return "coding"
+        return "tools"
+
+    @staticmethod
+    def _protected_action(tool_name: str, governance: Any, permissions: set[str]) -> str | None:
+        name = tool_name.lower()
+        if "financial" in name or "payment" in name or "transaction" in name:
+            return "financial_action"
+        if "secret" in name and any(word in name for word in ("export", "reveal", "dump")):
+            return "secret_export"
+        if "commit" in name and name.startswith("git"):
+            return "git_commit"
+        if "push" in name and name.startswith("git"):
+            return "git_push"
+        if name in {"bash", "shell", "run_command", "terminal"}:
+            return "shell_execution"
+        if "install" in name or "package" in permissions:
+            return "package_install"
+        if any(word in name for word in ("publish", "send_email", "send_message", "post_to", "deploy")):
+            return "external_publication"
+        reversibility = getattr(getattr(governance, "reversibility", None), "value", "")
+        risk_class = getattr(getattr(governance, "risk_class", None), "value", "")
+        if risk_class == "destructive":
+            return "destructive_filesystem"
+        if reversibility == "irreversible":
+            return "irreversible_external_action"
+        return None
+
+    @staticmethod
+    def _denied(request: ToolCallRequest, message: str) -> ToolMessage:
+        tool_name = str(request.tool_call.get("name") or "unknown_tool")
+        return ToolMessage(
+            content=message,
+            tool_call_id=str(request.tool_call.get("id") or "missing_id"),
+            name=tool_name,
+            status="error",
+        )
+
+    def _authorize_and_reserve(self, request: ToolCallRequest) -> ToolMessage | None:
+        from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY, contract_from_snapshot
+
+        context = self._context(request)
+        session_id = context.get(APEX_RUNTIME_SESSION_KEY)
+        if not session_id:
+            return None
+
+        tool_name = str(request.tool_call.get("name") or "unknown_tool")
+        try:
+            from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
+            from alpha.apex.store import ApexSessionState, get_apex_store
+            from alpha.config.app_config import get_app_config
+            from alpha.runtime.control import assert_admissible
+            from alpha.runtime.estop import get_estop_manager
+            from alpha.tools.governance import ConfirmationPolicy, GovernanceRegistry
+
+            if get_estop_manager().is_engaged():
+                return self._denied(request, "The fleet emergency stop is engaged; the APEX tool call was refused.")
+            assert_admissible("APEX tool call")
+            store = get_apex_store()
+            mode_store = get_apex_mode_store()
+            if store.is_degraded or mode_store.is_degraded:
+                return self._denied(request, "APEX policy state is unreadable; the tool call was refused.")
+            session = store.get(str(session_id))
+            if session is None or session.owner != str(context.get("user_id") or ""):
+                return self._denied(request, "APEX session ownership could not be verified; the tool call was refused.")
+            scope_key = session.thread_id or session.owner or DEFAULT_SCOPE
+            mode = mode_store.for_scope(scope_key)
+            if not mode.enabled or mode.profile != session.profile:
+                return self._denied(request, "APEX is off or its contract has drifted; the tool call was refused.")
+            if session.state is not ApexSessionState.ACTIVE:
+                return self._denied(request, f"APEX session is {session.state.value}; the tool call was refused.")
+
+            if session.contract_snapshot is None:
+                return self._denied(request, "APEX session has no validated contract snapshot; the tool call was refused.")
+            try:
+                contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest)
+            except ValueError:
+                return self._denied(request, "APEX session contract is invalid; the tool call was refused.")
+            if contract.profile.value != session.profile:
+                return self._denied(request, "APEX session profile does not match its contract; the tool call was refused.")
+            token_limit = contract.budget.max_total_tokens
+            measured_tokens = session.usage.total_tokens
+            if token_limit == 0 or (token_limit is not None and measured_tokens is not None and measured_tokens >= token_limit):
+                return self._denied(
+                    request,
+                    f"APEX total-token budget is exhausted ({measured_tokens or 0}/{token_limit}); no further tool calls are admitted.",
+                )
+            started_at = session.dispatch_started_at or session.created_at
+            runtime_limit = contract.budget.max_runtime_minutes
+            if runtime_limit is not None and time.time() - started_at >= runtime_limit * 60:
+                return self._denied(request, "APEX runtime budget is exhausted; the tool call was refused.")
+
+            tool = getattr(request, "tool", None)
+            metadata = getattr(tool, "metadata", None)
+            metadata = metadata if isinstance(metadata, dict) else {}
+            raw_permissions = metadata.get("governance_permissions", ())
+            permissions = {str(value).lower() for value in raw_permissions} if isinstance(raw_permissions, (list, tuple, set, frozenset)) else set()
+            authority = self._authority(tool_name, metadata, permissions)
+            if not contract.may(authority):
+                return self._denied(request, f"APEX contract does not grant '{authority}' authority; choose an allowed approach.")
+
+            config = get_app_config()
+            registry = GovernanceRegistry.from_mapping(getattr(config, "tool_governance", None))
+            untrusted = bool(metadata.get("alpha_mcp")) or tool is None
+            governance = registry.entry_for(tool_name, untrusted_source=untrusted, metadata=metadata)
+            action_class = self._protected_action(tool_name, governance, permissions)
+            verdict = contract.verdict_for(action_class) if action_class else "allow"
+            if governance.confirmation is ConfirmationPolicy.BLOCK or verdict == "deny":
+                return self._denied(request, "APEX or tool governance denies this action; it was not executed.")
+            if governance.confirmation is ConfirmationPolicy.ASK or verdict == "approval":
+                action = {
+                    "tool_name": tool_name,
+                    "action_class": action_class or "tool_governance",
+                    "contract_digest": session.contract_digest,
+                    "arguments_digest": hashlib.sha256(
+                        json.dumps(
+                            request.tool_call.get("args", {}),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                        ).encode("utf-8")
+                    ).hexdigest(),
+                }
+                if store.consume_approved_action(str(session_id), action=action):
+                    admitted, used = store.consume_tool_call(str(session_id), limit=contract.budget.max_tool_calls)
+                    if not admitted:
+                        return self._denied(request, f"APEX tool-call budget is exhausted ({used}/{contract.budget.max_tool_calls}).")
+                    return None
+                reason = f"Tool '{tool_name}' requires operator approval under the APEX contract."
+                store.set_state(str(session_id), ApexSessionState.BLOCKED, reason=reason)
+                store.request_approval(str(session_id), note=reason, requester="apex.tool_policy", action=action)
+                store.emit(str(session_id), "policy.tool_approval_required", tool_name=tool_name, action_class=action_class or "tool_governance")
+                return self._denied(request, reason + " The session is parked until the approval is resolved.")
+
+            admitted, used = store.consume_tool_call(str(session_id), limit=contract.budget.max_tool_calls)
+            if not admitted:
+                return self._denied(request, f"APEX tool-call budget is exhausted ({used}/{contract.budget.max_tool_calls}).")
+            return None
+        except Exception:
+            logger.exception("APEX tool policy evaluation failed closed for tool %s", tool_name)
+            return self._denied(request, "APEX policy evaluation failed; the tool call was refused.")
+
+    @override
+    def wrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], ToolMessage | Command],
+    ) -> ToolMessage | Command:
+        denied = self._authorize_and_reserve(request)
+        return denied if denied is not None else handler(request)
+
+    @override
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+    ) -> ToolMessage | Command:
+        denied = self._authorize_and_reserve(request)
+        return denied if denied is not None else await handler(request)
 
 
 class ToolCallTimeoutError(TimeoutError):
@@ -298,6 +509,11 @@ def _build_runtime_middlewares(
         from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
 
         tail.append(ToolReceiptMiddleware(render_mode=receipts_render_mode))
+
+    # APEX contracts are stamped by the trusted Gateway run boundary and are
+    # enforced at the same tool seam as authorization and guardrails. Ordinary
+    # runs remain unchanged because this middleware is a no-op without that key.
+    tail.append(ApexContractToolMiddleware())
 
     # Authorization uses the existing GuardrailMiddleware so execution-time
     # deny, audit, and fail-closed handling stay in one proven implementation.

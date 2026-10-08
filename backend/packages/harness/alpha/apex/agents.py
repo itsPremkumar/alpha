@@ -373,9 +373,20 @@ def resolve_delegation_limits(contract: AutonomyContract) -> tuple[int, int, int
     from alpha.subagents.lifecycle import SubagentLifecycleManager
 
     manager_depth = int(getattr(SubagentLifecycleManager, "DEFAULT_MAX_DEPTH", 3))
-    max_depth = min(int(contract.budget.max_delegation_depth), manager_depth)
-    max_children = max(1, min(6, int(contract.budget.max_active_agents)))
-    max_total = max(1, int(contract.budget.max_active_agents))
+    contract_depth = contract.budget.max_delegation_depth
+    max_depth = manager_depth if contract_depth is None else min(int(contract_depth), manager_depth)
+    # A zero budget is an explicit deny. Finite per-session delegation limits
+    # intersect with hard engine admission caps.
+    from alpha.config.subagents_config import MAX_CONCURRENT_SUBAGENT_CALLS, MAX_TOTAL_SUBAGENTS_PER_RUN
+
+    parallel_limit = contract.budget.max_parallel_tasks
+    active_limit = contract.budget.max_active_agents
+    max_children = min(
+        MAX_CONCURRENT_SUBAGENT_CALLS,
+        parallel_limit if parallel_limit is not None else MAX_CONCURRENT_SUBAGENT_CALLS,
+        active_limit if active_limit is not None else MAX_TOTAL_SUBAGENTS_PER_RUN,
+    )
+    max_total = min(active_limit if active_limit is not None else MAX_TOTAL_SUBAGENTS_PER_RUN, MAX_TOTAL_SUBAGENTS_PER_RUN)
     return max_depth, max_children, max_total
 
 
@@ -449,7 +460,7 @@ class ApexAgentFactory:
                 ),
             )
 
-        max_depth, _max_children, _max_total = resolve_delegation_limits(self._contract)
+        max_depth, max_children, max_total = resolve_delegation_limits(self._contract)
         if depth > max_depth:
             return AgentSpawnResult(
                 ok=False,
@@ -462,13 +473,14 @@ class ApexAgentFactory:
                 ),
             )
 
-        if len(self._agents) >= _max_total:
+        agent_capacity = min(max_children, max_total)
+        if len(self._agents) >= agent_capacity:
             return AgentSpawnResult(
                 ok=False,
                 role=spec.role,
                 refusal=DelegationRefusal(
                     code="agent_population_ceiling",
-                    detail=f"{len(self._agents)} agents already live against a ceiling of {_max_total}",
+                    detail=f"{len(self._agents)} agents already live against the effective ceiling of {agent_capacity} (parallel={max_children}, active={max_total})",
                     source="apex.factory",
                 ),
             )

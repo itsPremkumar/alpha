@@ -60,9 +60,13 @@ async def test_batch_task_is_explicit_idempotent_submission(monkeypatch) -> None
             description="General purpose",
         ),
     )
+    middleware = importlib.import_module("alpha.agents.middlewares.subagent_limit_middleware")
+    monkeypatch.setattr(middleware, "_apex_task_call_limit", lambda *_args, **_kwargs: 3)
+    runtime = _runtime()
+    runtime.context["__alpha_apex_session_id"] = "apex-session-1"
 
     command = await tool_module.batch_task.coroutine(
-        runtime=_runtime(),
+        runtime=runtime,
         title="Process records",
         items=[
             BatchTaskItem(key="record-1", prompt="Process one"),
@@ -81,6 +85,9 @@ async def test_batch_task_is_explicit_idempotent_submission(monkeypatch) -> None
     assert [item["key"] for item in request.items] == ["record-1", "record-2"]
     assert request.max_live_items == 20
     assert request.max_running_items == 5
+    assert request.apex_session_id == "apex-session-1"
+    assert request.apex_concurrency_limit == 3
+    assert request.execution_spec["apex_session_id"] == "apex-session-1"
     assert message.additional_kwargs["subagent_batch_id"] == "subagent-batch-1"
     assert "running independently" in message.content
 

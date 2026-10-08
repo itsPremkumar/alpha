@@ -62,6 +62,11 @@ class TestConfigExampleCarriesTheWholeCatalog:
         """A block sequence indented level with its key is a YAML error."""
         assert isinstance(_load_config_example(), dict)
 
+    def test_default_alpha_free_model_keeps_provider_failover_enabled(self) -> None:
+        models = _load_config_example().get("models") or []
+        alpha_free = next(model for model in models if model.get("name") == "alpha-free")
+        assert alpha_free["model"] == "auto"
+
     def test_the_gateway_ids_are_unique(self) -> None:
         """One file means a duplicate id is a config error, not a merge."""
         ids = [g["id"] for g in (_load_config_example().get("free_gateways") or [])]

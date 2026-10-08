@@ -170,20 +170,50 @@ class ExperienceStore:
             return
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         data = [r.to_dict() for r in self._records.values()]
-        with open(self.storage_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        # Atomic write: temp file in the same directory, fsync, os.replace. A
+        # raw open("w") leaves a truncated file on interruption; the next
+        # load() would silently treat it as empty and a later save() would
+        # write that empty state back, destroying records.
+        tmp_path = self.storage_path.with_name(self.storage_path.name + ".tmp")
+        try:
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0))
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, indent=2)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except BaseException:
+                tmp_path.unlink(missing_ok=True)
+                raise
+            os.replace(tmp_path, self.storage_path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
 
     def _load_from_disk(self) -> None:
         if not self.storage_path or not self.storage_path.exists():
             return
+        # Stage into a local mapping and only adopt it on full success.
+        # A partial parse (valid JSON array, malformed item partway through)
+        # used to leave a half-populated `_records` dict, and the next
+        # `_save_to_disk()` wrote that partial state back, destroying every
+        # record that parsed. The low-level callers must not treat "load
+        # raised" as "empty store" either.
+        staged: dict[str, ExperienceRecord] = {}
         try:
             with open(self.storage_path, encoding="utf-8") as f:
                 data = json.load(f)
-                for item in data:
-                    rec = ExperienceRecord.from_dict(item)
-                    self._records[rec.experience_id] = rec
-        except Exception as e:
-            logger.warning(f"Failed to load experience store from {self.storage_path}: {e}")
+            for item in data:
+                rec = ExperienceRecord.from_dict(item)
+                staged[rec.experience_id] = rec
+        except Exception as exc:
+            logger.warning("ExperienceStore load failed for %s: %s", self.storage_path, exc)
+            # Preserve any records already loaded into the store; if none were
+            # loaded, the store stays empty rather than carrying a half-parsed
+            # partial state that a later save() would write back.
+            return
+
+        self._records = staged
 
     def _load_default_experiences(self) -> None:
         """Seed high-frequency enterprise SWE experience patterns."""

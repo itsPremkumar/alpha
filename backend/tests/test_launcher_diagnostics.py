@@ -91,7 +91,7 @@ def _run(harness_source: str, root: Path, env: dict[str, str]) -> dict[str, str]
         if line.startswith("RESULT_"):
             key, _, value = line.partition("=")
             out[key] = value
-    assert "RESULT_STATUS" in out or "RESULT_ORIGINAL_EXISTS" in out or "RESULT_GW" in out or "RESULT_KILLED" in out, f"harness produced no result\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
+    assert "RESULT_STATUS" in out or "RESULT_ORIGINAL_EXISTS" in out or "RESULT_GW" in out or "RESULT_KILLED" in out or "RESULT_LIVENESS" in out, f"harness produced no result\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
     return out
 
 
@@ -522,3 +522,46 @@ def test_the_monitor_loop_actually_calls_the_serving_heartbeat() -> None:
     """The function must be wired into the loop, not exist as dead code."""
     launcher = _launcher_source()
     assert launcher.count("Write-MonitorHeartbeat") >= 2, "Write-MonitorHeartbeat must be defined and called from the monitor loop; a heartbeat that only checks ports reintroduces the healthy-while-starting lie"
+
+
+HARNESS_SERVICE_LIVENESS = r"""
+$src = Get-Content -LiteralPath $env:ALPHA_LS_SRC -Raw
+$from = $src.IndexOf('function Test-ServiceListenerMissing')
+$to = $src.IndexOf('# -- Terminal-state bookkeeping', $from)
+if ($from -lt 0 -or $to -le $from) {
+    Write-Output "HARNESS_BROKEN: liveness helper markers missing ($from/$to)"
+    exit 3
+}
+Invoke-Expression ($src.Substring($from, $to - $from))
+function Test-PortListening { param([int]$Port) return ($env:ALPHA_LS_PORT_UP -eq "$Port") }
+$result = Test-ServiceListenerMissing -Port 8001
+Write-Output ("RESULT_LIVENESS=" + [string]$result)
+"""
+
+
+@pytest.mark.parametrize(("port_up", "expected"), [("", "True"), ("8001", "False")])
+def test_service_liveness_uses_the_listener_even_if_process_survives(tmp_path: Path, port_up: str, expected: str) -> None:
+    """A live process cannot make a service healthy when its port is closed."""
+    out = _run(HARNESS_SERVICE_LIVENESS, tmp_path, {"ALPHA_LS_PORT_UP": port_up})
+    assert out["RESULT_LIVENESS"] == expected
+
+
+def test_steady_state_monitor_restarts_a_live_process_with_no_listener() -> None:
+    """The restart decision must not wait for a surviving wrapper PID to exit."""
+    launcher = _launcher_source()
+    monitor = launcher[launcher.index("# -- 9. Keep Running and Monitor") :]
+    gateway_match = re.search(r"\$gatewayGone\s*=\s*(.+)", monitor)
+    frontend_match = re.search(r"\$frontendGone\s*=\s*(.+)", monitor)
+    assert gateway_match and "Test-ServiceListenerMissing -Port $GatewayPort" in gateway_match.group(1)
+    assert frontend_match and "Test-ServiceListenerMissing -Port $FrontendPort" in frontend_match.group(1)
+    assert ".HasExited" not in gateway_match.group(1)
+    assert ".HasExited" not in frontend_match.group(1)
+
+
+def test_service_liveness_helper_checks_the_port() -> None:
+    """The helper used by the steady-state monitor must check listener state."""
+    launcher = _launcher_source()
+    start = launcher.index("function Test-ServiceListenerMissing")
+    end = launcher.index("# -- Terminal-state bookkeeping", start)
+    helper = launcher[start:end]
+    assert "return -not (Test-PortListening -Port $Port)" in helper

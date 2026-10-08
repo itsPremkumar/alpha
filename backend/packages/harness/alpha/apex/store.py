@@ -101,8 +101,22 @@ class UsageLedger:
 
     tool_calls: int | None = None
     llm_calls: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
     replans: int | None = None
     retries: int | None = None
+    retry_counts_by_failure_class: dict[str, int] = field(default_factory=dict)
+    #: Source run ids already charged to a failure-class retry allowance.
+    #: This makes a retry reservation replay-safe across a process restart.
+    retry_reservations: dict[str, str] = field(default_factory=dict)
+    measured_run_ids: list[str] = field(default_factory=list)
+    #: Latest cumulative RunManager counters for runs whose event stream has
+    #: not published usage rows. Replacing snapshots makes live polling safe.
+    run_snapshots: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: Last durable Gateway event sequence incorporated for each run. The
+    #: cursor and counters commit together so a restart cannot double count.
+    event_cursors: dict[str, int] = field(default_factory=dict)
     started_at: float = field(default_factory=time.time)
     last_counted_at: float | None = None
 
@@ -171,9 +185,24 @@ class ApexSession:
     state: ApexSessionState = ApexSessionState.IDLE
     profile: str = "off"
     contract_digest: str = ""
+    #: Canonical, validated policy snapshot used by runtime gates. Older rows
+    #: without one can be inspected but cannot authorize tool execution.
+    contract_snapshot: dict[str, Any] | None = None
+    #: Host-adapter projection. A run is admitted only once per generation;
+    #: terminal completion remains awaiting verification.
+    dispatch_generation: int = 0
+    dispatch_state: str = "idle"
+    run_id: str = ""
+    run_status: str = ""
+    dispatch_started_at: float | None = None
     mission_id: str = ""
     thread_id: str = ""
     acceptance_criteria: list[str] = field(default_factory=list)
+    #: Persisted verification report. Criteria alone never imply that the
+    #: session has reached its verification boundary.
+    acceptance: dict[str, Any] | None = None
+    #: Bounded durable record of completed failed reports that triggered recovery.
+    acceptance_history: list[dict[str, Any]] = field(default_factory=list)
     constraints: list[SteeringConstraint] = field(default_factory=list)
     usage: UsageLedger = field(default_factory=UsageLedger)
     created_at: float = field(default_factory=time.time)
@@ -201,9 +230,22 @@ class ApexSession:
         except ValueError:
             payload["state"] = ApexSessionState.IDLE
         payload["acceptance_criteria"] = [str(c) for c in payload.get("acceptance_criteria", []) or []]
+        if not isinstance(payload.get("acceptance"), dict):
+            payload["acceptance"] = None
+        payload["acceptance_history"] = [item for item in payload.get("acceptance_history", []) or [] if isinstance(item, dict)][-20:]
+        if not isinstance(payload.get("contract_snapshot"), dict):
+            payload["contract_snapshot"] = None
         payload["constraints"] = [SteeringConstraint.from_dict(c) for c in payload.get("constraints", []) or []]
         if not isinstance(payload.get("usage"), UsageLedger):
             payload["usage"] = UsageLedger(**(payload.get("usage") or {}))
+        # Older snapshots lacked an explicit replan counter. Retained failed
+        # acceptance reports correspond one-for-one with recovery cycles; the
+        # bounded history of 20 matches the largest shipped profile ceiling.
+        history_count = len(payload.get("acceptance_history", []))
+        measured_replans = payload["usage"].replans
+        if isinstance(measured_replans, bool) or not isinstance(measured_replans, int) or measured_replans < 0:
+            measured_replans = 0
+        payload["usage"].replans = max(measured_replans, history_count)
         return cls(**payload)
 
     @property
@@ -246,6 +288,9 @@ class ApprovalRecord:
     operator: str = ""
     requested_at: float = field(default_factory=time.time)
     decided_at: float | None = None
+    #: Exact policy action an approval authorizes; never a session-wide grant.
+    action: dict[str, str] | None = None
+    consumed_at: float | None = None
 
     @property
     def is_pending(self) -> bool:
@@ -265,6 +310,8 @@ class ApprovalRecord:
             operator=str(data.get("operator", "") or ""),
             requested_at=float(data.get("requested_at", 0.0) or 0.0),
             decided_at=data.get("decided_at"),
+            action={str(k): str(v) for k, v in data["action"].items()} if isinstance(data.get("action"), dict) else None,
+            consumed_at=data.get("consumed_at"),
         )
 
 
@@ -460,6 +507,7 @@ class ApexStore:
         objective: str,
         profile: str,
         contract_digest: str,
+        contract_snapshot: dict[str, Any] | None = None,
         mission_id: str = "",
         thread_id: str = "",
         acceptance_criteria: list[str] | None = None,
@@ -470,6 +518,7 @@ class ApexStore:
             objective=objective,
             profile=profile,
             contract_digest=contract_digest,
+            contract_snapshot=dict(contract_snapshot) if isinstance(contract_snapshot, dict) else None,
             mission_id=mission_id,
             thread_id=thread_id,
             acceptance_criteria=[str(c) for c in (acceptance_criteria or [])],
@@ -521,6 +570,303 @@ class ApexStore:
                 setattr(session, key, value)
             session.updated_at = time.time()
             return session
+
+    def consume_tool_call(self, session_id: str, *, limit: int | None) -> tuple[bool, int | None]:
+        """Atomically account for one admitted APEX tool call against its budget.
+
+        The reservation is persisted before the tool can execute. A crash may
+        therefore over-count a call that never started, but cannot let a retry
+        spend the same budget twice. This is process-local with this JSON store;
+        multi-process deployments need a shared transactional backend.
+        """
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None:
+                return False, None
+            used = session.usage.tool_calls or 0
+            if limit is not None and used >= max(0, int(limit)):
+                return False, used
+            updated_usage = UsageLedger(**session.usage.to_dict())
+            updated_usage.measure(tool_calls=1)
+            session.usage = updated_usage
+            session.updated_at = time.time()
+            return True, used + 1
+
+    def reserve_failure_retry(
+        self,
+        session_id: str,
+        *,
+        failure_class: str,
+        limit: int | None,
+        source_run_id: str,
+        generation: int,
+    ) -> tuple[bool, int]:
+        """Durably reserve one recovery retry, idempotent by failed run id.
+
+        Returns ``(allowed, used_for_class)``. The reservation is committed
+        before a recovered run is admitted, so a crash cannot mint an
+        unaccounted retry. Re-observing the same source run is free.
+        """
+        failure_class = str(failure_class).strip() or "unknown"
+        source_run_id = str(source_run_id)
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.is_terminal or session.state is not ApexSessionState.ACTIVE or session.dispatch_generation != generation or session.run_id != source_run_id:
+                return False, 0
+            prior_class = session.usage.retry_reservations.get(source_run_id)
+            counts = dict(session.usage.retry_counts_by_failure_class)
+            used = max(0, int(counts.get(failure_class, 0)))
+            if prior_class is not None:
+                return prior_class == failure_class, used
+            if limit is not None and used >= max(0, int(limit)):
+                return False, used
+            usage = UsageLedger(**session.usage.to_dict())
+            usage.retry_reservations[source_run_id] = failure_class
+            usage.retry_counts_by_failure_class[failure_class] = used + 1
+            usage.retries = max(0, int(usage.retries or 0)) + 1
+            usage.last_counted_at = time.time()
+            session.usage = usage
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "run.retry_reserved",
+            source_run_id=source_run_id,
+            failure_class=failure_class,
+            used=used + 1,
+            limit=limit,
+            generation=generation,
+        )
+        return True, used + 1
+
+    def claim_dispatch(self, session_id: str) -> int | None:
+        """Durably reserve one host dispatch; retries reuse its generation."""
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.is_terminal or session.state is not ApexSessionState.ACTIVE:
+                return None
+            if session.dispatch_state in {"running", "awaiting_verification", "failed"}:
+                return None
+            if session.dispatch_state == "idle":
+                session.dispatch_generation += 1
+                session.dispatch_started_at = time.time()
+            session.dispatch_state = "starting"
+            session.updated_at = time.time()
+            return session.dispatch_generation
+
+    def record_dispatch_run(self, session_id: str, *, generation: int, run_id: str, status: str) -> bool:
+        """Link the idempotently admitted Gateway run to this APEX session."""
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.dispatch_generation != generation:
+                return False
+            # The supervisor and the explicit dispatch route can observe the
+            # same idempotent RunManager admission concurrently. Once the first
+            # observer commits the link, the second must report success for
+            # that exact run instead of turning a successful dispatch into a
+            # spurious HTTP error.
+            if session.run_id == str(run_id):
+                return True
+            if session.dispatch_state != "starting" or session.run_id:
+                return False
+            session.run_id = str(run_id)
+            session.run_status = str(status)
+            session.dispatch_state = "running"
+            session.updated_at = time.time()
+        self.emit(session_id, "run.dispatched", run_id=str(run_id), generation=generation, status=str(status))
+        return True
+
+    def record_recovered_run(
+        self,
+        session_id: str,
+        *,
+        generation: int,
+        source_run_id: str,
+        run_id: str,
+        status: str,
+    ) -> bool:
+        """Move the session projection to a safely resumed RunManager run.
+
+        RunManager remains the lifecycle owner. This compare-and-set only
+        changes the APEX projection when the source run and dispatch generation
+        still match; a stale recovery cannot replace newer session work.
+        """
+        normalized = str(status).lower()
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.is_terminal or session.dispatch_generation != generation or session.state is not ApexSessionState.ACTIVE:
+                return False
+            # Recovery can race across Gateway workers. RunStore's idempotency
+            # key deliberately returns the same continuation to both, so a
+            # second observer must treat an already-linked target as success
+            # without regressing its newer observed status.
+            if session.run_id == str(run_id):
+                return True
+            if session.run_id != source_run_id:
+                return False
+            session.run_id = str(run_id)
+            session.run_status = normalized
+            if normalized in {"completed", "success"}:
+                session.dispatch_state = "awaiting_verification"
+            elif normalized in {"error", "failed", "interrupted", "cancelled"}:
+                session.dispatch_state = "failed"
+            else:
+                session.dispatch_state = "running"
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "run.recovery_linked",
+            generation=generation,
+            source_run_id=source_run_id,
+            run_id=str(run_id),
+            status=normalized,
+        )
+        return True
+
+    def record_dispatch_failure(self, session_id: str, *, generation: int, reason: str) -> bool:
+        """Park an unadmitted dispatch failure so it cannot loop or look active."""
+        message = str(reason).strip()[:1000] or "host dispatch failed"
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.dispatch_generation != generation or session.dispatch_state != "starting" or session.run_id:
+                return False
+            session.dispatch_state = "failed"
+            session.run_status = "dispatch_error"
+            session.blocked_reason = message
+            session.updated_at = time.time()
+        self.emit(session_id, "run.dispatch_failed", generation=generation, reason=message)
+        return True
+
+    def record_run_status(self, session_id: str, *, run_id: str, status: str) -> bool:
+        """Persist observed RunManager status without claiming verification."""
+        normalized = str(status).lower()
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.run_id != run_id:
+                return False
+            if session.run_status == normalized and session.dispatch_state in {"running", "awaiting_verification", "failed"}:
+                return True
+            session.run_status = normalized
+            if normalized in {"completed", "success"}:
+                session.dispatch_state = "awaiting_verification"
+            elif normalized in {"error", "failed", "interrupted", "cancelled"}:
+                session.dispatch_state = "failed"
+            else:
+                session.dispatch_state = "running"
+            session.updated_at = time.time()
+        self.emit(session_id, "run.status_observed", run_id=run_id, status=normalized, dispatch_state=session.dispatch_state)
+        return True
+
+    def recover_after_acceptance_failure(self, session_id: str, *, reason: str) -> ApexSession | None:
+        """Reopen a measured-but-failed objective for one new host dispatch.
+
+        The failed report is copied into the durable event journal before the
+        current report and terminal RunManager link are cleared. ``RunManager``
+        still owns that run's lifecycle; this only makes the APEX adapter ready
+        to request a new generation after the executive has selected recovery.
+        """
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.is_terminal:
+                return None
+            previous_state = session.state
+            previous_run_id = session.run_id
+            failed_report = session.acceptance
+            if isinstance(failed_report, dict):
+                session.acceptance_history = [*session.acceptance_history, failed_report][-20:]
+            session.state = ApexSessionState.ACTIVE
+            session.blocked_reason = ""
+            session.acceptance = None
+            session.run_id = ""
+            session.run_status = ""
+            session.dispatch_state = "idle"
+            session.usage.replans = max(0, int(session.usage.replans or 0)) + 1
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "acceptance.recovery_started",
+            reason=str(reason)[:1000],
+            previous_state=previous_state.value,
+            previous_run_id=previous_run_id,
+            failed_report=failed_report,
+            replan_count=session.usage.replans,
+        )
+        return session
+
+    def record_run_usage(self, session_id: str, *, run_id: str, input_tokens: int, output_tokens: int, llm_calls: int) -> bool:
+        """Upsert cumulative RunManager usage without double-counting polls."""
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.run_id != run_id:
+                return False
+            # Event rows are the live source of truth when available. Run
+            # totals are cumulative, so adding them after event accounting
+            # would count the same tokens twice.
+            if int(session.usage.event_cursors.get(run_id, 0)) > 0:
+                return True
+            usage = UsageLedger(**session.usage.to_dict())
+            current = {
+                "input_tokens": max(0, int(input_tokens)),
+                "output_tokens": max(0, int(output_tokens)),
+                "llm_calls": max(0, int(llm_calls)),
+            }
+            previous = usage.run_snapshots.get(run_id, {})
+            if current == previous:
+                return True
+            for key, value in current.items():
+                delta = value - int(previous.get(key, 0))
+                setattr(usage, key, max(0, int(getattr(usage, key) or 0) + delta))
+            usage.total_tokens = max(0, int(usage.total_tokens or 0) + current["input_tokens"] + current["output_tokens"] - int(previous.get("input_tokens", 0)) - int(previous.get("output_tokens", 0)))
+            usage.run_snapshots[run_id] = current
+            if run_id not in usage.measured_run_ids:
+                usage.measured_run_ids.append(run_id)
+            usage.last_counted_at = time.time()
+            session.usage = usage
+            session.updated_at = time.time()
+        self.emit(session_id, "run.usage_recorded", run_id=run_id, input_tokens=max(0, int(input_tokens)), output_tokens=max(0, int(output_tokens)), llm_calls=max(0, int(llm_calls)))
+        return True
+
+    def record_run_usage_event(
+        self,
+        session_id: str,
+        *,
+        run_id: str,
+        seq: int,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        llm_call: bool,
+    ) -> bool:
+        """Add one durable run event once, using its sequence as the cursor."""
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.run_id != run_id:
+                return False
+            usage = UsageLedger(**session.usage.to_dict())
+            cursor = int(usage.event_cursors.get(run_id, 0))
+            if int(seq) <= cursor:
+                return True
+            # If live polling used RunManager snapshots before durable event
+            # rows became visible, replace that run's snapshot contribution
+            # with the now-available event stream before adding its first row.
+            if cursor == 0:
+                previous = usage.run_snapshots.pop(run_id, None)
+                if previous is not None:
+                    usage.input_tokens = max(0, int(usage.input_tokens or 0) - int(previous.get("input_tokens", 0)))
+                    usage.output_tokens = max(0, int(usage.output_tokens or 0) - int(previous.get("output_tokens", 0)))
+                    usage.total_tokens = max(0, int(usage.total_tokens or 0) - int(previous.get("input_tokens", 0)) - int(previous.get("output_tokens", 0)))
+                    usage.llm_calls = max(0, int(usage.llm_calls or 0) - int(previous.get("llm_calls", 0)))
+            in_count = max(0, int(input_tokens or 0))
+            out_count = max(0, int(output_tokens or 0))
+            usage.input_tokens = (usage.input_tokens or 0) + in_count
+            usage.output_tokens = (usage.output_tokens or 0) + out_count
+            usage.total_tokens = (usage.total_tokens or 0) + in_count + out_count
+            if llm_call:
+                usage.llm_calls = (usage.llm_calls or 0) + 1
+            usage.event_cursors[run_id] = int(seq)
+            usage.last_counted_at = time.time()
+            session.usage = usage
+            session.updated_at = time.time()
+        self.emit(session_id, "run.usage_event_recorded", run_id=run_id, seq=int(seq))
+        return True
 
     def set_state(self, session_id: str, state: ApexSessionState, *, reason: str = "") -> ApexSession | None:
         """Move a session, journaling the transition with the real reason."""
@@ -591,7 +937,14 @@ class ApexStore:
 
     # -- approvals -----------------------------------------------------------
 
-    def request_approval(self, session_id: str, *, note: str, requester: str = "operator") -> ApprovalRecord | None:
+    def request_approval(
+        self,
+        session_id: str,
+        *,
+        note: str,
+        requester: str = "operator",
+        action: dict[str, str] | None = None,
+    ) -> ApprovalRecord | None:
         """Ask an operator to decide parked work (spec §27 ``approval.required``).
 
         One pending approval per parked episode: a session that is
@@ -613,6 +966,7 @@ class ApexStore:
                 session_id=session_id,
                 note=str(note),
                 requester=str(requester),
+                action={str(k): str(v) for k, v in action.items()} if isinstance(action, dict) else None,
             )
             session.approvals.append(record.to_dict())
             session.updated_at = time.time()
@@ -624,6 +978,23 @@ class ApexStore:
         payload.pop("session_id", None)
         self.emit(session_id, "approval.requested", **payload)
         return record
+
+    def consume_approved_action(self, session_id: str, *, action: dict[str, str]) -> bool:
+        """Consume one prior approval for this exact action, atomically once."""
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if session is None or session.state is not ApexSessionState.ACTIVE:
+                return False
+            for index in range(len(session.approvals) - 1, -1, -1):
+                record = ApprovalRecord.from_dict(session.approvals[index])
+                if record.status != "approved" or record.consumed_at is not None or record.action != action:
+                    continue
+                record.consumed_at = time.time()
+                session.approvals[index] = record.to_dict()
+                session.updated_at = time.time()
+                self.emit(session_id, "approval.action_consumed", approval_id=record.approval_id, action=action)
+                return True
+        return False
 
     def pending_approval(self, session_id: str) -> ApprovalRecord | None:
         """The session's outstanding ask, newest first, or ``None``."""

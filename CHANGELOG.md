@@ -12,6 +12,31 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **apex-session-acceptance-control:** Add an owner-scoped acceptance endpoint
+  that requires one measured evidence record for every declared criterion.
+  Passing evidence completes only through the executive acceptance gate;
+  failed evidence is journaled and reopens one RunManager dispatch generation.
+  Alpha does not infer evidence from model summaries or claim automatic evidence
+  collection.
+- **apex-task-delegation-governance:** Enforce persisted APEX parallel-task and
+  active-agent ceilings in the ordinary `task` middleware, with fail-closed
+  behavior for invalid stamped sessions. The Gateway-stamped APEX session marker
+  also reaches ordinary and durable-batch child runtimes, where each child tool
+  call revalidates the same owner, contract, authority, approval, and governance
+  policy. Durable `batch_task` stores its session concurrency ceiling and
+  serializes lease admission across batches and Gateway workers. Ordinary task
+  children and durable batch workers do not yet share one cross-path count.
+- **apex-unlimited-session-spending:** Set the APEX_MAX token, tool-call, and
+  runtime ceilings to `null` (unlimited) across every enabled profile, keep
+  recording actual resource use, and render unlimited quotas in the Gateway
+  prompt, CLI, and UI. Operational agent/retry caps and legacy saved-session
+  ceilings remain intact; capacity, approvals, governance, and the emergency
+  stop apply.
+- **apex-bounded-acceptance-recovery:** Count acceptance-failure recovery cycles
+  against the frozen session replan ceiling and park the session when it is
+  exhausted. A new session is required to continue; the replan count survives
+  restart and appears in the session view.
+
 - **documentation-seo-geo-aeo:** Rebuilt the user-facing and agent-facing
   documentation for organic discoverability across classic SEO, generative engine
   optimization (GEO), and answer engine optimization (AEO). `README.md` is now

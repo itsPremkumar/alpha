@@ -13,9 +13,9 @@ own scheduler. Nothing read the contract and chose a next action.
 1. **It decides, it does not execute.** One cycle selects the next action and
    *records the decision*; a host adapter performs it. That is spec §2.1
    ("Executive, not executor") and it is also the only way to keep APEX from
-   becoming a second lifecycle owner. The cycle calls into ``RunManager`` and
-   the mission lifecycle — it never creates a run, never cancels one, never
-   touches a sandbox.
+   becoming a second lifecycle owner. The Gateway host adapter starts and
+   observes runs through ``RunManager``; this cycle never creates a run, never
+   cancels one, and never touches a sandbox.
 
 2. **Every decision is attributable and every refusal is a real refusal.**
    ``ExecutiveDecision`` carries the reason codes that produced it, and a step
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -81,11 +82,13 @@ REASON_BUDGET_EXHAUSTED = "budget_exhausted"
 REASON_ACCEPTED = "acceptance_passed"
 REASON_ACCEPTANCE_PENDING = "acceptance_pending"
 REASON_ACCEPTANCE_FAILED = "acceptance_failed"
+REASON_REPLAN_LIMIT = "replan_limit_exhausted"
 REASON_STALLED = "no_progress"
 REASON_BLOCKED = "blocked"
 REASON_IN_PROGRESS = "work_in_progress"
 REASON_SESSION_PAUSED = "session_paused"
 REASON_AWAITING_APPROVAL = "awaiting_operator_approval"
+REASON_POLICY_DRIFT = "policy_drift"
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,7 +248,7 @@ def select_next_action(
     if usage:
         calls = usage.get("tool_calls")
         limit = contract.budget.max_tool_calls
-        if isinstance(calls, int) and limit and calls >= limit:
+        if isinstance(calls, int) and limit is not None and calls >= limit:
             return ExecutiveDecision(
                 action=NextAction.NONE,
                 reason=REASON_BUDGET_EXHAUSTED,
@@ -254,40 +257,68 @@ def select_next_action(
                 detail={"tool_calls": calls, "max_tool_calls": limit},
             )
 
-    # Acceptance outranks every other consideration: a session whose criteria all
-    # hold is done, and one whose criteria failed needs recovery, not more work.
+    # A measured report outranks every other consideration. Merely declaring
+    # criteria cannot mean "verify now": a new goal has no evidence before its
+    # first action. The host adapter writes an unverified report only once work
+    # reaches its verification boundary.
     if session.acceptance_criteria:
         try:
             from alpha.mission.acceptance import (
                 AcceptanceReport,
-                CriterionResult,
-                CriterionVerdict,
                 assert_acceptance_passed,
             )
 
             stored = getattr(session, "acceptance", None)
             report = AcceptanceReport.from_dict(stored) if isinstance(stored, dict) else None
-            if report is None or not report.criteria:
-                # This branch is guarded on `session.acceptance_criteria`, so an
-                # absent report means "nobody has measured them yet" — a third
-                # fact, distinct from both "they failed" and "there are none".
-                # Handing `assert_acceptance_passed` nothing at all answered
-                # REASON_NO_CRITERIA, denying the criteria sitting in this same
-                # record. Seeding them as UNVERIFIED yields the refusal that is
-                # actually true: declared, and un-evaluated.
-                report = AcceptanceReport(criteria=[CriterionResult(criterion=c, verdict=CriterionVerdict.UNVERIFIED) for c in session.acceptance_criteria])
-            try:
-                assert_acceptance_passed(report)
-            except Exception as exc:
-                reason = str(exc)
-                failed = "did not hold" in reason
-                return ExecutiveDecision(
-                    action=NextAction.RECOVER if failed else NextAction.AWAIT_VERIFICATION,
-                    reason=REASON_ACCEPTANCE_FAILED if failed else REASON_ACCEPTANCE_PENDING,
-                    confidence=1.0,
-                    detail={"refusal": reason},
-                    blocked=not failed,
-                )
+            if report is not None and report.criteria:
+                declared = [str(criterion) for criterion in session.acceptance_criteria]
+                reported = [criterion.criterion for criterion in report.criteria]
+                declared_counts = Counter(declared)
+                reported_counts = Counter(reported)
+                missing = sorted((declared_counts - reported_counts).elements())
+                unexpected = sorted((reported_counts - declared_counts).elements())
+                duplicated = sorted(criterion for criterion, count in reported_counts.items() if count > 1)
+                if any(count > 1 for count in declared_counts.values()) or missing or unexpected or duplicated:
+                    refusal = "acceptance report must cover every declared criterion exactly once"
+                    if missing:
+                        refusal += f"; missing: {', '.join(missing)}"
+                    if unexpected:
+                        refusal += f"; undeclared: {', '.join(unexpected)}"
+                    if duplicated:
+                        refusal += f"; duplicated: {', '.join(duplicated)}"
+                    return ExecutiveDecision(
+                        action=NextAction.AWAIT_VERIFICATION,
+                        reason=REASON_ACCEPTANCE_PENDING,
+                        confidence=1.0,
+                        detail={"refusal": refusal},
+                        blocked=True,
+                    )
+                try:
+                    assert_acceptance_passed(report)
+                except Exception as exc:
+                    reason = str(exc)
+                    failed = "did not hold" in reason
+                    replan_limit = contract.budget.max_replans
+                    replans_used = max(0, int(session.usage.replans or 0))
+                    if failed and replan_limit is not None and replans_used >= replan_limit:
+                        return ExecutiveDecision(
+                            # REPLAN names the recovery path the executive
+                            # would take, while `blocked` ensures the shared
+                            # approval gate parks it instead of dispatching.
+                            action=NextAction.REPLAN,
+                            reason=REASON_REPLAN_LIMIT,
+                            confidence=1.0,
+                            detail={"replans_used": replans_used, "max_replans": replan_limit, "failure": reason},
+                            blocked=True,
+                        )
+                    return ExecutiveDecision(
+                        action=NextAction.RECOVER if failed else NextAction.AWAIT_VERIFICATION,
+                        reason=REASON_ACCEPTANCE_FAILED if failed else REASON_ACCEPTANCE_PENDING,
+                        confidence=1.0,
+                        detail={"refusal": reason},
+                        blocked=not failed,
+                    )
+                return ExecutiveDecision(action=NextAction.REPORT, reason=REASON_ACCEPTED, confidence=1.0)
         except ImportError:
             # The acceptance module is the one site that may not be absent. If it
             # is, refusing is strictly safer than deciding.
@@ -299,8 +330,6 @@ def select_next_action(
                 blocked=True,
                 detail={"note": "acceptance module unavailable"},
             )
-
-        return ExecutiveDecision(action=NextAction.REPORT, reason=REASON_ACCEPTED, confidence=1.0)
 
     if not session.mission_id:
         return ExecutiveDecision(action=NextAction.CREATE_MISSION, reason="no_mission", confidence=1.0)
@@ -361,17 +390,31 @@ def run_cycle(
         session = session_holder.get("session")
         if session is None:
             return "skipped", "no session"
-        if contract.mission_id and session.contract_digest and session.contract_digest != contract.digest():
+        from alpha.apex.contract import contract_digest_matches
+
+        if session.contract_digest and not contract_digest_matches(contract, session.contract_digest):
             # Spec §163: policy drift must be visible, not silently adopted.
             return "drift", f"session policy {session.contract_digest} != active contract {contract.digest()}"
         return "ok", session.contract_digest or "(unsigned)"
 
     step("load_session", _load)
-    step("check_policy", _policy)
+    policy_outcome, policy_detail = step("check_policy", _policy)
 
     session = session_holder.get("session")
     state_before = session.state.value if session is not None else ""
-    decision = select_next_action(contract=contract, session=session, store=store, usage_provider=usage_provider)
+    if policy_outcome == "drift":
+        # A session's frozen contract is part of its authority boundary. A new
+        # profile or mission contract must not silently take over an existing
+        # session, even when the newly selected action would otherwise be safe.
+        decision = ExecutiveDecision(
+            action=NextAction.NONE,
+            reason=REASON_POLICY_DRIFT,
+            confidence=1.0,
+            detail={"refusal": policy_detail},
+            blocked=True,
+        )
+    else:
+        decision = select_next_action(contract=contract, session=session, store=store, usage_provider=usage_provider)
 
     def _apply() -> tuple[str, str]:
         if session is None or decision.action is NextAction.NONE:
@@ -384,20 +427,29 @@ def run_cycle(
             # the ask a real approval record. Autonomy cannot un-park
             # itself: the exits are an approval, a replan, or a stop.
             store.set_state(session_id, ApexSessionState.BLOCKED, reason=decision.reason)
-            store.request_approval(session_id, note=decision.reason, requester="apex.executive")
+            if decision.reason != REASON_REPLAN_LIMIT:
+                store.request_approval(session_id, note=decision.reason, requester="apex.executive")
             store.emit(session_id, "cycle.blocked", decision=decision.to_dict())
             return "blocked", decision.reason
         if decision.action is NextAction.REPORT:
             store.set_state(session_id, ApexSessionState.COMPLETED, reason="acceptance passed")
             return "completed", "acceptance passed"
         if decision.action is NextAction.RECOVER:
+            if decision.reason == REASON_ACCEPTANCE_FAILED:
+                recovered = store.recover_after_acceptance_failure(session_id, reason=decision.reason)
+                if recovered is None:
+                    return "refused", "session became terminal before recovery was committed"
+                return "recovery_queued", decision.reason
             store.set_state(session_id, ApexSessionState.ACTIVE, reason=decision.reason)
             return "resumed", decision.reason
         if decision.action is NextAction.AWAIT_VERIFICATION:
             store.emit(session_id, "cycle.awaiting_verification", decision=decision.to_dict())
             return "awaiting", decision.reason
-        store.emit(session_id, "cycle.dispatched", action=decision.action.value, reason=decision.reason)
-        return "dispatched", decision.action.value
+        # This cycle only chose and journaled an action. The Gateway's host
+        # adapter owns execution; calling this event ``dispatched`` claimed a
+        # run/tool had started when this module has no such capability.
+        store.emit(session_id, "cycle.decision_recorded", decision=decision.to_dict())
+        return "recorded", decision.action.value
 
     step("apply_decision", _apply)
 

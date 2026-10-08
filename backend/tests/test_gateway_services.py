@@ -1652,6 +1652,33 @@ async def test_thread_metadata_timeout_logs_and_run_still_starts(_stub_app_confi
     assert "Timed out ensuring thread_meta for thread-timeout-meta" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_start_run_restores_trusted_thread_id_after_context_sanitization(_stub_app_config):
+    from unittest.mock import patch
+
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
+    from app.gateway.services import start_run
+
+    run_manager = RunManager(store=MemoryRunStore())
+    request = _make_start_run_request(run_manager)
+    body = _run_create_request(config={"configurable": {"thread_id": "spoofed"}})
+    captured = {}
+
+    async def fake_run_agent(_bridge, _manager, _record, **kwargs):
+        captured.update(kwargs["config"])
+
+    with (
+        patch("app.gateway.services.resolve_agent_factory", return_value=object()),
+        patch("app.gateway.services.run_agent", side_effect=fake_run_agent),
+    ):
+        record = await start_run(body, "thread-route-authority", request)
+        await asyncio.wait_for(record.task, timeout=1)
+
+    assert captured["configurable"]["thread_id"] == "thread-route-authority"
+    assert captured["context"]["thread_id"] == "thread-route-authority"
+
+
 def test_context_merges_into_configurable():
     """Context values must be merged into config['configurable'] by start_run.
 
@@ -2118,7 +2145,12 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
 
     async def _scenario():
         thread_id = "thread-ordinary-metadata"
-        metadata = {"token_usage": 7, "source": "regression"}
+        metadata = {
+            "token_usage": 7,
+            "source": "regression",
+            "apex_session_id": "apx-forged",
+            "apex_dispatch_generation": 999,
+        }
         request, _run_store, thread_store = _make_start_run_persistence_context()
         captured: dict[str, Any] = {}
 
@@ -2151,7 +2183,11 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
         # agree. Thread metadata is not run-scoped -- one thread spans many
         # runs and many trace ids -- so it keeps only what the caller sent.
         assert record.metadata[ALPHA_TRACE_METADATA_KEY]
-        assert record.metadata == {**metadata, ALPHA_TRACE_METADATA_KEY: record.metadata[ALPHA_TRACE_METADATA_KEY]}
+        expected_run_metadata = {key: value for key, value in metadata.items() if not key.startswith("apex_")}
+        assert record.metadata == {
+            **expected_run_metadata,
+            ALPHA_TRACE_METADATA_KEY: record.metadata[ALPHA_TRACE_METADATA_KEY],
+        }
         assert captured["config"]["metadata"] == record.metadata
         assert (await thread_store.get(thread_id))["metadata"] == metadata
 
@@ -3437,6 +3473,7 @@ async def test_run_agent_full_mode_rejects_delta_before_graph_invocation():
         record.run_id,
         RunStatus.error,
         error="Thread requires delta mode; materialize and convert its checkpoints before using full mode.",
+        stop_reason=None,
     )
 
 
@@ -3536,6 +3573,7 @@ async def test_run_agent_full_mode_checks_selected_checkpoint_before_graph():
         record.run_id,
         RunStatus.error,
         error="Thread requires delta mode; materialize and convert its checkpoints before using full mode.",
+        stop_reason=None,
     )
 
 

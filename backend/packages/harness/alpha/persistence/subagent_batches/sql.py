@@ -7,11 +7,11 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from alpha.persistence.subagent_batches.model import SubagentBatchItemRow, SubagentBatchRow
+from alpha.persistence.subagent_batches.model import SubagentBatchItemRow, SubagentBatchRow, SubagentBatchSessionLockRow
 from alpha.subagents.acceptance_checks import AcceptanceVerdict, validate_acceptance_verdict
 from alpha.subagents.batch_runtime import BatchItemInput
 from alpha.subagents.report_contract import normalize_acceptance_criteria
@@ -33,6 +33,7 @@ _BATCH_PUBLIC_FIELDS = (
     "max_live_items",
     "max_running_items",
     "max_attempts",
+    "apex_concurrency_limit",
     "created_at",
     "updated_at",
     "completed_at",
@@ -183,13 +184,24 @@ class SubagentBatchRepository:
         max_running_items: int,
         max_attempts: int,
         execution_spec: dict[str, Any],
+        apex_session_id: str | None = None,
+        apex_concurrency_limit: int | None = None,
     ) -> dict[str, Any]:
+        if apex_session_id is not None:
+            if not isinstance(apex_session_id, str) or not apex_session_id.strip():
+                raise ValueError("apex_session_id must be a non-empty string")
+            if isinstance(apex_concurrency_limit, bool) or not isinstance(apex_concurrency_limit, int) or apex_concurrency_limit < 1:
+                raise ValueError("APEX durable batches require a positive concurrency limit")
+        elif apex_concurrency_limit is not None:
+            raise ValueError("apex_concurrency_limit requires an APEX session id")
         now = datetime.now(UTC)
         batch = SubagentBatchRow(
             id=batch_id,
             user_id=user_id,
             thread_id=thread_id,
             run_id=run_id,
+            apex_session_id=apex_session_id,
+            apex_concurrency_limit=apex_concurrency_limit,
             tool_call_id=tool_call_id,
             submission_key=submission_key,
             title=title,
@@ -221,6 +233,8 @@ class SubagentBatchRepository:
         ]
         async with self._sf() as session:
             try:
+                if apex_session_id is not None:
+                    await self._ensure_apex_session_lock(session, apex_session_id)
                 session.add(batch)
                 # The models intentionally do not declare an ORM relationship;
                 # flush the parent explicitly so SQLite's immediate FK check
@@ -244,6 +258,25 @@ class SubagentBatchRepository:
                     return await self._with_counts(session, existing)
                 raise
             return await self._with_counts(session, batch)
+
+    @staticmethod
+    async def _ensure_apex_session_lock(session: AsyncSession, apex_session_id: str) -> None:
+        """Create the shared APEX admission row without a first-writer race."""
+        dialect = session.get_bind().dialect.name
+        if dialect == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert
+
+            statement = insert(SubagentBatchSessionLockRow).values(apex_session_id=apex_session_id).on_conflict_do_nothing(index_elements=[SubagentBatchSessionLockRow.apex_session_id])
+        elif dialect == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+
+            statement = insert(SubagentBatchSessionLockRow).values(apex_session_id=apex_session_id).on_conflict_do_nothing(index_elements=[SubagentBatchSessionLockRow.apex_session_id])
+        else:
+            current = await session.get(SubagentBatchSessionLockRow, apex_session_id)
+            if current is None:
+                session.add(SubagentBatchSessionLockRow(apex_session_id=apex_session_id))
+            return
+        await session.execute(statement)
 
     async def _counts(self, session: AsyncSession, batch_id: str) -> Counter[str]:
         rows = await session.execute(select(SubagentBatchItemRow.status, func.count()).where(SubagentBatchItemRow.batch_id == batch_id).group_by(SubagentBatchItemRow.status))
@@ -324,12 +357,60 @@ class SubagentBatchRepository:
 
         claimed: list[dict[str, Any]] = []
         crash_records: list[dict[str, Any]] = []
+        # Discover candidate ids outside the admission transaction. Its first
+        # statement must be the lock-row UPDATE: on SQLite, starting with a
+        # read and then upgrading concurrent deferred transactions to writers
+        # can fail with SQLITE_BUSY_SNAPSHOT.
+        async with self._sf() as discovery_session:
+            accounted_statuses = ("queued", "running", "paused")
+            candidate_session_ids = sorted(
+                value
+                for value in (
+                    await discovery_session.scalars(
+                        select(SubagentBatchRow.apex_session_id)
+                        .where(
+                            SubagentBatchRow.status.in_(accounted_statuses),
+                            SubagentBatchRow.apex_session_id.is_not(None),
+                        )
+                        .distinct()
+                    )
+                ).all()
+                if isinstance(value, str) and value
+            )
         async with self._sf() as session:
-            batches = list((await session.execute(select(SubagentBatchRow).where(SubagentBatchRow.status.in_(("queued", "running"))).order_by(SubagentBatchRow.created_at, SubagentBatchRow.id).with_for_update(skip_locked=True))).scalars())
-            for batch in batches:
-                if len(claimed) >= limit:
-                    break
+            active_statuses = ("queued", "running")
+            accounted_statuses = ("queued", "running", "paused")
+            locked_session_ids: set[str] = set()
+            for session_id in candidate_session_ids:
+                result = await session.execute(update(SubagentBatchSessionLockRow).where(SubagentBatchSessionLockRow.apex_session_id == session_id).values(lock_version=SubagentBatchSessionLockRow.lock_version + 1))
+                if result.rowcount == 1:
+                    locked_session_ids.add(session_id)
+                else:
+                    logger.error("Failing closed for durable APEX batch session with no admission lock row")
+            apex_rows = list(
+                (
+                    await session.execute(
+                        select(
+                            SubagentBatchRow.apex_session_id,
+                            func.min(SubagentBatchRow.apex_concurrency_limit),
+                            func.count(SubagentBatchRow.apex_concurrency_limit),
+                            func.count(SubagentBatchRow.id),
+                        )
+                        .where(SubagentBatchRow.status.in_(accounted_statuses), SubagentBatchRow.apex_session_id.is_not(None))
+                        .group_by(SubagentBatchRow.apex_session_id)
+                    )
+                ).all()
+            )
+            apex_limits: dict[str, int] = {}
+            for session_id, limit_value, configured_count, batch_count in apex_rows:
+                if not isinstance(session_id, str) or not session_id or configured_count != batch_count or isinstance(limit_value, bool) or not isinstance(limit_value, int) or limit_value < 1:
+                    logger.error("Failing closed for durable APEX batch session with missing or invalid concurrency policy")
+                    continue
+                if session_id not in locked_session_ids:
+                    continue
+                apex_limits[session_id] = limit_value
 
+            async def recover_and_promote(batch: SubagentBatchRow) -> None:
                 expired = list(
                     (
                         await session.execute(
@@ -351,10 +432,6 @@ class SubagentBatchRepository:
                         item.status = "cancelled"
                         item.completed_at = now
                     elif item.attempt >= batch.max_attempts:
-                        # A dead worker's lease expiring is a crash, and the
-                        # last one of them: the item is failed with a TYPED
-                        # reason and escalated to a human rather than being
-                        # left to fail silently against a spent ceiling.
                         item.status = "failed"
                         item.error = item.error or "Execution lease expired after the maximum retry count"
                         item.completed_at = now
@@ -408,11 +485,16 @@ class SubagentBatchRepository:
                         item.status = "queued"
                         item.updated_at = now
 
+            async def claim_batch(batch: SubagentBatchRow, *, apex_remaining: int | None = None) -> int:
+                if len(claimed) >= limit:
+                    return 0
                 counts = await self._counts(session, batch.id)
                 batch_available = max(0, batch.max_running_items - counts["leased"] - counts["running"])
                 take = min(limit - len(claimed), batch_available)
+                if apex_remaining is not None:
+                    take = min(take, apex_remaining)
                 if take <= 0:
-                    continue
+                    return 0
                 runnable = list(
                     (
                         await session.execute(
@@ -444,6 +526,51 @@ class SubagentBatchRepository:
                 if runnable:
                     batch.status = "running"
                     batch.updated_at = now
+                return len(runnable)
+
+            # Process each APEX session under its database lock. All active
+            # batches for that session are recovered before counting so an
+            # expired lease cannot consume concurrency forever.
+            for session_id in sorted(apex_limits):
+                session_batches = list(
+                    (await session.execute(select(SubagentBatchRow).where(SubagentBatchRow.apex_session_id == session_id, SubagentBatchRow.status.in_(active_statuses)).order_by(SubagentBatchRow.created_at, SubagentBatchRow.id))).scalars()
+                )
+                for batch in session_batches:
+                    await recover_and_promote(batch)
+                active = int(
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(SubagentBatchItemRow)
+                        .join(SubagentBatchRow, SubagentBatchRow.id == SubagentBatchItemRow.batch_id)
+                        .where(
+                            SubagentBatchRow.apex_session_id == session_id,
+                            SubagentBatchRow.status.in_(accounted_statuses),
+                            SubagentBatchItemRow.status.in_(("leased", "running")),
+                        )
+                    )
+                    or 0
+                )
+                remaining = max(0, apex_limits[session_id] - active)
+                for batch in session_batches:
+                    newly_claimed = await claim_batch(batch, apex_remaining=remaining)
+                    remaining -= newly_claimed
+                    if len(claimed) >= limit:
+                        break
+
+            # Non-APEX batches retain the existing independent per-batch
+            # scheduler path and its SKIP LOCKED work sharing.
+            ordinary_batches = list(
+                (
+                    await session.execute(
+                        select(SubagentBatchRow).where(SubagentBatchRow.status.in_(active_statuses), SubagentBatchRow.apex_session_id.is_(None)).order_by(SubagentBatchRow.created_at, SubagentBatchRow.id).with_for_update(skip_locked=True)
+                    )
+                ).scalars()
+            )
+            for batch in ordinary_batches:
+                if len(claimed) >= limit:
+                    break
+                await recover_and_promote(batch)
+                await claim_batch(batch)
             await session.commit()
         for record in crash_records:
             await asyncio.to_thread(_record_item_failure, **record)

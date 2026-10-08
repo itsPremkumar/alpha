@@ -368,15 +368,15 @@ models:
   #     answers 401 "Invalid API key" for a bogus one while accepting none.
   #   * `model` must keep the `free:<gateway>:<model>` prefix. Without it the
   #     whole string is read as a model id and the router honestly reports that
-  #     no provider offers it. `free:opencode-zen:space-bunny-free` is the one
-  #     verified answering end to end. Change it to `auto` to let the router
-  #     re-rank healthy gateways per call - the resilience trade is a fixed pin
-  #     being predictable but a single point of failure.
+  #     no provider offers it. `auto` lets the router re-rank discovered free
+  #     gateways and fail over when one is unavailable. Pin
+  #     `free:<gateway>:<model>` only when a specific model's behavior matters;
+  #     a pin is a single endpoint and one provider failure ends the run.
   - name: alpha-free
     display_name: Alpha Free (Keyless Router)
     description: "Keyless fallback across public anonymous LLM gateways; prompts/completions may be retained by those gateways. No availability guarantee."
     use: alpha.models.free_router:ChatFreeLLM
-    model: free:opencode-zen:space-bunny-free
+    model: auto
     context_window: 128000
     max_tokens: 8192
     request_timeout: 600.0

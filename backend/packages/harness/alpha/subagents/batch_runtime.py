@@ -26,6 +26,8 @@ class BatchSubmitRequest:
     max_live_items: int | None
     max_running_items: int | None
     execution_spec: dict[str, Any]
+    apex_session_id: str | None = None
+    apex_concurrency_limit: int | None = None
 
 
 class SubagentBatchSubmitter(Protocol):

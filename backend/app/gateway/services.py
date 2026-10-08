@@ -28,6 +28,7 @@ from alpha.agents.middlewares.input_sanitization_middleware import frame_untrust
 from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
 from alpha.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
 from alpha.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
+from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY
 from alpha.config.app_config import get_app_config
 from alpha.config.database_config import resolve_checkpoint_graph_cache_max
 from alpha.runtime import (
@@ -95,6 +96,10 @@ from app.mcp_tasks.errors import PermanentNotificationError
 logger = logging.getLogger(__name__)
 
 
+def _format_apex_budget(value: int | None) -> str:
+    return "unlimited" if value is None else f"{value:,}"
+
+
 @asynccontextmanager
 async def reserve_checkpoint_write(
     request: Request,
@@ -142,6 +147,7 @@ _SERVER_OWNED_MESSAGE_METADATA_KEYS = (
     )
     | PROVENANCE_KEYS
 )
+_SERVER_OWNED_APEX_RUN_METADATA_KEYS = frozenset({"apex_session_id", "apex_dispatch_generation"})
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +654,7 @@ _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: frozenset[str] = (
             "run_id",
             "thread_id",
             "user_id",
+            APEX_RUNTIME_SESSION_KEY,
         }
     )
     | SANDBOX_SERVER_OWNED_CONTEXT_KEYS
@@ -788,9 +795,10 @@ def inject_authenticated_user_context(
     that persist user-scoped files should not rely only on ambient ContextVars.
     The value comes from server-side auth state, never from client context.
 
-    ``request_context.channel_user_id`` is the sole exception: it is honored
-    only after ``request.state.auth_source`` proves the caller is internal.
-    Values copied through the free-form RunnableConfig are always cleared.
+    ``request_context.channel_user_id`` is honored only after
+    ``request.state.auth_source`` proves the caller is internal. An internal
+    principal may also retain the server-adapter's pre-stamped ``user_id``;
+    external principals never retain a body-supplied copy.
     """
 
     # --- Server-owned authorization and sandbox lifecycle identity fields ---
@@ -800,13 +808,22 @@ def inject_authenticated_user_context(
     runtime_context = config.setdefault("context", {})
     if not isinstance(runtime_context, dict):
         raise TypeError("run context must be a mapping")
+    auth_source = getattr(getattr(request, "state", None), "auth_source", None)
+    user = getattr(getattr(request, "state", None), "user", None)
+    is_internal_principal = auth_source == AUTH_SOURCE_INTERNAL or getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE
+    # Internal channel/scheduler adapters establish end-user identity before
+    # this sanitizer runs. Preserve that identity only when the server-authored
+    # principal proves this is an internal request; external callers cannot
+    # retain a body.config user_id through this path.
+    internal_user_id = runtime_context.get("user_id") if is_internal_principal else None
     for key in _SERVER_OWNED_RUNTIME_CONTEXT_KEYS:
         runtime_context.pop(key, None)
     configurable = config.get("configurable")
     if isinstance(configurable, dict):
         for key in _SERVER_OWNED_RUNTIME_CONTEXT_KEYS:
             configurable.pop(key, None)
-    auth_source = getattr(getattr(request, "state", None), "auth_source", None)
+    if internal_user_id is not None:
+        runtime_context["user_id"] = internal_user_id
     # ``user_id`` is server-owned for EXTERNAL callers: it now selects which
     # user's credential user-scoped MCP auth injects, so a client-forged value
     # must never survive any early return below — scrub it here and restamp it
@@ -814,8 +831,7 @@ def inject_authenticated_user_context(
     # scheduler) are the deliberate exception: they authenticate their own end
     # users and supply that identity in run context (PR #3294), which the
     # internal-role branch below preserves.
-    user = getattr(getattr(request, "state", None), "user", None)
-    if auth_source != AUTH_SOURCE_INTERNAL and getattr(user, "system_role", None) != INTERNAL_SYSTEM_ROLE:
+    if not is_internal_principal:
         runtime_context.pop("user_id", None)
         if isinstance(configurable, dict):
             configurable.pop("user_id", None)
@@ -1601,6 +1617,7 @@ async def start_run(
     *,
     idempotency_key: str | None = None,
     require_existing_thread: bool = False,
+    apex_session_id: str | None = None,
 ) -> RunRecord:
     """Create a RunRecord and launch the background agent task.
 
@@ -1634,6 +1651,52 @@ async def start_run(
         validate_thread_id(thread_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if apex_session_id is not None:
+        # This capability is an internal host-adapter input, never a request
+        # body option. Bind the run to the durable owner, thread, active mode,
+        # and exact contract snapshot before the agent is constructed.
+        if getattr(getattr(request, "state", None), "auth_source", None) != AUTH_SOURCE_INTERNAL:
+            raise HTTPException(status_code=403, detail="APEX-bound runs require the trusted internal Gateway path")
+        from alpha.apex.contract import ContractViolation, contract_from_snapshot
+        from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
+        from alpha.apex.store import ApexSessionState, get_apex_store
+        from alpha.runtime.control import assert_admissible
+        from alpha.runtime.estop import get_estop_manager
+
+        if get_estop_manager().is_engaged():
+            raise HTTPException(status_code=409, detail="fleet emergency stop is engaged")
+        try:
+            assert_admissible("APEX run admission")
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail="fleet control refuses APEX run admission") from exc
+
+        apex_store = get_apex_store()
+        mode_store = get_apex_mode_store()
+        if apex_store.is_degraded or mode_store.is_degraded:
+            raise HTTPException(status_code=503, detail="APEX session or mode store is unreadable")
+        apex_session = apex_store.get(apex_session_id)
+        if apex_session is None:
+            raise HTTPException(status_code=404, detail="APEX session not found")
+        apex_dispatch_generation = int(apex_session.dispatch_generation)
+        caller_id = str(getattr(getattr(request.state, "user", None), "id", "") or "")
+        trusted_owner = get_trusted_internal_owner_user_id(request)
+        if apex_session.owner not in {caller_id, str(trusted_owner or "")}:
+            raise HTTPException(status_code=404, detail="APEX session not found")
+        if apex_session.thread_id != thread_id or apex_session.state is not ApexSessionState.ACTIVE:
+            raise HTTPException(status_code=409, detail="APEX session is not active for this thread")
+        scope_key = apex_session.thread_id or apex_session.owner or DEFAULT_SCOPE
+        mode = mode_store.for_scope(scope_key)
+        if not mode.enabled or mode.profile != apex_session.profile:
+            raise HTTPException(status_code=409, detail="APEX mode is off or the stored contract has drifted")
+        if apex_session.contract_snapshot is None:
+            raise HTTPException(status_code=409, detail="APEX session has no validated contract snapshot")
+        try:
+            contract = contract_from_snapshot(apex_session.contract_snapshot, expected_digest=apex_session.contract_digest)
+        except (ValueError, ContractViolation) as exc:
+            raise HTTPException(status_code=409, detail="APEX session contract is invalid") from exc
+        if contract.profile.value != apex_session.profile:
+            raise HTTPException(status_code=409, detail="APEX session profile does not match its contract")
 
     body_config = getattr(body, "config", None)
     body_autonomous = bool(getattr(body, "autonomous", False))
@@ -1731,7 +1794,14 @@ async def start_run(
         # id, disagreeing with the response header, the logs, and the
         # checkpoint. The caller's own metadata keys are preserved.
         run_metadata = dict(body.metadata) if isinstance(body.metadata, dict) else {}
+        # These bind a run to the APEX host adapter. Caller metadata must never
+        # claim that authority; only the validated internal path below stamps it.
+        for key in _SERVER_OWNED_APEX_RUN_METADATA_KEYS:
+            run_metadata.pop(key, None)
         run_metadata[ALPHA_TRACE_METADATA_KEY] = ensure_trace_id()
+        if apex_session_id is not None:
+            run_metadata["apex_session_id"] = apex_session_id
+            run_metadata["apex_dispatch_generation"] = apex_dispatch_generation
         if body_autonomous:
             run_metadata["autonomous"] = True
         if body_acceptance_criteria is not None:
@@ -1769,6 +1839,15 @@ async def start_run(
             internal_owner_user=internal_owner_user,
             request_context=getattr(body, "context", None),
         )
+        # The sanitizer above removes client-controlled copies of every
+        # server-owned key, including ``thread_id``. Restore the authoritative
+        # value from the validated route parameter after sanitization: the
+        # LangGraph checkpointer requires it in configurable, and runtime
+        # context consumers use the same identity.
+        config.setdefault("configurable", {})["thread_id"] = thread_id
+        config.setdefault("context", {})["thread_id"] = thread_id
+        if apex_session_id is not None:
+            config["context"][APEX_RUNTIME_SESSION_KEY] = apex_session_id
 
         async def run_after_metadata(record: RunRecord) -> None:
             metadata_task = asyncio.create_task(
@@ -2009,6 +2088,87 @@ async def launch_scheduled_thread_run(
             idempotency_key=idempotency_key,
         )
     return {"run_id": record.run_id, "thread_id": record.thread_id}
+
+
+async def launch_apex_session_run(
+    *,
+    app: Any,
+    session: Any,
+    generation: int,
+) -> RunRecord:
+    """Execute one APEX objective through the shared RunManager admission path.
+
+    The durable APEX dispatch generation is the idempotency key. If the Gateway
+    stops after RunManager admits work but before the APEX row records its run
+    id, a later supervisor pass asks for the same key and recovers that record
+    instead of starting a duplicate objective.
+    """
+    thread_id = str(getattr(session, "thread_id", "") or "")
+    owner_user_id = str(getattr(session, "owner", "") or "")
+    if not thread_id or not owner_user_id:
+        raise ValueError("APEX dispatch requires a session owner and thread id")
+    validate_thread_id(thread_id)
+    from alpha.apex.contract import contract_from_snapshot
+
+    if not isinstance(getattr(session, "contract_snapshot", None), dict):
+        raise ValueError("APEX dispatch requires a validated contract snapshot")
+    contract = contract_from_snapshot(session.contract_snapshot, expected_digest=str(getattr(session, "contract_digest", "") or ""))
+
+    objective = str(getattr(session, "objective", "") or "").strip()
+    constraints = [str(item.instruction) for item in getattr(session, "constraints", []) if str(getattr(item, "instruction", "")).strip()]
+    criteria = [str(item).strip() for item in getattr(session, "acceptance_criteria", []) if str(item).strip()]
+    parts = [
+        "Complete the following APEX objective using the configured Alpha tools and permitted specialist agents.",
+        "Plan the work, split independent tasks when useful, execute them, and report concrete results and evidence.",
+        "Do not claim that a criterion passed unless an available check or artifact provides evidence; report blockers clearly.",
+        (
+            "Operational safety caps (keep them): "
+            f"{_format_apex_budget(contract.budget.max_active_agents)} active agents, {_format_apex_budget(contract.budget.max_parallel_tasks)} parallel tasks, "
+            f"depth {_format_apex_budget(contract.budget.max_delegation_depth)}, {_format_apex_budget(contract.budget.max_replans)} replans, "
+            f"and {_format_apex_budget(contract.budget.max_retries_per_failure_class)} retries per failure class."
+        ),
+        (
+            "Session spending ceilings: "
+            f"{_format_apex_budget(contract.budget.max_tool_calls)} tool calls, {_format_apex_budget(contract.budget.max_total_tokens)} total tokens, "
+            f"and {_format_apex_budget(contract.budget.max_runtime_minutes)} minutes. "
+            "An unlimited spending ceiling does not stop work; keep pursuing the objective within platform capacity, approvals, governance, and the emergency stop."
+        ),
+        f"Objective:\n{objective}",
+    ]
+    if constraints:
+        parts.append("User constraints:\n" + "\n".join(f"- {item}" for item in constraints))
+    if criteria:
+        parts.append("Acceptance criteria (each requires independently checked evidence):\n" + "\n".join(f"- {item}" for item in criteria))
+    prompt = "\n\n".join(parts)
+
+    request = SimpleNamespace(
+        app=app,
+        headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},
+        state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
+        cookies={},
+    )
+    body = RunCreateRequest(
+        assistant_id=None,
+        input={"messages": [{"role": "user", "content": prompt}]},
+        metadata={
+            "apex_session_id": str(session.session_id),
+            "apex_dispatch_generation": int(generation),
+        },
+        acceptance_criteria=[{"id": f"apex_criterion_{index + 1}", "description": criterion, "required_evidence_kinds": []} for index, criterion in enumerate(criteria)],
+        autonomous=True,
+        config=None,
+        context={"non_interactive": True, "user_id": owner_user_id},
+        on_disconnect="continue",
+        multitask_strategy="reject",
+    )
+    with ensure_trace_context():
+        return await start_run(
+            body,
+            thread_id,
+            request,
+            idempotency_key=f"apex-session:{session.session_id}:{generation}",
+            apex_session_id=str(session.session_id),
+        )
 
 
 def _mcp_task_notification_prompt(event: dict[str, Any]) -> str:

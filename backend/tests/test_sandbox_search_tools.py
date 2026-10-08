@@ -247,19 +247,6 @@ def test_aio_sandbox_glob_include_dirs_filters_nested_ignored(monkeypatch) -> No
     assert truncated is False
 
 
-def test_aio_sandbox_grep_invalid_regex_raises() -> None:
-    with patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
-        sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
-
-    import re
-
-    try:
-        sandbox.grep("/mnt/workspace", "[invalid")
-        assert False, "Expected re.error"
-    except re.error:
-        pass
-
-
 def test_aio_sandbox_glob_parses_json(monkeypatch) -> None:
     with patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")

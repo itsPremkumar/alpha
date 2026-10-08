@@ -632,7 +632,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # fail-closed startup path above.
         try:
             from alpha.events.bus import configure_event_bus
-            from app.gateway.autonomy.supervisor import get_autonomy_supervisor
+            from app.gateway.autonomy.supervisor import LoopSpec, get_autonomy_supervisor
 
             autonomy_cfg = startup_config.autonomy
             # The update policy is the operator-facing kill switch.  When it is
@@ -660,6 +660,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 handler_timeout_seconds=autonomy_cfg.bus.handler_timeout_seconds,
             )
             autonomy_supervisor = get_autonomy_supervisor(autonomy_cfg)
+            from app.gateway.autonomy.loops import apex_execution_tick
+
+            async def run_apex_execution_tick() -> dict[str, object]:
+                return await apex_execution_tick(app)
+
+            autonomy_supervisor.register(
+                LoopSpec(
+                    loop_id="apex",
+                    description="APEX executive cycle and idempotent RunManager host dispatch.",
+                    tick=run_apex_execution_tick,
+                    default_interval_seconds=120.0,
+                )
+            )
             app.state.autonomy_supervisor = autonomy_supervisor
             if autonomy_cfg.enabled:
                 await autonomy_supervisor.start()

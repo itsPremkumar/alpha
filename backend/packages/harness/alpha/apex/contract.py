@@ -54,6 +54,7 @@ from types import MappingProxyType
 from typing import Any
 
 __all__ = [
+    "APEX_RUNTIME_SESSION_KEY",
     "PROTECTED_ACTIONS",
     "AutonomyContract",
     "AutonomyProfile",
@@ -63,10 +64,16 @@ __all__ = [
     "PolicyAttribution",
     "POLICY_DECISION_SITES",
     "authority_for",
+    "contract_from_snapshot",
+    "contract_digest_matches",
     "default_contract",
     "narrow_contract",
     "profile_for",
 ]
+
+# Gateway-stamped runtime context key. ``start_run`` owns this value; request
+# bodies cannot opt themselves into, out of, or across APEX contracts.
+APEX_RUNTIME_SESSION_KEY = "__alpha_apex_session_id"
 
 
 class AutonomyProfile(StrEnum):
@@ -145,21 +152,25 @@ NEVER_DELEGABLE_AUTHORITY_KEYS: frozenset[str] = frozenset()
 class ApexBudget:
     """Ceilings for one contract. These are limits, never predictions."""
 
-    max_active_agents: int = 12
-    max_parallel_tasks: int = 8
-    max_delegation_depth: int = 5
-    max_replans: int = 20
-    max_retries_per_failure_class: int = 4
-    max_runtime_minutes: int = 1440
-    max_tool_calls: int = 5000
+    #: ``None`` means this profile imposes no per-session quota. Runtime and
+    #: engine-level safety limits still apply independently.
+    max_active_agents: int | None = 12
+    max_parallel_tasks: int | None = 8
+    max_delegation_depth: int | None = 5
+    max_replans: int | None = 20
+    max_retries_per_failure_class: int | None = 4
+    max_runtime_minutes: int | None = None
+    max_tool_calls: int | None = None
+    #: Total provider tokens for the session, across its lead and subagents.
+    max_total_tokens: int | None = None
 
     def __post_init__(self) -> None:
         for field_name in self.__slots__:
             value = getattr(self, field_name)
-            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                raise ContractViolation(f"budget {field_name} must be a non-negative int, got {value!r}")
+            if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+                raise ContractViolation(f"budget {field_name} must be null (unlimited) or a non-negative int, got {value!r}")
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, int | None]:
         return {name: getattr(self, name) for name in self.__slots__}
 
     @classmethod
@@ -295,8 +306,8 @@ def _execution_for(profile: AutonomyProfile) -> MappingProxyType[str, bool]:
     return MappingProxyType({key: on for key in _EXECUTION_KEYS})
 
 
-#: Budget ceilings per profile. APEX_MAX is the spec §5 example; each lower
-#: profile is strictly smaller, so ascending a profile only ever raises a limit.
+#: APEX session quotas per profile. ``None`` means no APEX quota; engine-level
+#: limits (such as scheduler capacity and maximum subagents per run) still apply.
 _PROFILE_BUDGETS: dict[AutonomyProfile, ApexBudget] = {
     AutonomyProfile.OFF: ApexBudget(
         max_active_agents=0,
@@ -306,6 +317,7 @@ _PROFILE_BUDGETS: dict[AutonomyProfile, ApexBudget] = {
         max_retries_per_failure_class=0,
         max_runtime_minutes=0,
         max_tool_calls=0,
+        max_total_tokens=0,
     ),
     AutonomyProfile.ASSIST: ApexBudget(
         max_active_agents=1,
@@ -313,8 +325,11 @@ _PROFILE_BUDGETS: dict[AutonomyProfile, ApexBudget] = {
         max_delegation_depth=1,
         max_replans=2,
         max_retries_per_failure_class=1,
-        max_runtime_minutes=60,
-        max_tool_calls=200,
+        # Active profiles do not stop goal work because a usage quota ran out.
+        # Runtime/platform capacity and explicit governance still apply.
+        max_runtime_minutes=None,
+        max_tool_calls=None,
+        max_total_tokens=None,
     ),
     AutonomyProfile.AUTONOMOUS: ApexBudget(
         max_active_agents=6,
@@ -322,18 +337,32 @@ _PROFILE_BUDGETS: dict[AutonomyProfile, ApexBudget] = {
         max_delegation_depth=3,
         max_replans=10,
         max_retries_per_failure_class=3,
-        max_runtime_minutes=480,
-        max_tool_calls=2500,
+        max_runtime_minutes=None,
+        max_tool_calls=None,
+        max_total_tokens=None,
     ),
     AutonomyProfile.APEX_MAX: ApexBudget(
+        # Agent population, recursion, replanning and retry counts are
+        # operational safety limits, not spend ceilings. Infinite retries are
+        # forbidden because duplicate actions can be harmful.
         max_active_agents=12,
         max_parallel_tasks=8,
         max_delegation_depth=5,
         max_replans=20,
         max_retries_per_failure_class=4,
-        max_runtime_minutes=1440,
-        max_tool_calls=5000,
+        max_runtime_minutes=None,
+        max_tool_calls=None,
+        max_total_tokens=None,
     ),
+}
+
+# Token ceilings stored by releases before ``None`` became the APEX_MAX default.
+# Missing-token snapshots retain their historical finite contract.
+_LEGACY_TOKEN_LIMITS = {
+    AutonomyProfile.OFF: 0,
+    AutonomyProfile.ASSIST: 100_000,
+    AutonomyProfile.AUTONOMOUS: 500_000,
+    AutonomyProfile.APEX_MAX: 2_000_000,
 }
 
 _PROFILE_PROTECTED: dict[AutonomyProfile, MappingProxyType[str, str]] = {
@@ -431,7 +460,7 @@ class AutonomyContract:
         return self.verdict_for(action_class) in ("approval", "deny")
 
     def max_retry(self, failure_class: str) -> int:
-        """Bounded retries for a failure class. Never infinite (spec §69)."""
+        """Bounded retries for a failure class; never infinite (spec §69)."""
         return self.budget.max_retries_per_failure_class
 
     # -- identity --------------------------------------------------------------
@@ -495,6 +524,84 @@ def profile_for(profile: AutonomyProfile | str, *, mission_id: str = "") -> Auto
     return _build(resolved, mission_id=mission_id)
 
 
+def contract_from_snapshot(snapshot: dict[str, Any], *, expected_digest: str = "") -> AutonomyContract:
+    """Rebuild a persisted, validated contract without widening its profile.
+
+    The snapshot is durable session state, so its authority, budgets and
+    protected actions are treated as untrusted input on every read. Rebuilding
+    through ``narrow_contract`` ensures a hand-edited snapshot cannot gain
+    authority, raise a budget, weaken a protected action, or disable the stop.
+    """
+    if not isinstance(snapshot, dict):
+        raise ContractViolation("contract snapshot must be an object")
+    try:
+        profile = AutonomyProfile(str(snapshot["profile"]))
+        mission_id = str(snapshot.get("mission_id", ""))
+        base = profile_for(profile, mission_id=mission_id)
+        if snapshot.get("execution") != dict(base.execution):
+            raise ContractViolation("contract snapshot execution policy differs from its profile")
+        if snapshot.get("controls") != base.controls.to_dict():
+            raise ContractViolation("contract snapshot controls differ from its profile")
+        authority = snapshot.get("authority")
+        budget = snapshot.get("budget")
+        protected = snapshot.get("protected_actions")
+        if not isinstance(authority, dict) or not isinstance(budget, dict) or not isinstance(protected, dict):
+            raise ContractViolation("contract snapshot is missing an authority, budget, or protected-action map")
+        legacy_budget = "max_total_tokens" not in budget
+        if any(type(value) is not bool for value in authority.values()):
+            raise ContractViolation("contract snapshot authority values must be booleans")
+        if any(not isinstance(key, str) or not isinstance(value, str) for key, value in protected.items()):
+            raise ContractViolation("contract snapshot protected-action entries must be strings")
+        if "max_total_tokens" not in budget:
+            budget = {**budget, "max_total_tokens": _LEGACY_TOKEN_LIMITS[base.profile]}
+        contract = narrow_contract(
+            base,
+            authority=authority,
+            budget=budget,
+            protected_actions={str(key): str(value) for key, value in protected.items()},
+        )
+    except (KeyError, TypeError, ValueError, ContractViolation) as exc:
+        raise ContractViolation(f"invalid contract snapshot: {exc}") from exc
+    digest = contract.digest()
+    stored_digest = str(snapshot.get("digest") or "")
+    digest_matches = stored_digest == digest and (not expected_digest or expected_digest == digest)
+    if legacy_budget and not digest_matches:
+        digest_matches = contract_digest_matches(contract, stored_digest) and (not expected_digest or contract_digest_matches(contract, expected_digest))
+    if not digest_matches:
+        raise ContractViolation("contract snapshot digest does not match the stored session")
+    return contract
+
+
+def contract_digest_matches(contract: AutonomyContract, digest: str) -> bool:
+    """Match current digests and the pre-token-budget digest for legacy sessions.
+
+    The old contract schema did not include ``max_total_tokens``. Legacy
+    snapshots are upgraded to their profile's historical default during validation;
+    compatibility only accepts the old hash when every other contract decision
+    is identical and the token ceiling is that same profile default.
+    """
+    if digest == contract.digest():
+        return True
+    if contract.budget.max_total_tokens != _LEGACY_TOKEN_LIMITS[contract.profile]:
+        return False
+    legacy_budget = contract.budget.to_dict()
+    legacy_budget.pop("max_total_tokens", None)
+    payload = json.dumps(
+        {
+            "profile": contract.profile.value,
+            "authority": dict(sorted(contract.authority.items())),
+            "execution": dict(sorted(contract.execution.items())),
+            "budget": legacy_budget,
+            "controls": contract.controls.to_dict(),
+            "protected_actions": dict(sorted(contract.protected_actions.items())),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    legacy_digest = "apxc-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return digest == legacy_digest
+
+
 def _build(profile: AutonomyProfile, *, mission_id: str) -> AutonomyContract:
     return AutonomyContract(
         profile=profile,
@@ -535,7 +642,15 @@ def narrow_contract(
     if budget:
         candidate = ApexBudget.from_dict({**current.to_dict(), **budget})
         for name in ApexBudget.__slots__:
-            if getattr(candidate, name) > getattr(current, name):
+            candidate_value = getattr(candidate, name)
+            current_value = getattr(current, name)
+            # None is an unbounded allowance: it is wider than every finite
+            # value, and equal only to another unbounded allowance.
+            if current_value is None and candidate_value is not None:
+                continue
+            if candidate_value is None and current_value is not None:
+                raise ContractViolation(f"cannot widen budget {name} on this contract")
+            if candidate_value is not None and current_value is not None and candidate_value > current_value:
                 raise ContractViolation(f"cannot widen budget {name} on this contract")
         new_budget = candidate
 

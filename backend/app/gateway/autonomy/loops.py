@@ -9,6 +9,7 @@ still runs a complete, healthy system.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -256,14 +257,15 @@ def apex_tick() -> dict[str, Any]:
 
     * **Adapters never raise.** A tick returns a dict summary; a subsystem that
       cannot be reached degrades to a disclosed row rather than killing the pass.
-    * **It counts rather than hides.** ``skipped_terminal`` and
-      ``cycles_blocked`` are both reported. "I ran one pass" and "three sessions
-      refused to progress" are different operational facts, and a summary that
-      only returned the first would hide the second.
+    * **It counts rather than hides.** ``skipped_terminal``,
+      ``skipped_mode_off``, and ``cycles_blocked`` are reported. A missing or
+      unreadable per-scope mode never grants a tick, and a summary discloses
+      how many sessions were intentionally left untouched.
     """
     try:
-        from alpha.apex.contract import profile_for
+        from alpha.apex.contract import contract_from_snapshot, profile_for
         from alpha.apex.executive import run_cycle
+        from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
         from alpha.apex.store import get_apex_store
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("APEX unavailable for the autonomy tick: %s", exc)
@@ -285,10 +287,26 @@ def apex_tick() -> dict[str, Any]:
             "cycles": 0,
         }
 
+    try:
+        mode_store = get_apex_mode_store()
+    except Exception as exc:
+        logger.warning("APEX mode store unavailable for the autonomy tick: %s", exc)
+        return {"error": f"apex_mode_store_unavailable:{type(exc).__name__}:{exc}", "sessions": None, "cycles": 0}
+
+    if mode_store.is_degraded:
+        return {
+            "error": "apex_mode_store_unreadable",
+            "store_error": mode_store.load_error,
+            "sessions": None,
+            "cycles": 0,
+        }
+
     summary: dict[str, Any] = {
         "sessions": None,
         "cycles": 0,
         "skipped_terminal": 0,
+        "skipped_mode_off": 0,
+        "skipped_profile_mismatch": 0,
         "cycles_blocked": 0,
         "decisions": {},
         "errors": [],
@@ -304,8 +322,22 @@ def apex_tick() -> dict[str, Any]:
         if session.is_terminal:
             summary["skipped_terminal"] += 1
             continue
+        scope_key = session.thread_id or session.owner or DEFAULT_SCOPE
+        mode = mode_store.for_scope(scope_key)
+        if not mode.enabled:
+            summary["skipped_mode_off"] += 1
+            continue
         try:
-            contract = profile_for(session.profile, mission_id=session.mission_id)
+            contract = mode.contract()
+            if mode.profile != session.profile:
+                summary["skipped_profile_mismatch"] += 1
+                continue
+            if session.contract_snapshot is not None:
+                contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest)
+            else:
+                # Legacy rows predate persisted snapshots; only the canonical
+                # profile contract can be reconstructed safely for them.
+                contract = profile_for(session.profile, mission_id=session.mission_id)
             result = run_cycle(store, session.session_id, contract)
         except Exception as exc:
             summary["errors"].append({"session_id": session.session_id, "error": f"{type(exc).__name__}: {exc}"})
@@ -315,6 +347,230 @@ def apex_tick() -> dict[str, Any]:
         summary["decisions"][action] = summary["decisions"].get(action, 0) + 1
         if result.decision.blocked:
             summary["cycles_blocked"] += 1
+
+    return summary
+
+
+async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dict[str, Any]:
+    """Dispatch and observe APEX objectives through the Gateway run owner.
+
+    This host adapter is deliberately app-bound and async: the shared
+    ``start_run`` service creates every run and ``RunManager`` remains its sole
+    lifecycle owner. A durable dispatch generation is reused after a crash,
+    and terminal runs stop here as awaiting verification rather than being
+    reported complete or silently re-run.
+    """
+    from alpha.apex.contract import contract_from_snapshot, profile_for
+    from alpha.apex.executive import run_cycle
+    from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
+    from alpha.apex.store import ApexSessionState, get_apex_store
+    from app.gateway.autonomy.supervisor import _fleet_admits_tick
+    from app.gateway.services import launch_apex_session_run
+
+    if not _fleet_admits_tick("apex"):
+        return {"sessions": 0, "error": "fleet_control_refused", "dispatched": 0}
+
+    summary: dict[str, Any] = {
+        "sessions": None,
+        "dispatched": 0,
+        "running": 0,
+        "awaiting_verification": 0,
+        "failed": 0,
+        "budget_exhausted": 0,
+        "skipped_terminal": 0,
+        "skipped_mode_off": 0,
+        "skipped_profile_mismatch": 0,
+        "errors": [],
+    }
+    store = get_apex_store()
+    mode_store = get_apex_mode_store()
+    if store.is_degraded or mode_store.is_degraded:
+        return {
+            **summary,
+            "error": "apex_store_unreadable" if store.is_degraded else "apex_mode_store_unreadable",
+            "sessions": None,
+        }
+
+    run_manager = getattr(getattr(app, "state", None), "run_manager", None)
+    event_store = getattr(getattr(app, "state", None), "run_event_store", None)
+    if run_manager is None:
+        return {**summary, "error": "run_manager_unavailable", "sessions": 0}
+
+    sessions = store.list(limit=200)
+    if session_id is not None:
+        sessions = [session for session in sessions if session.session_id == session_id]
+    summary["sessions"] = len(sessions)
+    for session in sessions:
+        if session.is_terminal:
+            summary["skipped_terminal"] += 1
+            continue
+        generation: int | None = None
+        try:
+            if session.run_id:
+                run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
+                if run is None:
+                    summary["errors"].append({"session_id": session.session_id, "error": "linked RunManager record is unavailable; dispatch remains parked"})
+                    continue
+                status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
+                if event_store is not None:
+                    cursor = int(session.usage.event_cursors.get(session.run_id, 0))
+                    received_usage_events = False
+                    for _ in range(20):
+                        events = await event_store.list_events(
+                            session.thread_id,
+                            session.run_id,
+                            event_types=["llm.ai.response", "subagent.end"],
+                            limit=200,
+                            after_seq=cursor,
+                        )
+                        if not events:
+                            break
+                        for event in events:
+                            if not isinstance(event, dict):
+                                continue
+                            metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
+                            content = event.get("content") if isinstance(event.get("content"), dict) else {}
+                            event_type = str(event.get("event_type", event.get("type", "")))
+                            usage_data = metadata.get("usage") if event_type == "llm.ai.response" else content.get("usage")
+                            usage_data = usage_data if isinstance(usage_data, dict) else {}
+                            seq = int(event.get("seq", 0) or 0)
+                            if seq <= cursor:
+                                continue
+                            received_usage_events = True
+                            store.record_run_usage_event(
+                                session.session_id,
+                                run_id=session.run_id,
+                                seq=seq,
+                                input_tokens=usage_data.get("input_tokens"),
+                                output_tokens=usage_data.get("output_tokens"),
+                                llm_call=event_type == "llm.ai.response",
+                            )
+                            cursor = seq
+                        if len(events) < 200:
+                            break
+                    # Some run stores do not persist observer events. Keep the
+                    # live APEX budget visible from RunManager's cumulative
+                    # counters in that case; snapshots are upserted by run id.
+                    if not received_usage_events and cursor == 0:
+                        store.record_run_usage(
+                            session.session_id,
+                            run_id=session.run_id,
+                            input_tokens=int(getattr(run, "total_input_tokens", 0) or 0),
+                            output_tokens=int(getattr(run, "total_output_tokens", 0) or 0),
+                            llm_calls=int(getattr(run, "llm_call_count", 0) or 0),
+                        )
+                else:
+                    store.record_run_usage(
+                        session.session_id,
+                        run_id=session.run_id,
+                        input_tokens=int(getattr(run, "total_input_tokens", 0) or 0),
+                        output_tokens=int(getattr(run, "total_output_tokens", 0) or 0),
+                        llm_calls=int(getattr(run, "llm_call_count", 0) or 0),
+                    )
+
+                # Enforce the persisted session contract at the host boundary.
+                # APEX can request interruption, but RunManager remains the
+                # sole owner of the actual run lifecycle.
+                contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest) if session.contract_snapshot is not None else profile_for(session.profile, mission_id=session.mission_id)
+                started_at = session.dispatch_started_at or session.usage.started_at
+                runtime_limit = contract.budget.max_runtime_minutes
+                latest = store.get(session.session_id)
+                measured_tokens = latest.usage.total_tokens if latest is not None else None
+                token_limit = contract.budget.max_total_tokens
+                token_exhausted = token_limit is not None and measured_tokens is not None and measured_tokens >= token_limit
+                runtime_exhausted = runtime_limit is not None and time.time() - started_at >= runtime_limit * 60
+                if status in {"pending", "running", "queued"} and token_exhausted:
+                    await run_manager.cancel(session.run_id, action="interrupt")
+                    store.emit(
+                        session.session_id,
+                        "budget.tokens_exhausted",
+                        run_id=session.run_id,
+                        measured_tokens=measured_tokens,
+                        limit=token_limit,
+                    )
+                    summary["budget_exhausted"] += 1
+                    run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
+                    status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
+                elif status in {"pending", "running", "queued"} and runtime_exhausted:
+                    await run_manager.cancel(session.run_id, action="interrupt")
+                    run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
+                    status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
+                store.record_run_status(session.session_id, run_id=session.run_id, status=status)
+                if status in {"completed", "success"}:
+                    summary["awaiting_verification"] += 1
+                elif status in {"error", "failed", "interrupted", "cancelled"}:
+                    summary["failed"] += 1
+                else:
+                    summary["running"] += 1
+                continue
+
+            scope_key = session.thread_id or session.owner or DEFAULT_SCOPE
+            mode = mode_store.for_scope(scope_key)
+            if not mode.enabled:
+                summary["skipped_mode_off"] += 1
+                continue
+            if mode.profile != session.profile:
+                summary["skipped_profile_mismatch"] += 1
+                continue
+
+            if session.dispatch_state in {"awaiting_verification", "failed"}:
+                if session.dispatch_state == "awaiting_verification":
+                    summary["awaiting_verification"] += 1
+                else:
+                    summary["failed"] += 1
+                continue
+
+            if session.state is not ApexSessionState.ACTIVE:
+                if session.state is not ApexSessionState.IDLE:
+                    continue
+                contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest) if session.contract_snapshot is not None else profile_for(session.profile, mission_id=session.mission_id)
+                # Record the executive's current decision before the host
+                # adapter acts on it, preserving the decision/execution seam.
+                result = run_cycle(store, session.session_id, contract)
+                if result.decision.blocked or result.decision.action.value == "none":
+                    continue
+                store.update(session.session_id, mission_id=session.mission_id or session.session_id)
+                session = store.set_state(session.session_id, ApexSessionState.ACTIVE, reason="host adapter admitted objective") or session
+            elif not session.mission_id:
+                store.update(session.session_id, mission_id=session.session_id)
+
+            # The executive's dispatch decision is journaled before the host
+            # starts the run. A blocked or no-op decision never reaches this
+            # side-effect boundary.
+            contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest) if session.contract_snapshot is not None else profile_for(session.profile, mission_id=session.mission_id)
+            decision = run_cycle(store, session.session_id, contract).decision
+            if decision.blocked or decision.action.value != "dispatch":
+                continue
+
+            if contract.budget.max_total_tokens == 0:
+                generation = store.claim_dispatch(session.session_id)
+                if generation is not None:
+                    reason = "APEX token budget is zero; no model run was admitted."
+                    store.record_dispatch_failure(session.session_id, generation=generation, reason=reason)
+                    summary["failed"] += 1
+                    summary["budget_exhausted"] += 1
+                continue
+
+            generation = store.claim_dispatch(session.session_id)
+            if generation is None:
+                continue
+            run = await launch_apex_session_run(app=app, session=session, generation=generation)
+            if store.record_dispatch_run(
+                session.session_id,
+                generation=generation,
+                run_id=run.run_id,
+                status=getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "pending"))),
+            ):
+                summary["dispatched"] += 1
+            else:
+                summary["errors"].append({"session_id": session.session_id, "error": "run was admitted but session link changed; inspect the idempotent run record"})
+        except Exception as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+            if generation is not None:
+                store.record_dispatch_failure(session.session_id, generation=generation, reason=reason)
+                summary["failed"] += 1
+            summary["errors"].append({"session_id": session.session_id, "error": reason})
+            logger.warning("APEX host dispatch failed for %s: %s", session.session_id, exc)
 
     return summary
 

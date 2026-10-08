@@ -183,7 +183,11 @@ class TestApprovalGate:
         """The load-bearing path: a blocked decision parks the session
         and creates the ask, so an operator has something real to decide."""
         session.acceptance_criteria = ["tests pass"]
-        store.update(session.session_id, acceptance_criteria=["tests pass"])
+        store.update(
+            session.session_id,
+            acceptance_criteria=["tests pass"],
+            acceptance={"criteria": [{"criterion": "tests pass", "verdict": "unverified"}], "evaluator": "test"},
+        )
         from alpha.apex.executive import run_cycle as _run
 
         result = _run(store, session.session_id, profile_for("autonomous"))
@@ -298,7 +302,11 @@ class TestParkedCycle:
 
     def test_an_approved_session_cycles_again(self, store: ApexStore, session: Any) -> None:
         session.acceptance_criteria = ["tests pass"]
-        store.update(session.session_id, acceptance_criteria=["tests pass"])
+        store.update(
+            session.session_id,
+            acceptance_criteria=["tests pass"],
+            acceptance={"criteria": [{"criterion": "tests pass", "verdict": "unverified"}], "evaluator": "test"},
+        )
         run_cycle(store, session.session_id, profile_for("autonomous"))
         assert store.get(session.session_id).state is ApexSessionState.BLOCKED
         pending = store.pending_approval(session.session_id)

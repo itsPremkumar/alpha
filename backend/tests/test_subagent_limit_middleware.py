@@ -3,6 +3,7 @@
 import logging
 from unittest.mock import MagicMock
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from alpha.agents.middlewares.subagent_limit_middleware import (
@@ -111,6 +112,64 @@ class TestTruncateTaskCalls:
         mw = SubagentLimitMiddleware()
         state = {"messages": [AIMessage(content="thinking...")]}
         assert mw._truncate_task_calls(state) is None
+
+    @pytest.mark.parametrize(
+        ("max_active_agents", "max_parallel_tasks", "expected_calls"),
+        [(2, 4, 2), (4, 2, 2), (1, 4, 1)],
+    )
+    def test_apex_session_caps_task_calls_at_its_contract(self, tmp_path, monkeypatch, max_active_agents, max_parallel_tasks, expected_calls):
+        from alpha.apex.contract import narrow_contract, profile_for
+        from alpha.apex.mode import ApexModeStore
+        from alpha.apex.store import ApexSessionState, ApexStore
+
+        scope = "apex-parallel-cap"
+        owner = "operator"
+        contract = narrow_contract(
+            profile_for("apex_max", mission_id=scope),
+            budget={"max_active_agents": max_active_agents, "max_parallel_tasks": max_parallel_tasks},
+        )
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        session = store.create(
+            owner=owner,
+            objective="test the per-session delegation cap",
+            profile="apex_max",
+            contract_digest=contract.digest(),
+            contract_snapshot=contract.to_dict(),
+            thread_id=scope,
+        )
+        store.set_state(session.session_id, ApexSessionState.ACTIVE)
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        modes.enable(scope, "apex_max", owner=owner)
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": session.session_id, "user_id": owner})
+        message = AIMessage(content="", tool_calls=[_task_call(f"apex-{index}") for index in range(4)])
+        result = SubagentLimitMiddleware(max_concurrent=8, max_total=10)._truncate_task_calls({"messages": [message]}, runtime)
+
+        assert result is not None
+        updated = result["messages"][0]
+        assert [call["id"] for call in updated.tool_calls] == [f"apex-{index}" for index in range(expected_calls)]
+        assert "[APEX DELEGATION LIMIT]" in updated.content
+
+    def test_invalid_apex_session_withholds_delegation(self, tmp_path, monkeypatch):
+        from alpha.apex.mode import ApexModeStore
+        from alpha.apex.store import ApexStore
+
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": "missing-session", "user_id": "operator"})
+        message = AIMessage(content="", tool_calls=[_task_call("must-not-run")])
+
+        result = SubagentLimitMiddleware()._truncate_task_calls({"messages": [message]}, runtime)
+
+        assert result is not None
+        assert result["messages"][0].tool_calls == []
+        assert "[APEX DELEGATION LIMIT]" in result["messages"][0].content
 
     def test_task_calls_within_limit_returns_none(self):
         mw = SubagentLimitMiddleware(max_concurrent=3)

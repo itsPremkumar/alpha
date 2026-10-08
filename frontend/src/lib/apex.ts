@@ -53,7 +53,12 @@ export type ApexBlock<T> = ({ available: true } & T) | ApexUnavailable;
 
 export type ApexProfile = "off" | "assist" | "autonomous" | "apex_max";
 
-export const APEX_PROFILES: readonly ApexProfile[] = ["off", "assist", "autonomous", "apex_max"];
+export const APEX_PROFILES: readonly ApexProfile[] = [
+  "off",
+  "assist",
+  "autonomous",
+  "apex_max",
+];
 
 /**
  * The rungs APEX may be *enabled* at — what the enable picker offers.
@@ -63,7 +68,11 @@ export const APEX_PROFILES: readonly ApexProfile[] = ["off", "assist", "autonomo
  * This list is the single answer to "what may the operator turn it on to", so
  * the picker's options and the value the toggle adopts cannot disagree.
  */
-export const ENABLE_PROFILES: readonly ApexProfile[] = ["assist", "autonomous", "apex_max"];
+export const ENABLE_PROFILES: readonly ApexProfile[] = [
+  "assist",
+  "autonomous",
+  "apex_max",
+];
 
 /**
  * The profile the enable picker should adopt from a server mode read, or
@@ -88,7 +97,9 @@ export const ENABLE_PROFILES: readonly ApexProfile[] = ["assist", "autonomous", 
  *   through to the default and the record's `load_note` is what surfaces it.
  */
 export function profileToAdopt(modeProfile: string): ApexProfile | null {
-  return (ENABLE_PROFILES as readonly string[]).includes(modeProfile) ? (modeProfile as ApexProfile) : null;
+  return (ENABLE_PROFILES as readonly string[]).includes(modeProfile)
+    ? (modeProfile as ApexProfile)
+    : null;
 }
 
 /** One row of the composer's APEX menu: the rung, its name, and what it costs. */
@@ -112,17 +123,20 @@ const APEX_RUNG_LABELS: Record<ApexProfile, string> = {
  * - `off` — every authority false, every budget zero.
  * - `assist` — everything except the seven capability-changing keys
  *   (`terminal`, `git`, `mcp`, `a2a`, `subagents`, `swarm`, `browser`).
- * - `autonomous` / `apex_max` — every authority true; they differ only in
- *   budgets and protected actions, never in what may be reached.
+ * - Every enabled profile has unlimited spend quotas; they differ in authority,
+ *   operational concurrency/retry limits, and protected-action policy.
  *
  * `Record<ApexProfile, string>` is the drift guard: a profile added to
  * `ApexProfile` without a hint here is a type error, not an empty menu row.
  */
 const APEX_RUNG_HINTS: Record<ApexProfile, string> = {
   off: "APEX is not in force; Alpha executes requests normally.",
-  assist: "Everything except terminal, git, mcp, a2a, subagents, swarm and browser. Smallest budgets.",
-  autonomous: "Every authority, mid-size budgets.",
-  apex_max: "Every authority, widest budgets; protected actions still need a human.",
+  assist:
+    "Unlimited usage budget. Restricted capabilities; smaller agent and retry limits.",
+  autonomous:
+    "Unlimited usage budget. Every authority with moderate agent and retry limits.",
+  apex_max:
+    "Unlimited usage budget. Highest agent and retry limits; protected actions still need a human.",
 };
 
 /**
@@ -148,15 +162,16 @@ export const APEX_RUNGS: readonly ApexRung[] = APEX_PROFILES.map((value) => ({
 export const APEX_COMPOSER_DISCLOSURE =
   "Sets the APEX autonomy contract for this scope — the same switch the APEX panel shows. It does not start a run: send a message as usual. A higher profile raises budgets only, never the emergency stop or a protected action.";
 
-/** Budget ceilings for the active contract. Every field is required by the schema. */
+/** Session quotas for the active contract. `null` means no APEX per-session quota. */
 export interface ApexBudget {
-  max_active_agents: number;
-  max_parallel_tasks: number;
-  max_delegation_depth: number;
-  max_replans: number;
-  max_retries_per_failure_class: number;
-  max_runtime_minutes: number;
-  max_tool_calls: number;
+  max_active_agents: number | null | undefined;
+  max_parallel_tasks: number | null | undefined;
+  max_delegation_depth: number | null | undefined;
+  max_replans: number | null | undefined;
+  max_retries_per_failure_class: number | null | undefined;
+  max_runtime_minutes: number | null | undefined;
+  max_tool_calls: number | null | undefined;
+  max_total_tokens: number | null | undefined;
 }
 
 /** One delegated policy kernel. APEX records where each decision actually goes. */
@@ -281,35 +296,54 @@ function mapContract(v: unknown): ApexContract {
   const controls = rec(r.controls);
   const protectedActions = rec(r.protected_actions);
   const sites = rec(r.policy_sites);
-  const policySites: ApexPolicySite[] = Object.entries(sites).map(([name, dotted]) => ({
-    name,
-    module: str(dotted),
-  }));
+  const policySites: ApexPolicySite[] = Object.entries(sites).map(
+    ([name, dotted]) => ({
+      name,
+      module: str(dotted),
+    }),
+  );
   return {
     profile: (optStr(r.profile) ?? "off") as ApexProfile,
     enabled: bool(r.enabled),
     digest: str(r.digest),
     budget: {
-      max_active_agents: optNum(budget.max_active_agents) ?? 0,
-      max_parallel_tasks: optNum(budget.max_parallel_tasks) ?? 0,
-      max_delegation_depth: optNum(budget.max_delegation_depth) ?? 0,
-      max_replans: optNum(budget.max_replans) ?? 0,
-      max_retries_per_failure_class: optNum(budget.max_retries_per_failure_class) ?? 0,
-      max_runtime_minutes: optNum(budget.max_runtime_minutes) ?? 0,
-      max_tool_calls: optNum(budget.max_tool_calls) ?? 0,
+      max_active_agents: budgetNum(budget, "max_active_agents"),
+      max_parallel_tasks: budgetNum(budget, "max_parallel_tasks"),
+      max_delegation_depth: budgetNum(budget, "max_delegation_depth"),
+      max_replans: budgetNum(budget, "max_replans"),
+      max_retries_per_failure_class: budgetNum(
+        budget,
+        "max_retries_per_failure_class",
+      ),
+      max_runtime_minutes: budgetNum(budget, "max_runtime_minutes"),
+      max_tool_calls: budgetNum(budget, "max_tool_calls"),
+      max_total_tokens: budgetNum(budget, "max_total_tokens"),
     },
     emergency_stop: bool(controls.emergency_stop),
-    authority_granted: Array.isArray(r.authority_granted) ? (r.authority_granted as unknown[]).map(String) : [],
+    authority_granted: Array.isArray(r.authority_granted)
+      ? (r.authority_granted as unknown[]).map(String)
+      : [],
     protected_actions: Object.fromEntries(
       Object.entries(protectedActions).map(([k, v]) => [k, String(v)]),
     ),
     policy_sites: policySites,
-    policy_sites_live: Array.isArray(r.policy_sites_live) ? (r.policy_sites_live as unknown[]).map(String) : [],
+    policy_sites_live: Array.isArray(r.policy_sites_live)
+      ? (r.policy_sites_live as unknown[]).map(String)
+      : [],
     policy_sites_missing: Array.isArray(r.policy_sites_missing)
       ? (r.policy_sites_missing as unknown[]).map(String)
       : [],
     note: str(r.note),
   };
+}
+
+function budgetNum(source: Rec, key: string): number | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(source, key)) return undefined;
+  const value = source[key];
+  if (value === null) return null;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function mapFleet(v: unknown): ApexFleet {
@@ -328,7 +362,9 @@ function mapSessions(v: unknown): ApexSessions {
   const byState = rec(r.by_state);
   return {
     total: optNum(r.total),
-    by_state: Object.fromEntries(Object.entries(byState).map(([k, n]) => [k, optNum(n) ?? 0])),
+    by_state: Object.fromEntries(
+      Object.entries(byState).map(([k, n]) => [k, optNum(n) ?? 0]),
+    ),
     active: optNum(r.active),
     terminal: optNum(r.terminal),
   };
@@ -338,10 +374,16 @@ function mapSessions(v: unknown): ApexSessions {
  * Split an `ApexBlock`. A block the backend could not read becomes the
  * unavailable arm with its real reason — it never becomes a zeroed success.
  */
-function block<T>(v: unknown, map: (inner: Rec) => T): ({ available: true } & T) | ApexUnavailable {
+function block<T>(
+  v: unknown,
+  map: (inner: Rec) => T,
+): ({ available: true } & T) | ApexUnavailable {
   const r = rec(v);
   if (r.available !== true) {
-    return { available: false, reason: optStr(r.reason) ?? "the Gateway did not say why" };
+    return {
+      available: false,
+      reason: optStr(r.reason) ?? "the Gateway did not say why",
+    };
   }
   return { available: true, ...map(r) };
 }
@@ -360,17 +402,19 @@ export function mapStatus(v: unknown): ApexStatus {
       declared: optNum(inv.declared) ?? 0,
       live: optNum(inv.live) ?? 0,
       all_live: bool(inv.all_live),
-      invariants: (Array.isArray(inv.invariants) ? inv.invariants : []).map((row) => {
-        const item = rec(row);
-        return {
-          id: str(item.id),
-          statement: str(item.statement),
-          live: bool(item.live),
-          module: str(item.module),
-          symbol: str(item.symbol),
-          reason: str(item.reason),
-        };
-      }),
+      invariants: (Array.isArray(inv.invariants) ? inv.invariants : []).map(
+        (row) => {
+          const item = rec(row);
+          return {
+            id: str(item.id),
+            statement: str(item.statement),
+            live: bool(item.live),
+            module: str(item.module),
+            symbol: str(item.symbol),
+            reason: str(item.reason),
+          };
+        },
+      ),
     };
   }
   if (r.session !== undefined && r.session !== null) {
@@ -407,7 +451,11 @@ function mapCycle(v: unknown): ApexCycleResult {
     },
     steps: (Array.isArray(r.steps) ? r.steps : []).map((row) => {
       const item = rec(row);
-      return { name: str(item.name), outcome: str(item.outcome), detail: str(item.detail) };
+      return {
+        name: str(item.name),
+        outcome: str(item.outcome),
+        detail: str(item.detail),
+      };
     }),
     state_before: str(r.state_before),
     state_after: str(r.state_after),
@@ -422,14 +470,19 @@ export async function fetchApexStatus(opts?: {
 }): Promise<ApexStatus> {
   const params = new URLSearchParams();
   if (opts?.sessionId) params.set("session_id", opts.sessionId);
-  if (opts?.includeInvariants === false) params.set("include_invariants", "false");
+  if (opts?.includeInvariants === false)
+    params.set("include_invariants", "false");
   const query = params.toString();
   return mapStatus(await get<Rec>(`/apex/status${query ? `?${query}` : ""}`));
 }
 
 /** `GET /apex/policy`. The panel that explains what a profile actually grants. */
-export async function fetchApexPolicy(profile: ApexProfile): Promise<ApexContract> {
-  return mapContract(await get<Rec>(`/apex/policy?profile=${encodeURIComponent(profile)}`));
+export async function fetchApexPolicy(
+  profile: ApexProfile,
+): Promise<ApexContract> {
+  return mapContract(
+    await get<Rec>(`/apex/policy?profile=${encodeURIComponent(profile)}`),
+  );
 }
 
 /** `GET /apex/invariants`. Declared and live travel together, never collapsed. */
@@ -447,9 +500,55 @@ export interface CreateApexSession {
 }
 
 /** `POST /apex/sessions`. Admin-gated; a widening request answers 422 named. */
-export async function createApexSession(input: CreateApexSession): Promise<{ session_id: string }> {
-  const body = await send<Rec>("/apex/sessions", "POST", { profile: "autonomous", ...input });
+export async function createApexSession(
+  input: CreateApexSession,
+): Promise<{ session_id: string }> {
+  const body = await send<Rec>("/apex/sessions", "POST", {
+    profile: "autonomous",
+    ...input,
+  });
   return { session_id: str(rec(body.session).session_id) };
+}
+
+export interface ApexDispatchResult {
+  sessions: number | null;
+  dispatched: number | null;
+  running: number | null;
+  awaiting_verification: number | null;
+  failed: number | null;
+  budget_exhausted: number | null;
+  errors: Array<{ session_id: string; error: string }>;
+}
+
+/** `POST /apex/sessions/{id}/dispatch`. Starts or observes the idempotent run. */
+export async function dispatchApexSession(
+  sessionId: string,
+): Promise<ApexDispatchResult> {
+  const raw = rec(
+    await send<Rec>(
+      `/apex/sessions/${encodeURIComponent(sessionId)}/dispatch`,
+      "POST",
+    ),
+  );
+  const errors = Array.isArray(raw.errors)
+    ? raw.errors
+        .filter((item): item is Rec =>
+          Boolean(item && typeof item === "object"),
+        )
+        .map((item) => ({
+          session_id: str(item.session_id),
+          error: str(item.error),
+        }))
+    : [];
+  return {
+    sessions: optNum(raw.sessions),
+    dispatched: optNum(raw.dispatched),
+    running: optNum(raw.running),
+    awaiting_verification: optNum(raw.awaiting_verification),
+    failed: optNum(raw.failed),
+    budget_exhausted: optNum(raw.budget_exhausted),
+    errors,
+  };
 }
 
 /**
@@ -461,13 +560,28 @@ export async function createApexSession(input: CreateApexSession): Promise<{ ses
  * before `run_cycle` was reached. `{}` is what the backend's own tests post; the
  * route reads only `all_sessions` from it.
  */
-export async function runApexCycle(sessionId: string): Promise<ApexCycleResult> {
-  return mapCycle(await send<Rec>(`/apex/sessions/${encodeURIComponent(sessionId)}/cycle`, "POST", {}));
+export async function runApexCycle(
+  sessionId: string,
+): Promise<ApexCycleResult> {
+  return mapCycle(
+    await send<Rec>(
+      `/apex/sessions/${encodeURIComponent(sessionId)}/cycle`,
+      "POST",
+      {},
+    ),
+  );
 }
 
 /** `POST /apex/sessions/{id}/steer`. A mission constraint, never a prompt rewrite. */
-export async function steerApexSession(sessionId: string, instruction: string): Promise<void> {
-  await send<Rec>(`/apex/sessions/${encodeURIComponent(sessionId)}/steer`, "POST", { instruction });
+export async function steerApexSession(
+  sessionId: string,
+  instruction: string,
+): Promise<void> {
+  await send<Rec>(
+    `/apex/sessions/${encodeURIComponent(sessionId)}/steer`,
+    "POST",
+    { instruction },
+  );
 }
 
 // --------------------------------------------------------------------------- //
@@ -488,10 +602,22 @@ export interface ApexSessionRecord {
   state: string;
   profile: string;
   contract_digest: string;
+  dispatch_state: string | null;
+  run_status: string | null;
   mission_id: string;
   thread_id: string;
   blocked_reason: string;
   cycle_count: number | null;
+  replan_limit: number | null | undefined;
+  token_limit: number | null | undefined;
+  usage: {
+    tool_calls: number | null;
+    llm_calls: number | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+    replans: number | null;
+  };
   acceptance_criteria: string[];
   created_at: number | null;
   updated_at: number | null;
@@ -499,6 +625,8 @@ export interface ApexSessionRecord {
 
 function mapSessionRecord(v: unknown): ApexSessionRecord {
   const r = rec(v);
+  const usage = rec(r.usage);
+  const budget = rec(rec(r.contract_snapshot).budget);
   return {
     session_id: str(r.session_id),
     owner: str(r.owner),
@@ -506,11 +634,26 @@ function mapSessionRecord(v: unknown): ApexSessionRecord {
     state: str(r.state),
     profile: str(r.profile),
     contract_digest: str(r.contract_digest),
+    dispatch_state:
+      typeof r.dispatch_state === "string" ? r.dispatch_state : null,
+    run_status: typeof r.run_status === "string" ? r.run_status : null,
     mission_id: str(r.mission_id),
     thread_id: str(r.thread_id),
     blocked_reason: str(r.blocked_reason),
     cycle_count: optNum(r.cycle_count),
-    acceptance_criteria: Array.isArray(r.acceptance_criteria) ? (r.acceptance_criteria as unknown[]).map(String) : [],
+    replan_limit: budgetNum(budget, "max_replans"),
+    token_limit: budgetNum(budget, "max_total_tokens"),
+    usage: {
+      tool_calls: optNum(usage.tool_calls),
+      llm_calls: optNum(usage.llm_calls),
+      input_tokens: optNum(usage.input_tokens),
+      output_tokens: optNum(usage.output_tokens),
+      total_tokens: optNum(usage.total_tokens),
+      replans: optNum(usage.replans),
+    },
+    acceptance_criteria: Array.isArray(r.acceptance_criteria)
+      ? (r.acceptance_criteria as unknown[]).map(String)
+      : [],
     created_at: optNum(r.created_at),
     updated_at: optNum(r.updated_at),
   };
@@ -635,8 +778,12 @@ export async function fetchApexApprovals(): Promise<ApexApprovals> {
     // Derived as well as declared: a Gateway that bounds the list but omits
     // the flag would otherwise render a 200-row panel with no mention of the
     // 300 it hid. Absent bounds on both sides mean "not bounded" → false.
-    truncated: r.truncated === true || (returned !== null && count !== null && returned < count),
-    approvals: (Array.isArray(r.approvals) ? r.approvals : []).map((row) => mapApprovalRecord(row)),
+    truncated:
+      r.truncated === true ||
+      (returned !== null && count !== null && returned < count),
+    approvals: (Array.isArray(r.approvals) ? r.approvals : []).map((row) =>
+      mapApprovalRecord(row),
+    ),
   };
 }
 
@@ -665,7 +812,10 @@ export async function decideApexApproval(
   return {
     approval: mapApprovalRecord(r.approval),
     resumed: bool(r.resumed),
-    session: r.session === undefined || r.session === null ? null : mapSessionRecord(r.session),
+    session:
+      r.session === undefined || r.session === null
+        ? null
+        : mapSessionRecord(r.session),
   };
 }
 
@@ -703,8 +853,12 @@ function mapGoalRecord(v: unknown): ApexGoalRecord {
     priority: optNum(r.priority),
     risk: str(r.risk),
     plan_version: optNum(r.plan_version),
-    success_criteria: Array.isArray(r.success_criteria) ? (r.success_criteria as unknown[]).map(String) : [],
-    constraints: Array.isArray(r.constraints) ? (r.constraints as unknown[]).map(String) : [],
+    success_criteria: Array.isArray(r.success_criteria)
+      ? (r.success_criteria as unknown[]).map(String)
+      : [],
+    constraints: Array.isArray(r.constraints)
+      ? (r.constraints as unknown[]).map(String)
+      : [],
     session_id: str(r.session_id),
     mission_id: str(r.mission_id),
     current_strategy: str(r.current_strategy),
@@ -729,7 +883,9 @@ export async function fetchApexGoals(): Promise<ApexGoals> {
     available: bool(r.available),
     reason: optStr(r.reason) ?? "",
     count: optNum(r.count),
-    goals: (Array.isArray(r.goals) ? r.goals : []).map((row) => mapGoalRecord(row)),
+    goals: (Array.isArray(r.goals) ? r.goals : []).map((row) =>
+      mapGoalRecord(row),
+    ),
   };
 }
 
@@ -747,7 +903,9 @@ export interface CreateApexGoal {
 }
 
 /** `POST /apex/goals`. Authenticated, not admin: the owner is the caller. */
-export async function createApexGoal(input: CreateApexGoal): Promise<ApexGoalRecord> {
+export async function createApexGoal(
+  input: CreateApexGoal,
+): Promise<ApexGoalRecord> {
   const body = await send<Rec>("/apex/goals", "POST", input);
   return mapGoalRecord(rec(body.goal));
 }
@@ -783,8 +941,8 @@ export interface ApexMode {
   /** Whether *this* call changed anything. A second enable is `false`. */
   changed: boolean;
   contract_digest: string;
-  /** Whether the write reached disk. `false` means the toggle did not persist. */
-  durable: boolean;
+  /** Whether this write reached disk; reads and no-op writes report null. */
+  durable: boolean | null;
   /** Why nothing changed, when `changed` is false. */
   reason: string;
   enabled_at: number | null;
@@ -812,13 +970,17 @@ function mapMode(v: unknown): ApexMode {
     scope_key: str(r.scope_key),
     changed: bool(r.changed),
     contract_digest: str(r.contract_digest),
-    durable: bool(r.durable),
+    durable:
+      r.durable === undefined || r.durable === null ? null : bool(r.durable),
     reason: str(r.reason),
     enabled_at: optNum(r.enabled_at),
     updated_at: optNum(r.updated_at),
     load_note: optStr(r.load_note),
     load_error: optStr(r.load_error),
-    active_session: r.active_session === undefined || r.active_session === null ? null : mapSessionRecord(r.active_session),
+    active_session:
+      r.active_session === undefined || r.active_session === null
+        ? null
+        : mapSessionRecord(r.active_session),
   };
 }
 
@@ -855,7 +1017,10 @@ export interface ApexChipView {
  * than a green `ON`, because the green claim would be about a grant the server
  * says was not made.
  */
-export function apexChipView(mode: ApexMode | null, readError: string | null): ApexChipView {
+export function apexChipView(
+  mode: ApexMode | null,
+  readError: string | null,
+): ApexChipView {
   if (readError) {
     return {
       tone: "unknown",
@@ -865,7 +1030,12 @@ export function apexChipView(mode: ApexMode | null, readError: string | null): A
     };
   }
   if (!mode) {
-    return { tone: "loading", state: "…", profile: "", title: "Reading the APEX mode…" };
+    return {
+      tone: "loading",
+      state: "…",
+      profile: "",
+      title: "Reading the APEX mode…",
+    };
   }
   if (mode.load_error) {
     return {

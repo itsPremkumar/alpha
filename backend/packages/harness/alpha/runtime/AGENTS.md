@@ -26,11 +26,13 @@ each module's own `AGENTS.md` is the normative contract.
   data. `config.yaml -> network` is startup-only. `wait_registry.py` owns the
   durable record of parked sessions; the worker's terminal-exception handler calls
   `park_session_if_available()` through the process-wide accessor, and a parked
-  run's `network_waiting` stop reason is in `RECOVERABLE_RUN_STOP_REASONS` so
-  `SafeRunRecoveryService` keeps it alive. `NetworkWaitService` takes its resume
-  launcher **by injection and the Gateway installs none**: the continuation path
-  belongs to the recovery service, and inventing a per-thread resume here would
-  create a second authority that bypasses the side-effect gate. Tests:
+  run's `network_waiting` stop reason is persisted in the same worker transition
+  and is in `RECOVERABLE_RUN_STOP_REASONS`. `SafeRunRecoveryService` defers it
+  while the live network monitor confirms `OFFLINE`, then uses the normal
+  checkpoint/side-effect gate when connectivity is no longer confirmed offline.
+  `NetworkWaitService` does not launch runs: the continuation path belongs to the
+  recovery service, and a second per-thread resume would bypass the side-effect
+  gate. Tests:
   `tests/test_network_resilience.py`, `tests/test_network_wait_registry.py`,
   `tests/test_network_wiring.py`.
 - **`runtime/side_effects/`** — the per-effect answer to "what might have
@@ -54,7 +56,7 @@ each module's own `AGENTS.md` is the normative contract.
   drain is logged instead of looking clean. Tests: `tests/test_planned_shutdown.py`.
 
 **Honesty boundary, stated so nobody reads a claim into these modules that the
-code does not make.** Two of these are gaps. The first pair records how one gap
+code does not make.** One of these remains a gap. The first pair records how one gap
 closed, because "the storage does not exist" and "nothing writes to the storage"
 are different findings that call for different work, and both directions of that
 distinction have been wrong in this file before.
@@ -76,15 +78,17 @@ distinction have been wrong in this file before.
   process-local and restart-recoverable, not exactly-once - announcing an effect
   is still a caller decision, so an effect nothing announces cannot be
   deduplicated either.
-- **The supervisor is not yet wired into the Windows launcher.** `start.ps1`
-  still owns process startup, so nothing restarts the backend automatically on
-  Windows. True.
-- **A parked session's state is kept in a durable registry, and that registry has
-  no resume launcher.** `wait_registry.py`'s `NetworkWaitService` over
+- **The Python `ProcessSupervisor` is not wired into `start.ps1`.** Windows
+  automatic restart is owned by the separate four-layer chain in `recovery/`
+  and `start.ps1`; do not infer that its policies or diagnostics are shared with
+  `ProcessSupervisor`. Proving the Windows chain end to end still requires a
+  deliberate reboot/crash recovery drill.
+- **The network-wait registry has no resume launcher by design.**
+  `wait_registry.py`'s `NetworkWaitService` over
   `NetworkWaitRepository` (migration `0026_network_waits`) is wired at
   `app/gateway/deps.py`, so a park survives a process restart rather than being
-  re-derived. The gap is *continuation*: the Gateway installs no launcher, and
-  `SafeRunRecoveryService` owns resumption instead.
+  re-derived. It records attempts and timing; `SafeRunRecoveryService` owns
+  checkpoint inspection and resumption instead.
 
 Each module's `AGENTS.md` repeats the gaps it owns.
 
@@ -94,7 +98,8 @@ side_effect_ledger_production_writer: exists
 parked_session_durable_registry: exists
 parked_session_resume_launcher: absent
 cross_process_exactly_once: exists
-supervisor_in_windows_launcher: absent
+process_supervisor_in_windows_launcher: absent
+windows_watchdog_restart_chain: exists
 -->
 
 ### Workspace Snapshot Cancellation
@@ -129,6 +134,14 @@ cancellation and text-cache drain/cleanup.
 Gateway run creation defaults SSE disconnects to `on_disconnect=continue`; the explicit cancel endpoint remains the user stop mechanism. Startup and periodic lease reconciliation still terminalize orphaned active rows as `error/orphan_recovered`, but `app.gateway.run_recovery.SafeRunRecoveryService` then performs a bounded durable scan and creates a new idempotent run from the latest safe checkpoint. Graceful shutdown persists `stop_reason=gateway_shutdown`; provider fallback persists `model_failure`. Recovery lineage is carried in run metadata (`recovery_attempt`, `resumed_from_run_id`, `auto_recovery`) and bounded by `run_ownership.max_resume_attempts` with a deterministic `auto-recovery:<source_run_id>` admission key.
 
 Recovery is fail-closed around side effects. It requires a real compiled graph so full-mode raw blobs (which erase `next`/`tasks`) can never be mistaken for "no pending work", then resumes only when every pending LangGraph node is a known model/agent node. An active durable goal is also a safe continuation source even when the graph has no pending node, so the bounded goal loop can re-enter after a crash. Scheduled-task and durable MCP-notification run rows are excluded because their queue/dispatcher owns occurrence identity and terminal accounting; replaying them as ordinary chat would fork that identity. Durable cancellation requests are also excluded from candidate scans, even if shutdown or reconciliation writes a recoverable-looking terminal reason. A pending `tools`, MCP, custom middleware, shell, browser, write/delete, payment, or unknown node is terminalized as `recovery_confirmation_required`, because the external action may already have taken effect before its result was checkpointed. Other terminal dispositions are CAS-fenced through `RunStore.transition_recovery_stop_reason`: `recovery_exhausted`, `recovery_superseded`, `recovery_no_work`, `recovery_owner_missing`, and `recovery_blocked`. A model-failure replay may rewind exactly one parent checkpoint only when the head's last assistant message is explicitly stamped `alpha_error_fallback`; no generic crash rewinds visible work. Only transient/busy/burst/circuit-open fallback reasons qualify; auth, quota, configuration, and generic deterministic failures are not replayed. The resumed request deliberately does not pin the failed model name, so the graph is rebuilt with current model configuration. Checkpoint compatibility, ownership, graph schema, tool allowlists, sandbox policy, and user context are re-evaluated by the normal `start_run` path. Configuration is startup-only under `run_ownership`; tests: `tests/test_safe_run_recovery.py`, `test_gateway_run_recovery.py`, `test_run_repository.py`, and `test_gateway_run_drain_shutdown.py`.
+
+Definitive DNS/refused/unreachable exceptions are persisted with stop reason
+`network_waiting` and recorded in the network-wait registry. Recovery defers
+those candidates while the live monitor reports `OFFLINE`, then applies the
+ordinary checkpoint safety gate. Timeouts, unknown probe state, and a missing
+monitor do not prove an outage. Regression coverage is in
+`tests/test_run_worker_terminal_error_events.py` and
+`tests/test_safe_run_recovery.py`.
 
 ### Stream Bridge Heartbeats
 

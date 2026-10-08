@@ -74,6 +74,8 @@ async def test_execute_item_marks_real_running_then_persists_terminal_result(mon
         token_usage_records=None,
     )
 
+    execution_spec = {**_request().execution_spec, "apex_session_id": "apex-session-1"}
+
     class Repository:
         def __init__(self) -> None:
             self.marked_running = False
@@ -90,7 +92,7 @@ async def test_execute_item_marks_real_running_then_persists_terminal_result(mon
                         "thread_id": "thread-1",
                         "user_id": "user-1",
                         "run_id": "run-1",
-                        "execution_spec": _request().execution_spec,
+                        "execution_spec": execution_spec,
                     },
                 }
             ]
@@ -142,6 +144,7 @@ async def test_execute_item_marks_real_running_then_persists_terminal_result(mon
     assert repository.finalized["succeeded"] is True
     assert repository.finalized["result"] == "done"
     assert executor_kwargs["execution_capacity"] is execution_capacity
+    assert executor_kwargs["apex_session_id"] == "apex-session-1"
 
 
 @pytest.mark.asyncio

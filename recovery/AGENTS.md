@@ -46,6 +46,12 @@ crash or `taskkill` never creates it and is always recovered.
 - **`../start.ps1`** (Layer 2, the launcher) — three behaviours the watchdog's
   honesty depends on, pinned by `backend/tests/test_launcher_diagnostics.py`:
 
+  - **Steady-state service liveness is the listener, not the wrapper PID.** A
+    live `uv run`/Uvicorn process with its port closed is wedged just as surely
+    as an exited process. The launcher restarts the service when its port is
+    absent; otherwise the watchdog defers to the live launcher and both layers
+    can leave the service down indefinitely.
+
   - **Readiness is re-probed every boot-wait pass, never latched.** The old
     `if (-not $gatewayReady)` guards made the first 200 permanent, so a gateway
     that crashed mid-boot-wait stayed "ready" and the loop could break out

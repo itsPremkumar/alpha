@@ -137,7 +137,7 @@ class AutonomySupervisor:
             ("free_models_sync", "Daily discovery and health check for keyless free LLM models.", loop_adapters.free_models_sync_tick, 86400.0),
             ("company_operations", "Bounded sweep of Company OS loops: observe, plan, act, verify, ledger.", loop_adapters.company_operations_tick, 300.0),
             ("self_update", "Opt-in GitHub source update check and guarded apply.", loop_adapters.self_update_tick, 21600.0),
-            ("apex", "APEX executive cycle: one bounded decision pass per non-terminal session.", loop_adapters.apex_tick, 120.0),
+            ("apex", "APEX executive cycle with idempotent RunManager dispatch and run observation.", loop_adapters.apex_tick, 120.0),
         )
         for loop_id, description, tick, interval in defaults:
             self.register(LoopSpec(loop_id=loop_id, description=description, tick=tick, default_interval_seconds=interval))

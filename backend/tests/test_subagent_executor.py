@@ -3990,6 +3990,7 @@ class TestSubagentGuardrailAttribution:
         oauth_provider=None,
         oauth_id=None,
         run_id=None,
+        apex_session_id=None,
         loop_detection_recorder=None,
         tool_promotion_recorder=None,
         name="general-purpose",
@@ -4015,6 +4016,7 @@ class TestSubagentGuardrailAttribution:
             oauth_provider=oauth_provider,
             oauth_id=oauth_id,
             run_id=run_id,
+            apex_session_id=apex_session_id,
             loop_detection_recorder=loop_detection_recorder,
             tool_promotion_recorder=tool_promotion_recorder,
         )
@@ -4037,6 +4039,7 @@ class TestSubagentGuardrailAttribution:
             oauth_provider="keycloak",
             oauth_id="subj-123",
             run_id="run-42",
+            apex_session_id="apex-session-1",
         )
         fake_agent = _FakeStreamAgent()
         monkeypatch.setattr(executor, "_build_initial_state", self._noop_build_initial_state)
@@ -4051,6 +4054,7 @@ class TestSubagentGuardrailAttribution:
         assert context.get("oauth_provider") == "keycloak"
         assert context.get("oauth_id") == "subj-123"
         assert context.get("run_id") == "run-42"
+        assert context.get("__alpha_apex_session_id") == "apex-session-1"
         assert context.get("is_subagent") is True
         lease_owner = context.get("sandbox_lease_owner_id")
         assert isinstance(lease_owner, str)

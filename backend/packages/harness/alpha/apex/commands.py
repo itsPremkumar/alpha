@@ -48,6 +48,10 @@ _SCOPE_KEYS = ("apex_scope", "session_id", "thread_id", "conversation_id", "chat
 DEFAULT_ON_PROFILE = AutonomyProfile.ASSIST.value
 
 
+def _format_budget(value: int | None) -> str:
+    return "unlimited" if value is None else f"{value:,}"
+
+
 def _scope_of(context: dict[str, Any] | None) -> str:
     context = context or {}
     for key in _SCOPE_KEYS:
@@ -229,7 +233,13 @@ def handle_apex_policy(args: str, context: dict[str, Any] | None = None) -> Comm
     lines = [
         f"APEX policy - profile '{contract.profile.value}' ({'in force' if in_force else 'not in force'})",
         f"Contract: {contract.digest()}",
-        f"Budgets: {contract.budget.max_active_agents} agents, {contract.budget.max_parallel_tasks} parallel, {contract.budget.max_tool_calls} tool calls, {contract.budget.max_runtime_minutes} min",
+        (
+            f"Operational caps: {_format_budget(contract.budget.max_active_agents)} agents, {_format_budget(contract.budget.max_parallel_tasks)} parallel, "
+            f"depth {_format_budget(contract.budget.max_delegation_depth)}, {_format_budget(contract.budget.max_replans)} replans, "
+            f"{_format_budget(contract.budget.max_retries_per_failure_class)} retries per failure class; spend ceilings: "
+            f"{_format_budget(contract.budget.max_tool_calls)} tool calls, {_format_budget(contract.budget.max_total_tokens)} tokens, "
+            f"{_format_budget(contract.budget.max_runtime_minutes)} min"
+        ),
         "Emergency stop: always on (not configurable)",
         f"Authority granted ({len(granted)}): {', '.join(granted)}",
         f"Protected actions: {protected}",

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -24,24 +25,30 @@ async def _repo(tmp_path) -> SubagentBatchRepository:
 async def _create(
     repo: SubagentBatchRepository,
     *,
+    batch_id: str = "batch-1",
+    submission_key: str = "run-1:call-1",
     count: int = 4,
     max_live: int = 2,
     max_running: int = 1,
     max_attempts: int = 2,
+    apex_session_id: str | None = None,
+    apex_concurrency_limit: int | None = None,
 ) -> dict:
     return await repo.create_batch(
-        batch_id="batch-1",
+        batch_id=batch_id,
         user_id="user-1",
         thread_id="thread-1",
         run_id="run-1",
         tool_call_id="call-1",
-        submission_key="run-1:call-1",
+        submission_key=submission_key,
         title="Research records",
         subagent_type="general-purpose",
         items=[{"key": f"item-{i}", "prompt": f"Process {i}"} for i in range(count)],
         max_live_items=max_live,
         max_running_items=max_running,
         max_attempts=max_attempts,
+        apex_session_id=apex_session_id,
+        apex_concurrency_limit=apex_concurrency_limit,
         execution_spec={
             "subagent_config": {
                 "name": "general-purpose",
@@ -51,6 +58,73 @@ async def _create(
             "authz_attributes": {"tenant": "private-tenant"},
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_apex_batch_claims_share_session_cap_across_batches(tmp_path) -> None:
+    repo = await _repo(tmp_path)
+    await _create(
+        repo,
+        batch_id="batch-a",
+        submission_key="run-1:call-a",
+        count=4,
+        max_live=4,
+        max_running=4,
+        apex_session_id="apex-session-1",
+        apex_concurrency_limit=2,
+    )
+    await _create(
+        repo,
+        batch_id="batch-b",
+        submission_key="run-1:call-b",
+        count=4,
+        max_live=4,
+        max_running=4,
+        apex_session_id="apex-session-1",
+        apex_concurrency_limit=2,
+    )
+
+    claimed = await repo.claim_items(now=datetime.now(UTC), lease_owner="worker-1", lease_seconds=60, limit=20)
+
+    assert len(claimed) == 2
+    assert {item["batch"]["id"] for item in claimed} == {"batch-a"}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_apex_claimers_cannot_exceed_session_cap(tmp_path) -> None:
+    repo = await _repo(tmp_path)
+    await _create(
+        repo,
+        batch_id="batch-a",
+        submission_key="run-1:call-a",
+        count=4,
+        max_live=4,
+        max_running=4,
+        apex_session_id="apex-session-1",
+        apex_concurrency_limit=2,
+    )
+    await _create(
+        repo,
+        batch_id="batch-b",
+        submission_key="run-1:call-b",
+        count=4,
+        max_live=4,
+        max_running=4,
+        apex_session_id="apex-session-1",
+        apex_concurrency_limit=2,
+    )
+    now = datetime.now(UTC)
+
+    first, second = await asyncio.gather(
+        repo.claim_items(now=now, lease_owner="worker-a", lease_seconds=60, limit=10),
+        repo.claim_items(now=now, lease_owner="worker-b", lease_seconds=60, limit=10),
+    )
+
+    assert len(first) + len(second) == 2
+    batch_a = await repo.get_batch("batch-a", user_id="user-1")
+    batch_b = await repo.get_batch("batch-b", user_id="user-1")
+    assert batch_a is not None and batch_b is not None
+    assert batch_a["counts"]["leased"] + batch_b["counts"]["leased"] == 2
 
 
 @pytest.mark.asyncio

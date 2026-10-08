@@ -25,7 +25,7 @@ The empty-DB path keeps using `create_all` because `Base.metadata` is the only a
 `0019_thread_incarnations` → `0022_scheduled_occurrence_seq` →
 `0023_run_events_fts` → `0024_feedback_category` →
 `0025_run_recovery_index` → `0026_network_waits` →
-`0027_side_effect_ledger` (current head).
+`0027_side_effect_ledger` → `0028_subagent_batch_apex_limits` (current head).
 The incarnation revision deliberately retains the exact id audited by the
 rollback-floor binary; Alembic orders revisions by `down_revision`, not by the
 numeric prefix. Regenerate this list from `versions/*.py` when a revision is

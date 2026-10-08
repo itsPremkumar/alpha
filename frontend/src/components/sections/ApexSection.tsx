@@ -3,7 +3,15 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Cpu, PauseCircle, Power, Radio, ShieldCheck } from "lucide-react";
 
-import { Badge, Btn, ErrorBox, Notice, Section, SkeletonList, inputCls } from "@/components/ui";
+import {
+  Badge,
+  Btn,
+  ErrorBox,
+  Notice,
+  Section,
+  SkeletonList,
+  inputCls,
+} from "@/components/ui";
 import {
   APEX_PROFILES,
   ENABLE_PROFILES,
@@ -12,6 +20,8 @@ import {
   fetchApexMode,
   fetchApexPolicy,
   fetchApexStatus,
+  createApexSession,
+  dispatchApexSession,
   profileToAdopt,
   type ApexApprovals,
   type ApexBlock,
@@ -40,9 +50,9 @@ import {
  * **`all_live` and `live/declared` travel together.** Rendering "12 invariants"
  * over 9 live sites would be a fabricated count, so the badge states both.
  *
- * **This panel starts nothing.** "Run one cycle" records a decision; the
- * Gateway's supervisor loop and a host adapter perform work. The button is
- * labelled accordingly.
+ * **Dispatch is explicit.** Creating and dispatching an objective starts a
+ * real run through the Gateway adapter. "Run one cycle" still records a
+ * decision only; neither action can mark acceptance as verified.
  *
  * **Control actions re-read before they render.** The session card acts, then
  * re-reads mode and approvals from the server; no verb or verdict paints a
@@ -57,9 +67,22 @@ import {
  * unmeasured subsystem as a working one — the exact failure this surface's
  * mappers exist to prevent.
  */
-function Unavailable({ block, label }: { block: ApexBlock<unknown>; label: string }) {
+function Unavailable({
+  block,
+  label,
+}: {
+  block: ApexBlock<unknown>;
+  label: string;
+}) {
   if (block.available) return null;
-  return <Notice tone="warn" message={`${label} unavailable — ${block.reason}`} />;
+  return (
+    <Notice tone="warn" message={`${label} unavailable — ${block.reason}`} />
+  );
+}
+
+function quota(value: number | null | undefined): string {
+  if (value === null) return "Unlimited";
+  return value === undefined ? "Unknown" : value.toLocaleString();
 }
 
 function ContractCard({ contract }: { contract: ApexContract }) {
@@ -71,7 +94,9 @@ function ContractCard({ contract }: { contract: ApexContract }) {
         <div className="flex items-center gap-2">
           {/* Gray, not green: a disabled profile must look off, per the
               client rule that defaults-off has to render as off. */}
-          <Badge tone={contract.enabled ? "green" : "gray"}>{contract.enabled ? contract.profile : "off"}</Badge>
+          <Badge tone={contract.enabled ? "green" : "gray"}>
+            {contract.enabled ? contract.profile : "off"}
+          </Badge>
           <code className="text-xs text-neutral-500">{contract.digest}</code>
         </div>
       </div>
@@ -82,19 +107,37 @@ function ContractCard({ contract }: { contract: ApexContract }) {
         </div>
         <div>
           <dt className="text-neutral-500">Max tool calls</dt>
-          <dd>{contract.budget.max_tool_calls.toLocaleString()}</dd>
+          <dd>{quota(contract.budget.max_tool_calls)}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-500">Total token ceiling</dt>
+          <dd>{quota(contract.budget.max_total_tokens)}</dd>
         </div>
         <div>
           <dt className="text-neutral-500">Max agents</dt>
-          <dd>{contract.budget.max_active_agents}</dd>
+          <dd>{quota(contract.budget.max_active_agents)}</dd>
         </div>
         <div>
           <dt className="text-neutral-500">Delegation depth</dt>
-          <dd>{contract.budget.max_delegation_depth}</dd>
+          <dd>{quota(contract.budget.max_delegation_depth)}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-500">Replans</dt>
+          <dd>{quota(contract.budget.max_replans)}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-500">Retries per failure</dt>
+          <dd>{quota(contract.budget.max_retries_per_failure_class)}</dd>
         </div>
         <div>
           <dt className="text-neutral-500">Runtime ceiling</dt>
-          <dd>{contract.budget.max_runtime_minutes} min</dd>
+          <dd>
+            {contract.budget.max_runtime_minutes === null
+              ? "Unlimited"
+              : contract.budget.max_runtime_minutes === undefined
+                ? "Unknown"
+                : `${contract.budget.max_runtime_minutes} min`}
+          </dd>
         </div>
         <div>
           <dt className="text-neutral-500">Emergency stop</dt>
@@ -116,23 +159,30 @@ function PolicySitesCard({ contract }: { contract: ApexContract }) {
           <ShieldCheck className="size-4" />
           Delegated policy kernels
         </span>
-        <Badge tone={contract.policy_sites_missing.length === 0 ? "green" : "amber"}>
-          {contract.policy_sites_live.length}/{contract.policy_sites.length} live
+        <Badge
+          tone={contract.policy_sites_missing.length === 0 ? "green" : "amber"}
+        >
+          {contract.policy_sites_live.length}/{contract.policy_sites.length}{" "}
+          live
         </Badge>
       </div>
       <p className="text-xs text-neutral-500">
-        APEX composes these; it is not a second policy kernel. A missing one is an unenforced
-        boundary.
+        APEX composes these; it is not a second policy kernel. A missing one is
+        an unenforced boundary.
       </p>
       <ul className="space-y-1 text-xs">
         {contract.policy_sites.map((site) => {
           const live = contract.policy_sites_live.includes(site.name);
           return (
             <li key={site.name} className="flex items-start gap-2">
-              <span className={live ? "text-emerald-600" : "text-amber-600"}>{live ? "●" : "○"}</span>
+              <span className={live ? "text-emerald-600" : "text-amber-600"}>
+                {live ? "●" : "○"}
+              </span>
               <span className="min-w-0">
                 <span className="font-medium">{site.name}</span>
-                <code className="block truncate text-neutral-500">{site.module}</code>
+                <code className="block truncate text-neutral-500">
+                  {site.module}
+                </code>
               </span>
             </li>
           );
@@ -142,7 +192,11 @@ function PolicySitesCard({ contract }: { contract: ApexContract }) {
   );
 }
 
-function InvariantsCard({ report }: { report: NonNullable<ApexStatus["invariants"]> }) {
+function InvariantsCard({
+  report,
+}: {
+  report: NonNullable<ApexStatus["invariants"]>;
+}) {
   return (
     <div className="space-y-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
       <div className="flex items-center justify-between gap-2">
@@ -156,14 +210,19 @@ function InvariantsCard({ report }: { report: NonNullable<ApexStatus["invariants
       <ul className="space-y-1 text-xs">
         {report.invariants.map((invariant) => (
           <li key={invariant.id} className="flex items-start gap-2">
-            <span className={invariant.live ? "text-emerald-600" : "text-amber-600"}>
+            <span
+              className={invariant.live ? "text-emerald-600" : "text-amber-600"}
+            >
               {invariant.live ? "●" : "○"}
             </span>
             <span className="min-w-0">
-              <span className="font-mono">{invariant.id}</span> {invariant.statement}
+              <span className="font-mono">{invariant.id}</span>{" "}
+              {invariant.statement}
               <code className="block truncate text-neutral-500">
                 {invariant.module}:{invariant.symbol}
-                {!invariant.live && invariant.reason ? ` — ${invariant.reason}` : ""}
+                {!invariant.live && invariant.reason
+                  ? ` — ${invariant.reason}`
+                  : ""}
               </code>
             </span>
           </li>
@@ -236,7 +295,8 @@ function ApexToggle({
       } catch (exc) {
         // A failed read is NOT "off". It is an unknown, and the switch says so
         // instead of rendering a state nobody measured.
-        if (!cancelled) setLoadError(exc instanceof Error ? exc.message : String(exc));
+        if (!cancelled)
+          setLoadError(exc instanceof Error ? exc.message : String(exc));
       }
     })();
     return () => {
@@ -260,8 +320,10 @@ function ApexToggle({
       // Two contradicting claims on one screen is the failure — so the other
       // read re-runs here, on the server's confirmation, never on the click.
       onChanged?.();
-      if (!written.durable) {
-        onError("The mode changed in memory but did not reach disk — it will not survive a restart.");
+      if (written.durable === false) {
+        onError(
+          "The mode changed in memory but did not reach disk — it will not survive a restart.",
+        );
       }
     } catch (exc) {
       // Leave `mode` untouched: a refused write must not move the switch.
@@ -279,8 +341,8 @@ function ApexToggle({
           APEX state unknown
         </div>
         <p className="text-xs text-neutral-600">
-          The mode read failed, so whether APEX is on is <strong>not known</strong>. This is not the same as
-          off.
+          The mode read failed, so whether APEX is on is{" "}
+          <strong>not known</strong>. This is not the same as off.
         </p>
         <p className="font-mono text-xs text-amber-700">{loadError}</p>
         <Btn onClick={() => window.location.reload()}>Retry</Btn>
@@ -299,7 +361,9 @@ function ApexToggle({
     <div className="space-y-3 rounded-xl border border-border/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Power className={`size-5 ${on ? "text-emerald-600" : "text-neutral-400"}`} />
+          <Power
+            className={`size-5 ${on ? "text-emerald-600" : "text-neutral-400"}`}
+          />
           <span className="text-sm font-medium">APEX autopilot</span>
           {/* Defaults-off must look off, so this is grey rather than neutral
               green when APEX is not running. */}
@@ -314,7 +378,9 @@ function ApexToggle({
               className="rounded-md border border-border bg-transparent px-2 py-1 text-sm"
               value={profile}
               disabled={busy}
-              onChange={(event) => setProfile(event.target.value as ApexProfile)}
+              onChange={(event) =>
+                setProfile(event.target.value as ApexProfile)
+              }
             >
               {ENABLE_PROFILES.map((value) => (
                 <option key={value} value={value}>
@@ -330,7 +396,13 @@ function ApexToggle({
             aria-pressed={on}
             className={on ? "" : "font-semibold"}
           >
-            {busy ? (pending ? "Turning on…" : "Turning off…") : on ? "Turn off" : "Turn on"}
+            {busy
+              ? pending
+                ? "Turning on…"
+                : "Turning off…"
+              : on
+                ? "Turn off"
+                : "Turn on"}
           </Btn>
         </div>
       </div>
@@ -338,13 +410,14 @@ function ApexToggle({
       <p className="text-xs text-neutral-600">
         {on ? (
           <>
-            APEX chooses the strategy and composes existing capabilities. It does not run tools itself, and a
-            mission completes only on measured acceptance evidence. Emergency stop stays outside this control.
+            APEX chooses the strategy and composes existing capabilities. It
+            does not run tools itself, and a mission completes only on measured
+            acceptance evidence. Emergency stop stays outside this control.
           </>
         ) : (
           <>
-            Turn APEX on to let it decide the approach to a high-level objective. With APEX off, Alpha executes
-            requests normally.
+            Turn APEX on to let it decide the approach to a high-level
+            objective. With APEX off, Alpha executes requests normally.
           </>
         )}
       </p>
@@ -358,7 +431,12 @@ function ApexToggle({
         />
       )}
 
-      {mode.load_note && <Notice tone="warn" message={`Stored profile was not recognised — ${mode.load_note}`} />}
+      {mode.load_note && (
+        <Notice
+          tone="warn"
+          message={`Stored profile was not recognised — ${mode.load_note}`}
+        />
+      )}
 
       {mode.load_error && (
         <Notice
@@ -367,7 +445,9 @@ function ApexToggle({
         />
       )}
 
-      {!on && mode.reason && <p className="text-xs text-neutral-500">{mode.reason}</p>}
+      {!on && mode.reason && (
+        <p className="text-xs text-neutral-500">{mode.reason}</p>
+      )}
     </div>
   );
 }
@@ -420,20 +500,29 @@ function SessionControlCard({
   const mountedRef = useRef(true);
 
   const reload = useCallback(async () => {
-    const [modeResult, approvalsResult] = await Promise.allSettled([fetchApexMode(), fetchApexApprovals()]);
+    const [modeResult, approvalsResult] = await Promise.allSettled([
+      fetchApexMode(),
+      fetchApexApprovals(),
+    ]);
     if (!mountedRef.current) return;
     if (modeResult.status === "fulfilled") {
       setMode(modeResult.value);
       setModeError(null);
     } else {
-      setModeError(modeResult.reason instanceof Error ? modeResult.reason.message : String(modeResult.reason));
+      setModeError(
+        modeResult.reason instanceof Error
+          ? modeResult.reason.message
+          : String(modeResult.reason),
+      );
     }
     if (approvalsResult.status === "fulfilled") {
       setApprovals(approvalsResult.value);
       setApprovalsError(null);
     } else {
       setApprovalsError(
-        approvalsResult.reason instanceof Error ? approvalsResult.reason.message : String(approvalsResult.reason),
+        approvalsResult.reason instanceof Error
+          ? approvalsResult.reason.message
+          : String(approvalsResult.reason),
       );
     }
   }, []);
@@ -441,8 +530,10 @@ function SessionControlCard({
   useEffect(() => {
     mountedRef.current = true;
     void reload();
+    const timer = window.setInterval(() => void reload(), 30_000);
     return () => {
       mountedRef.current = false;
+      window.clearInterval(timer);
     };
   }, [reload, reloadKey]);
 
@@ -496,7 +587,9 @@ function SessionControlCard({
     onError(null);
     setNotice(null);
     try {
-      const outcome = await decideApexApproval(approvalId, verdict, { note: verdictNote.trim() });
+      const outcome = await decideApexApproval(approvalId, verdict, {
+        note: verdictNote.trim(),
+      });
       setVerdictNote("");
       await reload();
       // The verdicts are asymmetric and the response says which happened —
@@ -516,7 +609,9 @@ function SessionControlCard({
   };
 
   const session = mode?.active_session ?? null;
-  const pending = approvals?.available ? approvals.approvals.filter((row) => row.status === "pending") : [];
+  const pending = approvals?.available
+    ? approvals.approvals.filter((row) => row.status === "pending")
+    : [];
   const busyNow = busy !== null;
 
   return (
@@ -529,7 +624,9 @@ function SessionControlCard({
         {modeError ? (
           <Badge tone="gray">state unknown</Badge>
         ) : session ? (
-          <Badge tone={SESSION_TONE[session.state] ?? "gray"}>{session.state}</Badge>
+          <Badge tone={SESSION_TONE[session.state] ?? "gray"}>
+            {session.state}
+          </Badge>
         ) : (
           <Badge tone="gray">no session</Badge>
         )}
@@ -549,8 +646,25 @@ function SessionControlCard({
         (session ? (
           <div className="space-y-2">
             <p className="text-xs text-neutral-500">
-              Session <code>{session.session_id}</code> · {session.objective || "no objective recorded"}
-              {session.blocked_reason ? ` · blocked: ${session.blocked_reason}` : ""}
+              Session <code>{session.session_id}</code> ·{" "}
+              {session.objective || "no objective recorded"}
+              {session.blocked_reason
+                ? ` · blocked: ${session.blocked_reason}`
+                : ""}
+            </p>
+            {session.dispatch_state === "failed" && (
+              <Notice
+                tone="warn"
+                message={`Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. The session remains ${session.state}; inspect the run and recovery outcome before treating this objective as progressing.`}
+              />
+            )}
+            <p className="text-xs text-neutral-500" aria-live="polite">
+              Resource use:{" "}
+              {session.usage.total_tokens === null
+                ? "token usage not yet measured"
+                : `${session.usage.total_tokens.toLocaleString()} / ${quota(session.token_limit)} tokens`}
+              {` · ${session.usage.tool_calls?.toLocaleString() ?? "unmeasured"} tool calls · ${session.usage.llm_calls?.toLocaleString() ?? "unmeasured"} model calls`}
+              {` · ${session.usage.replans ?? 0} / ${quota(session.replan_limit)} acceptance replans`}
             </p>
             <div className="flex flex-wrap gap-2">
               <Btn onClick={() => control("pause")} disabled={busyNow}>
@@ -561,7 +675,11 @@ function SessionControlCard({
               </Btn>
               {/* A mission-scoped park, not the fleet ESTOP — the stop route's
                   own note says so after it applies, and it lands in `notice`. */}
-              <Btn variant="danger" onClick={() => control("stop")} disabled={busyNow}>
+              <Btn
+                variant="danger"
+                onClick={() => control("stop")}
+                disabled={busyNow}
+              >
                 Stop
               </Btn>
             </div>
@@ -589,8 +707,8 @@ function SessionControlCard({
           </div>
         ) : (
           <p className="text-xs text-neutral-500">
-            No active APEX session in this scope. Pause, resume, stop, steer and approvals act on the session bound to
-            this conversation.
+            No active APEX session in this scope. Pause, resume, stop, steer and
+            approvals act on the session bound to this conversation.
           </p>
         ))}
 
@@ -628,7 +746,9 @@ function SessionControlCard({
           {pending.length > 0 && (
             <>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold">Verdict note (optional)</span>
+                <span className="text-[11px] font-semibold">
+                  Verdict note (optional)
+                </span>
                 <input
                   className={inputCls}
                   value={verdictNote}
@@ -643,15 +763,26 @@ function SessionControlCard({
                     key={row.approval_id}
                     className="space-y-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800"
                   >
-                    <p className="text-xs">{row.note || "The blocker was parked without a named reason."}</p>
+                    <p className="text-xs">
+                      {row.note ||
+                        "The blocker was parked without a named reason."}
+                    </p>
                     <p className="text-[11px] text-neutral-500">
-                      requested by {row.requester || "unknown requester"} · session {row.session_id}
+                      requested by {row.requester || "unknown requester"} ·
+                      session {row.session_id}
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <Btn onClick={() => decide(row.approval_id, "approve")} disabled={busyNow}>
+                      <Btn
+                        onClick={() => decide(row.approval_id, "approve")}
+                        disabled={busyNow}
+                      >
                         Approve
                       </Btn>
-                      <Btn variant="danger" onClick={() => decide(row.approval_id, "reject")} disabled={busyNow}>
+                      <Btn
+                        variant="danger"
+                        onClick={() => decide(row.approval_id, "reject")}
+                        disabled={busyNow}
+                      >
                         Reject
                       </Btn>
                     </div>
@@ -711,6 +842,9 @@ export function ApexSection() {
    * approval — two claims, one of them stale.
    */
   const [reloadKey, setReloadKey] = useState(0);
+  const [objective, setObjective] = useState("");
+  const [criteriaText, setCriteriaText] = useState("");
+  const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -728,7 +862,8 @@ export function ApexSection() {
           setPolicy(nextPolicy);
         }
       } catch (exc) {
-        if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc));
+        if (!cancelled)
+          setError(exc instanceof Error ? exc.message : String(exc));
       }
     })();
     return () => {
@@ -786,6 +921,77 @@ export function ApexSection() {
     }
   };
 
+  const createAndDispatch = async () => {
+    if (busy || !objective.trim()) return;
+    setBusy(true);
+    setError(null);
+    setDispatchNotice(null);
+    try {
+      // Mode is authoritative: never silently turn APEX on or widen the
+      // operator's selected profile in order to make dispatch succeed.
+      const mode = await fetchApexMode();
+      if (!mode.enabled || !mode.contract_enabled) {
+        throw new Error(
+          "Enable APEX and confirm its contract before dispatching an objective.",
+        );
+      }
+      const previous = mode.active_session;
+      const previousFailed =
+        previous?.dispatch_state === "failed" &&
+        [
+          "error",
+          "failed",
+          "interrupted",
+          "cancelled",
+          "dispatch_error",
+        ].includes(previous.run_status ?? "");
+      if (previous && !previousFailed) {
+        throw new Error(
+          `This scope already has active session ${previous.session_id}. Finish or control it before creating another.`,
+        );
+      }
+      if (!ENABLE_PROFILES.includes(mode.profile as ApexProfile)) {
+        throw new Error(
+          `The enabled profile '${mode.profile}' cannot be used for dispatch.`,
+        );
+      }
+      const acceptance_criteria = criteriaText
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const created = await createApexSession({
+        objective: objective.trim(),
+        profile: mode.profile as ApexProfile,
+        thread_id: mode.scope_key,
+        ...(acceptance_criteria.length ? { acceptance_criteria } : {}),
+      });
+      const result = await dispatchApexSession(created.session_id);
+      const dispatchError = result.errors.find(
+        (item) => item.session_id === created.session_id,
+      );
+      if (dispatchError) {
+        throw new Error(
+          `Session ${created.session_id} was created, but dispatch was refused: ${dispatchError.error}`,
+        );
+      }
+      setDispatchNotice(
+        `${previousFailed ? `Previous session ${previous?.session_id ?? "unknown"} remains failed and unverified. ` : ""}Session ${created.session_id}: ${result.dispatched ?? 0} dispatched, ${result.running ?? 0} running, ${result.awaiting_verification ?? 0} awaiting verification, ${result.failed ?? 0} failed. A completed run is not verified until acceptance evidence is evaluated.`,
+      );
+      setObjective("");
+      setCriteriaText("");
+      setReloadKey((key) => key + 1);
+      await refresh();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc));
+      // Refresh even on partial success: creation may have committed before
+      // dispatch returned an error, and the operator needs to see that state.
+      setReloadKey((key) => key + 1);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (error && !status) {
     return (
       <Section title="APEX Autopilot" hint="The executive control plane">
@@ -833,6 +1039,46 @@ export function ApexSection() {
             whether anything below it is live at all. */}
         <ApexToggle onError={setError} onChanged={refresh} />
 
+        <div className="space-y-3 rounded-xl border border-border/60 p-4">
+          <div>
+            <h3 className="text-sm font-medium">
+              Create and dispatch an objective
+            </h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Uses the currently enabled server profile and scope. Each line
+              below is an acceptance criterion. Dispatch starts a real run; it
+              does not verify completion. After a failed run this starts a fresh
+              session and does not reuse its checkpoint.
+            </p>
+          </div>
+          <label className="block space-y-1 text-sm">
+            <span>Objective</span>
+            <textarea
+              aria-label="APEX objective"
+              className={inputCls}
+              rows={3}
+              value={objective}
+              onChange={(event) => setObjective(event.target.value)}
+              placeholder="Describe the outcome Alpha should achieve"
+            />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span>Acceptance criteria (one per line, optional)</span>
+            <textarea
+              aria-label="APEX acceptance criteria"
+              className={inputCls}
+              rows={2}
+              value={criteriaText}
+              onChange={(event) => setCriteriaText(event.target.value)}
+              placeholder="Evidence that would show the objective is satisfied"
+            />
+          </label>
+          <Btn onClick={createAndDispatch} disabled={busy || !objective.trim()}>
+            {busy ? "Dispatching…" : "Create and dispatch"}
+          </Btn>
+          {dispatchNotice && <Notice tone="neutral" message={dispatchNotice} />}
+        </div>
+
         {/* Session-scoped verbs and the approval gate, reading their own two
             routes so a failure in one does not blank the other. It re-reads
             whenever a cycle completes: a cycle can park the session and raise
@@ -871,7 +1117,8 @@ export function ApexSection() {
             <Cpu className="size-4" />
             <span>
               Sessions: <strong>{status.sessions.total ?? 0}</strong>
-              {status.sessions.active !== null && ` · ${status.sessions.active} active`}
+              {status.sessions.active !== null &&
+                ` · ${status.sessions.active} active`}
             </span>
             {Object.entries(status.sessions.by_state).length === 0 && (
               <span className="text-neutral-500">none recorded</span>
@@ -883,7 +1130,9 @@ export function ApexSection() {
 
         <PolicySitesCard contract={policy} />
 
-        {status.invariants ? <InvariantsCard report={status.invariants} /> : null}
+        {status.invariants ? (
+          <InvariantsCard report={status.invariants} />
+        ) : null}
 
         {/* No session block was requested because `/mode` would not say which
             session this scope controls. Say so rather than leaving the
@@ -910,7 +1159,7 @@ export function ApexSection() {
             is the button most likely to be read as "do the work". */}
         <Notice
           tone="neutral"
-          message="APEX records decisions. It does not run tools, start runs, or complete a mission — an acceptance report in which every criterion was evaluated and held is the only path to COMPLETED."
+          message="Run one cycle records a decision only. Create and dispatch starts a run through the Gateway adapter. A mission reaches COMPLETED only through an acceptance report in which every criterion was evaluated and held."
         />
 
         {error && <ErrorBox message={error} />}

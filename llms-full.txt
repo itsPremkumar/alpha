@@ -190,6 +190,31 @@ auto-update (disabled
 by default); and an interactive canvas with generative UI, live SVG, KaTeX, and
 data tables.
 
+
+### 5.9 APEX Autopilot
+The APEX executive records an objective and decision history. The Gateway
+host adapter dispatches admitted work through the shared `RunManager`, observes
+durable run state, and projects measured input/output tokens and LLM calls back to
+the session. Owners can submit a complete measured report to
+`POST /api/apex/sessions/{id}/acceptance`; failed evidence is journaled and
+selects a fresh dispatch generation. Alpha has no automatic test/artifact/HTTP
+evidence collectors and does not infer success from model summaries.
+Every enabled APEX profile has unlimited token, tool-call, and runtime spending ceilings
+while engine capacity, approvals, and the emergency stop remain. The ordinary
+`task` tool enforces persisted active-agent and parallel-task ceilings, but
+replan and retry contract fields lack runtime counters. The Gateway task path
+does not apply the contract depth value, though the subagent lifecycle manager
+still applies its own depth cap.
+Durable `batch_task` still uses separate engine limits and is not included in
+the per-session active-agent count.
+`POST /api/apex/sessions/{id}/dispatch` drives one session; the
+background `apex` loop remains opt-in under `config.yaml -> autonomy.loops.apex`.
+A completed run is only `awaiting_verification` until its owner submits measured
+acceptance evidence. Session JSON locking is process-local, CPU/RAM budgets and
+resource telemetry are not yet part of the APEX ledger, and RunManager errors or
+interruptions remain parked for operator action. See
+[the APEX operating guide](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md).
+
 ## 6. Harness engine map
 
 118 engine packages live under `backend/packages/harness/alpha/`:

@@ -391,13 +391,14 @@ apex:
     autonomous_context_management: true
 
   budgets:
-    max_active_agents: 12
+    max_active_agents: 12 # Operational caps remain finite
     max_parallel_tasks: 8
     max_delegation_depth: 5
     max_replans: 20
-    max_retries_per_failure_class: 4
-    max_runtime_minutes: 1440
-    max_tool_calls: 5000
+    max_retries_per_failure_class: 4 # Infinite retries can duplicate harmful actions
+    max_runtime_minutes: null
+    max_tool_calls: null
+    max_total_tokens: null # null means no APEX per-session spending ceiling
 
   controls:
     pause_allowed: true

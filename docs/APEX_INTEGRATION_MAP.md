@@ -16,6 +16,11 @@ the one layer that genuinely does not exist: an **executive control plane** that
 holds an autonomy contract and runs a bounded next-action cycle over the
 existing owners.
 
+**Status note:** the tables below preserve the Phase 0 inventory as it stood
+before APEX was implemented. Current execution wiring and remaining gaps are
+recorded in [Operating APEX Autopilot](APEX_AUTOPILOT.md#4-the-cycle) and the
+follow-up status at the end of this map.
+
 ---
 
 ## 1. The headline
@@ -240,3 +245,33 @@ boundary. Concretely:
   the other nine loops, and it is registered through the one supervisor.
 - `health` is `unverified` for every capability APEX lists, because nothing in
   this plane probes what it lists.
+
+## 8. Current Gateway execution status
+
+The original inventory above remains historical. The current Gateway wires
+`apex_execution_tick()` as the APEX supervisor loop and exposes
+`POST /api/apex/sessions/{id}/dispatch` for an operator-driven pass. Both use
+the shared `start_run()` service and `RunManager`; neither adds a second run
+lifecycle. The session records a dispatch generation, linked run id/status, and
+deduplicated measured token totals. `RunManager` terminal status is observed,
+but not treated as proof that the objective passed.
+
+The APEX session now has an owner-scoped acceptance-report control, but Alpha
+still has no automatic test/artifact/HTTP evidence collectors. Safe run recovery
+continues only validated model/agent checkpoint nodes and compare-and-set links
+the recovered RunManager id back to the APEX session, including restart recovery
+after admission-before-link crashes; ambiguous side effects and
+stale bindings remain parked. Ordinary `task`
+concurrency observes the persisted per-session active-agent and parallel-task
+caps; durable `batch_task` aggregates active leases across APEX batches and
+Gateway workers, but it is not combined with ordinary `task` children in one
+count. The Gateway task path does not apply the contract's delegation-depth
+value (the lifecycle manager's own depth limit still applies). Acceptance-failure
+replans are counted and capped; safe run recovery reserves retries durably by
+source run and failure class against the frozen APEX ceiling, subject to the
+runtime's global attempt limit. This shares the JSON store's single-process
+coordination caveat. Per-session cost and CPU/RAM
+measurements and cross-process coordination for the JSON session store remain
+open. Completed runs wait in `awaiting_verification`; RunManager errors or
+interruptions that cannot pass the safe checkpoint and APEX binding checks
+remain parked for operator recovery.

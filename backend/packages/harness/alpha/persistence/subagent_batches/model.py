@@ -16,6 +16,8 @@ class SubagentBatchRow(Base):
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     thread_id: Mapped[str] = mapped_column(String(64), index=True)
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    apex_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    apex_concurrency_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     submission_key: Mapped[str] = mapped_column(String(256))
     title: Mapped[str] = mapped_column(String(256))
@@ -44,6 +46,7 @@ class SubagentBatchItemRow(Base):
         ForeignKey("subagent_batches.id", ondelete="CASCADE"),
         index=True,
     )
+
     item_key: Mapped[str] = mapped_column(String(128))
     position: Mapped[int] = mapped_column(Integer)
     prompt: Mapped[str] = mapped_column(Text)
@@ -71,3 +74,18 @@ class SubagentBatchItemRow(Base):
         UniqueConstraint("batch_id", "position", name="uq_subagent_batch_items_position"),
         Index("ix_subagent_batch_items_claim", "status", "lease_expires_at", "batch_id"),
     )
+
+
+class SubagentBatchSessionLockRow(Base):
+    """Database row used to serialize APEX batch claims across workers.
+
+    Updating this row before calculating a session's active batch count makes
+    the admission check and item leases one database-serialized transaction.
+    SQLite serializes writers at the database boundary; Postgres locks this
+    row without blocking unrelated APEX sessions.
+    """
+
+    __tablename__ = "subagent_batch_session_locks"
+
+    apex_session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    lock_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

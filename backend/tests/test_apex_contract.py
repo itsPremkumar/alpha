@@ -15,11 +15,14 @@ an unenforced boundary and the contract has to say so rather than imply coverage
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 from dataclasses import fields
 
 import pytest
 
+from alpha.apex.agents import ApexAgentFactory, ApexAgentSpec, resolve_delegation_limits
 from alpha.apex.contract import (
     AUTHORITY_KEYS,
     PROTECTED_ACTIONS,
@@ -29,6 +32,8 @@ from alpha.apex.contract import (
     ContractViolation,
     PolicyAttribution,
     authority_for,
+    contract_digest_matches,
+    contract_from_snapshot,
     default_contract,
     narrow_contract,
     profile_for,
@@ -74,29 +79,65 @@ class TestProfileLadder:
 
 
 class TestBudgets:
+    def test_delegation_limits_honor_zero_and_parallel_budget(self) -> None:
+        off = profile_for(AutonomyProfile.OFF)
+        assert resolve_delegation_limits(off) == (0, 0, 0)
+
+        contract = narrow_contract(
+            profile_for(AutonomyProfile.APEX_MAX),
+            budget={"max_active_agents": 3, "max_parallel_tasks": 2},
+        )
+        assert resolve_delegation_limits(contract) == (3, 2, 3)
+
+    def test_agent_factory_refuses_spawn_when_parallel_budget_is_zero(self) -> None:
+        contract = narrow_contract(profile_for(AutonomyProfile.APEX_MAX), budget={"max_parallel_tasks": 0})
+        factory = ApexAgentFactory(contract, lifecycle=object())
+        result = factory.spawn(ApexAgentSpec(role="researcher", objective="inspect a bounded task"))
+        assert result.ok is False
+        assert result.refusal is not None
+        assert result.refusal.code == "agent_population_ceiling"
+
     def test_ascending_profile_raises_every_budget_monotonically(self) -> None:
         ranks = sorted(ALL_PROFILES, key=lambda p: p.rank)
         for lower, higher in zip(ranks, ranks[1:], strict=False):
             low = profile_for(lower).budget
             high = profile_for(higher).budget
             for name in (f.name for f in fields(ApexBudget)):
-                assert getattr(high, name) >= getattr(low, name), f"{higher}.{name} < {lower}.{name}"
+                high_value = getattr(high, name)
+                low_value = getattr(low, name)
+                assert high_value is None or (low_value is not None and high_value >= low_value), f"{higher}.{name} < {lower}.{name}"
 
     def test_off_profile_spends_nothing(self) -> None:
         budget = profile_for(AutonomyProfile.OFF).budget
         assert budget.max_tool_calls == 0
         assert budget.max_active_agents == 0
+        assert budget.max_total_tokens == 0
 
-    def test_apex_max_matches_the_specification_example(self) -> None:
-        # Spec §5 budgets block, verbatim.
+    def test_apex_max_removes_spend_ceilings_but_keeps_operational_limits(self) -> None:
         budget = profile_for(AutonomyProfile.APEX_MAX).budget
+        assert budget.max_total_tokens is None
+        assert budget.max_tool_calls is None
+        assert budget.max_runtime_minutes is None
         assert budget.max_active_agents == 12
         assert budget.max_parallel_tasks == 8
         assert budget.max_delegation_depth == 5
         assert budget.max_replans == 20
         assert budget.max_retries_per_failure_class == 4
-        assert budget.max_runtime_minutes == 1440
-        assert budget.max_tool_calls == 5000
+        # Unlimited session policy still respects engine-owned admission caps.
+        assert resolve_delegation_limits(profile_for(AutonomyProfile.APEX_MAX)) == (3, 8, 12)
+
+    def test_every_enabled_profile_has_unlimited_spend_quotas(self) -> None:
+        for profile in (AutonomyProfile.ASSIST, AutonomyProfile.AUTONOMOUS, AutonomyProfile.APEX_MAX):
+            budget = profile_for(profile).budget
+            assert budget.max_total_tokens is None, profile
+            assert budget.max_tool_calls is None, profile
+            assert budget.max_runtime_minutes is None, profile
+
+    def test_budget_object_defaults_to_unlimited_spending_ceilings(self) -> None:
+        budget = ApexBudget()
+        assert budget.max_runtime_minutes is None
+        assert budget.max_tool_calls is None
+        assert budget.max_total_tokens is None
 
     def test_negative_budget_is_refused(self) -> None:
         with pytest.raises(ContractViolation):
@@ -157,6 +198,49 @@ class TestFailClosed:
 
 
 class TestNarrowing:
+    def test_pre_token_budget_snapshot_keeps_legacy_digest_compatible(self) -> None:
+        current = profile_for(AutonomyProfile.APEX_MAX)
+        snapshot = current.to_dict()
+        snapshot["budget"].update(
+            max_active_agents=12,
+            max_parallel_tasks=8,
+            max_delegation_depth=5,
+            max_replans=20,
+            max_retries_per_failure_class=4,
+            max_runtime_minutes=1440,
+            max_tool_calls=5000,
+        )
+        snapshot["budget"].pop("max_total_tokens")
+        old_payload = json.dumps(
+            {
+                "profile": snapshot["profile"],
+                "authority": dict(sorted(snapshot["authority"].items())),
+                "execution": dict(sorted(snapshot["execution"].items())),
+                "budget": snapshot["budget"],
+                "controls": snapshot["controls"],
+                "protected_actions": dict(sorted(snapshot["protected_actions"].items())),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        legacy_digest = "apxc-" + hashlib.sha256(old_payload.encode("utf-8")).hexdigest()[:16]
+        snapshot["digest"] = legacy_digest
+
+        restored = contract_from_snapshot(snapshot, expected_digest=legacy_digest)
+
+        assert restored.budget.max_total_tokens == 2_000_000
+        assert contract_digest_matches(restored, legacy_digest)
+
+    def test_narrowed_snapshot_round_trips_and_rejects_widening(self) -> None:
+        base = profile_for(AutonomyProfile.APEX_MAX, mission_id="mission-1")
+        narrowed = narrow_contract(base, authority={"terminal": False}, budget={"max_tool_calls": 3})
+        assert contract_from_snapshot(narrowed.to_dict(), expected_digest=narrowed.digest()).digest() == narrowed.digest()
+
+        widened = narrowed.to_dict()
+        widened["authority"]["terminal"] = True
+        with pytest.raises(ContractViolation):
+            contract_from_snapshot(widened)
+
     def test_narrowing_reduces_authority(self) -> None:
         base = profile_for(AutonomyProfile.APEX_MAX)
         narrowed = narrow_contract(base, authority={"terminal": False})
@@ -186,16 +270,21 @@ class TestNarrowing:
             )
 
     def test_widening_a_budget_is_refused(self) -> None:
-        base = profile_for(AutonomyProfile.ASSIST)
+        base = narrow_contract(profile_for(AutonomyProfile.ASSIST), budget={"max_tool_calls": 200})
         with pytest.raises(ContractViolation) as exc:
             narrow_contract(base, budget={"max_tool_calls": 99999})
         assert "max_tool_calls" in str(exc.value)
+
+    def test_finite_session_quota_cannot_be_widened_back_to_unlimited(self) -> None:
+        finite = narrow_contract(profile_for(AutonomyProfile.APEX_MAX), budget={"max_tool_calls": 10})
+        with pytest.raises(ContractViolation, match="max_tool_calls"):
+            narrow_contract(finite, budget={"max_tool_calls": None})
 
     def test_lowering_a_budget_is_allowed(self) -> None:
         base = profile_for(AutonomyProfile.APEX_MAX)
         narrowed = narrow_contract(base, budget={"max_tool_calls": 10})
         assert narrowed.budget.max_tool_calls == 10
-        assert base.budget.max_tool_calls == 5000
+        assert base.budget.max_tool_calls is None
 
     def test_loosening_a_protected_action_is_refused(self) -> None:
         base = profile_for(AutonomyProfile.APEX_MAX)

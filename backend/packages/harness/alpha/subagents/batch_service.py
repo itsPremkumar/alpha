@@ -128,6 +128,17 @@ class SubagentBatchService:
             )
 
     async def submit(self, request: BatchSubmitRequest) -> dict[str, Any]:
+        if request.apex_session_id is not None:
+            if not isinstance(request.apex_session_id, str) or not request.apex_session_id.strip():
+                raise ValueError("apex_session_id must be a non-empty string")
+            if isinstance(request.apex_concurrency_limit, bool) or not isinstance(request.apex_concurrency_limit, int) or request.apex_concurrency_limit < 1:
+                raise ValueError("APEX durable batches require a positive validated concurrency limit")
+        elif request.apex_concurrency_limit is not None:
+            raise ValueError("apex_concurrency_limit requires an APEX session id")
+        execution_spec = dict(request.execution_spec)
+        execution_spec.pop("apex_session_id", None)
+        if request.apex_session_id is not None:
+            execution_spec["apex_session_id"] = request.apex_session_id
         total = len(request.items)
         if total < 1 or total > self._config.max_items_per_batch:
             raise ValueError(f"Batch item count must be between 1 and {self._config.max_items_per_batch}")
@@ -152,7 +163,9 @@ class SubagentBatchService:
             max_live_items=max_live,
             max_running_items=max_running,
             max_attempts=self._config.max_attempts,
-            execution_spec=request.execution_spec,
+            execution_spec=execution_spec,
+            apex_session_id=request.apex_session_id,
+            apex_concurrency_limit=request.apex_concurrency_limit,
         )
 
     async def get_batch(
@@ -234,6 +247,7 @@ class SubagentBatchService:
                 oauth_provider=spec.get("oauth_provider"),
                 oauth_id=spec.get("oauth_id"),
                 run_id=batch.get("run_id"),
+                apex_session_id=spec.get("apex_session_id"),
                 channel_user_id=spec.get("channel_user_id"),
                 is_internal=spec.get("is_internal") is True,
                 authz_attributes=spec.get("authz_attributes"),

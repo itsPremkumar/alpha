@@ -416,6 +416,14 @@ function Update-TrackedProcess {
     return $Process
 }
 
+# The service listener, rather than a surviving wrapper PID, is the effective
+# steady-state liveness signal. A process can remain alive after its server has
+# stopped accepting connections; the launcher owns recovery while it is alive.
+function Test-ServiceListenerMissing {
+    param([int]$Port)
+    return -not (Test-PortListening -Port $Port)
+}
+
 # -- Terminal-state bookkeeping ----------------------------------------------
 # Set once the launcher has decided it is aborting, so the shutdown handler
 # below leaves the truthful "failed" record alone instead of deleting it.
@@ -1160,8 +1168,11 @@ try {
 
         $gatewayProcess  = Update-TrackedProcess -Process $gatewayProcess  -Port $GatewayPort
         $frontendProcess = Update-TrackedProcess -Process $frontendProcess -Port $FrontendPort
-        $gatewayGone  = ($gatewayProcess  -eq $null -or $gatewayProcess.HasExited)  -and -not (Test-PortListening -Port $GatewayPort)
-        $frontendGone = ($frontendProcess -eq $null -or $frontendProcess.HasExited) -and -not (Test-PortListening -Port $FrontendPort)
+        # A surviving wrapper/Uvicorn PID with no bound port is a wedged
+        # service, not a healthy one. The watchdog defers to this live launcher,
+        # so a missing listener must trigger recovery here.
+        $gatewayGone  = Test-ServiceListenerMissing -Port $GatewayPort
+        $frontendGone = Test-ServiceListenerMissing -Port $FrontendPort
 
         if ($gatewayGone -or $frontendGone) {
             if ($gatewayGone) {

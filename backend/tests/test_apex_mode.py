@@ -152,11 +152,20 @@ def test_enable_and_disable_are_idempotent(tmp_path: Path) -> None:
 def test_switching_profile_changes_the_authority(tmp_path: Path) -> None:
     store = ApexModeStore(tmp_path / "mode.json")
     store.enable("t", "assist")
-    assist_calls = store.contract_for("t").budget.max_tool_calls
+    assist = store.contract_for("t")
 
     store.enable("t", "apex_max")
     assert store.for_scope("t").profile == "apex_max"
-    assert store.contract_for("t").budget.max_tool_calls > assist_calls
+    apex_max = store.contract_for("t")
+    assert apex_max.budget.max_active_agents > assist.budget.max_active_agents
+    assert apex_max.budget.max_parallel_tasks > assist.budget.max_parallel_tasks
+    # Active profiles have no usage ceiling: only scheduling/concurrency
+    # capacities change by tier; tool, token, and elapsed-time budgets stay
+    # explicitly unlimited.
+    for budget in (assist.budget, apex_max.budget):
+        assert budget.max_tool_calls is None
+        assert budget.max_total_tokens is None
+        assert budget.max_runtime_minutes is None
 
 
 def test_scopes_are_isolated(tmp_path: Path) -> None:
@@ -429,6 +438,7 @@ def test_the_mode_route_answers_off_by_default(tmp_path: Path, monkeypatch: pyte
 
     assert body["enabled"] is False
     assert body["contract_enabled"] is False
+    assert body["durable"] is None, "a read has not attempted a write and cannot report write durability"
 
 
 def test_enabling_requires_an_administrator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -498,6 +508,7 @@ def test_a_second_enable_reports_no_change(tmp_path: Path, monkeypatch: pytest.M
 
     assert body["changed"] is False
     assert "already" in body["reason"]
+    assert body["durable"] is None, "a no-op does not measure a new persistence attempt"
 
 
 def test_an_unknown_profile_is_422_naming_the_valid_ones(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

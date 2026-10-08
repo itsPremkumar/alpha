@@ -24,11 +24,17 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const here = (relative) => fileURLToPath(new URL(relative, import.meta.url));
-const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf8");
-const toDataUrl = (code) => `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+const read = (relative) =>
+  readFileSync(new URL(relative, import.meta.url), "utf8");
+const toDataUrl = (code) =>
+  `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
 const transpile = (source, extra = {}) =>
   ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, ...extra },
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      ...extra,
+    },
   }).outputText;
 
 /* ── Recorded transport ────────────────────────────────────────────────── */
@@ -60,7 +66,12 @@ export async function send(path, method, payload) {
 export function errMsg(e) { return e instanceof Error ? e.message : String(e); }
 `);
 
-const apexUrl = toDataUrl(transpile(read("./apex.ts")).replace(/from "\.\/http"/g, `from "${httpStub}"`));
+const apexUrl = toDataUrl(
+  transpile(read("./apex.ts")).replace(
+    /from "\.\/http"/g,
+    `from "${httpStub}"`,
+  ),
+);
 
 globalThis.__calls = calls;
 globalThis.__responses = responses;
@@ -96,10 +107,14 @@ const HEALTHY_CONTRACT = {
     max_retries_per_failure_class: 3,
     max_runtime_minutes: 480,
     max_tool_calls: 2500,
+    max_total_tokens: 500000,
   },
   controls: { pause_allowed: true, user_takeover: true, emergency_stop: true },
   authority_granted: ["chat", "tools", "research"],
-  protected_actions: { destructive_filesystem: "approval", secret_export: "deny" },
+  protected_actions: {
+    destructive_filesystem: "approval",
+    secret_export: "deny",
+  },
   policy_sites: { run_lifecycle: "alpha.runtime.runs.manager:RunManager" },
   policy_sites_live: ["run_lifecycle"],
   policy_sites_missing: [],
@@ -117,7 +132,13 @@ const HEALTHY_STATUS = {
     estop_sentinel: false,
     admits_work: true,
   },
-  sessions: { available: true, total: 3, by_state: { active: 1, completed: 2 }, active: 1, terminal: 2 },
+  sessions: {
+    available: true,
+    total: 3,
+    by_state: { active: 1, completed: 2 },
+    active: 1,
+    terminal: 2,
+  },
   invariants: {
     declared: 12,
     live: 12,
@@ -146,7 +167,9 @@ test("status reads /apex/status with no params when unfiltered", async () => {
 });
 
 test("status sends session_id and the invariant toggle as query params", async () => {
-  record("GET /apex/status?session_id=apx-1&include_invariants=false", { body: HEALTHY_STATUS });
+  record("GET /apex/status?session_id=apx-1&include_invariants=false", {
+    body: HEALTHY_STATUS,
+  });
   await apex.fetchApexStatus({ sessionId: "apx-1", includeInvariants: false });
   const path = lastCall().path;
   assert.match(path, /session_id=apx-1/);
@@ -154,7 +177,9 @@ test("status sends session_id and the invariant toggle as query params", async (
 });
 
 test("a session id is url-encoded rather than interpolated raw", async () => {
-  record("GET /apex/status?session_id=apx%2F..%2Fsneaky", { body: HEALTHY_STATUS });
+  record("GET /apex/status?session_id=apx%2F..%2Fsneaky", {
+    body: HEALTHY_STATUS,
+  });
   await apex.fetchApexStatus({ sessionId: "apx/../sneaky" });
   assert.match(lastCall().path, /session_id=apx%2F\.\.%2Fsneaky/);
 });
@@ -168,19 +193,21 @@ test("policy reads the named profile", async () => {
       ...HEALTHY_CONTRACT,
       profile: "apex_max",
       budget: {
-        max_active_agents: 12,
-        max_parallel_tasks: 8,
-        max_delegation_depth: 5,
-        max_replans: 20,
-        max_retries_per_failure_class: 4,
-        max_runtime_minutes: 1440,
-        max_tool_calls: 5000,
+        max_active_agents: null,
+        max_parallel_tasks: null,
+        max_delegation_depth: null,
+        max_replans: null,
+        max_retries_per_failure_class: null,
+        max_runtime_minutes: null,
+        max_tool_calls: null,
+        max_total_tokens: null,
       },
     },
   });
   const contract = await apex.fetchApexPolicy("apex_max");
   assert.equal(contract.profile, "apex_max");
-  assert.equal(contract.budget.max_tool_calls, 5000);
+  assert.equal(contract.budget.max_tool_calls, null);
+  assert.equal(contract.budget.max_total_tokens, null);
   assert.match(lastCall().path, /profile=apex_max/);
 });
 
@@ -192,7 +219,9 @@ test("invariants reads /apex/invariants", async () => {
 });
 
 test("create posts to /apex/sessions with the objective and profile", async () => {
-  record("POST /apex/sessions", { body: { session: { session_id: "apx-77" } } });
+  record("POST /apex/sessions", {
+    body: { session: { session_id: "apx-77" } },
+  });
   const created = await apex.createApexSession({
     objective: "fix the failing workflow",
     profile: "autonomous",
@@ -202,6 +231,45 @@ test("create posts to /apex/sessions with the objective and profile", async () =
   assert.equal(lastCall().method, "POST");
   assert.equal(lastCall().body.objective, "fix the failing workflow");
   assert.deepEqual(lastCall().body.acceptance_criteria, ["suite passes"]);
+});
+
+test("dispatch starts the named session and preserves measured counters", async () => {
+  record("POST /apex/sessions/apx-77/dispatch", {
+    body: {
+      sessions: 1,
+      dispatched: 1,
+      running: 1,
+      awaiting_verification: 0,
+      failed: 0,
+      budget_exhausted: 0,
+      errors: [],
+    },
+  });
+  const result = await apex.dispatchApexSession("apx-77");
+  assert.equal(lastCall().path, "/apex/sessions/apx-77/dispatch");
+  assert.equal(lastCall().method, "POST");
+  assert.equal(lastCall().body, undefined);
+  assert.equal(result.dispatched, 1);
+  assert.equal(result.running, 1);
+  assert.equal(result.awaiting_verification, 0);
+});
+
+test("the APEX panel creates against the confirmed mode and dispatches through the host adapter", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /Create and dispatch an objective/);
+  assert.match(source, /fetchApexMode\(\)/);
+  assert.match(source, /mode\.enabled\s*\|\|\s*!mode\.contract_enabled/);
+  assert.match(source, /thread_id:\s*mode\.scope_key/);
+  assert.match(source, /profile:\s*mode\.profile as ApexProfile/);
+  assert.match(source, /previous\?\.dispatch_state === "failed"/);
+  assert.match(source, /does not reuse its checkpoint/);
+  assert.match(source, /await createApexSession\(/);
+  assert.match(source, /await dispatchApexSession\(created\.session_id\)/);
+  assert.match(source, /awaiting verification/);
+  assert.match(
+    source,
+    /mission reaches COMPLETED only through an acceptance report/,
+  );
 });
 
 test("cycle posts an empty body rather than none, because the route declares a body", async () => {
@@ -214,7 +282,12 @@ test("cycle posts an empty body rather than none, because the route declares a b
   record("POST /apex/sessions/apx-77/cycle", {
     body: {
       session_id: "apx-77",
-      decision: { action: "plan", reason: "awaiting_plan", confidence: 0.6, blocked: false },
+      decision: {
+        action: "plan",
+        reason: "awaiting_plan",
+        confidence: 0.6,
+        blocked: false,
+      },
       steps: [{ name: "load_session", outcome: "loaded", detail: "" }],
       state_before: "idle",
       state_after: "idle",
@@ -234,7 +307,9 @@ test("cycle posts an empty body rather than none, because the route declares a b
 });
 
 test("steer posts the instruction and never a prompt rewrite", async () => {
-  record("POST /apex/sessions/apx-77/steer", { body: { constraint: { constraint_id: "cst-1" } } });
+  record("POST /apex/sessions/apx-77/steer", {
+    body: { constraint: { constraint_id: "cst-1" } },
+  });
   await apex.steerApexSession("apx-77", "use local models only");
   assert.equal(lastCall().body.instruction, "use local models only");
   assert.deepEqual(Object.keys(lastCall().body), ["instruction"]);
@@ -248,7 +323,11 @@ test("a store the backend could not read becomes available:false, not zero", asy
       schema: "alpha.apex.status.v1",
       contract: { available: true, ...HEALTHY_CONTRACT },
       fleet: { available: true, mode: "run", generation: 1, admits_work: true },
-      sessions: { available: false, reason: "JSONDecodeError: sessions.json is not JSON", count: null },
+      sessions: {
+        available: false,
+        reason: "JSONDecodeError: sessions.json is not JSON",
+        count: null,
+      },
     },
   });
   const status = await apex.fetchApexStatus();
@@ -266,7 +345,13 @@ test("a block with no reason still discloses that it is unavailable", async () =
       schema: "alpha.apex.status.v1",
       contract: { available: true, ...HEALTHY_CONTRACT },
       fleet: { available: false },
-      sessions: { available: true, total: 0, by_state: {}, active: 0, terminal: 0 },
+      sessions: {
+        available: true,
+        total: 0,
+        by_state: {},
+        active: 0,
+        terminal: 0,
+      },
     },
   });
   const status = await apex.fetchApexStatus();
@@ -295,7 +380,13 @@ test("a measured zero stays a real zero", async () => {
       schema: "alpha.apex.status.v1",
       contract: { available: true, ...HEALTHY_CONTRACT },
       fleet: { available: true, mode: "run", admits_work: true },
-      sessions: { available: true, total: 0, by_state: {}, active: 0, terminal: 0 },
+      sessions: {
+        available: true,
+        total: 0,
+        by_state: {},
+        active: 0,
+        terminal: 0,
+      },
     },
   });
   const status = await apex.fetchApexStatus();
@@ -317,7 +408,8 @@ test("invariant rows carry live:false and the reason when a site is absent", asy
           live: false,
           module: "alpha.mission.acceptance",
           symbol: "assert_acceptance_passed",
-          reason: "ModuleNotFoundError: No module named 'alpha.mission.acceptance'",
+          reason:
+            "ModuleNotFoundError: No module named 'alpha.mission.acceptance'",
         },
       ],
     },
@@ -336,7 +428,13 @@ test("the invariant block is absent when the poll skipped it", async () => {
       schema: "alpha.apex.status.v1",
       contract: { available: true, ...HEALTHY_CONTRACT },
       fleet: { available: true, mode: "run", admits_work: true },
-      sessions: { available: true, total: 0, by_state: {}, active: 0, terminal: 0 },
+      sessions: {
+        available: true,
+        total: 0,
+        by_state: {},
+        active: 0,
+        terminal: 0,
+      },
     },
   });
   const status = await apex.fetchApexStatus();
@@ -385,7 +483,13 @@ test("policy drift on a session is surfaced as a boolean, not guessed", async ()
       schema: "alpha.apex.status.v1",
       contract: { available: true, ...HEALTHY_CONTRACT },
       fleet: { available: true, mode: "run", admits_work: true },
-      sessions: { available: true, total: 1, by_state: {}, active: 1, terminal: 0 },
+      sessions: {
+        available: true,
+        total: 1,
+        by_state: {},
+        active: 1,
+        terminal: 0,
+      },
       session: {
         available: true,
         session_id: "apx-1",
@@ -483,12 +587,17 @@ test("a session block with no cycle count reports null, never a measured zero", 
 /* ── A refused request rejects with the server's reason ────────────────── */
 
 test("a refused read rejects rather than resolving to an empty status", async () => {
-  record("GET /apex/status", { reject: "HTTP 403: APEX control actions require an administrator" });
+  record("GET /apex/status", {
+    reject: "HTTP 403: APEX control actions require an administrator",
+  });
   await assert.rejects(() => apex.fetchApexStatus(), /administrator/);
 });
 
 test("the four profiles are exactly the ones the contract defines", () => {
-  assert.deepEqual([...apex.APEX_PROFILES], ["off", "assist", "autonomous", "apex_max"]);
+  assert.deepEqual(
+    [...apex.APEX_PROFILES],
+    ["off", "assist", "autonomous", "apex_max"],
+  );
 });
 
 /* ── The enable picker never adopts a profile it cannot send ────────────── */
@@ -503,7 +612,10 @@ test("the four profiles are exactly the ones the contract defines", () => {
  */
 
 test("the enable rungs are the contract profiles without off", () => {
-  assert.deepEqual([...apex.ENABLE_PROFILES], ["assist", "autonomous", "apex_max"]);
+  assert.deepEqual(
+    [...apex.ENABLE_PROFILES],
+    ["assist", "autonomous", "apex_max"],
+  );
   assert.equal(apex.ENABLE_PROFILES.includes("off"), false);
 });
 
@@ -532,7 +644,11 @@ test("the toggle adopts through the helper and offers only the enable rungs", ()
   // apart exactly where the defect lived — the value sent, the value shown.
   const source = read("../components/sections/ApexSection.tsx");
 
-  assert.match(source, /profileToAdopt\(/, "the toggle must adopt through profileToAdopt");
+  assert.match(
+    source,
+    /profileToAdopt\(/,
+    "the toggle must adopt through profileToAdopt",
+  );
   assert.equal(
     /APEX_PROFILES\.includes\(/.test(source),
     false,
@@ -566,8 +682,15 @@ test("a confirmed switch change re-reads the rest of the panel, not just the swi
   // The notification must sit inside the success path: a refused write leaves
   // the panel exactly as it was, so re-reading it there would only repaint the
   // same answer.
-  const toggleBody = source.slice(source.indexOf("const toggle = async"), source.indexOf("if (loadError)"));
-  assert.match(toggleBody, /onChanged\?\.\(\)/, "the notify lives inside toggle()");
+  const toggleBody = source.slice(
+    source.indexOf("const toggle = async"),
+    source.indexOf("if (loadError)"),
+  );
+  assert.match(
+    toggleBody,
+    /onChanged\?\.\(\)/,
+    "the notify lives inside toggle()",
+  );
   assert.ok(
     toggleBody.indexOf("onChanged?.()") < toggleBody.indexOf("} catch (exc)"),
     "a failed write must not re-read the panel as though something changed",
@@ -745,7 +868,7 @@ const OFF_MODE = {
   scope_key: "u1",
   changed: false,
   contract_digest: "apxc-off",
-  durable: false,
+  durable: null,
   reason: "",
   enabled_at: null,
   updated_at: 1700000000,
@@ -791,16 +914,33 @@ test("disabling posts to /apex/disable and sends NO profile", async () => {
   // Sending a profile on the disable route would imply the field is meaningful
   // there. The server keeps the previous profile so a later enable restores the
   // authority the operator had.
-  record("POST /apex/disable", { body: { ...ON_MODE, enabled: false, contract_enabled: false, changed: true } });
+  record("POST /apex/disable", {
+    body: {
+      ...ON_MODE,
+      enabled: false,
+      contract_enabled: false,
+      changed: true,
+    },
+  });
   const mode = await apex.setApexMode(false, { profile: "apex_max" });
   assert.equal(lastCall().path, "/apex/disable");
   assert.deepEqual(lastCall().body, {});
   assert.equal(mode.enabled, false);
-  assert.equal(mode.profile, "assist", "the retained profile is reported, not the one just passed");
+  assert.equal(
+    mode.profile,
+    "assist",
+    "the retained profile is reported, not the one just passed",
+  );
 });
 
 test("a second enable reports changed=false rather than a fresh success", async () => {
-  record("POST /apex/enable", { body: { ...ON_MODE, changed: false, reason: "already enabled at this profile" } });
+  record("POST /apex/enable", {
+    body: {
+      ...ON_MODE,
+      changed: false,
+      reason: "already enabled at this profile",
+    },
+  });
   const mode = await apex.setApexMode(true, { profile: "assist" });
   assert.equal(mode.changed, false);
   assert.equal(mode.reason, "already enabled at this profile");
@@ -815,42 +955,73 @@ test("a write that did not persist reports durable=false", async () => {
   assert.equal(mode.durable, false);
 });
 
+test("an unmeasured mode read keeps durability unknown rather than false", async () => {
+  record("GET /apex/mode", { body: { ...OFF_MODE, durable: undefined } });
+  const mode = await apex.fetchApexMode();
+  assert.equal(mode.durable, null);
+});
+
 test("a degraded mode store keeps its load_error instead of reading as a clean OFF", async () => {
   record("GET /apex/mode", {
-    body: { ...OFF_MODE, load_error: "JSONDecodeError: Expecting property name enclosed in double quotes" },
+    body: {
+      ...OFF_MODE,
+      load_error:
+        "JSONDecodeError: Expecting property name enclosed in double quotes",
+    },
   });
   const mode = await apex.fetchApexMode();
-  assert.equal(mode.enabled, false, "fail-closed: an unreadable store grants nothing");
+  assert.equal(
+    mode.enabled,
+    false,
+    "fail-closed: an unreadable store grants nothing",
+  );
   assert.match(mode.load_error, /JSONDecodeError/, "and it discloses why");
 });
 
 test("an unrecognised stored profile keeps its load_note", async () => {
-  record("GET /apex/mode", { body: { ...ON_MODE, profile: "apex_pro_max", load_note: "unknown profile" } });
+  record("GET /apex/mode", {
+    body: { ...ON_MODE, profile: "apex_pro_max", load_note: "unknown profile" },
+  });
   const mode = await apex.fetchApexMode();
   assert.equal(mode.enabled, true);
-  assert.equal(mode.profile, "apex_pro_max", "rendered verbatim, never snapped to a known profile");
+  assert.equal(
+    mode.profile,
+    "apex_pro_max",
+    "rendered verbatim, never snapped to a known profile",
+  );
   assert.equal(mode.load_note, "unknown profile");
 });
 
 test("enabled and contract_enabled are kept as two separate claims", async () => {
   // The contradictory record: someone switched this scope on, but the frozen
   // contract grants nothing. Collapsing these would paint it green.
-  record("GET /apex/mode", { body: { ...ON_MODE, enabled: true, contract_enabled: false } });
+  record("GET /apex/mode", {
+    body: { ...ON_MODE, enabled: true, contract_enabled: false },
+  });
   const mode = await apex.fetchApexMode();
   assert.equal(mode.enabled, true);
   assert.equal(mode.contract_enabled, false);
 });
 
 test("a refused toggle rejects with the server's reason", async () => {
-  record("POST /apex/enable", { reject: "HTTP 403: APEX control actions require an administrator" });
-  await assert.rejects(() => apex.setApexMode(true, { profile: "assist" }), /administrator/);
+  record("POST /apex/enable", {
+    reject: "HTTP 403: APEX control actions require an administrator",
+  });
+  await assert.rejects(
+    () => apex.setApexMode(true, { profile: "assist" }),
+    /administrator/,
+  );
 });
 
 test("an unknown profile's 422 names the valid profiles rather than a generic failure", async () => {
   record("POST /apex/enable", {
-    reject: "HTTP 422: unknown APEX profile 'god_mode'; expected one of ['off', 'assist', 'autonomous', 'apex_max']",
+    reject:
+      "HTTP 422: unknown APEX profile 'god_mode'; expected one of ['off', 'assist', 'autonomous', 'apex_max']",
   });
-  await assert.rejects(() => apex.setApexMode(true, { profile: "god_mode" }), /apex_max/);
+  await assert.rejects(
+    () => apex.setApexMode(true, { profile: "god_mode" }),
+    /apex_max/,
+  );
 });
 
 test("a refused mode read rejects rather than resolving to a defaulted OFF switch", async () => {
@@ -878,10 +1049,20 @@ const SESSION_RECORD = {
   state: "paused",
   profile: "autonomous",
   contract_digest: "apxc-abc123",
+  dispatch_state: "running",
+  run_status: "running",
   mission_id: "msn-9",
   thread_id: "thread-1",
   blocked_reason: "",
   cycle_count: 4,
+  contract_snapshot: { budget: { max_total_tokens: 500000 } },
+  usage: {
+    tool_calls: 8,
+    llm_calls: 3,
+    input_tokens: 1200,
+    output_tokens: 300,
+    total_tokens: 1500,
+  },
   acceptance_criteria: ["tests pass"],
   created_at: 1700000000,
   updated_at: 1700000100,
@@ -889,18 +1070,29 @@ const SESSION_RECORD = {
 
 test("pause posts to /apex/pause and maps the server's session, not the click's intent", async () => {
   record("POST /apex/pause", {
-    body: { applied: true, reason: "", session: { ...SESSION_RECORD, state: "paused" }, note: null },
+    body: {
+      applied: true,
+      reason: "",
+      session: { ...SESSION_RECORD, state: "paused" },
+      note: null,
+    },
   });
   const outcome = await apex.setApexControl("pause");
   assert.equal(lastCall().path, "/apex/pause");
   assert.equal(lastCall().method, "POST");
-  assert.deepEqual(lastCall().body, {}, "the caller's own scope is the server default; no scope_key is invented");
+  assert.deepEqual(
+    lastCall().body,
+    {},
+    "the caller's own scope is the server default; no scope_key is invented",
+  );
   assert.equal(outcome.applied, true);
   assert.equal(outcome.session.state, "paused");
 });
 
 test("an explicit scope travels as scope_key, never interpolated into the path", async () => {
-  record("POST /apex/resume", { body: { applied: true, reason: "", session: SESSION_RECORD, note: null } });
+  record("POST /apex/resume", {
+    body: { applied: true, reason: "", session: SESSION_RECORD, note: null },
+  });
   await apex.setApexControl("resume", { scopeKey: "thread/7" });
   assert.equal(lastCall().path, "/apex/resume");
   assert.deepEqual(lastCall().body, { scope_key: "thread/7" });
@@ -908,7 +1100,12 @@ test("an explicit scope travels as scope_key, never interpolated into the path",
 
 test("a verb that changed nothing keeps applied:false and the server's reason", async () => {
   record("POST /apex/pause", {
-    body: { applied: false, reason: "already paused", session: SESSION_RECORD, note: null },
+    body: {
+      applied: false,
+      reason: "already paused",
+      session: SESSION_RECORD,
+      note: null,
+    },
   });
   const outcome = await apex.setApexControl("pause");
   assert.equal(outcome.applied, false);
@@ -940,10 +1137,17 @@ test("the approval gate's 409 rejects with the route it names rather than resolv
 
 test("session fields absent from the payload map to null, never 0", async () => {
   record("POST /apex/pause", {
-    body: { applied: true, reason: "", session: { session_id: "apx-1", state: "active" }, note: null },
+    body: {
+      applied: true,
+      reason: "",
+      session: { session_id: "apx-1", state: "active" },
+      note: null,
+    },
   });
   const outcome = await apex.setApexControl("pause");
   assert.equal(outcome.session.cycle_count, null);
+  assert.equal(outcome.session.usage.replans, null);
+  assert.equal(outcome.session.replan_limit, undefined);
   assert.equal(outcome.session.created_at, null);
   assert.equal(outcome.session.blocked_reason, "");
 });
@@ -967,7 +1171,13 @@ const APPROVALS_BODY = {
   pending: 1,
   approvals: [
     PENDING_APPROVAL,
-    { ...PENDING_APPROVAL, approval_id: "apr-0", status: "rejected", operator: "admin-1", decided_at: 1700000500 },
+    {
+      ...PENDING_APPROVAL,
+      approval_id: "apr-0",
+      status: "rejected",
+      operator: "admin-1",
+      decided_at: 1700000500,
+    },
   ],
 };
 
@@ -988,7 +1198,12 @@ test("a degraded approval store keeps count and pending null instead of 0", asyn
   // "We could not look" and "nothing is pending" lead to opposite actions, so
   // the difference has to survive the mapping rather than defaulting to zero.
   record("GET /apex/approvals", {
-    body: { available: false, reason: "JSONDecodeError: approvals.json is not JSON", count: null, approvals: [] },
+    body: {
+      available: false,
+      reason: "JSONDecodeError: approvals.json is not JSON",
+      count: null,
+      approvals: [],
+    },
   });
   const list = await apex.fetchApexApprovals();
   assert.equal(list.available, false);
@@ -999,7 +1214,9 @@ test("a degraded approval store keeps count and pending null instead of 0", asyn
 });
 
 test("a measured zero pending stays a real zero", async () => {
-  record("GET /apex/approvals", { body: { available: true, count: 0, pending: 0, approvals: [] } });
+  record("GET /apex/approvals", {
+    body: { available: true, count: 0, pending: 0, approvals: [] },
+  });
   const list = await apex.fetchApexApprovals();
   assert.equal(list.count, 0);
   assert.equal(list.pending, 0);
@@ -1010,10 +1227,21 @@ test("a bounded approvals list keeps the whole count beside the rows it sent", a
   // derived `count` from `approvals.length` would understate the gate by
   // exactly the rows it hid.
   record("GET /apex/approvals", {
-    body: { available: true, count: 500, pending: 3, returned: 200, truncated: true, approvals: [PENDING_APPROVAL] },
+    body: {
+      available: true,
+      count: 500,
+      pending: 3,
+      returned: 200,
+      truncated: true,
+      approvals: [PENDING_APPROVAL],
+    },
   });
   const list = await apex.fetchApexApprovals();
-  assert.equal(list.count, 500, "the backlog is the whole set, not the returned rows");
+  assert.equal(
+    list.count,
+    500,
+    "the backlog is the whole set, not the returned rows",
+  );
   assert.equal(list.returned, 200);
   assert.equal(list.truncated, true);
   assert.notEqual(list.count, list.approvals.length);
@@ -1022,7 +1250,9 @@ test("a bounded approvals list keeps the whole count beside the rows it sent", a
 test("truncation is derived when the Gateway sends no flag", async () => {
   // An older Gateway that bounds the list without declaring it must still be
   // disclosed — deriving it keeps the panel honest against a server bug.
-  record("GET /apex/approvals", { body: { available: true, count: 500, returned: 200, approvals: [] } });
+  record("GET /apex/approvals", {
+    body: { available: true, count: 500, returned: 200, approvals: [] },
+  });
   const list = await apex.fetchApexApprovals();
   assert.equal(list.truncated, true);
 });
@@ -1030,13 +1260,22 @@ test("truncation is derived when the Gateway sends no flag", async () => {
 test("an unbounded approvals list is not reported as truncated", async () => {
   record("GET /apex/approvals", { body: APPROVALS_BODY });
   const list = await apex.fetchApexApprovals();
-  assert.equal(list.returned, null, "an unbounded read reports no bound rather than guessing one");
+  assert.equal(
+    list.returned,
+    null,
+    "an unbounded read reports no bound rather than guessing one",
+  );
   assert.equal(list.truncated, false);
 });
 
 test("a degraded approvals read reports no bound rather than a zero bound", async () => {
   record("GET /apex/approvals", {
-    body: { available: false, reason: "JSONDecodeError: approvals.json is not JSON", count: null, approvals: [] },
+    body: {
+      available: false,
+      reason: "JSONDecodeError: approvals.json is not JSON",
+      count: null,
+      approvals: [],
+    },
   });
   const list = await apex.fetchApexApprovals();
   assert.equal(list.returned, null);
@@ -1046,17 +1285,28 @@ test("a degraded approvals read reports no bound rather than a zero bound", asyn
 test("a verdict posts to the approval's approve route with the note", async () => {
   record("POST /apex/approvals/apr-1/approve", {
     body: {
-      approval: { ...PENDING_APPROVAL, status: "approved", operator: "admin-1", decided_at: 1700000900 },
+      approval: {
+        ...PENDING_APPROVAL,
+        status: "approved",
+        operator: "admin-1",
+        decided_at: 1700000900,
+      },
       resumed: true,
       session: { ...SESSION_RECORD, state: "active" },
     },
   });
-  const outcome = await apex.decideApexApproval("apr-1", "approve", { note: "looks fine" });
+  const outcome = await apex.decideApexApproval("apr-1", "approve", {
+    note: "looks fine",
+  });
   assert.equal(lastCall().path, "/apex/approvals/apr-1/approve");
   assert.equal(lastCall().method, "POST");
   assert.deepEqual(lastCall().body, { note: "looks fine" });
   assert.equal(outcome.approval.status, "approved");
-  assert.equal(outcome.resumed, true, "the response says the park was released");
+  assert.equal(
+    outcome.resumed,
+    true,
+    "the response says the park was released",
+  );
   assert.equal(outcome.session.state, "active");
 });
 
@@ -1066,14 +1316,23 @@ test("a reject posts to the reject route with resumed false and no session", asy
   // pressed would paint a refusal as a release.
   record("POST /apex/approvals/apr-1/reject", {
     body: {
-      approval: { ...PENDING_APPROVAL, status: "rejected", operator: "admin-1", decided_at: 1700000900 },
+      approval: {
+        ...PENDING_APPROVAL,
+        status: "rejected",
+        operator: "admin-1",
+        decided_at: 1700000900,
+      },
       resumed: false,
       session: null,
     },
   });
   const outcome = await apex.decideApexApproval("apr-1", "reject");
   assert.equal(lastCall().path, "/apex/approvals/apr-1/reject");
-  assert.deepEqual(lastCall().body, { note: "" }, "an omitted note still sends the field the route expects");
+  assert.deepEqual(
+    lastCall().body,
+    { note: "" },
+    "an omitted note still sends the field the route expects",
+  );
   assert.equal(outcome.resumed, false);
   assert.equal(outcome.session, null);
 });
@@ -1088,9 +1347,13 @@ test("an approval id is url-encoded rather than interpolated raw", async () => {
 
 test("a second verdict's 409 rejects with the server's reason", async () => {
   record("POST /apex/approvals/apr-1/approve", {
-    reject: "HTTP 409: approval apr-1 was already decided ('rejected'); a verdict is never overwritten",
+    reject:
+      "HTTP 409: approval apr-1 was already decided ('rejected'); a verdict is never overwritten",
   });
-  await assert.rejects(() => apex.decideApexApproval("apr-1", "approve"), /already decided/);
+  await assert.rejects(
+    () => apex.decideApexApproval("apr-1", "approve"),
+    /already decided/,
+  );
 });
 
 /* ── Goals — the Goal Operating System's HTTP surface ────────────────────── */
@@ -1115,7 +1378,9 @@ const GOAL_RECORD = {
 };
 
 test("goals reads GET /apex/goals and maps the records verbatim", async () => {
-  record("GET /apex/goals", { body: { available: true, count: 1, goals: [GOAL_RECORD] } });
+  record("GET /apex/goals", {
+    body: { available: true, count: 1, goals: [GOAL_RECORD] },
+  });
   const list = await apex.fetchApexGoals();
   assert.equal(lastCall().path, "/apex/goals");
   assert.equal(lastCall().method, "GET");
@@ -1127,7 +1392,12 @@ test("goals reads GET /apex/goals and maps the records verbatim", async () => {
 
 test("a goal store that could not be read keeps count null, not 0", async () => {
   record("GET /apex/goals", {
-    body: { available: false, reason: "OSError: goals.json unreadable", count: null, goals: [] },
+    body: {
+      available: false,
+      reason: "OSError: goals.json unreadable",
+      count: null,
+      goals: [],
+    },
   });
   const list = await apex.fetchApexGoals();
   assert.equal(list.available, false);
@@ -1138,16 +1408,25 @@ test("a goal store that could not be read keeps count null, not 0", async () => 
 
 test("creating a goal posts to /apex/goals with the caller's objective", async () => {
   record("POST /apex/goals", { body: { goal: GOAL_RECORD } });
-  const goal = await apex.createApexGoal({ objective: "fix the browser", success_criteria: ["suite passes"] });
+  const goal = await apex.createApexGoal({
+    objective: "fix the browser",
+    success_criteria: ["suite passes"],
+  });
   assert.equal(lastCall().path, "/apex/goals");
   assert.equal(lastCall().method, "POST");
   assert.equal(lastCall().body.objective, "fix the browser");
   assert.equal(goal.goal_id, "gl-1");
-  assert.equal(goal.session_id, "apx-1", "the session link survives the mapping — /decisions needs it");
+  assert.equal(
+    goal.session_id,
+    "apx-1",
+    "the session link survives the mapping — /decisions needs it",
+  );
 });
 
 test("one goal reads its own route with the id encoded", async () => {
-  record("GET /apex/goals/gl%2F1", { body: { goal: GOAL_RECORD, tree: { goal: "gl-1", children: [] } } });
+  record("GET /apex/goals/gl%2F1", {
+    body: { goal: GOAL_RECORD, tree: { goal: "gl-1", children: [] } },
+  });
   const goal = await apex.fetchApexGoal("gl/1");
   assert.equal(lastCall().path, "/apex/goals/gl%2F1");
   assert.equal(goal.goal_id, "gl-1");
@@ -1157,12 +1436,26 @@ test("one goal reads its own route with the id encoded", async () => {
 /* ── active_session rides the mode read ──────────────────────────────────── */
 
 test("the mode read carries the active session the control verbs act on", async () => {
-  record("GET /apex/mode", { body: { ...OFF_MODE, active_session: SESSION_RECORD } });
+  record("GET /apex/mode", {
+    body: { ...OFF_MODE, active_session: SESSION_RECORD },
+  });
   const mode = await apex.fetchApexMode();
   assert.equal(mode.active_session.session_id, "apx-1");
   assert.equal(mode.active_session.state, "paused");
+  assert.equal(mode.active_session.dispatch_state, "running");
+  assert.equal(mode.active_session.run_status, "running");
   assert.equal(mode.active_session.cycle_count, 4);
+  assert.equal(mode.active_session.token_limit, 500000);
+  assert.equal(mode.active_session.usage.total_tokens, 1500);
+  assert.equal(mode.active_session.usage.tool_calls, 8);
   assert.deepEqual(mode.active_session.acceptance_criteria, ["tests pass"]);
+});
+
+test("a failed host dispatch is shown beside the still-active session state", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /session\.dispatch_state === "failed"/);
+  assert.match(source, /linked run status is/);
+  assert.match(source, /inspect the run and recovery outcome/);
 });
 
 test("a mode with no bound session keeps active_session null", async () => {
@@ -1206,13 +1499,32 @@ test("the composer menu is derived from the profile list, not listed again", () 
   }
 });
 
+test("every enabled composer profile discloses its unlimited usage budget", () => {
+  for (const profile of apex.ENABLE_PROFILES) {
+    const rung = apex.APEX_RUNGS.find((entry) => entry.value === profile);
+    assert.match(
+      rung.hint,
+      /unlimited usage budget/i,
+      `${profile} must not imply a spend cutoff`,
+    );
+  }
+});
+
 test("a failed mode read renders unknown, never off", () => {
   const view = apex.apexChipView(null, "gateway unreachable");
   assert.equal(view.tone, "unknown");
   assert.equal(view.state, "unknown");
-  assert.equal(view.profile, "", "an unknown reading carries no profile to display");
+  assert.equal(
+    view.profile,
+    "",
+    "an unknown reading carries no profile to display",
+  );
   assert.match(view.title, /not known/);
-  assert.match(view.title, /gateway unreachable/, "the tooltip must carry the server's own reason");
+  assert.match(
+    view.title,
+    /gateway unreachable/,
+    "the tooltip must carry the server's own reason",
+  );
 });
 
 test("an unreadable mode store is unknown even though the server reports off", () => {
@@ -1220,7 +1532,10 @@ test("an unreadable mode store is unknown even though the server reports off", (
   // the store — a fail-closed default. Rendering that as the OFF state would
   // convert "we could not tell" into "it is off", which is the one sentence the
   // chip exists not to say.
-  const view = apex.apexChipView({ ...OFF_MODE, load_error: "mode_events.jsonl is not valid JSON" }, null);
+  const view = apex.apexChipView(
+    { ...OFF_MODE, load_error: "mode_events.jsonl is not valid JSON" },
+    null,
+  );
   assert.equal(view.tone, "unknown");
   assert.equal(view.state, "unknown");
   assert.match(view.title, /mode store could not be read/);
@@ -1231,14 +1546,25 @@ test("off renders off with no profile, even one the record retains", () => {
   // The server keeps the previous profile across a disable so the next enable
   // restores it. Printing that beside OFF reads as "apex_max, but off" — a
   // retained profile is not a profile in force.
-  const view = apex.apexChipView({ ...ON_MODE, enabled: false, contract_enabled: false, profile: "apex_max" }, null);
+  const view = apex.apexChipView(
+    {
+      ...ON_MODE,
+      enabled: false,
+      contract_enabled: false,
+      profile: "apex_max",
+    },
+    null,
+  );
   assert.equal(view.tone, "off");
   assert.equal(view.state, "OFF");
   assert.equal(view.profile, "");
 });
 
 test("on renders the profile in force, its scope, and what the control does not do", () => {
-  const view = apex.apexChipView({ ...ON_MODE, profile: "autonomous", scope_key: "u1" }, null);
+  const view = apex.apexChipView(
+    { ...ON_MODE, profile: "autonomous", scope_key: "u1" },
+    null,
+  );
   assert.equal(view.tone, "on");
   assert.equal(view.state, "ON");
   assert.equal(view.profile, "autonomous");
@@ -1252,7 +1578,13 @@ test("recorded-on-but-not-granted renders degraded rather than a green ON", () =
   // actually grants; a chip painting only the first is the same inversion the
   // panel's switch was fixed for.
   const view = apex.apexChipView(
-    { ...ON_MODE, enabled: true, contract_enabled: false, profile: "apex_max", reason: "profile unknown to this build" },
+    {
+      ...ON_MODE,
+      enabled: true,
+      contract_enabled: false,
+      profile: "apex_max",
+      reason: "profile unknown to this build",
+    },
     null,
   );
   assert.equal(view.tone, "degraded");
@@ -1262,7 +1594,11 @@ test("recorded-on-but-not-granted renders degraded rather than a green ON", () =
 
 test("the checkmark marks what is in force, not what the record remembers", () => {
   assert.equal(apex.liveRung(null), null, "no read, no claim");
-  assert.equal(apex.liveRung({ ...OFF_MODE, load_error: "unreadable" }), null, "an unreadable store marks nothing");
+  assert.equal(
+    apex.liveRung({ ...OFF_MODE, load_error: "unreadable" }),
+    null,
+    "an unreadable store marks nothing",
+  );
   assert.equal(apex.liveRung(OFF_MODE), "off");
   // A retained profile on an off scope must not check the rung it would enable.
   assert.equal(apex.liveRung({ ...OFF_MODE, profile: "apex_max" }), "off");
@@ -1290,10 +1626,18 @@ test("the chip paints from a re-read, never from the write it just made", () => 
     false,
     "adopting the write's response body is how this chip and the panel disagree",
   );
-  assert.match(source, /apexChipView\(mode, readError\)/, "the chip renders the derived view, not an inline branch");
+  assert.match(
+    source,
+    /apexChipView\(mode, readError\)/,
+    "the chip renders the derived view, not an inline branch",
+  );
   // An unreadable read must clear the previous reading rather than leave it
   // on screen as though it were current.
-  assert.match(source, /setMode\(null\)/, "a failed read clears the state it can no longer stand behind");
+  assert.match(
+    source,
+    /setMode\(null\)/,
+    "a failed read clears the state it can no longer stand behind",
+  );
 });
 
 test("one composer carries the control to every chat surface", () => {
@@ -1311,10 +1655,26 @@ test("the menu is portalled and placed, not left as an absolute child", () => {
   // `FreeCatalogMenu` were already fixed for. An "open" menu with its header
   // outside the clip box is a defect, not a cosmetic one.
   const source = read("../components/ApexModePicker.tsx");
-  assert.match(source, /createPortal\(/, "the panel must escape the overflow-hidden ancestors");
-  assert.match(source, /placeFloatingPanel\(/, "it must be positioned by the shared geometry");
-  assert.match(source, /overflow-y-auto/, "a capped panel scrolls rather than hiding its last rows");
+  assert.match(
+    source,
+    /createPortal\(/,
+    "the panel must escape the overflow-hidden ancestors",
+  );
+  assert.match(
+    source,
+    /placeFloatingPanel\(/,
+    "it must be positioned by the shared geometry",
+  );
+  assert.match(
+    source,
+    /overflow-y-auto/,
+    "a capped panel scrolls rather than hiding its last rows",
+  );
   // With the panel portalled out of the trigger's wrapper, an outside-click
   // check against the trigger alone would close it on its own first click.
-  assert.match(source, /panelRef\.current\?\.contains\(target\)/, "both refs take part in the outside-click check");
+  assert.match(
+    source,
+    /panelRef\.current\?\.contains\(target\)/,
+    "both refs take part in the outside-click check",
+  );
 });

@@ -94,7 +94,10 @@ Recorded so a later cycle does not re-investigate them as bugs.
   grounding gate refused the agent's `bash` call correctly and named the reason.
   A deployment with no code-execution capability cannot be asked to run a test
   suite; that tests the operator's security decision, not the agent.
-- **The `alpha-free` model is pinned to one endpoint.** See `ALPHA-BUG-0007`.
+- **Existing `config.yaml` files may pin `alpha-free` to one endpoint.** The shipped
+  `config.example.yaml` now uses `model: auto` for provider failover; a pin remains
+  an operator choice and retains the single-endpoint behavior documented by
+  `ALPHA-BUG-0007`.
 - **Outbound network is restricted.** `api.openrouter.ai` and `pypi.org` do not
   resolve; `api.kilo.ai`, `opencode.ai`, `vireonix.ai`, `blockrun.ai` do. The
   keyless free LLM path works end to end, and `web_search` works; `web_fetch`

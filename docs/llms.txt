@@ -26,6 +26,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 - [Architecture](ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 118 harness engine packages.
 - [Dynamic workflows](DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
+- [APEX Autopilot](APEX_AUTOPILOT.md): goal sessions, Gateway RunManager dispatch, run/token observation, owner-submitted measured acceptance reports, unlimited token/tool-call/runtime ceilings in every enabled profile, APEX active-agent/parallel caps on ordinary `task` delegation, APEX tool-policy revalidation in delegated child agents, separate durable `batch_task` concurrency limits, the lifecycle-manager-only depth cap, and missing replan/retry counters.
 - [Extensions](EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
 - [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).

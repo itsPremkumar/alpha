@@ -79,6 +79,54 @@ def _runtime_run_id(runtime: Runtime | None) -> str | None:
     return str(run_id) if run_id else None
 
 
+def _apex_task_call_limit(runtime: Runtime | None, *, fallback: int) -> int | None:
+    """Resolve a trusted APEX session's per-turn delegation ceiling.
+
+    ``None`` means this is an ordinary run. An APEX marker is Gateway-owned;
+    once present, unreadable or mismatched policy fails closed with zero child
+    calls. APEX counts delegated children against its active-agent ceiling;
+    the task-call cap also remains subject to engine capacity.
+    """
+    context = getattr(runtime, "context", None)
+    if not isinstance(context, dict):
+        return None
+    try:
+        from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY
+    except Exception:  # noqa: BLE001 - detect a broken APEX import without opening delegation
+        return 0 if context.get("__alpha_apex_session_id") else None
+    session_id = context.get(APEX_RUNTIME_SESSION_KEY)
+    if not session_id:
+        return None
+    try:
+        from alpha.apex.contract import contract_from_snapshot
+        from alpha.apex.mode import DEFAULT_SCOPE, get_apex_mode_store
+        from alpha.apex.store import ApexSessionState, get_apex_store
+
+        store = get_apex_store()
+        modes = get_apex_mode_store()
+        if store.is_degraded or modes.is_degraded:
+            return 0
+        session = store.get(str(session_id))
+        if session is None or session.owner != str(context.get("user_id") or "") or session.state is not ApexSessionState.ACTIVE or session.contract_snapshot is None:
+            return 0
+        scope = session.thread_id or session.owner or DEFAULT_SCOPE
+        mode = modes.for_scope(scope)
+        if not mode.enabled or mode.profile != session.profile:
+            return 0
+        contract = contract_from_snapshot(session.contract_snapshot, expected_digest=session.contract_digest)
+        if contract.profile.value != session.profile:
+            return 0
+        limits = [fallback]
+        if contract.budget.max_active_agents is not None:
+            limits.append(max(0, int(contract.budget.max_active_agents)))
+        if contract.budget.max_parallel_tasks is not None:
+            limits.append(max(0, int(contract.budget.max_parallel_tasks)))
+        return min(limits)
+    except Exception:  # noqa: BLE001 - a marked APEX run must fail closed
+        logger.exception("Could not resolve APEX subagent limits; delegation is withheld")
+        return 0
+
+
 def _count_prior_delegations(delegations: object, *, run_id: str | None) -> int:
     if not isinstance(delegations, list):
         return 0
@@ -144,7 +192,9 @@ class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
             logger.warning("Subagent limit middleware received no run_id; counting all thread delegations as prior usage. Pass run_id in runtime context to enforce the total cap per run.")
         prior_delegation_count = _count_prior_delegations(state.get("delegations"), run_id=run_id)
         remaining_total = max(0, self.max_total - prior_delegation_count)
-        allowed_task_calls = min(self.max_concurrent, remaining_total)
+        apex_limit = _apex_task_call_limit(runtime, fallback=self.max_concurrent)
+        concurrent_limit = self.max_concurrent if apex_limit is None else min(self.max_concurrent, apex_limit)
+        allowed_task_calls = min(concurrent_limit, remaining_total)
 
         if len(task_indices) <= allowed_task_calls:
             return None
@@ -168,7 +218,13 @@ class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
             runtime.context["stop_reason"] = "subagent_limit_capped"
 
         # Replace the AIMessage with truncated tool_calls (same id triggers replacement)
-        content = _append_text(last_msg.content, _TOTAL_LIMIT_STOP_MSG) if remaining_total == 0 else None
+        if remaining_total == 0:
+            content = _append_text(last_msg.content, _TOTAL_LIMIT_STOP_MSG)
+        elif apex_limit is not None and len(task_indices) > allowed_task_calls:
+            note = f"[APEX DELEGATION LIMIT] This session permits up to {allowed_task_calls} parallel task call(s) in this turn. Continue with the work already assigned or plan another bounded batch after those results return."
+            content = _append_text(last_msg.content, note)
+        else:
+            content = None
         updated_msg = clone_ai_message_with_tool_calls(last_msg, truncated_tool_calls, content=content)
         return {"messages": [updated_msg]}
 

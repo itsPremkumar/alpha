@@ -22,7 +22,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from alpha.apex.contract import AutonomyContract
+from alpha.apex.contract import AutonomyContract, contract_digest_matches
 from alpha.apex.invariants import invariant_summary
 from alpha.apex.store import ApexSession, ApexSessionState, ApexStore
 
@@ -134,8 +134,9 @@ def session_summary(session: ApexSession, *, contract: AutonomyContract | None =
     payload = session.to_dict()
     payload["is_terminal"] = session.is_terminal
     if contract is not None:
-        payload["contract_matches"] = session.contract_digest == contract.digest() if session.contract_digest else None
-        payload["contract_drift"] = bool(session.contract_digest and contract.digest() and session.contract_digest != contract.digest())
+        matches = contract_digest_matches(contract, session.contract_digest) if session.contract_digest else None
+        payload["contract_matches"] = matches
+        payload["contract_drift"] = bool(session.contract_digest and contract.digest() and not matches)
     return payload
 
 

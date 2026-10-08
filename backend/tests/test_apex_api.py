@@ -128,7 +128,7 @@ class TestPolicyEndpoint:
     def test_apex_max_profile_is_queryable(self, client: TestClient) -> None:
         payload = client.get("/api/apex/policy?profile=apex_max").json()
         assert payload["profile"] == "apex_max"
-        assert payload["budget"]["max_tool_calls"] == 5000
+        assert payload["budget"]["max_tool_calls"] is None
 
     def test_unknown_profile_is_422_listing_the_valid_ones(self, client: TestClient) -> None:
         response = client.get("/api/apex/policy?profile=god_mode")
@@ -146,11 +146,16 @@ class TestSessionLifecycleOverHttp:
         body = _create(client, acceptance_criteria=["suite passes"])
         assert body["contract"]["profile"] == "autonomous"
         assert body["contract"]["digest"] == body["session"]["contract_digest"]
+        assert body["session"]["contract_snapshot"]["digest"] == body["session"]["contract_digest"]
         assert body["note"]
 
     def test_narrowing_a_contract_at_creation_is_allowed(self, client: TestClient, store: ApexStore) -> None:
         body = _create(client, profile="apex_max", authority={"terminal": False})
         assert body["contract"]["authority"]["terminal"] is False
+        session = body["session"]
+        cycle = client.post(f"/api/apex/sessions/{session['session_id']}/cycle", json={}).json()
+        assert cycle["decision"]["reason"] != "policy_drift"
+        assert cycle["decision"]["action"] == "create_mission"
 
     def test_widening_a_contract_at_creation_is_422(self, client: TestClient, store: ApexStore) -> None:
         # `assist` does not offer `terminal`; asking for it must fail loudly
@@ -162,12 +167,122 @@ class TestSessionLifecycleOverHttp:
         assert response.status_code == 422
         assert "terminal" in response.json()["detail"]
 
-    def test_cycle_with_unmet_criteria_does_not_complete(self, client: TestClient, store: ApexStore) -> None:
+    def test_declared_criteria_do_not_block_the_initial_work_cycle(self, client: TestClient, store: ApexStore) -> None:
         session = _create(client, acceptance_criteria=["suite passes"])["session"]
+        result = client.post(f"/api/apex/sessions/{session['session_id']}/cycle", json={}).json()
+        assert result["decision"]["action"] == "create_mission"
+        assert result["decision"]["blocked"] is False
+        assert store.get(session["session_id"]).state is not ApexSessionState.COMPLETED
+
+    def test_cycle_with_unverified_acceptance_report_does_not_complete(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, acceptance_criteria=["suite passes"])["session"]
+        store.update(
+            session["session_id"],
+            acceptance={"criteria": [{"criterion": "suite passes", "verdict": "unverified"}], "evaluator": "test"},
+        )
         result = client.post(f"/api/apex/sessions/{session['session_id']}/cycle", json={}).json()
         assert result["decision"]["action"] == "await_verification"
         assert result["decision"]["blocked"] is True
         assert store.get(session["session_id"]).state is not ApexSessionState.COMPLETED
+
+    def test_measured_acceptance_report_completes_only_through_the_executive(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, acceptance_criteria=["focused checks pass"])["session"]
+        store.update(
+            session["session_id"],
+            state=ApexSessionState.ACTIVE,
+            dispatch_state="awaiting_verification",
+            run_id="run-complete",
+            run_status="completed",
+        )
+
+        response = client.post(
+            f"/api/apex/sessions/{session['session_id']}/acceptance",
+            json={"results": [{"criterion": "focused checks pass", "met": True, "evidence": "pytest output: 12 passed"}]},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["report"]["passed"] is True
+        assert response.json()["cycle"]["decision"]["reason"] == "acceptance_passed"
+        assert response.json()["session"]["state"] == "completed"
+        assert store.get(session["session_id"]).state is ApexSessionState.COMPLETED
+
+    def test_failed_acceptance_is_journaled_and_reopens_one_recovery_dispatch(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, acceptance_criteria=["focused checks pass"])["session"]
+        store.update(
+            session["session_id"],
+            state=ApexSessionState.ACTIVE,
+            dispatch_state="awaiting_verification",
+            run_id="run-failed-check",
+            run_status="completed",
+        )
+
+        response = client.post(
+            f"/api/apex/sessions/{session['session_id']}/acceptance",
+            json={"results": [{"criterion": "focused checks pass", "met": False, "evidence": "pytest output: 1 failed"}]},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["cycle"]["decision"]["action"] == "recover"
+        recovered = store.get(session["session_id"])
+        assert recovered is not None
+        assert recovered.state is ApexSessionState.ACTIVE
+        assert recovered.dispatch_state == "idle"
+        assert recovered.run_id == ""
+        assert recovered.acceptance is None
+        assert recovered.acceptance_history[-1]["criteria"][0]["evidence"] == "pytest output: 1 failed"
+        events = store.read_events(session["session_id"])
+        recovery = [event for event in events if event.event_type == "acceptance.recovery_started"]
+        assert len(recovery) == 1
+        assert recovery[0].payload["previous_run_id"] == "run-failed-check"
+        assert recovery[0].payload["failed_report"]["criteria"][0]["evidence"] == "pytest output: 1 failed"
+        reloaded = ApexStore(store.storage_path).get(session["session_id"])
+        assert reloaded is not None
+        assert reloaded.acceptance_history == recovered.acceptance_history
+
+    def test_acceptance_evidence_must_cover_every_criterion_once(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, acceptance_criteria=["first check", "second check"])["session"]
+        store.update(
+            session["session_id"],
+            state=ApexSessionState.ACTIVE,
+            dispatch_state="awaiting_verification",
+            run_id="run-complete",
+            run_status="completed",
+        )
+
+        response = client.post(
+            f"/api/apex/sessions/{session['session_id']}/acceptance",
+            json={"results": [{"criterion": "first check", "met": True, "evidence": "check output"}]},
+        )
+
+        assert response.status_code == 422
+        assert "second check" in response.json()["detail"]
+        assert store.get(session["session_id"]).acceptance is None
+
+    def test_acceptance_requires_a_completed_run(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, acceptance_criteria=["focused checks pass"])["session"]
+        store.update(session["session_id"], state=ApexSessionState.ACTIVE)
+        response = client.post(
+            f"/api/apex/sessions/{session['session_id']}/acceptance",
+            json={"results": [{"criterion": "focused checks pass", "met": True, "evidence": "pytest output"}]},
+        )
+        assert response.status_code == 409
+        assert "after a linked RunManager run completes" in response.json()["detail"]
+
+    def test_foreign_owner_cannot_submit_session_acceptance(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, acceptance_criteria=["focused checks pass"])["session"]
+        store.update(
+            session["session_id"],
+            state=ApexSessionState.ACTIVE,
+            dispatch_state="awaiting_verification",
+            run_id="run-complete",
+            run_status="completed",
+        )
+        response = _client(is_admin=False).post(
+            f"/api/apex/sessions/{session['session_id']}/acceptance",
+            json={"results": [{"criterion": "focused checks pass", "met": True, "evidence": "pytest output"}]},
+        )
+        assert response.status_code == 404
+        assert store.get(session["session_id"]).acceptance is None
 
     def test_cycle_returns_its_steps_for_debugging(self, client: TestClient, store: ApexStore) -> None:
         session = _create(client)["session"]
@@ -438,11 +553,19 @@ class TestSupervisorLoop:
         assert "apex" in supervisor._specs
 
     def test_tick_counts_refusals_rather_than_hiding_them(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import alpha.apex.mode as mode_module
         import alpha.apex.store as store_module
 
         instance = ApexStore(tmp_path / "sessions.json")
         monkeypatch.setattr(store_module, "_store", instance)
         monkeypatch.setattr(store_module, "_default_storage_path", lambda: instance.storage_path)
+
+        from alpha.apex.mode import ApexModeStore
+
+        modes = ApexModeStore(tmp_path / "mode.json")
+        modes.enable("o", "autonomous")
+        monkeypatch.setattr(mode_module, "_store", modes)
+        monkeypatch.setattr(mode_module, "_default_storage_path", lambda: modes.storage_path)
 
         from alpha.apex.contract import profile_for as build_contract
 
@@ -454,6 +577,10 @@ class TestSupervisorLoop:
             contract_digest=build_contract("autonomous").digest(),
             acceptance_criteria=["tests pass"],
         )
+        instance.update(
+            waiting.session_id,
+            acceptance={"criteria": [{"criterion": "tests pass", "verdict": "unverified"}], "evaluator": "test"},
+        )
         terminal = instance.create(owner="o", objective="c", profile="autonomous", contract_digest=build_contract("autonomous").digest())
         instance.set_state(terminal.session_id, ApexSessionState.CANCELLED, reason="operator")
 
@@ -463,6 +590,30 @@ class TestSupervisorLoop:
         assert summary["skipped_terminal"] == 1
         assert summary["cycles_blocked"] == 1
         assert active.session_id and waiting.session_id
+
+    def test_tick_does_not_advance_sessions_when_their_mode_is_off(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import alpha.apex.mode as mode_module
+        import alpha.apex.store as store_module
+        from alpha.apex.contract import profile_for
+
+        instance = ApexStore(tmp_path / "sessions.json")
+        monkeypatch.setattr(store_module, "_store", instance)
+        monkeypatch.setattr(store_module, "_default_storage_path", lambda: instance.storage_path)
+        modes = mode_module.ApexModeStore(tmp_path / "mode.json")
+        monkeypatch.setattr(mode_module, "_store", modes)
+        monkeypatch.setattr(mode_module, "_default_storage_path", lambda: modes.storage_path)
+        session = instance.create(
+            owner="o",
+            objective="must remain idle while APEX is off",
+            profile="autonomous",
+            contract_digest=profile_for("autonomous").digest(),
+        )
+
+        summary = loop_adapters.apex_tick()
+
+        assert summary["cycles"] == 0
+        assert summary["skipped_mode_off"] == 1
+        assert instance.get(session.session_id).cycle_count == 0
 
     def test_tick_reports_a_degraded_store_instead_of_zero_sessions(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import alpha.apex.store as store_module

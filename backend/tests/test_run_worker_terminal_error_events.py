@@ -20,6 +20,7 @@ requirement, tracked in ``app/gateway/services.py`` by another workstream.
 
 from __future__ import annotations
 
+import errno
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -28,7 +29,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from alpha.runtime.events.store.memory import MemoryRunEventStore
-from alpha.runtime.runs.manager import MODEL_FAILURE_RECOVERY_REASON, RunManager
+from alpha.runtime.runs.manager import MODEL_FAILURE_RECOVERY_REASON, NETWORK_WAIT_RECOVERY_REASON, RunManager
 from alpha.runtime.runs.schemas import RunStatus
 from alpha.runtime.runs.worker import (
     ERROR_CODE_DELIVERY_INCOMPLETE,
@@ -347,6 +348,75 @@ async def test_unhandled_run_exception_publishes_a_coded_error_event():
     assert frame["message"] == "agent exploded"
     assert frame["name"] == "RuntimeError"
     assert bridge.event_names.index("error") < bridge.event_names.index("end")
+
+
+@pytest.mark.anyio
+async def test_definitive_network_failure_is_marked_for_safe_recovery(monkeypatch):
+    run_manager = RunManager()
+    record = await run_manager.create("thread-network-boom")
+    bridge = _RecordingBridge()
+    parked: list[dict] = []
+
+    async def park(**kwargs):
+        parked.append(kwargs)
+        return True
+
+    monkeypatch.setattr("alpha.runtime.runs.worker.park_session_if_available", park)
+
+    class OfflineAgent:
+        async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+            raise ConnectionRefusedError(errno.ECONNREFUSED, "provider endpoint is unreachable")
+            if False:  # pragma: no cover - keep this an async generator
+                yield
+
+    await run_agent(
+        bridge,
+        run_manager,
+        record,
+        ctx=RunContext(checkpointer=None, event_store=MemoryRunEventStore()),
+        agent_factory=lambda *, config: OfflineAgent(),
+        graph_input={},
+        config={},
+    )
+
+    assert record.status == RunStatus.error
+    assert record.stop_reason == NETWORK_WAIT_RECOVERY_REASON
+    assert parked and parked[0]["run_id"] == record.run_id
+    assert len(bridge.error_frames) == 1
+
+
+@pytest.mark.anyio
+async def test_provider_timeout_is_not_marked_as_a_network_outage(monkeypatch):
+    run_manager = RunManager()
+    record = await run_manager.create("thread-provider-timeout")
+    bridge = _RecordingBridge()
+    parked: list[dict] = []
+
+    async def park(**kwargs):
+        parked.append(kwargs)
+        return True
+
+    monkeypatch.setattr("alpha.runtime.runs.worker.park_session_if_available", park)
+
+    class SlowProviderAgent:
+        async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+            raise TimeoutError("provider read timed out")
+            if False:  # pragma: no cover - keep this an async generator
+                yield
+
+    await run_agent(
+        bridge,
+        run_manager,
+        record,
+        ctx=RunContext(checkpointer=None, event_store=MemoryRunEventStore()),
+        agent_factory=lambda *, config: SlowProviderAgent(),
+        graph_input={},
+        config={},
+    )
+
+    assert record.status == RunStatus.error
+    assert record.stop_reason is None
+    assert parked == []
 
 
 # ---------------------------------------------------------------------------

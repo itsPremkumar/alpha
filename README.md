@@ -314,7 +314,7 @@ subsystem.
 | :--- | :--- | :--- |
 | **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
 | **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| **One objective, autonomously worked** | **APEX Autopilot**: hand it an objective and a profile; it holds an autonomy contract, decides the next action each cycle, and refuses to complete a mission until every acceptance criterion was evaluated and held. It is a control plane over the engines below, not a second one — switch it from the APEX view or from a chip in the chat composer | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
+| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, and submit measured evidence for every acceptance criterion. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined. Automatic evidence collectors are not included | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
 | **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
 | **A community of agent groups** | Nest group rooms inside group rooms at any time, staff them by rule instead of by name, inherit membership from a parent, and split direct / inherited / rule-matched members in the roster | [AGENTS.md](AGENTS.md#nested-groups-the-community-shape) |
 | **Scheduled / recurring agents** | Cron scheduler with wake gates, blueprints, incident tracking, and auto-pause; GitHub webhook triggers | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
@@ -346,6 +346,10 @@ trees, creates the config files with a generated secret, offers to register
 Windows autostart, then **starts Alpha and verifies it** (Gateway health, the
 launcher process, and the watchdog chain) before reporting success. No
 administrator rights; nothing is written outside this folder.
+
+While running, the Windows launcher restarts a service when its listening port
+disappears, even if a wrapper process is still alive; the independent watchdog
+continues to supervise the launcher and full stack.
 
 Open **<http://localhost:2026>**. Later: `start.bat` and `stop.bat`.
 
