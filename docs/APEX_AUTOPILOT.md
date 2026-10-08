@@ -203,9 +203,11 @@ still applies. Newly created
 sessions receive unlimited spending defaults. Existing sessions retain their
 frozen contracts and are not silently widened; older sessions whose contract
 digest no longer matches the active profile must be reviewed and recreated to
-use the new defaults. Alpha still records usage, and engine admission, provider availability, platform
-capacity, governance, approvals, and the emergency stop remain in force; a
-session quota never reserves or creates hardware or provider capacity. The
+use the new defaults. Alpha still records usage, and engine admission, provider
+availability, platform capacity, governance, approvals, and the emergency stop
+remain in force; a session quota never reserves or creates hardware or provider
+capacity.
+
 When a RunManager run completes, the Gateway adapter evaluates registered
 `AcceptanceRegistry` probes off the event loop. Only a fully evaluated report
 is submitted to the executive gate; a pass can complete the session and a
