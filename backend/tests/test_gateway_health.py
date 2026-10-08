@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 import app.gateway.health as health_module
+from alpha.config.checkpointer_config import CheckpointerConfig
 from app.gateway.health import (
     DATABASE_NOT_CONFIGURED,
     DATABASE_OK,
@@ -19,7 +20,6 @@ from app.gateway.health import (
     readiness_payload,
     resolve_checkpointer_config,
 )
-from alpha.config.checkpointer_config import CheckpointerConfig
 
 
 class _FakeConnection:
@@ -206,6 +206,31 @@ async def test_concurrent_readiness_requests_do_not_open_concurrent_probe_connec
 
     assert [status_code for status_code, _ in results] == [200] * 8
     assert max_active == 1
+
+
+@pytest.mark.anyio
+async def test_concurrent_readiness_requests_share_the_same_probe_work(monkeypatch):
+    """Concurrent launcher/watchdog polls must not multiply ORM probes."""
+    calls = {"database": 0, "checkpointer": 0}
+
+    async def _database_probe() -> str:
+        calls["database"] += 1
+        await asyncio.sleep(0.05)
+        return DATABASE_OK
+
+    async def _checkpointer_probe(config) -> str:
+        calls["checkpointer"] += 1
+        await asyncio.sleep(0.05)
+        return DATABASE_NOT_CONFIGURED
+
+    monkeypatch.setattr(health_module, "check_database_health", _database_probe)
+    monkeypatch.setattr(health_module, "_probe_checkpointer_backend", _checkpointer_probe)
+    config = CheckpointerConfig(type="memory")
+
+    results = await asyncio.gather(*(readiness_payload(config) for _ in range(8)))
+
+    assert [status_code for status_code, _ in results] == [200] * 8
+    assert calls == {"database": 1, "checkpointer": 1}
 
 
 @pytest.mark.anyio

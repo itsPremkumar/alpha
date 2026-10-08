@@ -67,6 +67,18 @@ READINESS_CHECKPOINTER_CONFIG_ATTR = "checkpointer_config"
 # per process. Waiting requests are still shed by the endpoint-wide deadline.
 _PROBE_GATES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
 
+# Readiness can be polled by the launcher, watchdog, and orchestrator at the
+# same time. Sharing one in-flight probe prevents a burst of public health
+# requests from multiplying SQLite opens and database work. The key includes
+# the startup-bound checkpointer settings so unrelated configs never share a
+# result. Entries are removed when the task finishes; this is single-flight,
+# not a cache, so every later probe observes current persistence health.
+_READINESS_FLIGHTS: weakref.WeakKeyDictionary[
+    asyncio.AbstractEventLoop,
+    dict[tuple[str, str | None, str | None] | None, asyncio.Task[tuple[int, dict[str, str]]]],
+] = weakref.WeakKeyDictionary()
+_READINESS_FLIGHT_LOCKS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
+
 
 def _probe_gate() -> asyncio.Lock:
     """Return the serialization gate bound to the currently running loop."""
@@ -237,20 +249,8 @@ async def _probe_checkpointer_backend(config: CheckpointerConfig) -> str:
         return await _probe_postgres_backend(config.connection_string, config.postgres_schema)
 
 
-async def readiness_payload(checkpointer_config: CheckpointerConfig | None = None) -> tuple[int, dict[str, str]]:
-    """Return the (status_code, body) pair served by ``GET /health/ready``.
-
-    Probes both persistence halves the gateway depends on: the ORM engine
-    behind ``database:`` (repositories) and the effective LangGraph
-    checkpointer/Store backend (the legacy ``checkpointer:`` section, otherwise
-    derived from ``database:``). The probes run concurrently beneath one
-    endpoint-wide deadline so the request duration is bounded by the slowest
-    single probe, not their sum. ``checkpointer_config`` is the startup
-    snapshot recorded by ``langgraph_runtime``; None means no snapshot could be
-    resolved, which fails closed as an unreachable backend rather than
-    reporting ready. Either backend can be configured independently of the
-    other, so an unreachable probe on either degrades the endpoint.
-    """
+async def _readiness_payload_uncached(checkpointer_config: CheckpointerConfig | None) -> tuple[int, dict[str, str]]:
+    """Run one bounded pair of persistence probes for a readiness request."""
 
     async def _probe_engine() -> str:
         return await check_database_health()
@@ -280,3 +280,58 @@ async def readiness_payload(checkpointer_config: CheckpointerConfig | None = Non
         "checkpointer": checkpointer,
     }
     return (503 if degraded else 200, payload)
+
+
+async def readiness_payload(checkpointer_config: CheckpointerConfig | None = None) -> tuple[int, dict[str, str]]:
+    """Return the (status_code, body) pair served by ``GET /health/ready``.
+
+    Probes both persistence halves the gateway depends on: the ORM engine
+    behind ``database:`` (repositories) and the effective LangGraph
+    checkpointer/Store backend (the legacy ``checkpointer:`` section, otherwise
+    derived from ``database:``). The probes run concurrently beneath one
+    endpoint-wide deadline so the request duration is bounded by the slowest
+    single probe, not their sum. ``checkpointer_config`` is the startup
+    snapshot recorded by ``langgraph_runtime``; None means no snapshot could be
+    resolved, which fails closed as an unreachable backend rather than
+    reporting ready. Either backend can be configured independently of the
+    other, so an unreachable probe on either degrades the endpoint.
+    """
+
+    loop = asyncio.get_running_loop()
+    key = (
+        None
+        if checkpointer_config is None
+        else (
+            checkpointer_config.type,
+            checkpointer_config.connection_string,
+            checkpointer_config.postgres_schema,
+        )
+    )
+    flights = _READINESS_FLIGHTS.get(loop)
+    if flights is None:
+        flights = {}
+        _READINESS_FLIGHTS[loop] = flights
+    lock = _READINESS_FLIGHT_LOCKS.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _READINESS_FLIGHT_LOCKS[loop] = lock
+
+    async with lock:
+        task = flights.get(key)
+        if task is None or task.done():
+            task = asyncio.create_task(_readiness_payload_uncached(checkpointer_config))
+            flights[key] = task
+
+            def _forget(finished: asyncio.Task[tuple[int, dict[str, str]]]) -> None:
+                if flights.get(key) is finished:
+                    flights.pop(key, None)
+                if not finished.cancelled():
+                    # A burst can disappear when clients time out; still
+                    # retrieve an unexpected probe exception in that case.
+                    finished.exception()
+
+            task.add_done_callback(_forget)
+
+    # One canceled HTTP request must not cancel a shared probe needed by the
+    # launcher's other health checks.
+    return await asyncio.shield(task)
