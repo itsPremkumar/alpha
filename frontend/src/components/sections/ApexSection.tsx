@@ -22,6 +22,7 @@ import {
   fetchApexStatus,
   createApexSession,
   dispatchApexSession,
+  formatMeasuredCount,
   profileToAdopt,
   type ApexApprovals,
   type ApexBlock,
@@ -664,7 +665,7 @@ function SessionControlCard({
                 ? "token usage not yet measured"
                 : `${session.usage.total_tokens.toLocaleString()} / ${quota(session.token_limit)} tokens`}
               {` · ${session.usage.tool_calls?.toLocaleString() ?? "unmeasured"} tool calls · ${session.usage.llm_calls?.toLocaleString() ?? "unmeasured"} model calls`}
-              {` · ${session.usage.replans ?? 0} / ${quota(session.replan_limit)} acceptance replans`}
+              {` · ${formatMeasuredCount(session.usage.replans)} / ${quota(session.replan_limit)} acceptance replans`}
             </p>
             <div className="flex flex-wrap gap-2">
               <Btn onClick={() => control("pause")} disabled={busyNow}>
@@ -975,7 +976,7 @@ export function ApexSection() {
         );
       }
       setDispatchNotice(
-        `${previousFailed ? `Previous session ${previous?.session_id ?? "unknown"} remains failed and unverified. ` : ""}Session ${created.session_id}: ${result.dispatched ?? 0} dispatched, ${result.running ?? 0} running, ${result.awaiting_verification ?? 0} awaiting verification, ${result.failed ?? 0} failed. A completed run is not verified until acceptance evidence is evaluated.`,
+        `${previousFailed ? `Previous session ${previous?.session_id ?? "unknown"} remains failed and unverified. ` : ""}Session ${created.session_id}: ${formatMeasuredCount(result.dispatched)} dispatched, ${formatMeasuredCount(result.running)} running, ${formatMeasuredCount(result.awaiting_verification)} awaiting verification, ${formatMeasuredCount(result.failed)} failed. A completed run is not verified until acceptance evidence is evaluated.`,
       );
       setObjective("");
       setCriteriaText("");
@@ -1116,13 +1117,21 @@ export function ApexSection() {
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
             <Cpu className="size-4" />
             <span>
-              Sessions: <strong>{status.sessions.total ?? 0}</strong>
-              {status.sessions.active !== null &&
-                ` · ${status.sessions.active} active`}
+              Sessions:{" "}
+              <strong>{formatMeasuredCount(status.sessions.total)}</strong>
+              {status.sessions.active !== null
+                ? ` · ${status.sessions.active} active`
+                : " · active count unreported"}
             </span>
-            {Object.entries(status.sessions.by_state).length === 0 && (
+            {status.sessions.total === 0 && (
               <span className="text-neutral-500">none recorded</span>
             )}
+            {status.sessions.total !== 0 &&
+              Object.entries(status.sessions.by_state).length === 0 && (
+                <span className="text-neutral-500">
+                  state breakdown unreported
+                </span>
+              )}
           </div>
         ) : (
           <Unavailable block={status.sessions} label="Session store" />

@@ -39,6 +39,13 @@ function optNum(v: unknown): number | null {
   return null;
 }
 
+/** Render a measured count without turning a missing server field into zero. */
+export function formatMeasuredCount(value: number | null | undefined): string {
+  return value === null || value === undefined
+    ? "unreported"
+    : value.toLocaleString();
+}
+
 function bool(v: unknown): boolean {
   return v === true;
 }

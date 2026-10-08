@@ -374,6 +374,14 @@ test("an absent session total maps to null rather than 0", async () => {
   assert.equal(status.sessions.terminal, null);
 });
 
+test("missing APEX counts stay visibly unreported in operator summaries", async () => {
+  const { formatMeasuredCount } = await import(apexUrl);
+  assert.equal(formatMeasuredCount(null), "unreported");
+  assert.equal(formatMeasuredCount(undefined), "unreported");
+  assert.equal(formatMeasuredCount(0), "0");
+  assert.equal(formatMeasuredCount(1234), "1,234");
+});
+
 test("a measured zero stays a real zero", async () => {
   record("GET /apex/status", {
     body: {
