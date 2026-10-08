@@ -630,6 +630,30 @@ export interface ApexSessionRecord {
   updated_at: number | null;
 }
 
+/** Human-readable execution state; a successful run is never called verified. */
+export function apexExecutionSummary(
+  session: Pick<ApexSessionRecord, "dispatch_state" | "run_status">,
+): string | null {
+  switch (session.dispatch_state) {
+    case null:
+    case "idle":
+      return null;
+    case "starting":
+      return "Preparing the run.";
+    case "running":
+      return "Run in progress.";
+    case "awaiting_verification":
+      return session.run_status === "success" ||
+        session.run_status === "completed"
+        ? "Run finished successfully; acceptance evidence is still unverified."
+        : `Run ended${session.run_status ? ` (${session.run_status})` : ""}; acceptance evidence is still unverified.`;
+    case "failed":
+      return `Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. Inspect the run and recovery outcome.`;
+    default:
+      return `Execution state: ${session.dispatch_state}.`;
+  }
+}
+
 function mapSessionRecord(v: unknown): ApexSessionRecord {
   const r = rec(v);
   const usage = rec(r.usage);

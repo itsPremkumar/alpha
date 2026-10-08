@@ -15,6 +15,7 @@ import {
 import {
   APEX_PROFILES,
   ENABLE_PROFILES,
+  apexExecutionSummary,
   decideApexApproval,
   fetchApexApprovals,
   fetchApexMode,
@@ -610,6 +611,7 @@ function SessionControlCard({
   };
 
   const session = mode?.active_session ?? null;
+  const executionSummary = session ? apexExecutionSummary(session) : null;
   const pending = approvals?.available
     ? approvals.approvals.filter((row) => row.status === "pending")
     : [];
@@ -653,6 +655,11 @@ function SessionControlCard({
                 ? ` · blocked: ${session.blocked_reason}`
                 : ""}
             </p>
+            {executionSummary && (
+              <p className="text-xs text-neutral-500" aria-live="polite">
+                {executionSummary}
+              </p>
+            )}
             {session.dispatch_state === "failed" && (
               <Notice
                 tone="warn"

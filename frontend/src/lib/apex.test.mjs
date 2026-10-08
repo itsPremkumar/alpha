@@ -403,6 +403,33 @@ test("missing APEX counts stay visibly unreported in operator summaries", async 
   assert.equal(formatMeasuredCount(1234), "1,234");
 });
 
+test("execution summaries distinguish run completion from acceptance", async () => {
+  const { apexExecutionSummary } = await import(apexUrl);
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "idle", run_status: null }),
+    null,
+  );
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "starting", run_status: null }),
+    "Preparing the run.",
+  );
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "running", run_status: "running" }),
+    "Run in progress.",
+  );
+  assert.equal(
+    apexExecutionSummary({
+      dispatch_state: "awaiting_verification",
+      run_status: "success",
+    }),
+    "Run finished successfully; acceptance evidence is still unverified.",
+  );
+  assert.match(
+    apexExecutionSummary({ dispatch_state: "failed", run_status: "error" }),
+    /Dispatch failed.*error.*Inspect the run and recovery outcome/,
+  );
+});
+
 test("a measured zero stays a real zero", async () => {
   record("GET /apex/status", {
     body: {
@@ -1242,7 +1269,7 @@ test("approvals reads GET /apex/approvals and keeps pending separate from count"
 
 test("approval cards show the protected operation and exact-request fingerprint", () => {
   const source = read("../components/sections/ApexSection.tsx");
-  assert.match(source, /Operation: \{row\.action\.tool_name/);
+  assert.match(source, /Operation:\s*\{\s*" "\s*\}\s*\{row\.action\.tool_name/);
   assert.match(source, /Exact arguments fingerprint:/);
   assert.match(source, /Tool arguments are hidden/);
 });
