@@ -16,7 +16,7 @@ import time
 import pytest
 
 from alpha.runtime.resilience.clock import ManualClock
-from alpha.runtime.resilience.retry import NoJitter, RetryPolicy
+from alpha.runtime.resilience.retry import FullJitter, NoJitter, RetryPolicy
 from alpha.runtime.supervisor.policy import (
     RestartAction,
     RestartLedger,
@@ -88,6 +88,21 @@ class TestReasonAccounting:
 
 
 class TestBudgetAndBackoff:
+    def test_restart_decision_samples_jitter_once(self) -> None:
+        samples = iter([0.25, 0.75])
+        policy = make_policy(backoff=RetryPolicy(attempts=64, base_delay=8.0, multiplier=2.0, max_delay=60.0, jitter=FullJitter(random_fn=lambda: next(samples))))
+        ledger, clock = crash_ledger(policy)
+
+        first = instant_crash(ledger, clock)
+        second = instant_crash(ledger, clock)
+
+        assert first.action is second.action is RestartAction.RESTART
+        assert first.delay_seconds == 2.0
+        assert second.delay_seconds == 12.0
+        assert second.restarts_in_window == 2
+        with pytest.raises(StopIteration):
+            next(samples)
+
     def test_a_single_crash_is_restarted_after_a_backoff(self) -> None:
         ledger, clock = crash_ledger()
         decision = instant_crash(ledger, clock)

@@ -322,14 +322,20 @@ class RestartLedger:
 
         if not crash_loop:
             attempt = in_window
+            # Sampled exactly once per decision. ``_decision`` used to recompute
+            # this from the window count, which is invisible with a deterministic
+            # ladder but wrong under FullJitter: each call draws again, so the
+            # reported delay was a *different* sample from the one the ladder
+            # produced and the two disagreed loudly. Passing it down makes one
+            # decision one draw.
             delay = self._policy.backoff_delay(attempt)
             described = reason.value if reason is not None else "no failure recorded"
-            decision = self._decision(RestartAction.RESTART, f"{described}; {in_window}/{self._policy.restart_budget} restarts in the window", crash_loop=crash_loop)
-            # ``_decision`` recomputes the delay from the window count; assert the
-            # two agree rather than silently preferring one.
-            if abs(decision.delay_seconds - delay) > 1e-9:  # pragma: no cover - defensive
-                raise AssertionError(f"backoff disagreement: ladder={delay!r} decision={decision.delay_seconds!r}")
-            return decision
+            return self._decision(
+                RestartAction.RESTART,
+                f"{described}; {in_window}/{self._policy.restart_budget} restarts in the window",
+                crash_loop=crash_loop,
+                delay_seconds=delay,
+            )
 
         # The budget is spent. A spawn failure is the clearest evidence that
         # another identical attempt cannot help, so it skips safe mode entirely
@@ -353,13 +359,26 @@ class RestartLedger:
             crash_loop=True,
         )
 
-    def _decision(self, action: RestartAction, reason: str, *, crash_loop: bool = False, uptime_healthy: bool = False) -> RestartDecision:
+    def _decision(
+        self,
+        action: RestartAction,
+        reason: str,
+        *,
+        crash_loop: bool = False,
+        uptime_healthy: bool = False,
+        delay_seconds: float | None = None,
+    ) -> RestartDecision:
         del uptime_healthy
         attempt = max(1, len(self._restarts))
+        # ``delay_seconds`` is supplied by callers that already sampled the
+        # ladder, so a decision never draws twice. Callers that need no backoff
+        # (or did not compute one) fall through to the single draw below.
+        if delay_seconds is None:
+            delay_seconds = 0.0 if action is not RestartAction.RESTART else self._policy.backoff_delay(attempt)
         return RestartDecision(
             action=action,
             reason=reason,
-            delay_seconds=0.0 if action is not RestartAction.RESTART else self._policy.backoff_delay(attempt),
+            delay_seconds=delay_seconds,
             restarts_in_window=len(self._restarts),
             restart_budget=self._policy.restart_budget,
             crash_loop=crash_loop,
