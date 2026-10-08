@@ -500,13 +500,15 @@ function SessionControlCard({
   const [verdictNote, setVerdictNote] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const latestReadRef = useRef(0);
 
   const reload = useCallback(async () => {
+    const readId = ++latestReadRef.current;
     const [modeResult, approvalsResult] = await Promise.allSettled([
       fetchApexMode(),
       fetchApexApprovals(),
     ]);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || readId !== latestReadRef.current) return;
     if (modeResult.status === "fulfilled") {
       setMode(modeResult.value);
       setModeError(null);

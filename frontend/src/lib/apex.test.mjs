@@ -858,6 +858,16 @@ test("a completed cycle re-reads the session card rather than leaving the pre-cy
     /\[reload, reloadKey\]/,
     "the card's read effect depends on the trigger, or a bump changes nothing",
   );
+  assert.match(
+    cardEffect,
+    /const readId = \+\+latestReadRef\.current/,
+    "each poll and control refresh gets a monotonically newer read id",
+  );
+  assert.match(
+    cardEffect,
+    /readId !== latestReadRef\.current/,
+    "a delayed older response cannot overwrite the newest session state",
+  );
 
   assert.match(
     source,
