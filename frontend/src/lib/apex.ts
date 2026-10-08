@@ -558,6 +558,29 @@ export async function dispatchApexSession(
   };
 }
 
+/** `POST /apex/sessions/{id}/replan`; requires reviewed terminal failure and operator acknowledgement. */
+export async function requestApexReplan(
+  sessionId: string,
+  reason: string,
+  acknowledgePossibleSideEffects: boolean,
+): Promise<{ replanned: boolean; session: ApexSessionRecord; note: string }> {
+  const raw = rec(
+    await send<Rec>(
+      `/apex/sessions/${encodeURIComponent(sessionId)}/replan`,
+      "POST",
+      {
+        reason,
+        acknowledge_possible_side_effects: acknowledgePossibleSideEffects,
+      },
+    ),
+  );
+  return {
+    replanned: raw.replanned === true,
+    session: mapSessionRecord(raw.session),
+    note: str(raw.note),
+  };
+}
+
 /**
  * `POST /apex/sessions/{id}/cycle`. Admin-gated; executes no domain work.
  *
@@ -610,6 +633,7 @@ export interface ApexSessionRecord {
   profile: string;
   contract_digest: string;
   dispatch_state: string | null;
+  run_id: string;
   run_status: string | null;
   mission_id: string;
   thread_id: string;
@@ -667,6 +691,7 @@ function mapSessionRecord(v: unknown): ApexSessionRecord {
     contract_digest: str(r.contract_digest),
     dispatch_state:
       typeof r.dispatch_state === "string" ? r.dispatch_state : null,
+    run_id: str(r.run_id),
     run_status: typeof r.run_status === "string" ? r.run_status : null,
     mission_id: str(r.mission_id),
     thread_id: str(r.thread_id),

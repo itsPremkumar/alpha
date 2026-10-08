@@ -255,6 +255,15 @@ Recovery remains bounded by the runtime retry policy. A stale binding is
 stopped; an unsafe or ambiguous pending side effect remains parked for operator
 review rather than being replayed.
 
+For a terminal failed run that safe checkpoint recovery cannot continue, an
+administrator can explicitly request another attempt with
+`POST /api/apex/sessions/{id}/replan`. The route re-reads the linked RunManager
+record, accepts only terminal failure states, requires a reason and an explicit
+acknowledgement that the run may have completed an external action, and enforces
+the session's frozen replan ceiling. It records the reason as a mission
+constraint and clears only the APEX run projection; it does not replay a
+checkpoint or start work itself. The supervisor owns the next dispatch.
+
 A run ending is not objective completion. A completed run enters
 `awaiting_verification`; failed or interrupted work enters `failed` and is not
 silently re-dispatched. The session owner can submit one measured result with
@@ -375,6 +384,7 @@ stop.
 | `DELETE` | `/api/apex/sessions/{id}` | remove the row; admin |
 | `POST` | `/api/apex/sessions/{id}/cycle` | one cycle; admin |
 | `POST` | `/api/apex/sessions/{id}/dispatch` | start or observe the session's idempotent RunManager run; admin |
+| `POST` | `/api/apex/sessions/{id}/replan` | request another generation after verified terminal failure; admin + reason + side-effect acknowledgement |
 | `POST` | `/api/apex/sessions/{id}/acceptance` | submit complete measured evidence after a successful run; session owner |
 | `POST` | `/api/apex/cycle` | one cycle per non-terminal session; admin |
 | `POST` | `/api/apex/sessions/{id}/steer` | record a constraint; owner-scoped (narrowing is not an admin act) |
@@ -417,7 +427,7 @@ exists. Pinned by `tests/test_apex_api.py::TestRouteOrder` and
 **Who may call what**, in one place, because every route now resolves its
 principal through the same two helpers:
 
-- **Administrator** — `create`, `delete`, `set_state`, `run one cycle`, the
+- **Administrator** — `create`, `delete`, `set_state`, `run one cycle`, `dispatch`, `replan`, the
   mode toggle, and the control/approval verdicts. Admin is decided by
   `app.gateway.deps.is_admin_user` (the shared predicate, which also refuses a
   PAT as the administrator), never by a local `getattr(user, "is_admin")`: no

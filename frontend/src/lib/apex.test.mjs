@@ -254,6 +254,36 @@ test("dispatch starts the named session and preserves measured counters", async 
   assert.equal(result.awaiting_verification, 0);
 });
 
+test("operator replan sends a reason and explicit side-effect acknowledgement", async () => {
+  record("POST /apex/sessions/apx%2F77/replan", {
+    body: {
+      replanned: true,
+      session: {
+        session_id: "apx-77",
+        state: "active",
+        dispatch_state: "idle",
+        run_id: "",
+        run_status: "",
+        usage: { replans: 1 },
+      },
+      note: "supervisor may dispatch",
+    },
+  });
+  const result = await apex.requestApexReplan(
+    "apx/77",
+    "provider config was fixed",
+    true,
+  );
+  assert.equal(lastCall().path, "/apex/sessions/apx%2F77/replan");
+  assert.deepEqual(lastCall().body, {
+    reason: "provider config was fixed",
+    acknowledge_possible_side_effects: true,
+  });
+  assert.equal(result.replanned, true);
+  assert.equal(result.session.dispatch_state, "idle");
+  assert.equal(result.note, "supervisor may dispatch");
+});
+
 test("the APEX panel creates against the confirmed mode and dispatches through the host adapter", () => {
   const source = read("../components/sections/ApexSection.tsx");
   assert.match(source, /Create and dispatch an objective/);
@@ -265,6 +295,9 @@ test("the APEX panel creates against the confirmed mode and dispatches through t
   assert.match(source, /does not reuse its checkpoint/);
   assert.match(source, /await createApexSession\(/);
   assert.match(source, /await dispatchApexSession\(created\.session_id\)/);
+  assert.match(source, /requestApexReplan\(/);
+  assert.match(source, /acknowledgePossibleSideEffects/);
+  assert.match(source, /I reviewed the failed run/);
   assert.match(source, /awaiting verification/);
   assert.match(
     source,
@@ -1125,6 +1158,7 @@ const SESSION_RECORD = {
   profile: "autonomous",
   contract_digest: "apxc-abc123",
   dispatch_state: "running",
+  run_id: "run-1",
   run_status: "running",
   mission_id: "msn-9",
   thread_id: "thread-1",
@@ -1533,6 +1567,7 @@ test("the mode read carries the active session the control verbs act on", async 
   assert.equal(mode.active_session.session_id, "apx-1");
   assert.equal(mode.active_session.state, "paused");
   assert.equal(mode.active_session.dispatch_state, "running");
+  assert.equal(mode.active_session.run_id, "run-1");
   assert.equal(mode.active_session.run_status, "running");
   assert.equal(mode.active_session.cycle_count, 4);
   assert.equal(mode.active_session.token_limit, 500000);

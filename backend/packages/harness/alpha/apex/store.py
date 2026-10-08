@@ -892,6 +892,73 @@ class ApexStore:
         )
         return session
 
+    def replan_failed_run(
+        self,
+        session_id: str,
+        *,
+        run_id: str,
+        run_status: str,
+        reason: str,
+        max_replans: int | None,
+    ) -> ApexSession | None:
+        """Prepare an explicitly operator-approved retry of a terminal failed run.
+
+        This only clears the APEX projection after the caller independently
+        verifies the RunManager record is terminal. It never resumes a
+        checkpoint or dispatches a run; the supervisor owns the next dispatch.
+        The compare-and-set prevents a stale operator action from replacing a
+        newer run or bypassing a pending approval.
+        """
+        normalized_status = str(run_status).strip().lower()
+        normalized_reason = str(reason).strip()[:1000]
+        if normalized_status not in {"error", "failed", "interrupted", "cancelled"}:
+            return None
+        if not normalized_reason:
+            return None
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if (
+                session is None
+                or session.is_terminal
+                or session.state is not ApexSessionState.ACTIVE
+                or session.run_id != str(run_id)
+                or session.dispatch_state != "failed"
+                or session.run_status != normalized_status
+                or session.acceptance is not None
+                # SafeRunRecoveryService reserves before admitting a checkpoint
+                # continuation. Do not detach a source run while that reservation
+                # is live; otherwise a competing recovery pass could race the
+                # operator-requested new generation.
+                or str(run_id) in session.usage.retry_reservations
+                or any(ApprovalRecord.from_dict(item).status == "pending" for item in session.approvals)
+            ):
+                return None
+            replans_used = max(0, int(session.usage.replans or 0))
+            if max_replans is not None and replans_used >= max_replans:
+                return None
+            previous_run_id = session.run_id
+            session.add_constraint(
+                f"Operator replan after failed run {previous_run_id} ({normalized_status}): {normalized_reason}",
+                source="operator",
+                priority="high",
+            )
+            session.usage.replans = replans_used + 1
+            session.run_id = ""
+            session.run_status = ""
+            session.dispatch_state = "idle"
+            session.dispatch_started_at = None
+            session.blocked_reason = ""
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "run.operator_replan_requested",
+            previous_run_id=previous_run_id,
+            run_status=normalized_status,
+            reason=normalized_reason,
+            replan_count=session.usage.replans,
+        )
+        return session
+
     def record_run_usage(self, session_id: str, *, run_id: str, input_tokens: int, output_tokens: int, llm_calls: int) -> bool:
         """Upsert cumulative RunManager usage without double-counting polls."""
         with self._transaction():

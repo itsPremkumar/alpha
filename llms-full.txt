@@ -205,10 +205,12 @@ default probe for arbitrary natural-language criteria and does not infer
 success from model summaries.
 Every enabled APEX profile has unlimited token, tool-call, and runtime spending ceilings
 while engine capacity, approvals, and the emergency stop remain. The ordinary
-`task` tool enforces persisted active-agent and parallel-task ceilings, but
-replan and retry contract fields lack runtime counters. The Gateway task path
-does not apply the contract depth value, though the subagent lifecycle manager
-still applies its own depth cap.
+`task` tool enforces persisted active-agent and parallel-task ceilings. An
+administrator can request a bounded new generation after reviewing a terminal
+failure; the route requires an explicit acknowledgement that an external action
+may have completed and records the operator's reason. Safe recovery reservations
+fence this replan path. The Gateway task path does not apply the contract depth
+value, though the subagent lifecycle manager still applies its own depth cap.
 Durable `batch_task` still uses separate engine limits and is not included in
 the per-session active-agent count.
 `POST /api/apex/sessions/{id}/dispatch` drives one session; the

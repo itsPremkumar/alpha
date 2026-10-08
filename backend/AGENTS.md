@@ -21,6 +21,9 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   import, dotted-string loader path, config `use:` entry, or allowlist reason.
   Fix the list, not the test. See `alpha.capabilities.catalog` for how optional
   subsystems earn a production reference without being on by default.
+- The feature manifest loop inventory is parsed from the `defaults` tuple inside
+  `AutonomySupervisor.register_default_loops()`; do not infer registry entries
+  from unrelated string tuples elsewhere in the supervisor module.
 - New `@tool` functions needing runtime access must take `runtime: Runtime` as a
   bare required first parameter — never `Runtime | None = None`, which makes
   pydantic schema-generate `ToolRuntime`'s `Callable` members and breaks the
@@ -108,6 +111,13 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   coverage and restart persistence tests when changing this path. The API does
   not infer results from model summaries; automatic evidence collectors remain
   unimplemented.
+- **Operator replans after terminal failure** — `POST /api/apex/sessions/{id}/replan`
+  is admin-only, re-reads the linked terminal `RunManager` failure, requires an
+  explicit possible-side-effect acknowledgement and reason, and applies the
+  frozen contract ceiling. The store compare-and-set also refuses a source run
+  with a reserved safe-recovery retry. The route only clears the APEX projection;
+  the existing supervisor remains the only dispatcher. Keep
+  `tests/test_apex_api.py::TestFailedRunReplan` aligned with that boundary.
 - **Autonomous release gate** — `alpha.benchmarks.release_gate` applies
   fail-closed, provider-neutral numeric promotion gates to versioned benchmark
   measurements, covering task success, authorization isolation, recovery and

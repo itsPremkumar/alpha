@@ -171,8 +171,22 @@ def collect_middlewares() -> list[dict[str, object]]:
 def collect_loops() -> list[dict[str, object]]:
     """Loop ids owned by AutonomySupervisor.register_default_loops()."""
     supervisor_py = APP / "gateway" / "autonomy" / "supervisor.py"
-    # Defaults are declared as ("loop_id", "description", tick_fn, interval) tuples.
-    ids = sorted(set(re.findall(r'\("([a-z_]+)",\s*"', read(supervisor_py))))
+    tree = ast.parse(read(supervisor_py))
+    registry = next(
+        (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "register_default_loops"),
+        None,
+    )
+    ids: set[str] = set()
+    if registry is not None:
+        for node in ast.walk(registry):
+            if not isinstance(node, ast.Assign) or not any(isinstance(target, ast.Name) and target.id == "defaults" for target in node.targets):
+                continue
+            if not isinstance(node.value, (ast.Tuple, ast.List)):
+                continue
+            for entry in node.value.elts:
+                if isinstance(entry, ast.Tuple) and entry.elts and isinstance(entry.elts[0], ast.Constant) and isinstance(entry.elts[0].value, str):
+                    ids.add(entry.elts[0].value)
+            break
     return [
         {
             "id": loop_id,
@@ -181,7 +195,7 @@ def collect_loops() -> list[dict[str, object]]:
             "wired": True,
             "state": "wired",
         }
-        for loop_id in ids
+        for loop_id in sorted(ids)
     ]
 
 

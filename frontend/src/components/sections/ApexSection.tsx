@@ -25,6 +25,7 @@ import {
   dispatchApexSession,
   formatMeasuredCount,
   profileToAdopt,
+  requestApexReplan,
   type ApexApprovals,
   type ApexBlock,
   type ApexContract,
@@ -498,6 +499,9 @@ function SessionControlCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
   const [verdictNote, setVerdictNote] = useState("");
+  const [replanReason, setReplanReason] = useState("");
+  const [acknowledgePossibleSideEffects, setAcknowledgePossibleSideEffects] =
+    useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const latestReadRef = useRef(0);
@@ -612,6 +616,42 @@ function SessionControlCard({
     }
   };
 
+  const replan = async () => {
+    const session = mode?.active_session;
+    const reason = replanReason.trim();
+    if (
+      !session ||
+      session.dispatch_state !== "failed" ||
+      !session.run_id ||
+      !reason ||
+      !acknowledgePossibleSideEffects ||
+      busy
+    ) {
+      return;
+    }
+    setBusy("replan");
+    onError(null);
+    setNotice(null);
+    try {
+      const outcome = await requestApexReplan(
+        session.session_id,
+        reason,
+        acknowledgePossibleSideEffects,
+      );
+      setReplanReason("");
+      setAcknowledgePossibleSideEffects(false);
+      await reload();
+      setNotice(
+        outcome.note ||
+          "Replan recorded; the supervisor may start a new generation.",
+      );
+    } catch (exc) {
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const session = mode?.active_session ?? null;
   const executionSummary = session ? apexExecutionSummary(session) : null;
   const pending = approvals?.available
@@ -668,6 +708,54 @@ function SessionControlCard({
                 message={`Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. The session remains ${session.state}; inspect the run and recovery outcome before treating this objective as progressing.`}
               />
             )}
+            {session.state === "active" &&
+              session.dispatch_state === "failed" &&
+              session.run_id && (
+                <form
+                  className="space-y-2 rounded-lg border border-amber-500/40 p-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void replan();
+                  }}
+                >
+                  <p className="text-xs text-neutral-500">
+                    After reviewing run <code>{session.run_id}</code>, request a
+                    new generation. It may repeat an external action that
+                    completed before the failure.
+                  </p>
+                  <input
+                    className={inputCls}
+                    value={replanReason}
+                    onChange={(event) => setReplanReason(event.target.value)}
+                    disabled={busyNow}
+                    maxLength={1000}
+                    aria-label="Reason for replanning after failed run"
+                    placeholder="What changed or should the next attempt do differently?"
+                  />
+                  <label className="flex items-start gap-2 text-xs text-neutral-500">
+                    <input
+                      type="checkbox"
+                      checked={acknowledgePossibleSideEffects}
+                      onChange={(event) =>
+                        setAcknowledgePossibleSideEffects(event.target.checked)
+                      }
+                      disabled={busyNow}
+                    />
+                    I reviewed the failed run and accept that an external action
+                    may be repeated.
+                  </label>
+                  <Btn
+                    type="submit"
+                    disabled={
+                      busyNow ||
+                      !replanReason.trim() ||
+                      !acknowledgePossibleSideEffects
+                    }
+                  >
+                    Request replan
+                  </Btn>
+                </form>
+              )}
             <p className="text-xs text-neutral-500" aria-live="polite">
               Resource use:{" "}
               {session.usage.total_tokens === null
