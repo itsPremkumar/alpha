@@ -529,25 +529,17 @@ def test_lint_gate_holds_every_scope_to_one_repository_policy(tmp_path: Path) ->
     assert "missing" in str(excinfo.value)
     # ...and policy verification must refuse before it ever launches ruff
     with pytest.raises(lint_gate.GateError) as excinfo:
-        lint_gate._verify_policy(tmp_path, tmp_path / "x.py",
-                                 ruff_cwd=tmp_path, timeout=5)
+        lint_gate._verify_policy(tmp_path, tmp_path / "x.py", ruff_cwd=tmp_path, timeout=5)
     assert "missing" in str(excinfo.value)
 
     # No scope is measured with ruff's built-in defaults any more, and the gate
     # must never turn that back on.
-    command = lint_gate._ruff_command(Path("C:/repo/backend"), "check",
-                                      [Path("C:/repo/scripts/x.py")])
+    command = lint_gate._ruff_command(Path("C:/repo/backend"), "check", [Path("C:/repo/scripts/x.py")])
     assert "--isolated" not in command, "a default-configuration scope is a hole in the measurement"
-    assert "isolated=True" not in LINT_GATE_PATH.read_text(encoding="utf-8"), (
-        "the gate itself must not enable --isolated; every scope is measured "
-        "against the repository policy")
+    assert "isolated=True" not in LINT_GATE_PATH.read_text(encoding="utf-8"), "the gate itself must not enable --isolated; every scope is measured against the repository policy"
     # the escape hatch still exists for callers that ask for it explicitly
-    assert "--isolated" in lint_gate._ruff_command(Path("C:/repo/backend"), "format",
-                                                   [Path("C:/repo/scripts/x.py")],
-                                                   isolated=True)
-    assert "--isolated" not in lint_gate._ruff_command(Path("C:/repo/backend"), "format",
-                                                       [Path("C:/repo/backend/x.py")],
-                                                       isolated=False)
+    assert "--isolated" in lint_gate._ruff_command(Path("C:/repo/backend"), "format", [Path("C:/repo/scripts/x.py")], isolated=True)
+    assert "--isolated" not in lint_gate._ruff_command(Path("C:/repo/backend"), "format", [Path("C:/repo/backend/x.py")], isolated=False)
 
 
 # --------------------------------------------------------------------------
@@ -785,10 +777,7 @@ def test_no_gate_failure_is_swallowed_without_disclosure() -> None:
 
     def _hidden(workflow: str) -> str | None:
         """The construct that would hide a failure, ignoring YAML comments."""
-        executable = "\n".join(
-            line for line in workflow.splitlines()
-            if not line.lstrip().startswith("#")
-        )
+        executable = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
         if re.search(r"^\s*continue-on-error\s*:", executable, re.MULTILINE):
             return "continue-on-error"
         if "|| true" in executable:
