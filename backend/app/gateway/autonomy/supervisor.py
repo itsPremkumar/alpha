@@ -204,6 +204,24 @@ class AutonomySupervisor:
         # *registered*, not whether it is *allowed to run right now*.
         if not _fleet_admits_tick(loop_id):
             return
+        # A missing or broken policy kernel must not allow autonomous work to
+        # proceed. The fleet-control check above remains an independent gate.
+        try:
+            from alpha.mods.kernel import get_mod_kernel, require_mod_admission
+            from alpha.mods.types import AlphaEvent, CorrelationContext
+
+            mod_ev = AlphaEvent(
+                name="autonomy.tick",
+                payload={"loop_id": loop_id},
+                correlation=CorrelationContext.create(task_id=f"loop:{loop_id}"),
+                source="autonomy-supervisor",
+            )
+            await require_mod_admission(get_mod_kernel(), mod_ev)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.error("Alpha Mod Kernel could not admit autonomy loop '%s'; skipping tick", loop_id, exc_info=True)
+            return
         async with self._semaphores[loop_id]:
             if state.running or self._stopping:
                 return

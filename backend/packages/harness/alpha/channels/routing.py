@@ -120,6 +120,7 @@ class DispatchReport:
         bad = [f"{u['raw']}=UNRESOLVED" for u in self.unresolved]
         return "; ".join(bits + bad) or "no targets"
 
+
 #: A target handler. Sync or async; both are supported.
 TargetHandler = Callable[[str, str, MentionResolution], Awaitable[Any] | Any]
 
@@ -154,6 +155,30 @@ async def dispatch_resolution(
         unresolved=[dict(u) for u in resolution.unresolved],
         resolution_line=resolution.human_line(),
     )
+
+    # ── Fleet ESTOP Gate ──
+    try:
+        from alpha.runtime.estop import get_estop_manager
+
+        if get_estop_manager().is_engaged():
+            return DispatchReport(
+                outcomes=[
+                    TargetOutcome(
+                        target=handle,
+                        status=TARGET_REFUSED,
+                        via=mention.via,
+                        error="Fleet ESTOP active: channel dispatch refused",
+                        error_type="fleet_estop",
+                    )
+                    for mention in resolution.targets
+                    for handle in mention.resolved
+                ],
+                unresolved=[dict(u) for u in resolution.unresolved],
+                resolution_line=resolution.human_line(),
+            )
+    except Exception:
+        pass
+
     loop = asyncio.get_running_loop()
     ordered: list[tuple[str, str]] = []
     for mention in resolution.targets:
@@ -197,9 +222,7 @@ async def dispatch_resolution(
 
     # return_exceptions=True is belt and braces: _one already swallows, so a
     # sibling can never be cancelled by gather's default behaviour.
-    gathered = await asyncio.gather(
-        *(_one(t, v) for t, v in ordered), return_exceptions=True
-    )
+    gathered = await asyncio.gather(*(_one(t, v) for t, v in ordered), return_exceptions=True)
     for (target, via), outcome in zip(ordered, gathered, strict=True):
         if isinstance(outcome, BaseException):
             report.outcomes.append(
@@ -326,15 +349,10 @@ class ChannelCommandRouter:
     ) -> None:
         self.commands: dict[str, tuple[str, bool]] = dict(commands or {})
         self.gate = gate or get_permission_gate()
-        self.target_authorities: dict[str, frozenset[str]] = {
-            normalise_handle(k): frozenset(normalise_handle(c) for c in v)
-            for k, v in (target_authorities or {}).items()
-        }
+        self.target_authorities: dict[str, frozenset[str]] = {normalise_handle(k): frozenset(normalise_handle(c) for c in v) for k, v in (target_authorities or {}).items()}
 
     def set_target_authority(self, handle: str, capabilities: Sequence[str]) -> None:
-        self.target_authorities[normalise_handle(handle)] = frozenset(
-            normalise_handle(c) for c in capabilities
-        )
+        self.target_authorities[normalise_handle(handle)] = frozenset(normalise_handle(c) for c in capabilities)
 
     def check(self, request: CommandRequest) -> CommandDecision:
         """Permission-check one command request. Never raises."""
@@ -347,9 +365,7 @@ class ChannelCommandRouter:
             )
         tool_name, mutates_others = entry
 
-        allowed, reason, needs_approval = self.gate.check_permission(
-            request.actor_role, tool_name
-        )
+        allowed, reason, needs_approval = self.gate.check_permission(request.actor_role, tool_name)
         if needs_approval:
             return CommandDecision(
                 allowed=False,
@@ -371,20 +387,14 @@ class ChannelCommandRouter:
         if is_protected_component(request.on_behalf_of or ""):
             return CommandDecision(
                 allowed=False,
-                reason=(
-                    f"@{request.on_behalf_of} is a protected enforcement component; no actor may "
-                    f"modify it on another actor's behalf"
-                ),
+                reason=(f"@{request.on_behalf_of} is a protected enforcement component; no actor may modify it on another actor's behalf"),
                 refused_by="protected",
             )
 
         if not mutates_others:
             return CommandDecision(
                 allowed=False,
-                reason=(
-                    f"/{request.name} is a self-scoped command; @{request.actor} may not issue it "
-                    f"against @{request.on_behalf_of}"
-                ),
+                reason=(f"/{request.name} is a self-scoped command; @{request.actor} may not issue it against @{request.on_behalf_of}"),
                 refused_by="target_authority",
             )
 
@@ -392,10 +402,7 @@ class ChannelCommandRouter:
         if not target:
             return CommandDecision(
                 allowed=False,
-                reason=(
-                    f"no recorded authority for @{request.on_behalf_of}; an on-behalf-of action "
-                    f"against an unknown bot is refused rather than assumed"
-                ),
+                reason=(f"no recorded authority for @{request.on_behalf_of}; an on-behalf-of action against an unknown bot is refused rather than assumed"),
                 refused_by="target_authority",
             )
         needed = self.commands[request.name][0]
@@ -404,18 +411,12 @@ class ChannelCommandRouter:
             # actor's own permission is not a licence to act on someone else.
             return CommandDecision(
                 allowed=False,
-                reason=(
-                    f"@{request.on_behalf_of} does not hold {needed!r}; @{request.actor} may issue "
-                    f"/{request.name} to itself but not on its behalf"
-                ),
+                reason=(f"@{request.on_behalf_of} does not hold {needed!r}; @{request.actor} may issue /{request.name} to itself but not on its behalf"),
                 refused_by="target_authority",
             )
         return CommandDecision(
             allowed=True,
-            reason=(
-                f"role {request.actor_role!r} may use {tool_name!r}, and @{request.on_behalf_of} "
-                f"independently holds {needed!r}"
-            ),
+            reason=(f"role {request.actor_role!r} may use {tool_name!r}, and @{request.on_behalf_of} independently holds {needed!r}"),
         )
 
     async def dispatch(

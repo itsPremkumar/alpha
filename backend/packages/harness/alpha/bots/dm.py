@@ -280,6 +280,37 @@ def send_dm(
     sender_profile = reg.get_bot(sender_key)
     if sender_profile is None:
         return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Sender bot '{sender_key}' is not on the roster.", now)
+
+    # ── Alpha Mod Kernel & ESTOP admission ──
+    try:
+        from alpha.runtime.estop import get_estop_manager
+
+        if get_estop_manager().is_engaged():
+            return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, "Fleet ESTOP active: Bot DM blocked.", now)
+    except Exception:
+        pass
+
+    try:
+        from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+        from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+
+        kernel = get_mod_kernel()
+        ev = AlphaEvent(
+            name="bot.dm_requested",
+            payload={"sender": sender_key, "target": target, "message": body, "target_kind": kind},
+            correlation=CorrelationContext.create(agent_id=sender_key),
+            source="bots.dm",
+        )
+        res = sync_dispatch(kernel, ev)
+        if res.outcome == EventOutcome.DENY:
+            return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Denied by policy: {res.reason}", now)
+        if res.outcome == EventOutcome.DEFER:
+            return DMAck(None, target, kind, "deferred", UNKNOWN, f"Deferred for approval: {res.reason}", now)
+        if res.outcome == EventOutcome.REWRITE and res.event and "message" in res.event.payload:
+            body = str(res.event.payload["message"])
+    except Exception as exc:
+        logger.debug("Mod dispatch during send_dm: %s", exc)
+
     if kind != "local":
         peer_id = _peer or name
         return _send_peer_dm(peer_id, name, apply_attribution(sender_key, body), sender_key)
@@ -301,6 +332,23 @@ def send_dm(
         log_org_event(event_type="bot_dm", actor=sender_key, target=recipient.name, details={"delivery_id": msg.delivery_id})
     except Exception:
         logger.debug("DM event logging failed", exc_info=True)
+
+    try:
+        from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+        from alpha.mods.types import AlphaEvent, CorrelationContext
+
+        sync_dispatch(
+            get_mod_kernel(),
+            AlphaEvent(
+                name="bot.dm_sent",
+                payload={"sender": sender_key, "target": recipient.name, "delivery_id": msg.delivery_id},
+                correlation=CorrelationContext.create(agent_id=sender_key),
+                source="bots.dm",
+            ),
+        )
+    except Exception:
+        pass
+
     return DMAck(msg.delivery_id, target, kind, "delivered", UNKNOWN, "Delivered to inbox; reply arrives as a new message.", now)
 
 

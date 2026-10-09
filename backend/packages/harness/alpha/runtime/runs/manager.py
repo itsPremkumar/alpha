@@ -660,6 +660,25 @@ class RunManager:
         callers should use :meth:`create_or_reject`.
         """
         run_id = str(uuid.uuid4())
+        # Check Alpha Mod Kernel admission policy
+        from alpha.mods.kernel import ModAdmissionError, get_mod_kernel, require_mod_admission
+        from alpha.mods.types import AlphaEvent, CorrelationContext
+
+        try:
+            corr = CorrelationContext.create(run_id=run_id, metadata={"thread_id": thread_id})
+            await require_mod_admission(
+                get_mod_kernel(),
+                AlphaEvent(
+                    name="run.admit",
+                    payload={"thread_id": thread_id, "assistant_id": assistant_id},
+                    correlation=corr,
+                    source="runtime:run_manager",
+                ),
+            )
+        except ModAdmissionError as exc:
+            raise ConflictError(str(exc)) from exc
+        except Exception as exc:
+            raise ConflictError("Mod Kernel is unavailable; run admission was refused") from exc
         now = _now_iso()
         lease_expires_at = self._compute_lease_expires_at()
         record = RunRecord(
@@ -1651,6 +1670,25 @@ class RunManager:
         ('pending','running')``.
         """
         run_id = str(uuid.uuid4())
+        # Check Alpha Mod Kernel admission policy
+        from alpha.mods.kernel import ModAdmissionError, get_mod_kernel, require_mod_admission
+        from alpha.mods.types import AlphaEvent, CorrelationContext
+
+        try:
+            corr = CorrelationContext.create(run_id=run_id, metadata={"thread_id": thread_id})
+            await require_mod_admission(
+                get_mod_kernel(),
+                AlphaEvent(
+                    name="run.admit",
+                    payload={"thread_id": thread_id, "assistant_id": assistant_id},
+                    correlation=corr,
+                    source="runtime:run_manager",
+                ),
+            )
+        except ModAdmissionError as exc:
+            raise ConflictError(str(exc)) from exc
+        except Exception as exc:
+            raise ConflictError("Mod Kernel is unavailable; run admission was refused") from exc
         now = _now_iso()
 
         _supported_strategies = ("reject", "interrupt", "rollback")

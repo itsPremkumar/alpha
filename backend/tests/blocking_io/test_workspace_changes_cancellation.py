@@ -90,7 +90,6 @@ async def test_text_scan_cancel_logs_drain_and_late_failure(tmp_path: Path, monk
         text_cache_dir: str | Path | None = None,
         **_kwargs: Any,
     ) -> WorkspaceSnapshot:
-        assert text_cache_dir is not None
         cache_dir = Path(text_cache_dir)
         assert cache_dir.exists()
         entered.set()

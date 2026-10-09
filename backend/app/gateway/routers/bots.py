@@ -879,6 +879,11 @@ async def send_dm_endpoint(name: str, request: Request, body: DMSendRequest) -> 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
+    from alpha.runtime.estop import get_estop_manager
+
+    if get_estop_manager().is_engaged():
+        raise HTTPException(status_code=409, detail="Fleet ESTOP active: Bot DM refused")
+
     metadata = dict(body.thread_metadata or {})
     if body.thread_id:
         # Server-resolved identity beats caller-supplied metadata: a thread
@@ -1104,11 +1109,36 @@ async def run_bot_workflow_endpoint(
     if getattr(profile, "is_archived", False) or getattr(profile, "status", "active") == "archived":
         raise HTTPException(status_code=409, detail=f"Bot '{key}' is archived and cannot run workflows")
 
+    # ── Fleet ESTOP & Alpha Mod Kernel Admission Gate ──
+    from alpha.runtime.estop import get_estop_manager
+
+    if get_estop_manager().is_engaged():
+        raise HTTPException(status_code=409, detail=f"Fleet ESTOP active: Bot '{key}' cannot run workflows")
+
     from alpha.orchestrator.dynamic_service import DynamicRequest, DynamicWorkflowService
     from alpha.runtime.user_context import get_effective_user_id
     from app.gateway.routers.workflows import get_workflow_kernel
 
     owner = get_effective_user_id() if isinstance(request, Request) else None
+
+    from alpha.mods.kernel import ModAdmissionError, get_mod_kernel, require_mod_admission
+    from alpha.mods.types import AlphaEvent, CorrelationContext
+
+    try:
+        await require_mod_admission(
+            get_mod_kernel(),
+            AlphaEvent(
+                name="bot.workflow_admit",
+                payload={"bot_name": key, "prompt": body.prompt, "max_steps": body.max_steps},
+                correlation=CorrelationContext.create(agent_id=key, metadata={"owner_id": owner}),
+                source="gateway.routers.bots",
+            ),
+        )
+    except ModAdmissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("Mod Kernel evaluation error during bot workflow admission: %s", exc)
+
     # Use the Gateway-owned kernel/engine so the returned run is immediately
     # visible to the ordinary workflow read/step/cancel/approval/replay APIs.
     service = DynamicWorkflowService(kernel=get_workflow_kernel())

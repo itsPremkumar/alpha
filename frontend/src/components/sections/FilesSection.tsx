@@ -1,10 +1,31 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { listUploads, uploadFiles, deleteUpload, artifactUrl, previewArtifact, UploadedFile } from "@/lib/files";
-import { Section, EmptyState, ErrorBox, Btn, SkeletonList } from "@/components/ui";
+import { useEffect, useRef, useState } from "react";
+import {
+  listUploads,
+  uploadFiles,
+  deleteUpload,
+  artifactUrl,
+  previewArtifact,
+  UploadedFile,
+} from "@/lib/files";
+import {
+  Section,
+  EmptyState,
+  ErrorBox,
+  Btn,
+  SkeletonList,
+} from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Upload, Trash2, Download, Eye, RefreshCw, FileText } from "lucide-react";
+import { useFocusTrap, useScrollLock } from "@/lib/a11y";
+import {
+  Upload,
+  Trash2,
+  Download,
+  Eye,
+  RefreshCw,
+  FileText,
+} from "lucide-react";
 
 function fmtSize(n: number): string {
   if (!n) return "—";
@@ -19,7 +40,9 @@ export function FilesSection(props: { threadId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<{ name: string; text: string } | null>(null);
+  const [preview, setPreview] = useState<{ name: string; text: string } | null>(
+    null,
+  );
 
   const load = async () => {
     if (!props.threadId) return;
@@ -41,13 +64,16 @@ export function FilesSection(props: { threadId: string | null }) {
   }, [props.threadId]);
 
   const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!props.threadId || !e.target.files || e.target.files.length === 0) return;
+    if (!props.threadId || !e.target.files || e.target.files.length === 0)
+      return;
     setUploading(true);
     setError(null);
     try {
       const added = await uploadFiles(props.threadId, e.target.files);
       setFiles((prev) => [...added, ...prev]);
-      setNotice(`${added.length} file(s) uploaded. The agent can now read them.`);
+      setNotice(
+        `${added.length} file(s) uploaded. The agent can now read them.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -89,18 +115,32 @@ export function FilesSection(props: { threadId: string | null }) {
       hint="Upload documents for the agent to read (PDF, Word, Excel, slides are converted automatically), and preview or download files it creates."
       actions={
         <>
-          <Btn variant="ghost" onClick={load} disabled={!props.threadId || loading}>
+          <Btn
+            variant="ghost"
+            onClick={load}
+            disabled={!props.threadId || loading}
+          >
             <RefreshCw className="size-3.5" /> Refresh
           </Btn>
           <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:opacity-95 cursor-pointer">
-            <Upload className="size-3.5" /> {uploading ? "Uploading…" : "Upload files"}
-            <input type="file" multiple className="hidden" onChange={onPick} disabled={!props.threadId || uploading} />
+            <Upload className="size-3.5" />{" "}
+            {uploading ? "Uploading…" : "Upload files"}
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={onPick}
+              disabled={!props.threadId || uploading}
+            />
           </label>
         </>
       }
     >
       {!props.threadId ? (
-        <EmptyState title="No conversation selected" hint="Pick or start a chat first — uploads belong to a conversation." />
+        <EmptyState
+          title="No conversation selected"
+          hint="Pick or start a chat first — uploads belong to a conversation."
+        />
       ) : (
         <>
           {notice && <p className="text-xs text-emerald-600">{notice}</p>}
@@ -115,12 +155,16 @@ export function FilesSection(props: { threadId: string | null }) {
           ) : (
             <div className="rounded-2xl border border-border/60 bg-card divide-y divide-border/50 overflow-hidden">
               {files.map((f) => (
-                <div key={f.name} className="flex items-center gap-3 px-4 py-2.5">
+                <div
+                  key={f.name}
+                  className="flex items-center gap-3 px-4 py-2.5"
+                >
                   <FileText className="size-4 text-primary shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{f.name}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      {fmtSize(f.size)}{f.type ? ` • ${f.type}` : ""}
+                      {fmtSize(f.size)}
+                      {f.type ? ` • ${f.type}` : ""}
                     </p>
                   </div>
                   <button
@@ -132,7 +176,11 @@ export function FilesSection(props: { threadId: string | null }) {
                     <Eye className="size-4" />
                   </button>
                   <a
-                    href={props.threadId ? artifactUrl(props.threadId, `outputs/${f.name}`, true) : "#"}
+                    href={
+                      props.threadId
+                        ? artifactUrl(props.threadId, `outputs/${f.name}`, true)
+                        : "#"
+                    }
                     className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
                     title="Download"
                   >
@@ -154,18 +202,16 @@ export function FilesSection(props: { threadId: string | null }) {
       )}
 
       {preview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={`Preview ${preview.name}`}>
-          <div className="absolute inset-0 bg-black/40" onClick={() => setPreview(null)} />
-          <div className="relative w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-2xl elev-3 flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-border/60 flex items-center gap-2">
-              <p className="text-xs font-semibold truncate flex-1">{preview.name}</p>
-              <Btn variant="ghost" onClick={() => setPreview(null)}>
-                Close
-              </Btn>
-            </div>
-            <pre className="flex-1 overflow-auto p-4 text-[11px] whitespace-pre-wrap font-mono">{preview.text.slice(0, 50000)}</pre>
+        <Modal
+          title={`Preview ${preview.name}`}
+          onClose={() => setPreview(null)}
+        >
+          <div className="flex-1 overflow-auto p-4">
+            <pre className="whitespace-pre-wrap font-mono text-[11px]">
+              {preview.text.slice(0, 50000)}
+            </pre>
           </div>
-        </div>
+        </Modal>
       )}
     </Section>
   );

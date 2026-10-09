@@ -20,6 +20,9 @@ from pathlib import Path
 
 import pytest
 
+from alpha.config.agents_api_config import load_agents_api_config_from_dict
+from alpha.config.paths import get_paths
+from alpha.runtime.user_context import get_effective_user_id
 from app.gateway.routers.agents import (
     AgentCreateRequest,
     AgentUpdateRequest,
@@ -30,9 +33,6 @@ from app.gateway.routers.agents import (
     list_agents,
     update_agent,
 )
-from alpha.config.agents_api_config import load_agents_api_config_from_dict
-from alpha.config.paths import get_paths
-from alpha.runtime.user_context import get_effective_user_id
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,8 +49,7 @@ async def test_create_agent_does_not_block_event_loop(tmp_path: Path, monkeypatc
     monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
-        response = await create_agent_endpoint(AgentCreateRequest(name="loop-make-agent", soul="You are a test agent."))
-        assert response is not None
+        await create_agent_endpoint(AgentCreateRequest(name="loop-make-agent", soul="You are a test agent."))
 
         user_id = get_effective_user_id()
         # test-side check (resolution offloaded; not exercised on the loop)

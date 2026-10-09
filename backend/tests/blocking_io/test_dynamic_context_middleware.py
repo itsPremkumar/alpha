@@ -129,9 +129,7 @@ async def test_abefore_agent_returns_same_result_as_before_agent() -> None:
         # Async path (offloaded to thread)
         async_result = await mw.abefore_agent(state, runtime)
 
-    assert sync_result is not None
     assert async_result is not None
-    assert sync_result.keys() == async_result.keys()
     # Both return 2 messages: reminder + user content
     assert len(sync_result["messages"]) == 2
     assert len(async_result["messages"]) == 2

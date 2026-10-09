@@ -380,6 +380,12 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description=("Task-filtered capability manifest projected from live registries, gated by the static wired/unwired audit so a documented-but-uncalled subsystem is disclosed as unwired instead of advertised."),
         kind="utility",
     ),
+    "mod_kernel": CapabilitySpec(
+        module="alpha.mods",
+        target="get_mod_kernel",
+        description="Alpha Mod Kernel (AMK): ordered event middleware pipeline, sandboxed capability context, and autonomous execution governance spine.",
+        kind="engine",
+    ),
 }
 
 

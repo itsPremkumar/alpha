@@ -136,13 +136,40 @@ def claim_task(
     # stays as a defence for statuses the gate does not know about.
     authorized = reg.authorized_bot(key)
     if authorized is None:
-        raise ValueError(
-            f"Bot '{key}' is {bot.status!r} and may not receive new work "
-            f"(retired, draining, disabled, or demoted below the authority ceiling)."
-        )
+        raise ValueError(f"Bot '{key}' is {bot.status!r} and may not receive new work (retired, draining, disabled, or demoted below the authority ceiling).")
     bot = authorized
     if bot.status in ("suspended", "archived"):
         raise ValueError(f"Bot '{key}' is {bot.status} and cannot claim tasks.")
+
+    # ── Fleet ESTOP & Alpha Mod Kernel admission ──
+    try:
+        from alpha.runtime.estop import get_estop_manager
+
+        if get_estop_manager().is_engaged():
+            raise ValueError(f"Fleet ESTOP active: Bot '{key}' cannot claim task.")
+    except ValueError:
+        raise
+    except Exception:
+        pass
+
+    try:
+        from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+        from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+
+        kernel = get_mod_kernel()
+        ev = AlphaEvent(
+            name="bot.task_claimed",
+            payload={"task_id": task_id, "bot_name": key, "lease_seconds": lease_seconds},
+            correlation=CorrelationContext.create(task_id=task_id, agent_id=key),
+            source="bots.work_discovery",
+        )
+        res = sync_dispatch(kernel, ev)
+        if res.outcome == EventOutcome.DENY:
+            raise ValueError(f"Task claim denied by mod policy: {res.reason}")
+    except ValueError:
+        raise
+    except Exception as exc:
+        logger.debug("Mod dispatch during claim_task: %s", exc)
 
     # Wake bot if sleeping
     if bot.status == "sleeping":

@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="alpha",
         description="Alpha terminal workbench — a TUI over the embedded Alpha harness.",
-        epilog="Extension management: alpha extensions --help",
+        epilog="Extension management: alpha extensions --help | Mod kernel: alpha mod --help",
         add_help=True,
     )
     parser.add_argument("message", nargs="*", help="initial prompt for the TUI, or message in --cli mode")
@@ -221,6 +221,7 @@ alpha — Alpha terminal workbench
   alpha --recursion-limit N --print "question"
                               set the headless agent-loop super-step limit
   alpha extensions --help  install and manage trusted Python extensions
+  alpha mod --help         manage Alpha mods, static validate, and test
   echo "question" | alpha --print
 """
 
@@ -291,6 +292,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from alpha.extensions.cli import main as extensions_main
 
         return extensions_main(argv[1:])
+    if argv and argv[0] in ("mod", "mods"):
+        from alpha.mods.cli import main as mod_main
+
+        return mod_main(argv[1:])
     plan = plan_launch(
         argv,
         stdin_isatty=sys.stdin.isatty(),

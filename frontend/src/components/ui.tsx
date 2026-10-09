@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useRef } from "react";
+import { useFocusTrap, useScrollLock } from "@/lib/a11y";
 
 /** Consistent page section wrapper: title + plain-language subtitle + actions. */
 export function Section(props: {
@@ -14,10 +15,20 @@ export function Section(props: {
       <div className="max-w-6xl mx-auto space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-base font-semibold tracking-tight">{props.title}</h2>
-            {props.hint && <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">{props.hint}</p>}
+            <h2 className="text-base font-semibold tracking-tight">
+              {props.title}
+            </h2>
+            {props.hint && (
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
+                {props.hint}
+              </p>
+            )}
           </div>
-          {props.actions && <div className="flex items-center gap-2 flex-wrap">{props.actions}</div>}
+          {props.actions && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {props.actions}
+            </div>
+          )}
         </div>
         {props.children}
       </div>
@@ -25,22 +36,42 @@ export function Section(props: {
   );
 }
 
-export function StatCard(props: { label: string; value: string; sub?: string }) {
+export function StatCard(props: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
   return (
     <div className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
-      <div className="text-sm font-bold leading-tight break-words">{props.value}</div>
-      <div className="text-[10px] text-muted-foreground mt-1">{props.label}</div>
-      {props.sub && <div className="text-[10px] text-muted-foreground">{props.sub}</div>}
+      <div className="text-sm font-bold leading-tight break-words">
+        {props.value}
+      </div>
+      <div className="text-[10px] text-muted-foreground mt-1">
+        {props.label}
+      </div>
+      {props.sub && (
+        <div className="text-[10px] text-muted-foreground">{props.sub}</div>
+      )}
     </div>
   );
 }
 
-export function EmptyState(props: { title: string; hint?: string; action?: React.ReactNode }) {
+export function EmptyState(props: {
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl border border-dashed border-border/70 bg-card/50 px-6 py-10 text-center">
       <p className="text-sm font-medium">{props.title}</p>
-      {props.hint && <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">{props.hint}</p>}
-      {props.action && <div className="mt-3 flex justify-center">{props.action}</div>}
+      {props.hint && (
+        <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+          {props.hint}
+        </p>
+      )}
+      {props.action && (
+        <div className="mt-3 flex justify-center">{props.action}</div>
+      )}
     </div>
   );
 }
@@ -93,12 +124,21 @@ export function Notice(props: { message: string; tone?: NoticeTone }) {
 }
 
 /** Labeled form field with hint text — keeps every form self-explanatory. */
-export function Field(props: { label: string; hint?: string; children: React.ReactNode; className?: string }) {
+export function Field(props: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <label className={`block space-y-1 ${props.className || ""}`}>
       <span className="text-[11px] font-semibold">{props.label}</span>
       {props.children}
-      {props.hint && <span className="block text-[11px] text-muted-foreground font-normal">{props.hint}</span>}
+      {props.hint && (
+        <span className="block text-[11px] text-muted-foreground font-normal">
+          {props.hint}
+        </span>
+      )}
     </label>
   );
 }
@@ -144,7 +184,8 @@ export function Btn(props: {
 
 export function Badge(props: {
   children: React.ReactNode;
-  tone?: "green" | "amber" | "gray" | "blue" | "purple" | "cyan" | "red" | "indigo";
+  tone?:
+    "green" | "amber" | "gray" | "blue" | "purple" | "cyan" | "red" | "indigo";
   /**
    * Native tooltip. Added so a status chip can carry the *reason* it is in that
    * state — required for the honesty pattern where "not reported" must be
@@ -163,11 +204,11 @@ export function Badge(props: {
             ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
             : props.tone === "purple"
               ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-            : props.tone === "cyan"
-              ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
-              : props.tone === "red"
-                ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                : "bg-muted text-muted-foreground";
+              : props.tone === "cyan"
+                ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
+                : props.tone === "red"
+                  ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                  : "bg-muted text-muted-foreground";
   return (
     <span
       title={props.title}
@@ -266,14 +307,33 @@ export function CapabilityBadge(props: { state: boolean | null }) {
 }
 
 /** Simple accessible modal drawer used by detail views. */
-export function Modal(props: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal(props: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(panelRef, true, props.onClose);
+  useScrollLock(true);
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={props.title}>
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-label={props.title}
+    >
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <aside className="relative w-full max-w-md h-full bg-card border-l border-border elev-3 flex flex-col overflow-hidden">
+      <div className={`relative w-full ${props.className || ""}`}>
         <div className="p-4 border-b border-border/60">
           <h2 className="text-sm font-semibold">{props.title}</h2>
-          {props.subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{props.subtitle}</p>}
+          {props.subtitle && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {props.subtitle}
+            </p>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto p-4">{props.children}</div>
         <div className="p-3 border-t border-border/60">
@@ -281,7 +341,7 @@ export function Modal(props: { title: string; subtitle?: string; onClose: () => 
             Close
           </Btn>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }
@@ -292,7 +352,10 @@ export function SkeletonList(props: { rows?: number }) {
   return (
     <div className="space-y-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-border/60 bg-card p-3 space-y-2 animate-pulse">
+        <div
+          key={i}
+          className="rounded-xl border border-border/60 bg-card p-3 space-y-2 animate-pulse"
+        >
           <div className="h-3 rounded bg-muted w-1/3" />
           <div className="h-2.5 rounded bg-muted w-2/3" />
         </div>
