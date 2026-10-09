@@ -18,6 +18,11 @@ This module is the missing evaluation seam, and it is deliberately narrow:
 - Evidence is a flat mapping of criterion -> boolean measured by the caller
   (a file probe, a test run, an operator decision).  This module never guesses
   one from a criterion's prose; that is the whole point of the honesty contract.
+- A measurement that contradicts itself decides nothing.  Two evidence keys that
+  normalize to the same criterion with different booleans are a contested
+  measurement, not a coin flip: the criterion stays UNVERIFIED and the conflict
+  is named in the report, so the verdict can never depend on dict ordering.
+  The :class:`AcceptanceRegistry` applies the same rule to its probes.
 """
 
 from __future__ import annotations
@@ -194,25 +199,38 @@ def evaluate_acceptance(
     at the ends) and valued with the measured boolean.  A criterion with no
     entry stays UNVERIFIED — it is never assumed true, and it never silently
     disappears from the report.  Evidence entries that match no criterion are
-    reported as notes so a typo in a key cannot masquerade as coverage.
+    reported as notes so a typo in a key cannot masquerade as coverage.  Two
+    entries that normalize to the same criterion but measure it differently
+    are reported as a contradictory note and decide nothing: the criterion
+    stays UNVERIFIED rather than taking whichever answer dict ordering
+    happened to write last.
     """
-    normalized: dict[str, bool] = {}
+    measured: dict[str, list[tuple[str, bool]]] = {}
     invalid: list[str] = []
     for key, value in evidence.items():
+        raw = str(key)
+        normalized = raw.strip()
         if type(value) is not bool:
-            invalid.append(str(key).strip())
+            invalid.append(normalized)
             continue
-        normalized[str(key).strip()] = value
+        measured.setdefault(normalized, []).append((raw, value))
+    normalized: dict[str, bool] = {}
+    contradictory: list[str] = []
+    for key, entries in measured.items():
+        if len({value for _, value in entries}) > 1:
+            contradictory.append(key)
+            continue
+        normalized[key] = entries[0][1]
     results: list[CriterionResult] = []
     for criterion in criteria:
         key = str(criterion).strip()
         if key in normalized:
-            measured = normalized[key]
+            measured_value = normalized[key]
             results.append(
                 CriterionResult(
                     criterion=criterion,
-                    verdict=CriterionVerdict.MET if measured else CriterionVerdict.NOT_MET,
-                    evidence=f"measured evidence supplied for criterion ({'holds' if measured else 'does not hold'})",
+                    verdict=CriterionVerdict.MET if measured_value else CriterionVerdict.NOT_MET,
+                    evidence=f"measured evidence supplied for criterion ({'holds' if measured_value else 'does not hold'})",
                     evaluated_at=time.time(),
                 )
             )
@@ -223,6 +241,8 @@ def evaluate_acceptance(
     all_notes = list(notes or [])
     if invalid:
         all_notes.append(f"evidence for {len(invalid)} criterion key(s) was not a boolean measurement and was ignored: {sorted(invalid)}")
+    if contradictory:
+        all_notes.append(f"evidence for {len(contradictory)} criterion key(s) carried contradictory measurements and was ignored: {sorted(contradictory)}")
     if unused:
         all_notes.append(f"evidence supplied for {len(unused)} criterion key(s) that match no criterion: {sorted(unused)}")
     return AcceptanceReport(criteria=results, evaluator=evaluator, notes=all_notes)
@@ -255,7 +275,15 @@ class AcceptanceRegistry:
             return sorted(self._evaluators)
 
     def evaluate(self, criteria: list[str]) -> AcceptanceReport:
-        """Run every registered probe; any ``None``/error leaves a criterion UNVERIFIED."""
+        """Run every registered probe; any ``None``/error leaves a criterion UNVERIFIED.
+
+        Every probe that can decide a criterion is consulted.  When the probes
+        that answered AGREE, that is the measurement.  When they DISAGREE, the
+        criterion stays UNVERIFIED and the disagreement is named in the notes:
+        a contested measurement is not a measurement, and letting the winning
+        answer be whichever evaluator sorts first would hide the conflict
+        behind the joined evaluator label.
+        """
         with self._lock:
             evaluators = dict(self._evaluators)
         if not evaluators:
@@ -264,6 +292,7 @@ class AcceptanceRegistry:
         notes: list[str] = []
         for criterion in criteria:
             key = str(criterion).strip()
+            answers: list[tuple[str, bool]] = []
             for name, probe in sorted(evaluators.items()):
                 try:
                     measured = probe(criterion)
@@ -275,11 +304,16 @@ class AcceptanceRegistry:
                 if type(measured) is not bool:
                     notes.append(f"evaluator {name!r} returned {type(measured).__name__} for criterion {criterion!r}; expected bool or None")
                     continue
-                evidence[key] = measured
-                break
-            else:
-                if evaluators:
-                    notes.append(f"no evaluator could decide criterion {criterion!r}; it stays UNVERIFIED")
+                answers.append((name, measured))
+            if not answers:
+                notes.append(f"no evaluator could decide criterion {criterion!r}; it stays UNVERIFIED")
+                continue
+            distinct = {value for _, value in answers}
+            if len(distinct) > 1:
+                disagreement = ", ".join(f"{name}={'holds' if value else 'does not hold'}" for name, value in answers)
+                notes.append(f"evaluators disagree on criterion {criterion!r} ({disagreement}); it stays UNVERIFIED")
+                continue
+            evidence[key] = answers[0][1]
         report = evaluate_acceptance(criteria, evidence, evaluator="+".join(sorted(evaluators)), notes=notes)
         return report
 
