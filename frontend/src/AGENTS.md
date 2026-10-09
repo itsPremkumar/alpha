@@ -542,8 +542,63 @@ Coverage: `src/lib/intelligence.test.mjs` (route/verb pin, read-only source
 pins, `SCHEMA_VERSION`/basis/section contract pins, envelope mapping including
 the omitted-section state, and the honesty inversions above).
 
-## Effect journal (`effects` workspace view)
+## Sentinel repair loop (`sentinel` workspace view)
 
+`lib/sentinel.ts` + `components/sections/SentinelSection.tsx`, over
+`GET|POST /api/autonomy/sentinel/*`. The `sentinel` id follows the same
+four-place wiring rule as the two above (union, `WORKSPACE_TABS` row,
+`WORKSPACE_VIEW_IDS`, ChatView lazy import plus render case), and the union
+entry sits **before** `reliability` because `reliability-view.test.mjs` pins
+`reliability` as the terminal member.
+
+The panel answers "is the engine repairing anything, and which faults keep
+coming back?" — so the **basis is the only thing that licenses a value**, and
+the client enforces the same rules the backend enforces when it folds:
+
+- **A verdict is derived from counters, never asserted.** `analyticsHealthView`
+  returns a `reason` beside its `label`, so a green word is always attached to
+  the counters that earned it. `verdictWords`/`verdictTone` own the per-kind
+  word, and `kindEvidenceLine` lists the counts in a separate sentence — a kind
+  with one repair and nine escalations reads "seen 12x, repaired 1x, escalated
+  9x", so neither the word nor the numbers can carry the other's claim.
+- **Absent is `null`, never `0`.** `scannedText` returns *not reported by any
+  pass* when no pass reported a count and `durationText` returns *not measured*
+  for a null. A capped window discloses how many older passes it excluded, so a
+  total can never be quoted as the whole journal.
+- **An unrecognised verdict renders verbatim in a neutral badge.** A verdict
+  from a newer Gateway is never snapped to one of the five this build knows,
+  which would turn an unknown word into a green tick.
+- **Two counts that are not the same number stay separate.**
+  `outcome_count` counts outcome rows; `passes_without_outcomes` counts passes
+  that carried none, and the fold's own disclosure names both.
+- **Six independent reads, six independent failures.** Every panel owns its own
+  `useCallback` load and names itself when it fails (`Sentinel analytics
+  unavailable`, `Fault-kind registry unavailable`, `Sentinel handoffs
+  unavailable`, `Sentinel report journal unreadable`, `Signal collection
+  failed`). There is no `Promise.all` anywhere in the section: one corrupt
+  journal must not present itself as an entirely empty plane.
+- **A refused decision keeps the server's words.** `failureText` is not
+  `errMsg`: the shared helper paraphrates a 403, which is right for an
+  incidental read and wrong for the answer to a deliberate write. There is no
+  client-side role check — the buttons appear for every caller and a member's
+  403 is rendered verbatim.
+- **Nothing is painted from a click.** A decision posts, then the list is
+  re-read; a refused write fires nothing and leaves the row exactly where it
+  was. The control is disabled in flight so a double-click cannot record two
+  decisions. The repair pass is opt-in per click, off by default, with its
+  safety model printed beside the control.
+
+The three re-exported routes (`reports`, `signals`, `run`) stay in
+`lib/supervisor.ts`, which already owns the autonomy plane; `sentinel.ts`
+re-exports them rather than growing a second mapper that could disagree about
+what the same journal means.
+
+Coverage: `src/lib/sentinel.test.mjs` (routes, verbs, the null-preserving
+mappers, the derived `truncated`, `failureText`, the derived headline verdict
+and the evidence line) and `src/lib/sentinel-view.test.mjs` (the four-place
+wiring and every honesty claim the panel renders).
+
+## Effect journal (`effects` workspace view)
 `lib/side-effects.ts` + `components/sections/EffectsSection.tsx`, over
 `GET /api/side-effects/*`. The `effects` id follows the four-place wiring rule
 (union, `WORKSPACE_TABS` row, `WORKSPACE_VIEW_IDS`, ChatView lazy import plus

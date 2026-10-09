@@ -382,6 +382,13 @@ const SupervisorSection = dynamic(
     })),
   { loading: () => <SectionFallback /> },
 );
+const SentinelSection = dynamic(
+  () =>
+    import("@/components/sections/SentinelSection").then((m) => ({
+      default: m.SentinelSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 const ProtocolsSection = dynamic(
   () =>
     import("@/components/sections/ProtocolsSection").then((m) => ({
@@ -3230,6 +3237,10 @@ export default function ChatView({
             ) : view === "supervisor" ? (
               <Suspense fallback={<SectionFallback />}>
                 <SupervisorSection />
+              </Suspense>
+            ) : view === "sentinel" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <SentinelSection />
               </Suspense>
             ) : view === "protocols" ? (
               <Suspense fallback={<SectionFallback />}>

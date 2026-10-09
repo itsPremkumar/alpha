@@ -46,6 +46,11 @@ export const WORKSPACE_VIEW_IDS = [
   // The intelligence control plane: `?view=intelligence` must resolve like
   // every other id, so this list stays a sibling of the `WorkspaceView` union.
   "intelligence",
+  // The Sentinel repair loop's own surface: signals, repairs, reverts,
+  // per-kind verdicts and the human handoffs it could not close. Declared
+  // before `reliability` for the same reason as the two above — `reliability`
+  // stays the terminal member.
+  "sentinel",
   // The effect journal (reconciliation console). Same reason as the id above:
   // without this entry `?view=effects` silently falls back to `chat` while the
   // nav still offers a tab that appears to go nowhere.

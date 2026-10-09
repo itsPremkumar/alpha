@@ -1,5 +1,39 @@
-### Durable runtime layer (`runtime/sessions/`, `runtime/network/`, `runtime/side_effects/`, `runtime/supervisor/`, `runtime/shutdown.py`)
+### Sentinel repair loop (`runtime/sentinel/`)
 
+The autonomous repair loop — observe a fault, fix it behind a checkpoint,
+re-check it, then commit or revert — and the fold that reads its history. The
+module's own [`AGENTS.md`](sentinel/AGENTS.md) is the normative contract;
+[`docs/SENTINEL.md`](../../../../../docs/SENTINEL.md) is the operator's page.
+
+Ownership worth naming here because both boundaries have been wrong before:
+
+- **`analytics.py` is pure and I/O-free.** `aggregate(entries)` takes the
+  entries a read already produced and returns a frozen `SentinelAnalytics`, so
+  the Gateway can fold a journal inside `asyncio.to_thread` without adding a
+  failure mode. A value nobody measured is `None`, never `0`; a verdict cites
+  the statuses that kind actually reached; every reading names the window it
+  was measured over.
+- **A fix snapshots before it edits.** `SentinelLoop.handle` refuses a fix that
+  edited without snapshotting, because a "revert" that restores the failing
+  state is worse than no repair at all. A red or unknown check reverts and
+  escalates — it never commits.
+- **The journal reads and writes fail closed both ways.** `report_store.py`
+  reports a corrupt line with the file and line rather than skipping it, and
+  validates before the bytes land so a returned success means durable. The
+  Gateway mirrors that: `/sentinel/reports` and `/sentinel/analytics` answer
+  500 naming the file, `/sentinel/escalations` answers 503 naming the store —
+  never an empty body standing in for an unreadable one.
+- **The committer commits locally and stops.** There is no auto-push. The
+  journal, the escalation store and the process-local signal state are atomic
+  and restart-recoverable for one Gateway process, not a shared multi-worker
+  exactly-once repository.
+
+Tests: `tests/test_sentinel_analytics.py`, `test_sentinel_api.py`,
+`test_sentinel_report_store.py`, `test_sentinel_scan_coverage.py`,
+`test_sentinel_log_classifier.py`; frontend `src/lib/sentinel.test.mjs` and
+`src/lib/sentinel-view.test.mjs`.
+
+### Durable runtime layer (`runtime/sessions/`, `runtime/network/`, `runtime/side_effects/`, `runtime/supervisor/`, `runtime/shutdown.py`)
 These five modules fill the specific gaps that stopped the durable-runtime
 guarantee ("a process/UI/network/provider failure must not become a task
 failure") from being true. They are **additive** and none of them is a second

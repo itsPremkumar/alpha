@@ -192,6 +192,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Operating APEX: enabling the loop, profiles and budgets, the API and SSE surface, and the honesty boundaries a status reader must know.",
     ),
+    "SENTINEL.md": DocumentSpec(
+        "operations",
+        "Operating the Sentinel autonomous repair loop: observe vs repair, the durable journal, the aggregate reading and its verdict vocabulary, the human handoff queue, and what is deliberately not built.",
+    ),
     "AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md": DocumentSpec(
         "plans",
         "Live agent activity ledger, work claims, and crash-honest status for group rooms.",

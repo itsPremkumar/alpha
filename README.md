@@ -549,6 +549,17 @@ exactly-once execution.
   refuses with the ledger's own words rather than taking a second verdict. One
   effect family (durable MCP-task submit) announces to the ledger today; the
   remaining families stay named in the ratchet that keeps that gap honest.
+- **Sentinel repair loop** — the **Sentinel** view reads the autonomous repair
+  loop end to end: the aggregate reading (`GET /api/autonomy/sentinel/analytics`)
+  folds the durable journal into totals, a per-fault-kind **verdict** derived
+  from the statuses that kind actually reached, and the fingerprints that came
+  back; `GET /sentinel/kinds` declares which fault kinds carry a repair
+  strategy; and `GET /sentinel/escalations` works the human handoff queue with
+  admin-only `acknowledge` / `resolve`. A repair pass is opt-in per click,
+  checkpoints before it edits, and reverts anything that comes back red — an
+  unknown fault kind is escalated, never guess-fixed, and auto-push is off.
+  Numbers nobody measured read as *not reported*, never as `0`
+  ([docs/SENTINEL.md](docs/SENTINEL.md)).
 - **Kibitzer metacognitive supervision** — background supervision that detects
   loops, thrashing, and prompt drift.
 - **Dynamic workflow plane** — intent perception, capability discovery, task
@@ -814,6 +825,7 @@ exactly-once execution.
 
 → [docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md) ·
 [docs/MEMORY.md](docs/MEMORY.md) · [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) ·
+[docs/SENTINEL.md](docs/SENTINEL.md) ·
 [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) ·
 [docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md) ·
 [docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md) ·
