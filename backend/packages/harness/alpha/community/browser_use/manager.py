@@ -483,6 +483,8 @@ class BrowserUseManager:
         timeout_seconds: int = DEFAULT_RUN_TIMEOUT_SECONDS,
         headless: bool = True,
         use_vision: bool = False,
+        verify: bool = False,
+        ground_truth: str | None = None,
     ) -> dict[str, Any]:
         """Run one bounded browser-use task and return its JSON envelope.
 
@@ -501,7 +503,10 @@ class BrowserUseManager:
             "max_steps": max_steps,
             "use_vision": use_vision,
             "headless": headless,
+            "verify": bool(verify),
         }
+        if ground_truth:
+            payload["ground_truth"] = ground_truth
         if start_url:
             payload["start_url"] = start_url
 

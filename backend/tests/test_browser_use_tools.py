@@ -955,6 +955,305 @@ class TestModelPreflight:
         mgr.run.assert_not_called()
 
 
+class TestScreenshotPublishing:
+    """Frames must reach the thread outputs, or the user has nothing to open.
+
+    browser-use writes its frames into the managed venv's scratch dir, which the
+    user cannot reach. Publishing them into the thread's outputs is what turns an
+    internal artifact into something that opens in the artifacts panel and renders
+    inline in the chat.
+    """
+
+    @staticmethod
+    def _fake_png(path: Path, seed: int = 7) -> Path:
+        import struct
+        import zlib
+
+        raw = b"\x00" + bytes([seed] * 8)
+
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 1, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(png)
+        return path
+
+    def _runtime_with_outputs(self, outputs: Path):
+        return SimpleNamespace(context={"thread_id": "t"}, state={"thread_data": {"outputs_path": str(outputs)}})
+
+    def test_frames_are_copied_into_thread_outputs_with_virtual_paths(self, tmp_path):
+        source_dir = tmp_path / "scratch" / "screenshots"
+        first = self._fake_png(source_dir / "step-000.png", 1)
+        second = self._fake_png(source_dir / "step-001.png", 2)
+        outputs = tmp_path / "outputs"
+
+        published = tools_mod._publish_screenshots(self._runtime_with_outputs(outputs), {"screenshots": [str(first), str(second)]})
+
+        assert len(published) == 2
+        for item in published:
+            assert item["virtual"].startswith("/mnt/user-data/outputs/browser-use/")
+            assert Path(item["path"]).is_file()
+            assert Path(item["path"]).read_bytes().startswith(b"\x89PNG")
+            assert Path(item["path"]).parent.name == "browser-use"
+
+        assert "step-001.png" in published[-1]["virtual"], "the newest frame must be published last"
+
+    def test_limit_keeps_only_the_newest_frames(self, tmp_path):
+        source_dir = tmp_path / "scratch"
+        paths = [self._fake_png(source_dir / f"step-{index:03d}.png", index) for index in range(6)]
+        outputs = tmp_path / "outputs"
+
+        published = tools_mod._publish_screenshots(self._runtime_with_outputs(outputs), {"screenshots": [str(p) for p in paths]}, limit=2)
+
+        assert len(published) == 2
+        assert published[-1]["virtual"].endswith("step-005.png")
+
+    def test_no_screenshots_publishes_nothing(self, tmp_path):
+        assert tools_mod._publish_screenshots(self._runtime_with_outputs(tmp_path), {"screenshots": []}) == []
+        assert tools_mod._publish_screenshots(self._runtime_with_outputs(tmp_path), {}) == []
+
+    def test_missing_source_is_skipped_not_fatal(self, tmp_path):
+        real = self._fake_png(tmp_path / "scratch" / "real.png", 3)
+        outputs = tmp_path / "outputs"
+        published = tools_mod._publish_screenshots(
+            self._runtime_with_outputs(outputs),
+            {"screenshots": [str(tmp_path / "scratch" / "gone.png"), str(real)]},
+        )
+        assert len(published) == 1
+
+    def test_unavailable_outputs_path_is_not_fatal(self, tmp_path):
+        """A warm-empty outputs dir must not cost the caller its browse result."""
+        source = self._fake_png(tmp_path / "scratch" / "a.png", 4)
+        runtime_missing_state = SimpleNamespace(context={"thread_id": "t"}, state=None)
+        assert tools_mod._publish_screenshots(runtime_missing_state, {"screenshots": [str(source)]}) == []
+
+        runtime_no_path = SimpleNamespace(context={"thread_id": "t"}, state={"thread_data": {}})
+        assert tools_mod._publish_screenshots(runtime_no_path, {"screenshots": [str(source)]}) == []
+
+    @pytest.mark.asyncio
+    async def test_tool_attaches_artifacts_and_inline_view(self, tmp_path):
+        mgr = MagicMock()
+        status = manager_mod.BrowserUseStatus(installed=True, version="1.4.0", venv_path="/v", python_path="/v/python")
+        mgr.status.return_value = status
+        source = self._fake_png(tmp_path / "scratch" / "step-000.png", 5)
+        mgr.run.return_value = {"ok": True, "completed": True, "errors": [], "result": "Example Domain", "steps": 1, "history": [{"url": "https://example.com"}], "screenshots": [str(source)]}
+
+        outputs = tmp_path / "outputs"
+        runtime = self._runtime_with_outputs(outputs)
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={"use": "x:Y", "model_name": "m"}),
+        ):
+            result = await tools_mod.browser_use_run_tool.coroutine(runtime=runtime, task="do it", tool_call_id="c1")
+
+        update = result.update
+        # The artifact path is what the UI opens.
+        assert update["artifacts"] and update["artifacts"][0].endswith("step-000.png")
+        # The inline thumbnail key is the same one the stateful browser_* tools use.
+        message = update["messages"][0]
+        assert message.additional_kwargs["browser_view"]["screenshot"].endswith("step-000.png")
+        assert "openable in this thread" in message.content
+
+    @pytest.mark.asyncio
+    async def test_failure_still_returns_a_message(self, tmp_path):
+        """A publish failure must not swallow the browse result."""
+        mgr = MagicMock()
+        mgr.status.return_value = manager_mod.BrowserUseStatus(installed=True, version="1.4.0", venv_path="/v", python_path="/v/python")
+        mgr.run.return_value = {"ok": False, "error": "boom", "steps": None, "history": []}
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={}),
+        ):
+            result = await tools_mod.browser_use_run_tool.coroutine(runtime=self._runtime_with_outputs(tmp_path), task="do it", tool_call_id="c1")
+        assert "boom" in _message(result)
+
+
+class TestJudgeVerification:
+    """browser-use's judge can disagree with the agent — and must be reported.
+
+    A real run claimed example.com had no <h1> while plainly having one. The
+    judge caught it. Reporting only the agent's own claim would have shipped that
+    wrong answer as success.
+    """
+
+    def _fake_browser_use(self, monkeypatch, *, judgement):
+        class FakeHistory:
+            def urls(self):
+                return ["https://example.com"]
+
+            def action_names(self):
+                return ["goto"]
+
+        class FakeResult:
+            def final_result(self):
+                return "The page has no h1 heading."
+
+            def number_of_steps(self):
+                return 3
+
+            def is_done(self):
+                return True
+
+            def errors(self):
+                return []
+
+            def judgement(self):
+                return judgement
+
+            def screenshots(self):
+                return []
+
+        class FakeAgent:
+            def __init__(self, task, llm, use_vision=True, headless=True, use_judge=False, judge_llm=None, ground_truth=None):
+                self.use_judge = use_judge
+                self.ground_truth = ground_truth
+
+            async def run(self, max_steps=500):
+                return FakeResult()
+
+        monkeypatch.setitem(sys.modules, "browser_use", SimpleNamespace(Agent=FakeAgent))
+        return FakeAgent
+
+    @pytest.mark.asyncio
+    async def test_judge_failure_is_reported_not_hidden(self, monkeypatch):
+        import alpha.community.browser_use.runner as runner_mod
+
+        self._fake_browser_use(monkeypatch, judgement={"passed": False, "reason": "example.com does have an <h1> with 'Example Domain'"})
+        monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
+
+        envelope = await runner_mod._run_agent({"task": "report the heading", "llm": {"model_name": "m"}, "verify": True, "ground_truth": {"heading": "Example Domain"}})
+
+        assert envelope["judgement"]["passed"] is False
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "Independent check (judge): FAIL" in text
+        assert "Example Domain" in text
+        assert "completed." in text, "the run itself did finish; only the answer is wrong"
+
+    @pytest.mark.asyncio
+    async def test_judge_pass_is_reported(self, monkeypatch):
+        import alpha.community.browser_use.runner as runner_mod
+
+        self._fake_browser_use(monkeypatch, judgement={"passed": True, "reason": "heading matches"})
+        monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
+
+        envelope = await runner_mod._run_agent({"task": "t", "llm": {"model_name": "m"}, "verify": True})
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "Independent check (judge): PASS" in text
+
+    @pytest.mark.asyncio
+    async def test_no_verify_means_no_judge_and_no_verdict_line(self, monkeypatch):
+        import alpha.community.browser_use.runner as runner_mod
+
+        self._fake_browser_use(monkeypatch, judgement=None)
+        monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
+
+        envelope = await runner_mod._run_agent({"task": "t", "llm": {"model_name": "m"}})
+        assert envelope["judgement"] is None
+        assert "Independent check" not in tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+
+    def test_verify_flags_reach_the_agent(self, monkeypatch):
+        """The operator's verify/ground_truth must actually reach browser-use."""
+        seen = {}
+
+        class FakeAgent:
+            def __init__(self, task, llm, use_vision=True, headless=True, use_judge=False, judge_llm=None, ground_truth=None):
+                seen["use_judge"] = use_judge
+                seen["ground_truth"] = ground_truth
+
+            async def run(self, max_steps=500):
+                raise AssertionError("should not run")
+
+        monkeypatch.setitem(sys.modules, "browser_use", SimpleNamespace(Agent=FakeAgent))
+        import alpha.community.browser_use.runner as runner_mod
+
+        monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
+        payload = {"task": "t", "llm": {"model_name": "m"}, "verify": True, "ground_truth": {"heading": "Example Domain"}}
+        try:
+            asyncio.run(runner_mod._run_agent(payload))
+        except AssertionError:
+            pass
+        assert seen["use_judge"] is True
+        assert seen["ground_truth"] == {"heading": "Example Domain"}
+
+    @pytest.mark.asyncio
+    async def test_verify_without_ground_truth_is_refused_before_launching(self):
+        """browser-use types ground_truth as a string; a dict failed inside the
+        subprocess *after* the browser launched, so the shape is checked up front."""
+        mgr = MagicMock()
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={}),
+        ):
+            result = await tools_mod.browser_use_run_tool.coroutine(runtime=_runtime(), task="do it", tool_call_id="c1", verify=True)
+        assert "ground_truth" in _message(result)
+        mgr.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dict_ground_truth_is_refused_with_guidance(self):
+        """The exact mistake a caller makes: passing a mapping."""
+        mgr = MagicMock()
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={}),
+        ):
+            result = await tools_mod.browser_use_run_tool.coroutine(runtime=_runtime(), task="do it", tool_call_id="c1", verify=True, ground_truth={"page_title": "Example Domain"})
+        assert "plain sentence" in _message(result)
+        mgr.run.assert_not_called()
+
+    def test_ground_truth_is_declared_as_a_string(self):
+        """browser-use's AgentSettings types this as a string."""
+        import inspect
+
+        annotation = inspect.signature(tools_mod.browser_use_run_tool.coroutine).parameters["ground_truth"].annotation
+        assert str(annotation) == "str | None"
+
+    @pytest.mark.asyncio
+    async def test_verify_and_ground_truth_reach_the_run(self):
+        mgr = MagicMock()
+        mgr.status.return_value = manager_mod.BrowserUseStatus(installed=True, version="1.4.0", venv_path="/v", python_path="/v/python")
+        mgr.run.return_value = {"ok": True, "completed": True, "errors": [], "result": "done", "steps": 1, "history": [], "judgement": {"passed": True, "reason": "matches"}}
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={}),
+        ):
+            result = await tools_mod.browser_use_run_tool.coroutine(runtime=_runtime(), task="do it", tool_call_id="c1", verify=True, ground_truth="the heading is Example Domain")
+        assert mgr.run.call_args.kwargs["verify"] is True
+        assert mgr.run.call_args.kwargs["ground_truth"] == "the heading is Example Domain"
+        assert "judge): PASS" in _message(result)
+
+    def test_judge_llm_falls_back_to_the_driving_model(self, monkeypatch):
+        """A separate judge is a second opinion on the same evidence, not a different model."""
+        import alpha.community.browser_use.runner as runner_mod
+
+        seen = {}
+
+        def fake_build(spec):
+            seen["specs"] = seen.get("specs", 0) + 1
+            return SimpleNamespace(tag=f"llm{seen['specs']}")
+
+        class FakeAgent:
+            def __init__(self, task, llm, use_vision=True, headless=True, use_judge=False, judge_llm=None, ground_truth=None):
+                seen["judge_llm"] = judge_llm
+
+            async def run(self, max_steps=500):
+                raise AssertionError("should not run")
+
+        monkeypatch.setitem(sys.modules, "browser_use", SimpleNamespace(Agent=FakeAgent))
+        monkeypatch.setattr(runner_mod, "_build_llm", fake_build)
+        try:
+            asyncio.run(runner_mod._run_agent({"task": "t", "llm": {"model_name": "m"}, "verify": True}))
+        except AssertionError:
+            pass
+        assert seen["judge_llm"].tag == "llm2", "judge must reuse the driving model spec"
+
+
 class TestConfigWiring:
     """The `use:` paths in config.example.yaml only fail at operator runtime.
 

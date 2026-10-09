@@ -82,6 +82,24 @@ instead of reading as an answer. The API key crosses to the child inside the req
 payload and is redacted from every returned error (`redact_secrets`); never echo an
 LLM spec back into a result or a log line.
 
+**A completed run is never a verified run.** `completed` is browser-use's own
+`is_done`, and on top of it the tool exposes the library's judge: `verify=True` plus
+a `ground_truth` mapping re-checks the answer with a second model call and reports
+PASS/FAIL with its reason, appended to the tool text as its own line. A real run was
+caught this way claiming example.com had no `<h1>` when it plainly did — the agent's
+confidence is not evidence, and a judge that disagrees must never be dropped for being
+inconvenient. The judge defaults to the driving model (a second opinion on the same
+evidence) and costs an extra call, so it is opt-in per run.
+
+**Screenshots are the visual evidence, and they must be reachable by the user.** Vision
+is on by default precisely because it is what makes browser-use frame each step. Those
+frames land in the managed venv's scratch dir, which the user cannot open, so they are
+copied into the thread's outputs as artifacts with the same
+`additional_kwargs.browser_view` inline thumbnail the stateful `browser_*` tools use —
+that copy is what turns "we captured a screenshot" into "the user can see the page". A
+missing outputs path is logged and skipped rather than failing a successful browse;
+losing the picture of a page is not the same as losing the page.
+
 Governance is declared, not implied: `browser_use_setup` is `execute`/`ask` (it
 installs a package — filesystem, network, third-party setup code) and
 `browser_use_run` is `external`/`ask` with `reversibility: unknown`, because a task

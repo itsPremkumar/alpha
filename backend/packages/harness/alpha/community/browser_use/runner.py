@@ -249,7 +249,7 @@ def _build_agent(**kwargs):
     """
     from browser_use import Agent
 
-    optional = [key for key in ("use_vision", "headless") if key in kwargs]
+    optional = [key for key in ("use_vision", "headless", "use_judge", "judge_llm", "ground_truth") if key in kwargs]
     attempt = dict(kwargs)
     while True:
         try:
@@ -413,6 +413,14 @@ async def _run_agent(payload: dict) -> dict:
         llm=llm,
         use_vision=bool(payload.get("use_vision", False)),
         headless=bool(payload.get("headless", True)),
+        # Optional verification, driven by the operator. browser-use's own judge
+        # re-checks the run against a declared ground truth and reports the
+        # reason when it disagrees — which is how a real run was caught claiming
+        # example.com had no <h1> when it plainly did. Without it the agent's own
+        # "success" is the only verdict available.
+        use_judge=bool(payload.get("verify")),
+        judge_llm=_maybe_build_judge(payload),
+        ground_truth=payload.get("ground_truth") or None,
     )
 
     max_steps = int(payload.get("max_steps") or 10)
@@ -427,6 +435,12 @@ async def _run_agent(payload: dict) -> dict:
     # turns that into "did not complete: <the actual reason>".
     completed = bool(_safe_call(result, "is_done"))
     errors = [str(err) for err in (_safe_call(result, "errors") or []) if err]
+    # The judge's verdict, when one was requested. `success` is the agent's own
+    # claim and is deliberately kept separate from `judgement` — the judge exists
+    # precisely because they can disagree.
+    judgement = _safe_call(result, "judgement")
+    if not isinstance(judgement, dict):
+        judgement = None
 
     # ``number_of_steps`` is public on AgentHistoryList and counts real steps;
     # the summarized rows are capped, so they are not a reliable step count.
@@ -441,14 +455,30 @@ async def _run_agent(payload: dict) -> dict:
         "result": _as_text(result),
         "steps": steps,
         "history": history,
-        # Absolute paths under the run's scratch dir. These are the visual
-        # evidence: a caller can open the last one and look at the page itself
-        # rather than trusting the agent's own summary of what it saw.
         "screenshots": shots,
+        "judgement": judgement,
         "version": _browser_use_version(),
         "error": None,
         "timed_out": False,
     }
+
+
+def _maybe_build_judge(payload: dict) -> object | None:
+    """Build the judge model only when verification was asked for.
+
+    The judge defaults to the driving model: the point of a separate judge is a
+    second opinion on the same evidence, not a different model.
+    """
+    if not payload.get("verify"):
+        return None
+    judge_spec = payload.get("judge_llm") or payload.get("llm")
+    if not judge_spec:
+        return None
+    try:
+        return _build_llm(judge_spec)
+    except Exception as exc:  # noqa: BLE001 - verification must not sink the task
+        print(f"[browser-use runner] judge unavailable, running unverified: {exc}", file=sys.stderr)
+        return None
 
 
 def main() -> int:
