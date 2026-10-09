@@ -657,6 +657,23 @@ Tests: `tests/test_workflow_graph_diff.py`, `tests/test_workflow_plan_diff_route
 
 Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay, and append-only plan history. That local adapter, the lease store, and wave concurrency are atomic and restart-recoverable for one Gateway process, not a shared multi-worker lease/exactly-once repository: do not claim cross-process exactly-once execution, and keep the `worker_id` a pid — it is exactly as specific as the guarantee available. Hydration still refuses stale projections; `/recover` is an explicit route, not a relaxation of `/hydrate`. Full operations, API examples, architecture, gap inventory, and the regression suites are in [`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md), [`docs/ALPHA-WORKFLOW-ARCHITECTURE.md`](../../../docs/ALPHA-WORKFLOW-ARCHITECTURE.md), and [`docs/ALPHA-WORKFLOW-CURRENT-STATE.md`](../../../docs/ALPHA-WORKFLOW-CURRENT-STATE.md).
 
+## Governed variation engine boundary
+
+`alpha.avo` is the governed-autonomous variation engine, and its layer is the
+answer to one question no part of it could answer before: **whether a proposed
+variation may run at all.** The rule that holds it together is *the model
+proposes, the server disposes* — risk is computed rather than declared, approval
+is required rather than requested, and a tier that did not run is never a tier
+that passed.
+
+Three boundaries must not be crossed: `scorer_authority.py` stays server-owned,
+because a candidate that authors its own fitness function is selecting for
+confidence rather than correctness; `commit_gate.py` stays the only writer of a
+promoted version; and nothing here may promote a variation by itself. Contract,
+per-module ownership and the refusal semantics:
+**[packages/harness/alpha/avo/AGENTS.md](avo/AGENTS.md)**. Tests:
+`tests/test_avo_governance.py`, `tests/test_avo_governance_layer.py`.
+
 ## Guarded source auto-update contract
 
 Local source checkouts may opt into the Phase-2 update engine in

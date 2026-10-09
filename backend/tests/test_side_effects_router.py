@@ -479,6 +479,41 @@ class TestFilters:
             assert body["code"] == CODE_INVALID_FILTER
             assert isinstance(body["detail"], str)
 
+    def test_malformed_thread_id_filter_is_refused_not_silently_empty(self, journal: Any) -> None:
+        """A garbage ``thread_id`` filter must be refused, never read as "no such thread".
+
+        ``bad.thread.id`` matches no entry, so an unvalidated filter answers an
+        empty page that is identical to a real thread with no recorded effects —
+        "you sent an identifier the contract rejects" and "nothing was recorded
+        for this thread" would be the same bytes. The refusal carries this
+        router's own ``invalid_filter`` code and a *string* detail, matching
+        ``status``/``level`` above, because the shared client parses string
+        details only.
+        """
+        holder = _Holder()
+        holder.user = _admin()
+        with _open(holder, journal) as client:
+            refused = client.get("/api/side-effects", params={"thread_id": "bad.thread.id"})
+            assert refused.status_code == 422
+            body = refused.json()
+            assert body["code"] == CODE_INVALID_FILTER
+            assert isinstance(body["detail"], str)
+            assert "thread_id" in body["detail"]
+
+            # The canonical contract still answers and still filters.
+            accepted = client.get("/api/side-effects", params={"thread_id": "thread-1"})
+            assert accepted.status_code == 200
+            rows = accepted.json()["entries"]
+            assert rows, "the filter must still select the rows it narrowed to"
+            assert {row["thread_id"] for row in rows} == {"thread-1"}, "and nothing else"
+
+            # The distinction this pins: a *canonical* id that matches nothing
+            # answers an honest empty page, while the malformed one is refused.
+            # Under the old behaviour both returned the same bytes.
+            absent = client.get("/api/side-effects", params={"thread_id": "no-such-thread"})
+            assert absent.status_code == 200
+            assert absent.json()["count"] == 0
+
 
 class TestReconciliation:
     def test_a_member_cannot_reconcile(self, journal: Any) -> None:

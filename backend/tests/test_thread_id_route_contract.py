@@ -4,9 +4,13 @@ point that takes a ``thread_id`` must enforce ``ThreadId`` validation.
 Two complementary guards:
 
 1. A static sweep (AST over ``app/gateway/routers/*.py``) asserting every
-   route handler that declares a ``thread_id`` parameter annotates it
-   ``ThreadId`` — this is what prevents new routes from silently landing
-   with a raw ``str`` again (the suggestions/thread_runs/threads gaps).
+   route handler that declares a ``thread_id`` parameter either annotates it
+   ``ThreadId`` (``ThreadId | None`` for an optional one) or, when it is an
+   optional *filter* that must default to ``None``, calls
+   ``validate_thread_id(thread_id)`` in its own body. This is what prevents
+   new routes from silently landing with an unvalidated raw ``str`` again
+   (the suggestions/thread_runs/threads gaps, then the three filter handlers
+   that answered an empty page for a malformed id).
 2. A runtime sweep hitting every ``{thread_id}`` route with a non-canonical
    ID and asserting a 422 whose error location names ``thread_id``.
 
@@ -31,6 +35,18 @@ ROUTERS_DIR = Path(__file__).resolve().parent.parent / "app" / "gateway" / "rout
 # (handler name) route handlers deliberately allowed to keep ``thread_id: str``.
 STATIC_WHITELIST = {"delete_thread_data"}
 
+#: Spellings whose own type enforces the canonical contract.
+CANONICAL_ANNOTATIONS = frozenset({"ThreadId", "ThreadId | None"})
+
+#: The optional **filter** spelling. It cannot be a bare ``ThreadId``: omitting
+#: a filter must resolve to ``None`` rather than fail validation, so the
+#: guarantee comes from the handler calling ``validate_thread_id(thread_id)``
+#: itself. That is a real check rather than a loophole — declaring ``str |
+#: None`` *without* validating still fails this guard, which is exactly the
+#: shape these three routes used to ship: a malformed id matched nothing and
+#: answered the same empty page as a real thread with no work.
+OPTIONAL_FILTER_ANNOTATION = "str | None"
+
 # (method, path) routes deliberately excluded from the runtime 422 sweep.
 RUNTIME_WHITELIST = {
     ("DELETE", "/api/threads/{thread_id}"),  # legacy-cleanup escape hatch
@@ -41,8 +57,30 @@ BAD_THREAD_ID = "bad.thread.id"
 _ROUTE_DECORATOR_RE = re.compile(r"router\.(get|post|delete|put|patch|websocket)")
 
 
+def _handler_validates_thread_id(node: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
+    """Whether the handler itself calls ``validate_thread_id(thread_id)``.
+
+    This is what turns ``str | None`` from a bare ``str`` into a real boundary:
+    absence means "no filter", defiance means the canonical contract is
+    enforced before the value ever reaches a store. A handler that merely
+    declares ``str | None`` without validating still fails the guard.
+    """
+    wanted: set[str] = set()
+    for stmt in node.body:
+        for child in ast.walk(stmt):
+            if not isinstance(child, ast.Call):
+                continue
+            func = child.func
+            name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+            if name == "validate_thread_id":
+                wanted.add(ast.unparse(child))
+    if not wanted:
+        return False
+    return any(call == "validate_thread_id(thread_id)" for call in wanted)
+
+
 def _iter_route_handlers(path: Path):
-    """Yield (handler_name, has_thread_id_param, annotation) for route handlers."""
+    """Yield (handler_name, annotation, validates_thread_id) for route handlers."""
     tree = ast.parse(path.read_text())
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -52,18 +90,32 @@ def _iter_route_handlers(path: Path):
         for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
             if arg.arg == "thread_id":
                 annotation = ast.unparse(arg.annotation) if arg.annotation else None
-                yield node.name, annotation
+                yield node.name, annotation, _handler_validates_thread_id(node)
 
 
 def test_every_thread_id_route_handler_uses_canonical_type():
-    """Static guard: no route handler may declare a bare ``str`` thread_id."""
+    """Static guard: no route handler may leave a ``str`` thread_id unvalidated.
+
+    ``ThreadId`` (optionally ``ThreadId | None``) is canonical because the
+    annotation itself enforces `^[A-Za-z0-9_-]{1,64}$`. An optional **filter**
+    cannot be a bare ``ThreadId`` — omitting it must resolve to ``None``
+    rather than fail validation — so it is accepted *only* when the handler
+    body calls ``validate_thread_id(thread_id)``. A raw ``str`` that never
+    reaches the canonical contract stays a violation: that was the shape the
+    three ledger-side-effect filters used to ship, where a malformed id
+    matched nothing and answered the same empty page as a real thread with no
+    work.
+    """
     violations = []
     for path in sorted(ROUTERS_DIR.glob("*.py")):
-        for handler, annotation in _iter_route_handlers(path):
+        for handler, annotation, validated in _iter_route_handlers(path):
             if handler in STATIC_WHITELIST:
                 continue
-            if annotation != "ThreadId":
-                violations.append(f"{path.name}:{handler} -> {annotation!r}")
+            if annotation in CANONICAL_ANNOTATIONS:
+                continue
+            if annotation == OPTIONAL_FILTER_ANNOTATION and validated:
+                continue
+            violations.append(f"{path.name}:{handler} -> {annotation!r}")
     assert not violations, "route handlers with non-canonical thread_id:\n" + "\n".join(violations)
 
 

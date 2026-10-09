@@ -62,6 +62,7 @@ from alpha.runtime.side_effects.statuses import (
     SideEffectLevel,
     SideEffectStatus,
 )
+from alpha.utils.thread_id import validate_thread_id
 from alpha.utils.time import coerce_iso
 from app.gateway.deps import is_admin_user
 
@@ -248,6 +249,15 @@ async def list_side_effects(
         return _error(422, INVALID_FILTER_CODE, f"unknown status {status!r}; expected one of {list(_STATUSES)}")
     if level is not None and level not in _LEVELS:
         return _error(422, INVALID_FILTER_CODE, f"unknown level {level!r}; expected one of {list(_LEVELS)}")
+    if thread_id is not None:
+        # Same refusal, same code and *string* detail as the filters above. An
+        # id the contract rejects must not reach the ledger, where it would
+        # match nothing and answer the same empty page as a real thread with no
+        # recorded effects.
+        try:
+            validate_thread_id(thread_id)
+        except ValueError as exc:
+            return _error(422, INVALID_FILTER_CODE, str(exc))
 
     ledger = get_side_effect_recorder().ledger
     if ledger is None:

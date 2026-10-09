@@ -49,6 +49,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from alpha.utils.thread_id import validate_thread_id
 from alpha.utils.time import coerce_iso
 
 logger = logging.getLogger(__name__)
@@ -210,6 +211,12 @@ async def list_action_intents(
     limit: int = Query(100, ge=1, le=500),
 ) -> dict:
     try:
+        # Optional *filter*: absence means "no filter", but a supplied value
+        # must still satisfy `^[A-Za-z0-9_-]{1,64}$`. The ledger's own filter
+        # check is looser, so an id the contract rejects would match nothing
+        # and answer the same empty page as a real thread with no work.
+        if thread_id is not None:
+            validate_thread_id(thread_id)
         intents = _action_ledger().list_intents(
             owner_id,
             tool_name=tool_name,
@@ -242,6 +249,10 @@ async def list_action_receipts(
     limit: int = Query(100, ge=1, le=500),
 ) -> dict:
     try:
+        # Optional *filter*, validated like `list_action_intents` above: a
+        # rejected id must not answer the page a real-but-empty thread would.
+        if thread_id is not None:
+            validate_thread_id(thread_id)
         receipts = _action_ledger().list_receipts(
             owner_id,
             intent_id=intent_id,

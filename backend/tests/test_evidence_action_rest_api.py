@@ -120,6 +120,34 @@ def test_empty_store_is_an_honest_empty_answer(client: TestClient) -> None:
     assert body["receipts"] == []
 
 
+#: Not a thread id: it matches no thread, so an unvalidated filter answers the
+#: same empty page a real-but-empty thread would — two opposite facts, one body.
+BAD_THREAD_ID = "bad.thread.id"
+
+
+def test_malformed_thread_id_filter_is_refused_not_silently_empty(client: TestClient, tmp_path: Path) -> None:
+    """A garbage ``thread_id`` filter must be refused, never read as "no such thread".
+
+    ``bad.thread.id`` matches nothing, so the ledger returns an empty page that
+    is byte-identical to a real thread holding no intents. Refusing at the route
+    boundary is the only thing keeping "you sent an identifier the contract
+    rejects" distinguishable from "this thread has no recorded work".
+    """
+    from alpha.ledger.store import ActionLedger
+
+    ledger = ActionLedger(tmp_path / "action-ledger")
+    ledger.record_intent("runtime", "emergency_stop_manage", {"action": "engage"}, thread_id="thread-1")
+
+    for path in ("/api/action-ledger/intents", "/api/action-ledger/receipts"):
+        refused = client.get(path, params={"owner_id": "runtime", "thread_id": BAD_THREAD_ID})
+        assert refused.status_code == 422, path
+        assert "thread_id" in refused.json()["detail"], path
+
+        # The canonical contract still answers, and still filters.
+        accepted = client.get(path, params={"owner_id": "runtime", "thread_id": "thread-1"})
+        assert accepted.status_code == 200, path
+
+
 def test_corrupt_evidence_store_fails_closed_with_the_real_reason(client: TestClient, tmp_path: Path) -> None:
     store_dir = tmp_path / "evidence"
     store_dir.mkdir(parents=True, exist_ok=True)
