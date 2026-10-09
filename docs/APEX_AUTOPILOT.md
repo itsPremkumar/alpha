@@ -197,15 +197,25 @@ ceiling cannot be widened through approval, so a new session is required to
 continue. Safe APEX run recovery durably reserves each retry by failed run id and
 failure class against the session's frozen retry ceiling; the runtime's global
 resume-attempt ceiling remains an outer bound. This reservation shares the
-session store's single-process coordination limit. The Gateway `task` path does
-not apply the APEX depth value; the subagent lifecycle manager's own depth limit
-still applies. Newly created
+session store's single-process coordination limit. The Gateway `task` path is
+single-level because task children are created with nested task delegation
+disabled. An APEX depth of zero refuses the first child call; a positive depth
+value does not enable recursive task calls on this path. The separate
+`ApexAgentFactory` lifecycle depth limit is not wired into the Gateway
+dispatcher. Newly created
 sessions receive unlimited spending defaults. Existing sessions retain their
 frozen contracts and are not silently widened; older sessions whose contract
 digest no longer matches the active profile must be reviewed and recreated to
-use the new defaults. Alpha still records usage, and engine admission, provider availability, platform
-capacity, governance, approvals, and the emergency stop remain in force; a
-session quota never reserves or creates hardware or provider capacity. The
+use the new defaults. Alpha still records usage, and engine admission, provider
+availability, platform capacity, governance, approvals, and the emergency stop
+remain in force; a session quota never reserves or creates hardware or provider
+capacity.
+
+The supervisor's `last_summary` prioritizes failures, blocked sessions, exhausted
+budgets, and error counts before progress counters. It reports only the number of
+error rows, not their contents, so a long progress summary cannot hide a failing
+run or copy task details into the health view.
+
 When a RunManager run completes, the Gateway adapter evaluates registered
 `AcceptanceRegistry` probes off the event loop. Only a fully evaluated report
 is submitted to the executive gate; a pass can complete the session and a
@@ -216,8 +226,11 @@ probe that can verify arbitrary natural-language criteria. The Gateway host
 adapter reads durable `llm.ai.response` and `subagent.end` events
 with a persisted per-run sequence cursor, so a repeated supervisor tick or
 restart does not count an event twice. If the event store is unavailable or has
-not emitted usage events, it upserts cumulative RunManager snapshots for live
-usage instead. These values are observations from the linked run, not
+not emitted token usage, it upserts cumulative RunManager snapshots for live
+usage instead. A usage-less event advances the cursor without claiming zero
+tokens; if a later row makes event accounting incomplete, its event totals are
+reconciled to a cumulative snapshot. The two sources are never added together.
+These values are observations from the linked run, not
 estimates. At each supervisor tick the adapter checks a persisted finite runtime
 quota, when one was explicitly configured, and asks RunManager to interrupt an
 over-budget run; the tick interval determines how late that check can be.
@@ -241,6 +254,15 @@ APEX generation still match.
 Recovery remains bounded by the runtime retry policy. A stale binding is
 stopped; an unsafe or ambiguous pending side effect remains parked for operator
 review rather than being replayed.
+
+For a terminal failed run that safe checkpoint recovery cannot continue, an
+administrator can explicitly request another attempt with
+`POST /api/apex/sessions/{id}/replan`. The route re-reads the linked RunManager
+record, accepts only terminal failure states, requires a reason and an explicit
+acknowledgement that the run may have completed an external action, and enforces
+the session's frozen replan ceiling. It records the reason as a mission
+constraint and clears only the APEX run projection; it does not replay a
+checkpoint or start work itself. The supervisor owns the next dispatch.
 
 A run ending is not objective completion. A completed run enters
 `awaiting_verification`; failed or interrupted work enters `failed` and is not
@@ -327,6 +349,10 @@ constraint is a record, not a control — and a rejected park is moved only by
 
 Pending verdicts are listed at `GET /api/apex/approvals` (and rendered by the
 APEX panel's session-control card, which re-reads after every action).
+If an approved `apex.tool_policy` action was not consumed before its original
+RunManager run ended, the supervisor clears that terminal run link and starts a
+fresh dispatch generation. A live run can consume the exact approval in place;
+rejected or already-consumed actions do not trigger a replay.
 
 ---
 
@@ -358,6 +384,7 @@ stop.
 | `DELETE` | `/api/apex/sessions/{id}` | remove the row; admin |
 | `POST` | `/api/apex/sessions/{id}/cycle` | one cycle; admin |
 | `POST` | `/api/apex/sessions/{id}/dispatch` | start or observe the session's idempotent RunManager run; admin |
+| `POST` | `/api/apex/sessions/{id}/replan` | request another generation after verified terminal failure; admin + reason + side-effect acknowledgement |
 | `POST` | `/api/apex/sessions/{id}/acceptance` | submit complete measured evidence after a successful run; session owner |
 | `POST` | `/api/apex/cycle` | one cycle per non-terminal session; admin |
 | `POST` | `/api/apex/sessions/{id}/steer` | record a constraint; owner-scoped (narrowing is not an admin act) |
@@ -400,7 +427,7 @@ exists. Pinned by `tests/test_apex_api.py::TestRouteOrder` and
 **Who may call what**, in one place, because every route now resolves its
 principal through the same two helpers:
 
-- **Administrator** — `create`, `delete`, `set_state`, `run one cycle`, the
+- **Administrator** — `create`, `delete`, `set_state`, `run one cycle`, `dispatch`, `replan`, the
   mode toggle, and the control/approval verdicts. Admin is decided by
   `app.gateway.deps.is_admin_user` (the shared predicate, which also refuses a
   PAT as the administrator), never by a local `getattr(user, "is_admin")`: no

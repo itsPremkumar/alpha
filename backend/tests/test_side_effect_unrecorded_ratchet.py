@@ -48,6 +48,7 @@ effect that needs confirming, which is what the ledger row is for.
 from __future__ import annotations
 
 import ast
+import os
 import re
 from pathlib import Path
 from typing import Final
@@ -59,6 +60,23 @@ from alpha.runtime.side_effects import side_effect_recorder_stats
 #: The backend root, derived from this file so the paths below are checked
 #: against a real tree rather than against whatever the test runner's cwd is.
 _BACKEND: Final[Path] = Path(__file__).resolve().parents[1]
+_NON_SOURCE_DIRS: Final[frozenset[str]] = frozenset({".venv", ".git", "__pycache__", ".pytest_cache", "node_modules"})
+
+
+def _backend_python_sources(root: Path) -> list[Path]:
+    """Walk repository Python sources without descending into local toolchains.
+
+    The backend's `.venv` can contain thousands of third-party Python files;
+    scanning it made this two-site wiring ratchet take minutes on a normal
+    Windows checkout. Prune generated/dependency directories before walking
+    them rather than filtering the paths after `rglob` has already traversed.
+    """
+    sources: list[Path] = []
+    for directory, child_dirs, filenames in os.walk(root):
+        child_dirs[:] = sorted(name for name in child_dirs if name not in _NON_SOURCE_DIRS)
+        base = Path(directory)
+        sources.extend(base / name for name in sorted(filenames) if name.endswith(".py"))
+    return sources
 
 
 class UnrecordedIrreversibleEffect:
@@ -223,6 +241,20 @@ class TestTheRatchetIsHonest:
         )
         assert _WIRED_EFFECT_FAMILIES < SCOPED_IRREVERSIBLE_EFFECT_FAMILIES, "at least one effect family must actually be wired, or this subsystem does nothing"
 
+    def test_source_walk_prunes_local_environment_and_generated_directories(self, tmp_path: Path) -> None:
+        """Dependency trees are not repository source and must not be scanned."""
+        for relative in (
+            "app/main.py",
+            ".venv/site-packages/vendor.py",
+            "node_modules/package/generated.py",
+            "app/__pycache__/main.py",
+        ):
+            path = tmp_path / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("# fixture\n", encoding="utf-8")
+
+        assert [path.relative_to(tmp_path).as_posix() for path in _backend_python_sources(tmp_path)] == ["app/main.py"]
+
     def test_the_unrecorded_set_is_small_and_bounded(self) -> None:
         """A ratchet that can absorb anything is not a ratchet.
 
@@ -260,7 +292,7 @@ class TestTheRatchetCannotBeFaked:
         something has to notice an *unnamed* one appearing. That is this test.
         """
         hits: list[str] = []
-        for path in sorted(_BACKEND.rglob("*.py")):
+        for path in _backend_python_sources(_BACKEND):
             relative = path.relative_to(_BACKEND).as_posix()
             if relative.startswith(("packages/harness/alpha/runtime/side_effects/", "tests/")):
                 continue
@@ -282,7 +314,7 @@ class TestTheRatchetCannotBeFaked:
         own ledger rather than resolving the one the Gateway installed.
         """
         installers: list[str] = []
-        for path in sorted(_BACKEND.rglob("*.py")):
+        for path in _backend_python_sources(_BACKEND):
             relative = path.relative_to(_BACKEND).as_posix()
             if relative.startswith(("packages/harness/alpha/runtime/side_effects/", "tests/")):
                 continue

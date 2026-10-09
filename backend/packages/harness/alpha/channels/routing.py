@@ -188,6 +188,38 @@ async def dispatch_resolution(
     async def _one(target: str, via: str) -> TargetOutcome:
         started = loop.time()
         try:
+            # Mention delivery may fan out into external or cross-agent work.
+            # Apply the shared policy separately per target and refuse on a
+            # policy fault, so no handler runs without a positive decision.
+            from alpha.mods.kernel import get_mod_kernel, require_mod_admission
+            from alpha.mods.types import AlphaEvent, CorrelationContext
+
+            await require_mod_admission(
+                get_mod_kernel(),
+                AlphaEvent(
+                    name="bot.channel_message_requested",
+                    payload={"sender": sender, "target": target, "room": room, "message": resolution.text},
+                    correlation=CorrelationContext.create(task_id=target),
+                    source="runtime:channel_routing",
+                ),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            reason = str(exc)
+            if "FLEET_ESTOP_ACTIVE:" in reason:
+                reason = f"Fleet ESTOP active: {reason.partition('FLEET_ESTOP_ACTIVE:')[2].strip()}"
+            logger.warning("Mod policy refused channel dispatch to @%s: %s", target, reason)
+            return TargetOutcome(
+                target=target,
+                status=TARGET_REFUSED,
+                via=via,
+                error=reason,
+                error_type="policy",
+                duration_ms=int((loop.time() - started) * 1000),
+            )
+
+        try:
             result = handler(target, resolution.text, resolution)
             if inspect.isawaitable(result):
                 result = await result

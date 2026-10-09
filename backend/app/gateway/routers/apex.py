@@ -140,6 +140,13 @@ class SteerRequest(BaseModel):
     priority: str = "normal"
 
 
+class SessionReplanRequest(BaseModel):
+    """Operator intent required before another run can follow a failure."""
+
+    reason: str = Field(min_length=1, max_length=1000)
+    acknowledge_possible_side_effects: bool = False
+
+
 class CycleRequest(BaseModel):
     #: Run the cycle for every non-terminal session when no id is named.
     all_sessions: bool = False
@@ -1100,6 +1107,88 @@ async def dispatch_session(session_id: str, request: Request) -> dict[str, Any]:
     from app.gateway.autonomy.loops import apex_execution_tick
 
     return await apex_execution_tick(request.app, session_id=session_id)
+
+
+@router.post("/sessions/{session_id}/replan", summary="Replan after a terminal failed APEX run")
+async def replan_failed_session(
+    session_id: str,
+    payload: SessionReplanRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Prepare a new generation after an operator-reviewed terminal failure.
+
+    APEX never automatically replays an ambiguous terminal run. This explicit
+    path verifies the linked RunManager record is terminal and failed, requires
+    an operator reason and side-effect acknowledgement, then records the reason
+    as a mission constraint. It only makes the session dispatchable; the
+    existing supervisor remains the sole owner of the next run admission.
+    """
+    await _require_admin(request)
+    session = await _session_or_404(request, session_id)
+    if not payload.acknowledge_possible_side_effects:
+        raise HTTPException(
+            status_code=422,
+            detail="acknowledge_possible_side_effects must be true after reviewing whether the failed run completed an external action",
+        )
+    if not payload.reason.strip():
+        raise HTTPException(status_code=422, detail="reason must contain non-whitespace text")
+    if session.state is not ApexSessionState.ACTIVE or session.dispatch_state != "failed":
+        raise HTTPException(status_code=409, detail="only an active session linked to a failed dispatch can be replanned")
+    if not session.run_id:
+        raise HTTPException(
+            status_code=409,
+            detail="the failed dispatch has no linked RunManager record; inspect it and create a fresh session if its outcome is unknown",
+        )
+    if session.acceptance is not None:
+        raise HTTPException(status_code=409, detail="this run has acceptance evidence; submit or review it through the acceptance gate")
+
+    run_manager = getattr(getattr(request.app, "state", None), "run_manager", None)
+    if run_manager is None:
+        raise HTTPException(status_code=503, detail="RunManager is unavailable; the failed run cannot be verified")
+    try:
+        run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
+    except Exception as exc:
+        logger.warning("Could not verify failed APEX run %s before operator replan: %s", session.run_id, exc)
+        raise HTTPException(status_code=503, detail="RunManager could not verify the failed run") from exc
+    if run is None:
+        raise HTTPException(status_code=503, detail="the linked RunManager record is unavailable; the failed run cannot be verified")
+    run_status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
+    if run_status not in {"error", "failed", "interrupted", "cancelled"}:
+        raise HTTPException(status_code=409, detail=f"linked run is {run_status}, not a terminal failed run")
+
+    store = get_apex_store()
+    if not store.record_run_status(session_id, run_id=session.run_id, status=run_status):
+        raise HTTPException(status_code=409, detail="the linked run changed while its status was being verified")
+    current = store.get(session_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail=f"no APEX session {session_id!r}")
+    if current.run_id in current.usage.retry_reservations:
+        raise HTTPException(
+            status_code=409,
+            detail="safe checkpoint recovery has already reserved this failed run; review that recovery outcome before requesting a replan",
+        )
+    contract = _session_contract(current)
+    updated = store.replan_failed_run(
+        session_id,
+        run_id=session.run_id,
+        run_status=run_status,
+        reason=payload.reason.strip(),
+        max_replans=contract.budget.max_replans,
+    )
+    if updated is None:
+        limit = contract.budget.max_replans
+        used = max(0, int(current.usage.replans or 0))
+        if limit is not None and used >= limit:
+            raise HTTPException(status_code=409, detail=f"APEX replan ceiling reached ({used}/{limit}); create a new session to continue")
+        raise HTTPException(
+            status_code=409,
+            detail="session state changed, an approval is pending, or safe checkpoint recovery reserved this run; reload and review the current session state",
+        )
+    return {
+        "replanned": True,
+        "session": updated.to_dict(),
+        "note": "operator replan recorded; the supervisor may dispatch a new generation",
+    }
 
 
 @router.post("/cycle", summary="Run one cycle per non-terminal session")

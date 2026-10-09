@@ -61,7 +61,10 @@
 process-capacity limit with the Gateway-stamped APEX session's persisted
 `max_parallel_tasks` and `max_active_agents` for delegated children. It validates
 the owner, active state, persisted mode, and frozen contract digest on each
-model turn; an invalid marked session permits zero child calls.
+model turn; an invalid marked session permits zero child calls. A narrowed
+`max_delegation_depth: 0` also refuses the first child. The ordinary task path
+is currently single-level: child agents are built with nested task delegation
+disabled, so a larger APEX depth value does not enable recursive task calls.
 Runs without the APEX marker retain the ordinary subagent limit. Keep this
 enforcement at the existing pre-tool-call boundary rather than adding another
 subagent execution path. Tests: `tests/test_subagent_limit_middleware.py`.

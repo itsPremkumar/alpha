@@ -124,6 +124,31 @@ def claim_task(
     bot = reg.get_bot(key)
     if not bot:
         raise ValueError(f"Bot '{key}' not found.")
+    # Claiming changes the bot's lease and status, so deterministic policy must
+    # admit it before heartbeat or wake-up state is written.
+    try:
+        from alpha.mods.kernel import get_mod_kernel, sync_dispatch
+        from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+
+        policy = sync_dispatch(
+            get_mod_kernel(),
+            AlphaEvent(
+                name="bot.task_claimed",
+                payload={"task_id": task_id, "bot_name": key},
+                correlation=CorrelationContext.create(task_id=task_id, agent_id=key),
+                source="runtime:work_discovery",
+            ),
+        )
+        if policy.outcome not in (EventOutcome.CONTINUE, EventOutcome.OBSERVE):
+            reason = policy.reason or f"Task claim refused by Mods ({policy.outcome.value})."
+            if reason.startswith("FLEET_ESTOP_ACTIVE:"):
+                reason = f"Fleet ESTOP active: {reason.partition(':')[2].strip()}"
+            raise ValueError(reason)
+    except ValueError:
+        raise
+    except Exception as exc:
+        logger.error("Mod policy refused task claim (fail-closed): %s", exc)
+        raise ValueError(f"Task claim policy could not be evaluated: {exc}") from exc
     # Lifecycle gate, FIRST. Retirement is a TWO-PHASE transition: a draining or
     # retired profile must not be handed NEW work, or retirement would be
     # cosmetic. Going through the registry's authorized read means the claim also

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-08T07:20:26Z",
+ "generated_at": "2026-10-08T22:52:31Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1510,6 +1510,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.side_effects",
+   "module": "app.gateway.routers.side_effects",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.skills",
    "module": "app.gateway.routers.skills",
    "symbol": "router",
@@ -2124,6 +2132,7 @@
     "boxlite",
     "brave",
     "browser_automation",
+    "browser_use",
     "browserless",
     "crawl4ai",
     "ddg_search",
@@ -2427,6 +2436,14 @@
    "id": "alpha.modes",
    "kind": "package",
    "submodules": []
+  },
+  {
+   "id": "alpha.mods",
+   "kind": "package",
+   "submodules": [
+    "controllers",
+    "enforcers"
+   ]
   },
   {
    "id": "alpha.multimodal",

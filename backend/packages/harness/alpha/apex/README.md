@@ -68,6 +68,13 @@ curl -s localhost:8001/api/apex/invariants | jq '{declared,live}'   # 12 declare
 | `strategy.py` | §12, §13, §36, §37 | Strategy choice, swarm sizing, stuck detection |
 | `agents.py` | §10, §11, §16, §17, §28 | The specialist factory over existing owners |
 
+`agents.py` exposes the APEX specialization decision and specialist factory,
+but the Gateway dispatcher does not currently call them. Runtime delegation is
+model-driven through the ordinary `task` tool, which applies persisted APEX
+agent and parallel-task caps; the subagent lifecycle manager supplies the depth
+ceiling. See `docs/APEX_INTEGRATION_MAP.md` for this boundary and other current
+execution limitations.
+
 ## Enabling
 
 Off by default, like every Alpha control plane.

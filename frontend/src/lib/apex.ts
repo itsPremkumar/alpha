@@ -39,6 +39,13 @@ function optNum(v: unknown): number | null {
   return null;
 }
 
+/** Render a measured count without turning a missing server field into zero. */
+export function formatMeasuredCount(value: number | null | undefined): string {
+  return value === null || value === undefined
+    ? "unreported"
+    : value.toLocaleString();
+}
+
 function bool(v: unknown): boolean {
   return v === true;
 }
@@ -214,7 +221,7 @@ export interface ApexFleet {
 /** Session counts. `total` is `null` when the store could not be read. */
 export interface ApexSessions {
   total: number | null;
-  by_state: Record<string, number>;
+  by_state: Record<string, number | null>;
   active: number | null;
   terminal: number | null;
 }
@@ -363,7 +370,7 @@ function mapSessions(v: unknown): ApexSessions {
   return {
     total: optNum(r.total),
     by_state: Object.fromEntries(
-      Object.entries(byState).map(([k, n]) => [k, optNum(n) ?? 0]),
+      Object.entries(byState).map(([k, n]) => [k, optNum(n)]),
     ),
     active: optNum(r.active),
     terminal: optNum(r.terminal),
@@ -551,6 +558,29 @@ export async function dispatchApexSession(
   };
 }
 
+/** `POST /apex/sessions/{id}/replan`; requires reviewed terminal failure and operator acknowledgement. */
+export async function requestApexReplan(
+  sessionId: string,
+  reason: string,
+  acknowledgePossibleSideEffects: boolean,
+): Promise<{ replanned: boolean; session: ApexSessionRecord; note: string }> {
+  const raw = rec(
+    await send<Rec>(
+      `/apex/sessions/${encodeURIComponent(sessionId)}/replan`,
+      "POST",
+      {
+        reason,
+        acknowledge_possible_side_effects: acknowledgePossibleSideEffects,
+      },
+    ),
+  );
+  return {
+    replanned: raw.replanned === true,
+    session: mapSessionRecord(raw.session),
+    note: str(raw.note),
+  };
+}
+
 /**
  * `POST /apex/sessions/{id}/cycle`. Admin-gated; executes no domain work.
  *
@@ -603,6 +633,7 @@ export interface ApexSessionRecord {
   profile: string;
   contract_digest: string;
   dispatch_state: string | null;
+  run_id: string;
   run_status: string | null;
   mission_id: string;
   thread_id: string;
@@ -623,6 +654,30 @@ export interface ApexSessionRecord {
   updated_at: number | null;
 }
 
+/** Human-readable execution state; a successful run is never called verified. */
+export function apexExecutionSummary(
+  session: Pick<ApexSessionRecord, "dispatch_state" | "run_status">,
+): string | null {
+  switch (session.dispatch_state) {
+    case null:
+    case "idle":
+      return null;
+    case "starting":
+      return "Preparing the run.";
+    case "running":
+      return "Run in progress.";
+    case "awaiting_verification":
+      return session.run_status === "success" ||
+        session.run_status === "completed"
+        ? "Run finished successfully; acceptance evidence is still unverified."
+        : `Run ended${session.run_status ? ` (${session.run_status})` : ""}; acceptance evidence is still unverified.`;
+    case "failed":
+      return `Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. Inspect the run and recovery outcome.`;
+    default:
+      return `Execution state: ${session.dispatch_state}.`;
+  }
+}
+
 function mapSessionRecord(v: unknown): ApexSessionRecord {
   const r = rec(v);
   const usage = rec(r.usage);
@@ -636,6 +691,7 @@ function mapSessionRecord(v: unknown): ApexSessionRecord {
     contract_digest: str(r.contract_digest),
     dispatch_state:
       typeof r.dispatch_state === "string" ? r.dispatch_state : null,
+    run_id: str(r.run_id),
     run_status: typeof r.run_status === "string" ? r.run_status : null,
     mission_id: str(r.mission_id),
     thread_id: str(r.thread_id),
@@ -719,6 +775,8 @@ export interface ApexApprovalRecord {
   requester: string;
   /** The deciding operator; empty while the ask is pending. */
   operator: string;
+  /** Exact approved operation metadata; raw tool arguments are intentionally not exposed. */
+  action: Record<string, string> | null;
   requested_at: number | null;
   decided_at: number | null;
 }
@@ -732,6 +790,14 @@ function mapApprovalRecord(v: unknown): ApexApprovalRecord {
     note: str(r.note),
     requester: str(r.requester),
     operator: str(r.operator),
+    action:
+      r.action && typeof r.action === "object" && !Array.isArray(r.action)
+        ? Object.fromEntries(
+            Object.entries(r.action as Record<string, unknown>).map(
+              ([key, value]) => [key, String(value)],
+            ),
+          )
+        : null,
     requested_at: optNum(r.requested_at),
     decided_at: optNum(r.decided_at),
   };

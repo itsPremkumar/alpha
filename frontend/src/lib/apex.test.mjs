@@ -254,6 +254,36 @@ test("dispatch starts the named session and preserves measured counters", async 
   assert.equal(result.awaiting_verification, 0);
 });
 
+test("operator replan sends a reason and explicit side-effect acknowledgement", async () => {
+  record("POST /apex/sessions/apx%2F77/replan", {
+    body: {
+      replanned: true,
+      session: {
+        session_id: "apx-77",
+        state: "active",
+        dispatch_state: "idle",
+        run_id: "",
+        run_status: "",
+        usage: { replans: 1 },
+      },
+      note: "supervisor may dispatch",
+    },
+  });
+  const result = await apex.requestApexReplan(
+    "apx/77",
+    "provider config was fixed",
+    true,
+  );
+  assert.equal(lastCall().path, "/apex/sessions/apx%2F77/replan");
+  assert.deepEqual(lastCall().body, {
+    reason: "provider config was fixed",
+    acknowledge_possible_side_effects: true,
+  });
+  assert.equal(result.replanned, true);
+  assert.equal(result.session.dispatch_state, "idle");
+  assert.equal(result.note, "supervisor may dispatch");
+});
+
 test("the APEX panel creates against the confirmed mode and dispatches through the host adapter", () => {
   const source = read("../components/sections/ApexSection.tsx");
   assert.match(source, /Create and dispatch an objective/);
@@ -265,6 +295,9 @@ test("the APEX panel creates against the confirmed mode and dispatches through t
   assert.match(source, /does not reuse its checkpoint/);
   assert.match(source, /await createApexSession\(/);
   assert.match(source, /await dispatchApexSession\(created\.session_id\)/);
+  assert.match(source, /requestApexReplan\(/);
+  assert.match(source, /acknowledgePossibleSideEffects/);
+  assert.match(source, /I reviewed the failed run/);
   assert.match(source, /awaiting verification/);
   assert.match(
     source,
@@ -372,6 +405,62 @@ test("an absent session total maps to null rather than 0", async () => {
   assert.equal(status.sessions.total, null);
   assert.equal(status.sessions.active, null);
   assert.equal(status.sessions.terminal, null);
+});
+
+test("unreported per-state session counts remain null instead of becoming zero", () => {
+  const status = apex.mapStatus({
+    schema: "alpha.apex.status.v1",
+    contract: { available: true, ...HEALTHY_CONTRACT },
+    fleet: { available: true, mode: "run", admits_work: true },
+    sessions: {
+      available: true,
+      total: 3,
+      by_state: { active: null, completed: "2", failed: 0 },
+      active: 1,
+      terminal: 2,
+    },
+  });
+
+  assert.deepEqual(status.sessions.by_state, {
+    active: null,
+    completed: null,
+    failed: 0,
+  });
+});
+
+test("missing APEX counts stay visibly unreported in operator summaries", async () => {
+  const { formatMeasuredCount } = await import(apexUrl);
+  assert.equal(formatMeasuredCount(null), "unreported");
+  assert.equal(formatMeasuredCount(undefined), "unreported");
+  assert.equal(formatMeasuredCount(0), "0");
+  assert.equal(formatMeasuredCount(1234), "1,234");
+});
+
+test("execution summaries distinguish run completion from acceptance", async () => {
+  const { apexExecutionSummary } = await import(apexUrl);
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "idle", run_status: null }),
+    null,
+  );
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "starting", run_status: null }),
+    "Preparing the run.",
+  );
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "running", run_status: "running" }),
+    "Run in progress.",
+  );
+  assert.equal(
+    apexExecutionSummary({
+      dispatch_state: "awaiting_verification",
+      run_status: "success",
+    }),
+    "Run finished successfully; acceptance evidence is still unverified.",
+  );
+  assert.match(
+    apexExecutionSummary({ dispatch_state: "failed", run_status: "error" }),
+    /Dispatch failed.*error.*Inspect the run and recovery outcome/,
+  );
 });
 
 test("a measured zero stays a real zero", async () => {
@@ -661,6 +750,15 @@ test("the toggle adopts through the helper and offers only the enable rungs", ()
   );
 });
 
+test("the read-only contract preview is distinct from the profile that enables APEX", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.match(source, /aria-label="Contract preview profile"/);
+  assert.match(source, /aria-label="Profile to enable"/);
+  assert.match(source, /Contract preview/);
+  assert.match(source, /Changes the policy preview only/);
+});
+
 test("a confirmed switch change re-reads the rest of the panel, not just the switch", () => {
   // Two reads render side by side: `/mode` draws the switch, `/status` draws
   // "Active profile". Mutating only the first put "off (no mission control)"
@@ -792,6 +890,16 @@ test("a completed cycle re-reads the session card rather than leaving the pre-cy
     cardEffect,
     /\[reload, reloadKey\]/,
     "the card's read effect depends on the trigger, or a bump changes nothing",
+  );
+  assert.match(
+    cardEffect,
+    /const readId = \+\+latestReadRef\.current/,
+    "each poll and control refresh gets a monotonically newer read id",
+  );
+  assert.match(
+    cardEffect,
+    /readId !== latestReadRef\.current/,
+    "a delayed older response cannot overwrite the newest session state",
   );
 
   assert.match(
@@ -1050,6 +1158,7 @@ const SESSION_RECORD = {
   profile: "autonomous",
   contract_digest: "apxc-abc123",
   dispatch_state: "running",
+  run_id: "run-1",
   run_status: "running",
   mission_id: "msn-9",
   thread_id: "thread-1",
@@ -1161,6 +1270,12 @@ const PENDING_APPROVAL = {
   note: "acceptance pending: tests pass",
   requester: "apex.executive",
   operator: "",
+  action: {
+    tool_name: "python_repl",
+    action_class: "tool_governance",
+    contract_digest: "contract-1",
+    arguments_digest: "args-1",
+  },
   requested_at: 1700000000,
   decided_at: null,
 };
@@ -1192,6 +1307,15 @@ test("approvals reads GET /apex/approvals and keeps pending separate from count"
   assert.equal(list.approvals.length, 2);
   assert.equal(list.approvals[0].approval_id, "apr-1");
   assert.equal(list.approvals[0].status, "pending");
+  assert.equal(list.approvals[0].action.tool_name, "python_repl");
+  assert.equal(list.approvals[0].action.arguments_digest, "args-1");
+});
+
+test("approval cards show the protected operation and exact-request fingerprint", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /Operation:\s*\{\s*" "\s*\}\s*\{row\.action\.tool_name/);
+  assert.match(source, /Exact arguments fingerprint:/);
+  assert.match(source, /Tool arguments are hidden/);
 });
 
 test("a degraded approval store keeps count and pending null instead of 0", async () => {
@@ -1443,6 +1567,7 @@ test("the mode read carries the active session the control verbs act on", async 
   assert.equal(mode.active_session.session_id, "apx-1");
   assert.equal(mode.active_session.state, "paused");
   assert.equal(mode.active_session.dispatch_state, "running");
+  assert.equal(mode.active_session.run_id, "run-1");
   assert.equal(mode.active_session.run_status, "running");
   assert.equal(mode.active_session.cycle_count, 4);
   assert.equal(mode.active_session.token_limit, 500000);
@@ -1456,6 +1581,9 @@ test("a failed host dispatch is shown beside the still-active session state", ()
   assert.match(source, /session\.dispatch_state === "failed"/);
   assert.match(source, /linked run status is/);
   assert.match(source, /inspect the run and recovery outcome/);
+  assert.match(source, /fetchRun\(threadId, runId\)/);
+  assert.match(source, /Run diagnostic:/);
+  assert.match(source, /Details unavailable/);
 });
 
 test("a mode with no bound session keeps active_session null", async () => {

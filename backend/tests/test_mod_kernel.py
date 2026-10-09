@@ -1,5 +1,7 @@
 """Unit and integration tests for the Alpha Mod Kernel (AMK) and ordered pipeline."""
 
+import asyncio
+
 import pytest
 
 from alpha.mods.context import CapabilityContext
@@ -388,6 +390,30 @@ async def test_outcome_observe(clean_kernel):
     assert mod_obs.invoked
     assert downstream_called
     assert res.outcome in (EventOutcome.CONTINUE, EventOutcome.OBSERVE)
+
+
+@pytest.mark.asyncio
+async def test_repeated_next_call_executes_downstream_only_once(clean_kernel):
+    downstream_calls = 0
+
+    async def double_continue_hook(mod, ctx, ev, next_fn):
+        first, second = await asyncio.gather(next_fn(ev), next_fn(ev))
+        assert second is first
+        return first
+
+    async def downstream_hook(mod, ctx, ev, next_fn):
+        nonlocal downstream_calls
+        downstream_calls += 1
+        return EventResult.answer(ev, response_payload={"calls": downstream_calls})
+
+    clean_kernel.register_mod(DummyMod("double-continuation", ModPriority.KERNEL, double_continue_hook))
+    clean_kernel.register_mod(DummyMod("terminal", ModPriority.EXECUTION, downstream_hook))
+
+    event = AlphaEvent(name="tool.requested", payload={}, correlation=CorrelationContext.create())
+    result = await clean_kernel.dispatch(event)
+
+    assert downstream_calls == 1
+    assert result.response_payload == {"calls": 1}
 
 
 @pytest.mark.asyncio

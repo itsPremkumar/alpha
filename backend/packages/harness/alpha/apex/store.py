@@ -111,12 +111,20 @@ class UsageLedger:
     #: This makes a retry reservation replay-safe across a process restart.
     retry_reservations: dict[str, str] = field(default_factory=dict)
     measured_run_ids: list[str] = field(default_factory=list)
-    #: Latest cumulative RunManager counters for runs whose event stream has
-    #: not published usage rows. Replacing snapshots makes live polling safe.
+    #: Latest cumulative RunManager counters for runs without complete token
+    #: usage events. Replacing snapshots makes live polling safe.
     run_snapshots: dict[str, dict[str, int]] = field(default_factory=dict)
     #: Last durable Gateway event sequence incorporated for each run. The
     #: cursor and counters commit together so a restart cannot double count.
     event_cursors: dict[str, int] = field(default_factory=dict)
+    #: Runs whose event stream has supplied measured token usage. For runs
+    #: without that evidence, cumulative RunManager snapshots remain authoritative
+    #: even after usage-less events advance the event cursor.
+    event_usage_runs: list[str] = field(default_factory=list)
+    #: Per-run event totals make it possible to switch to a complete cumulative
+    #: snapshot if a later event omits usage, without double-counting earlier
+    #: event deltas.
+    event_usage_totals: dict[str, dict[str, int]] = field(default_factory=dict)
     started_at: float = field(default_factory=time.time)
     last_counted_at: float | None = None
 
@@ -237,7 +245,14 @@ class ApexSession:
             payload["contract_snapshot"] = None
         payload["constraints"] = [SteeringConstraint.from_dict(c) for c in payload.get("constraints", []) or []]
         if not isinstance(payload.get("usage"), UsageLedger):
-            payload["usage"] = UsageLedger(**(payload.get("usage") or {}))
+            raw_usage = payload.get("usage") or {}
+            payload["usage"] = UsageLedger(**raw_usage)
+            # Pre-marker rows treated any positive event cursor as proof that
+            # event usage was authoritative. Preserve that conservative rule
+            # for old snapshots; new rows persist an explicit empty list when
+            # events had no usage payload.
+            if isinstance(raw_usage, dict) and "event_usage_runs" not in raw_usage:
+                payload["usage"].event_usage_runs = [run_id for run_id, seq in payload["usage"].event_cursors.items() if int(seq) > 0]
         # Older snapshots lacked an explicit replan counter. Retained failed
         # acceptance reports correspond one-for-one with recovery cycles; the
         # bounded history of 20 matches the largest shipped profile ceiling.
@@ -291,6 +306,8 @@ class ApprovalRecord:
     #: Exact policy action an approval authorizes; never a session-wide grant.
     action: dict[str, str] | None = None
     consumed_at: float | None = None
+    #: A late approval may release one finished run for a fresh attempt.
+    requeued_at: float | None = None
 
     @property
     def is_pending(self) -> bool:
@@ -312,6 +329,7 @@ class ApprovalRecord:
             decided_at=data.get("decided_at"),
             action={str(k): str(v) for k, v in data["action"].items()} if isinstance(data.get("action"), dict) else None,
             consumed_at=data.get("consumed_at"),
+            requeued_at=data.get("requeued_at"),
         )
 
 
@@ -792,6 +810,52 @@ class ApexStore:
         self.emit(session_id, "run.status_observed", run_id=run_id, status=normalized, dispatch_state=session.dispatch_state)
         return True
 
+    def requeue_approved_tool_action(self, session_id: str, *, run_id: str) -> bool:
+        """Release a finished run when an approved tool action was never consumed.
+
+        An operator can approve after the model run that requested approval has
+        already ended. In that case the exact approval is durable, but the
+        terminal RunManager link would otherwise keep the dispatcher parked in
+        ``awaiting_verification`` forever. Only an active session with a
+        successful linked run and an unconsumed ``apex.tool_policy`` approval
+        can be requeued; live runs, rejected approvals, and consumed actions are
+        left alone.
+        """
+        approval_ids: list[str] = []
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if (
+                session is None
+                or session.is_terminal
+                or session.state is not ApexSessionState.ACTIVE
+                or session.run_id != run_id
+                or session.dispatch_state != "awaiting_verification"
+                or session.run_status not in {"completed", "success"}
+                or session.acceptance is not None
+            ):
+                return False
+            for index, item in enumerate(session.approvals):
+                record = ApprovalRecord.from_dict(item)
+                if record.status == "approved" and record.requester == "apex.tool_policy" and record.consumed_at is None and record.requeued_at is None and isinstance(record.action, dict):
+                    record.requeued_at = time.time()
+                    session.approvals[index] = record.to_dict()
+                    approval_ids.append(record.approval_id)
+            if not approval_ids:
+                return False
+            previous_generation = session.dispatch_generation
+            session.run_id = ""
+            session.run_status = ""
+            session.dispatch_state = "idle"
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "run.requeued_after_approval",
+            run_id=run_id,
+            generation=previous_generation,
+            approval_ids=approval_ids,
+        )
+        return True
+
     def recover_after_acceptance_failure(self, session_id: str, *, reason: str) -> ApexSession | None:
         """Reopen a measured-but-failed objective for one new host dispatch.
 
@@ -828,16 +892,83 @@ class ApexStore:
         )
         return session
 
+    def replan_failed_run(
+        self,
+        session_id: str,
+        *,
+        run_id: str,
+        run_status: str,
+        reason: str,
+        max_replans: int | None,
+    ) -> ApexSession | None:
+        """Prepare an explicitly operator-approved retry of a terminal failed run.
+
+        This only clears the APEX projection after the caller independently
+        verifies the RunManager record is terminal. It never resumes a
+        checkpoint or dispatches a run; the supervisor owns the next dispatch.
+        The compare-and-set prevents a stale operator action from replacing a
+        newer run or bypassing a pending approval.
+        """
+        normalized_status = str(run_status).strip().lower()
+        normalized_reason = str(reason).strip()[:1000]
+        if normalized_status not in {"error", "failed", "interrupted", "cancelled"}:
+            return None
+        if not normalized_reason:
+            return None
+        with self._transaction():
+            session = self._rows.get(session_id)
+            if (
+                session is None
+                or session.is_terminal
+                or session.state is not ApexSessionState.ACTIVE
+                or session.run_id != str(run_id)
+                or session.dispatch_state != "failed"
+                or session.run_status != normalized_status
+                or session.acceptance is not None
+                # SafeRunRecoveryService reserves before admitting a checkpoint
+                # continuation. Do not detach a source run while that reservation
+                # is live; otherwise a competing recovery pass could race the
+                # operator-requested new generation.
+                or str(run_id) in session.usage.retry_reservations
+                or any(ApprovalRecord.from_dict(item).status == "pending" for item in session.approvals)
+            ):
+                return None
+            replans_used = max(0, int(session.usage.replans or 0))
+            if max_replans is not None and replans_used >= max_replans:
+                return None
+            previous_run_id = session.run_id
+            session.add_constraint(
+                f"Operator replan after failed run {previous_run_id} ({normalized_status}): {normalized_reason}",
+                source="operator",
+                priority="high",
+            )
+            session.usage.replans = replans_used + 1
+            session.run_id = ""
+            session.run_status = ""
+            session.dispatch_state = "idle"
+            session.dispatch_started_at = None
+            session.blocked_reason = ""
+            session.updated_at = time.time()
+        self.emit(
+            session_id,
+            "run.operator_replan_requested",
+            previous_run_id=previous_run_id,
+            run_status=normalized_status,
+            reason=normalized_reason,
+            replan_count=session.usage.replans,
+        )
+        return session
+
     def record_run_usage(self, session_id: str, *, run_id: str, input_tokens: int, output_tokens: int, llm_calls: int) -> bool:
         """Upsert cumulative RunManager usage without double-counting polls."""
         with self._transaction():
             session = self._rows.get(session_id)
             if session is None or session.run_id != run_id:
                 return False
-            # Event rows are the live source of truth when available. Run
-            # totals are cumulative, so adding them after event accounting
-            # would count the same tokens twice.
-            if int(session.usage.event_cursors.get(run_id, 0)) > 0:
+            # A usage-less event advances event_cursors for replay safety, but
+            # does not prove that the event stream measured token usage. Only
+            # a run with an actual usage-bearing event suppresses snapshots.
+            if run_id in session.usage.event_usage_runs:
                 return True
             usage = UsageLedger(**session.usage.to_dict())
             current = {
@@ -880,23 +1011,41 @@ class ApexStore:
             cursor = int(usage.event_cursors.get(run_id, 0))
             if int(seq) <= cursor:
                 return True
-            # If live polling used RunManager snapshots before durable event
-            # rows became visible, replace that run's snapshot contribution
-            # with the now-available event stream before adding its first row.
-            if cursor == 0:
-                previous = usage.run_snapshots.pop(run_id, None)
-                if previous is not None:
-                    usage.input_tokens = max(0, int(usage.input_tokens or 0) - int(previous.get("input_tokens", 0)))
-                    usage.output_tokens = max(0, int(usage.output_tokens or 0) - int(previous.get("output_tokens", 0)))
-                    usage.total_tokens = max(0, int(usage.total_tokens or 0) - int(previous.get("input_tokens", 0)) - int(previous.get("output_tokens", 0)))
-                    usage.llm_calls = max(0, int(usage.llm_calls or 0) - int(previous.get("llm_calls", 0)))
-            in_count = max(0, int(input_tokens or 0))
-            out_count = max(0, int(output_tokens or 0))
-            usage.input_tokens = (usage.input_tokens or 0) + in_count
-            usage.output_tokens = (usage.output_tokens or 0) + out_count
-            usage.total_tokens = (usage.total_tokens or 0) + in_count + out_count
-            if llm_call:
-                usage.llm_calls = (usage.llm_calls or 0) + 1
+            token_usage_measured = input_tokens is not None and output_tokens is not None
+            # If cumulative snapshots have already become this run's source,
+            # keep them: they cover usage-less calls too. Switching sources on
+            # the first later event could discard earlier calls omitted from
+            # the event payload.
+            snapshot_is_source = run_id in usage.run_snapshots
+            if not snapshot_is_source:
+                if token_usage_measured:
+                    in_count = max(0, int(input_tokens))
+                    out_count = max(0, int(output_tokens))
+                    totals = usage.event_usage_totals.setdefault(run_id, {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0})
+                    totals["input_tokens"] += in_count
+                    totals["output_tokens"] += out_count
+                    if llm_call:
+                        totals["llm_calls"] += 1
+                    usage.input_tokens = (usage.input_tokens or 0) + in_count
+                    usage.output_tokens = (usage.output_tokens or 0) + out_count
+                    usage.total_tokens = (usage.total_tokens or 0) + in_count + out_count
+                    if run_id not in usage.event_usage_runs:
+                        usage.event_usage_runs.append(run_id)
+                    if llm_call:
+                        usage.llm_calls = (usage.llm_calls or 0) + 1
+                elif run_id in usage.event_usage_runs:
+                    # An incomplete row means event accounting cannot represent
+                    # the whole run. Retract this run's known event contribution;
+                    # the host tick immediately replaces it with the cumulative
+                    # RunManager snapshot. Legacy rows without per-run totals
+                    # keep their prior conservative event source.
+                    totals = usage.event_usage_totals.pop(run_id, None)
+                    if totals is not None:
+                        usage.input_tokens = max(0, int(usage.input_tokens or 0) - totals["input_tokens"])
+                        usage.output_tokens = max(0, int(usage.output_tokens or 0) - totals["output_tokens"])
+                        usage.total_tokens = max(0, int(usage.total_tokens or 0) - totals["input_tokens"] - totals["output_tokens"])
+                        usage.llm_calls = max(0, int(usage.llm_calls or 0) - totals["llm_calls"])
+                        usage.event_usage_runs.remove(run_id)
             usage.event_cursors[run_id] = int(seq)
             usage.last_counted_at = time.time()
             session.usage = usage

@@ -14,7 +14,7 @@ import asyncio
 import pytest
 
 from alpha.config.autonomy_config import AutonomyConfig, AutonomyLoopConfig
-from app.gateway.autonomy.supervisor import AutonomySupervisor, LoopSpec
+from app.gateway.autonomy.supervisor import AutonomySupervisor, LoopSpec, _summarize
 
 
 def _config(*, enabled: bool, loop_enabled: bool, interval: float = 0.01) -> AutonomyConfig:
@@ -22,6 +22,29 @@ def _config(*, enabled: bool, loop_enabled: bool, interval: float = 0.01) -> Aut
         enabled=enabled,
         loops={"test_loop": AutonomyLoopConfig(enabled=loop_enabled, interval_seconds=interval, jitter_seconds=0.0)},
     )
+
+
+def test_summary_keeps_apex_failures_and_counts_error_rows_without_details() -> None:
+    summary = _summarize(
+        {
+            "sessions": 10,
+            "dispatched": 0,
+            "running": 0,
+            "awaiting_verification": 0,
+            "completed": 0,
+            "replanned": 0,
+            "approval_requeued": 0,
+            "blocked": 2,
+            "failed": 7,
+            "budget_exhausted": 1,
+            "errors": [{"session_id": "private-session", "error": "sensitive detail"}],
+        }
+    )
+
+    assert summary.startswith("failed=7 blocked=2 budget_exhausted=1 errors=1")
+    assert "sessions=10" in summary
+    assert "sensitive detail" not in summary
+    assert len(summary) <= 300
 
 
 @pytest.mark.asyncio
@@ -64,14 +87,16 @@ async def test_master_switch_off_means_zero_activity() -> None:
 async def test_enabled_loop_ticks_and_reports_status() -> None:
     supervisor = AutonomySupervisor(_config(enabled=True, loop_enabled=True, interval=0.01))
     calls: list[int] = []
+    first_tick = asyncio.Event()
 
     async def tick() -> dict:
         calls.append(1)
+        first_tick.set()
         return {"count": len(calls)}
 
     supervisor.register(LoopSpec(loop_id="test_loop", description="t", tick=tick))
     await supervisor.start()
-    await asyncio.sleep(0.08)
+    await asyncio.wait_for(first_tick.wait(), timeout=5.0)
     status = supervisor.status()["loops"]["test_loop"]
     assert status["runs"] >= 1
     assert status["task_alive"] is True

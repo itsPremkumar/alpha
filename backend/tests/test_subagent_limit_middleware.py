@@ -171,6 +171,41 @@ class TestTruncateTaskCalls:
         assert result["messages"][0].tool_calls == []
         assert "[APEX DELEGATION LIMIT]" in result["messages"][0].content
 
+    def test_apex_zero_depth_budget_withholds_first_child(self, tmp_path, monkeypatch):
+        from alpha.apex.contract import narrow_contract, profile_for
+        from alpha.apex.mode import ApexModeStore
+        from alpha.apex.store import ApexSessionState, ApexStore
+
+        scope = "apex-zero-depth-cap"
+        owner = "operator"
+        contract = narrow_contract(
+            profile_for("apex_max", mission_id=scope),
+            budget={"max_delegation_depth": 0},
+        )
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        session = store.create(
+            owner=owner,
+            objective="do not delegate",
+            profile="apex_max",
+            contract_digest=contract.digest(),
+            contract_snapshot=contract.to_dict(),
+            thread_id=scope,
+        )
+        store.set_state(session.session_id, ApexSessionState.ACTIVE)
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        modes.enable(scope, "apex_max", owner=owner)
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": session.session_id, "user_id": owner})
+        message = AIMessage(content="", tool_calls=[_task_call("depth-zero-child")])
+        result = SubagentLimitMiddleware(max_concurrent=8, max_total=10)._truncate_task_calls({"messages": [message]}, runtime)
+
+        assert result is not None
+        assert result["messages"][0].tool_calls == []
+        assert "[APEX DELEGATION LIMIT]" in result["messages"][0].content
+
     def test_task_calls_within_limit_returns_none(self):
         mw = SubagentLimitMiddleware(max_concurrent=3)
         msg = AIMessage(

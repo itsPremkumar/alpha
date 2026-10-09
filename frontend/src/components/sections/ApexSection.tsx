@@ -15,6 +15,7 @@ import {
 import {
   APEX_PROFILES,
   ENABLE_PROFILES,
+  apexExecutionSummary,
   decideApexApproval,
   fetchApexApprovals,
   fetchApexMode,
@@ -22,7 +23,9 @@ import {
   fetchApexStatus,
   createApexSession,
   dispatchApexSession,
+  formatMeasuredCount,
   profileToAdopt,
+  requestApexReplan,
   type ApexApprovals,
   type ApexBlock,
   type ApexContract,
@@ -35,6 +38,7 @@ import {
   setApexMode,
   steerApexSession,
 } from "@/lib/apex";
+import { fetchRun, type RunInfo } from "@/lib/runs";
 
 /**
  * The APEX control panel.
@@ -372,9 +376,9 @@ function ApexToggle({
 
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 text-xs text-neutral-500">
-            Profile
+            Profile to enable
             <select
-              aria-label="APEX profile"
+              aria-label="Profile to enable"
               className="rounded-md border border-border bg-transparent px-2 py-1 text-sm"
               value={profile}
               disabled={busy}
@@ -496,15 +500,25 @@ function SessionControlCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
   const [verdictNote, setVerdictNote] = useState("");
+  const [replanReason, setReplanReason] = useState("");
+  const [acknowledgePossibleSideEffects, setAcknowledgePossibleSideEffects] =
+    useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [runDiagnostic, setRunDiagnostic] = useState<{
+    runId: string;
+    detail: string | null;
+    error: string | null;
+  } | null>(null);
   const mountedRef = useRef(true);
+  const latestReadRef = useRef(0);
 
   const reload = useCallback(async () => {
+    const readId = ++latestReadRef.current;
     const [modeResult, approvalsResult] = await Promise.allSettled([
       fetchApexMode(),
       fetchApexApprovals(),
     ]);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || readId !== latestReadRef.current) return;
     if (modeResult.status === "fulfilled") {
       setMode(modeResult.value);
       setModeError(null);
@@ -608,7 +622,82 @@ function SessionControlCard({
     }
   };
 
+  const replan = async () => {
+    const session = mode?.active_session;
+    const reason = replanReason.trim();
+    if (
+      !session ||
+      session.dispatch_state !== "failed" ||
+      !session.run_id ||
+      !reason ||
+      !acknowledgePossibleSideEffects ||
+      busy
+    ) {
+      return;
+    }
+    setBusy("replan");
+    onError(null);
+    setNotice(null);
+    try {
+      const outcome = await requestApexReplan(
+        session.session_id,
+        reason,
+        acknowledgePossibleSideEffects,
+      );
+      setReplanReason("");
+      setAcknowledgePossibleSideEffects(false);
+      await reload();
+      setNotice(
+        outcome.note ||
+          "Replan recorded; the supervisor may start a new generation.",
+      );
+    } catch (exc) {
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const session = mode?.active_session ?? null;
+  useEffect(() => {
+    let current = true;
+    const runId = session?.run_id;
+    const threadId = session?.thread_id;
+    if (session?.dispatch_state !== "failed" || !runId || !threadId) {
+      setRunDiagnostic(null);
+      return () => {
+        current = false;
+      };
+    }
+
+    setRunDiagnostic({ runId, detail: null, error: null });
+    void fetchRun(threadId, runId).then(
+      (run: RunInfo) => {
+        if (!current) return;
+        const detail = [run.error, run.stop_reason]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join(" · ");
+        setRunDiagnostic({ runId, detail: detail || null, error: null });
+      },
+      (error: unknown) => {
+        if (!current) return;
+        setRunDiagnostic({
+          runId,
+          detail: null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [
+    session?.dispatch_state,
+    session?.run_id,
+    session?.run_status,
+    session?.thread_id,
+  ]);
+  const executionSummary = session ? apexExecutionSummary(session) : null;
   const pending = approvals?.available
     ? approvals.approvals.filter((row) => row.status === "pending")
     : [];
@@ -652,19 +741,85 @@ function SessionControlCard({
                 ? ` · blocked: ${session.blocked_reason}`
                 : ""}
             </p>
-            {session.dispatch_state === "failed" && (
-              <Notice
-                tone="warn"
-                message={`Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. The session remains ${session.state}; inspect the run and recovery outcome before treating this objective as progressing.`}
-              />
+            {executionSummary && (
+              <p className="text-xs text-neutral-500" aria-live="polite">
+                {executionSummary}
+              </p>
             )}
+            {session.dispatch_state === "failed" && (
+              <div className="space-y-2" aria-live="polite">
+                <Notice
+                  tone="warn"
+                  message={`Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. The session remains ${session.state}; inspect the run and recovery outcome before treating this objective as progressing.`}
+                />
+                {session.run_id && (
+                  <p className="break-words rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-neutral-600 dark:text-neutral-300">
+                    <span className="font-medium">Run diagnostic:</span>{" "}
+                    {runDiagnostic?.runId !== session.run_id
+                      ? "Loading linked run details…"
+                      : runDiagnostic.error
+                        ? `Details unavailable — ${runDiagnostic.error}`
+                        : (runDiagnostic.detail ??
+                          "The run record reported no error or stop reason.")}
+                  </p>
+                )}
+              </div>
+            )}
+            {session.state === "active" &&
+              session.dispatch_state === "failed" &&
+              session.run_id && (
+                <form
+                  className="space-y-2 rounded-lg border border-amber-500/40 p-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void replan();
+                  }}
+                >
+                  <p className="text-xs text-neutral-500">
+                    After reviewing run <code>{session.run_id}</code>, request a
+                    new generation. It may repeat an external action that
+                    completed before the failure.
+                  </p>
+                  <input
+                    className={inputCls}
+                    value={replanReason}
+                    onChange={(event) => setReplanReason(event.target.value)}
+                    disabled={busyNow}
+                    maxLength={1000}
+                    aria-label="Reason for replanning after failed run"
+                    placeholder="What changed or should the next attempt do differently?"
+                  />
+                  <label className="flex items-start gap-2 text-xs text-neutral-500">
+                    <input
+                      type="checkbox"
+                      checked={acknowledgePossibleSideEffects}
+                      onChange={(event) =>
+                        setAcknowledgePossibleSideEffects(event.target.checked)
+                      }
+                      disabled={busyNow}
+                    />
+                    I reviewed the failed run and accept that an external action
+                    may be repeated.
+                  </label>
+                  <Btn
+                    type="submit"
+                    disabled={
+                      busyNow ||
+                      !replanReason.trim() ||
+                      !acknowledgePossibleSideEffects
+                    }
+                  >
+                    Request replan
+                  </Btn>
+                </form>
+              )}
             <p className="text-xs text-neutral-500" aria-live="polite">
               Resource use:{" "}
               {session.usage.total_tokens === null
                 ? "token usage not yet measured"
                 : `${session.usage.total_tokens.toLocaleString()} / ${quota(session.token_limit)} tokens`}
               {` · ${session.usage.tool_calls?.toLocaleString() ?? "unmeasured"} tool calls · ${session.usage.llm_calls?.toLocaleString() ?? "unmeasured"} model calls`}
-              {` · ${session.usage.replans ?? 0} / ${quota(session.replan_limit)} acceptance replans`}
+              {` · ${formatMeasuredCount(session.usage.replans)} / ${quota(session.replan_limit)} acceptance replans`}
             </p>
             <div className="flex flex-wrap gap-2">
               <Btn onClick={() => control("pause")} disabled={busyNow}>
@@ -771,6 +926,32 @@ function SessionControlCard({
                       requested by {row.requester || "unknown requester"} ·
                       session {row.session_id}
                     </p>
+                    {row.action && (
+                      <div className="space-y-1 rounded-md bg-neutral-50 p-2 text-[11px] text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+                        <p>
+                          Operation:{" "}
+                          {row.action.tool_name || "unspecified tool"}
+                          {row.action.action_class
+                            ? ` · ${row.action.action_class}`
+                            : ""}
+                        </p>
+                        {row.action.arguments_digest && (
+                          <p className="break-all">
+                            Exact arguments fingerprint:{" "}
+                            {row.action.arguments_digest}
+                          </p>
+                        )}
+                        {row.action.contract_digest && (
+                          <p className="break-all">
+                            Contract: {row.action.contract_digest}
+                          </p>
+                        )}
+                        <p>
+                          Tool arguments are hidden; the fingerprint binds
+                          approval to the exact request.
+                        </p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <Btn
                         onClick={() => decide(row.approval_id, "approve")}
@@ -830,7 +1011,8 @@ async function resolveSessionSubject(): Promise<{
 export function ApexSection() {
   const [status, setStatus] = useState<ApexStatus | null>(null);
   const [policy, setPolicy] = useState<ApexContract | null>(null);
-  const [profile, setProfile] = useState<ApexProfile>("autonomous");
+  const [previewProfile, setPreviewProfile] =
+    useState<ApexProfile>("autonomous");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** `/mode` failed, so no session block is being shown — say which. */
@@ -855,7 +1037,7 @@ export function ApexSection() {
       try {
         const [next, nextPolicy] = await Promise.all([
           fetchApexStatus(subject.id ? { sessionId: subject.id } : undefined),
-          fetchApexPolicy(profile),
+          fetchApexPolicy(previewProfile),
         ]);
         if (!cancelled) {
           setStatus(next);
@@ -869,7 +1051,7 @@ export function ApexSection() {
     return () => {
       cancelled = true;
     };
-  }, [profile]);
+  }, [previewProfile]);
 
   const refresh = async () => {
     setError(null);
@@ -975,7 +1157,7 @@ export function ApexSection() {
         );
       }
       setDispatchNotice(
-        `${previousFailed ? `Previous session ${previous?.session_id ?? "unknown"} remains failed and unverified. ` : ""}Session ${created.session_id}: ${result.dispatched ?? 0} dispatched, ${result.running ?? 0} running, ${result.awaiting_verification ?? 0} awaiting verification, ${result.failed ?? 0} failed. A completed run is not verified until acceptance evidence is evaluated.`,
+        `${previousFailed ? `Previous session ${previous?.session_id ?? "unknown"} remains failed and unverified. ` : ""}Session ${created.session_id}: ${formatMeasuredCount(result.dispatched)} dispatched, ${formatMeasuredCount(result.running)} running, ${formatMeasuredCount(result.awaiting_verification)} awaiting verification, ${formatMeasuredCount(result.failed)} failed. A completed run is not verified until acceptance evidence is evaluated.`,
       );
       setObjective("");
       setCriteriaText("");
@@ -1015,18 +1197,24 @@ export function ApexSection() {
       hint="One objective in; APEX decides the strategy, existing engines do the work, and verification decides whether it is done."
       actions={
         <>
-          <select
-            aria-label="APEX profile"
-            className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
-            value={profile}
-            onChange={(event) => setProfile(event.target.value as ApexProfile)}
-          >
-            {APEX_PROFILES.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
+          <label className="inline-flex items-center gap-2 text-xs text-neutral-500">
+            Contract preview
+            <select
+              aria-label="Contract preview profile"
+              title="Changes the policy preview only. Use the APEX autopilot control below to change the active profile."
+              className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:text-neutral-100"
+              value={previewProfile}
+              onChange={(event) =>
+                setPreviewProfile(event.target.value as ApexProfile)
+              }
+            >
+              {APEX_PROFILES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
           <Btn onClick={runCycle} disabled={busy}>
             {busy ? "Running…" : "Run one cycle"}
           </Btn>
@@ -1116,13 +1304,21 @@ export function ApexSection() {
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
             <Cpu className="size-4" />
             <span>
-              Sessions: <strong>{status.sessions.total ?? 0}</strong>
-              {status.sessions.active !== null &&
-                ` · ${status.sessions.active} active`}
+              Sessions:{" "}
+              <strong>{formatMeasuredCount(status.sessions.total)}</strong>
+              {status.sessions.active !== null
+                ? ` · ${status.sessions.active} active`
+                : " · active count unreported"}
             </span>
-            {Object.entries(status.sessions.by_state).length === 0 && (
+            {status.sessions.total === 0 && (
               <span className="text-neutral-500">none recorded</span>
             )}
+            {status.sessions.total !== 0 &&
+              Object.entries(status.sessions.by_state).length === 0 && (
+                <span className="text-neutral-500">
+                  state breakdown unreported
+                </span>
+              )}
           </div>
         ) : (
           <Unavailable block={status.sessions} label="Session store" />

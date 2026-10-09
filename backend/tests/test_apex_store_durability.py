@@ -159,6 +159,61 @@ def test_approved_tool_action_is_exact_and_consumed_once(store: ApexStore) -> No
     assert persisted["consumed_at"] is not None
 
 
+def test_approved_but_unconsumed_tool_action_releases_completed_dispatch(store: ApexStore) -> None:
+    session = _session(store)
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert generation is not None
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id="run-approval", status="running")
+    action = {
+        "tool_name": "python_repl",
+        "action_class": "tool_governance",
+        "contract_digest": "contract",
+        "arguments_digest": "arguments",
+    }
+    store.set_state(session.session_id, ApexSessionState.BLOCKED, reason="approval needed")
+    approval = store.request_approval(session.session_id, note="approval needed", requester="apex.tool_policy", action=action)
+    assert approval is not None
+    assert store.decide_approval(approval.approval_id, verdict="approved", operator="admin") is not None
+    assert store.record_run_status(session.session_id, run_id="run-approval", status="success")
+
+    assert store.requeue_approved_tool_action(session.session_id, run_id="run-approval") is True
+    restarted = ApexStore(store.storage_path)
+    updated = restarted.get(session.session_id)
+    assert updated.state is ApexSessionState.ACTIVE
+    assert updated.run_id == ""
+    assert updated.run_status == ""
+    assert updated.dispatch_state == "idle"
+    assert updated.dispatch_generation == generation
+    assert updated.approvals[0]["requeued_at"] is not None
+    events = restarted.read_events(session.session_id)
+    assert any(event.event_type == "run.requeued_after_approval" for event in events)
+
+
+def test_approved_action_is_not_requeued_after_consumption_or_rejection(store: ApexStore) -> None:
+    for verdict, consume in (("approved", True), ("rejected", False)):
+        session = _session(store)
+        store.set_state(session.session_id, ApexSessionState.ACTIVE)
+        generation = store.claim_dispatch(session.session_id)
+        assert generation is not None
+        run_id = f"run-{verdict}"
+        assert store.record_dispatch_run(session.session_id, generation=generation, run_id=run_id, status="running")
+        action = {
+            "tool_name": "python_repl",
+            "action_class": "tool_governance",
+            "contract_digest": "contract",
+            "arguments_digest": verdict,
+        }
+        store.set_state(session.session_id, ApexSessionState.BLOCKED, reason="approval needed")
+        approval = store.request_approval(session.session_id, note="approval needed", requester="apex.tool_policy", action=action)
+        assert approval is not None
+        store.decide_approval(approval.approval_id, verdict=verdict, operator="admin")
+        if consume:
+            assert store.consume_approved_action(session.session_id, action=action)
+        assert store.record_run_status(session.session_id, run_id=run_id, status="success")
+        assert not store.requeue_approved_tool_action(session.session_id, run_id=run_id)
+
+
 def test_apex_dispatch_link_and_run_usage_are_durable_and_idempotent(store: ApexStore) -> None:
     session = _session(store)
     store.set_state(session.session_id, ApexSessionState.ACTIVE)
@@ -279,7 +334,8 @@ def test_run_event_usage_cursor_is_durable_and_prevents_summary_double_count(sto
     assert store.record_dispatch_run(session.session_id, generation=generation, run_id="run-events", status="running")
 
     # A cumulative live snapshot can arrive before durable observer events are
-    # queryable. The first event row must replace that snapshot contribution.
+    # queryable. Keep that complete snapshot as the source when event rows later
+    # appear, because some earlier event payloads may omit usage.
     assert store.record_run_usage(session.session_id, run_id="run-events", input_tokens=90, output_tokens=10, llm_calls=1)
     assert store.record_run_usage_event(session.session_id, run_id="run-events", seq=4, input_tokens=90, output_tokens=10, llm_call=True)
     assert store.record_run_usage_event(session.session_id, run_id="run-events", seq=4, input_tokens=90, output_tokens=10, llm_call=True)
@@ -288,6 +344,7 @@ def test_run_event_usage_cursor_is_durable_and_prevents_summary_double_count(sto
     usage = ApexStore(store.storage_path).get(session.session_id).usage
     assert (usage.input_tokens, usage.output_tokens, usage.total_tokens, usage.llm_calls) == (90, 10, 100, 1)
     assert usage.event_cursors == {"run-events": 4}
+    assert usage.event_usage_runs == []
 
 
 def test_live_run_usage_snapshots_replace_prior_observations(store: ApexStore) -> None:

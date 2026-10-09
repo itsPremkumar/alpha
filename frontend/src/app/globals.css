@@ -234,7 +234,11 @@
  * several dense controls set `focus:outline-none` with a 1px ring, which on a
  * 16px target is nearly invisible. This raises the floor for the small,
  * high-frequency controls without changing the global treatment. */
-:where(header button, aside button, [data-lion-pet-keepout] button):focus-visible {
+:where(
+  header button,
+  aside button,
+  [data-lion-pet-keepout] button
+):focus-visible {
   outline-offset: 1px;
   box-shadow: 0 0 0 3px hsl(var(--ring) / 0.28);
 }
@@ -334,20 +338,36 @@
   margin: 1.2em 0 0.55em;
 }
 
-.prose h1 { font-size: 1.35em; }
-.prose h2 { font-size: 1.2em; }
-.prose h3 { font-size: 1.08em; }
-.prose h4 { font-size: 1em; }
+.prose h1 {
+  font-size: 1.35em;
+}
+.prose h2 {
+  font-size: 1.2em;
+}
+.prose h3 {
+  font-size: 1.08em;
+}
+.prose h4 {
+  font-size: 1em;
+}
 
 .prose ul,
 .prose ol {
   padding-left: 1.35rem;
 }
 
-.prose ul { list-style: disc; }
-.prose ol { list-style: decimal; }
-.prose li { margin: 0.25em 0; }
-.prose li::marker { color: hsl(var(--muted-foreground)); }
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.25em 0;
+}
+.prose li::marker {
+  color: hsl(var(--muted-foreground));
+}
 
 .prose a {
   color: hsl(var(--primary));
@@ -451,7 +471,15 @@ html[data-density="compact"] .composer-shell {
 }
 
 @media (forced-colors: active) {
-  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  :where(
+    a,
+    button,
+    input,
+    textarea,
+    select,
+    summary,
+    [tabindex]
+  ):focus-visible {
     outline-color: Highlight;
   }
 }
@@ -653,5 +681,88 @@ html[data-density="compact"] .composer-shell {
   .response-prose img {
     max-width: 100%;
     border-radius: 0.5rem;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Agent Response UI (ARX) — the chat's agentic surfaces.
+ * Scoped by data attribute so nothing here can leak into the
+ * rest of the app. See `frontend/src/components/agent-ui/`.
+ * ------------------------------------------------------------------ */
+
+/* A soft pulse for in-progress labels (thinking, running tools). */
+@keyframes arx-shimmer {
+  0% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+.shimmer {
+  animation: arx-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Terminal block: dim the exit-marker line so pure output reads
+   as output, and give stderr-looking lines a red cast. */
+[data-terminal-output] .arx-stderr {
+  color: #f87171;
+}
+[data-terminal-block] pre::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+/* Diff view: line-number gutters are explicit spans, so no
+   hanging-indent hack is needed. */
+
+/* Code block: the language chip and copy row sit above the
+   prose-styled <pre>, so the block keeps its own chrome. */
+[data-code-block] pre {
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Thinking block: a thin amber gradient spine on the left edge
+   while the trace is open, so reasoning reads as its own lane. */
+[data-thinking-block] {
+  position: relative;
+}
+[data-thinking-block]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgb(245 158 11 / 0.55),
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+[data-thinking-block][open]::before,
+[data-thinking-block] > div[data-open="true"]::before {
+  opacity: 1;
+}
+
+/* Swarm board: the spine and nodes get a faint glow while any
+   agent is still running. */
+[data-swarm-board] .arx-live {
+  box-shadow: 0 0 0 1px rgb(14 165 233 / 0.25);
+}
+
+/* Respect reduced motion: every ARX animation is decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
   }
 }

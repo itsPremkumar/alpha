@@ -46,6 +46,10 @@ export const WORKSPACE_VIEW_IDS = [
   // The intelligence control plane: `?view=intelligence` must resolve like
   // every other id, so this list stays a sibling of the `WorkspaceView` union.
   "intelligence",
+  // The effect journal (reconciliation console). Same reason as the id above:
+  // without this entry `?view=effects` silently falls back to `chat` while the
+  // nav still offers a tab that appears to go nowhere.
+  "effects",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];

@@ -3,13 +3,28 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck, FileDown } from "lucide-react";
+import {
+  Bot,
+  User,
+  Copy,
+  Check,
+  ThumbsUp,
+  ThumbsDown,
+  RotateCcw,
+  Pencil,
+  Users,
+  ShieldCheck,
+  FileDown,
+} from "lucide-react";
 import { ChatMessage } from "@/types/chat";
 import { branding } from "@/lib/branding";
 import { absoluteStamp, clockTime } from "@/lib/time";
-import { ToolGroup } from "./ToolGroup";
 import { TaskList } from "./TaskList";
 import { HumanApprovalCard } from "./HumanApprovalCard";
+import { ThinkingBlock } from "./agent-ui/ThinkingBlock";
+import { AgentToolBlocks } from "./agent-ui/AgentToolBlocks";
+import { ArtifactStrip } from "./agent-ui/ArtifactStrip";
+import { markdownComponents } from "./agent-ui/CodeBlock";
 import { Volume2, Loader2, AlertCircle } from "lucide-react";
 import { enqueueSpeech, isSpeechCancellation } from "@/lib/speech";
 import { primeSpeakerPlayback, speak, speakErrorMessage } from "@/lib/voice";
@@ -31,17 +46,42 @@ interface MessageItemProps {
    * cursor — which must all be gone once the run settles.
    */
   streaming?: boolean;
+  /**
+   * This message is the transcript search's current hit. Draws the
+   * match ring so "3 of 12" has a visible "3".
+   */
+  searchHit?: boolean;
 }
 
-export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate, showRegenerate, regenerating, onEdit, streaming = false }: MessageItemProps) {
+export function MessageItem({
+  message,
+  onApprovalDecision,
+  onRate,
+  onRegenerate,
+  showRegenerate,
+  regenerating,
+  onEdit,
+  streaming = false,
+  searchHit = false,
+}: MessageItemProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
-  const [showThinking, setShowThinking] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  // Long answers collapse behind "Show more" so a 200-line answer
+  // does not bury the rest of the transcript. Streaming answers
+  // never clamp — the text is still arriving.
+  const [answerExpanded, setAnswerExpanded] = useState(false);
 
-  const dmMatch = message.content ? message.content.match(/^\[DM from ([^\]]+)\]\s*([\s\S]*)$/) : null;
-  const groupMatch = !dmMatch && message.content ? message.content.match(/^\[(Group(?:\s+Chat)?(?::\s*([^\]]+))?)\](?:\s*@?([a-zA-Z0-9_-]+):)?\s*([\s\S]*)$/i) : null;
+  const dmMatch = message.content
+    ? message.content.match(/^\[DM from ([^\]]+)\]\s*([\s\S]*)$/)
+    : null;
+  const groupMatch =
+    !dmMatch && message.content
+      ? message.content.match(
+          /^\[(Group(?:\s+Chat)?(?::\s*([^\]]+))?)\](?:\s*@?([a-zA-Z0-9_-]+):)?\s*([\s\S]*)$/i,
+        )
+      : null;
 
   const isA2A = Boolean(dmMatch);
   /** Server-stamped clock time, or `null` for a row the Gateway never stamped. */
@@ -49,10 +89,20 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
   const stampFull = absoluteStamp(message.createdAt);
   const a2aSender = dmMatch ? dmMatch[1] : null;
   const isGroupChat = Boolean(groupMatch);
-  const groupName = groupMatch ? (groupMatch[2] || "Team Channel") : null;
+  const groupName = groupMatch ? groupMatch[2] || "Team Channel" : null;
   const groupSender = groupMatch ? groupMatch[3] : null;
 
-  const displayContent = dmMatch ? dmMatch[2] : groupMatch ? groupMatch[4] : message.content;
+  const displayContent = dmMatch
+    ? dmMatch[2]
+    : groupMatch
+      ? groupMatch[4]
+      : message.content;
+
+  /** Answers past this length collapse behind "Show more". */
+  const LONG_ANSWER_CHARS = 4000;
+  const isLongAnswer =
+    !isUser && !streaming && (displayContent?.length ?? 0) > LONG_ANSWER_CHARS;
+  const clampAnswer = isLongAnswer && !answerExpanded;
 
   // All message/voice playback shares one serial SpeechQueue.
   const [speaking, setSpeaking] = useState(false);
@@ -109,7 +159,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
   };
 
   const downloadResponse = () => {
-    const blob = new Blob([displayContent], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([displayContent], {
+      type: "text/markdown;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -122,7 +174,12 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
 
   return (
     <div
-      className={`flex w-full gap-3 py-4 px-4 rounded-xl transition-all ${
+      data-message-id={message.id}
+      className={`flex w-full gap-3 py-4 px-4 rounded-xl transition-all scroll-mt-4 ${
+        searchHit
+          ? "ring-2 ring-primary/60 ring-offset-2 ring-offset-background"
+          : ""
+      } ${
         isUser
           ? "bg-muted/30 ml-auto max-w-3xl"
           : isA2A
@@ -148,7 +205,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
         ) : isGroupChat ? (
           <Users className="size-4 text-purple-400" />
         ) : (
-          <Bot className={`size-4 ${isA2A ? "text-blue-400" : "text-primary"}`} />
+          <Bot
+            className={`size-4 ${isA2A ? "text-blue-400" : "text-primary"}`}
+          />
         )}
       </div>
 
@@ -169,7 +228,11 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
             {/* The Gateway stamps every feed row; a row it never stamped shows
                 no time rather than the moment this page loaded (lib/time.ts). */}
             {stamp && (
-              <time dateTime={stampFull ?? undefined} title={stampFull ?? undefined} className="text-[10px] font-normal text-muted-foreground tabular-nums">
+              <time
+                dateTime={stampFull ?? undefined}
+                title={stampFull ?? undefined}
+                className="text-[10px] font-normal text-muted-foreground tabular-nums"
+              >
                 {stamp}
               </time>
             )}
@@ -217,7 +280,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 title="Ask again (regenerate)"
                 aria-label="Regenerate answer"
               >
-                <RotateCcw className={`size-3.5 ${regenerating ? "animate-spin" : ""}`} />
+                <RotateCcw
+                  className={`size-3.5 ${regenerating ? "animate-spin" : ""}`}
+                />
               </button>
             )}
             {isUser && onEdit && (
@@ -241,7 +306,11 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
               title={isUser ? "Copy prompt" : "Copy answer"}
               aria-label={isUser ? "Copy prompt" : "Copy answer"}
             >
-              {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+              {copied ? (
+                <Check className="size-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
             </button>
             <button
               type="button"
@@ -275,7 +344,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 ) : speechLoading ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <Volume2 className={`size-3.5 ${speaking ? "text-primary" : ""}`} />
+                  <Volume2
+                    className={`size-3.5 ${speaking ? "text-primary" : ""}`}
+                  />
                 )}
               </button>
             )}
@@ -309,7 +380,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-xs my-1">
             <Bot className="size-3.5 text-blue-400 shrink-0" />
             <span className="font-semibold text-blue-400">@{a2aSender}</span>
-            <span className="text-muted-foreground text-[11px]">➔ autonomous dispatch to team</span>
+            <span className="text-muted-foreground text-[11px]">
+              ➔ autonomous dispatch to team
+            </span>
             <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-mono font-medium flex items-center gap-1">
               <ShieldCheck className="size-3" /> Server-Verified A2A Attribution
             </span>
@@ -322,7 +395,8 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
             <Users className="size-3.5 text-purple-400 shrink-0" />
             <span className="font-semibold text-purple-400">#{groupName}</span>
             <span className="text-muted-foreground text-[11px]">
-              Multi-Agent Room Broadcast {groupSender ? `from @${groupSender}` : ""}
+              Multi-Agent Room Broadcast{" "}
+              {groupSender ? `from @${groupSender}` : ""}
             </span>
             <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-medium">
               Group Channel
@@ -362,23 +436,15 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
           </div>
         ) : (
           <>
+            {/* The reasoning trace, as a card: amber-accented,
+                collapsed by default, open while the run is still
+                writing the trace, with a rough token estimate and
+                a markdown body (see `agent-ui/ThinkingBlock`). */}
             {message.thinking && (
-              <div className="rounded-lg border border-border/60 bg-muted/20 text-xs overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setShowThinking(!showThinking)}
-                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground hover:bg-muted/40 transition-colors"
-                >
-                  <Brain className="size-3.5 text-amber-500" />
-                  <span>Thought process</span>
-                  <span className="text-[10px] ml-auto">{showThinking ? "Hide" : "Show"}</span>
-                </button>
-                {showThinking && (
-                  <div className="p-2.5 border-t border-border/40 text-[11px] text-muted-foreground font-mono whitespace-pre-wrap">
-                    {message.thinking}
-                  </div>
-                )}
-              </div>
+              <ThinkingBlock
+                thinking={message.thinking}
+                streaming={streaming}
+              />
             )}
 
             {/* `message.todos` is the plan as it stood when this message was
@@ -386,15 +452,28 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 the live panel above the composer; this is the historical copy,
                 so it renders collapsed rather than competing with it. */}
             {message.todos && message.todos.length > 0 && (
-              <TaskList todos={message.todos} variant="inline" defaultOpen={false} title="Plan for this answer" />
+              <TaskList
+                todos={message.todos}
+                variant="inline"
+                defaultOpen={false}
+                title="Plan for this answer"
+              />
             )}
 
             {message.approvalRequest && onApprovalDecision && (
-              <HumanApprovalCard approval={message.approvalRequest} onDecision={onApprovalDecision} />
+              <HumanApprovalCard
+                approval={message.approvalRequest}
+                onDecision={onApprovalDecision}
+              />
             )}
 
+            {/* The turn's tool work, split by kind: terminal
+                commands and file writes get specialised blocks
+                (command + exit code, path + diff); everything
+                else folds behind a receipt (see
+                `agent-ui/AgentToolBlocks`). */}
             {message.toolCalls && message.toolCalls.length > 0 && (
-              <ToolGroup toolCalls={message.toolCalls} live={streaming} />
+              <AgentToolBlocks toolCalls={message.toolCalls} live={streaming} />
             )}
 
             {/* The assistant reply. Scoped to .response-prose, defined in
@@ -412,19 +491,53 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 * .response-prose is plain CSS rather than a new dependency: a
                 * 68ch measure, a heading scale where size/weight/tracking move
                 * together, real block spacing, and code and table treatments. */}
+            {/* Long answers collapse behind "Show more" so a
+                200-line answer does not bury the rest of the
+                transcript. The clamp is visual only — copy,
+                download and speech still read the whole answer. */}
             {displayContent && (
-              <div className="response-prose">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {displayContent}
-                </ReactMarkdown>
+              <div>
+                <div
+                  className={`response-prose ${clampAnswer ? "max-h-96 overflow-hidden" : ""}`}
+                  data-answer-clamped={clampAnswer || undefined}
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {displayContent}
+                  </ReactMarkdown>
+                </div>
+                {isLongAnswer && (
+                  <button
+                    type="button"
+                    onClick={() => setAnswerExpanded((v) => !v)}
+                    aria-expanded={answerExpanded}
+                    className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+                  >
+                    {answerExpanded
+                      ? "Show less"
+                      : `Show more (${displayContent.length.toLocaleString()} characters)`}
+                  </button>
+                )}
               </div>
+            )}
+
+            {/* Artifacts the run delivered — files, documents,
+                images — as expandable chips. `ChatMessage.artifacts`
+                was typed but never rendered before this. */}
+            {message.artifacts && message.artifacts.length > 0 && (
+              <ArtifactStrip artifacts={message.artifacts} />
             )}
 
             {/* A streaming turn must never look finished. Content already on
                 screen followed by silence reads as a hang, so the turn keeps a
                 quiet trailing indicator until the run actually settles. */}
             {streaming && (
-              <div className="flex items-center gap-1 pt-0.5" aria-hidden="true">
+              <div
+                className="flex items-center gap-1 pt-0.5"
+                aria-hidden="true"
+              >
                 <span className="size-1.5 animate-pulse rounded-full bg-primary/60" />
                 <span className="size-1.5 animate-pulse rounded-full bg-primary/40 [animation-delay:150ms]" />
                 <span className="size-1.5 animate-pulse rounded-full bg-primary/25 [animation-delay:300ms]" />

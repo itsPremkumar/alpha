@@ -42,7 +42,7 @@ def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ApexStore:
     return instance
 
 
-def _client(is_admin: bool = True) -> TestClient:
+def _client(is_admin: bool = True, *, run_manager=None) -> TestClient:
     app = FastAPI()
 
     @app.middleware("http")
@@ -58,6 +58,7 @@ def _client(is_admin: bool = True) -> TestClient:
         )
         return await call_next(request)
 
+    app.state.run_manager = run_manager
     app.include_router(apex.router)
     return TestClient(app)
 
@@ -92,6 +93,116 @@ def _create(client: TestClient, **overrides) -> dict:
     response = client.post("/api/apex/sessions", json=payload)
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _failed_session(store: ApexStore, client: TestClient, *, status: str = "error", **overrides) -> dict:
+    session = _create(client, **overrides)["session"]
+    assert store.set_state(session["session_id"], ApexSessionState.ACTIVE, reason="test dispatch") is not None
+    generation = store.claim_dispatch(session["session_id"])
+    assert generation is not None
+    assert store.record_dispatch_run(
+        session["session_id"],
+        generation=generation,
+        run_id="failed-run-1",
+        status="running",
+    )
+    assert store.record_run_status(session["session_id"], run_id="failed-run-1", status=status)
+    return store.get(session["session_id"]).to_dict()
+
+
+class _TerminalRunManager:
+    def __init__(self, status: str) -> None:
+        self.status = status
+
+    async def get(self, run_id: str, *, user_id: str, raise_on_store_error: bool):
+        assert run_id == "failed-run-1"
+        assert user_id == "admin-1"
+        assert raise_on_store_error is True
+        return SimpleNamespace(status=SimpleNamespace(value=self.status))
+
+
+class TestFailedRunReplan:
+    def test_operator_replan_records_reason_and_prepares_new_generation(self, store: ApexStore) -> None:
+        session = _failed_session(store, _client())
+        response = _client(run_manager=_TerminalRunManager("error")).post(
+            f"/api/apex/sessions/{session['session_id']}/replan",
+            json={"reason": "provider endpoint was corrected", "acknowledge_possible_side_effects": True},
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        updated = body["session"]
+        assert body["replanned"] is True
+        assert updated["run_id"] == ""
+        assert updated["run_status"] == ""
+        assert updated["dispatch_state"] == "idle"
+        assert updated["usage"]["replans"] == 1
+        assert updated["constraints"][-1]["source"] == "operator"
+        assert "provider endpoint was corrected" in updated["constraints"][-1]["instruction"]
+        assert updated["state"] == "active"
+
+    def test_replan_requires_side_effect_acknowledgement(self, store: ApexStore) -> None:
+        session = _failed_session(store, _client())
+        response = _client(run_manager=_TerminalRunManager("error")).post(
+            f"/api/apex/sessions/{session['session_id']}/replan",
+            json={"reason": "reviewed"},
+        )
+
+        assert response.status_code == 422
+        assert store.get(session["session_id"]).dispatch_state == "failed"
+
+    def test_replan_refuses_a_nonterminal_run(self, store: ApexStore) -> None:
+        session = _failed_session(store, _client())
+        response = _client(run_manager=_TerminalRunManager("running")).post(
+            f"/api/apex/sessions/{session['session_id']}/replan",
+            json={"reason": "retry", "acknowledge_possible_side_effects": True},
+        )
+
+        assert response.status_code == 409
+        assert store.get(session["session_id"]).dispatch_state == "failed"
+
+    def test_member_cannot_replan_a_session(self, store: ApexStore) -> None:
+        session = _failed_session(store, _client())
+        response = _client(is_admin=False, run_manager=_TerminalRunManager("error")).post(
+            f"/api/apex/sessions/{session['session_id']}/replan",
+            json={"reason": "retry", "acknowledge_possible_side_effects": True},
+        )
+
+        assert response.status_code == 403
+        assert store.get(session["session_id"]).dispatch_state == "failed"
+
+    def test_replan_respects_the_frozen_session_ceiling(self, store: ApexStore) -> None:
+        admin = _client()
+        session = _failed_session(store, admin, budget={"max_replans": 0})
+        response = _client(run_manager=_TerminalRunManager("error")).post(
+            f"/api/apex/sessions/{session['session_id']}/replan",
+            json={"reason": "retry after a review", "acknowledge_possible_side_effects": True},
+        )
+
+        assert response.status_code == 409
+        assert "replan ceiling reached" in response.json()["detail"]
+        assert store.get(session["session_id"]).dispatch_state == "failed"
+
+    def test_replan_refuses_a_run_with_a_reserved_recovery_retry(self, store: ApexStore) -> None:
+        session = _failed_session(store, _client())
+        row = store.get(session["session_id"])
+        reserved, _ = store.reserve_failure_retry(
+            row.session_id,
+            failure_class="generic",
+            limit=2,
+            source_run_id="failed-run-1",
+            generation=row.dispatch_generation,
+        )
+        assert reserved is True
+
+        response = _client(run_manager=_TerminalRunManager("error")).post(
+            f"/api/apex/sessions/{session['session_id']}/replan",
+            json={"reason": "reviewed recovery reservation", "acknowledge_possible_side_effects": True},
+        )
+
+        assert response.status_code == 409
+        assert "safe checkpoint recovery has already reserved" in response.json()["detail"]
+        assert store.get(session["session_id"]).dispatch_state == "failed"
 
 
 class TestRouteOrder:

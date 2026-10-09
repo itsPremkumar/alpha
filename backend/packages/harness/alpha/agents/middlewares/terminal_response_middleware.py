@@ -79,6 +79,7 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         self._lock = threading.Lock()
         self._retry_counts: BoundedDict[tuple[str, str], int] = BoundedDict(1000)
         self._pending_prompts: BoundedDict[tuple[str, str], bool] = BoundedDict(1000)
+        self._initial_tool_message_ids: BoundedDict[tuple[str, str], frozenset[str]] = BoundedDict(1000)
 
     def release_policy_parameters(self) -> dict[str, object]:
         from alpha_extension_api import canonical_hash
@@ -105,14 +106,34 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         with self._lock:
             self._retry_counts.pop(key, None)
             self._pending_prompts.pop(key, None)
+            self._initial_tool_message_ids.pop(key, None)
 
     def _clear_other_runs(self, runtime: Runtime) -> None:
         thread_id, run_id = self._key(runtime)
         with self._lock:
-            stale = [key for key in self._retry_counts if key[0] == thread_id and key[1] != run_id]
+            tracked = set(self._retry_counts) | set(self._initial_tool_message_ids)
+            stale = [key for key in tracked if key[0] == thread_id and key[1] != run_id]
             for key in stale:
                 self._retry_counts.pop(key, None)
                 self._pending_prompts.pop(key, None)
+                self._initial_tool_message_ids.pop(key, None)
+
+    @staticmethod
+    def _message_identity(message: ToolMessage) -> str:
+        message_id = getattr(message, "id", None)
+        if isinstance(message_id, str) and message_id:
+            return f"id:{message_id}"
+        tool_call_id = getattr(message, "tool_call_id", None)
+        if isinstance(tool_call_id, str) and tool_call_id:
+            return f"call:{tool_call_id}"
+        return f"object:{id(message)}"
+
+    def _has_new_tool_result(self, messages: list[Any], key: tuple[str, str]) -> bool:
+        with self._lock:
+            initial_ids = self._initial_tool_message_ids.get(key)
+        if initial_ids is None:
+            return False
+        return any(isinstance(message, ToolMessage) and self._message_identity(message) not in initial_ids for message in messages)
 
     def _apply(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         messages = list(state.get("messages") or [])
@@ -122,10 +143,10 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         last = messages[-1]
         if _has_visible_content(last) or _has_tool_call_intent_or_error(last):
             return None
-        if not _tool_result_in_current_turn(messages):
+        key = self._key(runtime)
+        if not _tool_result_in_current_turn(messages) and not self._has_new_tool_result(messages, key):
             return None
 
-        key = self._key(runtime)
         with self._lock:
             # The recovery budget is once per run, not once per empty message.
             # A retry that calls another tool must not refresh the budget and
@@ -178,12 +199,18 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         # Reset the same run id here so resume starts with a fresh one-retry
         # budget; internal jump_to=model loops do not re-run before_agent.
         self._clear(runtime)
+        initial_tool_ids = frozenset(self._message_identity(message) for message in state.get("messages", []) or [] if isinstance(message, ToolMessage))
+        with self._lock:
+            self._initial_tool_message_ids[self._key(runtime)] = initial_tool_ids
         return None
 
     @override
     async def abefore_agent(self, state: AgentState, runtime: Runtime) -> dict | None:
         self._clear_other_runs(runtime)
         self._clear(runtime)
+        initial_tool_ids = frozenset(self._message_identity(message) for message in state.get("messages", []) or [] if isinstance(message, ToolMessage))
+        with self._lock:
+            self._initial_tool_message_ids[self._key(runtime)] = initial_tool_ids
         return None
 
     @hook_config(can_jump_to=["model"])

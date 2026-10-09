@@ -38,6 +38,11 @@ def get_default_catalog_entries():
         ("/goal prioritize", CommandCategory.MISSION, "Reorders goals based on impact and dependency", "/goal prioritize", False),
         ("/goal constraints", CommandCategory.MISSION, "Shows or edits hard/soft mission constraints", "/goal constraints", False),
         ("/goal budget", CommandCategory.MISSION, "Shows or modifies mission resource limits", "/goal budget", False),
+        # Continuous loop aliases backed by the concrete goal-loop handlers
+        ("/loop start", CommandCategory.AUTONOMOUS_OPS, "Starts a durable continuous goal loop", "/loop start <objective>", True),
+        ("/loop status", CommandCategory.AUTONOMOUS_OPS, "Shows active continuous loops and milestones", "/loop status", True),
+        ("/loop pause", CommandCategory.AUTONOMOUS_OPS, "Pauses the active continuous loop", "/loop pause", True),
+        ("/loop resume", CommandCategory.AUTONOMOUS_OPS, "Resumes a paused continuous loop", "/loop resume", True),
         # 3. Planning Commands
         ("/plan", CommandCategory.PLANNING, "Creates execution plan without immediately acting", "/plan <objective>", True),
         ("/plan show", CommandCategory.PLANNING, "Displays current execution plan", "/plan show", False),
@@ -97,6 +102,8 @@ def get_default_catalog_entries():
         ("/swarm topology", CommandCategory.SWARM, "Displays current swarm topology", "/swarm topology", False),
         # 6. Agent Commands
         ("/agent", CommandCategory.AGENT, "Displays current agent information", "/agent [id]", True),
+        ("/subagent spawn", CommandCategory.AGENT, "Spawns a task-scoped specialist subagent", "/subagent spawn <role> [objective]", True),
+        ("/subagent list", CommandCategory.AGENT, "Lists active and registered subagents", "/subagent list", True),
         ("/agent spawn", CommandCategory.AGENT, "Creates temporary specialist agent", "/agent spawn <role>", True),
         ("/agent create", CommandCategory.AGENT, "Creates reusable agent profile", "/agent create <name>", False),
         ("/agent list", CommandCategory.AGENT, "Lists available agents", "/agent list", False),
@@ -174,6 +181,10 @@ def get_default_catalog_entries():
         ("/context restore", CommandCategory.CONTEXT, "Restores saved context snapshot", "/context restore", False),
         # 11. Skills Commands
         ("/skill", CommandCategory.SKILLS, "Invokes a specific skill", "/skill <name>", True),
+        ("/skill create", CommandCategory.SKILLS, "Creates a new skill through the concrete skill handler", "/skill create <name> [description]", False),
+        ("/skill list", CommandCategory.SKILLS, "Lists installed, builtin, and custom skills", "/skill list", False),
+        ("/skill test", CommandCategory.SKILLS, "Runs the real skill health checks", "/skill test <name>", False),
+        ("/skills list", CommandCategory.SKILLS, "Lists installed, builtin, and custom skills", "/skills list", False),
         ("/skills search", CommandCategory.SKILLS, "Finds relevant skills", "/skills search <query>", False),
         ("/skills install", CommandCategory.SKILLS, "Installs a skill", "/skills install <name>", False),
         ("/skills uninstall", CommandCategory.SKILLS, "Removes a skill", "/skills uninstall <name>", False),
@@ -352,6 +363,8 @@ def get_default_catalog_entries():
         ("/workflow optimize", CommandCategory.AUTONOMOUS_OPS, "Improves workflow execution", "/workflow optimize <name>", False),
         # 21. Security Commands
         ("/security", CommandCategory.SECURITY, "Shows security status and active policies", "/security", True),
+        ("/security review", CommandCategory.SECURITY, "Runs the in-process security review probes", "/security review", True),
+        ("/security-review", CommandCategory.SECURITY, "Runs the in-process security review probes", "/security-review", True),
         ("/security audit", CommandCategory.SECURITY, "Performs security audit", "/security audit", True),
         ("/security scan", CommandCategory.SECURITY, "Scans files/tools/dependencies for risks", "/security scan", False),
         ("/security permissions", CommandCategory.SECURITY, "Shows current permissions", "/security permissions", False),

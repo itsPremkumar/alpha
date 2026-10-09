@@ -30,7 +30,7 @@ from alpha.runtime.side_effects import (
     validate_transition,
     verdict_is_settled,
 )
-from alpha.runtime.side_effects.ledger import SideEffectReclaimer
+from alpha.runtime.side_effects.ledger import SideEffectLedger, SideEffectReclaimer
 
 
 def make_ledger(**kwargs: object) -> tuple[InMemorySideEffectLedger, ManualClock]:
@@ -373,6 +373,74 @@ class TestEntrySerialization:
         assert payload["status"] == "unknown"
         assert payload["needs_reconciliation"] is True
         assert payload["verdict"] is None
+
+
+class TestEnumeration:
+    """``all()`` is what the Gateway's summary and unfiltered list read.
+
+    The protocol gained it beside ``list_unknown`` because a queue alone cannot
+    answer "total": the reconciliation console counts *every* status, and a
+    ledger that only enumerated the unknown would make the summary incapable of
+    reporting the healthy rows it is supposed to contrast them with.
+    """
+
+    @pytest.mark.asyncio
+    async def test_all_returns_every_entry_regardless_of_status(self) -> None:
+        ledger, clock = make_ledger()
+        await ledger.begin(tool_call_id="call_done", tool_name="web_fetch")
+        await ledger.mark_in_flight("call_done", owner_worker_id="w")
+        await ledger.complete("call_done")
+        await ledger.begin(tool_call_id="call_wait", tool_name="bash", lease_seconds=1.0)
+        await ledger.mark_in_flight("call_wait", owner_worker_id="w", lease_seconds=1.0)
+        clock.advance(2.0)
+        await ledger.reclaim_expired()
+
+        entries = await ledger.all()
+        assert {entry.tool_call_id for entry in entries} == {"call_done", "call_wait"}
+        assert {entry.status for entry in entries} == {SideEffectStatus.COMPLETED, SideEffectStatus.UNKNOWN}
+
+    @pytest.mark.asyncio
+    async def test_a_reconciled_entry_stays_enumerable(self) -> None:
+        """``list_unknown`` narrows to the queue; ``all()`` must not lose rows.
+
+        The summary reports ``reconciled`` as a first-class count, so a settled
+        entry disappearing from enumeration would make that count permanently 0
+        — a silent, permanent lie rather than an error.
+        """
+        ledger, clock = make_ledger()
+        await ledger.begin(tool_call_id="call_1", tool_name="git_push", lease_seconds=1.0)
+        await ledger.mark_in_flight("call_1", owner_worker_id="w", lease_seconds=1.0)
+        clock.advance(2.0)
+        await ledger.reclaim_expired()
+        await ledger.reconcile("call_1", ReconciliationVerdict.CONFIRMED_SUCCESS, detail="checked the remote ref")
+
+        everything = await ledger.all()
+        assert [entry.status for entry in everything] == [SideEffectStatus.RECONCILED]
+        # The queue, by contrast, is empty — the two must not agree.
+        assert await ledger.list_unknown() == ()
+
+    @pytest.mark.asyncio
+    async def test_an_empty_ledger_enumerates_as_empty_not_an_error(self) -> None:
+        """'I looked and found nothing' is a result; only a broken read raises."""
+        ledger, _ = make_ledger()
+        assert await ledger.all() == ()
+
+    @pytest.mark.asyncio
+    async def test_the_returned_snapshot_is_a_frozen_tuple(self) -> None:
+        """A caller iterating the enumeration must not see it mutate underneath."""
+        ledger, _ = make_ledger()
+        await ledger.begin(tool_call_id="call_1", tool_name="bash")
+        snapshot = await ledger.all()
+        assert isinstance(snapshot, tuple)
+        await ledger.begin(tool_call_id="call_2", tool_name="bash")
+        assert len(snapshot) == 1
+
+    def test_the_protocol_requires_all(self) -> None:
+        """``all()`` is a *required* member: the Protocol declares it, so any
+        ledger implementation missing it stops satisfying ``SideEffectLedger``."""
+        ledger, _ = make_ledger()
+        assert isinstance(ledger, SideEffectLedger)
+        assert "all" in SideEffectLedger.__dict__
 
 
 class TestReclaimerLoop:

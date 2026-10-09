@@ -280,37 +280,40 @@ def send_dm(
     sender_profile = reg.get_bot(sender_key)
     if sender_profile is None:
         return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Sender bot '{sender_key}' is not on the roster.", now)
-
-    # ── Alpha Mod Kernel & ESTOP admission ──
+    # Apply fleet emergency-stop and Mods policy before local or peer delivery.
+    # Delivery cannot be rolled back, so failures must refuse the send.
     try:
         from alpha.runtime.estop import get_estop_manager
 
         if get_estop_manager().is_engaged():
             return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, "Fleet ESTOP active: Bot DM blocked.", now)
-    except Exception:
-        pass
-
+    except Exception as exc:
+        logger.error("Fleet ESTOP could not be evaluated; refusing bot DM: %s", exc)
+        return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, "Fleet ESTOP could not be evaluated.", now)
     try:
         from alpha.mods.kernel import get_mod_kernel, sync_dispatch
         from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
 
-        kernel = get_mod_kernel()
-        ev = AlphaEvent(
-            name="bot.dm_requested",
-            payload={"sender": sender_key, "target": target, "message": body, "target_kind": kind},
-            correlation=CorrelationContext.create(agent_id=sender_key),
-            source="bots.dm",
+        policy = sync_dispatch(
+            get_mod_kernel(),
+            AlphaEvent(
+                name="bot.dm_requested",
+                payload={"sender": sender_key, "target": name, "target_kind": kind, "message": body},
+                correlation=CorrelationContext.create(agent_id=sender_key),
+                source="runtime:bot_dm",
+            ),
         )
-        res = sync_dispatch(kernel, ev)
-        if res.outcome == EventOutcome.DENY:
-            return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Denied by policy: {res.reason}", now)
-        if res.outcome == EventOutcome.DEFER:
-            return DMAck(None, target, kind, "deferred", UNKNOWN, f"Deferred for approval: {res.reason}", now)
-        if res.outcome == EventOutcome.REWRITE and res.event and "message" in res.event.payload:
-            body = str(res.event.payload["message"])
+        if policy.outcome == EventOutcome.DEFER:
+            return DMAck(None, target, kind, "deferred", UNKNOWN, policy.reason or "Deferred for approval.", now)
+        if policy.outcome == EventOutcome.REWRITE and policy.event and "message" in policy.event.payload:
+            body = str(policy.event.payload["message"]).strip()
+            if not body or len(body) > MESSAGE_MAX_CHARS:
+                return DMAck(None, target, kind, "rejected", UNKNOWN, "Policy rewrite produced an invalid message.", now)
+        elif policy.outcome not in (EventOutcome.CONTINUE, EventOutcome.OBSERVE):
+            return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, policy.reason or policy.outcome.value, now)
     except Exception as exc:
-        logger.debug("Mod dispatch during send_dm: %s", exc)
-
+        logger.error("Mod policy refused bot DM (fail-closed): %s", exc)
+        return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Policy could not be evaluated: {exc}", now)
     if kind != "local":
         peer_id = _peer or name
         return _send_peer_dm(peer_id, name, apply_attribution(sender_key, body), sender_key)
