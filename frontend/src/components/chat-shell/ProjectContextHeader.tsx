@@ -15,11 +15,10 @@ import {
   Brain,
   PanelRight,
   MoreHorizontal,
-  Bot,
   SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
-import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import { WorkspaceView } from "@/lib/workspace-view";
 import { botPresence, contextSentence, conversationTitle, projectStatusText } from "@/lib/chat-shell";
@@ -111,7 +110,10 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
               ) : bot ? (
                 <Code2 className="size-5 text-primary" />
               ) : (
-                <Bot className="size-5 text-primary" />
+                /* The default agent's own face: the lion, sized to sit inside
+                   the 40px tile the way an emoji avatar does. Decorative - the
+                   name and role sit beside it. */
+                <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-10 rounded-md object-cover ring-1 ring-white/15" />
               )}
             </div>
             <div className="min-w-0">

@@ -94,7 +94,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
           ) : (
             /* No specialist picked: the default agent's own face, not a
                generic code glyph. */
-            <img src={DEFAULT_AGENT_AVATAR} alt={DEFAULT_AGENT_NAME} className="size-9 rounded-full object-cover" />
+            <img src={DEFAULT_AGENT_AVATAR} alt={DEFAULT_AGENT_NAME} className="size-full rounded-md object-cover" />
           )}
         </div>
       </div>

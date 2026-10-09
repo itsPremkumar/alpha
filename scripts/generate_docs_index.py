@@ -287,6 +287,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Why a subagent cannot be seen working in the UI: the task delegation path really executes but never registers, while the control plane registers but has no runner, since start_subagent has no production caller. Measured, with the two honest options and why an invented runner is refused.",
     ),
+    "FRONTEND_UX_PLAN.md": DocumentSpec(
+        "plans",
+        "The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.",
+    ),
     "FEATURE_COMPLETION_PLAN.md": DocumentSpec(
         "operations",
         "The working plan for every remaining feature, as tickable tasks with a verification gate each: the baseline count drift, the registered-but-dead capability families (deep-agent delegation, the control-plane runner, slash-command dispatch, self-repair), prompt-only work assignment, swarm/dynamic-workflow/company/messages end to end, and the measured frontend honesty defects.",

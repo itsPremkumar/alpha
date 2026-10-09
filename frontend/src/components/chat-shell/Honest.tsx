@@ -218,7 +218,7 @@ export function LeadGlyph(props: { className?: string }) {
       {/* Decorative: every site that renders this glyph puts the agent's name
           beside it, so `alt=""` avoids the screen reader saying the name
           twice. */}
-      <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-4 rounded-full object-cover" />
+      <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-6 shrink-0 rounded-md object-cover" />
     </span>
   );
 }

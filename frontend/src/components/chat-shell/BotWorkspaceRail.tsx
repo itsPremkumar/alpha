@@ -35,7 +35,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
-import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import {
   botPresence,
@@ -262,7 +262,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                 </div>
               ) : (
                 <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                  <Bot className="size-4" />
+                  <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-8 rounded-md object-cover" />
                 </div>
               )}
               <div className="min-w-0">

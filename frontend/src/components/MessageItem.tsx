@@ -24,6 +24,7 @@ import { HumanApprovalCard } from "./HumanApprovalCard";
 import { ThinkingBlock } from "./agent-ui/ThinkingBlock";
 import { AgentToolBlocks } from "./agent-ui/AgentToolBlocks";
 import { ArtifactStrip } from "./agent-ui/ArtifactStrip";
+import { TurnCostStrip } from "./agent-ui/TurnCostStrip";
 import { markdownComponents } from "./agent-ui/CodeBlock";
 import { Volume2, Loader2, AlertCircle } from "lucide-react";
 import { enqueueSpeech, isSpeechCancellation } from "@/lib/speech";
@@ -40,6 +41,13 @@ interface MessageItemProps {
   regenerating?: boolean;
   /** Edit & resend for your messages. */
   onEdit?: (messageId: string, newContent: string) => void;
+  /**
+   * The conversation this message belongs to. Needed only to read the run's
+   * usage record for the turn's cost disclosure, so it is optional: a caller
+   * that cannot name the thread simply gets no cost row rather than a wrong
+   * one.
+   */
+  threadId?: string | null;
   /**
    * This message is the one currently streaming. Drives the live affordances
    * — the pulsing thinking header, in-flight tool states, and the trailing
@@ -61,6 +69,7 @@ export function MessageItem({
   showRegenerate,
   regenerating,
   onEdit,
+  threadId = null,
   streaming = false,
   searchHit = false,
 }: MessageItemProps) {
@@ -528,6 +537,19 @@ export function MessageItem({
                 was typed but never rendered before this. */}
             {message.artifacts && message.artifacts.length > 0 && (
               <ArtifactStrip artifacts={message.artifacts} />
+            )}
+
+            {/* The turn's own accounting, on demand. It reads the run's usage
+                record when opened rather than on render, and every number in it
+                comes from that record — an absent one renders "not reported"
+                rather than zero. */}
+            {!isUser && !streaming && message.runId && (
+              <TurnCostStrip
+                threadId={threadId}
+                runId={message.runId}
+                toolCount={message.toolCalls?.length ?? 0}
+                artifactCount={message.artifacts?.length ?? 0}
+              />
             )}
 
             {/* A streaming turn must never look finished. Content already on

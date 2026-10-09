@@ -126,6 +126,7 @@
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) — Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
+- [FRONTEND_UX_PLAN.md](FRONTEND_UX_PLAN.md) — The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.
 - [GROK_VS_ALPHA_GAP_ANALYSIS.md](GROK_VS_ALPHA_GAP_ANALYSIS.md) — Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.
 - [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md) — Living implementation status matrix for production work.

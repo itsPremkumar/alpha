@@ -3673,6 +3673,7 @@ export default function ChatView({
                                 msg.id === lastAssistantId
                               }
                               searchHit={searchCurrent?.messageId === msg.id}
+                              threadId={activeThreadId}
                             />
                           ))
                         )}

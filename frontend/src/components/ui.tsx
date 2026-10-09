@@ -371,3 +371,240 @@ export function SkeletonList(props: { rows?: number }) {
     </div>
   );
 }
+
+/* ------------------------------------------------------------------------- *
+ * Workstream 0 — the design contract.
+ *
+ * Every one of the 36 workspace views used to invent its own header, its own
+ * empty state and its own way of showing a number, so the operator relearned
+ * the interface on every tab and "where am I / what can I do here" had no
+ * stable answer. These five primitives are the single answer to all three.
+ *
+ * The rule each one carries is honesty, not styling: a measurement the Gateway
+ * never made must not acquire a shape that looks like a measured one. A
+ * skeleton is loading, never an empty list; "not reported" is never `0`; and a
+ * read that failed says which read failed, which is the only thing that
+ * distinguishes it from "there is nothing here".
+ * ------------------------------------------------------------------------- */
+
+/** Block-level loading rows that read as *loading*, not as an empty list. */
+export function LoadingRows(props: {
+  /** What is being read, for the announcement. Name the route, not the view. */
+  what: string;
+  rows?: number;
+}) {
+  const rows = props.rows ?? 3;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="space-y-2"
+      data-loading-what={props.what}
+    >
+      {/* The words are the point: a set of empty boxes is indistinguishable
+          from a view that genuinely has no rows. */}
+      <p className="text-[11px] text-muted-foreground">Reading {props.what}…</p>
+      <div className="space-y-2">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-xl border border-border/60 bg-card p-3 space-y-2 animate-pulse"
+          >
+            <div className="h-3 rounded bg-muted w-1/3" />
+            <div className="h-2.5 rounded bg-muted w-2/3" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A read that failed, named.
+ *
+ * `ErrorBox` says "something went wrong". This says *which* read failed and
+ * carries the Gateway's own reason, because on a surface that aggregates
+ * several independent routes the difference between "the conversations could
+ * not be listed" and "the projects could not be listed" is the difference
+ * between two different next actions.
+ */
+export function UnavailableNotice(props: {
+  /** Named read, e.g. "the bot roster". Keep it parallel to a route name. */
+  what: string;
+  /** The server's reason, verbatim when there is one. */
+  reason?: string | null;
+  onRetry?: () => void;
+  /** Disable the control while the same read is in flight. */
+  retrying?: boolean;
+}) {
+  return (
+    <div
+      className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-xs space-y-1.5"
+      data-unavailable-what={props.what}
+    >
+      <p className="font-medium text-amber-700 dark:text-amber-300">
+        Could not read {props.what}.
+      </p>
+      {/* A failed read is never rendered as an empty list: an empty list means
+          the server said there is nothing, and this means the opposite. */}
+      <p className="text-muted-foreground">
+        {props.reason && props.reason.trim()
+          ? props.reason
+          : "The Gateway gave no reason, so nothing here is measured — not even emptiness."}
+      </p>
+      {props.onRetry && (
+        <Btn
+          variant="ghost"
+          onClick={props.onRetry}
+          disabled={props.retrying}
+          className="!px-2.5 !py-1 text-[11px]"
+        >
+          {props.retrying ? "Retrying…" : "Try again"}
+        </Btn>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A count, shown as what it is known to be.
+ *
+ * `number` — measured, render it. `null` — never render `0`: zero is a
+ * measurement that says "there were none", while `null` says nobody counted,
+ * and presenting the second as the first is the most common lie a metrics
+ * screen tells. `"unmeasured"` is for a surface that wanted a number and
+ * could not ask.
+ */
+export function MeasuredNumber(props: {
+  value: number | null;
+  /** Plural noun, e.g. "bots". Rendered as "12 bots" / "1 bot". */
+  noun: string;
+  /** Defaults to "not reported". */
+  nullLabel?: string;
+  tone?: "green" | "amber" | "gray" | "blue" | "red";
+}) {
+  if (props.value === null) {
+    return (
+      <Badge tone="amber" title="The Gateway did not report this count.">
+        {props.nullLabel ?? "not reported"}
+      </Badge>
+    );
+  }
+  return (
+    <Badge tone={props.tone ?? "gray"}>
+      {props.value.toLocaleString()} {props.value === 1 ? singular(props.noun) : props.noun}
+    </Badge>
+  );
+}
+
+/** Crude singulariser, enough for the count labels this file renders. */
+function singular(noun: string): string {
+  if (noun.endsWith("ies")) return `${noun.slice(0, -3)}y`;
+  if (noun.endsWith("s")) return noun.slice(0, -1);
+  return noun;
+}
+
+/**
+ * The sentence that sits under a null: what is missing, and why that is not
+ * the same as zero. Paired with `MeasuredNumber` so the two never disagree.
+ */
+export function NullDisclosure(props: { what: string; why?: string }) {
+  return (
+    <p className="text-[11px] text-muted-foreground">
+      No {props.what} reported
+      {props.why ? ` — ${props.why}` : ""}.
+    </p>
+  );
+}
+
+/**
+ * The one page shell.
+ *
+ * Governs all three axes the operator asked for. `purpose` is the sentence that
+ * makes a view self-explanatory; `facts` is the row of measured counts that
+ * says what is in it before anything is opened; `actions` is the only place a
+ * view's controls live, so they are always in the same place.
+ */
+export function ViewPage(props: {
+  title: string;
+  /** One plain sentence: what this view is for and who it is for. */
+  purpose: string;
+  /** Measured counts. `null` is rendered as "not reported", never 0. */
+  facts?: React.ReactNode;
+  actions?: React.ReactNode;
+  /** A failed or partial read, already named by the caller. */
+  notice?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="workspace-section flex-1 min-h-0 overflow-y-auto w-full">
+      <div className="px-4 sm:px-6 py-4 max-w-6xl mx-auto space-y-4">
+        <header className="space-y-2">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold tracking-tight">{props.title}</h1>
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">{props.purpose}</p>
+            </div>
+            {props.actions && (
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                {props.actions}
+              </div>
+            )}
+          </div>
+          {props.facts && <div className="flex items-center gap-1.5 flex-wrap">{props.facts}</div>}
+          {props.notice}
+        </header>
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A titled block inside a `ViewPage`, for the second level of hierarchy.
+ *
+ * `Section` stays the section wrapper it always was; this is the lighter
+ * grouping used when a view has several independent reads that must each be
+ * able to fail on their own.
+ */
+export function Block(props: {
+  title: string;
+  hint?: string;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card/40 overflow-hidden">
+      <div className="flex items-start justify-between gap-3 flex-wrap px-4 py-2.5 border-b border-border/50">
+        <div className="min-w-0">
+          <h2 className="text-[13px] font-semibold tracking-tight">{props.title}</h2>
+          {props.hint && <p className="text-[11px] text-muted-foreground mt-0.5">{props.hint}</p>}
+        </div>
+        {props.actions && <div className="flex items-center gap-2 shrink-0">{props.actions}</div>}
+      </div>
+      <div className="px-4 py-3">{props.children}</div>
+    </section>
+  );
+}
+
+/** A label/value row for a detail list; the unit a whole page is built from. */
+export function DetailRow(props: {
+  label: string;
+  /** `null` renders "not reported" — a missing field is not an empty string. */
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1 border-b border-border/40 last:border-0">
+      <span className="text-[11px] text-muted-foreground shrink-0">{props.label}</span>
+      <span className={`text-[11px] font-medium text-right min-w-0 ${props.mono ? "font-mono" : ""}`}>
+        {props.value === null || props.value === undefined ? (
+          <span className="text-muted-foreground">not reported</span>
+        ) : (
+          props.value
+        )}
+      </span>
+    </div>
+  );
+}

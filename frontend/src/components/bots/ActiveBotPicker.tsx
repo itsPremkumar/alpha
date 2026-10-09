@@ -61,7 +61,7 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
           {activeBot ? (
             activeBot.avatar ? <span>{activeBot.avatar}</span> : <span className="text-[10px]">{botInitials(activeBot)}</span>
           ) : (
-            <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-4 rounded-full object-cover" />
+            <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-6 rounded-md object-cover ring-1 ring-white/15" />
           )}
         </span>
         <span className="truncate">{activeBot ? botDisplayName(activeBot) : DEFAULT_AGENT_NAME}</span>

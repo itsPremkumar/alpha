@@ -126,20 +126,20 @@ test("the hint answers the question the un-labelled state poses", () => {
 test("every no-bot branch renders that face, not a generic glyph", () => {
   // The avatar constant existing proves nothing about whether it is wired; a
   // rename that leaves the picker on a robot icon would still pass every other
-  // assertion here. These three sites are the ones an operator sees when no
-  // specialist has been selected.
-  const sites = [
-    "../components/chat-shell/Honest.tsx",
-    "../components/bots/ActiveBotPicker.tsx",
-    "../components/chat-shell/ChatShellLanding.tsx",
-  ];
-  for (const rel of sites) {
+  // assertion here. These are the sites an operator sees when no specialist has
+  // been selected - each one was caught by looking at the rendered page rather
+  // than at the grep for the name.
+  const sites = {
+    "../components/chat-shell/Honest.tsx": "LeadGlyph, shared by the header, the rail and the breadcrumb",
+    "../components/chat-shell/ProjectContextHeader.tsx": "the large agent tile and the breadcrumb glyph",
+    "../components/bots/ActiveBotPicker.tsx": "the header's collapsed picker",
+    "../components/chat-shell/ChatShellLanding.tsx": "the empty-state hero",
+    "../components/chat-shell/BotDropdownMenu.tsx": "the dropdown trigger, its summary header and its default-agent row",
+    "../components/chat-shell/BotWorkspaceRail.tsx": "the rail's current-agent tile",
+  };
+  for (const [rel, why] of Object.entries(sites)) {
     const src = readFileSync(new URL(rel, import.meta.url), "utf8");
-    assert.match(
-      src,
-      /DEFAULT_AGENT_AVATAR/,
-      `${rel} must render the default agent's avatar in its no-bot branch`,
-    );
+    assert.match(src, /DEFAULT_AGENT_AVATAR/, `${rel} must render the default agent's avatar (${why})`);
   }
 
   // `LeadGlyph` is the shared glyph the header, the rail and the project
