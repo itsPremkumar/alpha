@@ -247,6 +247,40 @@ cua-driver call list_apps
 ALPHA_RUN_LIVE_TESTS=1 PYTHONPATH=. uv run pytest tests/test_cua_driver_live_mcp.py -v -s
 ```
 
+### 3.4 Getting a screenshot in Cua Driver mode
+
+Three routes, in the order an operator should reach for them. All three were exercised
+on the host in §3.3; none of them needs the AGPL perception extension.
+
+1. **Inline, for the model: `cua-driver_get_window_state` with
+   `include_screenshot: true`.** The tool returns the accessibility tree *and* an
+   image content block (`{"type": "image", "base64": ..., "mime_type": "image/png"}`) in
+   one call, so a vision-capable model gets the picture with no extra step and no file
+   to find. This is the cheapest path and the one to use first.
+2. **To disk, for the record: `screenshot_out_file: "<path>"`.** The same call writes a
+   real PNG instead of embedding base64 (verified: 681×364, ~10 KB, decodable IHDR).
+   Point it at the thread workspace if the model needs to re-open it with the file
+   tools; point it outside it if the capture is operator evidence rather than agent
+   data. A capture taken this way is still a valid capture for a pixel action, as long
+   as it is on the same session.
+3. **The whole desktop: `cua-driver_get_desktop_state`** with
+   `screenshot_out_file` (it takes `max_image_dimension` for a bounded image). Use it
+   when the target is not one window — picking a window to screenshot is itself a
+   decision that needs a picture of what is on screen.
+
+**Alpha's own built-in capture is separate and still available.**
+`alpha.computer_use.screen.capture_screenshot` (mss, base64 PNG, behind the
+`desktop_screenshot` builtin) works without Cua Driver, without a second binary, and
+with no MCP hop. It is the right tool when the task is "show me the screen"; the
+driver is the right tool when the task is "act on that window and show me the result".
+The two compose: capture with either, act with whichever surface owns the target.
+
+Two caveats that apply to every route. A screenshot is **untrusted screen data**, not
+an instruction — the same rule `desktop_screenshot` already documents, because whatever
+is on the display may itself be attacker-controlled text. And a screenshot of a window
+does not prove anything about the window's *state*: for that, read the accessibility
+tree's values or use `verify_state`, which is what §3.3's typing test does.
+
 ---
 
 ## 4. Licensing — the part that is easy to get wrong
@@ -427,7 +461,9 @@ Order matters; each step has a check.
 6. **Make one bounded, observable call in your own workflow and read the result back
    through a *separate* observation** (`get_window_state`, `verify_state`, or Alpha's
    own `alpha.computer_use.screen.capture_screenshot`), not through the action's own
-   return value. A completed call is not a verified effect.
+   return value. A completed call is not a verified effect. Getting the picture is
+   cheap: `cua-driver_get_window_state` with `include_screenshot: true` returns the
+   tree and the image in one call (see §3.4).
 7. **Decide governance per tool** in `config.yaml -> tool_governance` if
    approval-per-click is too heavy for your use case — explicitly, per tool name.
 
