@@ -20,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import os
 import sys
 import traceback
+from pathlib import Path
 
 #: How many history rows travel back. browser-use's own step log can be long;
 #: the caller needs the shape of what happened, not a transcript.
@@ -81,8 +83,16 @@ def _browser_use_version() -> str | None:
         return None
 
 
-# LiteLLM requires a provider-qualified model id. Alpha stores provider-side
-# model slugs, so derive LiteLLM's prefix from the configured endpoint.
+#: LiteLLM routes on a ``provider/model`` id. Alpha's ``models[].model`` is the
+#: bare provider-side slug (``unbiased/pareto``), which LiteLLM rejects with
+#: "LLM Provider NOT provided" — a failure that only appears once the agent is
+#: already mid-task, repeated on every single step.
+#:
+#: So the prefix is derived from the endpoint host. Note this is a *different*
+#: namespace from the OpenRouter API slug: ``unbiased/pareto`` is correct for the
+#: HTTP API and ``openrouter/unbiased/pareto`` is correct for LiteLLM. Do not
+#: "fix" the config to carry the prefix — that would break the ordinary
+#: ChatOpenAI path this repo's baseline model uses.
 _LITELLM_PROVIDER_BY_HOST: dict[str, str] = {
     "openrouter.ai": "openrouter",
     "api.anthropic.com": "anthropic",
@@ -96,6 +106,9 @@ _LITELLM_PROVIDER_BY_HOST: dict[str, str] = {
     "api.cerebras.ai": "cerebras",
 }
 
+#: Prefixes LiteLLM already understands. A model whose first segment is one of
+#: these passes through untouched, so an operator who declared a
+#: provider-qualified id is never double-prefixed.
 _KNOWN_LITELLM_PROVIDERS: frozenset[str] = frozenset(
     {
         "openrouter",
@@ -120,7 +133,7 @@ _KNOWN_LITELLM_PROVIDERS: frozenset[str] = frozenset(
 
 
 def _litellm_model_id(model: str, base_url: str | None) -> str:
-    """Return the provider/model form expected by LiteLLM."""
+    """Return ``model`` in the ``provider/model`` form LiteLLM requires."""
     if model.split("/", 1)[0].lower() in _KNOWN_LITELLM_PROVIDERS:
         return model
     host = ""
@@ -163,15 +176,29 @@ def _build_llm(spec: dict) -> object:
 
 
 def _try_native_llm(spec: dict, model: str) -> object | None:
-    """browser-use's own adapter, or ``None`` to fall back to the declared class."""
+    """browser-use's own adapter, or ``None`` to fall back to the declared class.
+
+    Every failure path is logged with its reason. A silent ``None`` here is what
+    made a real failure unreadable: the adapter was unavailable, the run fell
+    back to the operator's declared class, and the only thing surfaced was that
+    fallback's ImportError — pointing at a package that was never the problem.
+    """
     try:
         from browser_use.llm.litellm.chat import ChatLiteLLM
-    except ImportError:
+    except Exception as exc:  # noqa: BLE001 - any import failure means "unavailable"
+        print(f"[browser-use runner] native ChatLiteLLM unavailable ({type(exc).__name__}: {exc}); using the configured model class instead", file=sys.stderr)
         return None
 
     kwargs: dict = {"model": _litellm_model_id(model, spec.get("base_url"))}
     if spec.get("api_key"):
         kwargs["api_key"] = spec["api_key"]
+    else:
+        # LiteLLM's OpenAI-compatible provider refuses to build a client without
+        # an api_key ("The api_key client option must be set...") even when the
+        # endpoint is keyless and ignores the value. Several gateways Alpha lists
+        # as free are exactly that, so a placeholder is passed rather than failing
+        # a call the endpoint would have accepted. It is not a credential.
+        kwargs["api_key"] = "not-required"
     if spec.get("base_url"):
         # Same endpoint, different parameter name on this adapter.
         kwargs["api_base"] = spec["base_url"]
@@ -229,7 +256,7 @@ def _build_agent(**kwargs):
     """
     from browser_use import Agent
 
-    optional = [key for key in ("use_vision", "headless") if key in kwargs]
+    optional = [key for key in ("use_vision", "headless", "use_judge", "judge_llm", "ground_truth") if key in kwargs]
     attempt = dict(kwargs)
     while True:
         try:
@@ -337,6 +364,47 @@ def _safe_call(obj: object, attr: str) -> object | None:
         return None
 
 
+def _screenshot_paths(result: object, scratch_dir: str) -> list[str]:
+    """Write browser-use's captured screenshots to disk and return their paths.
+
+    Returns absolute paths under the run's scratch directory. ``use_vision`` is
+    what makes browser-use capture a frame per step, so with vision off this is
+    legitimately empty — a caller that wants visual evidence asks for a
+    vision-enabled run rather than getting nothing silently.
+    """
+    shots = _safe_call(result, "screenshots") or []
+    if not isinstance(shots, list) or not shots:
+        return []
+
+    out_dir = Path(scratch_dir) / "screenshots"
+    written: list[str] = []
+    for index, encoded in enumerate(shots):
+        if not isinstance(encoded, str) or not encoded.strip():
+            continue
+        target = out_dir / f"step-{index:03d}.png"
+        if _write_screenshot(target, encoded):
+            written.append(str(target))
+    return written
+
+
+def _write_screenshot(path: Path, b64: str) -> bool:
+    """Decode one base64 PNG to disk. A single bad frame must not lose the rest."""
+    import base64
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = base64.b64decode(b64.split(",", 1)[-1], validate=False)
+    except Exception:  # noqa: BLE001 - a cosmetic artifact must not fail the run
+        return False
+    if not data.startswith(b"\x89PNG"):
+        return False
+    try:
+        path.write_bytes(data)
+    except OSError:
+        return False
+    return True
+
+
 async def _run_agent(payload: dict) -> dict:
     llm = _build_llm(payload.get("llm") or {})
 
@@ -352,6 +420,14 @@ async def _run_agent(payload: dict) -> dict:
         llm=llm,
         use_vision=bool(payload.get("use_vision", False)),
         headless=bool(payload.get("headless", True)),
+        # Optional verification, driven by the operator. browser-use's own judge
+        # re-checks the run against a declared ground truth and reports the
+        # reason when it disagrees — which is how a real run was caught claiming
+        # example.com had no <h1> when it plainly did. Without it the agent's own
+        # "success" is the only verdict available.
+        use_judge=bool(payload.get("verify")),
+        judge_llm=_maybe_build_judge(payload),
+        ground_truth=payload.get("ground_truth") or None,
     )
 
     max_steps = int(payload.get("max_steps") or 10)
@@ -366,12 +442,19 @@ async def _run_agent(payload: dict) -> dict:
     # turns that into "did not complete: <the actual reason>".
     completed = bool(_safe_call(result, "is_done"))
     errors = [str(err) for err in (_safe_call(result, "errors") or []) if err]
+    # The judge's verdict, when one was requested. `success` is the agent's own
+    # claim and is deliberately kept separate from `judgement` — the judge exists
+    # precisely because they can disagree.
+    judgement = _safe_call(result, "judgement")
+    if not isinstance(judgement, dict):
+        judgement = None
 
     # ``number_of_steps`` is public on AgentHistoryList and counts real steps;
     # the summarized rows are capped, so they are not a reliable step count.
     steps = _safe_call(result, "number_of_steps")
     if not isinstance(steps, int):
         steps = len(history)
+    shots = _screenshot_paths(result, os.getcwd())
     return {
         "ok": True,
         "completed": completed,
@@ -379,10 +462,30 @@ async def _run_agent(payload: dict) -> dict:
         "result": _as_text(result),
         "steps": steps,
         "history": history,
+        "screenshots": shots,
+        "judgement": judgement,
         "version": _browser_use_version(),
         "error": None,
         "timed_out": False,
     }
+
+
+def _maybe_build_judge(payload: dict) -> object | None:
+    """Build the judge model only when verification was asked for.
+
+    The judge defaults to the driving model: the point of a separate judge is a
+    second opinion on the same evidence, not a different model.
+    """
+    if not payload.get("verify"):
+        return None
+    judge_spec = payload.get("judge_llm") or payload.get("llm")
+    if not judge_spec:
+        return None
+    try:
+        return _build_llm(judge_spec)
+    except Exception as exc:  # noqa: BLE001 - verification must not sink the task
+        print(f"[browser-use runner] judge unavailable, running unverified: {exc}", file=sys.stderr)
+        return None
 
 
 def main() -> int:

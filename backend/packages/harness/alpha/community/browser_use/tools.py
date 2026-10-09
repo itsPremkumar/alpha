@@ -30,6 +30,8 @@ detailed trajectory is not the deliverable.
 
 import asyncio
 import logging
+import shutil
+from pathlib import Path
 from typing import Annotated, Any
 
 from langchain.tools import InjectedToolCallId, tool
@@ -39,6 +41,7 @@ from langgraph.types import Command
 from alpha.community.url_safety import resolve_host_addresses as _resolve_host_addresses
 from alpha.community.url_safety import validate_public_http_url
 from alpha.config import get_app_config
+from alpha.config.paths import VIRTUAL_PATH_PREFIX
 from alpha.tools.types import Runtime
 
 from .manager import (
@@ -56,6 +59,17 @@ from .manager import (
 )
 
 logger = logging.getLogger(__name__)
+
+_OUTPUTS_VIRTUAL_PREFIX = f"{VIRTUAL_PATH_PREFIX}/outputs"
+#: Sub-directory of the thread outputs holding browser-use's captured frames. A
+#: dedicated name keeps them out of the user's own file listing while still being
+#: openable as artifacts.
+_SCREENSHOT_DIRNAME = "browser-use"
+#: How many of the run's frames are published into the thread outputs. Three is
+#: enough to show the final state without burying the user's own files; a run
+#: captures one per step, and most steps are intermediate.
+_DEFAULT_PUBLISHED_SCREENSHOTS = 3
+_MAX_PUBLISHED_SCREENSHOTS = 10
 
 
 def _get_tool_config(tool_name: str) -> dict[str, Any]:
@@ -110,6 +124,86 @@ def _truncate(text: str, limit: int = MAX_RESULT_CHARS) -> str:
     if len(text) <= limit:
         return text
     return f"{text[:limit]}\n\n[truncated: {len(text) - limit} more characters not shown]"
+
+
+def _thread_outputs_path(runtime: Runtime) -> Path | str:
+    """The thread's outputs directory, or an ``"Error: ..."`` string.
+
+    Mirrors :func:`alpha.community.browser_automation.tools._thread_outputs_path`
+    so a browser-use frame lands in exactly the place the rest of the app reads
+    thread outputs from, rather than in a second location the UI never looks at.
+    """
+    if runtime.state is None:
+        return "Error: Thread runtime state is not available"
+    thread_data = runtime.state.get("thread_data") or {}
+    outputs_path = thread_data.get("outputs_path")
+    if not outputs_path:
+        return "Error: Thread outputs path is not available"
+    return Path(outputs_path)
+
+
+def _publish_screenshots(runtime: Runtime, envelope: dict[str, Any], *, limit: int = 3) -> list[dict[str, Any]]:
+    """Copy the run's captured frames into the thread's outputs directory.
+
+    This is what makes a browser-use screenshot *viewable* inside Alpha rather
+    than an internal file of the subprocess: the frames live in the managed
+    venv's scratch dir, which the user cannot reach. Copying the newest few into
+    the thread outputs and returning their virtual paths lets them open in the
+    artifacts panel and render as an inline chat thumbnail, the same way the
+    stateful ``browser_*`` tools already do.
+
+    Returns a list of ``{"virtual", "path", "url"}`` dicts (newest last), or an
+    empty list when there is nothing to publish. A copy failure is never fatal to
+    the browse result — losing the picture of a successful page is not the same as
+    losing the page.
+    """
+    paths = [str(path) for path in envelope.get("screenshots") or [] if path]
+    if not paths:
+        return []
+
+    outputs_path = _thread_outputs_path(runtime)
+    if isinstance(outputs_path, str):
+        logger.warning("browser_use_run could not publish screenshots: %s", outputs_path)
+        return []
+
+    target_dir = outputs_path / _SCREENSHOT_DIRNAME
+    published: list[dict[str, Any]] = []
+    for source in paths[-limit:]:
+        source_path = Path(source)
+        try:
+            if not source_path.is_file():
+                continue
+            target = target_dir / source_path.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, target)
+            published.append({"virtual": f"{_OUTPUTS_VIRTUAL_PREFIX}/{_SCREENSHOT_DIRNAME}/{target.name}", "path": str(target)})
+        except OSError as e:
+            logger.warning(f"browser_use_run could not publish {source}: {e}")
+    return published
+
+
+def _resolve_and_check_spec(model: str | None) -> dict[str, Any]:
+    """Resolve the driving model, refusing the ones the venv cannot import.
+
+    ``alpha.models.free_router:ChatFreeLLM`` is the shipped default model, and the
+    managed venv can never import an ``alpha.*`` class — by design it holds only
+    browser-use, not the harness. Left unchecked, that produced the most
+    misleading failure this integration can have: every run treated the resulting
+    ImportError as a broken install, reinstalled browser-use from scratch, and
+    finally timed out after minutes reporting an *install* problem when nothing
+    was wrong with the install. The model class is therefore checked here, before
+    any browser work, and an unusable one names what to pass instead.
+    """
+    spec = resolve_llm_spec(model)
+
+    module_path = str(spec.get("use") or "").partition(":")[0]
+    if module_path.startswith("alpha."):
+        raise BrowserUseError(
+            f"Model {model or 'the configured default_model'} uses {spec.get('use')!r}, an Alpha-internal class the "
+            f"browser-use venv cannot import (it contains browser-use, not the harness). "
+            f"Pass `model` naming a provider-backed entry from config.yaml models[] instead, e.g. model='union-alpha'."
+        )
+    return spec
 
 
 def _render_status(status: BrowserUseStatus, *, log: tuple[str, ...] = ()) -> str:
@@ -174,6 +268,8 @@ async def browser_use_run_tool(
     model: str | None = None,
     start_url: str | None = None,
     max_steps: int | None = None,
+    verify: bool = False,
+    ground_truth: str | None = None,
 ) -> Command:
     """Delegate one complete web task to the autonomous browser-use agent.
 
@@ -192,11 +288,20 @@ async def browser_use_run_tool(
     budget, so a stuck or failing page cannot hang the session. Its final answer
     is what you get back, plus the URLs it visited and how many steps it took.
 
+    When you want an automatic check, set verify=True and describe what a correct
+    answer contains in ground_truth — a second model call then judges the run and
+    reports PASS/FAIL independently, so a confident wrong answer is not reported
+    as success. Screenshots of the browsed pages are captured automatically and
+    attached to the thread, so you and the user can look at the actual page
+    rather than only reading the agent's summary.
+
     Args:
         task: What you want accomplished on the web, in plain language, including any target site and the exact output you need.
         model: Optional model name from config.yaml to drive browser-use. Defaults to the configured default model.
         start_url: Optional URL to open first, instead of leaving the starting point to browser-use.
         max_steps: Optional step budget (default 10, max 50). Use it when you know the task is short; leave it unset otherwise.
+        verify: Set true to have the result judged against `ground_truth` by an independent check. Costs one extra model call.
+        ground_truth: What a correct answer must contain — one sentence the judge checks the run against, e.g. "the page title is 'Python (programming language)' and Python was first released in 1991". Used only when verify is true.
     """
     cfg = _get_tool_config("browser_use_run")
 
@@ -230,8 +335,29 @@ async def browser_use_run_tool(
         if url_error:
             return _tool_message(f"Error: start_url rejected by the URL policy. {url_error}", tool_call_id)
 
+    # Verification needs a usable ground truth. browser-use types this as a plain
+    # string, and a dict produced a `ValidationError` from inside the subprocess
+    # after the browser had already launched — so the shape is checked here, where
+    # the correction can actually be read.
+    if verify and not (isinstance(ground_truth, str) and ground_truth.strip()):
+        return _tool_message(
+            "Error: verify=True needs ground_truth as a plain sentence describing what a correct answer must contain, e.g. ground_truth=\"the page title is 'Example Domain'\".",
+            tool_call_id,
+        )
+
     manager = get_browser_use_manager(_as_str(cfg.get("venv_path")))
     auto_install = _as_bool(cfg.get("auto_install"), True)
+
+    # Resolve the driving model FIRST — before any install or browser work. An
+    # unusable model class (the shipped `alpha-free` default) used to be
+    # discovered only inside the subprocess, where the resulting ImportError was
+    # misread as a broken install and triggered a reinstall that times out.
+    resolved_model = _as_str(model) or _as_str(cfg.get("default_model"))
+    try:
+        llm_spec = await asyncio.to_thread(_resolve_and_check_spec, resolved_model)
+    except BrowserUseError as e:
+        logger.error(f"browser_use_run has no usable driving model: {e}")
+        return _tool_message(f"Error: browser-use has no usable model to drive it: {e}", tool_call_id)
 
     try:
         # Config resolution stats the config file on every call, so it — like the
@@ -248,7 +374,6 @@ async def browser_use_run_tool(
                 extra_packages=_extra_packages(cfg),
             )
 
-        llm_spec = await asyncio.to_thread(resolve_llm_spec, model)
         envelope = await asyncio.to_thread(
             manager.run,
             task=cleaned_task,
@@ -257,7 +382,16 @@ async def browser_use_run_tool(
             max_steps=resolved_steps,
             timeout_seconds=timeout_seconds,
             headless=_as_bool(cfg.get("headless"), True),
-            use_vision=_as_bool(cfg.get("use_vision"), False),
+            # Vision on by default, and not only for accuracy: vision is what
+            # makes browser-use capture a per-step screenshot. With it off the
+            # run is cheaper but leaves no visual evidence, so "verify by looking
+            # at the screenshot" would silently have nothing to look at.
+            use_vision=_as_bool(cfg.get("use_vision"), True),
+            # Built-in verification: browser-use's judge re-checks the run
+            # against what the answer should contain. It costs an extra model
+            # call, so it stays opt-in per run.
+            verify=verify,
+            ground_truth=ground_truth or None,
         )
     except BrowserUseError as e:
         logger.error(f"browser_use_run could not run: {e}")
@@ -266,7 +400,26 @@ async def browser_use_run_tool(
         logger.error(f"browser_use_run unexpected failure: {e}")
         return _tool_message(f"Error: browser-use run failed: {e}", tool_call_id)
 
-    return _tool_message(_render_envelope(envelope, version=None, model=model), tool_call_id)
+    text = _render_envelope(envelope, version=None, model=model)
+
+    # Publish the captured frames into the thread outputs so they open in the
+    # artifacts panel and render inline. Off the event loop: this is file I/O.
+    publish_limit = max(1, min(_as_int(cfg.get("saved_screenshots"), _DEFAULT_PUBLISHED_SCREENSHOTS), _MAX_PUBLISHED_SCREENSHOTS))
+    published = await asyncio.to_thread(_publish_screenshots, runtime, envelope, limit=publish_limit)
+    if not published:
+        return _tool_message(text, tool_call_id)
+
+    newest = published[-1]
+    virtual_list = ", ".join(item["virtual"] for item in published)
+    text += f"\n\nCaptured page screenshot(s), openable in this thread: {virtual_list}"
+    if len(published) > 1:
+        text += f"\n(Newest last — {newest['virtual']} is the final page state.)"
+
+    update: dict[str, Any] = {
+        "messages": [ToolMessage(text, tool_call_id=tool_call_id, additional_kwargs={"browser_view": {"screenshot": newest["virtual"]}})],
+        "artifacts": [item["virtual"] for item in published],
+    }
+    return Command(update=update)
 
 
 def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: str | None) -> str:
@@ -317,7 +470,43 @@ def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: st
         unique = list(dict.fromkeys(urls))[-10:]
         visited = "\n\nPages visited: " + ", ".join(unique)
 
-    return f"{header} completed.\n\n{body}{visited}"
+    # The judge's verdict, when one ran. It is reported as its own line, never
+    # folded into the answer, because "the agent thinks it finished" and "an
+    # independent check agrees" are different facts — and a real run was caught
+    # disagreeing, which is the entire reason the judge is invoked.
+    judgement = envelope.get("judgement")
+    verdict = ""
+    if isinstance(judgement, dict) and judgement:
+        # browser-use reports the judge outcome as `verdict` (bool) with `reasoning`,
+        # plus `failure_reason` / `impossible_task` / `reached_captcha`. `passed` is
+        # kept as a fallback for other versions. Reading only `passed` - which a real
+        # 0.13.11 run proved it does - reports 'inconclusive' for every genuine
+        # verdict, which is worse than useless: it silently hides a real PASS.
+        passed = judgement.get("verdict", judgement.get("passed"))
+        reason = str(judgement.get("failure_reason") or judgement.get("reasoning") or "").strip()
+        if passed is True:
+            verdict = "\n\nIndependent check (judge): PASS — the answer was verified as correct."
+        elif passed is False:
+            verdict = "\n\nIndependent check (judge): FAIL — the answer may be wrong; do not rely on it."
+            if judgement.get("impossible_task"):
+                verdict += "\n  The judge considered the task impossible as phrased."
+            if judgement.get("reached_captcha"):
+                verdict += "\n  The page presented a CAPTCHA, which the judge treats as unreachable."
+        else:
+            verdict = "\n\nIndependent check (judge): inconclusive."
+        if reason:
+            verdict += f"\n  {'why it failed' if passed is False else 'reasoning'}: {reason[:500]}"
+
+    # Visual evidence, when the run captured it. browser-use only records a frame
+    # per step when vision is enabled, so an empty list is a legitimate outcome of
+    # a vision-off run — stated as such, never silently read as "no trace".
+    shots = [str(path) for path in envelope.get("screenshots") or [] if path]
+    if shots:
+        visual = f"\n\nScreenshots captured ({len(shots)}); the ones you can open are attached as artifacts and the final page state renders inline in the chat."
+    else:
+        visual = "\n\nNo screenshots were captured (vision is off on this tool), so there is no picture of the page to check."
+
+    return f"{header} completed.\n\n{body}{visited}{verdict}{visual}"
 
 
 # Governance declarations (see ``alpha.tools.governance``). These are not

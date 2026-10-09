@@ -2051,7 +2051,28 @@ tools:
   #   max_steps: 10                     # default step budget (model may request up to 50)
   #   timeout_seconds: 300              # whole-run wall clock (max 900)
   #   headless: true                    # false opens a visible browser (local/trusted only)
-  #   use_vision: false                 # true = screenshots per step; pricier, but reads canvas/maps
+  #   # Vision ON by default: it improves the agent's own reading of the page.
+  #   # The newest frames are published into this thread's outputs automatically,
+  #   # so they open in the artifacts panel and render inline in the chat — no
+  #   # separate screenshot call needed.
+  #   #
+  #   # Set use_vision: false if your model endpoint rejects image uploads (many
+  #   # free/keyless gateways do, with "image uploads are disabled"). browser-use
+  #   # still captures and publishes the screenshots in that mode — it just cannot
+  #   # look at them itself, so it costs the agent's visual reasoning, not your
+  #   # ability to see the page.
+  #   use_vision: true
+  #   # saved_screenshots: 3            # how many frames to publish (newest last)
+  #   # default_model: union-alpha      # a provider-backed models[] entry to drive the agent.
+  #   #                                 # REQUIRED in practice: the shipped default_model is
+  #   #                                 # alpha-free, whose alpha.* class the isolated venv
+  #   #                                 # cannot import, so runs fail with a clear message
+  #   #                                 # until you name one here or pass model=.
+  #   #
+  #   # Verification: the agent passing `verify=True` with a `ground_truth` mapping
+  #   # turns on browser-use's own judge, which re-checks the answer with a second
+  #   # model call and reports PASS/FAIL plus its reason. Use it when a wrong answer
+  #   # would be expensive — the agent saying "done" is not evidence.
   #   # venv_path: .alpha/browser-use   # managed venv location (default: runtime home)
   #   # allow_private_addresses: false  # SSRF guard for start_url; keep false in production
 

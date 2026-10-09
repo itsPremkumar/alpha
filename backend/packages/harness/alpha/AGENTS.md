@@ -71,6 +71,24 @@ records what a successful install did, but it can outlive a deleted package
 directory, so a marker that says `installed` while the import fails is exactly the
 fabricated status this repo keeps rejecting elsewhere. `BrowserUseStatus.installed`
 follows the probe; the marker only supplies `installed_at` for display.
+- **Readiness uses distribution metadata, never an import — for `litellm` this is not
+  a nicety.** `import litellm` was **measured at 127 seconds** on a loaded Windows
+  host. An import-based readiness probe with a 120s budget therefore reported a
+  perfectly good install as *missing*, and because "missing" drives a reinstall,
+  **every single call then paid a full `pip install`** until it hit the 900s ceiling.
+  `probe_distribution()` reads `importlib.metadata.version()` instead: instant, and
+  authoritative that the package is installed *in that venv*. It deliberately does not
+  prove the package *loads* — that is left to the run, which reports a real traceback
+  if the install is broken, rather than being pre-empted by a probe slow enough to
+  misreport a healthy install as absent. The lesson generalises: **a probe that can
+  time out must never gate a mutation**, because "unknown" silently becomes "absent"
+  and the mutation here is a destructive reinstall.
+- **A silent fallback is a missing diagnosis.** `_try_native_llm` logs *why*
+  browser-use's own provider adapter was unavailable before falling back to the
+  operator's declared class. Returning `None` silently meant the only thing a run
+  surfaced was the *fallback's* ImportError — naming `langchain_openai`, a package
+  that was never the actual problem — which sent diagnosis after the wrong dependency
+  for several rounds.
 
 **Every failure is data, and the two kinds stay distinguishable.** A task browser-use
 could not finish and a subprocess that died both arrive as `ok: false` with a reason,
@@ -81,6 +99,24 @@ successful run with an empty result reports "finished without producing any text
 instead of reading as an answer. The API key crosses to the child inside the request
 payload and is redacted from every returned error (`redact_secrets`); never echo an
 LLM spec back into a result or a log line.
+
+**A completed run is never a verified run.** `completed` is browser-use's own
+`is_done`, and on top of it the tool exposes the library's judge: `verify=True` plus
+a `ground_truth` mapping re-checks the answer with a second model call and reports
+PASS/FAIL with its reason, appended to the tool text as its own line. A real run was
+caught this way claiming example.com had no `<h1>` when it plainly did — the agent's
+confidence is not evidence, and a judge that disagrees must never be dropped for being
+inconvenient. The judge defaults to the driving model (a second opinion on the same
+evidence) and costs an extra call, so it is opt-in per run.
+
+**Screenshots are the visual evidence, and they must be reachable by the user.** Vision
+is on by default precisely because it is what makes browser-use frame each step. Those
+frames land in the managed venv's scratch dir, which the user cannot open, so they are
+copied into the thread's outputs as artifacts with the same
+`additional_kwargs.browser_view` inline thumbnail the stateful `browser_*` tools use —
+that copy is what turns "we captured a screenshot" into "the user can see the page". A
+missing outputs path is logged and skipped rather than failing a successful browse;
+losing the picture of a page is not the same as losing the page.
 
 Governance is declared, not implied: `browser_use_setup` is `execute`/`ask` (it
 installs a package — filesystem, network, third-party setup code) and
