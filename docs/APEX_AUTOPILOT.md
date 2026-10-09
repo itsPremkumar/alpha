@@ -178,8 +178,10 @@ runtime ceiling, and an atomic durable tool-call budget reservation. Tools that
 need approval park the session; an approval is bound to the tool name, action
 class, contract digest, and a digest of its exact arguments, and can be consumed
 once. Ordinary runs without the server-stamped APEX id keep their existing
-policy path. The session store is process-local JSON, so this budget is not a
-cross-process exactly-once guarantee.
+policy path. Session mutations reload under a cross-process lock when Gateway
+workers share the same local runtime filesystem. This does not make the budget
+a distributed exactly-once guarantee across hosts or filesystems without working
+advisory locks.
 
 The Gateway host adapter admits one objective run through the existing
 `start_run()` service and `RunManager`. `POST /api/apex/sessions/{id}/dispatch`
@@ -622,10 +624,11 @@ Read these before treating a green status as a working system.
   `/apex/disable` the panel does and then re-reads; it creates no session, sends
   no message and starts no run. Reading it as "this chat is now autonomous" is
   the failure the in-menu disclosure exists to stop.
-- **JSON/JSONL state is process-local.** `sessions.json` and `events.jsonl` are
-  atomic and restart-recoverable for one Gateway. They are not a shared
-  multi-worker store and not cross-process exactly-once — the same statement
-  `runtime/AGENTS.md` makes for swarms, dynamic workflows and the peer network.
+- **JSON/JSONL state is local-filesystem state.** `sessions.json` mutations and
+  `events.jsonl` appends serialize across workers sharing a lock-respecting local
+  runtime directory, and remain restart-recoverable. This does not provide a
+  distributed transaction or cross-host exactly-once execution; those still
+  require a shared transactional backend.
 - **A dropped SSE event is disclosed, never silently eaten.** A live subscriber
   whose queue fills gets an `event: gap` frame carrying how many events were
   dropped and how to recover them (re-read the journal from `after_seq`). A

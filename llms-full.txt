@@ -216,7 +216,8 @@ the per-session active-agent count.
 `POST /api/apex/sessions/{id}/dispatch` drives one session; the
 background `apex` loop remains opt-in under `config.yaml -> autonomy.loops.apex`.
 A completed run is only `awaiting_verification` until its owner submits measured
-acceptance evidence. Session JSON locking is process-local, CPU/RAM budgets and
+acceptance evidence. Session JSON mutations serialize across workers sharing a
+local runtime directory; this is not cross-host exactly-once. CPU/RAM budgets and
 resource telemetry are not yet part of the APEX ledger, and RunManager errors or
 interruptions remain parked for operator action. See
 [the APEX operating guide](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md).

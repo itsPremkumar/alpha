@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -18,6 +19,69 @@ def store(tmp_path: Path) -> ApexStore:
 
 def _session(store: ApexStore):
     return store.create(owner="operator", objective="finish the job", profile="autonomous", contract_digest="contract")
+
+
+def _create_session_concurrently(storage_path: str, barrier: object, worker_id: int) -> None:
+    store = ApexStore(storage_path)
+    barrier.wait(timeout=20)
+    store.create(
+        owner=f"worker-{worker_id}",
+        objective="retain concurrent worker update",
+        profile="autonomous",
+        contract_digest="contract",
+    )
+
+
+def _emit_event_concurrently(storage_path: str, session_id: str, barrier: object, worker_id: int) -> None:
+    store = ApexStore(storage_path)
+    barrier.wait(timeout=20)
+    store.emit(session_id, "worker.event", worker_id=worker_id)
+
+
+def test_separate_store_instances_refresh_session_changes(store: ApexStore) -> None:
+    other = ApexStore(store.storage_path)
+    session = _session(store)
+
+    observed = other.get(session.session_id)
+    assert observed is not None
+    assert observed.objective == "finish the job"
+
+    other.update(session.session_id, objective="changed by another worker")
+    assert store.get(session.session_id).objective == "changed by another worker"
+
+
+@pytest.mark.parametrize("worker", ["create", "event"])
+def test_apex_json_and_journal_updates_serialize_across_processes(tmp_path: Path, worker: str) -> None:
+    storage_path = tmp_path / "sessions.json"
+    store = ApexStore(storage_path)
+    session = _session(store)
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(2)
+    target = _create_session_concurrently if worker == "create" else _emit_event_concurrently
+    if worker == "create":
+        args = [(str(storage_path), barrier, worker_id) for worker_id in (1, 2)]
+    else:
+        args = [(str(storage_path), session.session_id, barrier, worker_id) for worker_id in (1, 2)]
+    processes = [context.Process(target=target, args=worker_args) for worker_args in args]
+    try:
+        for process in processes:
+            process.start()
+        for process in processes:
+            process.join(timeout=30)
+        assert all(not process.is_alive() for process in processes), "APEX process lock did not release"
+        assert [process.exitcode for process in processes] == [0, 0]
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+
+    restarted = ApexStore(storage_path)
+    if worker == "create":
+        assert {row.owner for row in restarted.list(limit=10)} == {"operator", "worker-1", "worker-2"}
+    else:
+        seqs = [event.seq for event in restarted.read_events(session.session_id)]
+        assert seqs == [1, 2, 3]
 
 
 @pytest.mark.parametrize("operation", ["create", "update", "pause", "constraint", "request", "approve", "reject", "delete"])

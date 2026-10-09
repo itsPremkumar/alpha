@@ -40,6 +40,42 @@ from typing import Any
 from alpha.mission.lifecycle import MissionEvent, MissionEventFeed
 
 logger = logging.getLogger(__name__)
+_CROSS_PROCESS_LOCKS: dict[str, threading.Lock] = {}
+_CROSS_PROCESS_LOCKS_GUARD = threading.Lock()
+
+
+@contextmanager
+def _cross_process_file_lock(target: Path) -> Iterator[None]:
+    """Serialize a local JSON/JSONL read-modify-write cycle across workers."""
+    target = Path(target).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = target.parent / f".{target.name}.lock"
+    lock_key = str(lock_path)
+    with _CROSS_PROCESS_LOCKS_GUARD:
+        local_lock = _CROSS_PROCESS_LOCKS.setdefault(lock_key, threading.Lock())
+    with local_lock, lock_path.open("a+b") as handle:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
 
 __all__ = [
     "APEX_EVENTS",
@@ -409,6 +445,43 @@ class ApexStore:
             APEX_EVENTS.publish(event)
             APEX_EVENTS.adopt_seq(event.mission_id, event.seq)
 
+    def _refresh_rows_from_disk(self) -> None:
+        """Refresh the cache while the session file's process lock is held.
+
+        Preserve row identities so callers holding a session reference see
+        updates made by another Gateway worker instead of a detached snapshot.
+        """
+        if not self.storage_path.exists():
+            self._rows = {}
+            self._load_error = None
+            return
+        try:
+            raw = json.loads(self.storage_path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict) or not isinstance(raw.get("sessions", []), list):
+                raise ValueError("APEX session snapshot has an invalid shape")
+            loaded = {session.session_id: session for session in (ApexSession.from_dict(item) for item in raw.get("sessions", []))}
+            refreshed: dict[str, ApexSession] = {}
+            for session_id, current in loaded.items():
+                existing = self._rows.get(session_id)
+                if existing is None:
+                    refreshed[session_id] = current
+                else:
+                    # Event append updates this field after the JSON snapshot
+                    # is written. Do not let that older snapshot rewind the
+                    # live object during a later transaction/read.
+                    current.last_event_seq = max(current.last_event_seq, existing.last_event_seq)
+                    existing.__dict__.clear()
+                    existing.__dict__.update(current.__dict__)
+                    refreshed[session_id] = existing
+            self._rows = refreshed
+            self._load_error = None
+        except Exception as exc:
+            self._load_error = f"{type(exc).__name__}: {exc}"
+            logger.error("APEX session refresh failed: %s", self._load_error, exc_info=True)
+            # Keep the last readable cache available to status/list callers.
+            # Mutations still fail closed in _transaction while degraded.
+            return
+
     def _save(self) -> bool:
         """Persist the row set. Returns whether the write actually landed."""
         try:
@@ -446,9 +519,11 @@ class ApexStore:
         Callers receive the actual session objects, so replacing the mapping
         alone would leave existing readers holding an uncommitted change.
         Restore those objects too, including nested usage and approval state.
-        This lock is process-local; it does not coordinate multiple Gateways.
+        The per-instance lock coordinates threads; the sidecar file lock and
+        refresh coordinate Gateway workers sharing this local runtime directory.
         """
-        with self._lock:
+        with self._lock, _cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
             if self.is_degraded:
                 raise ApexPersistenceError("APEX session store is unreadable; refusing to overwrite it")
             previous = dict(self._rows)
@@ -469,51 +544,70 @@ class ApexStore:
     # -- events --------------------------------------------------------------
 
     def emit(self, session_id: str, event_type: str, **payload: Any) -> ApexEvent:
-        """Journal one event, then fan it out."""
+        """Journal one cross-worker sequenced event, then fan it out locally."""
+        with _cross_process_file_lock(self.events_path):
+            last_seq = 0
+            if self.events_path.exists():
+                try:
+                    with self.events_path.open("r", encoding="utf-8") as journal:
+                        for line in journal:
+                            try:
+                                item = json.loads(line)
+                                if item.get("mission_id") == session_id:
+                                    last_seq = max(last_seq, int(item.get("seq", 0) or 0))
+                            except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
+                                continue
+                except OSError:
+                    last_seq = max((item.seq for item in APEX_EVENTS.history(session_id)), default=0)
+                    logger.error("APEX event journal could not be read before append", exc_info=True)
+            event = ApexEvent(
+                mission_id=session_id,
+                seq=last_seq + 1,
+                event_type=event_type,
+                payload=dict(payload),
+            )
+            event.payload.setdefault("durable", True)
+            try:
+                with self.events_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except Exception:
+                event.payload["durable"] = False
+                logger.error("APEX event journal append failed for %s", session_id, exc_info=True)
         with self._lock:
             session = self._rows.get(session_id)
             if session is not None:
-                session.last_event_seq = APEX_EVENTS.next_seq(session_id)
-        event = ApexEvent(
-            mission_id=session_id,
-            seq=APEX_EVENTS.next_seq(session_id),
-            event_type=event_type,
-            payload=dict(payload),
-        )
-        event.payload.setdefault("durable", True)
-        try:
-            self.events_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.events_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
-                handle.flush()
-        except Exception:
-            event.payload["durable"] = False
-            logger.error("APEX event journal append failed for %s", session_id, exc_info=True)
+                session.last_event_seq = event.seq
+        APEX_EVENTS.adopt_seq(session_id, event.seq)
         APEX_EVENTS.publish(event)
         return event
 
     def read_events(self, session_id: str | None = None, *, after_seq: int = 0) -> list[MissionEvent]:
         """Read the journal. A corrupt tail is reported by stopping there."""
-        if not self.events_path.exists():
-            return []
-        events: list[MissionEvent] = []
         try:
-            for line in self.events_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    event = MissionEvent.from_dict(json.loads(line))
-                except Exception:
-                    logger.error("APEX event journal corrupt at a line; stopping there", exc_info=True)
-                    break
-                if session_id and event.mission_id != session_id:
-                    continue
-                if event.seq <= after_seq:
-                    continue
-                events.append(event)
+            with _cross_process_file_lock(self.events_path):
+                if not self.events_path.exists():
+                    return []
+                journal_text = self.events_path.read_text(encoding="utf-8")
         except Exception:
             logger.error("APEX event journal read failed", exc_info=True)
+            return []
+        events: list[MissionEvent] = []
+        for line in journal_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = MissionEvent.from_dict(json.loads(line))
+            except Exception:
+                logger.error("APEX event journal corrupt at a line; stopping there", exc_info=True)
+                break
+            if session_id and event.mission_id != session_id:
+                continue
+            if event.seq <= after_seq:
+                continue
+            events.append(event)
         return events
 
     # -- sessions ------------------------------------------------------------
@@ -557,7 +651,8 @@ class ApexStore:
         return session
 
     def get(self, session_id: str) -> ApexSession | None:
-        with self._lock:
+        with self._lock, _cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
             return self._rows.get(session_id)
 
     def list(
@@ -568,7 +663,8 @@ class ApexStore:
         limit: int = 50,
         after: tuple[float, str] | None = None,
     ) -> list[ApexSession]:
-        with self._lock:
+        with self._lock, _cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
             rows = list(self._rows.values())
         if owner:
             rows = [s for s in rows if s.owner == owner]
