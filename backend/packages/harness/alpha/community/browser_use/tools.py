@@ -112,6 +112,30 @@ def _truncate(text: str, limit: int = MAX_RESULT_CHARS) -> str:
     return f"{text[:limit]}\n\n[truncated: {len(text) - limit} more characters not shown]"
 
 
+def _resolve_and_check_spec(model: str | None) -> dict[str, Any]:
+    """Resolve the driving model, refusing the ones the venv cannot import.
+
+    ``alpha.models.free_router:ChatFreeLLM`` is the shipped default model, and the
+    managed venv can never import an ``alpha.*`` class — by design it holds only
+    browser-use, not the harness. Left unchecked, that produced the most
+    misleading failure this integration can have: every run treated the resulting
+    ImportError as a broken install, reinstalled browser-use from scratch, and
+    finally timed out after minutes reporting an *install* problem when nothing
+    was wrong with the install. The model class is therefore checked here, before
+    any browser work, and an unusable one names what to pass instead.
+    """
+    spec = resolve_llm_spec(model)
+
+    module_path = str(spec.get("use") or "").partition(":")[0]
+    if module_path.startswith("alpha."):
+        raise BrowserUseError(
+            f"Model {model or 'the configured default_model'} uses {spec.get('use')!r}, an Alpha-internal class the "
+            f"browser-use venv cannot import (it contains browser-use, not the harness). "
+            f"Pass `model` naming a provider-backed entry from config.yaml models[] instead, e.g. model='union-alpha'."
+        )
+    return spec
+
+
 def _render_status(status: BrowserUseStatus, *, log: tuple[str, ...] = ()) -> str:
     lines = [status.summary()]
     if log:
@@ -233,6 +257,17 @@ async def browser_use_run_tool(
     manager = get_browser_use_manager(_as_str(cfg.get("venv_path")))
     auto_install = _as_bool(cfg.get("auto_install"), True)
 
+    # Resolve the driving model FIRST — before any install or browser work. An
+    # unusable model class (the shipped `alpha-free` default) used to be
+    # discovered only inside the subprocess, where the resulting ImportError was
+    # misread as a broken install and triggered a reinstall that times out.
+    resolved_model = _as_str(model) or _as_str(cfg.get("default_model"))
+    try:
+        llm_spec = await asyncio.to_thread(_resolve_and_check_spec, resolved_model)
+    except BrowserUseError as e:
+        logger.error(f"browser_use_run has no usable driving model: {e}")
+        return _tool_message(f"Error: browser-use has no usable model to drive it: {e}", tool_call_id)
+
     try:
         # Config resolution stats the config file on every call, so it — like the
         # install and the run — happens off the event loop.
@@ -248,7 +283,6 @@ async def browser_use_run_tool(
                 extra_packages=_extra_packages(cfg),
             )
 
-        llm_spec = await asyncio.to_thread(resolve_llm_spec, model)
         envelope = await asyncio.to_thread(
             manager.run,
             task=cleaned_task,
@@ -257,7 +291,11 @@ async def browser_use_run_tool(
             max_steps=resolved_steps,
             timeout_seconds=timeout_seconds,
             headless=_as_bool(cfg.get("headless"), True),
-            use_vision=_as_bool(cfg.get("use_vision"), False),
+            # Vision on by default, and not only for accuracy: vision is what
+            # makes browser-use capture a per-step screenshot. With it off the
+            # run is cheaper but leaves no visual evidence, so "verify by looking
+            # at the screenshot" would silently have nothing to look at.
+            use_vision=_as_bool(cfg.get("use_vision"), True),
         )
     except BrowserUseError as e:
         logger.error(f"browser_use_run could not run: {e}")
@@ -317,7 +355,16 @@ def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: st
         unique = list(dict.fromkeys(urls))[-10:]
         visited = "\n\nPages visited: " + ", ".join(unique)
 
-    return f"{header} completed.\n\n{body}{visited}"
+    # Visual evidence, when the run captured it. browser-use only records a frame
+    # per step when vision is enabled, so an empty list is a legitimate outcome
+    # of a vision-off run — never a silent "I lost the evidence".
+    shots = [str(path) for path in envelope.get("screenshots") or [] if path]
+    visual = ""
+    if shots:
+        visual = f"\n\nScreenshots ({len(shots)} captured, newest last):\n" + "\n".join(f"  - {path}" for path in shots[-5:])
+        visual += "\n\nLook at the newest screenshot to verify the page state yourself rather than trusting this summary."
+
+    return f"{header} completed.\n\n{body}{visited}{visual}"
 
 
 # Governance declarations (see ``alpha.tools.governance``). These are not

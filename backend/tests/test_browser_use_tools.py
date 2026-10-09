@@ -18,10 +18,13 @@ dishonesty:
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -37,6 +40,54 @@ from alpha.community.browser_use.manager import (
     BrowserUseManager,
     redact_secrets,
 )
+
+
+def _config_with(models, default_model=None):
+    """A real AppConfig built from lightweight model entries.
+
+    ``sandbox`` is required by the schema, and ``extensions`` is read from disk
+    unless a scratch ``ALPHA_EXTENSIONS_CONFIG_PATH`` is set — both are needed
+    for the file to load hermetically.
+    """
+    import yaml
+
+    from alpha.config.app_config import AppConfig
+
+    built_entries = []
+    for entry in models:
+        entry_dict = {"name": entry["name"], "model": entry.get("model", "x")}
+        if entry.get("use"):
+            entry_dict["use"] = entry["use"]
+        built_entries.append(entry_dict)
+
+    payload = {"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}, "models": built_entries}
+    if default_model:
+        payload["default_model"] = default_model
+
+    with tempfile.TemporaryDirectory() as tmp:
+        extensions_path = Path(tmp) / "extensions.json"
+        extensions_path.write_text(json.dumps({"mcpServers": {}, "skills": {}, "middlewares": []}), encoding="utf-8")
+        config_path = Path(tmp) / "config.yaml"
+        config_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        with _patched_env("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path)):
+            return AppConfig.from_file(str(config_path))
+
+
+@contextlib.contextmanager
+def _patched_env(key: str, value: str):
+    previous = os.environ.get(key)
+    os.environ[key] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = previous
+
+
+def _model_entry(name, *, use=None, model="x"):
+    return {"name": name, "use": use, "model": model}
 
 
 def _runtime():
@@ -501,10 +552,19 @@ class TestToolBoundaries:
 
     @pytest.mark.asyncio
     async def test_run_refuses_when_not_installed_and_auto_install_off(self):
+        """A usable model is required before the install question is even asked.
+
+        The shipped default is `alpha-free`, so this test names a provider-backed
+        model to reach the not-installed refusal at all.
+        """
         mgr = MagicMock()
         mgr.status.return_value = manager_mod.BrowserUseStatus(installed=False, version=None, venv_path="/v", python_path="/v/python")
         cfg = {"auto_install": False}
-        with patch.object(tools_mod, "get_browser_use_manager", return_value=mgr), patch.object(tools_mod, "_get_tool_config", return_value=cfg):
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value=cfg),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={"use": "langchain_openai:ChatOpenAI", "model_name": "m"}),
+        ):
             result = await tools_mod.browser_use_run_tool.coroutine(runtime=_runtime(), task="do it", tool_call_id="c1")
         assert "not installed" in _message(result)
 
@@ -570,6 +630,329 @@ class TestGovernanceDeclaration:
         assert meta["governance_risk_class"] == "external"
         assert meta["governance_reversibility"] == "unknown"
         assert meta["governance_confirmation"] == "ask"
+
+
+class TestLiteLLMRouting:
+    """LiteLLM needs `provider/model`; Alpha stores the bare provider slug.
+
+    Found by a real run: `unbiased/pareto` + an OpenRouter base_url produced
+    "litellm.BadRequestError: LLM Provider NOT provided" on *every* step, so the
+    agent burned its whole budget and answered nothing.
+    """
+
+    def test_openrouter_host_gets_its_prefix(self):
+        from alpha.community.browser_use.runner import _litellm_model_id
+
+        assert _litellm_model_id("unbiased/pareto", "https://openrouter.ai/api/v1") == "openrouter/unbiased/pareto"
+
+    def test_anthropic_host_gets_its_prefix(self):
+        from alpha.community.browser_use.runner import _litellm_model_id
+
+        assert _litellm_model_id("claude-3-5-sonnet", "https://api.anthropic.com/v1") == "anthropic/claude-3-5-sonnet"
+
+    def test_unknown_host_falls_back_to_openai_compatible(self):
+        from alpha.community.browser_use.runner import _litellm_model_id
+
+        assert _litellm_model_id("some-model", "https://vireonix.ai/v1") == "openai/some-model"
+        assert _litellm_model_id("some-model", None) == "openai/some-model"
+
+    def test_already_qualified_model_is_not_double_prefixed(self):
+        from alpha.community.browser_use.runner import _litellm_model_id
+
+        assert _litellm_model_id("openrouter/unbiased/pareto", "https://openrouter.ai/api/v1") == "openrouter/unbiased/pareto"
+        assert _litellm_model_id("anthropic/claude-3", "https://api.anthropic.com") == "anthropic/claude-3"
+
+    def test_keyless_endpoint_gets_a_placeholder_key(self, monkeypatch):
+        """LiteLLM refuses to build a client with no api_key at all."""
+        from alpha.community.browser_use import runner as runner_mod
+
+        captured = {}
+
+        class FakeChatLiteLLM:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+        monkeypatch.setitem(sys.modules, "browser_use.llm.litellm.chat", SimpleNamespace(ChatLiteLLM=FakeChatLiteLLM))
+        runner_mod._try_native_llm({"model_name": "auto", "base_url": "https://vireonix.ai/v1"}, "auto")
+        assert captured["api_key"] == "not-required"
+        assert captured["api_base"] == "https://vireonix.ai/v1"
+
+    def test_real_key_is_preferred_over_the_placeholder(self, monkeypatch):
+        from alpha.community.browser_use import runner as runner_mod
+
+        captured = {}
+
+        class FakeChatLiteLLM:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+        monkeypatch.setitem(sys.modules, "browser_use.llm.litellm.chat", SimpleNamespace(ChatLiteLLM=FakeChatLiteLLM))
+        runner_mod._try_native_llm({"api_key": "sk-real", "base_url": "https://openrouter.ai/api/v1"}, "unbiased/pareto")
+        assert captured["api_key"] == "sk-real"
+
+
+class TestDefaultExtraPackages:
+    def test_litellm_is_part_of_installed(self):
+        """Without it every model call fails inside the agent loop."""
+        assert "litellm" in manager_mod.DEFAULT_EXTRA_PACKAGES
+
+    def test_install_requests_litellm(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        seen: list[str] = []
+
+        def fake_run(argv, **kwargs):
+            cmd = " ".join(str(a) for a in argv)
+            seen.append(cmd)
+            if "import browser_use" in cmd:
+                return _completed(json.dumps({"version": "1.0.0"}))
+            if "import litellm" in cmd:
+                return _completed("")
+            if "freeze" in cmd:
+                return _completed("openai==2.26.0\n")
+            return _completed("ok")
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            mgr.ensure_installed(upgrade=True)
+
+        assert any("litellm" in cmd for cmd in seen)
+
+    def test_missing_litellm_triggers_reinstall_even_when_installed(self, tmp_path):
+        """browser-use present but unusable must not read as ready."""
+        mgr = _installed_manager(tmp_path)
+
+        def fake_run(argv, **kwargs):
+            cmd = " ".join(str(a) for a in argv)
+            if "import browser_use" in cmd:
+                return _completed(json.dumps({"version": "1.0.0"}))
+            if "import litellm" in cmd:
+                return _completed("No module named litellm", code=1)
+            if "freeze" in cmd:
+                return _completed("")
+            return _completed("ok")
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            status = mgr.ensure_installed()
+
+        assert status.installed is True
+        assert status.log, "a missing litellm must cause an install, not a silent early return"
+
+
+class TestCompletionReporting:
+    """`ok` means the subprocess answered; it does not mean the task got done."""
+
+    def test_runner_reports_completed_and_errors(self, monkeypatch, capsys):
+        import alpha.community.browser_use.runner as runner_mod
+
+        class FakeResult:
+            def final_result(self):
+                return None
+
+            def number_of_steps(self):
+                return 8
+
+            def is_done(self):
+                return False
+
+            def errors(self):
+                return [None, "litellm.APIError: no credits"]
+
+        class FakeAgent:
+            def __init__(self, task, llm, use_vision=True):
+                self.history = SimpleNamespace(urls=lambda: [], action_names=lambda: [], history=[])
+
+            async def run(self, max_steps=500):
+                return FakeResult()
+
+        monkeypatch.setitem(sys.modules, "browser_use", SimpleNamespace(Agent=FakeAgent))
+        monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
+
+        envelope, _code = TestRunnerScript._run_runner(monkeypatch, {"task": "t", "llm": {"model_name": "m"}}, capsys)
+        assert envelope["ok"] is True
+        assert envelope["completed"] is False
+        assert envelope["errors"] == ["litellm.APIError: no credits"]
+
+    def test_unfinished_run_is_not_reported_as_completed(self):
+        envelope = {"ok": True, "completed": False, "errors": ["boom"], "result": "", "steps": 4, "history": []}
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "did NOT finish" in text
+        assert "boom" in text
+        assert "completed." not in text
+
+    def test_finished_run_is_reported_as_completed(self):
+        envelope = {"ok": True, "completed": True, "errors": [], "result": "Example Domain", "steps": 6, "history": [{"url": "https://example.com"}]}
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "completed." in text
+        assert "Example Domain" in text
+        assert "https://example.com" in text
+
+    def test_provider_quota_error_is_surfaced_verbatim(self):
+        """A credits/402 error is the single most actionable thing to report."""
+        envelope = {
+            "ok": True,
+            "completed": False,
+            "errors": ["litellm.APIError: OpenrouterException - {code: 402, requires more credits}"],
+            "result": "",
+            "steps": 8,
+            "history": [],
+        }
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "402" in text
+        assert "did NOT finish" in text
+
+
+class TestScreenshotEvidence:
+    """Screenshots are the only visual proof; they must never be silently absent."""
+
+    def _result_with_screenshots(self, b64_list):
+        return SimpleNamespace(screenshots=lambda: list(b64_list), number_of_steps=lambda: len(b64_list), is_done=lambda: True, errors=lambda: [])
+
+    def test_valid_pngs_are_written_to_disk(self, tmp_path):
+        import base64
+        import struct
+        import zlib
+
+        def tiny_png(color):
+            raw = b"".join(b"\x00" + bytes(color * 4) for _ in range(2))
+
+            def chunk(tag, data):
+                c = tag + data
+                return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+            return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+        from alpha.community.browser_use import runner as runner_mod
+
+        encoded = [base64.b64encode(tiny_png(c)).decode() for c in ([255, 0, 0], [0, 255, 0])]
+        paths = runner_mod._screenshot_paths(self._result_with_screenshots(encoded), str(tmp_path))
+        assert len(paths) == 2
+        for path, color in zip(paths, ([255, 0, 0], [0, 255, 0])):
+            data = Path(path).read_bytes()
+            assert data.startswith(b"\x89PNG")
+            assert Path(path).parent.name == "screenshots"
+            assert color[0] in data or color[1] in data
+
+    def test_empty_list_is_empty_not_an_error(self, tmp_path):
+        from alpha.community.browser_use import runner as runner_mod
+
+        assert runner_mod._screenshot_paths(self._result_with_screenshots([]), str(tmp_path)) == []
+
+    def test_non_png_payload_is_skipped_not_written(self, tmp_path):
+        from alpha.community.browser_use import runner as runner_mod
+
+        result = SimpleNamespace(screenshots=lambda: ["not-a-png"], number_of_steps=lambda: 1, is_done=lambda: True, errors=lambda: [])
+        assert runner_mod._screenshot_paths(result, str(tmp_path)) == []
+        assert not (tmp_path / "screenshots").exists() or not any((tmp_path / "screenshots").iterdir())
+
+    def test_one_bad_frame_does_not_lose_the_rest(self, tmp_path):
+        import base64
+        import struct
+        import zlib
+
+        from alpha.community.browser_use import runner as runner_mod
+
+        raw = b"\x00" + bytes([9] * 8)
+
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+        good = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 1, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+        mixed = ["garbage", base64.b64encode(good).decode()]
+        paths = runner_mod._screenshot_paths(self._result_with_screenshots(mixed), str(tmp_path))
+        assert len(paths) == 1
+
+    def test_envelope_carries_screenshot_paths(self, monkeypatch, capsys):
+        import base64
+        import os
+        import struct
+        import tempfile
+        import zlib
+
+        raw = b"\x00" + bytes([7] * 8)
+
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 1, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+        class FakeResult:
+            def final_result(self):
+                return "done"
+
+            def number_of_steps(self):
+                return 1
+
+            def is_done(self):
+                return True
+
+            def errors(self):
+                return []
+
+            def screenshots(self):
+                return [base64.b64encode(png).decode()]
+
+        class FakeAgent:
+            def __init__(self, task, llm, use_vision=True):
+                self.history = SimpleNamespace(urls=lambda: [], action_names=lambda: [], history=[])
+
+            async def run(self, max_steps=500):
+                return FakeResult()
+
+        monkeypatch.setitem(sys.modules, "browser_use", SimpleNamespace(Agent=FakeAgent))
+        from alpha.community.browser_use import runner as runner_mod
+
+        monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
+
+        with tempfile.TemporaryDirectory() as scratch:
+            previous = os.getcwd()
+            os.chdir(scratch)
+            try:
+                envelope, _code = TestRunnerScript._run_runner(monkeypatch, {"task": "t", "llm": {"model_name": "m"}}, capsys)
+                # Read the file while the scratch dir still exists; the path must
+                # be absolute so it survives the chdir back.
+                captured = [(path, Path(path).read_bytes()) for path in envelope["screenshots"]]
+                absolute = all(Path(p).is_absolute() for p in envelope["screenshots"])
+            finally:
+                os.chdir(previous)
+
+        assert len(captured) == 1
+        assert absolute
+        assert captured[0][1].startswith(b"\x89PNG"), "the screenshot must be a real PNG on disk"
+
+
+class TestModelPreflight:
+    """The shipped default model cannot drive browser-use; that must fail fast.
+
+    `alpha-free` uses `alpha.models.free_router:ChatFreeLLM`, an Alpha-internal
+    class the managed venv can never import. Discovering that inside the
+    subprocess made the harness reinstall browser-use on every run and finally
+    time out, reporting an install problem when the install was fine.
+    """
+
+    def test_internal_model_class_is_refused_with_guidance(self):
+        with patch.object(manager_mod, "get_app_config", return_value=_config_with([_model_entry("alpha-free", use="alpha.models.free_router:ChatFreeLLM", model="auto")])):
+            with pytest.raises(BrowserUseError, match="provider-backed"):
+                tools_mod._resolve_and_check_spec(None)
+
+    def test_provider_backed_model_is_accepted(self):
+        with patch.object(manager_mod, "get_app_config", return_value=_config_with([_model_entry("union-alpha", use="langchain_openai:ChatOpenAI", model="unbiased/pareto")])):
+            spec = tools_mod._resolve_and_check_spec("union-alpha")
+        assert spec["model_name"] == "unbiased/pareto"
+
+    def test_tool_refuses_before_any_install(self):
+        """No install attempt may precede the model check."""
+        mgr = MagicMock()
+        cfg = {"default_model": "alpha-free"}
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value=cfg),
+            patch.object(manager_mod, "get_app_config", return_value=_config_with([_model_entry("alpha-free", use="alpha.models.free_router:ChatFreeLLM", model="auto")])),
+        ):
+            result = asyncio.run(tools_mod.browser_use_run_tool.coroutine(runtime=SimpleNamespace(context={"thread_id": "t"}, state={"thread_data": {}}), task="do it", tool_call_id="c1"))
+        assert "no usable model" in _message(result)
+        mgr.ensure_installed.assert_not_called()
+        mgr.run.assert_not_called()
 
 
 class TestConfigWiring:
@@ -735,7 +1118,9 @@ class TestRunnerScript:
             capsys,
         )
         assert envelope["ok"] is True
-        assert captured == {"model": "m", "api_key": "k", "api_base": "https://gw.test"}
+        # `m` on an unknown host routes through LiteLLM's openai-compatible
+        # provider, so the id arrives provider-qualified.
+        assert captured == {"model": "openai/m", "api_key": "k", "api_base": "https://gw.test"}
 
     def test_base_url_maps_to_api_base_on_the_native_adapter(self, monkeypatch):
         from alpha.community.browser_use import runner as runner_mod
@@ -750,7 +1135,7 @@ class TestRunnerScript:
         llm = runner_mod._try_native_llm({"api_key": "k", "base_url": "https://gw.test", "extra": {}}, "m")
 
         assert llm is not None
-        assert captured == {"model": "m", "api_key": "k", "api_base": "https://gw.test"}
+        assert captured == {"model": "openai/m", "api_key": "k", "api_base": "https://gw.test"}
 
     def test_native_adapter_absent_falls_back_to_the_declared_class(self, monkeypatch):
         """Older browser-use builds have no ChatLiteLLM; the declared class must win."""

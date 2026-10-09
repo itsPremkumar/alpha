@@ -20,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import os
 import sys
 import traceback
+from pathlib import Path
 
 #: How many history rows travel back. browser-use's own step log can be long;
 #: the caller needs the shape of what happened, not a transcript.
@@ -81,6 +83,67 @@ def _browser_use_version() -> str | None:
         return None
 
 
+#: LiteLLM routes on a ``provider/model`` id. Alpha's ``models[].model`` is the
+#: bare provider-side slug (``unbiased/pareto``), which LiteLLM rejects with
+#: "LLM Provider NOT provided" — a failure that only appears once the agent is
+#: already mid-task, repeated on every single step.
+#:
+#: So the prefix is derived from the endpoint host. Note this is a *different*
+#: namespace from the OpenRouter API slug: ``unbiased/pareto`` is correct for the
+#: HTTP API and ``openrouter/unbiased/pareto`` is correct for LiteLLM. Do not
+#: "fix" the config to carry the prefix — that would break the ordinary
+#: ChatOpenAI path this repo's baseline model uses.
+_LITELLM_PROVIDER_BY_HOST: dict[str, str] = {
+    "openrouter.ai": "openrouter",
+    "api.anthropic.com": "anthropic",
+    "api.groq.com": "groq",
+    "generativelanguage.googleapis.com": "gemini",
+    "api.mistral.ai": "mistral",
+    "api.deepseek.com": "deepseek",
+    "api.together.xyz": "together_ai",
+    "api.fireworks.ai": "fireworks_ai",
+    "api.cohere.com": "cohere",
+    "api.cerebras.ai": "cerebras",
+}
+
+#: Prefixes LiteLLM already understands. A model whose first segment is one of
+#: these passes through untouched, so an operator who declared a
+#: provider-qualified id is never double-prefixed.
+_KNOWN_LITELLM_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "openrouter",
+        "openai",
+        "anthropic",
+        "gemini",
+        "google",
+        "groq",
+        "mistral",
+        "deepseek",
+        "together_ai",
+        "fireworks_ai",
+        "cohere",
+        "cerebras",
+        "azure",
+        "bedrock",
+        "vertex_ai",
+        "ollama",
+        "litellm_proxy",
+    }
+)
+
+
+def _litellm_model_id(model: str, base_url: str | None) -> str:
+    """Return ``model`` in the ``provider/model`` form LiteLLM requires."""
+    if model.split("/", 1)[0].lower() in _KNOWN_LITELLM_PROVIDERS:
+        return model
+    host = ""
+    if base_url:
+        from urllib.parse import urlparse
+
+        host = (urlparse(base_url).hostname or "").lower()
+    return f"{_LITELLM_PROVIDER_BY_HOST.get(host, 'openai')}/{model}"
+
+
 def _build_llm(spec: dict) -> object:
     """Construct the chat model browser-use will be driven by.
 
@@ -119,9 +182,16 @@ def _try_native_llm(spec: dict, model: str) -> object | None:
     except ImportError:
         return None
 
-    kwargs: dict = {"model": model}
+    kwargs: dict = {"model": _litellm_model_id(model, spec.get("base_url"))}
     if spec.get("api_key"):
         kwargs["api_key"] = spec["api_key"]
+    else:
+        # LiteLLM's OpenAI-compatible provider refuses to build a client without
+        # an api_key ("The api_key client option must be set...") even when the
+        # endpoint is keyless and ignores the value. Several gateways Alpha lists
+        # as free are exactly that, so a placeholder is passed rather than failing
+        # a call the endpoint would have accepted. It is not a credential.
+        kwargs["api_key"] = "not-required"
     if spec.get("base_url"):
         # Same endpoint, different parameter name on this adapter.
         kwargs["api_base"] = spec["base_url"]
@@ -287,6 +357,47 @@ def _safe_call(obj: object, attr: str) -> object | None:
         return None
 
 
+def _screenshot_paths(result: object, scratch_dir: str) -> list[str]:
+    """Write browser-use's captured screenshots to disk and return their paths.
+
+    Returns absolute paths under the run's scratch directory. ``use_vision`` is
+    what makes browser-use capture a frame per step, so with vision off this is
+    legitimately empty — a caller that wants visual evidence asks for a
+    vision-enabled run rather than getting nothing silently.
+    """
+    shots = _safe_call(result, "screenshots") or []
+    if not isinstance(shots, list) or not shots:
+        return []
+
+    out_dir = Path(scratch_dir) / "screenshots"
+    written: list[str] = []
+    for index, encoded in enumerate(shots):
+        if not isinstance(encoded, str) or not encoded.strip():
+            continue
+        target = out_dir / f"step-{index:03d}.png"
+        if _write_screenshot(target, encoded):
+            written.append(str(target))
+    return written
+
+
+def _write_screenshot(path: Path, b64: str) -> bool:
+    """Decode one base64 PNG to disk. A single bad frame must not lose the rest."""
+    import base64
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = base64.b64decode(b64.split(",", 1)[-1], validate=False)
+    except Exception:  # noqa: BLE001 - a cosmetic artifact must not fail the run
+        return False
+    if not data.startswith(b"\x89PNG"):
+        return False
+    try:
+        path.write_bytes(data)
+    except OSError:
+        return False
+    return True
+
+
 async def _run_agent(payload: dict) -> dict:
     llm = _build_llm(payload.get("llm") or {})
 
@@ -322,6 +433,7 @@ async def _run_agent(payload: dict) -> dict:
     steps = _safe_call(result, "number_of_steps")
     if not isinstance(steps, int):
         steps = len(history)
+    shots = _screenshot_paths(result, os.getcwd())
     return {
         "ok": True,
         "completed": completed,
@@ -329,6 +441,10 @@ async def _run_agent(payload: dict) -> dict:
         "result": _as_text(result),
         "steps": steps,
         "history": history,
+        # Absolute paths under the run's scratch dir. These are the visual
+        # evidence: a caller can open the last one and look at the page itself
+        # rather than trusting the agent's own summary of what it saw.
+        "screenshots": shots,
         "version": _browser_use_version(),
         "error": None,
         "timed_out": False,

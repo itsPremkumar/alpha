@@ -2051,7 +2051,14 @@ tools:
   #   max_steps: 10                     # default step budget (model may request up to 50)
   #   timeout_seconds: 300              # whole-run wall clock (max 900)
   #   headless: true                    # false opens a visible browser (local/trusted only)
-  #   use_vision: false                 # true = screenshots per step; pricier, but reads canvas/maps
+  #   use_vision: true                  # captures a screenshot per step (and runs pricier);
+  #   #                                 # set false for cheaper runs, but then there is no
+  #   #                                 # visual evidence to check afterwards
+  #   # default_model: union-alpha      # a provider-backed models[] entry to drive the agent.
+  #   #                                 # REQUIRED in practice: the shipped default_model is
+  #   #                                 # alpha-free, whose alpha.* class the isolated venv
+  #   #                                 # cannot import, so runs fail with a clear message
+  #   #                                 # until you name one here or pass model=.
   #   # venv_path: .alpha/browser-use   # managed venv location (default: runtime home)
   #   # allow_private_addresses: false  # SSRF guard for start_url; keep false in production
 
