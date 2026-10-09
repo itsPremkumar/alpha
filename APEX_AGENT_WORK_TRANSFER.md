@@ -271,6 +271,100 @@ Validation completed on resume (2026-10-09, Windows, `main` at
   not staged.
 
 Do not stage the pre-existing probes, scratch files, generated manifest noise,
-or any other unowned paths. The regular end-to-end execution/recovery drill and
-benchmark/release gates below remain open; this finding does not complete the
-overall APEX reliability objective.
+or any other unowned paths.
+
+## End-to-end drill — 2026-10-09
+
+The follow-up is committed as `c0b2f24` ("close cross-owner goal links and
+mid-read corruption gaps"); the evidence work below as `cfa0318`. Both are on
+`main`, unpushed, two commits ahead of `origin/main`.
+
+### What was actually exercised
+
+A real Gateway process, not a fixture: an isolated `ALPHA_HOME`, a copied
+`config.yaml` whose `sqlite_dir` was redirected into the drill directory
+(nothing else changed, no operator config edited), `ALPHA_AUTH_DISABLED=1`,
+port 8011, the operator's real `alpha-free` model.
+
+Objective: write one file `apex-drill/index.html` containing the marker
+`APEX-DRILL-OK` and change nothing else. Three acceptance criteria were
+declared and measured **by the drill harness**, never by the model's summary.
+
+| Phase | Measured result |
+| --- | --- |
+| Enable | `POST /api/apex/enable` → `enabled: true`, `profile: autonomous`, `durable: true`, digest `apxc-da74598f55ade6a0` |
+| Dispatch | `POST /api/apex/sessions/apx-a8851b9a45/dispatch` → `dispatched: 1`, RunManager run `cbc191a4-c1df-427f-aea3-9cd667c23b27`, `dispatch_generation: 1` |
+| Run | `pending → running → success` in ~127 s; measured usage `tool_calls: 4`, `llm_calls: 4`, `input_tokens: 239017`, `output_tokens: 477`, `replans: 0`, `retries: null` (unmeasured, not zero) |
+| Artifact | Exactly one workspace file created (`apex-drill/index.html`, 100 bytes); snapshot diff reported `modified: []`, `deleted: []` |
+| Evidence | Existence, marker presence and sha256 `c8650911663d95ef011bfe1615df57d8699b4064bcdc87bc3f647c49e31f62fb` read from the host |
+| Acceptance | `POST …/acceptance` → 200, report `acc-0a77c64a0b5e`, evaluator `owner_submitted_measured_evidence` |
+| Gate | `POST …/cycle` → 200, decision `{"action": "none", "reason": "acceptance_passed", "confidence": 1.0, "detail": {"state": "completed"}}` → session `completed`. A successful run alone never completed the session. |
+| Restart | Gateway force-killed and restarted: session still `completed`, same `run_id`, `dispatch_generation: 1`, `run_status: success` |
+| No duplicate | A repeated `/dispatch` after the restart returned `dispatched: 0` with the **same** run id, and the artifact sha256 was unchanged — no second run, no rewrite |
+
+Two drill-harness bugs were fixed and are worth keeping in mind for the next
+run: `GET /api/apex/sessions/{id}` returns the row directly (it is not wrapped
+in a `{"session": …}` envelope), and the "nothing else changed" criterion must
+be scoped to the thread's `user-data/workspace`, because Alpha's runtime home
+also holds legitimate bookkeeping (memory cache, skills projection, L1 records,
+catalogs). Scoping it to the whole home made a run that correctly wrote one
+file measure as if it had written everything.
+
+### Real findings, not just confirmations
+
+- **The documented `/cycle` example did not work.** `docs/APEX_AUTOPILOT.md`
+  showed a bodyless `curl -X POST …/cycle`; the route takes a `CycleRequest`
+  model, so the real call answers 422. Fixed in the guide and the API table.
+- **Goals are not on the dispatch path.** Tracing `POST …/dispatch` →
+  `apex_execution_tick` → `launch_apex_session_run` → `start_run` →
+  `RunManager` found no read of the goal store anywhere on it. A goal is a
+  planning/observation record whose `session_id` link points outward; dispatch
+  is entirely session-driven. "Goal-to-RunManager execution" is therefore really
+  *session*-to-RunManager, and the goal record's own verify/failures/evidence
+  routes are not fed by a run. This is the honest shape of the system today.
+- **A failed acceptance report really does reopen a generation.** An earlier drill
+  whose third criterion measured false saw `dispatch_state` reset to `idle`, the
+  run link cleared, and a *new* generation dispatched after the restart. That is
+  the documented recovery path working, not a defect — but it means "the run
+  succeeded" and "the session recovered" are separate events worth asserting
+  separately.
+
+### Trusted acceptance evidence (`cfa0318`)
+
+`alpha.mission.acceptance` now accepts provenance-bearing records alongside the
+flat boolean mapping. `EvidenceRecord` refuses construction without a known
+`EvidenceKind`, a real `bool`, a bounded non-empty source and a
+non-future timestamp. `collect_test_exit_report` and
+`collect_artifact_digest` **read** an existing exit report or stat/hash a
+confined artifact and return `None` — unverified — when the source cannot be
+read; nothing runs a suite and nothing is wired into a run, so "no automatic
+evidence collectors" remains true. `evaluate_trusted_acceptance` decides a
+criterion from exactly one record, leaves a criterion with no record
+`UNVERIFIED`, and leaves one with **two or more** records `UNVERIFIED` as a
+disclosed conflict rather than picking a row. 23 new tests in
+`tests/test_apex_acceptance_evidence.py`; the pre-existing 20 in
+`test_mission_acceptance_and_live_feed.py` still pass unchanged.
+
+### Validation run against this tree
+
+- `test_apex_acceptance_evidence.py` + `test_mission_acceptance_and_live_feed.py`
+  + `test_apex_executive.py`: **112 passed**.
+- Ruff check and format clean on `acceptance.py` and the new test file.
+- `scripts/generate_docs_index.py --check`: clean.
+
+### Still open
+
+- `test_apex_dispatcher.py::test_apex_execution_tick_reaches_sessions_after_the_first_page`
+  fails identically on the pristine baseline (`assert 1 == 201`), so it is
+  pre-existing and still unfixed. It belongs to the dispatcher-paging
+  workstream, not to this one.
+- `test_no_orphan_modules.py` fails **only** because of the preserved untracked
+  probe files (`alpha._probe_*`, `app.gateway.scan_*`); no tracked file changed
+  here adds a module. A clean checkout of this commit passes it.
+- Same-host file locking and a state/journal crash window remain; nothing here
+  is cross-host exactly-once.
+- No automatic collector runs a suite, fetches an endpoint, or infers an outcome
+  from a model summary.
+- The drill ran one objective, once, on one host, with one free model. It is not
+  evidence of soak, multi-worker or long-running behaviour, and no uptime or
+  universal-capability claim follows from it.
