@@ -477,16 +477,25 @@ def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: st
     judgement = envelope.get("judgement")
     verdict = ""
     if isinstance(judgement, dict) and judgement:
-        passed = judgement.get("passed")
-        reason = str(judgement.get("reason") or judgement.get("reasoning") or "").strip()
+        # browser-use reports the judge outcome as `verdict` (bool) with `reasoning`,
+        # plus `failure_reason` / `impossible_task` / `reached_captcha`. `passed` is
+        # kept as a fallback for other versions. Reading only `passed` - which a real
+        # 0.13.11 run proved it does - reports 'inconclusive' for every genuine
+        # verdict, which is worse than useless: it silently hides a real PASS.
+        passed = judgement.get("verdict", judgement.get("passed"))
+        reason = str(judgement.get("failure_reason") or judgement.get("reasoning") or "").strip()
         if passed is True:
-            verdict = "\n\nIndependent check (judge): PASS — the task was verified as done."
+            verdict = "\n\nIndependent check (judge): PASS — the answer was verified as correct."
         elif passed is False:
-            verdict = "\n\nIndependent check (judge): FAIL — the answer may be wrong."
+            verdict = "\n\nIndependent check (judge): FAIL — the answer may be wrong; do not rely on it."
+            if judgement.get("impossible_task"):
+                verdict += "\n  The judge considered the task impossible as phrased."
+            if judgement.get("reached_captcha"):
+                verdict += "\n  The page presented a CAPTCHA, which the judge treats as unreachable."
         else:
             verdict = "\n\nIndependent check (judge): inconclusive."
         if reason:
-            verdict += f"\n  reason: {reason[:400]}"
+            verdict += f"\n  {'why it failed' if passed is False else 'reasoning'}: {reason[:500]}"
 
     # Visual evidence, when the run captured it. browser-use only records a frame
     # per step when vision is enabled, so an empty list is a legitimate outcome of

@@ -1160,12 +1160,12 @@ class TestJudgeVerification:
     async def test_judge_failure_is_reported_not_hidden(self, monkeypatch):
         import alpha.community.browser_use.runner as runner_mod
 
-        self._fake_browser_use(monkeypatch, judgement={"passed": False, "reason": "example.com does have an <h1> with 'Example Domain'"})
+        self._fake_browser_use(monkeypatch, judgement={"verdict": False, "failure_reason": "example.com does have an <h1> with 'Example Domain'", "reasoning": "agent claimed no h1"})
         monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
 
         envelope = await runner_mod._run_agent({"task": "report the heading", "llm": {"model_name": "m"}, "verify": True, "ground_truth": {"heading": "Example Domain"}})
 
-        assert envelope["judgement"]["passed"] is False
+        assert envelope["judgement"]["verdict"] is False
         text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
         assert "Independent check (judge): FAIL" in text
         assert "Example Domain" in text
@@ -1175,7 +1175,7 @@ class TestJudgeVerification:
     async def test_judge_pass_is_reported(self, monkeypatch):
         import alpha.community.browser_use.runner as runner_mod
 
-        self._fake_browser_use(monkeypatch, judgement={"passed": True, "reason": "heading matches"})
+        self._fake_browser_use(monkeypatch, judgement={"verdict": True, "reasoning": "heading matches", "failure_reason": ""})
         monkeypatch.setattr(runner_mod, "_try_native_llm", lambda spec, model: SimpleNamespace())
 
         envelope = await runner_mod._run_agent({"task": "t", "llm": {"model_name": "m"}, "verify": True})
@@ -1255,7 +1255,7 @@ class TestJudgeVerification:
     async def test_verify_and_ground_truth_reach_the_run(self):
         mgr = MagicMock()
         mgr.status.return_value = manager_mod.BrowserUseStatus(installed=True, version="1.4.0", venv_path="/v", python_path="/v/python")
-        mgr.run.return_value = {"ok": True, "completed": True, "errors": [], "result": "done", "steps": 1, "history": [], "judgement": {"passed": True, "reason": "matches"}}
+        mgr.run.return_value = {"ok": True, "completed": True, "errors": [], "result": "done", "steps": 1, "history": [], "judgement": {"verdict": True, "reasoning": "matches"}}
         with (
             patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
             patch.object(tools_mod, "_get_tool_config", return_value={}),
@@ -1365,6 +1365,56 @@ class TestBrowserStartRetry:
 
         assert envelope["result"] == "done"
         assert "retried_after_browser_start_timeout" not in envelope
+
+
+class TestJudgeKeyShape:
+    """The judge's real key is `verdict`; reading `passed` hides every verdict.
+
+    A real 0.13.11 run returned
+    ``{'verdict': True, 'reasoning': ..., 'failure_reason': '', 'impossible_task': False, 'reached_captcha': False}``.
+    Reading only `passed` rendered that genuine PASS as "inconclusive" — a
+    verification feature that silently reports nothing is worse than no feature.
+    """
+
+    def test_real_passing_judgement_renders_as_pass(self):
+        envelope = {
+            "ok": True,
+            "completed": True,
+            "errors": [],
+            "result": "Example Domain",
+            "steps": 4,
+            "history": [],
+            "judgement": {"verdict": True, "reasoning": "the heading matches", "failure_reason": "", "impossible_task": False, "reached_captcha": False},
+        }
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "judge): PASS" in text
+        assert "inconclusive" not in text
+        assert "the heading matches" in text
+
+    def test_real_failing_judgement_renders_as_fail_with_the_reason(self):
+        envelope = {
+            "ok": True,
+            "completed": True,
+            "errors": [],
+            "result": "there is no heading",
+            "steps": 3,
+            "history": [],
+            "judgement": {"verdict": False, "reasoning": "agent summarised its own step", "failure_reason": "example.com does have an <h1>", "impossible_task": False, "reached_captcha": False},
+        }
+        text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+        assert "judge): FAIL" in text
+        assert "example.com does have an <h1>" in text
+        assert "do not rely on it" in text
+
+    def test_impossible_and_captcha_are_explained(self):
+        for flag in ("impossible_task", "reached_captcha"):
+            envelope = {"ok": True, "completed": True, "errors": [], "result": "x", "judgement": {"verdict": False, "failure_reason": "n/a", flag: True}}
+            text = tools_mod._render_envelope(envelope, version="0.13.11", model=None)
+            assert ("impossible as phrased" in text) or ("CAPTCHA" in text)
+
+    def test_passed_key_still_works_for_other_versions(self):
+        envelope = {"ok": True, "completed": True, "errors": [], "result": "x", "judgement": {"passed": True, "reason": "ok"}}
+        assert "judge): PASS" in tools_mod._render_envelope(envelope, version="0.13.11", model=None)
 
 
 class TestConfigWiring:

@@ -2051,11 +2051,16 @@ tools:
   #   max_steps: 10                     # default step budget (model may request up to 50)
   #   timeout_seconds: 300              # whole-run wall clock (max 900)
   #   headless: true                    # false opens a visible browser (local/trusted only)
-  #   # Vision ON by default, and it is what makes the run screenshot each step.
+  #   # Vision ON by default: it improves the agent's own reading of the page.
   #   # The newest frames are published into this thread's outputs automatically,
   #   # so they open in the artifacts panel and render inline in the chat — no
-  #   # separate screenshot call needed. Set use_vision: false for a cheaper run,
-  #   # but then there is no picture of the page to look at afterwards.
+  #   # separate screenshot call needed.
+  #   #
+  #   # Set use_vision: false if your model endpoint rejects image uploads (many
+  #   # free/keyless gateways do, with "image uploads are disabled"). browser-use
+  #   # still captures and publishes the screenshots in that mode — it just cannot
+  #   # look at them itself, so it costs the agent's visual reasoning, not your
+  #   # ability to see the page.
   #   use_vision: true
   #   # saved_screenshots: 3            # how many frames to publish (newest last)
   #   # default_model: union-alpha      # a provider-backed models[] entry to drive the agent.
