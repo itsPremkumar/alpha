@@ -7,6 +7,7 @@ model-selection logic must remain testable offline.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,31 @@ from scripts.system_one_laya_setup import (
     save_runtime_config,
     venv_python,
 )
+
+
+class _OsNamed:
+    """`os` exactly as the setup script sees it, with only `name` replaced.
+
+    The old test did `monkeypatch.setattr("...os.name", "nt")`, which writes
+    through the *shared* stdlib module object rather than the script's view of
+    it. On a POSIX runner that flips `pathlib` to WindowsPath, so building the
+    expected path raises ``NotImplementedError: cannot instantiate 'WindowsPath'
+    on your system`` before the function under test runs — which is why this was
+    a Linux-only red test. Rebinding the script's own reference drives both
+    branches while the host's pathlib keeps consulting the real `os`.
+    """
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def __getattr__(self, item: str) -> object:
+        # Anything the script reaches for beyond `name` still resolves against
+        # the real module, so this stub cannot silently starve it.
+        return getattr(os, item)
 
 
 def test_single_checkpoint_selection_is_bounded():
@@ -107,7 +133,7 @@ def test_runtime_descriptor_round_trips_without_secrets(tmp_path):
 
 
 def test_windows_and_posix_venv_paths_are_explicit(tmp_path, monkeypatch):
-    monkeypatch.setattr("scripts.system_one_laya_setup.os.name", "nt")
+    monkeypatch.setattr("scripts.system_one_laya_setup.os", _OsNamed("nt"))
     assert venv_python(tmp_path) == Path(tmp_path) / ".venv" / "Scripts" / "python.exe"
-    monkeypatch.setattr("scripts.system_one_laya_setup.os.name", "posix")
+    monkeypatch.setattr("scripts.system_one_laya_setup.os", _OsNamed("posix"))
     assert venv_python(tmp_path) == tmp_path / ".venv" / "bin" / "python"

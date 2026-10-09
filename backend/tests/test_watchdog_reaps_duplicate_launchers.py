@@ -19,6 +19,7 @@ reaped even though the PID file points somewhere else entirely.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -63,7 +64,10 @@ def test_stop_stale_launcher_does_not_rely_only_on_the_pid_file() -> None:
     assert "watchdog" in body, "the sweep must exclude the watchdog itself so it cannot kill itself"
 
 
-@pytest.mark.skipif(POWERSHELL is None, reason="powershell/pwsh not on PATH")
+@pytest.mark.skipif(
+    POWERSHELL is None or os.name != "nt",
+    reason="Windows only: this test probes liveness with tasklist and cleans up with taskkill (see _alive), neither of which exists on POSIX",
+)
 def test_stop_stale_launcher_reaps_an_unrecorded_second_launcher(tmp_path: Path) -> None:
     """The behavioural proof: a live launcher the PID file does not name is killed.
 
