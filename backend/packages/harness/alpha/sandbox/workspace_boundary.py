@@ -185,6 +185,26 @@ def resolve_workspace_root(root_path: str, *, allow_outside_root: bool = False) 
     )
 
 
+def _windows_reading_escapes(resolved_root: Path, raw: str) -> bool:
+    """True when *raw* would leave *resolved_root* read with Windows separators.
+
+    ``\\`` is a path separator on Windows and an ordinary filename byte on POSIX,
+    so ``..\\outside.py`` resolves *inside* the root on Linux while escaping it on
+    Windows. The absolute-path leg of :func:`resolve_workspace_file` already
+    refuses a leading backslash on every platform for exactly this reason; this
+    is the traversal half of the same decision, so one path string gets one
+    verdict whichever host validates it. Without it a workspace shared between
+    hosts is certified safe here and escapes there.
+    """
+    if "\\" not in raw:
+        return False
+    try:
+        windows_reading = (resolved_root / Path(raw.replace("\\", "/"))).resolve()
+    except OSError:
+        return True  # unresolvable is refused, never assumed contained
+    return not _is_within(windows_reading, resolved_root)
+
+
 def resolve_workspace_file(root: Path, relative: str) -> Path:
     """Resolve *relative* against *root*, refusing anything that escapes it.
 
@@ -226,6 +246,14 @@ def resolve_workspace_file(root: Path, relative: str) -> Path:
     if not _is_within(resolved, resolved_root):
         raise WorkspaceBoundaryError(
             f"File path {raw!r} resolves to {resolved}, which is outside the workspace root {resolved_root}. Relative paths may not traverse upwards.",
+            requested=raw,
+            boundary=resolved_root,
+        )
+
+    if _windows_reading_escapes(resolved_root, raw):
+        raise WorkspaceBoundaryError(
+            f"File path {raw!r} resolves outside the workspace root {resolved_root} once backslash is read as a path separator, which is what it is on Windows. "
+            "The boundary refuses that reading rather than certify a string that escapes on a Windows host.",
             requested=raw,
             boundary=resolved_root,
         )

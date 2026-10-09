@@ -28,6 +28,7 @@ import pytest
 from alpha.sandbox.git_push_guard import classify_git_push
 from alpha.sandbox.workspace_boundary import (
     WorkspaceBoundaryError,
+    _windows_reading_escapes,
     resolve_workspace_file,
     resolve_workspace_root,
 )
@@ -172,6 +173,32 @@ def test_relative_file_paths_may_not_escape_the_root(monkeypatch, tmp_path):
     for escape in ("../outside.py", "sub/../../outside.py", "..\\outside.py"):
         with pytest.raises(WorkspaceBoundaryError, match="outside the workspace root"):
             resolve_workspace_file(resolved, escape)
+
+
+def test_backslash_traversal_is_refused_where_backslash_is_not_a_separator(monkeypatch, tmp_path):
+    """One path string, one verdict — on every host that validates it.
+
+    ``\\`` is a path separator on Windows and an ordinary filename byte on POSIX,
+    so ``..\\outside.py`` lands *inside* the root on Linux while escaping it on
+    Windows. The ordinary containment check therefore passes on Linux (the CI
+    runner), which is what made this a Linux-only red test: the path was not
+    escaping there, so the helper under test was never what raised.
+
+    Assert the helper directly, because on Windows the forward containment check
+    already raises first and would mask whether it works at all.
+    """
+    root = tmp_path / "project"
+    (root / "sub").mkdir(parents=True)
+    resolved_root = root.resolve()
+
+    # Escapes once backslash is read the way Windows reads it.
+    assert _windows_reading_escapes(resolved_root, "..\\outside.py") is True
+    assert _windows_reading_escapes(resolved_root, "sub\\..\\..\\outside.py") is True
+    # Stays inside under both readings.
+    assert _windows_reading_escapes(resolved_root, "sub\\ok.py") is False
+    assert _windows_reading_escapes(resolved_root, "sub/ok.py") is False
+    # Nothing to do when there is no backslash at all.
+    assert _windows_reading_escapes(resolved_root, "../outside.py") is False
 
 
 def test_absolute_file_paths_are_refused(monkeypatch, tmp_path):
