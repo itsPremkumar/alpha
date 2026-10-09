@@ -37,7 +37,18 @@ ignore = []
 # scripts/) sorted backend imports under a policy that treats alpha/app as
 # third-party and I001-flagged correctly ordered files.  backend/ruff.toml
 # keeps the same entry for its own scope; keep the two values identical.
-known-first-party = ["alpha", "app"]
+#
+# ``scripts`` is here for the same reason and is the entry that decides
+# ``tests/test_system_one_laya_setup.py``: it imports ``scripts.system_one_laya_setup``,
+# and ``scripts/`` exists at the repository root but NOT under backend/.  The
+# incremental gate always runs ruff from ``backend/`` with absolute paths, so
+# from that cwd ``scripts`` resolved as third-party and had to be grouped with
+# ``pytest``, while the same file run from the repository root resolved it as
+# first-party and required a blank line between them.  Naming it here makes
+# that verdict independent of the directory ruff was started from, which is the
+# property this configuration exists for.  Measured across the tree it removes
+# eleven pre-existing I001 findings and changes no other rule's count.
+known-first-party = ["alpha", "app", "scripts"]
 
 [format]
 quote-style = "double"

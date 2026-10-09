@@ -7,4 +7,8 @@
 extend = "../ruff.toml"
 
 [lint.isort]
-known-first-party = ["alpha", "app"]
+# Identical to the repository root's entry, including ``scripts``: the gate runs
+# ruff from this directory with absolute paths, and a key that differs between
+# the two scopes is how ``scripts/`` came to resolve as third-party here and
+# first-party at the root.  See the comment beside the root entry.
+known-first-party = ["alpha", "app", "scripts"]
