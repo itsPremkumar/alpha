@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-09T07:48:00Z",
+ "generated_at": "2026-10-09T18:18:40Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2580,7 +2580,9 @@
   {
    "id": "alpha.rsi",
    "kind": "package",
-   "submodules": []
+   "submodules": [
+    "rrsi"
+   ]
   },
   {
    "id": "alpha.rules",
