@@ -10,31 +10,50 @@ The user wants sustained implementation, real end-to-end task validation, bug fi
 
 ## Repository and collaboration state
 
-At handoff creation (2026-10-09), the active checkout is `main`, with local `HEAD` and `origin/main` both at `eddbda1350bb81b9c01a74b91efe4082a79666bb`. Verify this before acting because it can change. Recent pushed commits include `37999d2` (serialize local worker persistence), `a87419e` (close SSE replay subscription gap), and `eddbda1` (synchronize mode state across workers).
+At the latest verification (2026-10-09), the active checkout is `main`, with local `HEAD` and `origin/main` both at `76795a07cacfb6df52458eef84549360d11b54b7`. Verify this before acting because it can change. That pushed commit includes APEX persistence and reconnect UX work; the immediately preceding pushed baseline included local worker persistence, SSE replay, and cross-worker APEX mode synchronization.
 
-The tracked working changes now cover the APEX goal store and its tests, one parked-cycle bug fix, the visible SSE reconnect transport/UI and tests, plus targeted user/developer documentation. Preserve these edits and finish/review them before rebasing or merging anything. The checkout also contains roughly 197 pre-existing untracked probes, scans, scratch outputs, and other files. They are intentionally being preserved; do not run `git clean`, `git reset --hard`, broad restore, or broad `git add`. Do not stage those unrelated paths. Some untracked paths may contain useful work, so inspect before making any decision about them.
+The current working tree has an **uncommitted APEX authorization and corruption-reporting follow-up** in the goal routes/store and their tests, plus matching docs. The current diff also marks `contracts/feature_manifest.json` modified even though it was identified earlier as generated metadata noise; inspect its diff and do not stage it unless a real intentional change is proven. The checkout contains many untracked probes, scans, scratch outputs, and other files. Preserve them; do not run `git clean`, `git reset --hard`, broad restore, or broad `git add`. Do not stage unrelated paths. Some untracked paths may contain useful work, so inspect before making any decision about them.
 
 For other agents, use distinct worktrees branched from the latest `origin/main`, keep each assignment within its named file/test ownership, and return a commit hash plus exact validation results. Do not ask parallel agents to push or merge. Integrate one worktree at a time after reviewing its diff and running its tests. Never overwrite this checkout's current goal-store edits.
 
 ## Current work to finish first
 
-`ApexGoalStore` previously persisted child creation and parent linkage in separate writes. A crash between them could leave an orphan. It also cached rows independently in each process, allowing one worker to overwrite another worker's changes. The in-progress edit in `backend/packages/harness/alpha/apex/goals.py` adds a same-host shared file lock, reload-before-write, snapshot rollback on failed persistence, and journal emission only after a successful state save. It wraps nested writes such as `create_child` in one transaction. The focused regression tests are in `TestGoalOperatingSystem` in `backend/tests/test_apex_control.py`.
+The goal persistence change is already part of the pushed baseline. `ApexGoalStore`
+uses a same-host shared file lock, refreshes before mutation, rolls back live
+objects when snapshot persistence fails, and commits child/parent links in one
+snapshot. The state snapshot and event journal remain separate files, so a
+crash after snapshot replace but before event append can lose a journal event;
+cross-host exactly-once is not provided.
 
-The focused goal class passed 16 tests; Ruff check and format check passed. Re-run these after reviewing the final diff:
+The authorization/corruption-reporting fix is now implemented and validated
+(see the continuation audit at the end of this document for exact results) and
+is awaiting commit:
+
+- `backend/app/gateway/routers/apex.py` now resolves child parents using the
+  owner-scoped route helper, retains the parent's owner for admin-created
+  children, validates explicit session ownership, and refuses stale foreign
+  session links before reading decision journals. It rechecks degraded state
+  after refreshes and collection reads so corruption cannot become a false
+  `404` or a confident empty result.
+- `backend/packages/harness/alpha/apex/goals.py` refuses a child whose owner
+  differs from the parent.
+- `backend/tests/test_apex_authz.py` and `test_apex_control.py` contain the
+  corresponding authorization and corruption regressions.
+- `README.md`, `CHANGELOG.md`, `backend/AGENTS.md`, and
+  `docs/APEX_AUTOPILOT.md` document the contract.
+
+The exact re-validation commands, all passing on the final tree:
 
 ```powershell
-backend\.venv\Scripts\python.exe -m pytest backend/tests/test_apex_control.py::TestGoalOperatingSystem -q
-backend\.venv\Scripts\ruff.exe check backend/packages/harness/alpha/apex/goals.py backend/tests/test_apex_control.py
-backend\.venv\Scripts\ruff.exe format --check backend/packages/harness/alpha/apex/goals.py backend/tests/test_apex_control.py
+backend\.venv\Scripts\python.exe -m pytest backend/tests/test_apex_authz.py backend/tests/test_apex_control.py::TestGoalOperatingSystem -q
+backend\.venv\Scripts\ruff.exe check backend/app/gateway/routers/apex.py backend/packages/harness/alpha/apex/goals.py backend/tests/test_apex_authz.py backend/tests/test_apex_control.py
+backend\.venv\Scripts\ruff.exe format --check backend/app/gateway/routers/apex.py backend/packages/harness/alpha/apex/goals.py backend/tests/test_apex_authz.py backend/tests/test_apex_control.py
 ```
 
-Then run the related APEX control and auth suites. A prior attempt at the combined suite was interrupted and is not a passing result:
-
-```powershell
-backend\.venv\Scripts\python.exe -m pytest backend/tests/test_apex_control.py backend/tests/test_apex_authz.py -q
-```
-
-Review edge cases before calling this done: missing snapshot versus corrupt snapshot; rollback of all live object references on failed save; nested transaction behavior; cross-process reads and writes; event journal failure after snapshot success; directory fsync and Windows replace semantics; and no false cross-host/exactly-once claims. The state snapshot and event journal are still separate files, so a crash after the state save but before journal append can lose an event. Do not claim atomic state-plus-journal commits.
+Review the full focused diff and stage only its explicitly owned code, tests,
+and documentation. Leave the unrelated probes, scratch files, and manifest
+noise untouched. Keep the same-host locking limitation and state/journal crash
+window in any claims.
 
 ## Verified baseline and open uncertainty
 
@@ -195,3 +214,63 @@ When behavior or a public claim changes, update `README.md`, `CHANGELOG.md`, `do
 - Update this handoff with completed work, exact commits and commands, and remaining blockers so the next agent can resume without guessing.
 
 The intended result is a more reliable, evidence-driven APEX system with clear operator controls and honest limits. “Production ready for every possible task” is not a testable acceptance criterion; replace it with explicit workloads, safety boundaries, recovery objectives, and measured evidence.
+
+## Continuation audit — 2026-10-09
+
+The latest pushed baseline is `76795a07cacfb6df52458eef84549360d11b54b7` on
+`main` (`origin/main` matched when this audit began). The current follow-up
+implementation is in the working tree and is not committed or pushed. A new authorization audit
+found that `POST /api/apex/goals` accepted a foreign `parent_goal_id` and an
+arbitrary `session_id`. That made it possible for a member-owned child to show
+up in another owner's goal tree, or for a goal's `/decisions` view to read a
+different owner's cycle journal. The follow-up fix is in progress in:
+
+- `backend/app/gateway/routers/apex.py`: resolve a requested parent through the
+  normal owner-scoped lookup; preserve the parent's owner for administrator
+  child creation; require an explicit linked session to match the goal owner;
+  revalidate stored session ownership before reading cycle decisions; report a
+  missing linked session as unavailable (`count: null`) and a degraded session
+  store as `503`. Session and goal member reads now recheck degradation after
+  `get()` refreshes disk, so corruption discovered in that refresh cannot be
+  misreported as `404`.
+- `backend/packages/harness/alpha/apex/goals.py`: reject child creation with an
+  owner different from its parent, including direct store callers.
+- `backend/tests/test_apex_authz.py` and `test_apex_control.py`: regressions for
+  foreign parent creation, foreign session linking, stale foreign links, and
+  store-level child owner mismatch, plus stores that become corrupt after
+  initialization.
+- `backend/AGENTS.md`, `docs/APEX_AUTOPILOT.md`, `README.md`, and `CHANGELOG.md`:
+  document the enforcement and the current behavior.
+
+Validation completed on resume (2026-10-09, Windows, `main` at
+`76795a07cacfb6df52458eef84549360d11b54b7`):
+
+- The required focused gate passed: `backend/tests/test_apex_authz.py` plus
+  `backend/tests/test_apex_control.py::TestGoalOperatingSystem` — **72 passed**
+  (the previous 69 plus the three final corruption-during-read cases), with the
+  pre-existing Starlette/httpx deprecation warning and no other warnings.
+- Ruff `check` and `format --check` pass on all four Python files.
+- The full APEX suite was re-run against the final tree: `test_apex_authz.py` +
+  `test_apex_control.py` passed **142**; `test_apex_api.py`, `test_apex_executive.py`,
+  `test_apex_contract.py`, `test_apex_store_durability.py`, `test_apex_mode.py`,
+  `test_apex_tool_middleware.py`, `test_apex_dispatcher.py` passed **293** with
+  **one** failure:
+  `test_apex_dispatcher.py::test_apex_execution_tick_reaches_sessions_after_the_first_page`
+  (`assert 1 == 201`). That failure was reproduced on the pristine baseline
+  commit `76795a0` in a clean detached worktree, so it is **pre-existing and
+  unrelated** to this follow-up (it sits in the dispatcher-paging workstream,
+  not in the goal store or router files owned here). It remains open.
+- One existing test encoded the pre-fix behavior and was corrected rather than
+  the guard weakened: `test_apex_control.py::TestGoalRoutes::test_create_as_a_child_inherits_the_session`
+  linked an admin caller's goal to a session owned by `tester`, which the new
+  contract refuses with 422. It now creates a session owned by the caller
+  (`admin-1`) and still asserts that a child inherits the parent's session link.
+- `contracts/feature_manifest.json` still shows as modified only because of
+  CRLF/LF normalization under `core.autocrlf=true`; `git hash-object` equals the
+  committed blob (`142eab7a…`), so it proves **no** intentional change and is
+  not staged.
+
+Do not stage the pre-existing probes, scratch files, generated manifest noise,
+or any other unowned paths. The regular end-to-end execution/recovery drill and
+benchmark/release gates below remain open; this finding does not complete the
+overall APEX reliability objective.

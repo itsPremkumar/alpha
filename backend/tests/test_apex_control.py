@@ -395,6 +395,15 @@ class TestGoalOperatingSystem:
         with pytest.raises(ValueError, match="ancestor ceiling"):
             store.create_child(parent.goal_id, objective="outrank", priority=90)
 
+    def test_a_subgoal_must_preserve_its_parents_owner(self, goal_store: Any) -> None:
+        store, _events = goal_store
+        parent = store.create(objective="private parent", owner="owner-a")
+
+        with pytest.raises(ValueError, match="same owner"):
+            store.create_child(parent.goal_id, objective="foreign child", owner="owner-b")
+
+        assert store.children(parent.goal_id) == []
+
     def test_agents_are_recorded_as_asks(self, goal_store: Any, session: Any) -> None:
         store, events = goal_store
         goal = store.create(objective="fix the browser", owner="tester")
@@ -764,7 +773,17 @@ class TestGoalRoutes:
         assert goal["owner"] == "admin-1"
         assert goal["state"] == "idle"
 
-    def test_create_as_a_child_inherits_the_session(self, client: TestClient, session: Any) -> None:
+    def test_create_as_a_child_inherits_the_session(self, client: TestClient, store: ApexStore) -> None:
+        # The session link must match the goal owner, so the caller's own
+        # session is the one a created goal may carry — a foreign owner's
+        # session is refused at creation (see ``test_apex_authz.py``).
+        session = store.create(
+            owner="admin-1",
+            objective="do the thing",
+            profile="autonomous",
+            contract_digest=profile_for("autonomous").digest(),
+            thread_id="thread-1",
+        )
         parent = client.post(
             "/api/apex/goals",
             json={"objective": "repair alpha", "session_id": session.session_id},

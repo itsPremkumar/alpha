@@ -12,6 +12,16 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **apex-goal-owner-boundaries:** Refuse cross-owner goal-tree links and
+  mismatched goal-to-session links; recheck linked session ownership before
+  exposing cycle decisions, including for stale snapshots created before the
+  guard existed.
+
+- **apex-degraded-read-recheck:** Re-read store health after the disk refresh a
+  member or collection lookup performs, so corruption discovered mid-read is
+  reported as `503` or an unknown count instead of a false `404` or a confident
+  empty list.
+
 - **apex-goal-persistence:** Serialize goal snapshots across workers sharing a
   local runtime directory, commit child creation and parent linkage together,
   and roll back in-memory state when snapshot persistence fails. The event journal

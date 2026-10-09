@@ -279,6 +279,8 @@ async def _session_or_404(request: Request, session_id: str) -> Any:
     if store.is_degraded:
         raise HTTPException(status_code=503, detail=f"APEX session store unreadable: {store.load_error}")
     session = store.get(session_id)
+    if store.is_degraded:
+        raise HTTPException(status_code=503, detail=f"APEX session store unreadable: {store.load_error}")
     if session is None:
         raise HTTPException(status_code=404, detail=f"no APEX session {session_id!r}")
     owner, is_admin = await _caller(request)
@@ -534,6 +536,8 @@ async def _goal_or_404(request: Request, goal_id: str) -> Any:
     if store.is_degraded:
         raise HTTPException(status_code=503, detail=f"APEX goal store unreadable: {store.load_error}")
     goal = store.get(goal_id)
+    if store.is_degraded:
+        raise HTTPException(status_code=503, detail=f"APEX goal store unreadable: {store.load_error}")
     if goal is None:
         raise HTTPException(status_code=404, detail=f"no APEX goal {goal_id!r}")
     owner, is_admin = await _caller(request)
@@ -553,9 +557,16 @@ async def create_goal(payload: GoalCreateRequest, request: Request) -> dict[str,
     store = get_goal_store()
     if store.is_degraded:
         raise HTTPException(status_code=503, detail=f"goal store unreadable: {store.load_error}")
+    parent = await _goal_or_404(request, payload.parent_goal_id) if payload.parent_goal_id else None
+    goal_owner = parent.owner if parent is not None else owner
+    if payload.session_id:
+        linked_session = await _session_or_404(request, payload.session_id)
+        if linked_session.owner != goal_owner:
+            raise HTTPException(status_code=422, detail="a goal may only link to a session owned by the goal owner")
+
     kwargs: dict[str, Any] = {
         "objective": payload.objective,
-        "owner": owner,
+        "owner": goal_owner,
         "description": payload.description,
         "success_criteria": payload.success_criteria,
         "constraints": payload.constraints,
@@ -595,6 +606,8 @@ async def list_goals(
         session_id=session_id or "",
         limit=limit,
     )
+    if store.is_degraded:
+        return {"available": False, "reason": store.load_error, "count": None, "goals": []}
     return {"available": True, "count": len(goals), "goals": [g.to_dict() for g in goals]}
 
 
@@ -723,7 +736,27 @@ async def goal_decisions(goal_id: str, request: Request) -> dict[str, Any]:
             "decisions": [],
             "note": "goal is not linked to a session, so it has no cycle decisions",
         }
-    events = get_apex_store().read_events(goal.session_id)
+    session_store = get_apex_store()
+    if session_store.is_degraded:
+        raise HTTPException(status_code=503, detail=f"APEX session store unreadable: {session_store.load_error}")
+    linked_session = session_store.get(goal.session_id)
+    if session_store.is_degraded:
+        raise HTTPException(status_code=503, detail=f"APEX session store unreadable: {session_store.load_error}")
+    if linked_session is None:
+        return {
+            "goal_id": goal_id,
+            "session_id": goal.session_id,
+            "available": False,
+            "count": None,
+            "decisions": [],
+            "reason": "the linked APEX session is unavailable",
+        }
+    if linked_session.owner != goal.owner:
+        # Older snapshots may contain links written before the creation path
+        # enforced the owner boundary. Never let that stale link turn a
+        # goal-scoped read into a cross-owner session journal read.
+        raise HTTPException(status_code=409, detail="goal session link violates the owner boundary")
+    events = session_store.read_events(goal.session_id)
     decisions = [e.to_dict() for e in events if e.event_type.startswith("cycle.")]
     return {
         "goal_id": goal_id,
@@ -800,6 +833,8 @@ async def list_approvals(
     if store.is_degraded:
         return {"available": False, "reason": store.load_error, "count": None, "pending": None, "approvals": []}
     approvals = store.approvals(owner=None if is_admin else owner)
+    if store.is_degraded:
+        return {"available": False, "reason": store.load_error, "count": None, "pending": None, "approvals": []}
     pending = [a for a in approvals if a.get("status") == "pending"]
     bounded = approvals[:limit]
     return {
@@ -901,6 +936,8 @@ async def list_sessions(
     if store.is_degraded:
         return {"available": False, "reason": store.load_error, "count": None, "sessions": []}
     sessions = store.list(owner=None if is_admin else owner, state=state, limit=limit)
+    if store.is_degraded:
+        return {"available": False, "reason": store.load_error, "count": None, "sessions": []}
     return {"available": True, "count": len(sessions), "sessions": [s.to_dict() for s in sessions]}
 
 

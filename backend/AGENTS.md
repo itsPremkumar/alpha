@@ -114,6 +114,18 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   coverage and restart persistence tests when changing this path. The API does
   not infer results from model summaries; automatic evidence collectors remain
   unimplemented.
+- **APEX goal ownership follows its graph and session links.** A subgoal must
+  retain its parent's owner, and a goal's linked session must have that same
+  owner. The goal-decision projection rechecks the persisted session row before
+  reading its journal, so legacy or manually corrupted foreign links fail
+  closed. Keep these boundaries covered in `tests/test_apex_authz.py` and
+  `tests/test_apex_control.py` whenever goal creation or decision projection
+  changes.
+- **APEX member reads recheck degradation after disk refresh.** `get()` may
+  discover corrupt persisted state during the lookup, after the route's initial
+  health check; check `is_degraded` again before translating a missing row to
+  `404`, or after a collection read before returning `available: true` and
+  `count: 0`. Keep the mid-read corruption cases in `tests/test_apex_authz.py`.
 - **Operator replans after terminal failure** — `POST /api/apex/sessions/{id}/replan`
   is admin-only, re-reads the linked terminal `RunManager` failure, requires an
   explicit possible-side-effect acknowledgement and reason, and applies the

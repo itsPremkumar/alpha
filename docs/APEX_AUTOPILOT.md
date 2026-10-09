@@ -381,7 +381,7 @@ stop.
 | Method | Path | Notes |
 |---|---|---|
 | `POST` | `/api/apex/sessions` | create under a profile; admin |
-| `GET` | `/api/apex/sessions` | list; degraded store reports `count: null` |
+| `GET` | `/api/apex/sessions` | list; a degraded store (including corruption discovered during refresh) reports `count: null` |
 | `GET` | `/api/apex/sessions/{id}` | one session; owner-scoped (a foreign id is 404) |
 | `DELETE` | `/api/apex/sessions/{id}` | remove the row; admin |
 | `POST` | `/api/apex/sessions/{id}/cycle` | one cycle; admin |
@@ -401,9 +401,9 @@ stop.
 | `POST` | `/api/apex/pause` | park the scope's active session; admin |
 | `POST` | `/api/apex/resume` | release a paused session; admin |
 | `POST` | `/api/apex/stop` | mission-scoped park carrying the RunManager/ESTOP note; admin |
-| `GET` | `/api/apex/goals` | list; owner-scoped; degraded store reports `count: null` |
-| `POST` | `/api/apex/goals` | create a goal or subgoal; authenticated, the owner is the caller |
-| `GET` | `/api/apex/goals/{id}` | one goal and its subtree; owner-scoped |
+| `GET` | `/api/apex/goals` | list; owner-scoped; a degraded store (including corruption discovered during refresh) reports `count: null` |
+| `POST` | `/api/apex/goals` | create a goal or subgoal; authenticated, a child retains its parent's owner and an explicit session link must match the goal owner |
+| `GET` | `/api/apex/goals/{id}` | one goal and its subtree; owner-scoped; corruption discovered during refresh is `503`, not a false `404` |
 | `POST` | `/api/apex/goals/{id}/steer` | record a constraint on the goal; owner-scoped |
 | `POST` | `/api/apex/goals/{id}/replan` | move a goal back to replanning; owner-scoped |
 | `POST` | `/api/apex/goals/{id}/verify` | verify against the success criteria; owner-scoped |
@@ -411,7 +411,7 @@ stop.
 | `GET` | `/api/apex/goals/{id}/agents` | specialists *recorded as asks* (this route never spawns); owner-scoped |
 | `GET` | `/api/apex/goals/{id}/workflow` | reports `available: false` — not implemented, by design |
 | `GET` | `/api/apex/goals/{id}/events` | the goal journal; owner-scoped |
-| `GET` | `/api/apex/goals/{id}/decisions` | the goal's session's cycle decisions; owner-scoped |
+| `GET` | `/api/apex/goals/{id}/decisions` | the linked session's cycle decisions after rechecking that the session owner matches the goal; stale foreign links return 409 and unavailable sessions are reported as unknown |
 | `GET` | `/api/apex/goals/{id}/evidence` | measured evidence; owner-scoped |
 | `GET` | `/api/apex/goals/{id}/failures` | failures derived from the record; owner-scoped |
 | `GET` | `/api/apex/approvals` | pending verdicts; bounded list with `returned`/`truncated`; degraded store reports `count: null` |

@@ -215,6 +215,50 @@ class TestMemberRoutesAreOwnerScoped:
         assert foreign.json()["detail"] == f"no APEX goal '{goal_id}'"
         assert _admin().get(f"/api/apex/goals/{goal_id}").status_code == 200
 
+    def test_a_goal_cannot_be_created_under_another_owners_parent(self, goal_store) -> None:
+        parent = _admin().post("/api/apex/goals", json={"objective": "private parent"}).json()["goal"]
+
+        response = _plain().post(
+            "/api/apex/goals",
+            json={"objective": "foreign child", "parent_goal_id": parent["goal_id"]},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == f"no APEX goal '{parent['goal_id']}'"
+        tree = _admin().get(f"/api/apex/goals/{parent['goal_id']}").json()["tree"]
+        assert tree["children"] == []
+
+    def test_a_goal_cannot_link_to_another_owners_session(self, store, goal_store) -> None:
+        session = store.create(
+            objective="private session",
+            owner="admin-1",
+            profile="autonomous",
+            contract_digest=profile_for("autonomous").digest(),
+        )
+
+        response = _plain().post(
+            "/api/apex/goals",
+            json={"objective": "foreign session link", "session_id": session.session_id},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == f"no APEX session '{session.session_id}'"
+
+    def test_a_stale_foreign_session_link_cannot_read_session_decisions(self, store, goal_store) -> None:
+        session = store.create(
+            objective="private session",
+            owner="admin-1",
+            profile="autonomous",
+            contract_digest=profile_for("autonomous").digest(),
+        )
+        store.emit(session.session_id, "cycle.secret", marker="must not leak")
+        goal = goal_store.create(objective="user-owned goal", owner="user-2", session_id=session.session_id)
+
+        response = _plain().get(f"/api/apex/goals/{goal.goal_id}/decisions")
+
+        assert response.status_code == 409
+        assert "owner boundary" in response.json()["detail"]
+
     @pytest.mark.parametrize(
         "method,path",
         [
@@ -290,6 +334,59 @@ class TestFailClosedReads:
 
         assert response.status_code == 503
         assert "OSError" in response.json()["detail"]
+
+    def test_corruption_discovered_during_goal_read_is_503_not_a_404(self, goal_store) -> None:
+        goal_id = _admin().post("/api/apex/goals", json={"objective": "fix"}).json()["goal"]["goal_id"]
+        goal_store.storage_path.write_text("{broken", encoding="utf-8")
+
+        response = _admin().get(f"/api/apex/goals/{goal_id}")
+
+        assert response.status_code == 503
+        assert "JSONDecodeError" in response.json()["detail"]
+
+    def test_corruption_discovered_during_session_read_is_503_not_a_404(self, store: ApexStore) -> None:
+        session = _create_session(_admin())
+        store.storage_path.write_text("{broken", encoding="utf-8")
+
+        response = _admin().get(f"/api/apex/sessions/{session['session_id']}")
+
+        assert response.status_code == 503
+        assert "JSONDecodeError" in response.json()["detail"]
+
+    def test_corruption_discovered_during_goal_list_is_unknown_not_empty(self, goal_store) -> None:
+        _admin().post("/api/apex/goals", json={"objective": "fix"})
+        goal_store.storage_path.write_text("{broken", encoding="utf-8")
+
+        response = _admin().get("/api/apex/goals")
+
+        assert response.status_code == 200
+        assert response.json()["available"] is False
+        assert response.json()["count"] is None
+
+    def test_corruption_discovered_during_session_list_is_unknown_not_empty(self, store: ApexStore) -> None:
+        _create_session(_admin())
+        store.storage_path.write_text("{broken", encoding="utf-8")
+
+        response = _admin().get("/api/apex/sessions")
+
+        assert response.status_code == 200
+        assert response.json()["available"] is False
+        assert response.json()["count"] is None
+
+    def test_corruption_discovered_during_goal_decisions_is_503(self, store: ApexStore, goal_store) -> None:
+        session = store.create(
+            objective="session",
+            owner="admin-1",
+            profile="autonomous",
+            contract_digest=profile_for("autonomous").digest(),
+        )
+        goal = goal_store.create(objective="goal", owner="admin-1", session_id=session.session_id)
+        store.storage_path.write_text("{broken", encoding="utf-8")
+
+        response = _admin().get(f"/api/apex/goals/{goal.goal_id}/decisions")
+
+        assert response.status_code == 503
+        assert "JSONDecodeError" in response.json()["detail"]
 
     def test_a_missing_file_is_still_just_a_404(self, store: ApexStore) -> None:
         """Absent must not become a fault: only an unreadable source is 503."""

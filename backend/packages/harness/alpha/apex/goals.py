@@ -727,11 +727,12 @@ class ApexGoalStore:
         return goal
 
     def create_child(self, parent_goal_id: str, **kwargs: Any) -> ApexGoal:
-        """Create a subgoal, refusing a priority above any ancestor's.
+        """Create a subgoal, preserving owner scope and ancestor priority.
 
-        Property 2 of the module: a decomposition that reorders the work it was
-        derived from is a planning bug, and it is cheaper to refuse at creation
-        than to discover it as a duplicated mission.
+        A decomposition cannot transfer another owner's goal into the tree,
+        and it cannot reorder the work it was derived from. Refuse both at
+        creation rather than letting a parent projection disclose foreign
+        goal data or discovering the policy break later.
         """
         with self._transaction():
             parent = self._rows.get(parent_goal_id)
@@ -739,6 +740,10 @@ class ApexGoalStore:
                 raise KeyError(f"no APEX goal {parent_goal_id!r}")
             if parent.is_terminal:
                 raise IllegalGoalTransition(f"goal '{parent_goal_id}' is terminal ('{parent.state.value}'); it cannot gain children")
+
+            requested_owner = str(kwargs.get("owner", parent.owner))
+            if requested_owner != parent.owner:
+                raise ValueError("a subgoal must have the same owner as its parent")
 
             requested = int(kwargs.get("priority", parent.priority))
             ancestors = self.ancestors(parent_goal_id)
@@ -748,7 +753,7 @@ class ApexGoalStore:
 
             child = self.create(
                 objective=str(kwargs.get("objective", "")),
-                owner=str(kwargs.get("owner", parent.owner)),
+                owner=requested_owner,
                 description=str(kwargs.get("description", "")),
                 success_criteria=list(kwargs.get("success_criteria") or []),
                 constraints=list(kwargs.get("constraints") or []),
