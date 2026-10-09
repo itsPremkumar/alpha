@@ -36,6 +36,12 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   `autonomy.loop.completed` on the in-process bus (`alpha/events/bus.py`), expose
   them through `GET /api/ops/integration-health`. Flags off = zero tasks;
   lifespan start after scheduler/channel services, stop first on shutdown.
+  A tick that outlives its deadline keeps its loop's slot: the awaiting task is
+  cancelled but the worker thread is not, so `in_flight`/`running` stay set until
+  the thread itself reports the exit, and `stop()` cancels and then awaits every
+  in-flight tick for a bounded `stop_timeout_seconds` grace period before the
+  rest of the stack drains. A worker that outlives the grace period is logged and
+  stays visible in `status()` rather than being reported as idle.
   `tests/test_autonomy_supervisor.py` pins the invariants.
 - **Alpha Mod Kernel** — ordered event middleware is wired into the lead agent's
   tool/model lifecycle and run admission. A mod's `required_capabilities` is a

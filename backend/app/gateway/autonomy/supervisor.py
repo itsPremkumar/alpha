@@ -7,6 +7,9 @@ Every background loop in Alpha is registered here. The supervisor:
   event loop;
 * restarts crashed ticks with exponential backoff inside a restart budget, then
   parks the loop instead of spinning;
+* treats a tick that outlives its deadline as still in flight — a worker thread
+  cannot be interrupted, so the loop keeps its slot and ``stop()`` waits a
+  bounded grace period for it instead of draining the stack underneath it;
 * exposes start()/stop()/status() with exactly one shutdown path;
 * publishes loop lifecycle events on the in-process event bus.
 """
@@ -17,6 +20,7 @@ import asyncio
 import inspect
 import logging
 import random
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -91,6 +95,26 @@ class LoopSpec:
 
 
 @dataclass
+class _TickRun:
+    """One tick execution and the two places its lifetime can end.
+
+    A synchronous tick ends when its worker thread returns; an awaitable one ends
+    when its task does, and has no worker at all. ``worker_done`` therefore starts
+    true — there is nothing to wait for — and is cleared only once the execution
+    has actually put a thread on the executor. A task that is cancelled while its
+    thread keeps running has ended only half of its lifetime, so the counters move
+    only once both halves are down; otherwise a loop reports itself idle while it
+    is still working.
+    """
+
+    loop_id: str
+    work: asyncio.Task[Any] | None = None
+    task_done: bool = False
+    worker_done: bool = True
+    settled: bool = False
+
+
+@dataclass
 class _LoopState:
     enabled: bool = False
     runs: int = 0
@@ -98,6 +122,12 @@ class _LoopState:
     parked: bool = False
     park_reason: str = ""
     running: bool = False
+    #: Ticks this loop started that have not finished. A value above the loop's
+    #: `max_concurrent` is a bug, and a value that stays above zero with
+    #: `task_alive` false is a worker the supervisor is still waiting on.
+    in_flight: int = 0
+    #: Ticks the supervisor stopped waiting for while they were still running.
+    overruns: int = 0
     last_run_at: float = 0.0
     last_duration_seconds: float = 0.0
     last_error: str = ""
@@ -141,6 +171,15 @@ class AutonomySupervisor:
         self._state: dict[str, _LoopState] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._semaphores: dict[str, asyncio.Semaphore] = {}
+        # Tick executions the supervisor has started but not seen finish. The set
+        # is what `stop()` drains; it is deliberately NOT the same thing as the
+        # supervising loop task, because cancelling that task cannot end a tick.
+        self._inflight: dict[str, set[asyncio.Task[Any]]] = {}
+        # Worker threads currently inside a synchronous tick. Recorded by the
+        # thread itself and cleared in its own `finally`, so it stays accurate
+        # after the task awaiting that thread has been cancelled — the one
+        # lifetime a task cannot report.
+        self._workers: dict[str, set[int]] = {}
         self._stopping = False
         self._started_at = 0.0
 
@@ -155,6 +194,8 @@ class AutonomySupervisor:
         self._specs[spec.loop_id] = spec
         self._state[spec.loop_id] = _LoopState()
         self._semaphores[spec.loop_id] = asyncio.Semaphore(spec_loop_concurrency(spec, self._config))
+        self._inflight[spec.loop_id] = set()
+        self._workers[spec.loop_id] = set()
 
     def register_default_loops(self) -> None:
         """Register every known subsystem loop (id is the manifest key)."""
@@ -198,7 +239,16 @@ class AutonomySupervisor:
             logger.info("Autonomy loop '%s' started (interval=%.0fs)", loop_id, loop_cfg.interval_seconds)
 
     async def stop(self) -> None:
-        """Cancel every loop task and wait for a clean exit. Idempotent."""
+        """Cancel every loop task and wait for a clean exit. Idempotent.
+
+        Cancelling a supervising loop does not end the tick it was awaiting: a
+        synchronous tick keeps running on its worker thread, and an awaitable one
+        would keep running unless it is cancelled here. So after the loop tasks
+        are down, every tick still in flight is cancelled and awaited for a
+        bounded grace period. That grace period is the only thing standing
+        between a loop tick and a half-stopped stack: the Gateway stops the
+        supervisor first precisely so its loops never observe one.
+        """
         self._stopping = True
         tasks = [task for task in self._tasks.values() if not task.done()]
         for task in tasks:
@@ -206,13 +256,60 @@ class AutonomySupervisor:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
-        for state in self._state.values():
-            state.running = False
+        await self._drain_in_flight_ticks()
+        for loop_id, state in self._state.items():
+            # A tick whose worker never returned must not be reported as idle.
+            if not self._workers.get(loop_id):
+                state.running = False
+
+    async def _drain_in_flight_ticks(self) -> None:
+        """Cancel and await ticks that outlived their supervising loop.
+
+        Bounded by each loop's ``stop_timeout_seconds``, so a hung worker cannot
+        hold the Gateway's shutdown open. A worker that outlives the grace period
+        is logged and stays visible in ``status()`` (``running`` and
+        ``in_flight`` remain set) rather than being silently forgotten.
+
+        The wait is over ``_inflight`` rather than over task liveness: a
+        cancelled synchronous tick leaves its task finished and its thread
+        running, and that thread is the execution. Where every task is already
+        down, only the thread can report its own exit, so the drain polls it.
+        """
+        for loop_id in sorted(self._inflight):
+            for work in list(self._inflight[loop_id]):
+                if not work.done():
+                    work.cancel()
+            grace_seconds = self._config.loop_config(loop_id).stop_timeout_seconds
+            deadline = time.monotonic() + grace_seconds
+            while self._inflight.get(loop_id) or self._workers.get(loop_id):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                pending = [work for work in self._inflight[loop_id] if not work.done()]
+                if pending:
+                    await asyncio.wait(pending, timeout=remaining)
+                else:
+                    await asyncio.sleep(min(0.05, remaining))
+            if self._inflight.get(loop_id) or self._workers.get(loop_id):
+                logger.warning(
+                    "Autonomy loop '%s' still has %d tick(s) executing after the %.0fs shutdown grace period",
+                    loop_id,
+                    len(self._inflight.get(loop_id, ())) + len(self._workers.get(loop_id, ())),
+                    grace_seconds,
+                )
 
     # -- loop body -------------------------------------------------------------
     async def _run_loop(self, loop_id: str, spec: LoopSpec, cfg: AutonomyLoopConfig) -> None:
         state = self._state[loop_id]
-        tick = spec.configure(cfg) if spec.configure else spec.tick
+        try:
+            tick = spec.configure(cfg) if spec.configure else spec.tick
+        except Exception as exc:
+            # A tick that cannot be configured leaves this task finished and the
+            # loop permanently silent. Recording it here is what keeps a dead
+            # loop distinguishable from an idle one.
+            state.last_error = f"{type(exc).__name__}: {exc}"
+            logger.error("Autonomy loop '%s' could not configure its tick: %s", loop_id, state.last_error)
+            return
         while not self._stopping:
             delay = cfg.interval_seconds + random.uniform(0, max(0.0, cfg.jitter_seconds))
             try:
@@ -261,13 +358,21 @@ class AutonomySupervisor:
             if not _fleet_admits_tick(loop_id) or not await _mod_admits_tick(loop_id):
                 return
             state.running = True
+            state.in_flight += 1
             started = time.time()
             tick_timeout = max(cfg.stop_timeout_seconds, cfg.interval_seconds)
+            run = _TickRun(loop_id)
+            work = asyncio.create_task(self._execute_tick(run, tick, tick_timeout), name=f"autonomy-tick:{loop_id}")
+            run.work = work
+            self._inflight[loop_id].add(work)
+            work.add_done_callback(lambda finished: self._tick_task_finished(run, finished))
             try:
-                if inspect.iscoroutinefunction(tick):
-                    summary = await asyncio.wait_for(tick(), timeout=tick_timeout)
-                else:
-                    summary = await asyncio.wait_for(asyncio.to_thread(tick), timeout=tick_timeout)
+                # `shield` is load-bearing: cancelling the supervising loop must
+                # not be read as cancelling the tick, because for a
+                # synchronous tick it is not. The tick keeps its slot until it
+                # really ends, which is what stops the next interval from
+                # starting a second tick over the first.
+                summary = await asyncio.wait_for(asyncio.shield(work), timeout=tick_timeout)
                 state.runs += 1
                 state.last_run_at = started
                 state.last_duration_seconds = time.time() - started
@@ -275,7 +380,9 @@ class AutonomySupervisor:
                 state.last_error = ""
                 await self._publish(loop_id, "completed", summary)
             except asyncio.CancelledError:
-                state.running = False
+                # Shutdown (or a cancelled supervisor): the tick itself is
+                # drained and awaited by stop(), not dropped here.
+                state.overruns += 1
                 raise
             except Exception as exc:
                 now = time.time()
@@ -290,8 +397,79 @@ class AutonomySupervisor:
                     state.parked = True
                     state.park_reason = f"{len(state.failure_times)} failures within {cfg.restart_window_seconds:.0f}s"
                     logger.error("Autonomy loop '%s' parked: %s", loop_id, state.park_reason)
-            finally:
-                state.running = False
+                if not work.done():
+                    # The deadline passed while the tick was still going. Record
+                    # the overrun so the slot it still occupies is visible, and
+                    # let it finish: nothing about a worker thread can be hurried.
+                    state.overruns += 1
+
+    async def _execute_tick(self, run: _TickRun, tick: Callable[[], Any], tick_timeout: float) -> Any:
+        """Run one tick under its deadline, keeping the loop's slot until it ends.
+
+        The deadline is enforced here as well as in the awaiter, so a cancellable
+        tick ends on its own. A synchronous tick cannot be interrupted at all, so
+        this task stays alive until its worker thread returns — and that is the
+        lifetime ``stop()`` waits on.
+        """
+        if inspect.iscoroutinefunction(tick):
+            return await asyncio.wait_for(tick(), timeout=tick_timeout)
+        # Set before the dispatch, with no await between: a cancellation that
+        # lands past this point owes a worker thread, and one that lands before it
+        # owes nothing. Either way the run settles, so no slot can be stranded.
+        run.worker_done = False
+        return await asyncio.wait_for(asyncio.to_thread(self._run_on_worker, run, tick), timeout=tick_timeout)
+
+    def _run_on_worker(self, run: _TickRun, tick: Callable[[], Any]) -> Any:
+        """Run a synchronous tick on its worker thread, recording the thread.
+
+        The record is made and cleared inside the thread, so it outlives the
+        task that awaits it: an abandoned worker thread is precisely the
+        lifetime a task cannot report, and it is what ``stop()`` must wait for.
+        """
+        self._workers.setdefault(run.loop_id, set()).add(threading.current_thread().ident)
+        try:
+            return tick()
+        finally:
+            workers = self._workers.get(run.loop_id)
+            if workers is not None:
+                workers.discard(threading.current_thread().ident)
+            self._tick_worker_finished(run)
+
+    def _tick_task_finished(self, run: _TickRun, work: asyncio.Task[Any]) -> None:
+        """Record that a tick's awaiting task ended, and close it if it may."""
+        if not work.cancelled():
+            # Retrieve, so a tick abandoned at its deadline is not logged a
+            # second time as an unretrieved exception.
+            work.exception()
+        run.task_done = True
+        self._close_tick(run)
+
+    def _tick_worker_finished(self, run: _TickRun) -> None:
+        """Record that a tick's worker thread returned, and close it if it may."""
+        run.worker_done = True
+        self._close_tick(run)
+
+    def _close_tick(self, run: _TickRun) -> None:
+        """Release a tick's slot once every part of its lifetime has ended.
+
+        The task stays in ``_inflight`` until this point rather than when it
+        finishes, because a cancelled synchronous tick leaves its task finished
+        and its thread running: dropping the task there would make the
+        execution invisible to ``stop()`` and leave ``in_flight`` stuck above
+        zero for the rest of the process life.
+        """
+        if run.settled or not (run.task_done and run.worker_done):
+            return
+        run.settled = True
+        pending = self._inflight.get(run.loop_id)
+        if pending is not None and run.work is not None:
+            pending.discard(run.work)
+        state = self._state.get(run.loop_id)
+        if state is None:
+            return
+        state.in_flight = max(0, state.in_flight - 1)
+        if state.in_flight == 0 and not self._workers.get(run.loop_id):
+            state.running = False
 
     # -- telemetry ---------------------------------------------------------------
     def status(self) -> dict[str, Any]:
@@ -311,6 +489,8 @@ class AutonomySupervisor:
                             "parked",
                             "park_reason",
                             "running",
+                            "in_flight",
+                            "overruns",
                             "last_run_at",
                             "last_duration_seconds",
                             "last_error",
