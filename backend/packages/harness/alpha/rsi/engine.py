@@ -78,11 +78,16 @@ class RSIEngine:
             f"Proposed configuration: {candidate.modified_config}",
             "A/B: NOT MEASURED — no benchmark was executed, so there are no scores to report.",
             "Holdout: NOT RUN — no hidden regression suite was executed, so no regression verdict exists.",
-            "Promotion blocked: preview evidence is not release evidence; no runtime configuration was changed.",
-            "To obtain a real verdict, evaluate the candidate with alpha.rsi.holdout.run_holdout "
-            "(requires registered hidden suites) and route it through alpha.rsi.promotion.decide; "
-            "holdout_gate only passes on evidence_kind='measured'.",
         ]
+        # RRSI proposal-side regularizers (Algorithm 1). Inserted before the
+        # two closing lines so `evidence[-1]` stays the line `_last_summary`
+        # has always quoted; the plan constrains what may be proposed and is
+        # explicitly not presented as a result.
+        evidence.extend(self._rrsi_proposal_plan(target_component))
+        evidence.append("Promotion blocked: preview evidence is not release evidence; no runtime configuration was changed.")
+        evidence.append(
+            "To obtain a real verdict, evaluate the candidate with alpha.rsi.holdout.run_holdout (requires registered hidden suites) and route it through alpha.rsi.promotion.decide; holdout_gate only passes on evidence_kind='measured'."
+        )
         if force_promote:
             evidence.append("force_promote cannot bypass evidence or deployment requirements.")
         self._last_summary = evidence[-1]
@@ -96,6 +101,77 @@ class RSIEngine:
             evidence=evidence,
             evidence_kind="simulated",
         )
+
+    def _rrsi_proposal_plan(self, target_component: str) -> list[str]:
+        """Algorithm 1's proposal-side plan for this round, as disclosure lines.
+
+        What runs here: the annealed edit budget ``b_t`` (P1), the stall
+        indicator ``σ_t`` and any reserved exploration slots (P3), the L1
+        pruning targets ``B_t`` (S4), and the credit-ledger disclosure (P2) —
+        composed by :func:`alpha.rsi.rrsi.build_proposal_plan`.
+
+        Three properties this method has to keep:
+
+        * **It constrains, it does not report.** No line is a score, a
+          confidence or a verdict, and the text says so. A preview that
+          measured nothing must not gain a measured-looking sentence from
+          having regularizers attached.
+        * **A gap is disclosed, never dropped.** An unreadable ledger, an
+          unreadable round store or a failed write each produce their own line.
+          Silently returning ``[]`` would render a missing constraint as "no
+          constraints needed".
+        * **The round is recorded *after* the plan is built**, so the plan
+          describes the round that is running. It is recorded as
+          **unmeasured** — round index advances, ``S*`` and the incumbent
+          measurement do not, because a preview took no measurement and an
+          absence must not overwrite one.
+
+        Reads and writes here are small synchronous file operations on the
+        same paths ``guard_cycle_start()`` already touches in this entry
+        point; every one of them is best-effort and none may raise into the
+        cycle.
+        """
+        try:
+            from alpha.rsi.rrsi import RrsiRoundStore, build_proposal_plan, component_for
+
+            store = RrsiRoundStore()
+            round_index = store.next_round
+            plan = build_proposal_plan(round_index, round_scores=store.round_scores, target=target_component)
+            tag = component_for("code", target=target_component)
+            write = store.record_round(
+                round_index=round_index,
+                score=None,
+                candidate_id=None,
+                incumbent_score=None,
+                incumbent_cost=None,
+                incumbent_candidate_id=None,
+            )
+        except Exception as exc:  # noqa: BLE001 - a preview must not fail because a ledger is unreadable
+            return [f"RRSI proposal plan: NOT BUILT ({type(exc).__name__}: {exc}). This round ran without proposal-side constraints — a gap in the constraint, not permission to ignore it."]
+
+        if plan.pruning.status == "ok":
+            targets = ", ".join(plan.pruning.targets) or "none (every exercised component still has a positive measured gain in-window)"
+        else:
+            targets = "UNKNOWN — the credit ledger could not be read"
+        lines = [
+            f"RRSI proposal plan (Algorithm 1, round {round_index} of T = {plan.horizon}): "
+            f"edit budget b = {plan.budget.budget}; stalled = {plan.stall.stalled}; "
+            f"pruning targets = {targets}; component attribution for {target_component!r} -> {tag.component!r}.",
+            "RRSI proposal plan constrains what may be proposed; it is not a measurement and changes no verdict above.",
+        ]
+        if plan.pruning.status != "ok":
+            lines.append(f"RRSI structural pruning (S4) not evaluated: {plan.pruning.reason}")
+        if not plan.usable:
+            lines.append(
+                f"RRSI proposal plan PARTIAL: history_available={plan.history_available}, "
+                f"pruning={plan.pruning.status}, exploration={plan.exploration.status}. "
+                "A section that could not be computed is a gap in the constraint, not permission to ignore it."
+            )
+        if write.ok:
+            lines.append(f"RRSI round {round_index} recorded as UNMEASURED: no evolve-set measurement was taken, so S* and the incumbent score/cost are unchanged.")
+        else:
+            lines.append(f"RRSI round state write did NOT land ({write.error}); the next cycle re-reads the previous round index. The plan above was still computed from the state on disk.")
+        return lines
 
     def _generate_hypothesis(self, bottleneck: str, target_component: str) -> RSIHypothesis:
         return RSIHypothesis(
@@ -144,10 +220,7 @@ class RSIEngine:
             confidence=None,
             latency_delta_ms=None,
             evidence_kind="simulated",
-            not_measured_reason=(
-                "No A/B benchmark was executed: run_rsi_cycle has no baseline capture, "
-                "no candidate execution and no scoring harness. Scores are null, not zero."
-            ),
+            not_measured_reason=("No A/B benchmark was executed: run_rsi_cycle has no baseline capture, no candidate execution and no scoring harness. Scores are null, not zero."),
         )
 
     def _run_holdout_evaluation(self, candidate: RSICandidate, ab_test: ABTestResult) -> HoldoutResult:
@@ -170,11 +243,7 @@ class RSIEngine:
                 "regressed is null rather than false, because 'not run' is not 'did not regress'.",
             ],
             evidence_kind="simulated",
-            not_measured_reason=(
-                "run_holdout_evaluation is a preview stub with no BenchmarkRunner. "
-                "A real verdict comes from alpha.rsi.holdout.run_holdout, which requires "
-                "registered hidden suites and returns evidence_kind='measured'."
-            ),
+            not_measured_reason=("run_holdout_evaluation is a preview stub with no BenchmarkRunner. A real verdict comes from alpha.rsi.holdout.run_holdout, which requires registered hidden suites and returns evidence_kind='measured'."),
         )
 
     def run_holdout_gate(self) -> dict[str, Any]:
