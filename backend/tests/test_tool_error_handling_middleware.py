@@ -1,3 +1,4 @@
+import importlib
 import posixpath
 import re
 import sys
@@ -10,6 +11,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 
 from alpha.agents.middlewares.tool_error_handling_middleware import (
+    ApexContractToolMiddleware,
     ToolErrorHandlingMiddleware,
     build_lead_runtime_middlewares,
     build_subagent_runtime_middlewares,
@@ -37,7 +39,30 @@ def _request(name: str = "web_search", tool_call_id: str | None = "tc-1"):
 
 
 def _module(name: str, **attrs):
+    """A stand-in for `name` that keeps every real attribute but the stubbed ones.
+
+    Built from the *imported* module rather than from scratch, because
+    `monkeypatch.setitem(sys.modules, ...)` parks this object for the whole test:
+    anything else that imports a *different* symbol from it during that window
+    would otherwise see a module missing everything the real one exports. That is
+    exactly what happened with `alpha.peer_network.agent_dispatch` importing
+    `frame_untrusted_text` — whether this test passed depended on whether some
+    earlier test file had already imported it, so running the file alone failed
+    while running the suite passed.
+    """
+    real = sys.modules.get(name)
+    if real is None:
+        try:
+            real = importlib.import_module(name)
+        except Exception:
+            real = None
     module = ModuleType(name)
+    if real is not None:
+        for key, value in vars(real).items():
+            if key.startswith("__") and key.endswith("__"):
+                continue
+            if key not in attrs:
+                setattr(module, key, value)
     for key, value in attrs.items():
         setattr(module, key, value)
     return module
@@ -192,6 +217,9 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     # + 1 SafetyFinishReasonMiddleware + 1 DurableContextMiddleware
     # + 1 SubagentDateContextMiddleware
     # + 1 SystemMessageCoalescingMiddleware + 1 ToolReceiptMiddleware
+    # + 1 ApexContractToolMiddleware (fail-closed APEX contract enforcement at
+    #     the tool seam; a no-op without the Gateway-stamped session key but
+    #     always registered, since a verification gate is not a feature)
     # (all enabled by default).
     from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
     from alpha.agents.middlewares.dynamic_context_middleware import SubagentDateContextMiddleware
@@ -203,10 +231,14 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     from alpha.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
     from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
 
-    assert len(middlewares) == 19
+    assert len(middlewares) == 20
     assert isinstance(middlewares[0], FakeInputSanitizationMiddleware)  # InputSanitizationMiddleware stub
     assert isinstance(middlewares[1], ToolOutputBudgetMiddleware)
     assert any(isinstance(m, ToolErrorHandlingMiddleware) for m in middlewares)
+    # The APEX contract gate must never silently drop out of the shared base:
+    # counting 19 would pass if it disappeared, so assert the security
+    # middleware itself, not only the total that happens to include it.
+    assert any(isinstance(m, ApexContractToolMiddleware) for m in middlewares)
     # The receipt layer wraps ToolErrorHandlingMiddleware so receipts read the
     # alpha_tool_meta status it stamps (guard-enforced, like ToolProgress).
     receipt_idx = next(i for i, m in enumerate(middlewares) if isinstance(m, ToolReceiptMiddleware))
