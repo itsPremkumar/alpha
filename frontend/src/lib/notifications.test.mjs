@@ -351,6 +351,60 @@ test("the notification surface is mounted in the header every view renders", () 
   );
 });
 
+test("the header renders exactly one notification bell", () => {
+  // The bar used to render `NotificationsBell` AND a second, hand-rolled
+  // `<Bell>` toggle right beside it — two icons in a row both labelled
+  // "Notifications", one holding the real panel and the other holding a
+  // gateway status card. Everything that toggle showed is passed into the one
+  // bell now, so a bare `<Bell` returning here means the duplication is back.
+  const topBar = readFileSync(
+    new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    (topBar.match(/<NotificationsBell\b/g) || []).length,
+    1,
+    "the shared header must mount exactly one notification bell",
+  );
+  // Comments are stripped first. The comment above the mount explains this
+  // change and names the old toggle `<Bell>` literally, so matching the raw
+  // source would assert against my own prose rather than the rendered tree.
+  const code = topBar
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  // `<Bell ` cannot match `<NotificationsBell`, so this is the second icon.
+  assert.doesNotMatch(
+    code,
+    /<Bell[\s/>]/,
+    "a second bell is rendered in the top bar; merge it into NotificationsBell",
+  );
+  assert.doesNotMatch(
+    code,
+    /import \{[^}]*\bBell\b[^}]*\} from "lucide-react"/,
+    "the second bell's lucide import must not survive the merge",
+  );
+
+  // …and the two features it owned must arrive with it, or the merge dropped
+  // information rather than consolidating it.
+  const bell = readFileSync(
+    new URL("../components/sections/NotificationsBell.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(bell, /gatewayOk/, "the gateway status card must move into the single bell");
+  assert.match(bell, /teamUnread/, "the roster unread signal must move into the single bell");
+  assert.match(
+    topBar,
+    /<NotificationsBell gatewayOk=\{gatewayOk\} teamUnread=\{unreadCount\} \/>/,
+    "the top bar must pass both through rather than rendering its own copy",
+  );
+  // Neither count may be folded into the other: they are different facts.
+  assert.doesNotMatch(
+    bell,
+    /teamUnread\s*\?\?\s*unread|unread\s*\?\?\s*teamUnread/,
+    "the notification count and the roster count must never be summed",
+  );
+});
+
 test("the Messages section keeps its own group profile editor", () => {
   // The profile panel is a drill-down on one group, so the Messages view is its
   // right home — unlike the delivery surface, which has to reach every view.
