@@ -361,6 +361,44 @@ def apex_tick() -> dict[str, Any]:
     return summary
 
 
+#: RunManager statuses this adapter reads as a finished, successful turn.
+_APEX_RUN_SUCCESS_STATUSES = frozenset({"completed", "success"})
+
+#: RunManager statuses this adapter reads as a terminal failure. ``failed`` and
+#: ``cancelled`` are the pre-RunManager spellings still carried by older session
+#: rows; the live enum spells them ``error`` and ``interrupted``.
+_APEX_RUN_FAILED_STATUSES = frozenset({"error", "failed", "interrupted", "cancelled", "timeout"})
+
+#: RunManager terminal statuses that have no twin in the dispatch-state
+#: vocabulary ``ApexStore.record_run_status`` understands. ``timeout`` is
+#: terminal everywhere else in the runtime -- ``_TERMINAL_RUN_STATUSES`` in
+#: ``services.py``, the durable ``SessionState`` machine, edit-replay
+#: visibility, peer recovery -- so recording it verbatim here leaves the
+#: session in ``running`` forever, a state nothing can move it out of, while
+#: every tick summary claims live work that RunManager already terminalized.
+_APEX_PROJECTED_RUN_STATUSES = {"timeout": "error"}
+
+
+def _observed_run_status(run: Any) -> str:
+    """Read one RunManager status; ``"unknown"`` is honest, a name is not.
+
+    The previous form nested ``getattr`` twice, so a record carrying
+    ``status=None`` fell through to ``str(None)``: a run whose status could not
+    be read was reported as having the status ``"none"``, and every downstream
+    bucket read that as a live one.
+    """
+    raw = getattr(run, "status", None)
+    value = getattr(raw, "value", raw)
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower()
+    return "unknown"
+
+
+def _projected_dispatch_status(status: str) -> str:
+    """Map an observed RunManager status onto the store's dispatch vocabulary."""
+    return _APEX_PROJECTED_RUN_STATUSES.get(status, status)
+
+
 async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dict[str, Any]:
     """Dispatch and observe APEX objectives through the Gateway run owner.
 
@@ -394,6 +432,7 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
         "skipped_terminal": 0,
         "skipped_mode_off": 0,
         "skipped_profile_mismatch": 0,
+        "unobserved": 0,
         "errors": [],
     }
     store = get_apex_store()
@@ -435,9 +474,21 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
             if session.run_id:
                 run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
                 if run is None:
-                    summary["errors"].append({"session_id": session.session_id, "error": "linked RunManager record is unavailable; dispatch remains parked"})
+                    # The link is durable and the record is not. Parking the
+                    # dispatch here would invent a terminal state nobody
+                    # measured, and counting it as ``running`` would claim work
+                    # that cannot be observed, so it is disclosed durably and
+                    # in its own bucket instead of vanishing with the tick.
+                    summary["unobserved"] += 1
+                    summary["errors"].append({"session_id": session.session_id, "run_id": session.run_id, "error": "linked RunManager record is unavailable; dispatch remains parked"})
+                    store.emit(session.session_id, "run.record_unavailable", run_id=session.run_id)
                     continue
-                status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
+                status = _observed_run_status(run)
+                if status == "unknown":
+                    summary["unobserved"] += 1
+                    summary["errors"].append({"session_id": session.session_id, "run_id": session.run_id, "error": "linked RunManager record carries no readable status; dispatch remains parked"})
+                    store.emit(session.session_id, "run.status_unreadable", run_id=session.run_id)
+                    continue
                 if event_store is not None:
                     cursor = int(session.usage.event_cursors.get(session.run_id, 0))
                     for _ in range(20):
@@ -513,14 +564,43 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                         limit=token_limit,
                     )
                     summary["budget_exhausted"] += 1
-                    run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
-                    status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
+                    observed = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
+                    if observed is not None:
+                        status = _observed_run_status(observed)
                 elif status in {"pending", "running", "queued"} and runtime_exhausted:
                     await run_manager.cancel(session.run_id, action="interrupt")
-                    run = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
-                    status = getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "unknown"))).lower()
-                store.record_run_status(session.session_id, run_id=session.run_id, status=status)
-                if status in {"completed", "success"}:
+                    # The twin token ceiling journals its own interrupt. A run
+                    # stopped for elapsed time must leave the same evidence, or
+                    # the only record of why the objective ended is the generic
+                    # failure bucket below -- an operator reading the journal
+                    # sees a failure with no cause, and a status projection
+                    # showing zero budget exhaustion.
+                    store.emit(
+                        session.session_id,
+                        "budget.runtime_exhausted",
+                        run_id=session.run_id,
+                        elapsed_minutes=round((time.time() - started_at) / 60.0, 3),
+                        limit_minutes=runtime_limit,
+                    )
+                    summary["budget_exhausted"] += 1
+                    observed = await run_manager.get(session.run_id, user_id=session.owner, raise_on_store_error=True)
+                    if observed is not None:
+                        status = _observed_run_status(observed)
+                projected = _projected_dispatch_status(status)
+                store.record_run_status(session.session_id, run_id=session.run_id, status=projected)
+                if projected != status:
+                    # Keep the real RunManager outcome in the durable journal:
+                    # the dispatch projection has no ``timeout`` state, so the
+                    # recorded one is the failure class and the observed name
+                    # travels here.
+                    store.emit(
+                        session.session_id,
+                        "run.status_projected",
+                        run_id=session.run_id,
+                        observed_status=status,
+                        projected_status=projected,
+                    )
+                if status in _APEX_RUN_SUCCESS_STATUSES:
                     latest = store.get(session.session_id)
                     if latest is not None and latest.state is ApexSessionState.ACTIVE and latest.acceptance is None and latest.acceptance_criteria:
                         from alpha.mission.acceptance import get_acceptance_registry
@@ -545,7 +625,7 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                     # measured acceptance report is available; otherwise the
                     # normal acceptance gate owns the next transition.
                     latest = store.get(session.session_id)
-                    if latest is not None and status in {"completed", "success"} and store.requeue_approved_tool_action(session.session_id, run_id=session.run_id):
+                    if latest is not None and status in _APEX_RUN_SUCCESS_STATUSES and store.requeue_approved_tool_action(session.session_id, run_id=session.run_id):
                         summary["approval_requeued"] += 1
                         continue
                     # A report may already have been persisted before a prior
@@ -567,7 +647,7 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                         summary["blocked"] += 1
                     else:
                         summary["awaiting_verification"] += 1
-                elif status in {"error", "failed", "interrupted", "cancelled"}:
+                elif status in _APEX_RUN_FAILED_STATUSES:
                     summary["failed"] += 1
                 else:
                     summary["running"] += 1
@@ -615,29 +695,75 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                 generation = store.claim_dispatch(session.session_id)
                 if generation is not None:
                     reason = "APEX token budget is zero; no model run was admitted."
-                    store.record_dispatch_failure(session.session_id, generation=generation, reason=reason)
-                    summary["failed"] += 1
-                    summary["budget_exhausted"] += 1
+                    if store.record_dispatch_failure(session.session_id, generation=generation, reason=reason):
+                        summary["failed"] += 1
+                        summary["budget_exhausted"] += 1
                 continue
 
             generation = store.claim_dispatch(session.session_id)
             if generation is None:
                 continue
             run = await launch_apex_session_run(app=app, session=session, generation=generation)
+            admitted_run_id = str(getattr(run, "run_id", "") or "")
             if store.record_dispatch_run(
                 session.session_id,
                 generation=generation,
-                run_id=run.run_id,
-                status=getattr(getattr(run, "status", None), "value", str(getattr(run, "status", "pending"))),
+                run_id=admitted_run_id,
+                status=_observed_run_status(run),
             ):
                 summary["dispatched"] += 1
             else:
-                summary["errors"].append({"session_id": session.session_id, "error": "run was admitted but session link changed; inspect the idempotent run record"})
+                # A run was admitted but the APEX row refused the link. Leaving
+                # the session in ``starting`` is not a recovery posture: its
+                # generation is already consumed, so every later tick re-claims
+                # the *same* generation and re-enters admission for a session
+                # that will never link -- a stuck "starting" session and one
+                # redundant admission attempt per tick, forever. Park it instead
+                # and name the run so the operator can inspect the idempotent
+                # record. ``record_dispatch_failure`` is itself a
+                # compare-and-set that only lands while the dispatch is still
+                # ``starting`` and unlinked, so a concurrent observer that
+                # already moved this row is never overwritten by this path.
+                reason = f"run was admitted but the session dispatch link changed (run_id={admitted_run_id or 'unknown'}, generation={generation}); inspect the idempotent run record"
+                parked = store.record_dispatch_failure(session.session_id, generation=generation, reason=reason)
+                summary["errors"].append(
+                    {
+                        "session_id": session.session_id,
+                        "run_id": admitted_run_id,
+                        "error": reason,
+                        "parked": parked,
+                    }
+                )
+                if parked:
+                    summary["failed"] += 1
         except Exception as exc:
             reason = f"{type(exc).__name__}: {exc}"
             if generation is not None:
-                store.record_dispatch_failure(session.session_id, generation=generation, reason=reason)
-                summary["failed"] += 1
+                # Parking this dispatch writes through the same store
+                # transaction that just failed, so it can fail too. An
+                # unguarded raise here escapes the adapter: the remaining
+                # sessions of this pass are never examined, and the supervisor
+                # counts a raising adapter against its restart budget until it
+                # parks the APEX loop for every session.
+                try:
+                    parked = store.record_dispatch_failure(session.session_id, generation=generation, reason=reason)
+                except Exception as park_exc:  # noqa: BLE001 - one session must not abort the pass
+                    parked = False
+                    logger.error(
+                        "APEX dispatch failure for %s could not be parked: %s",
+                        session.session_id,
+                        f"{type(park_exc).__name__}: {park_exc}",
+                    )
+                if parked:
+                    summary["failed"] += 1
+                else:
+                    summary["errors"].append(
+                        {
+                            "session_id": session.session_id,
+                            "error": reason,
+                            "park_error": "dispatch failure could not be persisted; inspect the session row",
+                        }
+                    )
             summary["errors"].append({"session_id": session.session_id, "error": reason})
             logger.warning("APEX host dispatch failed for %s: %s", session.session_id, exc)
 

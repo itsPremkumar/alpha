@@ -2114,6 +2114,18 @@ async def launch_apex_session_run(
         raise ValueError("APEX dispatch requires a validated contract snapshot")
     contract = contract_from_snapshot(session.contract_snapshot, expected_digest=str(getattr(session, "contract_digest", "") or ""))
 
+    # Fail closed on a stale generation *before* admission. ``start_run``
+    # re-reads the durable row and stamps whatever generation it finds into run
+    # metadata, while the idempotency key below is built from this parameter, so
+    # a superseded generation would admit a durable run under an obsolete key.
+    # ``record_dispatch_run`` then refuses that link, leaving the session parked
+    # in ``starting`` with an unobserved worker. Refusing here keeps the
+    # admission and the claim behind one generation, and the host adapter parks
+    # the dispatch with this reason in the journal.
+    durable_generation = int(getattr(session, "dispatch_generation", 0) or 0)
+    if durable_generation != int(generation):
+        raise ValueError(f"APEX dispatch generation {int(generation)} is not the durable generation {durable_generation}")
+
     objective = str(getattr(session, "objective", "") or "").strip()
     constraints = [str(item.instruction) for item in getattr(session, "constraints", []) if str(getattr(item, "instruction", "")).strip()]
     criteria = [str(item).strip() for item in getattr(session, "acceptance_criteria", []) if str(item).strip()]

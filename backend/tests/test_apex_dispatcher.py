@@ -651,3 +651,366 @@ async def test_zero_apex_token_budget_never_admits_a_run(tmp_path: Path, monkeyp
     assert admitted == []
     assert result["budget_exhausted"] == 1
     assert store.get(session.session_id).dispatch_state == "failed"
+
+
+def _linked_apex_session(tmp_path: Path, *, thread_id: str, profile: str, run_id: str) -> tuple[ApexStore, ApexModeStore, ApexSession]:
+    """One ACTIVE session already linked to a dispatched run, plus its stores."""
+    contract = profile_for(profile)
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, profile, owner="operator")
+    session = store.create(
+        owner="operator",
+        objective="observe the linked run",
+        profile=profile,
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id=thread_id,
+    )
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert generation is not None
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id=run_id, status="running")
+    return store, modes, session
+
+
+def _patch_apex_environment(monkeypatch: pytest.MonkeyPatch, store: ApexStore, modes: ApexModeStore) -> None:
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+
+@pytest.mark.asyncio
+async def test_timed_out_apex_run_is_projected_terminal_not_stuck_running(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A RunManager ``timeout`` is terminal; the dispatch projection said otherwise.
+
+    ``RunStatus.timeout`` is terminal in ``services._TERMINAL_RUN_STATUSES``, in
+    the durable ``SessionState`` machine, and in edit-replay visibility, but the
+    dispatcher's failure set omitted it. Recording it verbatim made
+    ``record_run_status`` fall into its ``else`` branch, so a timed-out run was
+    stored as ``running`` -- which ``claim_dispatch`` refuses, which
+    ``requeue_approved_tool_action`` refuses, which ``replan_failed_run``
+    refuses, and which ``record_run_status`` then re-derives on every later
+    tick. The session could never move again while the summary claimed live
+    work RunManager had already terminalized.
+    """
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    thread_id = "thread-apex-timeout"
+    store, modes, session = _linked_apex_session(tmp_path, thread_id=thread_id, profile="apex_max", run_id="run-timeout")
+    _patch_apex_environment(monkeypatch, store, modes)
+
+    class TimedOutRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            return SimpleNamespace(
+                run_id=run_id,
+                status=SimpleNamespace(value="timeout"),
+                total_input_tokens=12,
+                total_output_tokens=3,
+                llm_call_count=2,
+            )
+
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=TimedOutRunManager())), session_id=session.session_id)
+
+    assert result["failed"] == 1
+    assert result["running"] == 0
+    stored = store.get(session.session_id)
+    assert stored is not None
+    assert stored.dispatch_state == "failed"
+    # The dispatch projection has no "timeout" vocabulary, so the session row
+    # carries the failure class and the observed name is journalled.
+    assert stored.run_status == "error"
+    assert [event.event_type for event in store.read_events(session.session_id) if event.event_type == "run.status_projected"] == ["run.status_projected"]
+    projected = [event for event in store.read_events(session.session_id) if event.event_type == "run.status_projected"][0]
+    assert projected.payload["observed_status"] == "timeout"
+    assert projected.payload["run_id"] == "run-timeout"
+
+    # The projection is the recovery boundary: a session parked in "running"
+    # is one nothing can move, so the terminal projection must be a durable
+    # state a later operator replan can act on.
+    assert store.claim_dispatch(session.session_id) is None
+
+    repeated = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=TimedOutRunManager())), session_id=session.session_id)
+    assert repeated["failed"] == 1
+    assert repeated["running"] == 0
+
+
+@pytest.mark.asyncio
+async def test_runtime_budget_interrupt_is_journaled_and_counted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The runtime ceiling interrupt must leave the same evidence as the token one.
+
+    The token branch emits ``budget.tokens_exhausted`` and counts
+    ``budget_exhausted``; the runtime branch cancelled the run and said nothing,
+    so a stop caused by elapsed time appeared as a bare failure with no cause
+    anywhere in the journal or in the status projection.
+    """
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner, thread_id = "operator", "thread-apex-runtime-journal"
+    runtime_limit = 1
+    contract = narrow_contract(profile_for("apex_max"), budget={"max_runtime_minutes": runtime_limit})
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "apex_max", owner=owner)
+    session = store.create(owner=owner, objective="bounded inspect", profile="apex_max", contract_digest=contract.digest(), contract_snapshot=contract.to_dict(), thread_id=thread_id)
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    generation = store.claim_dispatch(session.session_id)
+    assert store.record_dispatch_run(session.session_id, generation=generation, run_id="run-runtime-budget", status="running")
+    store.update(session.session_id, dispatch_started_at=time.time() - (runtime_limit * 60 + 1))
+    _patch_apex_environment(monkeypatch, store, modes)
+
+    class FakeRunManager:
+        def __init__(self):
+            self.cancelled = []
+            self.record = SimpleNamespace(run_id="run-runtime-budget", status=SimpleNamespace(value="running"), total_input_tokens=0, total_output_tokens=0, llm_call_count=0)
+
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            return self.record
+
+        async def cancel(self, run_id, *, action):
+            self.cancelled.append((run_id, action))
+            self.record.status = SimpleNamespace(value="interrupted")
+
+    manager = FakeRunManager()
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=manager)), session_id=session.session_id)
+
+    assert manager.cancelled == [("run-runtime-budget", "interrupt")]
+    assert result["budget_exhausted"] == 1
+    assert store.get(session.session_id).run_status == "interrupted"
+    exhausted = [event for event in store.read_events(session.session_id) if event.event_type == "budget.runtime_exhausted"]
+    assert len(exhausted) == 1
+    assert exhausted[0].payload["run_id"] == "run-runtime-budget"
+    assert exhausted[0].payload["limit_minutes"] == runtime_limit
+    assert exhausted[0].payload["elapsed_minutes"] > runtime_limit
+
+
+@pytest.mark.asyncio
+async def test_unavailable_run_record_is_disclosed_not_counted_running(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A durable link with no readable record must not read as live work.
+
+    The record is gone, not the work. Parking it here would invent a terminal
+    state nobody measured, and counting it as ``running`` claims execution that
+    cannot be observed, so it is journalled and counted in its own bucket.
+    """
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    thread_id = "thread-apex-missing-record"
+    store, modes, session = _linked_apex_session(tmp_path, thread_id=thread_id, profile="autonomous", run_id="run-vanished")
+    _patch_apex_environment(monkeypatch, store, modes)
+
+    class MissingRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            return None
+
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=MissingRunManager())), session_id=session.session_id)
+
+    assert result["unobserved"] == 1
+    assert result["running"] == 0
+    assert any(error.get("run_id") == "run-vanished" for error in result["errors"])
+    unavailable = [event for event in store.read_events(session.session_id) if event.event_type == "run.record_unavailable"]
+    assert len(unavailable) == 1
+    assert unavailable[0].payload["run_id"] == "run-vanished"
+    stored = store.get(session.session_id)
+    assert stored is not None
+    assert stored.dispatch_state == "running"
+    # Nothing was measured, so no terminal state is fabricated either.
+    assert store.claim_dispatch(session.session_id) is None
+
+
+@pytest.mark.asyncio
+async def test_unreadable_run_status_is_not_recorded_as_a_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``status=None`` used to be flattened into the status name ``"none"``.
+
+    The nested ``getattr`` fell through to ``str(None)``, so a record whose
+    status could not be read was written to the session row as the literal
+    string ``"none"`` and counted as a live run on every later tick.
+    """
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    thread_id = "thread-apex-unreadable-status"
+    store, modes, session = _linked_apex_session(tmp_path, thread_id=thread_id, profile="autonomous", run_id="run-stateless")
+    _patch_apex_environment(monkeypatch, store, modes)
+
+    class StatelessRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            return SimpleNamespace(run_id=run_id, status=None, total_input_tokens=0, total_output_tokens=0, llm_call_count=0)
+
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=StatelessRunManager())), session_id=session.session_id)
+
+    assert result["unobserved"] == 1
+    assert result["running"] == 0
+    stored = store.get(session.session_id)
+    assert stored is not None
+    assert stored.run_status != "none"
+    assert [event.event_type for event in store.read_events(session.session_id) if event.event_type == "run.status_unreadable"] == ["run.status_unreadable"]
+
+
+@pytest.mark.asyncio
+async def test_refused_dispatch_link_parks_instead_of_redispatching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run the session will not link must not be re-admitted every tick.
+
+    ``record_dispatch_run`` refuses when the session already carries another
+    run, when it moved past ``starting``, or when its generation no longer
+    matches. Leaving the row in ``starting`` meant the *same* generation was
+    re-claimed on every pass, so the dispatcher re-entered run admission
+    forever for a session that could never link.
+    """
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    import app.gateway.services as gateway_services
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner, thread_id = "operator", "thread-apex-link-refused"
+    contract = profile_for("apex_max")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "apex_max", owner=owner)
+    session = store.create(owner=owner, objective="link is refused", profile="apex_max", contract_digest=contract.digest(), contract_snapshot=contract.to_dict(), thread_id=thread_id)
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    admitted: list[tuple[str, int]] = []
+
+    async def launch(*, app, session, generation):
+        admitted.append((session.session_id, generation))
+        return SimpleNamespace(run_id="run-refused-link", status=SimpleNamespace(value="running"))
+
+    monkeypatch.setattr(gateway_services, "launch_apex_session_run", launch)
+    # The row refuses the link: another observer already owns it.
+    monkeypatch.setattr(store, "record_dispatch_run", lambda *args, **kwargs: False)
+
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=SimpleNamespace())), session_id=session.session_id)
+
+    assert admitted == [(session.session_id, 1)]
+    assert result["dispatched"] == 0
+    assert result["failed"] == 1
+    refusal = [error for error in result["errors"] if error.get("parked") is True]
+    assert refusal and refusal[0]["run_id"] == "run-refused-link"
+    stored = store.get(session.session_id)
+    assert stored is not None
+    assert stored.dispatch_state == "failed"
+    assert stored.run_status == "dispatch_error"
+    assert stored.blocked_reason.startswith("run was admitted but the session dispatch link changed")
+
+    # The parked row is a terminal dispatch state, so the next pass reports it
+    # rather than claiming the same generation and re-entering admission.
+    repeat = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=SimpleNamespace())), session_id=session.session_id)
+    assert admitted == [(session.session_id, 1)]
+    assert repeat["failed"] == 1
+    assert repeat["dispatched"] == 0
+
+
+@pytest.mark.asyncio
+async def test_unparkable_dispatch_failure_does_not_abort_the_whole_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One session whose failure cannot be journalled must not strand the rest.
+
+    Parking a dispatch writes through the same store transaction that just
+    failed, so it can fail too. An unguarded raise escapes the adapter: the
+    remaining sessions of the pass are never examined, and a raising adapter is
+    counted against the supervisor's restart budget until it parks the loop for
+    every session.
+    """
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    import app.gateway.services as gateway_services
+    from alpha.apex.store import ApexPersistenceError
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    contract = profile_for("apex_max")
+
+    # The older, healthy session is dispatched; the newer one cannot park.
+    healthy = store.create(
+        owner="operator",
+        objective="healthy neighbour",
+        profile="apex_max",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id="thread-apex-neighbour-ok",
+    )
+    store.update(healthy.session_id, created_at=1.0)
+    modes.enable("thread-apex-neighbour-ok", "apex_max", owner="operator")
+    broken = store.create(
+        owner="operator",
+        objective="cannot be parked",
+        profile="apex_max",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id="thread-apex-neighbour-broken",
+    )
+    modes.enable("thread-apex-neighbour-broken", "apex_max", owner="operator")
+
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    def raising_park(*_args, **_kwargs) -> bool:
+        raise ApexPersistenceError("Could not persist APEX session changes")
+
+    monkeypatch.setattr(store, "record_dispatch_failure", raising_park)
+
+    admitted: list[str] = []
+
+    async def launch(*, app, session, generation):
+        if session.session_id == broken.session_id:
+            raise ValueError("missing thread")
+        admitted.append(session.session_id)
+        return SimpleNamespace(run_id="run-neighbour", status=SimpleNamespace(value="running"))
+
+    monkeypatch.setattr(gateway_services, "launch_apex_session_run", launch)
+
+    result = await apex_execution_tick(SimpleNamespace(state=SimpleNamespace(run_manager=SimpleNamespace())))
+
+    assert admitted == [healthy.session_id]
+    assert result["sessions"] == 2
+    assert result["dispatched"] == 1
+    unparsed = [error for error in result["errors"] if "park_error" in error]
+    assert len(unparsed) == 1
+    assert unparsed[0]["session_id"] == broken.session_id
+    assert unparsed[0]["park_error"] == "dispatch failure could not be persisted; inspect the session row"
+    # The row keeps the honest state rather than being reported as parked.
+    stored = store.get(broken.session_id)
+    assert stored is not None
+    assert stored.dispatch_state == "starting"
+    assert stored.blocked_reason == ""
+
+
+@pytest.mark.asyncio
+async def test_launch_apex_session_run_refuses_a_stale_dispatch_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Admission and the durable claim must sit behind one generation.
+
+    ``start_run`` re-reads the session and stamps whatever generation it finds
+    into run metadata, while the idempotency key is built from the caller's
+    parameter. A superseded generation therefore admitted a durable run under an
+    obsolete key, which ``record_dispatch_run`` then refused -- an unobserved
+    worker plus a session parked in ``starting``.
+    """
+    import app.gateway.services as gateway_services
+
+    owner, thread_id = "operator", "thread-apex-stale-generation"
+    contract = profile_for("apex_max")
+    store = ApexStore(tmp_path / "sessions.json")
+    session = store.create(owner=owner, objective="stale generation", profile="apex_max", contract_digest=contract.digest(), contract_snapshot=contract.to_dict(), thread_id=thread_id)
+    store.set_state(session.session_id, ApexSessionState.ACTIVE)
+    assert store.claim_dispatch(session.session_id) == 1
+
+    started: list[str] = []
+
+    async def unreachable_start_run(*_args, **_kwargs):
+        started.append("called")
+        raise AssertionError("stale generation must not reach run admission")
+
+    monkeypatch.setattr(gateway_services, "start_run", unreachable_start_run)
+
+    with pytest.raises(ValueError, match="dispatch generation 7 is not the durable generation 1"):
+        await gateway_services.launch_apex_session_run(app=SimpleNamespace(), session=store.get(session.session_id), generation=7)
+
+    assert started == []

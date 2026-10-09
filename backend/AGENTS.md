@@ -97,6 +97,37 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   `tests/test_apex_dispatcher.py` and `tests/test_apex_store_durability.py`.
   Completed RunManager work enters `awaiting_verification`; it is never
   promoted to APEX completion without a complete measured acceptance report.
+  **Every terminal RunManager status must be projected as one.** `RunStatus.timeout`
+  is terminal in `services._TERMINAL_RUN_STATUSES`, in the durable `SessionState`
+  machine, and in edit-replay visibility, but `record_run_status` derives dispatch
+  state from a smaller fixed vocabulary, so recording `timeout` verbatim lands in
+  its `else` branch: the session is stored `running`, which `claim_dispatch`,
+  `requeue_approved_tool_action`, and `replan_failed_run` all refuse and
+  `record_run_status` re-derives forever — a dead session while every tick summary
+  claims live work. The adapter projects such a status onto its failure class and
+  journals the observed name in `run.status_projected`, so the row is movable and
+  the journal keeps the real outcome. Both budget ceilings are journalled
+  (`budget.tokens_exhausted`, `budget.runtime_exhausted`) and both count
+  `budget_exhausted`; a stop caused by elapsed time is a failure with a cause, not
+  a bare one.
+  **A durability link with no readable record is disclosed, not classified.**
+  `run.record_unavailable` / `run.status_unreadable` are journalled and counted in
+  the summary's `unobserved` bucket. Parking it would invent a terminal state nobody
+  measured; counting it `running` claims execution nobody can observe, and neither
+  may be silently dropped.
+  **A refused dispatch link parks; it does not retry.** When
+  `record_dispatch_run` refuses, the generation is already consumed, so leaving the
+  row in `starting` re-claims the same generation and re-enters run admission on
+  every pass forever. The adapter parks it via `record_dispatch_failure` (itself a
+  compare-and-set, so a concurrent observer that already moved the row is never
+  overwritten) naming the admitted run id.
+  **Parking writes through the same transaction that can fail**, so the failure
+  handler is guarded: an unguarded raise escapes the adapter, silently strands every
+  remaining session of the pass, and counts against the supervisor restart budget
+  until it parks the loop for all of them. `launch_apex_session_run()` likewise
+  fails closed on a stale dispatch generation before admission, because
+  `start_run` stamps the durable generation into run metadata while the idempotency
+  key comes from the caller's parameter.
   If an exact `apex.tool_policy` approval is granted after its requesting run
   already completed, an unconsumed approval releases that terminal run link so
   the supervisor can dispatch a fresh generation; live runs and consumed or
