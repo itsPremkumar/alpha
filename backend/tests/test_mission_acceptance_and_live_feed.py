@@ -266,6 +266,78 @@ def test_a_corrupt_stored_report_fails_closed_instead_of_crashing() -> None:
     assert [c.criterion for c in restored.criteria] == CRITERIA
 
 
+def test_contradictory_evidence_keys_decide_nothing() -> None:
+    """Two keys that normalize to one criterion and contradict are not a measurement.
+
+    Pre-fix, ``normalized[key] = value`` let the LAST-written entry win with no
+    note, so ``{"c": True, " c ": False}`` and ``{" c ": False, "c": True}``
+    produced different verdicts for the same pair of measurements.  A contested
+    criterion is now UNVERIFIED whichever way round the keys arrive, the
+    conflict is named in the notes, and the pass gate refuses it.
+    """
+    for evidence in ({"c": True, " c ": False}, {" c ": False, "c": True}, {"c": False, " c ": True}):
+        report = evaluate_acceptance(["c"], evidence)
+        assert [c.verdict for c in report.criteria] == [CriterionVerdict.UNVERIFIED]
+        assert report.unevaluated == ["c"]
+        assert report.passed is False
+        assert any("contradictory measured evidence" in note for note in report.notes)
+        with pytest.raises(AcceptanceNotSatisfied) as excinfo:
+            assert_acceptance_passed(report)
+        assert "not all evaluated" in str(excinfo.value)
+
+
+def test_agreeing_duplicate_evidence_keys_still_measure() -> None:
+    """A collision that agrees is not a contradiction; the criterion is measured."""
+    report = evaluate_acceptance(["c"], {"c": True, " c ": True})
+    assert [c.verdict for c in report.criteria] == [CriterionVerdict.MET]
+    assert report.passed is True
+    assert report.notes == []
+
+
+def test_disagreeing_evaluators_decide_nothing() -> None:
+    """Two probes answering differently leave the criterion UNVERIFIED.
+
+    Pre-fix, the loop broke at the first decisive probe in sorted name order,
+    so the winner was whichever evaluator sorted first and the disagreement
+    never reached the report.  Every deciding probe is now consulted and a
+    conflict is named with both answers.
+    """
+    registry = AcceptanceRegistry()
+    registry.register("aaa_says_true", lambda _c: True)
+    registry.register("zzz_says_false", lambda _c: False)
+    report = registry.evaluate(["c"])
+    assert report.unevaluated == ["c"]
+    assert report.passed is False
+    disagreement = [note for note in report.notes if "disagree" in note]
+    assert len(disagreement) == 1
+    assert "aaa_says_true" in disagreement[0] and "zzz_says_false" in disagreement[0]
+    assert "aaa_says_true=True" in disagreement[0] and "zzz_says_false=False" in disagreement[0]
+    with pytest.raises(AcceptanceNotSatisfied):
+        assert_acceptance_passed(report)
+
+
+def test_agreeing_evaluators_still_decide_together() -> None:
+    """The counterpart: agreement across probes is the measurement."""
+    registry = AcceptanceRegistry()
+    registry.register("probe_a", lambda _c: True)
+    registry.register("probe_b", lambda _c: True)
+    report = registry.evaluate(["c"])
+    assert report.all_evaluated is True
+    assert report.passed is True
+    assert report.notes == []
+
+
+def test_evaluators_that_decide_different_criteria_still_cover_both() -> None:
+    """A probe chain (each probe decides only its own criteria) must keep working."""
+    registry = AcceptanceRegistry()
+    registry.register("file_only", lambda c: True if c.startswith("file:") else None)
+    registry.register("test_only", lambda c: True if c.startswith("tests_passed:") else None)
+    report = registry.evaluate(CRITERIA)
+    assert report.all_evaluated is True
+    assert report.passed is True
+    assert report.notes == []
+
+
 # --------------------------------------- the store refuses an unjustified end
 
 
