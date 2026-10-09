@@ -179,9 +179,16 @@ export function NavTabs(props: {
     setPortalReady(true);
   }, []);
 
+  // The finder's own query, and the element that holds it. `useState`/`useRef`
+  // are declared here, before `closeDropdown`, because closing the panel also
+  // clears the query and reads the input.
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
   const closeDropdown = useCallback(() => {
     setDropdownOpen(false);
     setPanel(null);
+    setQuery("");
   }, []);
 
   // A view change from outside this component (the thread sidebar's
@@ -218,7 +225,17 @@ export function NavTabs(props: {
       setDropdownOpen(false);
     }
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setDropdownOpen(false);
+      if (event.key === "Escape") {
+        // Escape clears an active search before it closes the panel. Closing
+        // on the first press would throw away a half-typed query and land the
+        // operator back at the top of the list they were trying to narrow.
+        if (query.trim()) {
+          setQuery("");
+          searchRef.current?.focus();
+          return;
+        }
+        setDropdownOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -233,7 +250,38 @@ export function NavTabs(props: {
       window.removeEventListener("resize", placePanel);
       window.removeEventListener("scroll", placePanel, true);
     };
-  }, [dropdownOpen, placePanel]);
+    // `query` is read inside the key handler, so it belongs in deps: leaving it
+    // out would close the keydown over a stale closure and Escape would always
+    // close, never clear.
+  }, [dropdownOpen, placePanel, query]);
+
+  // Opening the panel focuses the finder, so the operator can type immediately
+  // rather than reaching for the mouse and hunting through 28 rows.
+  useEffect(() => {
+    if (dropdownOpen) searchRef.current?.focus();
+  }, [dropdownOpen]);
+
+  /**
+   * The ranked view of `secondaryTabs` for the current query.
+   *
+   * Matching is over the label and the blurb, because "where do I see what the
+   * agent remembers" is a search for the blurb, not the label "Memory". An
+   * empty group is never rendered — a heading with nothing under it is a claim
+   * that a category is empty, which no measurement made.
+   */
+  const needle = query.trim().toLowerCase();
+  const matchedGroups = SECONDARY_GROUPS.map((group) => ({
+    group,
+    tabs: secondaryTabs.filter(
+      (t) =>
+        t.category === group.category &&
+        (!needle ||
+          t.label.toLowerCase().includes(needle) ||
+          t.blurb.toLowerCase().includes(needle) ||
+          t.id.toLowerCase().includes(needle)),
+    ),
+  })).filter((entry) => entry.tabs.length > 0);
+  const matchedCount = matchedGroups.reduce((sum, entry) => sum + entry.tabs.length, 0);
 
   const primaryTabs = WORKSPACE_TABS.filter((t) => t.isPrimary);
   const secondaryTabs = WORKSPACE_TABS.filter((t) => !t.isPrimary);
@@ -325,13 +373,56 @@ export function NavTabs(props: {
             }}
             className="z-[100] overflow-y-auto overscroll-contain rounded-2xl border border-border/80 bg-card elev-3 p-2 space-y-2 focus:outline-none animate-in fade-in zoom-in-95 dur-fast"
           >
-            {SECONDARY_GROUPS.map((group, index) => (
-              <div key={group.category} className={index === 0 ? undefined : "pt-1 border-t border-border/50"}>
-                <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{group.heading}</div>
-                <div className="space-y-0.5">
-                  {secondaryTabs
-                    .filter((t) => t.category === group.category)
-                    .map((t) => {
+            {/* The finder. 28 views behind one button is not discovery, it is a
+                memory test: the panel's real content is the list of blurbs, and
+                the filter reads the blurb the operator is thinking in. */}
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Find a view — try “memory”, “cost”, “repair”"
+                aria-label="Find a workspace view"
+                aria-controls={MENU_ID}
+                className="w-full rounded-xl border border-border/70 bg-background pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40 placeholder:text-muted-foreground"
+              />
+            </div>
+
+            {/* The count is the disclosure that keeps a filtered list from
+                reading as the whole list: 5 rows shown under "28 views" is how
+                an operator concludes the other 23 were removed. */}
+            <p
+              className="px-2.5 text-[10px] text-muted-foreground"
+              aria-live="polite"
+              data-view-match-count={matchedCount}
+            >
+              {needle
+                ? `${matchedCount} of ${secondaryTabs.length} views match “${query.trim()}”`
+                : `${secondaryTabs.length} views`}
+            </p>
+
+            {matchedGroups.length === 0 ? (
+              <p className="px-2.5 py-3 text-xs text-muted-foreground">
+                No view matches “{query.trim()}”. The filter reads each view's
+                name and its description, so a different word — or the primary
+                tabs above — is the next thing to try.
+              </p>
+            ) : (
+              matchedGroups.map((entry, index) => (
+                <div
+                  key={entry.group.category}
+                  className={index === 0 ? undefined : "pt-1 border-t border-border/50"}
+                >
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {entry.group.heading}
+                  </div>
+                  <div className="space-y-0.5">
+                    {entry.tabs.map((t) => {
                       const active = props.view === t.id;
                       return (
                         <button
@@ -347,17 +438,26 @@ export function NavTabs(props: {
                               : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                           }`}
                         >
-                          <span className={active ? "text-primary-foreground" : "text-primary"}>{t.icon}</span>
+                          <span className={active ? "text-primary-foreground" : "text-primary"}>
+                            {t.icon}
+                          </span>
                           <div className="flex-1 min-w-0">
                             <span className="block truncate">{t.label}</span>
-                            <span className={`block text-[10px] truncate ${active ? "text-white/80" : "text-muted-foreground"}`}>{t.blurb}</span>
+                            <span
+                              className={`block text-[10px] truncate ${
+                                active ? "text-white/80" : "text-muted-foreground"
+                              }`}
+                            >
+                              {t.blurb}
+                            </span>
                           </div>
                         </button>
                       );
                     })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>,
           document.body,
         )}

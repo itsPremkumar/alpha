@@ -150,3 +150,71 @@ test("the previously unreachable view is in the menu", () => {
     `deliberation's category \`${tab.category}\` has a group`,
   );
 });
+
+/* --- the view finder ----------------------------------------------------- */
+
+test("the More Views panel can be filtered by what a view does, not only its name", () => {
+  // 28 views behind one button is not discovery, it is a memory test. The
+  // panel's real content is the list of blurbs, so an operator looking for
+  // "what the agent remembers" types `memory`; the label happens to match, but
+  // "where do I see what this cost" does not, and that row lives in the Usage
+  // blurb. Searching only labels would make that row unfindable by intent.
+  assert.match(SRC, /t\.label\.toLowerCase\(\)\.includes\(needle\)/, "the filter must read the label");
+  assert.match(SRC, /t\.blurb\.toLowerCase\(\)\.includes\(needle\)/, "the filter must read the blurb");
+  assert.match(SRC, /t\.id\.toLowerCase\(\)\.includes\(needle\)/, "the filter must read the view id too");
+});
+
+test("a filtered list says how many of the views matched", () => {
+  // Without this, 5 rows under a 28-view panel reads as the whole list: the
+  // operator concludes the other 23 views were removed rather than filtered.
+  assert.match(
+    SRC,
+    /data-view-match-count=\{matchedCount\}/,
+    "the match count must be rendered so it can be driven directly",
+  );
+  assert.match(
+    SRC,
+    /`\$\{matchedCount\} of \$\{secondaryTabs\.length\} views match/,
+    "the sentence must name both numbers, the shown and the total",
+  );
+});
+
+test("a heading is never rendered without rows under it", () => {
+  // A group heading over nothing is a claim that a category is empty. When the
+  // filter removes every row in a category, that heading must go with them —
+  // otherwise a narrowed list shows four groups and three of them are lies.
+  assert.match(
+    SRC,
+    /\.filter\(\(entry\) => entry\.tabs\.length > 0\)/,
+    "groups with no matching views must be dropped, not rendered empty",
+  );
+});
+
+test("a filter that matches nothing says so, and names what the filter reads", () => {
+  // Silence after a search is indistinguishable from a broken panel: the
+  // operator cannot tell whether the view does not exist or whether they
+  // spelled it differently from the blurb.
+  assert.match(SRC, /No view matches/, "the empty filter state must be worded");
+  assert.match(SRC, /filter reads each view's/, "and say that it reads names and descriptions");
+});
+
+test("Escape clears the query before it closes the panel", () => {
+  // Closing on the first press throws away a half-typed query and lands the
+  // operator back at the top of the list they were narrowing.
+  assert.match(SRC, /if \(query\.trim\(\)\)/, "an active query is cleared first");
+  assert.match(SRC, /setQuery\(""\)/, "by clearing it, not by closing");
+  assert.match(SRC, /\}, \[dropdownOpen, placePanel, query\]\);/, "the handler must see the current query");
+});
+
+test("the finder takes focus when the panel opens", () => {
+  // A panel that opens and waits for a mouse move is a panel that invites
+  // scanning 28 rows instead of typing three characters.
+  assert.match(SRC, /if \(dropdownOpen\) searchRef\.current\?\.focus\(\)/, "opening focuses the finder");
+  assert.match(SRC, /ref=\{searchRef\}/, "the input holds the ref that focus targets");
+});
+
+test("closing the panel clears the query", () => {
+  // Reopening the menu must not show a stale filter that still hides most of
+  // the views, which reads as a navigation that lost views.
+  assert.match(SRC, /setPanel\(null\);\s*setQuery\(""\)/, "close resets both the panel and the query");
+});
