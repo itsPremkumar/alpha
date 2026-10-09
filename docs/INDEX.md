@@ -71,6 +71,7 @@
 - [REVERSIBLE_DELETE.md](REVERSIBLE_DELETE.md) — Recoverable delete: how a destructive mutation is staged, bounded, and restored.
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
+- [SENTINEL.md](SENTINEL.md) — Operating the Sentinel autonomous repair loop: observe vs repair, the durable journal, the aggregate reading and its verdict vocabulary, the human handoff queue, and what is deliberately not built.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.
 - [audit/frontend-contracts.md](audit/frontend-contracts.md) — Operations, deployment, and reliability documentation.
 - [audit/infra.md](audit/infra.md) — Operations, deployment, and reliability documentation.

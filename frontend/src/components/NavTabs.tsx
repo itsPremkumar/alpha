@@ -33,6 +33,7 @@ import {
   Search,
   Compass,
   ShieldCheck,
+  ShieldAlert,
   Rocket,
   Gauge,
   ScrollText,
@@ -71,6 +72,7 @@ export type WorkspaceView =
   | "protocols"
   | "apex"
   | "intelligence"
+  | "sentinel"
   | "effects"
   | "reliability";
 
@@ -125,6 +127,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "apex", label: "APEX", icon: <Rocket className="size-3.5" />, blurb: "Executive autopilot: contract, missions, invariants", category: "system" },
   { id: "reliability", label: "Validation", icon: <ShieldCheck className="size-3.5" />, blurb: "Real tasks the agent ran, and whether the work happened", category: "system" },
   { id: "intelligence", label: "Intelligence", icon: <Gauge className="size-3.5" />, blurb: "Control plane: loop health, evidence, metrics & honesty basis", category: "system" },
+  { id: "sentinel", label: "Sentinel", icon: <ShieldAlert className="size-3.5" />, blurb: "Repair loop: observed faults, verified fixes, reverts & human handoffs", category: "system" },
   { id: "effects", label: "Effects", icon: <ScrollText className="size-3.5" />, blurb: "Effect journal: external effects, digests & reconciliation verdicts", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];
