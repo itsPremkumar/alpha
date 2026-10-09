@@ -54,7 +54,10 @@ export function isTransportFailure(error: unknown): boolean {
 }
 
 /** The fetch shape `apiFetch` (and the test doubles for it) expose. */
-export type IdempotentFetcher = (path: string, init?: RequestInit) => Promise<Response>;
+export type IdempotentFetcher = (
+  path: string,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export interface IdempotentRequest {
   path: string;
@@ -75,6 +78,12 @@ export interface IdempotentRetryPolicy {
   baseDelayMs?: number;
   /** Backoff ceiling in ms. Default 4000. */
   maxDelayMs?: number;
+  /** Optional visible transport state for the retries of this request. */
+  onRetry?: (status: {
+    attempt: number;
+    maxAttempts: number;
+    phase: "waiting" | "connecting";
+  }) => void;
 }
 
 const DEFAULT_ATTEMPTS = 3;
@@ -93,7 +102,10 @@ function backoffMs(attempt: number, base: number, cap: number): number {
  * request's own signal aborts. A user cancel must not sit inside a
  * backoff sleep waiting to throw.
  */
-function abortableDelay(delay: number, signal: AbortSignal | undefined): Promise<void> {
+function abortableDelay(
+  delay: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new ApiClientError("stopped"));
@@ -143,6 +155,12 @@ export async function sendIdempotent(
   init.headers = headers;
 
   for (let attempt = 1; ; attempt++) {
+    if (attempt > 1)
+      policy.onRetry?.({
+        attempt: attempt - 1,
+        maxAttempts: attempts - 1,
+        phase: "connecting",
+      });
     try {
       return await fetcher(request.path, init);
     } catch (error) {
@@ -151,7 +169,15 @@ export async function sendIdempotent(
       // "nothing was ever received" is retryable, and only while the
       // budget lasts.
       if (!isTransportFailure(error) || attempt >= attempts) throw error;
-      await abortableDelay(backoffMs(attempt, base, cap), init.signal ?? undefined);
+      policy.onRetry?.({
+        attempt,
+        maxAttempts: attempts - 1,
+        phase: "waiting",
+      });
+      await abortableDelay(
+        backoffMs(attempt, base, cap),
+        init.signal ?? undefined,
+      );
     }
   }
 }

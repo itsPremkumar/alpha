@@ -633,6 +633,11 @@ export default function ChatView({
   // exists yet, which renders no notice at all rather than "0s quiet".
   const lastByteAtRef = useRef<number | null>(null);
   const [silence, setSilence] = useState<string | null>(null);
+  const [streamReconnect, setStreamReconnect] = useState<{
+    attempt: number;
+    maxAttempts: number;
+    phase: "waiting" | "connecting";
+  } | null>(null);
 
   // Subagent tasks folded from `task_*` custom events for the current turn.
   // Cleared when a NEW run starts rather than when one ends, so the completed
@@ -1011,6 +1016,7 @@ export default function ChatView({
     // a plan belonging to the thread the user just left must not appear under
     // the one they opened.
     setLivePlan(emptyTodoPlan());
+    setStreamReconnect(null);
     if (voiceTurnRef.current) abortRef.current?.abort();
     voiceTurnGenerationRef.current += 1;
     voiceTurnRef.current = false;
@@ -1835,6 +1841,7 @@ export default function ChatView({
     // Same reason: the previous turn's finished plan is not this run's plan.
     // Leaving it up would claim work is outstanding when nothing is running.
     setLivePlan(emptyTodoPlan());
+    setStreamReconnect(null);
     // Fresh silence baseline: a dead byte counter from the previous turn would
     // announce a stall before this run has had a chance to speak.
     lastByteAtRef.current = Date.now();
@@ -2021,59 +2028,67 @@ export default function ChatView({
       // key, path and body and resolves to this one run. A server
       // answer — success or any error status — propagates untouched:
       // the retry never re-sends a request the Gateway already decided.
-      const res = await sendIdempotent(apiFetch, {
-        path: `/threads/${encodeURIComponent(threadId)}/runs/stream`,
-        idempotencyKey: runIdempotencyKey,
-        init: {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            assistant_id: activeBot?.name || "lead_agent",
-            // A transient browser/network drop must not cancel durable work;
-            // the explicit Stop action remains the cancellation boundary.
-            on_disconnect: "continue",
-            // `custom` carries the root-namespace `task_*` subagent events. Without
-            // it the transcript can show only a spinner while a delegation runs.
-            stream_mode: ["messages-tuple", "values", "custom"],
-            ...(replay
-              ? {
-                  // The prepared payload is authoritative: `input` is the graph
-                  // input recorded at the base checkpoint (a regenerate re-sends
-                  // the original question without a second user row; an edit
-                  // carries the replacement already spliced in), `checkpoint` is
-                  // the fork point *before* the superseded turn, and `metadata`
-                  // marks the run as a replay so the paged history hides the
-                  // attempt it replaces.
-                  input: replay.prepared.input,
-                  checkpoint: replay.prepared.checkpoint,
-                  metadata: replay.prepared.metadata,
-                }
-              : { input: { messages: [{ role: "user", content }] } }),
-            config: {
-              configurable: {
-                model_name: selectedModel,
-                ...(planMode ? { is_plan_mode: true } : {}),
-                // `default` is omitted rather than sent as a level: it means "no
-                // explicit request", and sending the literal string would be
-                // rejected by the run boundary.
-                ...(reasoningEffort !== DEFAULT_EFFORT
-                  ? { reasoning_effort: reasoningEffort }
-                  : {}),
+      const res = await sendIdempotent(
+        apiFetch,
+        {
+          path: `/threads/${encodeURIComponent(threadId)}/runs/stream`,
+          idempotencyKey: runIdempotencyKey,
+          init: {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              assistant_id: activeBot?.name || "lead_agent",
+              // A transient browser/network drop must not cancel durable work;
+              // the explicit Stop action remains the cancellation boundary.
+              on_disconnect: "continue",
+              // `custom` carries the root-namespace `task_*` subagent events. Without
+              // it the transcript can show only a spinner while a delegation runs.
+              stream_mode: ["messages-tuple", "values", "custom"],
+              ...(replay
+                ? {
+                    // The prepared payload is authoritative: `input` is the graph
+                    // input recorded at the base checkpoint (a regenerate re-sends
+                    // the original question without a second user row; an edit
+                    // carries the replacement already spliced in), `checkpoint` is
+                    // the fork point *before* the superseded turn, and `metadata`
+                    // marks the run as a replay so the paged history hides the
+                    // attempt it replaces.
+                    input: replay.prepared.input,
+                    checkpoint: replay.prepared.checkpoint,
+                    metadata: replay.prepared.metadata,
+                  }
+                : { input: { messages: [{ role: "user", content }] } }),
+              config: {
+                configurable: {
+                  model_name: selectedModel,
+                  ...(planMode ? { is_plan_mode: true } : {}),
+                  // `default` is omitted rather than sent as a level: it means "no
+                  // explicit request", and sending the literal string would be
+                  // rejected by the run boundary.
+                  ...(reasoningEffort !== DEFAULT_EFFORT
+                    ? { reasoning_effort: reasoningEffort }
+                    : {}),
+                },
               },
-            },
-            // The delegation opt-in. `RunCreateRequest.autonomous` is the
-            // server-owned switch: `start_run` applies `subagent_enabled` only
-            // after ordinary client context has been sanitized, so this cannot
-            // widen authorization, tool allowlists, sandbox policy, budgets or
-            // ownership - it changes whether the `task` tool exists.
-            //
-            // Sent only when on. `false` is the default posture, and writing the
-            // literal would be indistinguishable from a caller asserting it.
-            ...(delegationEnabled ? { autonomous: true } : {}),
-          }),
+              // The delegation opt-in. `RunCreateRequest.autonomous` is the
+              // server-owned switch: `start_run` applies `subagent_enabled` only
+              // after ordinary client context has been sanitized, so this cannot
+              // widen authorization, tool allowlists, sandbox policy, budgets or
+              // ownership - it changes whether the `task` tool exists.
+              //
+              // Sent only when on. `false` is the default posture, and writing the
+              // literal would be indistinguishable from a caller asserting it.
+              ...(delegationEnabled ? { autonomous: true } : {}),
+            }),
+          },
         },
-      });
+        {
+          onRetry: (status) => {
+            if (runIsCurrent()) setStreamReconnect(status);
+          },
+        },
+      );
 
       responseStarted = true;
       updateLion("working", "I'm on it. Roaring quietly.");
@@ -2126,6 +2141,11 @@ export default function ChatView({
           // silence clock looking fresh.
           if (!runIsCurrent()) return;
           lastByteAtRef.current = Date.now();
+          setStreamReconnect(null);
+        },
+        onReconnect: (status) => {
+          if (!runIsCurrent()) return;
+          setStreamReconnect(status);
         },
         onEvent: (event) => {
           if (event.type === "replay-gap")
@@ -2221,6 +2241,7 @@ export default function ChatView({
       // per-thread view. It must always clear or the composer stays wedged
       // after a run that outlived its conversation.
       setIsLoading(false);
+      setStreamReconnect(null);
       abortRef.current = null;
       runLock.current = false;
     }
@@ -3691,6 +3712,7 @@ export default function ChatView({
                               state={activity}
                               elapsedMs={elapsedMs}
                               silence={silence}
+                              reconnect={streamReconnect}
                               actor={
                                 activeBot
                                   ? activeBot.display_name || activeBot.name

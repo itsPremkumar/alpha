@@ -712,9 +712,17 @@ const LUCIDE = pathToFileURL(
   ),
 ).href;
 
+// UI primitives import browser focus/scroll helpers. Server-rendered section
+// tests do not exercise those effects, so supply explicit no-op hooks rather
+// than leaving the `@/lib/a11y` alias unresolved from a data-URL module.
+const a11yUrl = toUrl(
+  "export function useFocusTrap() {} export function useScrollLock() {}",
+);
+
 const uiUrl = toUrl(
   transpile(read("../components/ui.tsx"), { jsx: ts.JsxEmit.ReactJSX })
     .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
+    .replace(/from\s+"@\/lib\/a11y"/, `from "${a11yUrl}"`)
     .replace(
       /from\s+"react\/jsx-runtime"/,
       `from "${resolveUrl("react/jsx-runtime")}"`,
@@ -1182,7 +1190,7 @@ test("KanbanSection locks a card move and reverts only its own move", () => {
   // the editor has its own branch, below.
   assert.match(
     code,
-    /\{c\.progress === null \? \(\s*<span className="text-\[10px\] text-muted-foreground">progress not recorded<\/span>/,
+    /\{c\.progress === null \? \(\s*<span className="text-\[10px\] text-muted-foreground">\s*progress not recorded\s*<\/span>/,
     "the card's progress row must branch on the nullable value",
   );
   assert.match(

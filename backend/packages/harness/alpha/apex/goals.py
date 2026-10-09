@@ -42,11 +42,15 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+from alpha.apex.locking import cross_process_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,7 @@ __all__ = [
     "GOAL_TRANSITIONS",
     "TERMINAL_GOAL_STATES",
     "IllegalGoalTransition",
+    "GoalPersistenceError",
     "get_goal_store",
     "new_goal_id",
 ]
@@ -241,6 +246,10 @@ GOAL_TRANSITIONS: dict[GoalState, frozenset[GoalState]] = {
 
 class IllegalGoalTransition(ValueError):
     """Raised when a goal is asked to move somewhere it cannot go."""
+
+
+class GoalPersistenceError(OSError):
+    """A goal mutation could not be committed to its durable snapshot."""
 
 
 def new_goal_id() -> str:
@@ -444,6 +453,8 @@ class ApexGoalStore:
         self.storage_path = Path(storage_path).resolve() if storage_path else _default_storage_path()
         self._rows: dict[str, ApexGoal] = {}
         self._lock = threading.RLock()
+        self._transaction_depth = 0
+        self._pending_events: list[tuple[str, str, dict[str, Any]]] = []
         self._load_error: str | None = None
         self._event_sink = event_sink
         self._load()
@@ -457,8 +468,14 @@ class ApexGoalStore:
         """
         if self._event_sink is None:
             return
+        if self._transaction_depth:
+            self._pending_events.append((goal_id, event_type, dict(payload)))
+            return
+        self._write_journal(goal_id, event_type, payload)
+
+    def _write_journal(self, goal_id: str, event_type: str, payload: dict[str, Any]) -> None:
         try:
-            self._event_sink(goal_id, event_type, dict(payload))
+            self._event_sink(goal_id, event_type, payload)
         except Exception:
             logger.warning("APEX goal event %s for %s was not journalled", event_type, goal_id, exc_info=True)
 
@@ -483,6 +500,72 @@ class ApexGoalStore:
         except Exception as exc:
             self._load_error = f"{type(exc).__name__}: {exc}"
             logger.error("APEX goal load failed: %s", self._load_error, exc_info=True)
+
+    def _refresh_rows_from_disk(self) -> None:
+        """Refresh the cache while the process lock is held."""
+        if not self.storage_path.exists():
+            self._rows = {}
+            self._load_error = None
+            return
+        try:
+            raw = json.loads(self.storage_path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict) or not isinstance(raw.get("goals", []), list):
+                raise ValueError("APEX goal snapshot has an invalid shape")
+            loaded = {goal.goal_id: goal for goal in (ApexGoal.from_dict(item) for item in raw.get("goals", []))}
+            refreshed: dict[str, ApexGoal] = {}
+            for goal_id, current in loaded.items():
+                existing = self._rows.get(goal_id)
+                if existing is None:
+                    refreshed[goal_id] = current
+                else:
+                    existing.__dict__.clear()
+                    existing.__dict__.update(current.__dict__)
+                    refreshed[goal_id] = existing
+            self._rows = refreshed
+            self._load_error = None
+        except Exception as exc:
+            self._load_error = f"{type(exc).__name__}: {exc}"
+            logger.error("APEX goal refresh failed: %s", self._load_error, exc_info=True)
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        """Persist a complete goal mutation or restore all live goal objects."""
+        pending: list[tuple[str, str, dict[str, Any]]] = []
+        with self._lock:
+            if self._transaction_depth:
+                self._transaction_depth += 1
+                try:
+                    yield
+                finally:
+                    self._transaction_depth -= 1
+                return
+
+            with cross_process_file_lock(self.storage_path):
+                self._refresh_rows_from_disk()
+                if self.is_degraded:
+                    raise GoalPersistenceError("APEX goal store is unreadable; refusing to overwrite it")
+                previous = dict(self._rows)
+                snapshots = {key: deepcopy(goal.__dict__) for key, goal in previous.items()}
+                self._transaction_depth = 1
+                self._pending_events = []
+                try:
+                    yield
+                    changed = self._rows.keys() != previous.keys() or any(goal.__dict__ != snapshots[key] for key, goal in self._rows.items())
+                    if changed and not self._save():
+                        raise GoalPersistenceError("Could not persist APEX goal changes")
+                    pending = list(self._pending_events)
+                except BaseException:
+                    for key, goal in previous.items():
+                        goal.__dict__.clear()
+                        goal.__dict__.update(snapshots[key])
+                    self._rows = previous
+                    raise
+                finally:
+                    self._transaction_depth = 0
+                    self._pending_events = []
+
+        for goal_id, event_type, payload in pending:
+            self._write_journal(goal_id, event_type, payload)
 
     def _save(self) -> bool:
         try:
@@ -514,6 +597,11 @@ class ApexGoalStore:
 
     def get(self, goal_id: str) -> ApexGoal | None:
         with self._lock:
+            if not self._transaction_depth:
+                with cross_process_file_lock(self.storage_path):
+                    self._refresh_rows_from_disk()
+            if self.is_degraded:
+                return None
             return self._rows.get(goal_id)
 
     def list(
@@ -526,6 +614,11 @@ class ApexGoalStore:
         limit: int = 200,
     ) -> list[ApexGoal]:
         with self._lock:
+            if not self._transaction_depth:
+                with cross_process_file_lock(self.storage_path):
+                    self._refresh_rows_from_disk()
+            if self.is_degraded:
+                return []
             rows = list(self._rows.values())
         if owner:
             rows = [g for g in rows if g.owner == owner]
@@ -617,21 +710,20 @@ class ApexGoalStore:
             session_id=str(session_id),
             mission_id=str(mission_id),
         )
-        with self._lock:
+        with self._transaction():
             self._rows[goal.goal_id] = goal
-            self._save()
-        self._journal(
-            goal.goal_id,
-            "goal.created",
-            objective=goal.objective,
-            owner=goal.owner,
-            parent_goal_id=goal.parent_goal_id,
-            # Not ``session_id``: that name is the journal writer's
-            # own first parameter (the mission/row id), so a payload
-            # key of the same name would arrive twice.
-            linked_session=goal.session_id,
-            success_criteria=list(goal.success_criteria),
-        )
+            self._journal(
+                goal.goal_id,
+                "goal.created",
+                objective=goal.objective,
+                owner=goal.owner,
+                parent_goal_id=goal.parent_goal_id,
+                # Not ``session_id``: that name is the journal writer's
+                # own first parameter (the mission/row id), so a payload
+                # key of the same name would arrive twice.
+                linked_session=goal.session_id,
+                success_criteria=list(goal.success_criteria),
+            )
         return goal
 
     def create_child(self, parent_goal_id: str, **kwargs: Any) -> ApexGoal:
@@ -641,52 +733,47 @@ class ApexGoalStore:
         derived from is a planning bug, and it is cheaper to refuse at creation
         than to discover it as a duplicated mission.
         """
-        parent = self.get(parent_goal_id)
-        if parent is None:
-            raise KeyError(f"no APEX goal {parent_goal_id!r}")
-        if parent.is_terminal:
-            raise IllegalGoalTransition(f"goal '{parent_goal_id}' is terminal ('{parent.state.value}'); it cannot gain children")
+        with self._transaction():
+            parent = self._rows.get(parent_goal_id)
+            if parent is None:
+                raise KeyError(f"no APEX goal {parent_goal_id!r}")
+            if parent.is_terminal:
+                raise IllegalGoalTransition(f"goal '{parent_goal_id}' is terminal ('{parent.state.value}'); it cannot gain children")
 
-        requested = int(kwargs.get("priority", parent.priority))
-        ancestors = self.ancestors(parent_goal_id)
-        ceiling = min([a.priority for a in [*ancestors, parent]] or [parent.priority])
-        if requested > ceiling:
-            raise ValueError(f"subgoal priority {requested} exceeds the ancestor ceiling {ceiling}; a decomposition may not outrank the work it derives from")
+            requested = int(kwargs.get("priority", parent.priority))
+            ancestors = self.ancestors(parent_goal_id)
+            ceiling = min([a.priority for a in [*ancestors, parent]] or [parent.priority])
+            if requested > ceiling:
+                raise ValueError(f"subgoal priority {requested} exceeds the ancestor ceiling {ceiling}; a decomposition may not outrank the work it derives from")
 
-        child = self.create(
-            objective=str(kwargs.get("objective", "")),
-            owner=str(kwargs.get("owner", parent.owner)),
-            description=str(kwargs.get("description", "")),
-            success_criteria=list(kwargs.get("success_criteria") or []),
-            constraints=list(kwargs.get("constraints") or []),
-            priority=requested,
-            deadline=kwargs.get("deadline"),
-            risk=str(kwargs.get("risk", parent.risk)),
-            budget=dict(kwargs.get("budget") or {}),
-            # A decomposition inherits the session it was derived
-            # from, so the goal tree and the session's decision
-            # log stay joinable without a second link. ``or``
-            # rather than ``get(default)``: an explicit empty
-            # string in the request must not shadow the parent's
-            # link with nothing.
-            session_id=str(kwargs.get("session_id") or parent.session_id),
-            mission_id=str(kwargs.get("mission_id") or parent.mission_id),
-        )
-        child.parent_goal_id = parent_goal_id
-        with self._lock:
+            child = self.create(
+                objective=str(kwargs.get("objective", "")),
+                owner=str(kwargs.get("owner", parent.owner)),
+                description=str(kwargs.get("description", "")),
+                success_criteria=list(kwargs.get("success_criteria") or []),
+                constraints=list(kwargs.get("constraints") or []),
+                priority=requested,
+                deadline=kwargs.get("deadline"),
+                risk=str(kwargs.get("risk", parent.risk)),
+                budget=dict(kwargs.get("budget") or {}),
+                # A decomposition inherits the session it was derived from,
+                # so the goal tree and session decision log stay joinable.
+                session_id=str(kwargs.get("session_id") or parent.session_id),
+                mission_id=str(kwargs.get("mission_id") or parent.mission_id),
+            )
+            child.parent_goal_id = parent_goal_id
             parent.child_ids.append(child.goal_id)
-            self._save()
-        self._journal(
-            child.goal_id,
-            "goal.decomposed",
-            parent_goal_id=parent_goal_id,
-            priority=child.priority,
-        )
+            for index in range(len(self._pending_events) - 1, -1, -1):
+                event_goal_id, event_type, payload = self._pending_events[index]
+                if event_goal_id == child.goal_id and event_type == "goal.created":
+                    payload["parent_goal_id"] = parent_goal_id
+                    break
+            self._journal(child.goal_id, "goal.decomposed", parent_goal_id=parent_goal_id, priority=child.priority)
         return child
 
     def transition(self, goal_id: str, target: GoalState, *, reason: str = "") -> ApexGoal:
         """Move a goal, refusing an illegal or terminal transition."""
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 raise KeyError(f"no APEX goal {goal_id!r}")
@@ -705,7 +792,6 @@ class ApexGoalStore:
             elif target is GoalState.REPLANNING:
                 goal.replan_count += 1
                 goal.plan_version += 1
-            self._save()
             self._journal(
                 goal_id,
                 "goal.transitioned",
@@ -721,38 +807,35 @@ class ApexGoalStore:
         failed criterion cannot close. ``PARTIAL`` stays reachable for the
         honest partial result; it is not a consolation prize behind this gate.
         """
-        goal = self.get(goal_id)
-        if goal is None:
-            raise KeyError(f"no APEX goal {goal_id!r}")
+        with self._transaction():
+            goal = self._rows.get(goal_id)
+            if goal is None:
+                raise KeyError(f"no APEX goal {goal_id!r}")
 
-        unmeasured = goal.criteria_without_evidence()
-        failed = goal.criteria_failed()
-        if not goal.success_criteria:
-            # Nothing was promised, so nothing can be claimed.
-            raise IllegalGoalTransition(f"goal '{goal_id}' has no success criteria, so there is nothing to prove; record PARTIAL or FAILED instead")
-        if unmeasured or failed:
-            detail = []
-            if unmeasured:
-                detail.append(f"{len(unmeasured)} unmeasured ({', '.join(sorted(unmeasured))})")
-            if failed:
-                # The failing criterion is named, not counted:
-                # an operator reading the refusal must be able to
-                # act on it without a second lookup.
-                detail.append(f"{len(failed)} failed ({', '.join(sorted(failed))})")
-            raise IllegalGoalTransition(f"goal '{goal_id}' cannot be COMPLETED ({', '.join(detail)}); measure the criteria first, or report PARTIAL")
-        completed = self.transition(goal_id, GoalState.COMPLETED, reason=reason)
-        self._journal(goal_id, "goal.completed", reason=reason, criteria=list(goal.success_criteria))
+            unmeasured = goal.criteria_without_evidence()
+            failed = goal.criteria_failed()
+            if not goal.success_criteria:
+                # Nothing was promised, so nothing can be claimed.
+                raise IllegalGoalTransition(f"goal '{goal_id}' has no success criteria, so there is nothing to prove; record PARTIAL or FAILED instead")
+            if unmeasured or failed:
+                detail = []
+                if unmeasured:
+                    detail.append(f"{len(unmeasured)} unmeasured ({', '.join(sorted(unmeasured))})")
+                if failed:
+                    detail.append(f"{len(failed)} failed ({', '.join(sorted(failed))})")
+                raise IllegalGoalTransition(f"goal '{goal_id}' cannot be COMPLETED ({', '.join(detail)}); measure the criteria first, or report PARTIAL")
+            completed = self.transition(goal_id, GoalState.COMPLETED, reason=reason)
+            self._journal(goal_id, "goal.completed", reason=reason, criteria=list(goal.success_criteria))
         return completed
 
     def add_evidence(self, goal_id: str, evidence: GoalEvidence) -> ApexGoal | None:
         """Attach one measurement. Unmeasured evidence is stored but decides nothing."""
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 return None
             goal.evidence.append(evidence)
             goal.updated_at = time.time()
-            self._save()
             self._journal(
                 goal_id,
                 "goal.evidence_recorded",
@@ -765,24 +848,22 @@ class ApexGoalStore:
             return goal
 
     def add_artifact(self, goal_id: str, artifact_ref: str) -> ApexGoal | None:
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 return None
             if artifact_ref not in goal.artifacts:
                 goal.artifacts.append(artifact_ref)
                 goal.updated_at = time.time()
-                self._save()
             return goal
 
     def set_strategy(self, goal_id: str, strategy: str) -> ApexGoal | None:
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 return None
             goal.current_strategy = str(strategy)
             goal.updated_at = time.time()
-            self._save()
             self._journal(goal_id, "goal.strategy_set", strategy=goal.current_strategy)
             return goal
 
@@ -796,7 +877,7 @@ class ApexGoalStore:
         than a guess, and it is why an empty list means "none recorded",
         never "none exist".
         """
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 return None
@@ -810,8 +891,7 @@ class ApexGoalStore:
             }
             goal.agent_records.append(record)
             goal.updated_at = time.time()
-            self._save()
-        self._journal(goal_id, "goal.agent_recorded", **record)
+            self._journal(goal_id, "goal.agent_recorded", **record)
         return goal
 
     def add_constraint(self, goal_id: str, instruction: str, *, source: str = "user") -> ApexGoal | None:
@@ -824,7 +904,7 @@ class ApexGoalStore:
         """
         if not str(instruction).strip():
             return None
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 return None
@@ -833,8 +913,7 @@ class ApexGoalStore:
                 return None
             goal.constraints.append(str(instruction))
             goal.updated_at = time.time()
-            self._save()
-        self._journal(goal_id, "goal.constraint_recorded", instruction=str(instruction), source=str(source))
+            self._journal(goal_id, "goal.constraint_recorded", instruction=str(instruction), source=str(source))
         return goal
 
     def verify(self, goal_id: str, *, reason: str = "") -> ApexGoal:
@@ -848,35 +927,30 @@ class ApexGoalStore:
         in the refusal, because a partial result is reported as
         ``PARTIAL``, never folded into a completion.
         """
-        goal = self.get(goal_id)
-        if goal is None:
-            raise KeyError(f"no APEX goal {goal_id!r}")
-        if goal.is_terminal:
-            raise IllegalGoalTransition(f"goal '{goal_id}' is terminal ('{goal.state.value}'); it cannot be verified")
-        unmeasured = goal.criteria_without_evidence()
-        if unmeasured:
-            # Already in VERIFYING is a no-op transition, so a goal
-            # mid-verification reports its missing measurements rather
-            # than erroring on its own state.
-            return self.transition(
-                goal_id,
-                GoalState.VERIFYING,
-                reason=reason or f"{len(unmeasured)} criteria unmeasured",
-            )
-        completed = self.request_completion(goal_id, reason=reason or "all criteria measured")
-        self._journal(goal_id, "goal.verified", reason=reason)
+        with self._transaction():
+            goal = self._rows.get(goal_id)
+            if goal is None:
+                raise KeyError(f"no APEX goal {goal_id!r}")
+            if goal.is_terminal:
+                raise IllegalGoalTransition(f"goal '{goal_id}' is terminal ('{goal.state.value}'); it cannot be verified")
+            unmeasured = goal.criteria_without_evidence()
+            if unmeasured:
+                # Already in VERIFYING is a no-op transition, so a goal
+                # mid-verification reports missing measurements, not an error.
+                return self.transition(goal_id, GoalState.VERIFYING, reason=reason or f"{len(unmeasured)} criteria unmeasured")
+            completed = self.request_completion(goal_id, reason=reason or "all criteria measured")
+            self._journal(goal_id, "goal.verified", reason=reason)
         return completed
 
     def delete(self, goal_id: str) -> bool:
-        with self._lock:
+        with self._transaction():
             goal = self._rows.get(goal_id)
             if goal is None:
                 return False
             if goal.child_ids:
                 raise ValueError(f"goal '{goal_id}' still has {len(goal.child_ids)} child goal(s); delete or reparent them first")
             del self._rows[goal_id]
-            self._save()
-            return True
+        return True
 
 
 def _default_storage_path() -> Path:

@@ -1,5 +1,18 @@
 import { apiFetch, ApiClientError } from "./api-client";
-import { createSseDecoder, createSseState, reduceSse, runIdFromLocation, streamMessages, streamTasks, streamTodos, StreamMessage, SubagentTask, ReplayGapEvent, SseErrorDetail, TodoPlan } from "./sse-reducer";
+import {
+  createSseDecoder,
+  createSseState,
+  reduceSse,
+  runIdFromLocation,
+  streamMessages,
+  streamTasks,
+  streamTodos,
+  StreamMessage,
+  SubagentTask,
+  ReplayGapEvent,
+  SseErrorDetail,
+  TodoPlan,
+} from "./sse-reducer";
 
 /**
  * A stream that ended because the run failed, carrying the reason the Gateway
@@ -51,6 +64,12 @@ const MAX_REJOIN_ATTEMPTS = 5;
 const REJOIN_BASE_DELAY_MS = 500;
 const REJOIN_MAX_DELAY_MS = 8_000;
 
+export type StreamReconnectStatus = {
+  attempt: number;
+  maxAttempts: number;
+  phase: "waiting" | "connecting";
+};
+
 /**
  * Equal-jitter backoff for one attempt: `half + random(half)` of
  * `min(cap, base·2ⁿ)`.
@@ -65,7 +84,10 @@ const REJOIN_MAX_DELAY_MS = 8_000;
  * lockstep, which a deterministic backoff would guarantee.
  */
 function rejoinDelayMs(attempt: number): number {
-  const ceiling = Math.min(REJOIN_MAX_DELAY_MS, REJOIN_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1));
+  const ceiling = Math.min(
+    REJOIN_MAX_DELAY_MS,
+    REJOIN_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1),
+  );
   const half = Math.floor(ceiling / 2);
   return half + Math.floor(Math.random() * half);
 }
@@ -102,6 +124,8 @@ export async function consumeChatStream(
      * `onUpdate` fires only on parseable frames, which stop during silence.
      */
     onActivity?: () => void;
+    /** Client-observed bounded resume state; null clears the indicator. */
+    onReconnect?: (status: StreamReconnectStatus | null) => void;
     /**
      * Subagent tasks folded from `task_*` custom events. The array reference is
      * stable across frames with no subagent news, so passing it straight to
@@ -119,29 +143,61 @@ export async function consumeChatStream(
     onEvent?: (event: ReplayGapEvent) => void;
     reconnect?: typeof apiFetch;
   },
-): Promise<{ messages: StreamMessage[]; tasks: SubagentTask[]; todos: TodoPlan; runId?: string; sse: boolean }> {
-  const contentType = response.headers?.get("Content-Type")?.split(";")[0].trim().toLowerCase();
-  if (contentType && contentType !== "text/event-stream" && contentType !== "text/plain") {
+): Promise<{
+  messages: StreamMessage[];
+  tasks: SubagentTask[];
+  todos: TodoPlan;
+  runId?: string;
+  sse: boolean;
+}> {
+  const contentType = response.headers
+    ?.get("Content-Type")
+    ?.split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (
+    contentType &&
+    contentType !== "text/event-stream" &&
+    contentType !== "text/plain"
+  ) {
     throw new ApiClientError("response");
   }
   const sse = contentType === "text/event-stream";
-  let state = createSseState(runIdFromLocation(response.headers?.get("Content-Location"), options.threadId));
+  let state = createSseState(
+    runIdFromLocation(
+      response.headers?.get("Content-Location"),
+      options.threadId,
+    ),
+  );
   let text = "";
   let attempts = 0;
   let retryDelay = 0;
   for (;;) {
     const reader = response.body?.getReader();
-    if (!reader) return { messages: [], tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
+    if (!reader)
+      return {
+        messages: [],
+        tasks: streamTasks(state),
+        todos: streamTodos(state),
+        runId: state.runId,
+        sse,
+      };
     const decoder = new TextDecoder();
-    const parser = createSseDecoder((frame) => {
-      const previousGap = state.replayGap;
-      state = reduceSse(state, frame);
-      if (state.replayGap && state.replayGap !== previousGap) options.onEvent?.(state.replayGap);
-      options.onUpdate(streamMessages(state), state.runId);
-      options.onTasks?.(streamTasks(state));
-      options.onTodos?.(streamTodos(state));
-      if (state.failure) throw new StreamRunFailure(state.error ?? null);
-    }, (delay) => { retryDelay = delay; });
+    const parser = createSseDecoder(
+      (frame) => {
+        const previousGap = state.replayGap;
+        state = reduceSse(state, frame);
+        if (state.replayGap && state.replayGap !== previousGap)
+          options.onEvent?.(state.replayGap);
+        options.onUpdate(streamMessages(state), state.runId);
+        options.onTasks?.(streamTasks(state));
+        options.onTodos?.(streamTodos(state));
+        if (state.failure) throw new StreamRunFailure(state.error ?? null);
+      },
+      (delay) => {
+        retryDelay = delay;
+      },
+    );
     let transportFailed = false;
     try {
       for (;;) {
@@ -161,7 +217,10 @@ export async function consumeChatStream(
           parser.push(result.value);
         } else {
           text += decoder.decode(result.value, { stream: true });
-          options.onUpdate([{ id: "plain", runId: state.runId || "", content: text }], state.runId);
+          options.onUpdate(
+            [{ id: "plain", runId: state.runId || "", content: text }],
+            state.runId,
+          );
         }
       }
       if (!transportFailed) {
@@ -180,26 +239,80 @@ export async function consumeChatStream(
     if (options.signal.aborted) throw new ApiClientError("stopped");
     if (!sse) {
       if (transportFailed) throw new ApiClientError("network");
-      return { messages: text.trim() ? [{ id: "plain", runId: state.runId || "", content: text }] : [], tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
+      return {
+        messages: text.trim()
+          ? [{ id: "plain", runId: state.runId || "", content: text }]
+          : [],
+        tasks: streamTasks(state),
+        todos: streamTodos(state),
+        runId: state.runId,
+        sse,
+      };
     }
     if (state.failure) throw new StreamRunFailure(state.error ?? null);
-    if (state.ended) return { messages: streamMessages(state), tasks: streamTasks(state), todos: streamTodos(state), runId: state.runId, sse };
-    if (!state.runId || !state.lastEventId) throw new StreamRunFailure(state.error ?? null);
+    if (state.ended)
+      return {
+        messages: streamMessages(state),
+        tasks: streamTasks(state),
+        todos: streamTodos(state),
+        runId: state.runId,
+        sse,
+      };
+    if (!state.runId || !state.lastEventId)
+      throw new StreamRunFailure(state.error ?? null);
     // 2 attempts used to be the whole budget: a laptop that slept for two
     // seconds was enough to lose the rest of an answer irreversibly, because
     // every byte after `lastEventId` was still on the server and the client had
     // already given up asking for it.
-    if (attempts++ >= MAX_REJOIN_ATTEMPTS) throw new StreamRunFailure(state.error ?? null);
-    // A `retry:` frame is the server's own instruction and outranks the ladder;
-    // only its absence falls through to the client backoff.
-    await waitForReconnect(retryDelay > 0 ? retryDelay : rejoinDelayMs(attempts), options.signal);
-    if (options.signal.aborted) throw new ApiClientError("stopped");
-    response = await (options.reconnect || apiFetch)(
-      `/threads/${encodeURIComponent(options.threadId)}/runs/${encodeURIComponent(state.runId)}/join`,
-      { signal: options.signal, headers: { Accept: "text/event-stream", "Last-Event-ID": state.lastEventId } },
-    );
-    if (response.headers?.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "text/event-stream") {
-      throw new ApiClientError("response");
+    let joined = false;
+    while (!joined) {
+      if (attempts >= MAX_REJOIN_ATTEMPTS)
+        throw new StreamRunFailure(state.error ?? null);
+      attempts += 1;
+      const reconnectStatus: StreamReconnectStatus = {
+        attempt: attempts,
+        maxAttempts: MAX_REJOIN_ATTEMPTS,
+        phase: "waiting",
+      };
+      options.onReconnect?.(reconnectStatus);
+      // A `retry:` frame is the server's own instruction and outranks the
+      // ladder; only its absence falls through to the client backoff.
+      await waitForReconnect(
+        retryDelay > 0 ? retryDelay : rejoinDelayMs(attempts),
+        options.signal,
+      );
+      if (options.signal.aborted) throw new ApiClientError("stopped");
+      options.onReconnect?.({ ...reconnectStatus, phase: "connecting" });
+      try {
+        response = await (options.reconnect || apiFetch)(
+          `/threads/${encodeURIComponent(options.threadId)}/runs/${encodeURIComponent(state.runId)}/join`,
+          {
+            signal: options.signal,
+            headers: {
+              Accept: "text/event-stream",
+              "Last-Event-ID": state.lastEventId,
+            },
+          },
+        );
+      } catch (error) {
+        if (options.signal.aborted) throw new ApiClientError("stopped");
+        // A failed transport join is still a reconnect attempt. HTTP refusals
+        // and malformed responses carry useful server meaning and are not
+        // hidden behind another retry.
+        if (error instanceof ApiClientError && error.kind === "network")
+          continue;
+        throw error;
+      }
+      if (
+        response.headers
+          ?.get("Content-Type")
+          ?.split(";")[0]
+          .trim()
+          .toLowerCase() !== "text/event-stream"
+      ) {
+        throw new ApiClientError("response");
+      }
+      joined = true;
     }
   }
 }

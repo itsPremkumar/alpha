@@ -12,6 +12,17 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **apex-goal-persistence:** Serialize goal snapshots across workers sharing a
+  local runtime directory, commit child creation and parent linkage together,
+  and roll back in-memory state when snapshot persistence fails. The event journal
+  remains a separate write and cross-host exactly-once is not provided.
+- **chat-stream-reconnect-status:** Show bounded SSE resume progress in the live
+  run status, distinguish offline/waiting/connecting states, and retry transient
+  network failures while joining from the last event id.
+- **frontend-kanban-editor:** Wire the local task editor's save/delete actions,
+  keep server-owned stages synchronized safely, and make the existing file and
+  board dialogs type-check with their shared Modal component.
+
 - **apex-invariant-probe-honesty:** Label invariant checks as module/symbol
   availability probes and state explicitly that they do not verify runtime
   enforcement; keep compatibility fields while correcting the CLI, API, and UI.

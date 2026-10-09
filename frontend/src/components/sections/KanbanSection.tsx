@@ -25,7 +25,6 @@ import {
   Field,
   inputCls,
   Modal,
-  X,
 } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import {
@@ -188,6 +187,56 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
       }
     }
     setBusyCard(null);
+  };
+
+  const saveEditing = async (card: Card) => {
+    const title = card.title.trim();
+    if (!title) {
+      setError("A task needs a title before it can be saved.");
+      return;
+    }
+    if (card.status === "blocked" && !card.blockedReason.trim()) {
+      setError("A blocked task needs a reason.");
+      return;
+    }
+    const existing = cards.find((item) => item.id === card.id);
+    const next = { ...card, title };
+    setCards(
+      saveCard(next, existing ? "Task details updated." : "Task created."),
+    );
+    setError(null);
+
+    // A mirrored server card owns its stage. Persist the local fields, then
+    // ask the Gateway to confirm a changed stage; on refusal restore only that
+    // stage while keeping the other saved fields available in the editor.
+    if (existing?.serverId && existing.status !== next.status) {
+      try {
+        await pushStatus(next, next.status);
+      } catch (e) {
+        const restored = { ...next, status: existing.status };
+        setCards(
+          saveCard(
+            restored,
+            "Server rejected stage change; prior stage restored.",
+          ),
+        );
+        setEditing(restored);
+        setError(errMsg(e));
+        return;
+      }
+    }
+    setEditing(null);
+  };
+
+  const removeEditing = (card: Card) => {
+    if (card.serverId) {
+      setError(
+        "This task is mirrored from the server board, which has no delete route.",
+      );
+      return;
+    }
+    setCards(deleteCard(card.id));
+    setEditing(null);
   };
 
   const labelOf = (s: CardStatus) =>
@@ -555,9 +604,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
                 <select
                   value={editing?.projectId ?? ""}
                   onChange={(e) => {
-                    const p = props.projects.find(
-                      (x) => x.id === e.target.value,
-                    );
+                    const p = projects.find((x) => x.id === e.target.value);
                     setEditing((prev) =>
                       prev
                         ? {
@@ -738,14 +785,16 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
             </p>
           </div>
           <div className="flex gap-2 pt-2">
-            <Btn onClick={() => props.onSave(editing)}>Save task</Btn>
+            <Btn onClick={() => void saveEditing(editing)}>Save task</Btn>
             <Btn variant="ghost" onClick={() => setEditing(null)}>
               Cancel
             </Btn>
             <span className="flex-1" />
-            <Btn variant="danger" onClick={() => props.onDelete(editing!.id)}>
-              <Trash2 className="size-3.5" /> Delete
-            </Btn>
+            {!editing.serverId && (
+              <Btn variant="danger" onClick={() => removeEditing(editing)}>
+                <Trash2 className="size-3.5" /> Delete
+              </Btn>
+            )}
           </div>
         </Modal>
       )}

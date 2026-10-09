@@ -43,7 +43,7 @@ from alpha.apex.invariants import (
     invariant_summary,
 )
 from alpha.apex.status import apex_status, contract_status, fleet_status
-from alpha.apex.store import ApexSession, ApexSessionState, ApexStore
+from alpha.apex.store import ApexSession, ApexSessionState, ApexStore, UsageLedger
 from alpha.mission.acceptance import REASON_NO_CRITERIA, REASON_NOT_EVALUATED
 
 
@@ -62,12 +62,15 @@ def _session(store: ApexStore, **kwargs) -> ApexSession:
     return store.create(**{**defaults, **kwargs})
 
 
-def _set_acceptance(session: ApexSession, verdict: str) -> None:
-    session.acceptance = {
-        "criteria": [{"criterion": criterion, "verdict": verdict} for criterion in session.acceptance_criteria],
-        "evaluator": "probe",
-        "report_id": "acc-test",
-    }
+def _set_acceptance(store: ApexStore, session: ApexSession, verdict: str) -> None:
+    store.update(
+        session.session_id,
+        acceptance={
+            "criteria": [{"criterion": criterion, "verdict": verdict} for criterion in session.acceptance_criteria],
+            "evaluator": "probe",
+            "report_id": "acc-test",
+        },
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -257,7 +260,7 @@ class TestCompletionRequiresAcceptance:
         # not exist yet: a refusal denying three criteria sitting in the very
         # record it was read from, sending the operator to declare a second set.
         session = _session(store, acceptance_criteria=["tests pass", "docs pass"])
-        _set_acceptance(session, "unverified")
+        _set_acceptance(store, session, "unverified")
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
 
         refusal = str(result.decision.detail["refusal"])
@@ -271,10 +274,13 @@ class TestCompletionRequiresAcceptance:
 
     def test_partial_acceptance_report_cannot_complete_all_declared_criteria(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass", "docs pass"])
-        session.acceptance = {
-            "criteria": [{"criterion": "tests pass", "verdict": "met"}],
-            "evaluator": "probe",
-        }
+        store.update(
+            session.session_id,
+            acceptance={
+                "criteria": [{"criterion": "tests pass", "verdict": "met"}],
+                "evaluator": "probe",
+            },
+        )
 
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
 
@@ -285,7 +291,7 @@ class TestCompletionRequiresAcceptance:
 
     def test_failed_criteria_recover_rather_than_complete(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass"])
-        _set_acceptance(session, "not_met")
+        _set_acceptance(store, session, "not_met")
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
         assert result.decision.reason == REASON_ACCEPTANCE_FAILED
         assert result.decision.action is NextAction.RECOVER
@@ -295,8 +301,9 @@ class TestCompletionRequiresAcceptance:
     def test_failed_criteria_park_after_contract_replan_limit(self, store: ApexStore) -> None:
         contract = narrow_contract(profile_for("autonomous"), budget={"max_replans": 2})
         session = _session(store, acceptance_criteria=["tests pass"], contract_digest=contract.digest())
-        session.usage.replans = 2
-        _set_acceptance(session, "not_met")
+        usage = UsageLedger(**{**session.usage.to_dict(), "replans": 2})
+        store.update(session.session_id, usage=usage)
+        _set_acceptance(store, session, "not_met")
 
         result = run_cycle(store, session.session_id, contract)
 
@@ -321,14 +328,14 @@ class TestCompletionRequiresAcceptance:
 
     def test_passed_criteria_complete_the_session(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass"])
-        _set_acceptance(session, "met")
+        _set_acceptance(store, session, "met")
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
         assert result.decision.reason == REASON_ACCEPTED
         assert store.get(session.session_id).state is ApexSessionState.COMPLETED
 
     def test_a_terminal_session_is_not_reopened_by_a_later_cycle(self, store: ApexStore) -> None:
         session = _session(store, acceptance_criteria=["tests pass"])
-        _set_acceptance(session, "met")
+        _set_acceptance(store, session, "met")
         run_cycle(store, session.session_id, profile_for("autonomous"))
         result = run_cycle(store, session.session_id, profile_for("autonomous"))
         assert store.get(session.session_id).state is ApexSessionState.COMPLETED

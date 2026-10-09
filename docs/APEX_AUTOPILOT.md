@@ -426,6 +426,11 @@ first would answer `405 Session 'enable' not found` for a feature that
 exists. Pinned by `tests/test_apex_api.py::TestRouteOrder` and
 `tests/test_apex_mode.py`.
 
+Goal mutations reload the shared `goals.json` snapshot under the local APEX
+file lock and commit before reporting success. Decomposition writes the child
+and both parent/child links in one snapshot; a failed save rolls back the
+in-memory change and emits no success event.
+
 **Who may call what**, in one place, because every route now resolves its
 principal through the same two helpers:
 
@@ -627,8 +632,8 @@ Read these before treating a green status as a working system.
   `/apex/disable` the panel does and then re-reads; it creates no session, sends
   no message and starts no run. Reading it as "this chat is now autonomous" is
   the failure the in-menu disclosure exists to stop.
-- **JSON/JSONL state is local-filesystem state.** `sessions.json` and
-  `mode.json` mutations plus their journal appends serialize across workers
+- **JSON/JSONL state is local-filesystem state.** `sessions.json`, `mode.json`,
+  and `goals.json` mutations plus their journal appends serialize across workers
   sharing a lock-respecting local runtime directory, and remain
   restart-recoverable. This does not provide a distributed transaction or
   cross-host exactly-once execution; those still require a shared transactional

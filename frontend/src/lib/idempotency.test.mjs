@@ -2,12 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { moduleUrl } from "./test-modules.mjs";
 
-const { newIdempotencyKey, isTransportFailure, sendIdempotent } = await import(moduleUrl("idempotency"));
+const { newIdempotencyKey, isTransportFailure, sendIdempotent } = await import(
+  moduleUrl("idempotency")
+);
 const { ApiClientError } = await import(moduleUrl("api-client"));
 
 const networkFailure = () => new ApiClientError("network");
 const httpFailure = () => new ApiClientError("http", 503, "overloaded");
-const okResponse = () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+const okResponse = () =>
+  new Response("{}", {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 // The backoff timer is scheduled from a promise microtask, so a
 // tick must first let that microtask run or it would advance a
 // clock nothing is scheduled on yet.
@@ -15,7 +21,10 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 test("a key is a UUID-shaped unique string", () => {
   const key = newIdempotencyKey();
-  assert.match(key, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.match(
+    key,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   assert.notEqual(key, newIdempotencyKey());
 });
 
@@ -36,7 +45,11 @@ test("the key rides on the request as the Idempotency-Key header", async () => {
       seen.push({ path, headers: init?.headers });
       return okResponse();
     },
-    { path: "/threads/t1/runs/stream", idempotencyKey: "key-1", init: { method: "POST" } },
+    {
+      path: "/threads/t1/runs/stream",
+      idempotencyKey: "key-1",
+      init: { method: "POST" },
+    },
   );
   assert.equal(seen.length, 1);
   assert.equal(seen[0].path, "/threads/t1/runs/stream");
@@ -46,15 +59,31 @@ test("the key rides on the request as the Idempotency-Key header", async () => {
 test("a transport failure is retried with the same key, path and body", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const calls = [];
-  const body = JSON.stringify({ input: { messages: [{ role: "user", content: "hi" }] } });
+  const retries = [];
+  const body = JSON.stringify({
+    input: { messages: [{ role: "user", content: "hi" }] },
+  });
   const pending = sendIdempotent(
     async (path, init) => {
-      calls.push({ path, key: new Headers(init?.headers).get("Idempotency-Key"), body: init?.body });
+      calls.push({
+        path,
+        key: new Headers(init?.headers).get("Idempotency-Key"),
+        body: init?.body,
+      });
       if (calls.length < 3) throw networkFailure();
       return okResponse();
     },
-    { path: "/threads/t1/runs/stream", idempotencyKey: "stable-key", init: { method: "POST", body } },
-    { attempts: 3, baseDelayMs: 10, maxDelayMs: 20 },
+    {
+      path: "/threads/t1/runs/stream",
+      idempotencyKey: "stable-key",
+      init: { method: "POST", body },
+    },
+    {
+      attempts: 3,
+      baseDelayMs: 10,
+      maxDelayMs: 20,
+      onRetry: (status) => retries.push(status),
+    },
   );
   // Each attempt's backoff timer is scheduled from a microtask, so
   // the clock is stepped one flush→tick pair at a time.
@@ -71,6 +100,12 @@ test("a transport failure is retried with the same key, path and body", async (t
     assert.equal(call.key, "stable-key");
     assert.equal(call.body, body);
   }
+  assert.deepEqual(retries, [
+    { attempt: 1, maxAttempts: 2, phase: "waiting" },
+    { attempt: 1, maxAttempts: 2, phase: "connecting" },
+    { attempt: 2, maxAttempts: 2, phase: "waiting" },
+    { attempt: 2, maxAttempts: 2, phase: "connecting" },
+  ]);
 });
 
 test("a server answer is never retried, even a 5xx", async () => {
@@ -84,7 +119,10 @@ test("a server answer is never retried, even a 5xx", async () => {
       { path: "/threads/t1/runs/stream", idempotencyKey: "key-1" },
       { attempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
     ),
-    (error) => error instanceof ApiClientError && error.kind === "http" && error.status === 503,
+    (error) =>
+      error instanceof ApiClientError &&
+      error.kind === "http" &&
+      error.status === 503,
   );
   assert.equal(calls, 1);
 });
@@ -127,7 +165,10 @@ test("the retry budget is bounded: the last transport failure propagates", async
     { path: "/p", idempotencyKey: "key-1" },
     { attempts: 3, baseDelayMs: 1, maxDelayMs: 2 },
   );
-  const assertion = assert.rejects(pending, (error) => error.kind === "network");
+  const assertion = assert.rejects(
+    pending,
+    (error) => error.kind === "network",
+  );
   // Each attempt's backoff timer is scheduled from a microtask, so
   // the clock is stepped one flush→tick pair at a time. The
   // rejection handler is attached before any clock advance so the
@@ -150,7 +191,11 @@ test("aborting during the backoff rejects as a local stop", async (t) => {
       calls++;
       throw networkFailure();
     },
-    { path: "/p", idempotencyKey: "key-1", init: { signal: controller.signal } },
+    {
+      path: "/p",
+      idempotencyKey: "key-1",
+      init: { signal: controller.signal },
+    },
     { attempts: 3, baseDelayMs: 60_000, maxDelayMs: 60_000 },
   );
   // The abort listener rejects the pending backoff directly, so no
@@ -191,7 +236,10 @@ test("equal jitter keeps a real floor: no attempt re-dials immediately", async (
   t.mock.timers.tick(1);
   await flush();
   assert.equal(calls, 3);
-  const assertion = assert.rejects(pending, (error) => error.kind === "network");
+  const assertion = assert.rejects(
+    pending,
+    (error) => error.kind === "network",
+  );
   t.mock.timers.runAll();
   await flush();
   await assertion;

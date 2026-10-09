@@ -445,6 +445,11 @@ def run_cycle(
     def _apply() -> tuple[str, str]:
         if session is None:
             return "noop", decision.reason
+        if decision.reason == REASON_SESSION_PAUSED:
+            # Pause is already an operator-owned terminal hold for this cycle.
+            # Re-parking it as a blocked session would create a spurious
+            # approval and mutate the row on every supervisor tick.
+            return "noop", decision.reason
         if decision.blocked:
             # A blocked decision parks the session and asks an operator
             # to decide (spec §24/§27/§30). Parking — rather than

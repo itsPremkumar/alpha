@@ -43,6 +43,7 @@ from alpha.apex.executive import (
 from alpha.apex.goals import (
     ApexGoalStore,
     GoalEvidence,
+    GoalPersistenceError,
     GoalState,
     IllegalGoalTransition,
     get_goal_store,
@@ -338,6 +339,55 @@ class TestGoalOperatingSystem:
         assert child.parent_goal_id == parent.goal_id
         assert child.session_id == session.session_id
         assert child.priority <= parent.priority
+
+    def test_subgoal_and_parent_link_commit_in_one_snapshot(self, goal_store: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        store, events = goal_store
+        parent = store.create(objective="repair alpha", owner="tester")
+        snapshots: list[dict[str, Any]] = []
+        save = store._save
+
+        def capture_save() -> bool:
+            persisted = save()
+            if persisted:
+                import json
+
+                snapshots.append(json.loads(store.storage_path.read_text(encoding="utf-8")))
+            return persisted
+
+        monkeypatch.setattr(store, "_save", capture_save)
+        child = store.create_child(parent.goal_id, objective="repair the frontend")
+
+        assert len(snapshots) == 1
+        rows = {row["goal_id"]: row for row in snapshots[0]["goals"]}
+        assert rows[child.goal_id]["parent_goal_id"] == parent.goal_id
+        assert child.goal_id in rows[parent.goal_id]["child_ids"]
+        assert [event["event_type"] for event in events[-2:]] == ["goal.created", "goal.decomposed"]
+        assert events[-2]["parent_goal_id"] == parent.goal_id
+
+    def test_failed_subgoal_snapshot_leaves_no_orphan_or_event(self, goal_store: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        store, events = goal_store
+        parent = store.create(objective="repair alpha", owner="tester")
+        events_before = list(events)
+        monkeypatch.setattr(store, "_save", lambda: False)
+
+        with pytest.raises(GoalPersistenceError, match="persist APEX goal"):
+            store.create_child(parent.goal_id, objective="repair the frontend")
+
+        assert store.list() == [parent]
+        assert parent.child_ids == []
+        assert events == events_before
+        assert ApexGoalStore(store.storage_path).list() == [parent]
+
+    def test_separate_goal_store_instances_do_not_overwrite_each_other(self, tmp_path: Path) -> None:
+        path = tmp_path / "goals.json"
+        first = ApexGoalStore(path)
+        second = ApexGoalStore(path)
+
+        first.create(objective="repair alpha")
+        second.create(objective="repair the frontend")
+
+        restarted = ApexGoalStore(path)
+        assert {goal.objective for goal in restarted.list()} == {"repair alpha", "repair the frontend"}
 
     def test_a_subgoal_may_not_outrank_its_ancestor(self, goal_store: Any, session: Any) -> None:
         store, _events = goal_store

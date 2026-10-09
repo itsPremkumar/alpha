@@ -16,10 +16,10 @@ Public entry point: http://localhost:2026 (Nginx) -> Gateway :8001 -> Frontend :
 
 ## What Alpha is
 
-Alpha turns one prompt into a verified, multi-step execution: it plans, researches,
-delegates to subagents, runs sandboxed code, writes and edits files, verifies the
-result, and can deliver the output to Slack, Telegram, Feishu, or other channels.
-It is a finished product, not a library of primitives, and it can also be imported
+Alpha turns one prompt into a multi-step execution that reports completion and verification separately: it plans, researches,
+delegates to subagents, runs sandboxed code, writes and edits files, and checks
+the result where measurable evidence exists. It reports unverified outcomes and
+can deliver output to configured channels when policy allows. It can also be imported
 as a library (`alpha-harness`, import name `alpha.*`).
 
 ## When to use Alpha
@@ -79,6 +79,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 - [Dynamic workflows](https://github.com/itsPremkumar/alpha/blob/main/docs/DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
 - [Run recovery](https://github.com/itsPremkumar/alpha/blob/main/docs/RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
 - [APEX Autopilot](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md): goal sessions dispatched through the Gateway RunManager; registered acceptance probes can submit measured reports, while absent/inconclusive probes leave sessions awaiting owner evidence. No default probes verify arbitrary natural-language criteria. Persisted active-agent/parallel caps govern ordinary `task` delegation; every enabled profile has unlimited token, tool-call, and runtime ceilings; terminal failures can be replanned by an admin after explicit side-effect acknowledgement; delegated child calls revalidate APEX policy; durable `batch_task` concurrency has separate limits.
+APEX session, mode, and goal snapshots use same-host local file locking; this does not provide cross-host exactly-once execution. Goal decomposition now commits the child and its parent link in one snapshot.
 - [Alpha Mod Kernel](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md): ordered event middleware on lead-agent tool/model lifecycle and run admission, with explicit capability grants and fail-closed ESTOP/risk gates. Approval holds, event replay, and durable cross-worker state are not implemented.
 
 The APEX invariant endpoint checks module/symbol presence and does not prove runtime enforcement.

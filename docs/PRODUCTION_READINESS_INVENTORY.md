@@ -16,6 +16,7 @@ requires a deliberate audit before it can be claimed in a production release.
 | Health and readiness | implemented | `/health`, `/health/ready` | Deploy synthetic probes and alerting. |
 | Integration wiring checks | implemented | Feature manifest and no-orphan tests | Regenerate manifest after registry changes. |
 | Acceptance criteria | partial | `app.gateway.run_models.AcceptanceCriterion` | Expose evidence collection and verifier result through run APIs/UI. |
+| APEX goal-driven control plane | partial | `alpha.apex.executive`, Gateway RunManager dispatcher, acceptance report gate; `tests/test_apex_executive.py`, `test_apex_dispatcher.py`, `test_apex_control.py`, `test_apex_api.py` | Goal/session/mode JSON snapshots use same-host local locks only; event journal is a separate write; no automatic trusted collector verifies arbitrary natural-language criteria; background APEX loop is opt-in. Complete multi-process Windows restart drills and a bounded real-task acceptance run before raising status. |
 | Evidence verification | partial | `alpha.runtime.runs.verification` | Add trusted collectors for tests, artifacts, HTTP checks, and reviewer approvals. |
 | Centralized policy decision point | partial | Existing authz/approval facilities are distributed | Define one policy grant contract at every consequential tool boundary. |
 | Secrets lifecycle | partial | Existing secret redaction in run metadata | Add rotation/revocation inventory and secret-scanning regression tests. |

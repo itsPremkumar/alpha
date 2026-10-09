@@ -62,6 +62,11 @@ The return path matters as much as the outbound one:
   gateway's SSE frames: `values`, `messages-tuple` chunks, and `task_*` custom
   events for subagent progress. Reducers must tolerate out-of-order/partial
   frames and must not invent a terminal state for a stream that ended early.
+- `lib/chat-stream.ts` resumes a dropped SSE connection from its last event id
+  with a bounded retry ladder. `onReconnect` is transport state, not run state;
+  clear its UI indicator on resumed bytes, Stop, navigation, or stream exit.
+  Retry transient network failures, but preserve HTTP/auth refusals and malformed
+  response errors. Do not display a reconnect as evidence that a run completed.
 - **Bounded payloads are a contract.** The gateway batches `write_file` /
   `str_replace` argument deltas; the frontend must render the batched frames it
   receives rather than assuming one chunk per token.

@@ -310,6 +310,7 @@ export function CapabilityBadge(props: { state: boolean | null }) {
 export function Modal(props: {
   title: string;
   subtitle?: string;
+  className?: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {

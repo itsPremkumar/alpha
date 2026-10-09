@@ -98,7 +98,7 @@ In one sentence:
 
 | Question | Answer |
 | :--- | :--- |
-| **What does it do?** | Turns one prompt into a verified, multi-step execution: research, plan, delegate to subagents, run sandboxed code, write files, ship results to Slack/Telegram/Feishu. |
+| **What does it do?** | Turns one prompt into a multi-step execution: research, plan, delegate to subagents, run sandboxed code, and write files. Execution completion and verified delivery are reported separately; external delivery depends on configured integrations and policy. |
 | **How is it different from a chatbot?** | It has a durable run lifecycle, a sandbox, a memory plane, budgets, approval gates, and a full audit trail — it keeps working after you close the laptop. |
 | **How is it different from a coding CLI?** | It is not tied to a repo or a language. Research, ops, data, docs, and messaging are first-class, not afterthoughts. |
 | **Do I need a paid backend?** | No. MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
