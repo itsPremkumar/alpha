@@ -71,6 +71,24 @@ records what a successful install did, but it can outlive a deleted package
 directory, so a marker that says `installed` while the import fails is exactly the
 fabricated status this repo keeps rejecting elsewhere. `BrowserUseStatus.installed`
 follows the probe; the marker only supplies `installed_at` for display.
+- **Readiness uses distribution metadata, never an import — for `litellm` this is not
+  a nicety.** `import litellm` was **measured at 127 seconds** on a loaded Windows
+  host. An import-based readiness probe with a 120s budget therefore reported a
+  perfectly good install as *missing*, and because "missing" drives a reinstall,
+  **every single call then paid a full `pip install`** until it hit the 900s ceiling.
+  `probe_distribution()` reads `importlib.metadata.version()` instead: instant, and
+  authoritative that the package is installed *in that venv*. It deliberately does not
+  prove the package *loads* — that is left to the run, which reports a real traceback
+  if the install is broken, rather than being pre-empted by a probe slow enough to
+  misreport a healthy install as absent. The lesson generalises: **a probe that can
+  time out must never gate a mutation**, because "unknown" silently becomes "absent"
+  and the mutation here is a destructive reinstall.
+- **A silent fallback is a missing diagnosis.** `_try_native_llm` logs *why*
+  browser-use's own provider adapter was unavailable before falling back to the
+  operator's declared class. Returning `None` silently meant the only thing a run
+  surfaced was the *fallback's* ImportError — naming `langchain_openai`, a package
+  that was never the actual problem — which sent diagnosis after the wrong dependency
+  for several rounds.
 
 **Every failure is data, and the two kinds stay distinguishable.** A task browser-use
 could not finish and a subprocess that died both arrive as `ok: false` with a reason,

@@ -331,7 +331,7 @@ class BrowserUseManager:
                 self._create_venv(timeout_seconds=timeout_seconds)
 
             version = self.probe_version()
-            if version is not None and not upgrade and self._probe_import("litellm"):
+            if version is not None and not upgrade and self.probe_distribution("litellm"):
                 status = self.status()
                 return status
 
@@ -448,7 +448,7 @@ class BrowserUseManager:
         normal case here, and failing an otherwise-good install because no
         Playwright binary was downloaded would be its own false negative.
         """
-        has_playwright = self._probe_import("playwright")
+        has_playwright = self.probe_distribution("playwright")
         if has_playwright:
             argv = [str(self.python_path), "-m", "playwright", "install", "chromium"]
             completed = self._run_install_step(argv, timeout_seconds=timeout_seconds, label="playwright install chromium", log=log)
@@ -457,17 +457,60 @@ class BrowserUseManager:
             return
         log.append("browser: no playwright in this venv; browser-use will drive the host's Chrome over CDP")
 
-    def _probe_import(self, module: str) -> bool:
-        """True when ``module`` imports in the managed venv."""
+    def probe_distribution(self, distribution: str, *, timeout_seconds: int = 60) -> bool:
+        """True when a distribution is installed in the venv, via its metadata.
+
+        Deliberately *not* an import probe. ``import litellm`` was measured at
+        **127 seconds** on a loaded Windows host, so an import-based readiness
+        check with a shorter budget reported a perfectly good install as missing —
+        and because "missing" drives a reinstall, every single call then paid for
+        a full ``pip install`` (and eventually timed out at 900s).
+
+        Distribution metadata is an instant, authoritative statement that the
+        package is installed *in that venv*. It does not prove the package loads;
+        that is deliberately left to the run itself, which reports a real
+        traceback if the install is broken, rather than being pre-empted here.
+        """
+        if not self.python_path.exists():
+            return False
+        code = f"import importlib.metadata as m; m.version({distribution!r})"
+        try:
+            completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+                [str(self.python_path), "-c", code],
+                capture_output=True,
+                encoding="utf-8",
+                errors="backslashreplace",
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("distribution probe for %s failed: %s", distribution, exc)
+            return False
+        return completed.returncode == 0
+
+    def _probe_import(self, module: str, *, timeout_seconds: int = 120) -> bool:
+        """True when ``module`` imports in the managed venv.
+
+        Kept for diagnostics, not for the readiness decision, because a heavy
+        import can exceed any sane budget (see :meth:`probe_distribution`). A
+        timeout is reported as a warning rather than silently meaning "missing".
+        """
+        if not self.python_path.exists():
+            return False
         try:
             completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
                 [str(self.python_path), "-c", f"import {module}"],
                 capture_output=True,
-                text=True,
-                timeout=120,
+                encoding="utf-8",
+                errors="backslashreplace",
+                timeout=timeout_seconds,
                 check=False,
             )
-        except (OSError, subprocess.SubprocessError):
+        except subprocess.TimeoutExpired:
+            logger.warning("import probe for %s exceeded %ss; treating as unknown, not missing", module, timeout_seconds)
+            return False
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("import probe for %s failed: %s", module, exc)
             return False
         return completed.returncode == 0
 

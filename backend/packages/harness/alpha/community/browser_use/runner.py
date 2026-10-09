@@ -176,10 +176,17 @@ def _build_llm(spec: dict) -> object:
 
 
 def _try_native_llm(spec: dict, model: str) -> object | None:
-    """browser-use's own adapter, or ``None`` to fall back to the declared class."""
+    """browser-use's own adapter, or ``None`` to fall back to the declared class.
+
+    Every failure path is logged with its reason. A silent ``None`` here is what
+    made a real failure unreadable: the adapter was unavailable, the run fell
+    back to the operator's declared class, and the only thing surfaced was that
+    fallback's ImportError — pointing at a package that was never the problem.
+    """
     try:
         from browser_use.llm.litellm.chat import ChatLiteLLM
-    except ImportError:
+    except Exception as exc:  # noqa: BLE001 - any import failure means "unavailable"
+        print(f"[browser-use runner] native ChatLiteLLM unavailable ({type(exc).__name__}: {exc}); using the configured model class instead", file=sys.stderr)
         return None
 
     kwargs: dict = {"model": _litellm_model_id(model, spec.get("base_url"))}

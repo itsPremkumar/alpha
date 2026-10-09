@@ -238,8 +238,8 @@ class TestEnsureInstalled:
             seen.append(cmd)
             if "import browser_use" in cmd:
                 return _completed(json.dumps({"version": "1.4.0"}))
-            if cmd.endswith("import litellm"):
-                return _completed("No module named litellm", code=1)
+            if "importlib.metadata" in cmd and "litellm" in cmd:
+                return _completed("PackageNotFoundError", code=1)
             if "freeze" in cmd:
                 return _completed("browser-use==1.4.0\n")
             return _completed("ok")
@@ -285,8 +285,8 @@ class TestEnsureInstalled:
             cmd = " ".join(str(a) for a in argv)
             if "import browser_use" in cmd:
                 return _completed(json.dumps({"version": "1.0.0"}))
-            if cmd.strip().endswith("import playwright"):
-                return _completed("")
+            if "importlib.metadata" in cmd and "playwright" in cmd:
+                return _completed("")  # playwright IS present -> we fetch a browser
             if "playwright" in cmd:
                 return _completed("", "browser download failed", code=1)
             return _completed("ok")
@@ -353,8 +353,8 @@ class TestEnsureInstalled:
             cmd = " ".join(str(a) for a in argv)
             if "import browser_use" in cmd:
                 return _completed(json.dumps({"version": "1.0.0"}))
-            if cmd.strip().endswith("import playwright"):
-                return _completed("No module named playwright", code=1)
+            if "importlib.metadata" in cmd and "playwright" in cmd:
+                return _completed("PackageNotFoundError", code=1)
             return _completed("ok")
 
         with patch.object(subprocess, "run", side_effect=fake_run):
@@ -370,7 +370,7 @@ class TestEnsureInstalled:
             cmd = " ".join(str(a) for a in argv)
             if "import browser_use" in cmd:
                 return _completed(json.dumps({"version": "1.0.0"}))
-            if cmd.strip().endswith("import playwright"):
+            if "importlib.metadata" in cmd and "playwright" in cmd:
                 return _completed("")
             return _completed("ok")
 
@@ -696,6 +696,45 @@ class TestDefaultExtraPackages:
         """Without it every model call fails inside the agent loop."""
         assert "litellm" in manager_mod.DEFAULT_EXTRA_PACKAGES
 
+    def test_readiness_uses_metadata_not_an_import_probe(self, tmp_path):
+        """Regression: `import litellm` measured 127s, so an import-based probe
+        reported a good install as missing - and 'missing' drives a reinstall, so
+        every call then paid a full pip install until it timed out at 900s."""
+        mgr = _installed_manager(tmp_path)
+
+        def fake_run(argv, **kwargs):
+            cmd = " ".join(str(a) for a in argv)
+            if "import browser_use" in cmd:
+                return _completed(json.dumps({"version": "1.0.0"}))
+            if "importlib.metadata" in cmd:
+                return _completed("1.0.0")
+            return _completed("ok")
+
+        with patch.object(subprocess, "run", side_effect=fake_run), patch.object(BrowserUseManager, "_probe_import", side_effect=AssertionError("import probe must not gate readiness")) as import_probe:
+            status = mgr.ensure_installed(upgrade=False, extra_packages=[])
+
+        assert status.installed is True
+        assert not import_probe.called
+
+    def test_probe_distribution_uses_metadata(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        seen: list[list[str]] = []
+
+        def fake_run(argv, **kwargs):
+            seen.append([str(a) for a in argv])
+            return _completed("0.0.1")
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            assert mgr.probe_distribution("litellm") is True
+        # Metadata lookup, never a heavy import of the package itself.
+        assert any("importlib.metadata" in " ".join(cmd) for cmd in seen)
+        assert not any("import litellm" in " ".join(cmd) for cmd in seen)
+
+    def test_probe_distribution_is_false_when_absent(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        with patch.object(subprocess, "run", return_value=_completed("", "PackageNotFoundError", code=1)):
+            assert mgr.probe_distribution("litellm") is False
+
     def test_install_requests_litellm(self, tmp_path):
         mgr = _installed_manager(tmp_path)
         seen: list[str] = []
@@ -705,8 +744,6 @@ class TestDefaultExtraPackages:
             seen.append(cmd)
             if "import browser_use" in cmd:
                 return _completed(json.dumps({"version": "1.0.0"}))
-            if "import litellm" in cmd:
-                return _completed("")
             if "freeze" in cmd:
                 return _completed("openai==2.26.0\n")
             return _completed("ok")
@@ -724,8 +761,9 @@ class TestDefaultExtraPackages:
             cmd = " ".join(str(a) for a in argv)
             if "import browser_use" in cmd:
                 return _completed(json.dumps({"version": "1.0.0"}))
-            if "import litellm" in cmd:
-                return _completed("No module named litellm", code=1)
+            # Only the metadata probe reports absent; the pip line must succeed.
+            if "importlib.metadata" in cmd and "litellm" in cmd:
+                return _completed("PackageNotFoundError", code=1)
             if "freeze" in cmd:
                 return _completed("")
             return _completed("ok")
