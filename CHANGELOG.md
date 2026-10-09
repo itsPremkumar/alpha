@@ -12,6 +12,10 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **apex-invariant-probe-honesty:** Label invariant checks as module/symbol
+  availability probes and state explicitly that they do not verify runtime
+  enforcement; keep compatibility fields while correcting the CLI, API, and UI.
+
 - **apex-session-acceptance-control:** Add an owner-scoped acceptance endpoint
   that requires one measured evidence record for every declared criterion.
   Passing evidence completes only through the executive acceptance gate;

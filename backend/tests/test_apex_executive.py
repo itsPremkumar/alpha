@@ -595,6 +595,8 @@ class TestInvariantSet:
         assert summary["declared"] == 12
         assert summary["live"] == 12
         assert summary["live_ids"] and summary["missing_ids"] == []
+        assert summary["probe_scope"] == "module_symbol_presence"
+        assert summary["runtime_enforcement_verified"] is False
 
     def test_summary_of_a_partial_set_reports_both_counts(self) -> None:
         bogus = InvariantCheck(id="IX", statement="t", module="alpha.nope", symbol="x", spec_section="t")

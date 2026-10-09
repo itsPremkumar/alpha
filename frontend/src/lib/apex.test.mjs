@@ -143,6 +143,8 @@ const HEALTHY_STATUS = {
     declared: 12,
     live: 12,
     all_live: true,
+    probe_scope: "module_symbol_presence",
+    runtime_enforcement_verified: false,
     invariants: [
       {
         id: "I9",
@@ -152,6 +154,8 @@ const HEALTHY_STATUS = {
         module: "alpha.runtime.control",
         symbol: "read_state",
         reason: "",
+        probe_scope: "module_symbol_presence",
+        runtime_enforcement_verified: false,
       },
     ],
   },
@@ -216,6 +220,9 @@ test("invariants reads /apex/invariants", async () => {
   const report = await apex.fetchApexInvariants();
   assert.equal(report.declared, 12);
   assert.equal(report.live, 12);
+  assert.equal(report.probe_scope, "module_symbol_presence");
+  assert.equal(report.runtime_enforcement_verified, false);
+  assert.equal(report.invariants[0].runtime_enforcement_verified, false);
 });
 
 test("create posts to /apex/sessions with the objective and profile", async () => {

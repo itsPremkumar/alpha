@@ -227,6 +227,9 @@ class TestInvariantsEndpoint:
         assert payload["declared"] == 12
         assert payload["live"] == 12
         assert payload["all_live"] is True
+        assert payload["probe_scope"] == "module_symbol_presence"
+        assert payload["runtime_enforcement_verified"] is False
+        assert all(row["runtime_enforcement_verified"] is False for row in payload["invariants"])
 
     def test_every_row_names_its_enforcement_site(self, client: TestClient) -> None:
         for row in client.get("/api/apex/invariants").json()["invariants"]:

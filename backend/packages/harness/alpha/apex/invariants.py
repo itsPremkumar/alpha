@@ -157,7 +157,7 @@ INVARIANTS: tuple[InvariantCheck, ...] = (
 
 @dataclass(frozen=True, slots=True)
 class InvariantReport:
-    """One invariant's probed state."""
+    """One invariant's declared site availability; runtime enforcement is unverified."""
 
     id: str
     statement: str
@@ -166,6 +166,8 @@ class InvariantReport:
     symbol: str
     spec_section: str
     reason: str = ""
+    probe_scope: str = "module_symbol_presence"
+    runtime_enforcement_verified: bool = False
 
     @property
     def live(self) -> bool:
@@ -181,6 +183,8 @@ class InvariantReport:
             "symbol": self.symbol,
             "spec_section": self.spec_section,
             "reason": self.reason,
+            "probe_scope": self.probe_scope,
+            "runtime_enforcement_verified": self.runtime_enforcement_verified,
         }
 
 
@@ -230,7 +234,7 @@ def _probe(check: InvariantCheck) -> InvariantReport:
 
 
 def check_invariants(checks: tuple[InvariantCheck, ...] | None = None) -> list[InvariantReport]:
-    """Probe every invariant and report which enforcement site is live.
+    """Probe module and symbol availability for every declared invariant.
 
     Returns one report per declared invariant, in declaration order. A caller
     that wants an aggregate should read :attr:`InvariantReport.live` itself —
@@ -241,7 +245,7 @@ def check_invariants(checks: tuple[InvariantCheck, ...] | None = None) -> list[I
 
 
 def invariant_summary(reports: list[InvariantReport] | None = None) -> dict[str, Any]:
-    """Aggregate for the status projection and the HTTP surface.
+    """Aggregate declared-site availability without claiming runtime proof.
 
     ``live_count`` and ``declared_count`` travel together for the same reason
     ``direct_count`` and ``effective_count`` do in the group roster: a header
@@ -256,5 +260,7 @@ def invariant_summary(reports: list[InvariantReport] | None = None) -> dict[str,
         "live_ids": [r.id for r in live],
         "missing_ids": [r.id for r in missing],
         "all_live": bool(resolved) and not missing,
+        "probe_scope": "module_symbol_presence",
+        "runtime_enforcement_verified": False,
         "invariants": [r.to_dict() for r in resolved],
     }

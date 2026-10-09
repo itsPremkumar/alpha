@@ -207,15 +207,19 @@ function InvariantsCard({
         <span className="font-medium">Invariants</span>
         {/* Declared and live are stated together: "12" over 9 live sites would
             be a fabricated count. */}
-        <Badge tone={report.all_live ? "green" : "amber"}>
-          {report.live}/{report.declared} live
+        <Badge tone={report.all_live ? "amber" : "red"}>
+          {report.live}/{report.declared} sites present
         </Badge>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Module and symbol availability only; runtime enforcement is not verified
+        by this probe.
+      </p>
       <ul className="space-y-1 text-xs">
         {report.invariants.map((invariant) => (
           <li key={invariant.id} className="flex items-start gap-2">
             <span
-              className={invariant.live ? "text-emerald-600" : "text-amber-600"}
+              className={invariant.live ? "text-blue-600" : "text-amber-600"}
             >
               {invariant.live ? "●" : "○"}
             </span>

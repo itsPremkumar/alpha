@@ -181,8 +181,14 @@ def handle_apex_status(args: str, context: dict[str, Any] | None = None) -> Comm
         from alpha.apex.invariants import invariant_summary
 
         summary = invariant_summary()
-        lines.append(f"Invariants: {summary['live']}/{summary['declared']} enforcement sites live")
-        data["invariants"] = {"declared": summary["declared"], "live": summary["live"], "all_live": summary["all_live"]}
+        lines.append(f"Invariant sites present: {summary['live']}/{summary['declared']} (module/symbol probe only; runtime enforcement not verified)")
+        data["invariants"] = {
+            "declared": summary["declared"],
+            "live": summary["live"],
+            "all_live": summary["all_live"],
+            "probe_scope": summary["probe_scope"],
+            "runtime_enforcement_verified": summary["runtime_enforcement_verified"],
+        }
     except Exception as exc:  # noqa: BLE001
         lines.append(f"Invariants: not probed ({type(exc).__name__})")
         data["invariants"] = {"available": False, "reason": f"{type(exc).__name__}: {exc}"}

@@ -569,16 +569,18 @@ inferring coverage from APEX's presence.
 curl -s localhost:8001/api/apex/policy | jq .policy_sites_missing
 ```
 
-### `/api/apex/invariants` — `declared` vs `live`
+### `/api/apex/invariants` — declared sites and probe scope
 
-The spec's twelve invariants are each enforced by a named module elsewhere.
-`live` reflects whether that module imports **and** exposes the named symbol;
-a site that cannot be imported reports `live: false` with the reason. An
-invariant row whose enforcement site is missing is reported, never scored as a
-pass, and the aggregate never collapses "12 declared" into one number.
+The spec's twelve invariants each name a module and symbol. `live` is retained
+for API compatibility and means only that the module imports and exposes that
+symbol; it does **not** prove that runtime paths invoke the guard. The response
+sets `probe_scope: "module_symbol_presence"` and
+`runtime_enforcement_verified: false`. A missing site reports `live: false`
+with its reason. Runtime enforcement requires separate path-level tests and
+operational evidence.
 
 ```bash
-curl -s localhost:8001/api/apex/invariants | jq '{declared, live, all_live}'
+curl -s localhost:8001/api/apex/invariants | jq '{declared, live, all_live, probe_scope, runtime_enforcement_verified}'
 ```
 
 ---

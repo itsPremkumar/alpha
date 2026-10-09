@@ -221,6 +221,9 @@ resource telemetry are not yet part of the APEX ledger, and RunManager errors or
 interruptions remain parked for operator action. See
 [the APEX operating guide](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md).
 
+The invariant endpoint reports module/symbol presence only; it does not verify
+that runtime paths invoke those guards.
+
 ### 5.10 Alpha Mod Kernel
 The native Mod Kernel runs ordered middleware on lead-agent tool/model lifecycle
 events and run admission. First-party emergency-stop, blast-radius, verification,

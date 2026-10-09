@@ -34,13 +34,19 @@ and a durable store. Adding a second of any of those would be a regression, so
 this package contains none of them.
 
 `AutonomyContract.policy_sites` records the delegation in machine-readable
-form, and `alpha.apex.invariants` names the module enforcing each of the spec's
-twelve invariants — so both claims are checkable rather than asserted:
+form, and `alpha.apex.invariants` names the declared module and symbol for each
+of the spec's twelve invariants. The invariant probe reports symbol availability,
+not runtime enforcement:
 
 ```bash
 curl -s localhost:8001/api/apex/policy | jq .policy_sites_missing   # delegated kernels that are absent
-curl -s localhost:8001/api/apex/invariants | jq '{declared,live}'   # 12 declared, N live
+curl -s localhost:8001/api/apex/invariants | jq '{declared,live,probe_scope,runtime_enforcement_verified}'
 ```
+
+The invariant endpoint's `live` field is retained for compatibility and means
+only that each named module imports and exposes its symbol. It does not verify
+that a runtime path invokes the guard; path-level tests and operational evidence
+are required for that claim.
 
 ## The three rules
 

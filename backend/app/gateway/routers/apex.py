@@ -57,7 +57,7 @@ from alpha.apex.goals import (
     IllegalGoalTransition,
     get_goal_store,
 )
-from alpha.apex.invariants import check_invariants
+from alpha.apex.invariants import invariant_summary
 from alpha.apex.mode import DEFAULT_SCOPE as DEFAULT_APEX_SCOPE
 from alpha.apex.mode import get_apex_mode_store, set_mode
 from alpha.apex.status import SUPERVISOR_STATUS_PATH, apex_status, contract_status
@@ -963,24 +963,14 @@ async def policy(profile: str = Query(default="off")) -> dict[str, Any]:
     return contract_status(_contract_for(profile))
 
 
-@router.get("/invariants", summary="The §188 invariant set and its live enforcement sites")
+@router.get("/invariants", summary="The §188 invariant set and declared-site availability")
 async def invariants() -> dict[str, Any]:
-    """One row per declared invariant.
+    """One row per declared invariant and an honest description of probe scope.
 
-    ``live`` reflects whether the named enforcement module imports and exposes
-    the named symbol. A missing site reports ``live=False`` with the reason; it
-    never reports a pass, and the aggregate never collapses "12 declared" into a
-    single number.
+    Module and symbol presence is a structural probe only; it does not prove
+    that runtime paths invoke the guard. ``live`` stays for API compatibility.
     """
-    reports = check_invariants()
-    live = [r for r in reports if r.live]
-    return {
-        "schema": "alpha.apex.invariants.v1",
-        "declared": len(reports),
-        "live": len(live),
-        "all_live": bool(reports) and len(live) == len(reports),
-        "invariants": [r.to_dict() for r in reports],
-    }
+    return {"schema": "alpha.apex.invariants.v1", **invariant_summary()}
 
 
 @router.post("/sessions/{session_id}/steer", summary="Record a steering constraint")

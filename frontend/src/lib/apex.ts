@@ -229,9 +229,8 @@ export interface ApexSessions {
 /**
  * One invariant row.
  *
- * `live` reflects whether the named enforcement module imports *and* exposes the
- * named symbol. A missing site reports `live: false` with its reason; it is
- * never shown as a pass.
+ * `live` is retained as a compatibility field and only means the named module
+ * imports and exposes the symbol. It does not prove runtime enforcement.
  */
 export interface ApexInvariant {
   id: string;
@@ -240,12 +239,16 @@ export interface ApexInvariant {
   module: string;
   symbol: string;
   reason: string;
+  probe_scope: string;
+  runtime_enforcement_verified: boolean;
 }
 
 export interface ApexInvariantReport {
   declared: number;
   live: number;
   all_live: boolean;
+  probe_scope: string;
+  runtime_enforcement_verified: boolean;
   invariants: ApexInvariant[];
 }
 
@@ -409,6 +412,8 @@ export function mapStatus(v: unknown): ApexStatus {
       declared: optNum(inv.declared) ?? 0,
       live: optNum(inv.live) ?? 0,
       all_live: bool(inv.all_live),
+      probe_scope: str(inv.probe_scope),
+      runtime_enforcement_verified: bool(inv.runtime_enforcement_verified),
       invariants: (Array.isArray(inv.invariants) ? inv.invariants : []).map(
         (row) => {
           const item = rec(row);
@@ -419,6 +424,10 @@ export function mapStatus(v: unknown): ApexStatus {
             module: str(item.module),
             symbol: str(item.symbol),
             reason: str(item.reason),
+            probe_scope: str(item.probe_scope),
+            runtime_enforcement_verified: bool(
+              item.runtime_enforcement_verified,
+            ),
           };
         },
       ),

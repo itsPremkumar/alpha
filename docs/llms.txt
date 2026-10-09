@@ -28,6 +28,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 - [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 119 harness engine packages.
 - [Dynamic workflows](DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
 - [APEX Autopilot](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md): goal sessions, Gateway RunManager dispatch, run/token observation, registered acceptance probes for measured criteria, owner evidence when probes are absent/inconclusive, unlimited token/tool-call/runtime ceilings in enabled profiles, bounded admin replans after terminal failure with explicit side-effect acknowledgement, APEX active-agent/parallel caps on ordinary `task` delegation, and separate durable `batch_task` limits.
+The APEX invariant endpoint checks module/symbol presence and does not prove that runtime paths invoke the guards.
 - [Alpha Mod Kernel](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md): ordered lead-agent lifecycle middleware, explicit capability grants, fail-closed emergency stop and risk gates; journals and approval holds remain process-local, with durable replay and operator-resumed holds not implemented.
 - [Extensions](EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
