@@ -474,8 +474,11 @@ profile).
 
 State lives at `runtime_home()/apex/mode.json`, one row per scope, plus an
 append-only `mode_events.jsonl` journal recording who enabled what, at which
-profile, and when. A scope with no row reads as OFF — an unknown session is
-not enabled.
+profile, and when. Reads refresh under a local cross-process file lock so
+Gateway workers sharing the runtime directory see each other's transitions. A
+failed snapshot write leaves the previous authority in force. This remains a
+single-host filesystem guarantee, not a distributed configuration service. A
+scope with no row reads as OFF — an unknown session is not enabled.
 
 The read also carries **`active_session`** — the session bound to this scope
 (or `null` when none exists) — because the control verbs and the approval gate
@@ -624,11 +627,12 @@ Read these before treating a green status as a working system.
   `/apex/disable` the panel does and then re-reads; it creates no session, sends
   no message and starts no run. Reading it as "this chat is now autonomous" is
   the failure the in-menu disclosure exists to stop.
-- **JSON/JSONL state is local-filesystem state.** `sessions.json` mutations and
-  `events.jsonl` appends serialize across workers sharing a lock-respecting local
-  runtime directory, and remain restart-recoverable. This does not provide a
-  distributed transaction or cross-host exactly-once execution; those still
-  require a shared transactional backend.
+- **JSON/JSONL state is local-filesystem state.** `sessions.json` and
+  `mode.json` mutations plus their journal appends serialize across workers
+  sharing a lock-respecting local runtime directory, and remain
+  restart-recoverable. This does not provide a distributed transaction or
+  cross-host exactly-once execution; those still require a shared transactional
+  backend.
 - **A dropped SSE event is disclosed, never silently eaten.** A live subscriber
   whose queue fills gets an `event: gap` frame carrying how many events were
   dropped and how to recover them (re-read the journal from `after_seq`). A

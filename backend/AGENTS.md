@@ -86,9 +86,10 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   `services.launch_apex_session_run()` → `start_run()` → `RunManager`. Do not
   start or terminalize APEX work from the executive, router, or another loop.
   Dispatch generations and RunStore idempotency recover the admission window.
-  APEX session changes and event appends use cross-process local file locks and
-  refresh stale worker caches, but are still not distributed exactly-once across
-  hosts or filesystems without working advisory locks.
+  APEX session and mode changes plus event appends use cross-process local file
+  locks and refresh stale worker caches; failed mode writes leave the old
+  authority in force. These stores are still not distributed exactly-once
+  across hosts or filesystems without working advisory locks.
   Usage cursors and counters are durable together. A cursor advances for a
   usage-less event, but it does not count as zero; incomplete event accounting
   is replaced by cumulative RunManager snapshots, without double-counting.

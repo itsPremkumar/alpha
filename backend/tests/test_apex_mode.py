@@ -82,6 +82,7 @@ def test_a_contradictory_record_does_not_hand_out_authority(tmp_path: Path) -> N
     """
     store = ApexModeStore(tmp_path / "mode.json")
     store._rows["weird"] = ApexModeRecord(scope_key="weird", enabled=True, profile="off")
+    assert store._save()
 
     record = store.for_scope("weird")
     assert record.enabled is True
@@ -97,6 +98,7 @@ def test_an_unrecognised_stored_profile_degrades_visibly(tmp_path: Path) -> None
     """
     store = ApexModeStore(tmp_path / "mode.json")
     store._rows["legacy"] = ApexModeRecord(scope_key="legacy", enabled=True, profile="apex_pro_max")
+    assert store._save()
 
     contract = store.contract_for("legacy")
     assert store.for_scope("legacy").profile == "apex_pro_max", "the stored name is reported verbatim"
@@ -116,6 +118,36 @@ def test_enable_and_disable_persist_across_a_restart(tmp_path: Path) -> None:
     reloaded = ApexModeStore(path)
     assert reloaded.is_enabled("thread-a") is True
     assert reloaded.contract_for("thread-a").enabled is True
+
+
+def test_separate_mode_store_instances_observe_each_others_transitions(tmp_path: Path) -> None:
+    path = tmp_path / "mode.json"
+    first = ApexModeStore(path)
+    second = ApexModeStore(path)
+
+    first.enable("thread-a", "autonomous", owner="u1")
+    assert second.is_enabled("thread-a") is True
+
+    second.disable("thread-a", owner="u1")
+    assert first.is_enabled("thread-a") is False
+
+
+def test_failed_mode_persistence_does_not_grant_or_revoke_authority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = ApexModeStore(tmp_path / "mode.json")
+    monkeypatch.setattr(store, "_save", lambda: False)
+
+    enabled = store.enable("thread-a", "apex_max")
+    assert enabled["changed"] is False
+    assert enabled["durable"] is False
+    assert store.is_enabled("thread-a") is False
+
+    monkeypatch.undo()
+    store.enable("thread-a", "apex_max")
+    monkeypatch.setattr(store, "_save", lambda: False)
+    disabled = store.disable("thread-a")
+    assert disabled["changed"] is False
+    assert disabled["durable"] is False
+    assert store.is_enabled("thread-a") is True
 
 
 def test_disabling_retains_the_profile(tmp_path: Path) -> None:

@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha.apex.contract import AutonomyContract, AutonomyProfile, profile_for
+from alpha.apex.locking import cross_process_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -210,19 +211,23 @@ class ApexModeStore:
         }
         try:
             self.events_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.events_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                handle.flush()
+            with cross_process_file_lock(self.events_path):
+                with self.events_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
         except Exception:
             logger.error("APEX mode journal append failed for %s", record.scope_key, exc_info=True)
 
     def read_events(self, scope_key: str | None = None) -> list[dict[str, Any]]:
         """The transition history, oldest first."""
-        if not self.events_path.exists():
-            return []
         out: list[dict[str, Any]] = []
         try:
-            for line in self.events_path.read_text(encoding="utf-8").splitlines():
+            with cross_process_file_lock(self.events_path):
+                if not self.events_path.exists():
+                    return []
+                lines = self.events_path.read_text(encoding="utf-8").splitlines()
+            for line in lines:
                 line = line.strip()
                 if not line:
                     continue
@@ -238,6 +243,32 @@ class ApexModeStore:
             logger.error("APEX mode journal read failed", exc_info=True)
         return out
 
+    def _refresh_rows_from_disk(self) -> None:
+        """Reload shared state under its sidecar lock, preserving live records."""
+        if not self.storage_path.exists():
+            self._rows = {}
+            self._load_error = None
+            return
+        try:
+            raw = json.loads(self.storage_path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict) or not isinstance(raw.get("scopes", []), list):
+                raise ValueError("APEX mode snapshot has an invalid shape")
+            loaded = {record.scope_key: record for record in (ApexModeRecord.from_dict(item) for item in raw.get("scopes", []))}
+            refreshed: dict[str, ApexModeRecord] = {}
+            for scope_key, current in loaded.items():
+                existing = self._rows.get(scope_key)
+                if existing is None:
+                    refreshed[scope_key] = current
+                else:
+                    existing.__dict__.clear()
+                    existing.__dict__.update(current.__dict__)
+                    refreshed[scope_key] = existing
+            self._rows = refreshed
+            self._load_error = None
+        except Exception as exc:
+            self._load_error = f"{type(exc).__name__}: {exc}"
+            logger.error("APEX mode refresh failed; treating every scope as off: %s", self._load_error, exc_info=True)
+
     # -- reads ---------------------------------------------------------------
 
     def for_scope(self, scope_key: str | None) -> ApexModeRecord:
@@ -247,7 +278,10 @@ class ApexModeStore:
         autonomy for that session.
         """
         key = str(scope_key or DEFAULT_SCOPE)
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
+            if self.is_degraded:
+                return ApexModeRecord(scope_key=key, enabled=False, profile=AutonomyProfile.OFF.value)
             record = self._rows.get(key)
         if record is None:
             return ApexModeRecord(scope_key=key, enabled=False, profile=AutonomyProfile.OFF.value)
@@ -260,7 +294,10 @@ class ApexModeStore:
         return self.for_scope(scope_key).contract()
 
     def list_scopes(self) -> list[ApexModeRecord]:
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
+            if self.is_degraded:
+                return []
             return sorted(self._rows.values(), key=lambda r: -r.updated_at)
 
     # -- writes --------------------------------------------------------------
@@ -279,7 +316,10 @@ class ApexModeStore:
         if resolved is AutonomyProfile.OFF:
             raise ValueError("use disable() for the 'off' profile; enabling requires a real profile")
 
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
+            if self.is_degraded:
+                return {"changed": False, "record": ApexModeRecord(scope_key=key).to_dict(), "durable": False, "reason": "mode store is unreadable; autonomy remains off"}
             existing = self._rows.get(key)
             if existing is not None and existing.enabled and existing.profile == resolved.value:
                 return {"changed": False, "record": existing.to_dict(), "reason": "already enabled at this profile"}
@@ -295,13 +335,23 @@ class ApexModeStore:
             )
             self._rows[key] = record
             durable = self._save()
-        self._journal("apex.enabled", record, durable=durable, previous_profile=existing.profile if existing else "")
+            if not durable:
+                if existing is None:
+                    self._rows.pop(key, None)
+                else:
+                    self._rows[key] = existing
+                logger.error("APEX enable was not applied because its mode snapshot could not be saved")
+                return {"changed": False, "record": (existing or ApexModeRecord(scope_key=key)).to_dict(), "durable": False, "reason": "mode snapshot could not be saved; state is unchanged"}
+            self._journal("apex.enabled", record, durable=True, previous_profile=existing.profile if existing else "")
         return {"changed": True, "record": record.to_dict(), "durable": durable}
 
     def disable(self, scope_key: str | None, *, owner: str = "") -> dict[str, Any]:
         """Turn APEX off for a scope, keeping the profile for a later restore."""
         key = str(scope_key or DEFAULT_SCOPE)
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.storage_path):
+            self._refresh_rows_from_disk()
+            if self.is_degraded:
+                return {"changed": False, "record": ApexModeRecord(scope_key=key).to_dict(), "durable": False, "reason": "mode store is unreadable; autonomy remains off"}
             existing = self._rows.get(key)
             if existing is not None and not existing.enabled:
                 return {"changed": False, "record": existing.to_dict(), "reason": "already off"}
@@ -319,7 +369,14 @@ class ApexModeStore:
             )
             self._rows[key] = record
             durable = self._save()
-        self._journal("apex.disabled", record, durable=durable)
+            if not durable:
+                if existing is None:
+                    self._rows.pop(key, None)
+                else:
+                    self._rows[key] = existing
+                logger.error("APEX disable was not applied because its mode snapshot could not be saved")
+                return {"changed": False, "record": (existing or ApexModeRecord(scope_key=key)).to_dict(), "durable": False, "reason": "mode snapshot could not be saved; state is unchanged"}
+            self._journal("apex.disabled", record, durable=True)
         return {"changed": True, "record": record.to_dict(), "durable": durable}
 
 
