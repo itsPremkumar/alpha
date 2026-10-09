@@ -253,6 +253,78 @@ normalized by `lib/time.ts`), `last_message_sender` and `last_message_withheld`.
 
 Coverage: `lib/bots-activity-client.test.mjs`.
 
+## Working status and roster filters (Bots tab)
+
+`lib/bot-working-status.ts` + `components/bots/WorkingStatusView.tsx` answer the
+question the Bots tab could not: **is this agent working right now?** The
+presence reading above is a roster timestamp; `alpha.bots.health` owns the real
+verdict and publishes it on `GET /api/bots/health/overview` (and
+`GET /api/bots/kill-switch` for the operator stop), which nothing rendered. The
+two disagree exactly where it matters — a bot whose task lease expired is
+*stalled* and holds work that will not finish, and a paused bot must never read
+as working.
+
+- **Two reads, two independent failures.** `fetchBotHealthOverview` and
+  `fetchPauseState` are each their own `ReadResult`, issued separately in
+  `BotGallery` and rendered separately: "nobody is paused" and "we could not
+  check" lead to opposite actions, so a broken read must not blank a healthy
+  verdict (or vice versa). A failed read rejects with the server's reason — it
+  never resolves into an empty overview with `total: 0`, which would paint a
+  fleet-wide no-heartbeat claim from a network error.
+- **Precedence is the payload order.** An operator pause outranks the monitor
+  (a stopped bot holding a fresh heartbeat would otherwise read as working),
+  then the monitor's `liveness` string verbatim, then — only when no row
+  arrived — the presence reading, which labels itself `presence only` in its own
+  sentence. A verdict nobody produced is `working: null`, never `false`.
+- **A liveness word from a newer Gateway renders verbatim** in a muted badge
+  (`WorkingStatusBadge` carries `data-working-key` for the suite). Snapping an
+  unread verdict to `healthy` would lend this build's green badge to a state it
+  cannot read. `seconds_since_heartbeat: null` (unparseable heartbeat) is the
+  engine's own refusal of a `999999` sentinel, so the card says "heartbeat
+  timestamp unreadable" instead of quoting a number.
+- **Every absent counter is `null`, never `0`.** `normalizeHealthOverview`
+  reads `summary` key by key, so a payload from a Gateway that has not gained a
+  state renders the states it did report and `— not reported` for the rest.
+- **`needsAttention` is deliberately narrow** — stalled, or an operator stop. A
+  resting fleet reads `dead` on the monitor, so escalating that would make the
+  gallery's notice permanent and therefore ignored; the strip still *counts*
+  dead, and a dead bot holding a task says so on its own card, which is the
+  pair `check_stalled_tasks` keys on.
+- **The presence dot and the working badge are allowed to disagree** — the card
+  names the second `presentNow` to keep the display threshold uncontaminated.
+
+### The filters live in a pure module
+
+`lib/bot-roster-filters.ts` owns one predicate (`botMatches` / `filterBots`)
+plus the sort, because a filter is a claim about what a list contains and
+inlined it drifts between the predicate, the "N of M shown" line and each
+chip's count with nothing failing.
+
+- **Options are derived from the roster, never hardcoded.** The Gateway
+  validates `status` against `active|sleeping|suspended|archived` and its
+  registry also writes `disabled`, so the old dropdown offered
+  `active/paused/disabled` — two words the fleet report never uses, and no way
+  to reach the ones it does. `uniqueStatuses` / `uniqueModels` offer what
+  actually arrived, and a bot with `status: null` or no model has its own
+  `not reported` option rather than being dropped.
+- **Null sorts last, never first and never as zero.** An unmeasured reputation
+  is not a low reputation, and a bot with no `last_active` is not one last
+  active in 1970 (`new Date("").getTime()` is 0). `server` is the default sort,
+  so the roster's own order survives.
+- **The working facet buckets are disjoint** (`working` / `stalled` /
+  `not-working` / `unknown`), so a stalled bot is not also counted as "not
+  working" and two options can never claim the same population.
+
+Coverage: `lib/bot-working-status.test.mjs` (routes, the refusal to invent an
+empty fleet, the whole verdict table including the unknown-word and
+null-liveness cases, the presence fallback's self-labelling, pause precedence,
+disjoint facets), `lib/bot-roster-filters.test.mjs` (search surface,
+data-derived options, every facet, the null-sort rule, the disclosure line, and
+a source pin that the gallery filters through the module) and
+`lib/bot-working-status-view.test.mjs` (renders the real components: the
+verbatim badge, the three strip states, and that a card with no verdict makes
+no working claim).
+
 ## Per-bot model configuration panel
 
 `lib/bot-model-config.ts` + `components/bots/BotModelConfigPanel.tsx`, mounted

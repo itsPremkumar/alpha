@@ -3186,6 +3186,7 @@ export default function ChatView({
                 bots={bots}
                 activeBotName={activeBot?.name || null}
                 isLoading={botsLoading}
+                loadError={botsError}
                 onSelect={setInspectedBot}
                 onChat={handleChatWithBot}
                 onRefresh={refreshBots}
