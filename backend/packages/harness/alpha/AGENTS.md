@@ -194,10 +194,8 @@ read the generated `contracts/feature_manifest.json` through the one
 `manifest_source` loader rather than recomputing a count
 `scripts/check_generated_drift.py` already settles.
 
-The load-bearing invariants are owned by the root guide's self-inventory plane
-section and are deliberately **not restated here**: *available* is what a source
-declares while `health` stays `unverified`, a broken source reports `count: null`
-and never `0`, availability is per-entry, and `config_diagnosis` is read-only.
+The root guide's self-inventory plane section owns those invariants, and this
+file points rather than restating them.
 
 Model surface: the single `alpha_capability` tool, lead-agent-only and absent from
 `SUBAGENT_TOOLS`. HTTP: `GET /api/intelligence/inventory`. Tests:
