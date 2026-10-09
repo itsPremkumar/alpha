@@ -27,6 +27,7 @@
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
 - [architecture/durable-runtime.md](architecture/durable-runtime.md) — Architecture and subsystem documentation.
+- [deep-agent-working-plane.md](deep-agent-working-plane.md) — Deep-agent working plane: Alpha's port of deepagents' state backend, why a long run needs a scratch space that survives compaction, the tool surface, its bounds, and where it applies.
 
 ## API Reference
 

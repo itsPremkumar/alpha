@@ -65,9 +65,6 @@ from .deep_research_tool import deep_research
 # Keyless web search ported from AgentEye: httpx-first fallback chain with an
 # optional ddgs fallback whose absence is reported honestly (never faked).
 from .deep_web_search_tool import deep_web_search
-
-# Deep-agent working plane (deepagents' state backend)
-from .deepagent_tool import append_deepagent_tools, deepagent_workspace_tool
 from .deliberation_tool import deliberation_tool
 from .delta_checkpoint_tool import create_workflow_checkpoint
 from .differential_invariant_fuzzer_tool import run_differential_regression_oracle
@@ -238,8 +235,6 @@ __all__ = [
     "hashline_read",
     "hashline_edit",
     "workflow_dag_manage",
-    "deepagent_workspace_tool",
-    "append_deepagent_tools",
     "boulder_checkpoint_manage",
     "kibitzer_nudge_manage",
     "hyperplan_review_manage",
