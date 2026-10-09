@@ -28,9 +28,13 @@ from pathlib import Path
 import pytest
 
 from alpha.mission.acceptance import (
+    REASON_DUPLICATE_COVERAGE,
     REASON_NO_CRITERIA,
     AcceptanceNotSatisfied,
     AcceptanceRegistry,
+    AcceptanceReport,
+    CriterionResult,
+    CriterionVerdict,
     assert_acceptance_passed,
     evaluate_acceptance,
     unevaluated_report,
@@ -150,6 +154,116 @@ def test_non_boolean_evidence_and_probe_results_cannot_pass() -> None:
     assert probed.passed is False
     assert probed.unevaluated == [CRITERIA[0]]
     assert any("expected bool or None" in note for note in probed.notes)
+
+
+# ------------------------------- contradictions are never arbitrated
+
+
+def test_contradictory_evidence_for_one_criterion_is_refused_not_arbitrated() -> None:
+    """Two measurements that disagree pick no winner — in either order."""
+    criterion = CRITERIA[0]
+    report = evaluate_acceptance([criterion], {criterion: True, f" {criterion} ": False})
+    assert report.unevaluated == [criterion], "a contradiction must leave the criterion UNVERIFIED"
+    assert report.passed is False
+    assert any("contradictory" in note for note in report.notes)
+
+    flipped = evaluate_acceptance([criterion], {criterion: False, f" {criterion} ": True})
+    assert flipped.unevaluated == [criterion], "the outcome must not depend on dict order"
+
+    agreed = evaluate_acceptance([criterion], {criterion: True, f" {criterion} ": True})
+    assert agreed.unevaluated == []
+    assert agreed.passed is True, "agreeing measurements are not a contradiction"
+
+
+def test_evaluators_that_disagree_decide_nothing() -> None:
+    """A contradictory second opinion is disclosed, not silently outvoted."""
+    registry = AcceptanceRegistry()
+    registry.register("aaa_holds", lambda _criterion: True)
+    registry.register("zzz_fails", lambda _criterion: False)
+    report = registry.evaluate(CRITERIA)
+
+    assert report.unevaluated == CRITERIA
+    assert report.passed is False
+    detail = " ".join(report.notes)
+    assert "disagree" in detail
+    assert "aaa_holds" in detail and "zzz_fails" in detail
+    with pytest.raises(AcceptanceNotSatisfied):
+        assert_acceptance_passed(report)
+
+
+def test_evaluators_that_agree_still_decide() -> None:
+    """The refusal is for contradictions only: agreement still decides."""
+    registry = AcceptanceRegistry()
+    registry.register("decides", lambda _criterion: True)
+    registry.register("abstains", lambda _criterion: None)
+    report = registry.evaluate(CRITERIA)
+
+    assert [c.verdict for c in report.criteria] == [CriterionVerdict.MET, CriterionVerdict.MET]
+    assert report.passed is True
+    assert assert_acceptance_passed(report) is report
+
+
+# ------------------------------------- coverage is exactly once, never twice
+
+
+def test_a_report_cannot_pass_by_repeating_one_criterion() -> None:
+    """A repeated row cannot inflate coverage: exactly once or refusal."""
+    doubled = AcceptanceReport(
+        criteria=[
+            CriterionResult(criterion=CRITERIA[0], verdict=CriterionVerdict.MET),
+            CriterionResult(criterion=CRITERIA[0], verdict=CriterionVerdict.MET),
+        ]
+    )
+    assert doubled.passed is False
+    assert doubled.refusal_reason() is not None
+    assert REASON_DUPLICATE_COVERAGE in doubled.refusal_reason()
+    with pytest.raises(AcceptanceNotSatisfied, match=REASON_DUPLICATE_COVERAGE):
+        assert_acceptance_passed(doubled)
+
+    # Whitespace-only differences name the same criterion, not two rows.
+    padded = AcceptanceReport(
+        criteria=[
+            CriterionResult(criterion=CRITERIA[0], verdict=CriterionVerdict.MET),
+            CriterionResult(criterion=f" {CRITERIA[0]} ", verdict=CriterionVerdict.MET),
+        ]
+    )
+    assert padded.passed is False
+    assert REASON_DUPLICATE_COVERAGE in (padded.refusal_reason() or "")
+
+
+def test_a_mission_declaring_one_criterion_twice_cannot_complete(tmp_path):
+    """The reachable path: a duplicated declaration must not double-count."""
+    store = _store(tmp_path)
+    mission = store.create("u1", "double-declared bar", acceptance_criteria=[CRITERIA[0], CRITERIA[0]])
+    store.transition(mission.mission_id, "active")
+
+    store.record_acceptance(mission.mission_id, evaluate_acceptance([CRITERIA[0], CRITERIA[0]], {CRITERIA[0]: True}))
+    refusal = store.completion_refusal(mission.mission_id)
+    assert refusal is not None and REASON_DUPLICATE_COVERAGE in refusal
+    assert store.transition(mission.mission_id, "completed") is None
+    assert store.get(mission.mission_id).status == "active"
+
+
+# --------------------------------- a corrupt stored report fails closed
+
+
+def test_a_corrupt_stored_report_fails_closed_instead_of_crashing() -> None:
+    """missions.json is a local JSON file: an unreadable payload must not
+    crash the loader, and must never read as a pass or as an empty report."""
+    report = AcceptanceReport.from_dict({"criteria": ["not-a-result"], "evaluator": "probe"})
+    assert report.unevaluated == ["not-a-result"], "the junk stays visible as UNVERIFIED"
+    assert report.passed is False
+    with pytest.raises(AcceptanceNotSatisfied):
+        assert_acceptance_passed(report)
+
+    junk_blob = AcceptanceReport.from_dict({"criteria": {"not": "a list"}})
+    assert junk_blob.passed is False
+    assert junk_blob.unevaluated, "one unreadable blob is one disclosed row, not silence"
+
+    good = evaluate_acceptance(CRITERIA, {CRITERIA[0]: True, CRITERIA[1]: True})
+    restored = AcceptanceReport.from_dict(good.to_dict())
+    assert restored.passed is True
+    assert [c.criterion for c in restored.criteria] == CRITERIA
 
 
 # --------------------------------------- the store refuses an unjustified end
