@@ -1254,6 +1254,81 @@ class TestJudgeVerification:
         assert seen["judge_llm"].tag == "llm2", "judge must reuse the driving model spec"
 
 
+class TestBrowserStartRetry:
+    """browser-use's own 30s browser-launch timeout is worth exactly one retry.
+
+    It fired on a loaded host with vision enabled and killed whole runs over
+    nothing to do with the task. Everything else — including our own wall-clock
+    timeout — must never be retried behind the caller's back.
+    """
+
+    LAUNCH_ERROR = "TimeoutError: Event handler browser_use.browser.watchdog_base.BrowserSession.on_BrowserStartEvent#4288 timed out after 30.0s"
+
+    def test_launch_timeout_is_recognised(self):
+        assert manager_mod._is_browser_start_timeout({"error": self.LAUNCH_ERROR})
+
+    def test_our_own_timeout_is_never_retried(self):
+        """Retrying a task we already killed would double its cost for nothing."""
+        assert manager_mod._is_browser_start_timeout({"error": "browser-use ran past its budget", "timed_out": True}) is False
+
+    def test_real_task_failures_are_not_retried(self):
+        for error in ("login required", "page not found", "Invalid model output format", ""):
+            assert manager_mod._is_browser_start_timeout({"error": error}) is False
+
+    def test_run_retries_once_then_reports(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        calls = []
+
+        def fake_run_once(**kwargs):
+            calls.append(kwargs)
+            return {"ok": False, "error": self.LAUNCH_ERROR, "timed_out": False}
+
+        with patch.object(mgr, "_run_once", side_effect=fake_run_once), patch.object(manager_mod.time, "sleep"):
+            envelope = mgr.run(task="t", llm_spec={})
+
+        assert len(calls) == 2, "one re-attempt, then give up"
+        assert envelope["retried_after_browser_start_timeout"] == 1
+
+    def test_run_does_not_retry_a_successful_run(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        calls = []
+
+        def fake_run_once(**kwargs):
+            calls.append(kwargs)
+            return {"ok": True, "completed": True, "result": "done", "errors": []}
+
+        with patch.object(mgr, "_run_once", side_effect=fake_run_once):
+            envelope = mgr.run(task="t", llm_spec={})
+
+        assert len(calls) == 1
+        assert envelope["result"] == "done"
+        assert "retried_after_browser_start_timeout" not in envelope
+
+    def test_run_does_not_retry_a_task_failure(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        calls = []
+
+        def fake_run_once(**kwargs):
+            calls.append(kwargs)
+            return {"ok": True, "completed": False, "errors": ["login required"], "result": ""}
+
+        with patch.object(mgr, "_run_once", side_effect=fake_run_once):
+            envelope = mgr.run(task="t", llm_spec={})
+
+        assert len(calls) == 1, "a genuine task failure must be reported, not retried"
+        assert envelope["errors"] == ["login required"]
+
+    def test_retry_succeeds_and_returns_cleanly(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        outcomes = [{"ok": False, "error": self.LAUNCH_ERROR, "timed_out": False}, {"ok": True, "completed": True, "result": "done", "errors": []}]
+
+        with patch.object(mgr, "_run_once", side_effect=outcomes), patch.object(manager_mod.time, "sleep"):
+            envelope = mgr.run(task="t", llm_spec={})
+
+        assert envelope["result"] == "done"
+        assert "retried_after_browser_start_timeout" not in envelope
+
+
 class TestConfigWiring:
     """The `use:` paths in config.example.yaml only fail at operator runtime.
 

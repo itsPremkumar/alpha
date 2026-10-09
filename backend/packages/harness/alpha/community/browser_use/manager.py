@@ -37,6 +37,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -71,6 +72,18 @@ MAX_RESULT_CHARS = 8000
 MAX_HISTORY_ROWS = 20
 #: Tail of the child's stderr kept for a failure report.
 _STDERR_TAIL_CHARS = 2000
+#: browser-use launches its browser through an event handler with a hard 30s
+#: timeout. On a loaded host — or with leftover Chrome state — that handler trips
+#: before the browser is up, and the whole run dies with a `TimeoutError` naming
+#: `BrowserStartEvent` even though nothing about the task was wrong. Vision adds
+#: startup work, so this bites more with `use_vision: true`. These markers are the
+#: signature of *that* specific transient, which is worth one retry, as opposed to a
+#: genuine task failure, which must never be retried behind the caller's back.
+_TRANSIENT_BROWSER_START_MARKERS: tuple[str, ...] = ("BrowserStartEvent", "on_BrowserStartEvent")
+#: How many times a run is re-attempted after that signature. One: a second
+#: identical failure is a real condition, and repeating it would only burn time.
+_BROWSER_START_RETRIES = 1
+_BROWSER_START_RETRY_DELAY_SECONDS = 5.0
 #: Packages installed alongside browser-use itself, beyond the operator's
 #: ``extra_packages``. ``litellm`` is here for a reason found by running the real
 #: thing: browser-use ships no provider adapter for OpenAI-compatible endpoints
@@ -491,7 +504,45 @@ class BrowserUseManager:
         Never raises for a task failure — that is data the model must read. It
         raises only when the runtime itself cannot run (no venv, missing runner
         script), because those are operator-facing faults, not task outcomes.
+
+        A browser-launch timeout is re-attempted once (see
+        ``_TRANSIENT_BROWSER_START_MARKERS``); every other outcome is returned as
+        it is, so a failed task is never silently retried.
         """
+        last: dict[str, Any] = {}
+        for attempt in range(_BROWSER_START_RETRIES + 1):
+            last = self._run_once(
+                task=task,
+                llm_spec=llm_spec,
+                start_url=start_url,
+                max_steps=max_steps,
+                timeout_seconds=timeout_seconds,
+                headless=headless,
+                use_vision=use_vision,
+                verify=verify,
+                ground_truth=ground_truth,
+            )
+            if not _is_browser_start_timeout(last):
+                return last
+            if attempt < _BROWSER_START_RETRIES:
+                logger.warning("browser-use browser launch timed out; re-attempting once before giving up")
+                time.sleep(_BROWSER_START_RETRY_DELAY_SECONDS)
+        last["retried_after_browser_start_timeout"] = _BROWSER_START_RETRIES
+        return last
+
+    def _run_once(
+        self,
+        *,
+        task: str,
+        llm_spec: dict[str, Any],
+        start_url: str | None,
+        max_steps: int,
+        timeout_seconds: int,
+        headless: bool,
+        use_vision: bool,
+        verify: bool,
+        ground_truth: str | None,
+    ) -> dict[str, Any]:
         if self.probe_version() is None:
             raise BrowserUseError(f"browser-use is not installed in {self.venv_dir}. Call browser_use_setup first (or enable auto_install on browser_use_run).")
         if not self.runner_path.is_file():
@@ -655,6 +706,18 @@ class BrowserUseManager:
 
 _MANAGER: BrowserUseManager | None = None
 _MANAGER_LOCK = threading.Lock()
+
+
+def _is_browser_start_timeout(envelope: dict[str, Any]) -> bool:
+    """True for the one transient worth retrying: browser-use's own launch timeout.
+
+    Matches on the event name rather than on "timed out", because our own run
+    timeout produces a different, deliberately-not-retried outcome.
+    """
+    if envelope.get("timed_out"):
+        return False
+    error = str(envelope.get("error") or "")
+    return any(marker in error for marker in _TRANSIENT_BROWSER_START_MARKERS)
 
 
 def get_browser_use_manager(venv_path: str | Path | None = None) -> BrowserUseManager:
