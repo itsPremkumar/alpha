@@ -79,9 +79,11 @@ class TestFailsOpen:
 
     def test_a_missing_room_does_not_raise(self):
         request = _coord_request(room="no-such-room")
-        outcome = auto_claim_write(request, "src/api.py")
-        # No room means no resolvable membership; nothing is invented.
-        assert outcome.claim_id is None or outcome.claim_id is not None  # must not raise
+        outcome = auto_claim_write(request, "src/api.py")  # must not raise
+        # A room that does not exist is not a store error and not a fallback to
+        # a default one: no claim is invented for a crew nobody resolved.
+        assert isinstance(outcome, WriteCoordination)
+        assert not outcome.conflicted, "an absent room has no other holder to collide with"
 
     def test_a_store_failure_does_not_raise(self, monkeypatch):
         _room()

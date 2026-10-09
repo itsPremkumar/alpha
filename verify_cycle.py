@@ -1,4 +1,5 @@
-import re, ast, importlib.util, types, sys
+import importlib.util
+import re
 
 # ---- (A) The $-anchored re.match anti-pattern in skills/validation.py ----
 name = "skill\r"
@@ -9,23 +10,26 @@ print("[A] re.fullmatch(r'[a-z0-9-]+', 'skill\r'):", re.fullmatch(r"[a-z0-9-]+",
 print("[A] re.search(r'^[a-z0-9-]+$', 'skill\r'):", bool(re.search(r"^[a-z0-9-]+$", "skill\r")))
 
 # ---- (B) sandbox/security.py default gates ----
-spec = importlib.util.spec_from_file_location(
-    "sec", "backend/packages/harness/alpha/sandbox/security.py")
+spec = importlib.util.spec_from_file_location("sec", "backend/packages/harness/alpha/sandbox/security.py")
 sec = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sec)
 print("[B] is_host_bash_allowed default:", sec.is_host_bash_allowed())
 print("[B] is_in_process_repl_allowed default:", sec.is_in_process_repl_allowed())
 
 # ---- (C) how code_mode reaches the default tool list ----
-import glob, os
-for f in ["backend/packages/harness/alpha/tools/__init__.py",
-          "backend/packages/harness/alpha/tools/builtins/__init__.py",
-          "backend/packages/harness/alpha/tools/discovery/__init__.py",
-          "backend/packages/harness/alpha/tools/search/catalog.py",
-          "backend/packages/harness/alpha/tools/search/tools.py",
-          "backend/packages/harness/alpha/tools/tool_discovery_metrics.py"]:
+for f in [
+    "backend/packages/harness/alpha/tools/__init__.py",
+    "backend/packages/harness/alpha/tools/builtins/__init__.py",
+    "backend/packages/harness/alpha/tools/discovery/__init__.py",
+    "backend/packages/harness/alpha/tools/search/catalog.py",
+    "backend/packages/harness/alpha/tools/search/tools.py",
+    "backend/packages/harness/alpha/tools/tool_discovery_metrics.py",
+]:
     print("==== ", f)
     txt = open(f, encoding="utf-8", errors="replace").read()
     for i, line in enumerate(txt.splitlines(), 1):
-        if "code_mode" in line.lower() or "class CodeMode" in line or "code_mode" in line.lower():
+        # One test, not three: the case-insensitive spelling already covers
+        # every case-sensitive variant of the same token, so the extra clauses
+        # could only repeat the first one.
+        if "code_mode" in line.lower():
             print(f"  {i}: {line.strip()[:120]}")

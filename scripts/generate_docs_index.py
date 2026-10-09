@@ -61,7 +61,6 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     "adr": "decisions",
     "adrs": "decisions",
     "api": "api",
-    "audits": "operations",
     # Measured research dossier on ASI/AGI/RSI plus the gap analysis against
     # this codebase. Classified as plans for the same reason
     # AGENT_LANDSCAPE_AND_ROADMAP.md is: it is a survey of the external
@@ -205,10 +204,6 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Group profiles, links, goals, pinning, threading, receipts and notifications — design record plus a per-feature shipped/not-shipped map.",
     ),
-    "ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md": DocumentSpec(
-        "plans",
-        "Alpha's autonomous-autopilot master spec: the single source of truth for the apex autopilot's architecture, capabilities, failure modes, and verification gates (a spec, not implementation).",
-    ),
     "AUTHORITY_MODEL.md": DocumentSpec(
         "operations",
         "Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.",
@@ -257,7 +252,9 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "audits/FLEET_VERIFICATION.md": DocumentSpec(
         "operations",
-        "Fleet verification record: five real tasks run concurrently against five named bot profiles, every output opened and checked, and the coerce_iso OverflowError the review bot found and that was then reproduced, fixed and negative-controlled.",
+        "Fleet verification record: five real tasks run concurrently against five named bot "
+        "profiles, every output opened and checked, and the coerce_iso OverflowError the "
+        "review bot found and that was then reproduced, fixed and negative-controlled.",
     ),
     "audits/ORCHESTRATION_PROBES.md": DocumentSpec(
         "operations",
@@ -265,31 +262,53 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "audits/BOT_FORGE_VERIFICATION.md": DocumentSpec(
         "operations",
-        "Bot forge verification record: the agent forges its own new specialist, the bot is verified on four independent surfaces including a real addressed run, the duplicate-role guard is negative-controlled, and the duplicated SOUL identity heading it produced is fixed.",
+        "Bot forge verification record: the agent forges its own new specialist, the bot is "
+        "verified on four independent surfaces including a real addressed run, the "
+        "duplicate-role guard is negative-controlled, and the duplicated SOUL identity "
+        "heading it produced is fixed.",
     ),
     "audits/WRITE_PATH_VERIFICATION.md": DocumentSpec(
         "operations",
-        "Write-path verification record: the group nesting probes are green after the MAX_DEPTH cap was found absent from the subgroup creation route and wired in, with the inheritance projection, the depth and delete refusals, and the probe's own wrong assumptions all pinned.",
+        "Write-path verification record: the group nesting probes are green after the "
+        "MAX_DEPTH cap was found absent from the subgroup creation route and wired in, with "
+        "the inheritance projection, the depth and delete refusals, and the probe's own "
+        "wrong assumptions all pinned.",
     ),
     "audits/SUBAGENT_CREATION.md": DocumentSpec(
         "operations",
-        "Subagent creation record: an agent asked to create one claimed success it did not achieve, the admin create route was found to answer 201 to a typo'd field, and the UI's separate live-activity plane is explained with the limits of what could be verified.",
+        "Subagent creation record: an agent asked to create one claimed success it did not "
+        "achieve, the admin create route was found to answer 201 to a typo'd field, and the "
+        "UI's separate live-activity plane is explained with the limits of what could be "
+        "verified.",
     ),
     "audits/AGENT_SELF_SERVICE.md": DocumentSpec(
         "operations",
-        "Agent self-service record: the subagent_registry tool that lets an agent create its own specialised subagent, four bugs in that tool found by running it, the grounding-classification defect its author introduced and fixed, and the live re-verification left unverified.",
+        "Agent self-service record: the subagent_registry tool that lets an agent create its "
+        "own specialised subagent, four bugs in that tool found by running it, the "
+        "grounding-classification defect its author introduced and fixed, and the live "
+        "re-verification left unverified.",
     ),
     "audits/FRONTEND_PRE_COMMIT_HOOK.md": DocumentSpec(
         "operations",
-        "The frontend-eslint pre-commit hook cannot pass: it runs a bare npx eslint against a frontend that has no ESLint configuration and declares its lint as a typecheck, so every commit touching frontend/ is refused. Root cause, evidence, and the two fix options.",
+        "The frontend-eslint pre-commit hook cannot pass: it runs a bare npx eslint against a "
+        "frontend that has no ESLint configuration and declares its lint as a typecheck, so "
+        "every commit touching frontend/ is refused. Root cause, evidence, and the two fix "
+        "options.",
     ),
     "audits/SUBAGENT_VISIBILITY.md": DocumentSpec(
         "operations",
-        "Why a subagent cannot be seen working in the UI: the task delegation path really executes but never registers, while the control plane registers but has no runner, since start_subagent has no production caller. Measured, with the two honest options and why an invented runner is refused.",
+        "Why a subagent cannot be seen working in the UI: the task delegation path really "
+        "executes but never registers, while the control plane registers but has no runner, "
+        "since start_subagent has no production caller. Measured, with the two honest "
+        "options and why an invented runner is refused.",
     ),
     "FEATURE_COMPLETION_PLAN.md": DocumentSpec(
         "operations",
-        "The working plan for every remaining feature, as tickable tasks with a verification gate each: the baseline count drift, the registered-but-dead capability families (deep-agent delegation, the control-plane runner, slash-command dispatch, self-repair), prompt-only work assignment, swarm/dynamic-workflow/company/messages end to end, and the measured frontend honesty defects.",
+        "The working plan for every remaining feature, as tickable tasks with a verification "
+        "gate each: the baseline count drift, the registered-but-dead capability families "
+        "(deep-agent delegation, the control-plane runner, slash-command dispatch, "
+        "self-repair), prompt-only work assignment, swarm/dynamic-workflow/company/messages "
+        "end to end, and the measured frontend honesty defects.",
     ),
     # The docs/reliability/ dossier. A directory rule below classifies the
     # folder, and these per-file entries give each document its own navigation
