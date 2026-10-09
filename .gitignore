@@ -225,3 +225,86 @@ opencode-free-models.json
 # hundreds of megabytes of build debris.
 build/measure/
 backend/.tmp/
+
+# ── Leftover audit-session debris (never source) ─────────────────────────────
+# The same rule as "Agent scratch space" above, applied to what an audit leaves
+# behind when the session ends without being tidied: one-off route scanners,
+# manifest counters and import probes dropped beside the code they inspected,
+# in the repo root, or in a scratch/ or tools/ directory created for that
+# session. They hardcode this machine's absolute paths, they duplicate each
+# other (scan_routes.py exists in 13 copies, one under the mangled path
+# backend/app/gateway/backend/app/gateway/), and they are pure garbage once the
+# defect they measured is fixed.
+#
+# Grouped by the directory they infest and by name prefix rather than one rule
+# per file, because the next session will invent names this list has never
+# seen. Directories with no tracked content (backend/tools/, backend/tmp_probe/,
+# the mangled backend/app/gateway/backend/) are ignored wholesale.
+#
+# The prefix rules below are deliberately broad and DO match files this repo
+# already committed -- root scan_routes.py, tmp_probe_*.py, _probe_drift.py and
+# the older scratch/scan_* and scratch/probe_* scripts are all both tracked and
+# ignored. That is intended and harmless: gitignore only decides whether an
+# *untracked* file is offered for addition, so those committed files stay in
+# the index, keep diffing, and keep appearing in `git status` when edited. What
+# the rules actually change is that the next probe of that shape is never
+# staged in the first place.
+
+# Nested git worktrees. `.worktrees/` further up covers the other layout.
+/.claude/worktrees/
+
+# Root-level one-off probes, scanners and counters.
+/.gate_runner.py
+/.probe_*.py
+/.ws_*
+/_probe*.py
+/_scan*.py
+/tmp_*.py
+/scan*.py
+/route_scan*.py
+/route_decorator_scan.py
+/check_manifest.py
+/compare_manifest.py
+/count_manifest.py
+/comprehensive_route_scan.py
+/crosspkg_consumers.py
+/gather_routes.py
+
+# Gateway route/auth scans, plus the backend/ tree a scanner nested by mistake.
+/backend/app/gateway/scan*
+/backend/app/gateway/alpha_scan_routes.py
+/backend/app/gateway/backend/
+/backend/app/gateway/routers/scan_*.py
+/backend/app/gateway/routers/routes.txt
+
+# Probes dropped into the harness package itself, and their scratch directories.
+/backend/packages/harness/alpha/_probe*.py
+/backend/packages/harness/alpha/_core_probe.py
+/backend/prove_*.py
+/backend/tests/probe_harness_imports_app.py
+/backend/tmp_probe/
+/backend/tools/
+
+# scratch/, tmp/ and .scratch/ keep their tracked scripts; only new debris goes.
+/scratch/*.txt
+/scratch/*_scan.py
+/scratch/scan*.py
+/scratch/check_*.py
+/scratch/dbg*.py
+/scratch/probe_*.py
+/scratch/route_inventory*.py
+/scratch/debug_inventory.py
+/scratch/manifest_check.py
+/scratch/print_decs.py
+/scratch/router_prefix.py
+/tmp/count_eng.py
+/tmp/find_features.py
+.scratch/lgcheck/
+
+# A scanner copied into scripts/ next to the real scan_changed_blocking_io.py.
+/scripts/scan_routes.py
+
+# Windows reserved-name file created by a mistyped redirect, and backup copies
+# written beside generated output (`*.bak` matches no tracked file).
+/nul
+*.bak
