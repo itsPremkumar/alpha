@@ -572,6 +572,18 @@ export function WarRoomSection() {
                                     {c}
                                   </span>
                                 ))}
+                                {/* The two shown were presented as the whole
+                                    contract. The count of the rest is now on
+                                    screen and the full list is in the tooltip —
+                                    the same disclosure held_paths already makes. */}
+                                {worker.contract.capabilities.length > 2 && (
+                                  <span
+                                    className="text-[9px] px-1 rounded bg-muted text-muted-foreground/70"
+                                    title={worker.contract.capabilities.join(", ")}
+                                  >
+                                    +{worker.contract.capabilities.length - 2} more
+                                  </span>
+                                )}
                               </div>
                             </div>
                           ))}

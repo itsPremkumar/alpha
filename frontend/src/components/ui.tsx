@@ -155,6 +155,12 @@ export function Btn(props: {
   title?: string;
   /** Required for an icon-only button; ignored when the button has text. */
   ariaLabel?: string;
+  /**
+   * Marks the current view for assistive tech. A selected tab conveyed by
+   * colour alone is unreadable to a screen reader and to colour-blind users,
+   * so the visual variant and this attribute travel together.
+   */
+  ariaCurrent?: boolean | "false" | "true" | "page" | "step" | "location" | "date" | "time";
   className?: string;
 }) {
   const base =
@@ -175,6 +181,7 @@ export function Btn(props: {
       // `title` is not an accessible name — `aria-label` has to carry it. The
       // QR/copy rows are entirely icon buttons, which is what surfaced this.
       aria-label={props.ariaLabel}
+      aria-current={props.ariaCurrent}
       className={`${base} ${style} ${props.className || ""}`}
     >
       {props.children}

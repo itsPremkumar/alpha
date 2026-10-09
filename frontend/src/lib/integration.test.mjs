@@ -44,11 +44,21 @@ const transpile = (source, extra = {}) =>
 /** Import a module that has ALREADY been wrapped in a data: URL by the caller. */
 const loadUrl = (url) => import(url);
 
-/** Point `react` / `react/jsx-runtime` at the real packages on disk. */
+/**
+ * Point `react` / `react/jsx-runtime` at the real packages on disk, and the
+ * `@/lib/a11y` alias at no-op hooks. Server-rendered section tests do not
+ * exercise focus/scroll effects, and Node cannot resolve a path alias from
+ * inside a `data:` specifier — without this the whole file dies with
+ * ERR_UNSUPPORTED_RESOLVE_REQUEST before a single assertion runs.
+ */
+const A11Y_URL = toDataUrl(
+  "export function useFocusTrap() {} export function useScrollLock() {}",
+);
 const reactRewrites = (code) =>
   code
     .replace(/from "react\/jsx-runtime"/g, `from "${resolveUrl("react/jsx-runtime")}"`)
-    .replace(/from "react"/g, `from "${resolveUrl("react")}"`);
+    .replace(/from "react"/g, `from "${resolveUrl("react")}"`)
+    .replace(/from "@\/lib\/a11y"/g, `from "${A11Y_URL}"`);
 
 /* ── The render graph, leaf first ─────────────────────────────────────────── */
 
