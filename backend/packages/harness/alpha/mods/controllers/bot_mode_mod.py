@@ -161,11 +161,12 @@ class BotModeMod:
     ) -> EventResult:
         ev_name = event.name
 
-        # 1. Fleet ESTOP check
-        if ctx.estop.is_engaged():
+        # 1. Fleet ESTOP check (read off-loop: this handler runs on the event loop)
+        engaged, status = await ctx.estop.read()
+        if engaged:
             return EventResult.deny(
                 event,
-                reason="FLEET_ESTOP_ACTIVE: Bot mode execution loop halted by emergency stop",
+                reason=f"FLEET_ESTOP_ACTIVE: Bot mode execution loop halted -- {ctx.estop.reason(status)}",
             )
 
         # 2. Mission Admission / Initialization

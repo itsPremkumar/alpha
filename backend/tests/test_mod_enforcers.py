@@ -88,6 +88,39 @@ async def test_fleet_estop_halts_when_engaged(kernel, tmp_path, monkeypatch):
     assert res_resumed.outcome == EventOutcome.CONTINUE
 
 
+@pytest.mark.asyncio
+async def test_an_unreadable_estop_state_denies_without_claiming_a_stop_was_tripped(kernel, monkeypatch):
+    """A control that cannot be read must still refuse -- and say so honestly.
+
+    `EmergencyStopManager.get_status()` always supplies a `reason`, so a status
+    carrying no `reason` key is the *unreadable* case and nothing else. Reporting
+    it as "Emergency stop active across fleet" tells the operator they hit a stop
+    nobody engaged and sends recovery looking for a disengage instead of a broken
+    read. Still a DENY either way: an unreadable safety control may not
+    authorize new work.
+    """
+    from alpha.runtime import estop as estop_module
+
+    def _unreadable(root_dir=None):
+        raise OSError("ESTOP volume is unavailable")
+
+    monkeypatch.setattr(estop_module, "get_estop_manager", _unreadable)
+
+    kernel.register_mod(FleetEstopMod())
+    res = await kernel.dispatch(
+        AlphaEvent(
+            name="run.admit",
+            payload={"run_id": "run-unreadable-estop"},
+            correlation=CorrelationContext.create(run_id="run-unreadable-estop"),
+        )
+    )
+
+    assert res.outcome == EventOutcome.DENY
+    assert "could not be read" in res.reason
+    assert "ESTOP volume is unavailable" in res.reason
+    assert "Emergency stop active across fleet" not in res.reason
+
+
 # =========================================================================
 # BlastRadiusGuardMod Tests
 # =========================================================================

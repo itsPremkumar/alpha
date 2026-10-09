@@ -45,9 +45,9 @@ class FleetEstopMod:
         event: AlphaEvent,
         next_fn: NextHandler,
     ) -> EventResult:
-        if ctx.estop.is_engaged():
-            st = ctx.estop.status()
-            reason_str = st.get("reason") or "Emergency stop active across fleet."
+        engaged, status = await ctx.estop.read()
+        if engaged:
+            reason_str = ctx.estop.reason(status)
             logger.warning(
                 "FleetEstopMod tripped for event '%s' (run_id=%s): %s",
                 event.name,
@@ -59,8 +59,8 @@ class FleetEstopMod:
                 reason=f"FLEET_ESTOP_ACTIVE: {reason_str}",
                 metadata={
                     "halted_by": self.name,
-                    "engaged_at": st.get("engaged_at"),
-                    "estop_status": st,
+                    "engaged_at": status.get("engaged_at"),
+                    "estop_status": status,
                     "timestamp": time.time(),
                 },
             )

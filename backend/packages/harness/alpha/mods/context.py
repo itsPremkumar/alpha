@@ -228,8 +228,59 @@ class EstopCapability:
         self._kernel = kernel
         self._mod_name = mod_name
 
+    async def read(self) -> tuple[bool, dict[str, Any]]:
+        """Read ``(engaged, status)`` without blocking the caller's event loop.
+
+        The sentinel path resolves through ``runtime_home()`` -> ``project_root()``
+        -> ``Path.cwd()`` and the read itself is a stat, and Mod handlers are
+        ``async`` entry points running on Gateway's event loop -- so this hands the
+        work to a worker thread, the same treatment ``runs/worker.py::run_agent``
+        gives this very fleet-control read. Done inline it stalls every other run in
+        the process on a disk read for each admission.
+
+        One ``get_status()`` rather than ``is_engaged()`` followed by ``status()``:
+        one stat instead of two, and one consistent snapshot rather than two that
+        could disagree if the operator engaged a stop between them.
+        """
+        return await asyncio.to_thread(self._read_sync)
+
+    def _read_sync(self) -> tuple[bool, dict[str, Any]]:
+        try:
+            from alpha.runtime.estop import get_estop_manager
+
+            status = get_estop_manager().get_status()
+        except Exception as exc:
+            # An unreadable safety control must never authorize new work.
+            logger.critical("Unable to read fleet ESTOP state; treating it as engaged", exc_info=True)
+            return True, {"is_engaged": True, "error": str(exc)}
+        return bool(status.get("is_engaged")), status
+
+    @staticmethod
+    def reason(status: dict[str, Any]) -> str:
+        """Why admission is refused -- naming the fact that actually held.
+
+        ``EmergencyStopManager.get_status()`` always supplies a ``reason``, so a
+        status carrying none can only come from a read that failed. Reporting that
+        as an engaged stop tells the operator somebody tripped a switch nobody
+        touched and sends recovery hunting for a disengage instead of the broken
+        read -- the same "I could not look" vs "I looked and found nothing"
+        distinction the rest of the tree keeps separate. Still a refusal either
+        way; only the sentence differs.
+        """
+        if reason := status.get("reason"):
+            return str(reason)
+        if error := status.get("error"):
+            return f"fleet ESTOP state could not be read ({error}); treating it as engaged"
+        return "Emergency stop active across fleet."
+
     def is_engaged(self) -> bool:
-        """Check whether the fleet emergency stop is currently active."""
+        """Check whether the fleet emergency stop is currently active.
+
+        **Blocking.** Reads the sentinel from disk. An async handler must use
+        :meth:`read` instead -- calling this inline on Gateway's event loop
+        stalls every run in the process, and the strict blocking-IO gate fails
+        the build on it.
+        """
         try:
             from alpha.runtime.estop import get_estop_manager
 
@@ -240,7 +291,11 @@ class EstopCapability:
             return True
 
     def status(self) -> dict[str, Any]:
-        """Get full emergency stop diagnostic status."""
+        """Get full emergency stop diagnostic status.
+
+        **Blocking** -- see :meth:`is_engaged`. Async handlers read the same
+        data through :meth:`read`.
+        """
         try:
             from alpha.runtime.estop import get_estop_manager
 
