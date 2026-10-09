@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any, override
+from typing import Any, NamedTuple, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
@@ -14,10 +14,24 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
-from alpha.mods.kernel import ModKernel, get_mod_kernel
-from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
+from alpha.mods.kernel import ModKernel, get_mod_kernel, sync_dispatch
+from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome, EventResult
 
 logger = logging.getLogger(__name__)
+
+
+class _ToolCallPlan(NamedTuple):
+    """The event both the sync and async tool hooks dispatch, plus its identifiers.
+
+    Built once so the two hooks cannot construct different `tool.requested`
+    payloads for the same request — the enforcement verdict is only comparable
+    across the two paths if they are asking the kernel the same question.
+    """
+
+    event: AlphaEvent
+    correlation: CorrelationContext
+    tool_name: str
+    tool_call_id: str
 
 
 class ModKernelMiddleware(AgentMiddleware[AgentState]):
@@ -53,12 +67,8 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
             agent_id=corr_dict.get("agent_id"),
         )
 
-    @override
-    async def awrap_tool_call(
-        self,
-        request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
+    def _plan_tool_call(self, request: ToolCallRequest) -> _ToolCallPlan:
+        """Build the `tool.requested` event both hooks dispatch, plus its identifiers."""
         tool_name = getattr(request, "name", "unknown")
         tool_args = getattr(request, "args", {})
         tool_call_id = getattr(request, "id", str(uuid.uuid4()))
@@ -73,8 +83,17 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
             correlation=correlation,
             source="runtime:tool_node",
         )
+        return _ToolCallPlan(event=event, correlation=correlation, tool_name=tool_name, tool_call_id=tool_call_id)
 
-        res = await self._kernel.dispatch(event)
+    def _verdict_message(self, plan: _ToolCallPlan, res: EventResult) -> ToolMessage | None:
+        """A terminal kernel verdict as a ToolMessage, or None to let the tool run.
+
+        Shared by the sync and async hooks on purpose: a DENY must read
+        identically on both paths, so the translation lives in one place rather
+        than being maintained twice until the two disagree.
+        """
+        tool_name = plan.tool_name
+        tool_call_id = plan.tool_call_id
 
         if res.outcome == EventOutcome.DENY:
             logger.warning("Tool execution of '%s' DENIED by mod kernel: %s", tool_name, res.reason)
@@ -128,34 +147,135 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
                 tool_call_id=tool_call_id,
                 status="error",
             )
+        return None
 
+    @staticmethod
+    def _apply_rewritten_args(request: ToolCallRequest, res: EventResult) -> None:
+        """Adopt a REWRITE's tool_args before the real handler runs."""
         new_args = res.event.payload.get("tool_args")
         if isinstance(new_args, dict):
             request.args = new_args
 
-        tool_result = await handler(request)
+    @staticmethod
+    def _completed_event(plan: _ToolCallPlan, request: ToolCallRequest, tool_result: Any) -> AlphaEvent:
+        return AlphaEvent(
+            name="tool.completed",
+            payload={
+                "tool_name": plan.tool_name,
+                "tool_args": dict(request.args) if hasattr(request, "args") and isinstance(request.args, dict) else {},
+                "content": getattr(tool_result, "content", str(tool_result)),
+                "status": getattr(tool_result, "status", "success"),
+                "tool_call_id": plan.tool_call_id,
+            },
+            correlation=plan.correlation,
+            source="runtime:tool_node",
+        )
 
-        # Dispatch tool.completed event to kernel
+    async def _dispatch_completed(self, plan: _ToolCallPlan, request: ToolCallRequest, tool_result: Any) -> None:
+        """Best-effort `tool.completed` dispatch; a journal failure never fails the tool."""
         try:
-            content_str = getattr(tool_result, "content", str(tool_result))
-            status_str = getattr(tool_result, "status", "success")
-            completed_ev = AlphaEvent(
-                name="tool.completed",
-                payload={
-                    "tool_name": tool_name,
-                    "tool_args": dict(request.args) if hasattr(request, "args") and isinstance(request.args, dict) else {},
-                    "content": content_str,
-                    "status": status_str,
-                    "tool_call_id": tool_call_id,
-                },
-                correlation=correlation,
-                source="runtime:tool_node",
-            )
-            await self._kernel.dispatch(completed_ev)
+            await self._kernel.dispatch(self._completed_event(plan, request, tool_result))
         except Exception as dispatch_err:
             logger.debug("Failed dispatching tool.completed event: %s", dispatch_err)
 
+    def _dispatch_completed_sync(self, plan: _ToolCallPlan, request: ToolCallRequest, tool_result: Any) -> None:
+        """The same best-effort dispatch driven synchronously."""
+        try:
+            sync_dispatch(self._kernel, self._completed_event(plan, request, tool_result))
+        except Exception as dispatch_err:
+            logger.debug("Failed dispatching tool.completed event: %s", dispatch_err)
+
+    @override
+    def wrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
+    ) -> ToolMessage | Command[Any]:
+        """Synchronous twin of :meth:`awrap_tool_call`.
+
+        ``alpha --json`` drives ``AlphaClient.stream()``, a *synchronous* graph
+        invocation: with only the async hook overridden, ``create_agent`` leaves
+        this node with no sync callable and the run dies before the first token.
+
+        The enforcement is deliberately NOT skipped here. ``sync_dispatch`` runs
+        the very same kernel — already the production sync entry point for five
+        other call sites — so a DENY or DEFER blocks the tool on both paths. A
+        passthrough would be worse than the crash it replaces: it would turn the
+        sync path into a fail-open bypass of every verdict the async path
+        applies.
+        """
+        plan = self._plan_tool_call(request)
+        res = sync_dispatch(self._kernel, plan.event)
+        verdict = self._verdict_message(plan, res)
+        if verdict is not None:
+            return verdict
+        self._apply_rewritten_args(request, res)
+        tool_result = handler(request)
+        self._dispatch_completed_sync(plan, request, tool_result)
         return tool_result
+
+    @override
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
+    ) -> ToolMessage | Command[Any]:
+        plan = self._plan_tool_call(request)
+        res = await self._kernel.dispatch(plan.event)
+        verdict = self._verdict_message(plan, res)
+        if verdict is not None:
+            return verdict
+        self._apply_rewritten_args(request, res)
+        tool_result = await handler(request)
+        await self._dispatch_completed(plan, request, tool_result)
+        return tool_result
+
+    @staticmethod
+    def _turn_event(response: ModelResponse) -> AlphaEvent | None:
+        """The `turn.complete` event for an AI reply, or None when there is nothing to verify."""
+        messages = getattr(response, "messages", [])
+        if not messages or not isinstance(messages[-1], AIMessage):
+            return None
+        return AlphaEvent(
+            name="turn.complete",
+            payload={"message": str(getattr(messages[-1], "content", "")), "messages": messages},
+            correlation=CorrelationContext.create(),
+            source="runtime:model",
+        )
+
+    @staticmethod
+    def _apply_turn_verdict(response: ModelResponse, res: EventResult) -> None:
+        """Append the verification gate's remediation note, when it asked for one."""
+        rewrites = res.metadata.get("mod_rewrites", [])
+        remediation = next(
+            (item.get("remediation_prompt") for item in reversed(rewrites) if isinstance(item, dict) and item.get("remediation_prompt")),
+            None,
+        )
+        if remediation or res.outcome == EventOutcome.REWRITE:
+            remediation = remediation or res.reason
+            logger.warning("Model turn completion rewritten by verification gate: %s", remediation)
+            # Inject remediation note
+            notice = HumanMessage(content=remediation)
+            if hasattr(response, "messages") and isinstance(response.messages, list):
+                response.messages.append(notice)
+
+    @override
+    def wrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], ModelResponse],
+    ) -> ModelResponse:
+        """Synchronous twin of :meth:`awrap_model_call` — see :meth:`wrap_tool_call`.
+
+        The verification gate runs here as well: skipping it on the sync path
+        would let an unverified completion through exactly where the async path
+        rewrites it.
+        """
+        response = handler(request)
+        event = self._turn_event(response)
+        if event is not None:
+            self._apply_turn_verdict(response, sync_dispatch(self._kernel, event))
+        return response
 
     @override
     async def awrap_model_call(
@@ -164,31 +284,7 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
         response = await handler(request)
-
-        # After model responds, verify completion claim
-        messages = getattr(response, "messages", [])
-        if messages:
-            last_msg = messages[-1]
-            if isinstance(last_msg, AIMessage):
-                content = str(getattr(last_msg, "content", ""))
-                event = AlphaEvent(
-                    name="turn.complete",
-                    payload={"message": content, "messages": messages},
-                    correlation=CorrelationContext.create(),
-                    source="runtime:model",
-                )
-                res = await self._kernel.dispatch(event)
-                rewrites = res.metadata.get("mod_rewrites", [])
-                remediation = next(
-                    (item.get("remediation_prompt") for item in reversed(rewrites) if isinstance(item, dict) and item.get("remediation_prompt")),
-                    None,
-                )
-                if remediation or res.outcome == EventOutcome.REWRITE:
-                    remediation = remediation or res.reason
-                    logger.warning("Model turn completion rewritten by verification gate: %s", remediation)
-                    # Inject remediation note
-                    notice = HumanMessage(content=remediation)
-                    if hasattr(response, "messages") and isinstance(response.messages, list):
-                        response.messages.append(notice)
-
+        event = self._turn_event(response)
+        if event is not None:
+            self._apply_turn_verdict(response, await self._kernel.dispatch(event))
         return response
