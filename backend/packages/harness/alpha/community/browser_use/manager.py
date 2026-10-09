@@ -148,6 +148,14 @@ class BrowserUseStatus:
     reading the marker file: a marker can survive a deleted package directory,
     and reporting "installed" from a file is how a status line starts asserting
     something nobody checked.
+
+    ``missing_requirements`` exists because ``installed`` alone was not enough to
+    answer "can this venv run a task". A venv holding browser-use but not litellm
+    imports perfectly and then fails every single model call from inside the
+    child — and because ``installed`` was True, auto-install never fired, so the
+    run died at the first step. The two facts are kept separate rather than
+    folded into one boolean: browser-use may be present while the runtime is not
+    yet usable.
     """
 
     installed: bool
@@ -156,10 +164,18 @@ class BrowserUseStatus:
     python_path: str
     installed_at: str | None = None
     log: tuple[str, ...] = field(default=())
+    missing_requirements: tuple[str, ...] = field(default=())
+
+    @property
+    def ready_for_run(self) -> bool:
+        """True when a task can actually be driven, not merely when a package imports."""
+        return self.installed and not self.missing_requirements
 
     def summary(self) -> str:
         if not self.installed:
             return f"browser-use is NOT installed. Managed venv: {self.venv_path}. Run browser_use_setup to install the latest version."
+        if self.missing_requirements:
+            return f"browser-use {self.version} is installed in {self.venv_path}, but it cannot run a task yet: missing {', '.join(self.missing_requirements)}. Run browser_use_setup to complete the installation."
         stamp = f" (installed {self.installed_at})" if self.installed_at else ""
         return f"browser-use {self.version} is installed{stamp}. Managed venv: {self.venv_path}."
 
@@ -294,15 +310,23 @@ class BrowserUseManager:
         return str(version) if isinstance(version, str) and version else None
 
     def status(self) -> BrowserUseStatus:
-        """Report the runtime's real, probed state (never the marker's claim)."""
+        """Report the runtime's real, probed state (never the marker's claim).
+
+        Probes the *required runtime packages*, not just browser-use: a venv that
+        imports browser-use but lacks litellm is installed and unusable, and
+        reporting it as ready is what let a task die on its first model call with
+        ``No module named 'litellm'`` while ``auto_install`` sat there unused.
+        """
         version = self.probe_version()
         marker = self._read_marker()
+        missing = tuple(pkg for pkg in DEFAULT_EXTRA_PACKAGES if version is not None and not self.probe_distribution(pkg))
         return BrowserUseStatus(
             installed=version is not None,
             version=version,
             venv_path=str(self.venv_dir),
             python_path=str(self.python_path),
             installed_at=(marker or {}).get("installed_at"),
+            missing_requirements=missing,
         )
 
     # ----------------------------------------------------------------- install

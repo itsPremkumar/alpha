@@ -363,10 +363,17 @@ async def browser_use_run_tool(
         # Config resolution stats the config file on every call, so it — like the
         # install and the run — happens off the event loop.
         status = await asyncio.to_thread(manager.status)
-        if not status.installed:
+        if not status.ready_for_run:
             if not auto_install:
-                return _tool_message(f"Error: browser-use is not installed in {manager.venv_dir}. Call browser_use_setup first, or set auto_install: true on the browser_use_run tool config.", tool_call_id)
-            logger.info("browser_use_run installing browser-use on demand (first use)")
+                # Name the actual gap. A venv with browser-use but no litellm used
+                # to be reported as "not installed", which sent the operator
+                # reinstalling browser-use forever instead of adding one package.
+                if status.installed:
+                    detail = f"browser-use {status.version} is installed but {', '.join(status.missing_requirements)} is missing from {manager.venv_dir}"
+                else:
+                    detail = f"browser-use is not installed in {manager.venv_dir}"
+                return _tool_message(f"Error: {detail}. Call browser_use_setup first, or set auto_install: true on the browser_use_run tool config.", tool_call_id)
+            logger.info(f"browser_use_run completing the managed install on demand (missing: {status.missing_requirements or 'browser-use'})")
             await asyncio.to_thread(
                 manager.ensure_installed,
                 upgrade=_as_bool(cfg.get("upgrade_on_install"), False),

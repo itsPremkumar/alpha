@@ -71,6 +71,18 @@ records what a successful install did, but it can outlive a deleted package
 directory, so a marker that says `installed` while the import fails is exactly the
 fabricated status this repo keeps rejecting elsewhere. `BrowserUseStatus.installed`
 follows the probe; the marker only supplies `installed_at` for display.
+- **`installed` is not "can run a task", and collapsing the two hides the gap.** A
+  venv holding browser-use 0.13.11 without litellm imports perfectly and then fails
+  **every** model call from inside the child. Because `installed` was True,
+  `auto_install` never fired and the repair never happened — the run just died at
+  step one. So `status()` also probes the required runtime packages and reports them
+  as `missing_requirements`, with `ready_for_run` gating the install path, and an
+  `auto_install: false` refusal names the actual gap rather than saying "not
+  installed". This stayed invisible for a long time because the *tool* uses the
+  default venv under the runtime home while tests exercised a custom `venv_path` —
+  two different environments, one silently broken. Any test pinning venv behaviour
+  must use the **default** location, or it is testing a different machine than the
+  one that will run.
 - **Readiness uses distribution metadata, never an import — for `litellm` this is not
   a nicety.** `import litellm` was **measured at 127 seconds** on a loaded Windows
   host. An import-based readiness probe with a 120s budget therefore reported a
