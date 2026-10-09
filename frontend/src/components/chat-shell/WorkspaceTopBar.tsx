@@ -23,9 +23,6 @@ export interface WorkspaceTopBarProps {
   userInitials?: string | null;
   /** The operator's own name, or `null`. */
   userName?: string | null;
-  botLabel?: string | null;
-  projectLabel?: string | null;
-  threadLabel?: string | null;
   /**
    * Unread messages across the bot roster, or `null` when nothing measured it.
    *
@@ -44,9 +41,6 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
     gatewayOk,
     userInitials = null,
     userName = null,
-    botLabel,
-    projectLabel,
-    threadLabel,
     unreadCount = null,
   } = props;
   const [profileOpen, setProfileOpen] = useState(false);
@@ -80,25 +74,14 @@ export function WorkspaceTopBar(props: WorkspaceTopBarProps) {
       {/* Brand logo & workspace label */}
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         <BrandLogo logoSize={28} textClassName="text-sm font-bold text-foreground tracking-tight" priority />
-        {/* The separators and the agent name are `shrink-0` on purpose.
-            `truncate` only does its job when the OTHER items in a flex row can
-            shrink too. Here the chevrons and the agent label had no
-            `shrink-0`, so the row squeezed everything at once: measured in the
-            live page, the chevrons rendered 3px wide and the conversation title
-            9px - present in the DOM, unreadable on screen. Only the two
-            `truncate` spans are allowed to absorb the shortfall now, which is
-            what a breadcrumb separator is for. */}
-        <div className="hidden sm:flex items-center gap-1.5 min-w-0 text-[11px] text-muted-foreground/80 border-l border-border/60 pl-3">
-          <span className="font-semibold text-foreground shrink-0">{botLabel || "Lead Agent"}</span>
-          <span className="text-muted-foreground/60 shrink-0" aria-hidden="true">›</span>
-          <span className="truncate min-w-0 max-w-28 text-muted-foreground">{projectLabel || "Standalone"}</span>
-          {threadLabel && (
-            <>
-              <span className="text-muted-foreground/60 shrink-0" aria-hidden="true">›</span>
-              <span className="truncate min-w-0 max-w-32 text-foreground/80 font-normal">{threadLabel}</span>
-            </>
-          )}
-        </div>
+        {/* The `Lead Agent › Standalone › <conversation>` breadcrumb that used
+            to sit here was removed at the operator's request — it read as a
+            "file location" in the top bar while the sidebar and the
+            conversation header already state the same placement, so it was
+            repeating navigation the shell already offered. Its three props
+            (`botLabel` / `projectLabel` / `threadLabel`) left with it rather
+            than staying as dead props, and `ChatView` no longer computes them
+            for this bar. */}
       </div>
 
       {/* Global omni-search bar (Ctrl+K) */}

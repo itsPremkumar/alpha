@@ -21,6 +21,7 @@
  */
 
 import { get } from "./http";
+import { DEFAULT_AGENT_NAME } from "./default-agent";
 import { absoluteStamp, isRecent, PRESENCE_WINDOW_SECONDS, relTime } from "./time";
 import { listProjectAgents, projectThreads, type Project, type ProjectThread } from "./projects";
 import { threadTitle } from "./threads-ext";
@@ -467,7 +468,7 @@ export function contextSentence(input: {
 
   const who = bot
     ? `You are talking to ${bot}.`
-    : "You are talking to the Lead Agent, which auto-routes.";
+    : `You are talking to ${DEFAULT_AGENT_NAME}, which auto-routes.`;
   const where = project ? ` This conversation is in project ${project}.` : " This conversation is not in any project.";
   const what = conversation
     ? ` You are in ${conversation}.`

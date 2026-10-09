@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { BotProfile, botDisplayName } from "@/types/bots";
+import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import { WorkspaceView } from "@/lib/workspace-view";
 import { threadTitle } from "@/lib/threads-ext";
@@ -98,7 +99,7 @@ export function ChatShellSummary(props: {
   const thread = props.threads.find((candidate) => candidate.thread_id === props.activeThreadId) ?? null;
   const presence = props.activeBot
     ? botPresence(props.activeBot)
-    : { state: "unrecorded" as const, label: "Lead Agent auto-routes", raw: null };
+    : { state: "unrecorded" as const, label: `${DEFAULT_AGENT_NAME} auto-routes`, raw: null };
   return (
     <span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
       {props.activeBot ? (
@@ -111,7 +112,7 @@ export function ChatShellSummary(props: {
         <LeadGlyph />
       )}
       <span className="truncate">
-        {props.activeBot ? botDisplayName(props.activeBot) : "Lead Agent"}
+        {props.activeBot ? botDisplayName(props.activeBot) : DEFAULT_AGENT_NAME}
         {project ? ` in ${project.name}` : " outside any project"}
         {thread ? ` — ${threadTitle(thread as unknown as Record<string, unknown>)}` : " — new conversation"}
       </span>

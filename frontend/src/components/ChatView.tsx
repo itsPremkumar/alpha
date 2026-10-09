@@ -58,6 +58,7 @@ import {
 } from "@/lib/chat-request-error";
 import { chatSupportId } from "@/lib/chat-support-id";
 import { branding } from "@/lib/branding";
+import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
@@ -2822,13 +2823,6 @@ export default function ChatView({
         gatewayOk={gatewayOk}
         userInitials={operator.name ? operator.initials : null}
         userName={operator.name}
-        botLabel={
-          activeBot ? activeBot.display_name || activeBot.name : "Lead Agent"
-        }
-        projectLabel={activeProject ? activeProject.name : "Standalone"}
-        threadLabel={
-          threads.find((t) => t.thread_id === activeThreadId)?.title || null
-        }
         unreadCount={unreadCount}
       />
 
@@ -3479,7 +3473,7 @@ export default function ChatView({
                             onClick={() => rememberBot(null)}
                             className="ml-auto text-[11px] font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted shrink-0"
                           >
-                            Reset to Lead Agent
+                            Reset to {DEFAULT_AGENT_NAME}
                           </button>
                         </div>
                       </div>

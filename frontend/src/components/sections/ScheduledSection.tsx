@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { listScheduledTasks, createScheduledTask, pauseTask, resumeTask, triggerTask, deleteTask, previewCron, describeSchedule, ScheduledTask } from "@/lib/scheduled";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -146,9 +147,9 @@ export function ScheduledSection(props: { bots: Array<{ name: string; display_na
             <Field label="Title" hint="Shown in the list, e.g. Morning briefing.">
               <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Morning briefing" className={inputCls} />
             </Field>
-            <Field label="Who should do it" hint="Leave as Lead Agent to auto-route.">
+            <Field label="Who should do it" hint={`Leave as ${DEFAULT_AGENT_NAME} to auto-route.`}>
               <select value={draft.assistant_id} onChange={(e) => setDraft({ ...draft, assistant_id: e.target.value })} className={inputCls}>
-                <option value="">Lead Agent (auto-route)</option>
+                <option value="">{DEFAULT_AGENT_NAME} (auto-route)</option>
                 {props.bots.map((b) => (
                   <option key={b.name} value={b.name}>{b.display_name}</option>
                 ))}

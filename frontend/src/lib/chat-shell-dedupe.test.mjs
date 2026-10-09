@@ -27,10 +27,12 @@ import ts from "typescript";
  * LOADER NOTE. `chat-shell.ts` has relative imports, so the repo's usual
  * `data:text/javascript` trick (see `activity.test.mjs`) cannot resolve them and
  * fails with ERR_UNSUPPORTED_RESOLVE_REQUEST. The module is therefore
- * transpiled into a temp directory beside stubs for its three siblings. The
- * stubs are never called by the code under test; they satisfy ESM linking only.
- * Each stub exports exactly the names the real module imports, because a missing
- * name fails loudly at link time rather than silently yielding undefined.
+ * transpiled into a temp directory beside stubs for its siblings - `time`,
+ * `projects`, `threads-ext` and `default-agent`. The stubs are never called by
+ * the code under test except the last, whose value reaches the context sentence;
+ * they satisfy ESM linking only. Each stub exports exactly the names the real
+ * module imports, because a missing name fails loudly at link time rather than
+ * silently yielding undefined.
  */
 
 const chatShellSource = readFileSync(new URL("./chat-shell.ts", import.meta.url), "utf8");
@@ -73,6 +75,12 @@ const SIBLING_STUBS = {
     "export const projectThreads = async () => ({ threads: [], conversationCount: 0, error: null });",
   ].join(NL),
   "threads-ext.mjs": "export const threadTitle = () => null;",
+  // `chat-shell.ts` reads the default agent's name to build the context
+  // sentence, so this stub carries the REAL value rather than a placeholder:
+  // a placeholder would silently change the sentence any assertion here makes.
+  // Only the name is stubbed because that is the only binding the module
+  // imports; `default-agent.test.mjs` pins the real constant behind it.
+  "default-agent.mjs": 'export const DEFAULT_AGENT_NAME = "Alpha";',
 };
 
 let cached = null;
@@ -88,7 +96,8 @@ async function loadChatShell() {
   const rewritten = compiled
     .replace(/from\s*"\.\/time"/g, 'from "./time.mjs"')
     .replace(/from\s*"\.\/projects"/g, 'from "./projects.mjs"')
-    .replace(/from\s*"\.\/threads-ext"/g, 'from "./threads-ext.mjs"');
+    .replace(/from\s*"\.\/threads-ext"/g, 'from "./threads-ext.mjs"')
+    .replace(/from\s*"\.\/default-agent"/g, 'from "./default-agent.mjs"');
   const file = join(dir, "chat-shell.mjs");
   writeFileSync(file, rewritten, "utf8");
   cached = await import(pathToFileURL(file).href);
@@ -239,9 +248,9 @@ test("the dropdown is the ONLY agent selector; the scrolling roster list is gone
   // receives the de-duped roster.
   //
   // The dropdown must remain a COMPLETE replacement, so this also pins that it
-  // still carries the Lead Agent row - `onSelectBot(null)`, "Auto-routes" -
+  // still carries the default-agent row - `onSelectBot(null)`, "Auto-routes" -
   // which the deleted list also provided. Without it, removing the list would
-  // make the Lead Agent unselectable, and a structural pin on the file's
+  // make the default agent unselectable, and a structural pin on the file's
   // existence would happily pass over that regression.
   const rail = readFileSync(
     new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
@@ -260,7 +269,7 @@ test("the dropdown is the ONLY agent selector; the scrolling roster list is gone
   assert.match(
     menu,
     /onSelectBot\(null\)/,
-    "the dropdown must keep a Lead Agent row, or removing the list made it unreachable",
+    "the dropdown must keep a default-agent row, or removing the list made it unreachable",
   );
   assert.match(menu, /bots\.map\(/, "the dropdown must still render one row per bot");
 });
@@ -327,7 +336,7 @@ test("the agent list comes FIRST in the dropdown; the actions come after it", ()
 
   assert.ok(iRows < iActions, "per-bot rows must render before the action block");
   assert.ok(iSwitch < iActions, "the Switch AI Agent heading must precede the actions");
-  assert.ok(iLeadRow < iActions, "the Lead Agent row must precede the actions");
+  assert.ok(iLeadRow < iActions, "the default-agent row must precede the actions");
   assert.ok(iActions < iNewConversation, "the actions stay together, after the list");
   assert.ok(iBotSettings > iActions, "including the last action");
 });
@@ -522,60 +531,44 @@ test("the empty project list never claims a project is empty when its badge says
   assert.match(region, /No conversations in this project yet\./);
 });
 
-test("the workspace breadcrumb cannot collapse its own text", () => {
-  // Measured live, three defects in one row:
-  //     the chevron separators   3px wide
-  //     the conversation title   9px wide
-  // All present in the DOM, none of it readable.
+test("the workspace top bar renders no location breadcrumb", () => {
+  // The `Lead Agent › Standalone › <conversation>` line that used to sit beside
+  // the brand logo was removed at the operator's request: it read as a "file
+  // location" in the top bar, while the sidebar and the conversation header
+  // already state the same placement — it duplicated navigation, not data.
   //
-  // Cause is the flex trap this suite has now hit three times: `truncate` only
-  // works on a flex item when the OTHER items in the row can also shrink. The
-  // chevrons and the agent label had no `shrink-0`, so the row compressed
-  // every child at once and the truncating spans - the only ones that were
-  // meant to give way - took the worst of it.
+  // Worth pinning as an ABSENCE for the same reason this suite pinned it as a
+  // presence: the row had a measured layout defect here (the flex trap this
+  // file has hit three times — chevrons at 3px, the conversation title at 9px,
+  // all in the DOM and none readable), so a later "restore the breadcrumb"
+  // edit would bring back both the duplication and that layout work. The three
+  // props that fed the row left with it, so this also fails if the row returns
+  // re-wired from `ChatView`.
   //
-  // Pinned on the separators specifically. A check that only asserted
-  // "the row contains a truncate" would pass while the row rendered at 3px.
-  const bar = readFileSync(
-    new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url),
-    "utf8",
-  );
-  const start = bar.indexOf("border-l border-border/60 pl-3");
-  assert.notEqual(start, -1, "the breadcrumb row must exist");
-  const region = bar.slice(start - 400, start + 1200);
-
-  // Attributes may sit between className and the closing bracket, so the match
-  // allows them rather than assuming a bare "<span className=...>". The glyph is
-  // written as an escape so this file stays free of the character it matches.
-  const chevrons = region.match(/<span className="[^"]*"[^>]*>›<\/span>/g) || [];
-  assert.ok(chevrons.length >= 2, "expected two chevron separators, found " + chevrons.length);
-  for (const chevron of chevrons) {
-    assert.match(
-      chevron,
-      /shrink-0/,
-      "a breadcrumb separator must never compress: " + chevron,
-    );
-  }
-
-  assert.match(region, /min-w-0/, "the row must be allowed to shrink at all");
-  assert.match(
-    region,
-    /font-semibold text-foreground shrink-0/,
-    "the agent name is short and must not be the thing that gives way",
+  // Comments are stripped before every match: the source now explains this
+  // removal in prose that names `botLabel` and quotes the breadcrumb verbatim,
+  // so matching raw text would assert against my own explanation.
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const bar = strip(
+    readFileSync(new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url), "utf8"),
   );
 
-  // And the elements that SHOULD absorb the shortfall still can.
-  const truncating = region.match(/className="[^"]*truncate[^"]*"/g) || [];
-  assert.ok(truncating.length >= 2, "the project and thread labels must still truncate");
-  for (const span of truncating) {
-    assert.match(span, /min-w-0/, "a truncating flex child needs min-w-0 to shrink: " + span);
-  }
-
-  // Decorative separators must be hidden from assistive technology, or a
-  // screen reader announces a bare "greater-than" between every crumb.
-  assert.equal(
-    (region.match(/aria-hidden="true"/g) || []).length,
-    chevrons.length,
-    "each decorative chevron must be aria-hidden",
+  assert.doesNotMatch(
+    bar,
+    /border-l border-border\/60 pl-3/,
+    "the breadcrumb row's marker is back in the top bar",
   );
+  assert.doesNotMatch(bar, />›</, "a breadcrumb chevron is back in the top bar");
+  assert.doesNotMatch(
+    bar,
+    /botLabel|projectLabel|threadLabel/,
+    "the breadcrumb's props must leave with the row, not linger as dead props",
+  );
+
+  const chatView = strip(readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8"));
+  // `ChatView` keeps its own `threadLabel()` helper for error sentences, so
+  // only the prop assignments are asserted — a bare `threadLabel` match would
+  // fail on code that has nothing to do with this bar.
+  assert.doesNotMatch(chatView, /\bbotLabel=\{/, "ChatView must stop computing the agent label for the bar");
+  assert.doesNotMatch(chatView, /\bprojectLabel=\{/, "ChatView must stop computing the project label for the bar");
 });
