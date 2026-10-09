@@ -114,6 +114,25 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   coverage and restart persistence tests when changing this path. The API does
   not infer results from model summaries; automatic evidence collectors remain
   unimplemented.
+- **Acceptance evidence carries provenance, and the collectors only read what
+  already exists.** `alpha.mission.acceptance` accepts a caller-supplied
+  `criterion -> bool` mapping and, alongside it, provenance-bearing
+  `EvidenceRecord`s. An `EvidenceRecord` refuses construction without a known
+  `EvidenceKind`, a real `bool` (a truthy string is refused), a non-empty bounded
+  source and a timestamp that is not in the future. `collect_test_exit_report`
+  and `collect_artifact_digest` are **readers**: they parse a test exit report or
+  stat/hash an artifact inside a confined root and return `None` — unverified,
+  never a guess — when the source is missing, unreadable or malformed. Nothing
+  there runs a suite, and nothing wires a collector into a run automatically, so
+  "no automatic evidence collectors" is still true.
+  `evaluate_trusted_acceptance` builds the same report the gate already accepts:
+  one record decides a criterion, no record leaves it `UNVERIFIED`, and **two or
+  more records for one criterion decide nothing** and are disclosed as a
+  conflict — silently picking one would let duplicate or contradictory evidence
+  win the verdict. A path that resolves outside its root raises instead of
+  following the escape. Tests: `tests/test_apex_acceptance_evidence.py`; the
+  pre-existing semantics stay pinned by
+  `tests/test_mission_acceptance_and_live_feed.py`.
 - **APEX goal ownership follows its graph and session links.** A subgoal must
   retain its parent's owner, and a goal's linked session must have that same
   owner. The goal-decision projection rechecks the persisted session row before

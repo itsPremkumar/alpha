@@ -22,6 +22,15 @@ This section accumulates work toward the **2.1.0** milestone
   reported as `503` or an unknown count instead of a false `404` or a confident
   empty list.
 
+- **mission-trusted-evidence:** Acceptance evidence can carry provenance. An
+  `EvidenceRecord` names its kind, source, scope and measurement time and is
+  refused without them; two bounded collectors (`collect_test_exit_report`,
+  `collect_artifact_digest`) read an existing exit report or stat/hash a
+  confined artifact and return nothing at all when the source cannot be read.
+  A criterion with no record, or with two conflicting records, stays
+  unverified. These are explicit caller-invoked measurements: nothing runs a
+  suite and no criterion is decided automatically.
+
 - **apex-goal-persistence:** Serialize goal snapshots across workers sharing a
   local runtime directory, commit child creation and parent linkage together,
   and roll back in-memory state when snapshot persistence fails. The event journal

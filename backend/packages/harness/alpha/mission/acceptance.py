@@ -18,16 +18,24 @@ This module is the missing evaluation seam, and it is deliberately narrow:
 - Evidence is a flat mapping of criterion -> boolean measured by the caller
   (a file probe, a test run, an operator decision).  This module never guesses
   one from a criterion's prose; that is the whole point of the honesty contract.
+- A caller-supplied boolean says *that* a criterion was measured but not *who*
+  measured it, so the trusted-evidence section below adds provenance
+  (:class:`EvidenceRecord`) and two narrow collectors that read a real test
+  exit report or a real artifact digest.  They assemble into the same report and
+  the same gate: a criterion with no record, or with two conflicting records,
+  stays ``UNVERIFIED``.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 
@@ -228,6 +236,259 @@ def evaluate_acceptance(
     return AcceptanceReport(criteria=results, evaluator=evaluator, notes=all_notes)
 
 
+# --------------------------------------------------------------------------- #
+# Trusted evidence: provenance, and collectors that measure instead of asserting
+# --------------------------------------------------------------------------- #
+#
+# ``evaluate_acceptance`` above takes a flat ``criterion -> bool`` mapping. That
+# is enough to keep the gate honest, but it cannot answer the question a reviewer
+# actually asks afterwards: *where did this boolean come from?* A report that
+# says "passed" without naming a source is the same claim in a smaller box.
+#
+# This section adds exactly that, and nothing else:
+#
+# - :class:`EvidenceRecord` carries the provenance a verdict needs (kind,
+#   source, scope, detail, timestamp) and refuses to be constructed without it.
+# - Two narrow collectors (:func:`collect_test_exit_report`,
+#   :func:`collect_artifact_digest`) *measure* a fact from the filesystem.
+#   Neither reads prose, and each returns ``None`` — unverified, never a guess —
+#   when the source is missing, unreadable or malformed.
+# - :func:`evaluate_trusted_acceptance` assembles records into the same
+#   :class:`AcceptanceReport` the gate already accepts, so
+#   :func:`assert_acceptance_passed` is unchanged and still the only way to
+#   reach ``passed``.
+#
+# It is deliberately *not* a way to make arbitrary natural-language criteria look
+# verified. A criterion with no record stays ``UNVERIFIED``; two records for one
+# criterion — including two that contradict each other — decide nothing, because
+# silently picking one would let a duplicate win the verdict.
+
+
+class EvidenceKind(StrEnum):
+    """What kind of measurement produced a verdict.
+
+    A closed vocabulary on purpose: an unknown kind means the collector is not
+    one this module can vouch for, and an unvouched source is not evidence.
+    """
+
+    TEST_EXIT_REPORT = "test_exit_report"
+    ARTIFACT_DIGEST = "artifact_digest"
+    OWNER_APPROVAL = "owner_approval"
+    OBSERVED_FACT = "observed_fact"
+
+
+#: Provenance strings are bounded so a report cannot smuggle a payload.
+MAX_EVIDENCE_SOURCE_CHARS = 200
+MAX_EVIDENCE_DETAIL_CHARS = 500
+#: A collector reads at most this much of a file; beyond it the verdict is
+#: unknown rather than computed from a partial read.
+MAX_EVIDENCE_FILE_BYTES = 1 << 20
+#: Timestamps this far in the future are a clock error or a forgery.
+MAX_EVIDENCE_CLOCK_SKEW_SECONDS = 300.0
+
+
+@dataclass(frozen=True)
+class EvidenceRecord:
+    """One measured verdict plus the provenance that makes it reviewable.
+
+    Frozen because a verdict that can be edited after the fact is not evidence.
+    """
+
+    criterion: str
+    kind: EvidenceKind
+    measured: bool
+    source: str
+    scope: str = ""
+    detail: str = ""
+    recorded_at: float = field(default_factory=time.time)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, EvidenceKind):
+            try:
+                object.__setattr__(self, "kind", EvidenceKind(str(self.kind)))
+            except ValueError as exc:
+                raise ValueError(f"unknown evidence kind {self.kind!r}; expected one of {[k.value for k in EvidenceKind]}") from exc
+        # `type(...) is not bool` rather than a truthiness test: a caller passing
+        # the string "true" must be refused, not quietly counted as a pass.
+        if type(self.measured) is not bool:
+            raise ValueError("measured must be a boolean measurement, not a truthy value")
+        source = str(self.source).strip()
+        if not source:
+            raise ValueError("evidence requires a non-empty source describing what measured it")
+        if len(source) > MAX_EVIDENCE_SOURCE_CHARS:
+            raise ValueError(f"evidence source exceeds {MAX_EVIDENCE_SOURCE_CHARS} characters")
+        object.__setattr__(self, "source", source)
+        detail = str(self.detail)
+        if len(detail) > MAX_EVIDENCE_DETAIL_CHARS:
+            raise ValueError(f"evidence detail exceeds {MAX_EVIDENCE_DETAIL_CHARS} characters")
+        if self.recorded_at > time.time() + MAX_EVIDENCE_CLOCK_SKEW_SECONDS:
+            raise ValueError("evidence timestamp is in the future; refusing a forged measurement time")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "criterion": self.criterion,
+            "kind": self.kind.value,
+            "measured": self.measured,
+            "source": self.source,
+            "scope": self.scope,
+            "detail": self.detail,
+            "recorded_at": self.recorded_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> EvidenceRecord:
+        return cls(
+            criterion=str(data.get("criterion", "")),
+            kind=EvidenceKind(str(data.get("kind", ""))),
+            measured=data.get("measured"),  # type: ignore[arg-type]
+            source=str(data.get("source", "")),
+            scope=str(data.get("scope", "")),
+            detail=str(data.get("detail", "")),
+            recorded_at=float(data.get("recorded_at", 0.0) or 0.0),
+        )
+
+
+def _read_bounded(path: Path) -> bytes | None:
+    """Read at most :data:`MAX_EVIDENCE_FILE_BYTES`, or return ``None``.
+
+    ``None`` means "not measured" for every caller: a missing file, an
+    unreadable one, and one too large to read within the bound are the same
+    honest outcome, and none of them is a failure verdict.
+    """
+    try:
+        if not path.is_file():
+            return None
+        if path.stat().st_size > MAX_EVIDENCE_FILE_BYTES:
+            return None
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def collect_test_exit_report(path: str | Path, *, criterion: str, scope: str = "") -> EvidenceRecord | None:
+    """Measure one criterion against a real test exit report.
+
+    ``path`` must be a JSON document carrying an integer ``exit_code`` (plus
+    optional counts). ``exit_code == 0`` measures as met; anything else measures
+    as not met. A missing, oversized, unparsable or non-integer report returns
+    ``None``, which leaves the criterion ``UNVERIFIED`` — this collector never
+    decides a verdict from a file it could not read.
+
+    It reads a *report*, never runs a command: executing the suite is the host's
+    decision, and this module is the thing that records what the host measured.
+    """
+    payload = _read_bounded(Path(path))
+    if payload is None:
+        return None
+    try:
+        data = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    exit_code = data.get("exit_code")
+    if type(exit_code) is not int:  # bool is an int subclass; "0" is not a measurement
+        return None
+    counts = {key: data[key] for key in ("passed", "failed", "skipped", "error") if type(data.get(key)) is int}
+    detail = " ".join([f"exit_code={exit_code}", *[f"{key}={value}" for key, value in counts.items()]])
+    return EvidenceRecord(
+        criterion=criterion,
+        kind=EvidenceKind.TEST_EXIT_REPORT,
+        measured=exit_code == 0,
+        source=str(path),
+        scope=scope,
+        detail=detail[:MAX_EVIDENCE_DETAIL_CHARS],
+    )
+
+
+def collect_artifact_digest(root: str | Path, relative_path: str, *, criterion: str, scope: str = "") -> EvidenceRecord | None:
+    """Measure one criterion against a file that exists inside ``root``.
+
+    Existence plus a content digest, both read from the host: the point is that
+    "the artifact exists and is not empty" is a fact with a hash attached, not
+    something the worker's summary asserts. A missing path or a directory
+    measures nothing (``None``); a path that resolves outside ``root`` is a
+    caller error and raises, because a collector that quietly follows an escape
+    is worse than one that refuses.
+    """
+    base = Path(root).resolve()
+    candidate = (base / str(relative_path)).resolve()
+    if candidate != base and base not in candidate.parents:
+        raise ValueError(f"artifact path {relative_path!r} resolves outside the collection root {base}")
+    payload = _read_bounded(candidate)
+    if payload is None:
+        return None
+    return EvidenceRecord(
+        criterion=criterion,
+        kind=EvidenceKind.ARTIFACT_DIGEST,
+        measured=len(payload) > 0,
+        source=str(candidate),
+        scope=scope or str(relative_path),
+        detail=f"bytes={len(payload)} sha256={hashlib.sha256(payload).hexdigest()}"[:MAX_EVIDENCE_DETAIL_CHARS],
+    )
+
+
+def evaluate_trusted_acceptance(
+    criteria: list[str],
+    records: list[EvidenceRecord],
+    *,
+    evaluator: str = "trusted_collectors",
+    notes: list[str] | None = None,
+) -> AcceptanceReport:
+    """Assemble provenance-bearing records into an :class:`AcceptanceReport`.
+
+    Coverage rules, chosen so no input can manufacture a pass:
+
+    - one record for a declared criterion decides it, and the report names the
+      kind, source and scope that decided it;
+    - no record leaves the criterion ``UNVERIFIED``;
+    - two or more records for one criterion leave it ``UNVERIFIED`` and are
+      disclosed as a conflict — duplicate or contradictory evidence is a reason
+      to ask a human, not to pick the convenient row;
+    - a record naming a criterion that was never declared is a note, so a typo
+      cannot masquerade as coverage.
+    """
+    declared = {str(item).strip(): str(item) for item in criteria}
+    by_criterion: dict[str, list[EvidenceRecord]] = {}
+    undeclared: list[EvidenceRecord] = []
+    for record in records:
+        key = str(record.criterion).strip()
+        if key in declared:
+            by_criterion.setdefault(key, []).append(record)
+        else:
+            undeclared.append(record)
+
+    all_notes = list(notes or [])
+    results: list[CriterionResult] = []
+    for key, original in declared.items():
+        matching = by_criterion.get(key, [])
+        if len(matching) == 1:
+            record = matching[0]
+            provenance = f"[{record.kind.value}] {record.source}" + (f" scope={record.scope}" if record.scope else "")
+            detail = f"{record.detail} (source: {provenance})" if record.detail else f"source: {provenance}"
+            all_notes.append(f"criterion {original!r} measured by {provenance}")
+            results.append(
+                CriterionResult(
+                    criterion=original,
+                    verdict=CriterionVerdict.MET if record.measured else CriterionVerdict.NOT_MET,
+                    evidence=detail[:MAX_EVIDENCE_DETAIL_CHARS],
+                    evaluated_at=record.recorded_at,
+                )
+            )
+        elif len(matching) > 1:
+            sources = sorted({f"[{item.kind.value}] {item.source}" for item in matching})
+            all_notes.append(f"evidence conflict for criterion {original!r}: {len(matching)} records agree on nothing ({sources}); it stays UNVERIFIED")
+            results.append(CriterionResult(criterion=original, verdict=CriterionVerdict.UNVERIFIED))
+        else:
+            results.append(CriterionResult(criterion=original, verdict=CriterionVerdict.UNVERIFIED))
+
+    if undeclared:
+        named = sorted({str(item.criterion).strip() for item in undeclared})
+        all_notes.append(f"evidence supplied for {len(named)} criterion key(s) that match no criterion: {named}")
+
+    return AcceptanceReport(criteria=results, evaluator=evaluator, notes=all_notes)
+
+
 class AcceptanceRegistry:
     """Process-wide registry of acceptance-criterion evaluators.
 
@@ -313,16 +574,25 @@ class AcceptanceNotSatisfied(RuntimeError):
 
 
 __all__ = [
+    "MAX_EVIDENCE_CLOCK_SKEW_SECONDS",
+    "MAX_EVIDENCE_DETAIL_CHARS",
+    "MAX_EVIDENCE_FILE_BYTES",
+    "MAX_EVIDENCE_SOURCE_CHARS",
     "AcceptanceNotSatisfied",
     "AcceptanceRegistry",
     "AcceptanceReport",
     "CriterionResult",
     "CriterionVerdict",
+    "EvidenceKind",
+    "EvidenceRecord",
     "REASON_NO_CRITERIA",
     "REASON_NOT_EVALUATED",
     "REASON_NOT_MET",
     "assert_acceptance_passed",
+    "collect_artifact_digest",
+    "collect_test_exit_report",
     "evaluate_acceptance",
+    "evaluate_trusted_acceptance",
     "get_acceptance_registry",
     "unevaluated_report",
 ]

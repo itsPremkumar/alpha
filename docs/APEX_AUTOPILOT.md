@@ -153,7 +153,10 @@ frozen contract. Failures reading other decision inputs are reported in the
 cycle steps and park the session with an operator approval request.
 
 ```bash
-curl -X POST localhost:8001/api/apex/sessions/<id>/cycle
+# The route takes a JSON body (`{"all_sessions": false}`); a bare POST with no
+# body is answered 422 by request validation.
+curl -X POST localhost:8001/api/apex/sessions/<id>/cycle \
+  -H 'content-type: application/json' -d '{}'
 ```
 
 ```json
@@ -319,6 +322,49 @@ blocked session still requires its pending approval before this control can
 move it. Reports are stored with the session and journaled so a Gateway
 restart does not erase the evidence or failed-run recovery decision.
 
+### Evidence with a name attached
+
+A submitted `met: true` says *that* a criterion was measured but not *who*
+measured it, which is the difference between a receipt and an assertion.
+`alpha.mission.acceptance` therefore also accepts evidence that carries its
+provenance:
+
+| Field | Why it is required |
+|---|---|
+| `kind` | One of `test_exit_report`, `artifact_digest`, `owner_approval`, `observed_fact`. An unknown kind means the collector is not one this plane can vouch for. |
+| `source` | What did the measuring: a path, a runner, an operator. Non-empty and bounded. |
+| `scope` | Which suite, test or path the measurement covered. |
+| `detail` | The measured fact itself — `exit_code=0 passed=12`, `bytes=100 sha256=…`. |
+| `recorded_at` | When it was measured. A timestamp in the future is refused as forged rather than accepted as fresh. |
+
+Two collectors ship, and both **read something that already exists** —
+neither runs a test suite, and neither is wired into a run automatically:
+
+```python
+from alpha.mission.acceptance import (
+    collect_artifact_digest, collect_test_exit_report, evaluate_trusted_acceptance,
+)
+
+records = [
+    collect_test_exit_report("reports/backend-exit.json", criterion="backend suite passes", scope="backend/tests"),
+    collect_artifact_digest("/tmp/workspace", "outputs/index.html", criterion="page artifact exists"),
+]
+report = evaluate_trusted_acceptance(criteria, records)
+```
+
+The refusals are the point. A missing, unreadable or malformed source returns
+`None` and the criterion stays `UNVERIFIED`; `measured` must be a real boolean,
+so a truthy string is refused instead of counted as a pass; an artifact path
+that resolves outside its root raises rather than following the escape. Two
+records for one criterion — including two that contradict each other — decide
+**nothing** and are disclosed as a conflict, because quietly picking one would
+let duplicate evidence win the verdict. The assembled report is the ordinary
+one, so `assert_acceptance_passed` remains the only path to `COMPLETED`.
+
+**What this does not do:** it cannot decide an arbitrary natural-language
+criterion. Alpha still ships no collector that runs a suite, fetches an HTTP
+endpoint, or infers an outcome from a model's summary.
+
 The HTTP state route refuses **every** terminal value with a 409, not just
 `COMPLETED` — a request body that could assert `failed` or `cancelled` would be
 the same false-completion hole under a different label.
@@ -384,7 +430,7 @@ stop.
 | `GET` | `/api/apex/sessions` | list; a degraded store (including corruption discovered during refresh) reports `count: null` |
 | `GET` | `/api/apex/sessions/{id}` | one session; owner-scoped (a foreign id is 404) |
 | `DELETE` | `/api/apex/sessions/{id}` | remove the row; admin |
-| `POST` | `/api/apex/sessions/{id}/cycle` | one cycle; admin |
+| `POST` | `/api/apex/sessions/{id}/cycle` | one cycle; admin; JSON body `{}` (a bodyless POST is 422) |
 | `POST` | `/api/apex/sessions/{id}/dispatch` | start or observe the session's idempotent RunManager run; admin |
 | `POST` | `/api/apex/sessions/{id}/replan` | request another generation after verified terminal failure; admin + reason + side-effect acknowledgement |
 | `POST` | `/api/apex/sessions/{id}/acceptance` | submit complete measured evidence after a successful run; session owner |
@@ -683,6 +729,7 @@ or an unreadable journal.
 | `tests/test_apex_api.py` | route order, refusals, SSE, the supervisor loop |
 | `tests/test_apex_mode.py` | the ON/OFF switch: fail-closed, the fourteen `/apex` verbs, the mode routes |
 | `tests/test_apex_control.py` | the approval gate and its side-door refusals, the scope joins, the goal operating system, the control/approval/goal routes |
+| `tests/test_apex_acceptance_evidence.py` | trusted evidence: provenance refusals, the two bounded collectors, and the unverified-on-conflict rule |
 | `tests/test_apex_authz.py` | the admin predicate (`is_admin_user`, PAT refused), owner scoping on every member route, `401`/`403`/`404`/`503` disambiguation, the approvals bound, and the SSE `gap` disclosure |
 
 Gates that must also stay green: `test_feature_manifest_wiring.py`,
