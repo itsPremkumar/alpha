@@ -1417,6 +1417,77 @@ class TestJudgeKeyShape:
         assert "judge): PASS" in tools_mod._render_envelope(envelope, version="0.13.11", model=None)
 
 
+class TestRunReadiness:
+    """`installed` is not the same as "can run a task".
+
+    Found the hard way: a venv held browser-use 0.13.11 but no litellm. It
+    imported fine, so `status()` said installed, so `auto_install` never fired, and
+    every task died on its first model call with `No module named 'litellm'`.
+    It stayed invisible because the tool used the *default* venv under the
+    runtime home while the tests exercised a custom `venv_path` — two different
+    environments, one broken.
+    """
+
+    def test_status_reports_missing_runtime_requirements(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+
+        def fake_run(argv, **kwargs):
+            cmd = " ".join(str(a) for a in argv)
+            if "import browser_use" in cmd:
+                return _completed(json.dumps({"version": "0.13.11"}))
+            if "importlib.metadata" in cmd and "litellm" in cmd:
+                return _completed("PackageNotFoundError", code=1)
+            return _completed("")
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            status = mgr.status()
+
+        assert status.installed is True, "browser-use really is present"
+        assert status.missing_requirements == ("litellm",)
+        assert status.ready_for_run is False
+        assert "cannot run a task yet" in status.summary()
+        assert "litellm" in status.summary()
+
+    def test_status_is_ready_when_everything_is_present(self, tmp_path):
+        mgr = _installed_manager(tmp_path)
+        with patch.object(subprocess, "run", return_value=_completed(json.dumps({"version": "0.13.11"}))):
+            status = mgr.status()
+        assert status.missing_requirements == ()
+        assert status.ready_for_run is True
+
+    def test_tool_installs_when_only_a_requirement_is_missing(self, tmp_path):
+        """The regression: installed=True used to suppress auto_install entirely."""
+        mgr = MagicMock()
+        mgr.venv_dir = Path(tmp_path)
+        mgr.status.return_value = manager_mod.BrowserUseStatus(installed=True, version="0.13.11", venv_path=str(tmp_path), python_path=str(tmp_path), missing_requirements=("litellm",))
+        mgr.ensure_installed.return_value = mgr.status.return_value
+        mgr.run.return_value = {"ok": True, "completed": True, "errors": [], "result": "Example Domain", "steps": 2, "history": []}
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={}),
+        ):
+            result = asyncio.run(tools_mod.browser_use_run_tool.coroutine(runtime=_runtime(), task="do it", tool_call_id="c1"))
+        assert mgr.ensure_installed.called, "a missing runtime requirement must trigger the install"
+        assert mgr.run.called
+        assert "Example Domain" in _message(result)
+
+    def test_auto_install_off_names_the_missing_package(self, tmp_path):
+        mgr = MagicMock()
+        mgr.venv_dir = Path(tmp_path)
+        mgr.status.return_value = manager_mod.BrowserUseStatus(installed=True, version="0.13.11", venv_path=str(tmp_path), python_path=str(tmp_path), missing_requirements=("litellm",))
+        with (
+            patch.object(tools_mod, "get_browser_use_manager", return_value=mgr),
+            patch.object(tools_mod, "_get_tool_config", return_value={"auto_install": False}),
+            patch.object(tools_mod, "_resolve_and_check_spec", return_value={}),
+        ):
+            result = asyncio.run(tools_mod.browser_use_run_tool.coroutine(runtime=_runtime(), task="do it", tool_call_id="c1"))
+        text = _message(result)
+        assert "litellm" in text, "the refusal must name what is missing, not say 'not installed'"
+        assert "not installed" not in text
+        mgr.run.assert_not_called()
+
+
 class TestConfigWiring:
     """The `use:` paths in config.example.yaml only fail at operator runtime.
 
