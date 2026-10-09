@@ -194,14 +194,10 @@ read the generated `contracts/feature_manifest.json` through the one
 `manifest_source` loader rather than recomputing a count
 `scripts/check_generated_drift.py` already settles.
 
-The load-bearing invariants live in the root guide's self-inventory plane
+The load-bearing invariants are owned by the root guide's self-inventory plane
 section and are deliberately **not restated here**: *available* is what a source
 declares while `health` stays `unverified`, a broken source reports `count: null`
-and never `0`, availability is per-entry (`CommandRegistry.has_handler`;
-`BotProfileRegistry`'s explicit `include_archived=False`),
-`EngineRegistry` falls back to a declared submodule because a namespace has no
-`__init__.py`, `alpha.knowledge.code_index` returns names/signatures/`path:line`
-but **never a body**, and `config_diagnosis` is read-only with no `apply`.
+and never `0`, availability is per-entry, and `config_diagnosis` is read-only.
 
 Model surface: the single `alpha_capability` tool, lead-agent-only and absent from
 `SUBAGENT_TOOLS`. HTTP: `GET /api/intelligence/inventory`. Tests:
@@ -638,31 +634,31 @@ together — **the model proposes, the server disposes.**
   `TooComplexForGovernance`/`COMPLEXITY_CEILING` were removed rather than left to
   race it.
 - **A tier that did not run is never a tier that passed.** `evaluation.py` keeps
-  `skipped` and `inconclusive` separate from `passed`, so a pipeline that
-  short-circuits on the first tier cannot be summarised as a clean sweep.
+  `skipped` and `inconclusive` separate from `passed`, so a short-circuited
+  pipeline cannot read as a clean sweep.
 - **Every attempt is receipted, denials included.** `receipts.py` is an
   append-only tamper-evident chain, and the model cannot mint one — so "what
   happened and why" is a record rather than a retelling.
 - **Profiles re-resolve on resume.** `checkpointing.py` re-resolves capability,
-  evaluator and approval profiles when a run continues, which is what stops a
-  checkpoint from preserving a grant revoked while the run was parked.
+  evaluator and approval profiles when a run continues, which stops a checkpoint
+  preserving a grant revoked while the run was parked.
 - **Budgets are ceiling-owned.** `budgets.py` reserves, charges, releases and
-  reconciles; there is no `reset` and no `grant_more`, and exhaustion reports the
-  measured figures rather than a rounded-down remainder.
+  reconciles; there is no `reset` and no `grant_more`, and exhaustion reports
+  measured figures, not a rounded-down remainder.
 - **Paths are confined by refusal, not by repair.** `paths.py` normalises first
   and then refuses traversal, absolute, URL and symlink escapes; a directory grant
   covers its subtree and nothing outside it.
 - **The router records why, not just that.** `router.py` records every unmet
-  condition as a refusal *reason*, so a run declines with the list of what it
-  needed rather than one opaque no. `lifecycle.py` then restricts transitions to
-  a closed graph, so a model actor can neither enter nor leave a terminal state.
+  condition as a refusal *reason*, so a run declines naming what it needed rather
+  than one opaque no. `lifecycle.py` restricts transitions to a closed graph, so a
+  model actor can neither enter nor leave a terminal state.
 
 `profiles.py` resolves default-deny profiles **server-side by id**: three path
 lists, one action allow-list and one network policy, where an empty list denies
 everything rather than everything having to be named. `alpha_self_update` is
 present and **`enabled=False`** with `allowed_action_types=[]` — a capability that
 exists but cannot be enabled is more honest than one that is silently reachable,
-and real self-update belongs to the guarded source auto-update contract below.
+and real self-update belongs to the guarded auto-update contract below.
 
 Three boundaries must not be crossed: `scorer_authority.py` stays server-owned,
 because a candidate that authors its own fitness function selects for confidence
