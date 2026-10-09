@@ -34,6 +34,8 @@ _TOTAL_LIMIT_STOP_MSG = (
     "directly, or summarize the remaining work instead of launching more subagents."
 )
 
+_APEX_WITHHELD_MSG = "[APEX DELEGATION LIMIT] This session's APEX policy withholds delegated subagent calls entirely. Execute the remaining work directly or summarize it instead of launching subagents."
+
 
 def _clamp_subagent_limit(value: int) -> int:
     """Clamp subagent limit to the hard safety range [1, 64]."""
@@ -157,6 +159,18 @@ class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
     planning checkpoints in one run cannot keep launching more legal-sized
     batches indefinitely. This is more reliable than prompt-based limits.
 
+    An APEX-marked run (Gateway-stamped session id in runtime context) is
+    additionally capped by the session's frozen ``max_parallel_tasks`` /
+    ``max_active_agents`` budget. Three distinct withholdings, each with its own
+    visible message, are distinguished so the model is never told a cap bound
+    it when it did not: the per-run total is exhausted (all calls dropped),
+    the session's policy withholds delegation entirely (all calls dropped),
+    or the session merely narrows this turn's parallelism. In the first two
+    cases ``stop_reason="subagent_limit_capped"`` is written into runtime
+    context so the run worker reports a capped completion rather than a clean
+    success. The third case is an ordinary narrower turn and is not a cap the
+    run itself hit.
+
     Args:
         max_concurrent: Maximum number of concurrent subagent calls allowed.
             Defaults to MAX_CONCURRENT_SUBAGENTS (3). Callers pass the value
@@ -218,17 +232,22 @@ class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
             prior_delegation_count,
         )
 
-        # Stamp stop_reason when the total per-run cap is exhausted so the
-        # worker surfaces this capped completion alongside loop_capped /
-        # token_capped / safety_capped (#4176).
-        if remaining_total == 0 and isinstance(getattr(runtime, "context", None), dict):
+        # Stamp stop_reason whenever delegation was withheld, not only when the
+        # per-run total is exhausted, so the worker surfaces this capped
+        # completion alongside loop_capped / token_capped / safety_capped
+        # (#4176). Without this, an APEX-refused run — every task call withheld
+        # by policy — ends as an ordinary clean success.
+        apex_withheld_all = apex_limit is not None and apex_limit <= 0
+        if (remaining_total == 0 or apex_withheld_all) and isinstance(getattr(runtime, "context", None), dict):
             runtime.context["stop_reason"] = "subagent_limit_capped"
 
         # Replace the AIMessage with truncated tool_calls (same id triggers replacement)
         if remaining_total == 0:
             content = _append_text(last_msg.content, _TOTAL_LIMIT_STOP_MSG)
-        elif apex_limit is not None and len(task_indices) > allowed_task_calls:
-            note = f"[APEX DELEGATION LIMIT] This session permits up to {allowed_task_calls} parallel task call(s) in this turn. Continue with the work already assigned or plan another bounded batch after those results return."
+        elif apex_withheld_all:
+            content = _append_text(last_msg.content, _APEX_WITHHELD_MSG)
+        elif apex_limit is not None and apex_limit < self.max_concurrent:
+            note = f"[APEX DELEGATION LIMIT] This session permits up to {apex_limit} parallel task call(s) in this turn. Continue with the work already assigned or plan another bounded batch after those results return."
             content = _append_text(last_msg.content, note)
         else:
             content = None

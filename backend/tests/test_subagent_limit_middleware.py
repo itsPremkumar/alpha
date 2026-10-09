@@ -15,6 +15,9 @@ from alpha.agents.middlewares.subagent_limit_middleware import (
     _clamp_subagent_limit,
 )
 from alpha.agents.thread_state import DelegationEntry
+from alpha.apex.contract import narrow_contract, profile_for
+from alpha.apex.mode import ApexModeStore
+from alpha.apex.store import ApexSessionState, ApexStore
 
 
 def _make_runtime(run_id: str = "run-1"):
@@ -205,6 +208,162 @@ class TestTruncateTaskCalls:
         assert result is not None
         assert result["messages"][0].tool_calls == []
         assert "[APEX DELEGATION LIMIT]" in result["messages"][0].content
+
+    def test_apex_zero_budget_withholding_stamps_stop_reason(self, tmp_path, monkeypatch):
+        """A run whose every task call was withheld by APEX policy is capped.
+
+        Regression: only the per-run total exhaustion stamped
+        ``stop_reason=subagent_limit_capped``, so a session with a zero
+        delegation budget ended the run as an ordinary clean success with no
+        signal that delegation had been refused at all.
+        """
+        scope = "apex-zero-stop-reason"
+        owner = "operator"
+        contract = narrow_contract(
+            profile_for("apex_max", mission_id=scope),
+            budget={"max_parallel_tasks": 0},
+        )
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        session = store.create(
+            owner=owner,
+            objective="do not delegate",
+            profile="apex_max",
+            contract_digest=contract.digest(),
+            contract_snapshot=contract.to_dict(),
+            thread_id=scope,
+        )
+        store.set_state(session.session_id, ApexSessionState.ACTIVE)
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        modes.enable(scope, "apex_max", owner=owner)
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": session.session_id, "user_id": owner})
+        message = AIMessage(content="", tool_calls=[_task_call("withheld-child")])
+        result = SubagentLimitMiddleware(max_concurrent=3, max_total=6)._truncate_task_calls({"messages": [message]}, runtime)
+
+        assert result is not None
+        assert result["messages"][0].tool_calls == []
+        assert runtime.context.get("stop_reason") == "subagent_limit_capped"
+
+    def test_invalid_apex_session_stamps_stop_reason(self, tmp_path, monkeypatch):
+        """An unverifiable marked session withholds delegation AND reports capped."""
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": "missing-session", "user_id": "operator"})
+        message = AIMessage(content="", tool_calls=[_task_call("must-not-run")])
+
+        result = SubagentLimitMiddleware(max_concurrent=3, max_total=6)._truncate_task_calls({"messages": [message]}, runtime)
+
+        assert result is not None
+        assert result["messages"][0].tool_calls == []
+        assert runtime.context.get("stop_reason") == "subagent_limit_capped"
+
+    def test_ordinary_run_truncation_does_not_stamp_stop_reason(self):
+        """An ordinary run whose concurrency cap merely trims a batch is not capped.
+
+        The run continues and its completion is not a capped one; stamping
+        ``stop_reason`` here would make every multi-batch delegation run look
+        like it hit a limit.
+        """
+        mw = SubagentLimitMiddleware(max_concurrent=2, max_total=10)
+        runtime = _make_runtime()
+        msg = AIMessage(content="", tool_calls=[_task_call("t1"), _task_call("t2"), _task_call("t3")])
+
+        result = mw._truncate_task_calls({"messages": [msg]}, runtime)
+
+        assert result is not None
+        assert len(result["messages"][0].tool_calls) == 2
+        assert runtime.context.get("stop_reason") is None
+
+    def test_apex_note_names_the_session_ceiling_not_the_per_run_remainder(self, tmp_path, monkeypatch):
+        """The APEX note must quote the session ceiling, not this turn's remainder.
+
+        Regression: the note interpolated ``allowed_task_calls``, which is the
+        *minimum* of the session ceiling and the per-run remainder. When the
+        ordinary per-run total was the binding constraint (2 delegations left
+        out of 4), the note told the model the session "permits up to 2" — a
+        number the session never imposed. The model was being told a policy
+        bound it when a run counter had.
+        """
+        scope = "apex-note-precision"
+        owner = "operator"
+        contract = narrow_contract(
+            profile_for("apex_max", mission_id=scope),
+            budget={"max_active_agents": 12, "max_parallel_tasks": 8},
+        )
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        session = store.create(
+            owner=owner,
+            objective="test note precision",
+            profile="apex_max",
+            contract_digest=contract.digest(),
+            contract_snapshot=contract.to_dict(),
+            thread_id=scope,
+        )
+        store.set_state(session.session_id, ApexSessionState.ACTIVE)
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        modes.enable(scope, "apex_max", owner=owner)
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": session.session_id, "user_id": owner})
+        message = AIMessage(content="", tool_calls=[_task_call(f"apex-{index}") for index in range(5)])
+        state = {
+            "messages": [message],
+            "delegations": [_delegation("p1", run_id="run-1"), _delegation("p2", run_id="run-1")],
+        }
+        # Session ceiling is 8; the per-run total of 4 with 2 used is what binds.
+        result = SubagentLimitMiddleware(max_concurrent=8, max_total=4)._truncate_task_calls(state, runtime)
+
+        assert result is not None
+        updated = result["messages"][0]
+        assert [call["id"] for call in updated.tool_calls] == ["apex-0", "apex-1"]
+        # No APEX note at all: the session ceiling of 8 is wider than process
+        # capacity, so it did not narrow anything. Asserting the absence is the
+        # regression — the old wording emitted "permits up to 2", a number the
+        # session never imposed.
+        assert "[APEX DELEGATION LIMIT]" not in updated.content
+        assert "permits up to 2" not in updated.content
+
+    def test_apex_session_narrower_than_process_capacity_still_notes_its_ceiling(self, tmp_path, monkeypatch):
+        """A genuinely narrower session quotes its own ceiling, not the remainder."""
+        scope = "apex-narrow-note"
+        owner = "operator"
+        contract = narrow_contract(
+            profile_for("apex_max", mission_id=scope),
+            budget={"max_active_agents": 2, "max_parallel_tasks": 2},
+        )
+        store = ApexStore(tmp_path / "apex-sessions.json")
+        session = store.create(
+            owner=owner,
+            objective="test narrow note",
+            profile="apex_max",
+            contract_digest=contract.digest(),
+            contract_snapshot=contract.to_dict(),
+            thread_id=scope,
+        )
+        store.set_state(session.session_id, ApexSessionState.ACTIVE)
+        modes = ApexModeStore(tmp_path / "apex-mode.json")
+        modes.enable(scope, "apex_max", owner=owner)
+        monkeypatch.setattr("alpha.apex.store.get_apex_store", lambda: store)
+        monkeypatch.setattr("alpha.apex.mode.get_apex_mode_store", lambda: modes)
+
+        runtime = _make_runtime()
+        runtime.context.update({"__alpha_apex_session_id": session.session_id, "user_id": owner})
+        message = AIMessage(content="", tool_calls=[_task_call(f"apex-{index}") for index in range(4)])
+        # Plenty of per-run budget left, so the session ceiling of 2 binds.
+        result = SubagentLimitMiddleware(max_concurrent=8, max_total=10)._truncate_task_calls({"messages": [message]}, runtime)
+
+        assert result is not None
+        updated = result["messages"][0]
+        assert [call["id"] for call in updated.tool_calls] == ["apex-0", "apex-1"]
+        assert "[APEX DELEGATION LIMIT] This session permits up to 2 parallel task call(s)" in updated.content
 
     def test_task_calls_within_limit_returns_none(self):
         mw = SubagentLimitMiddleware(max_concurrent=3)
