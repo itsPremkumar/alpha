@@ -106,7 +106,16 @@ const inspector = await loadFile("runs-inspector");
 const jsxRuntime = { react: resolveUrl("react"), "react/jsx-runtime": resolveUrl("react/jsx-runtime") };
 const lucide = pathToFileURL(here("../../node_modules/lucide-react/dist/esm/lucide-react.js")).href;
 const timeRef = emit("time", compile("./time.ts"));
-const uiRef = emit("ui", compile("../components/ui.tsx", { jsx: true, specifiers: jsxRuntime }));
+// UI primitives import browser focus/scroll helpers. Server-rendered markup
+// tests do not exercise those effects, so emit explicit no-op hooks rather
+// than leaving the `@/lib/a11y` alias unresolved — Node cannot resolve a path
+// alias from a written module, and the file then dies with
+// ERR_MODULE_NOT_FOUND before any assertion runs.
+const a11yRef = emit(
+  "a11y",
+  `export function useFocusTrap() {} export function useScrollLock() {}`
+);
+const uiRef = emit("ui", compile("../components/ui.tsx", { jsx: true, specifiers: { ...jsxRuntime, "@/lib/a11y": a11yRef } }));
 const toolPillRef = emit(
   "ToolPill",
   compile("../components/ToolPill.tsx", { jsx: true, specifiers: { ...jsxRuntime, "lucide-react": lucide } })

@@ -72,10 +72,19 @@ const transpile = (source, extra = {}) =>
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, ...extra },
   }).outputText;
 const loadUrl = (url) => import(url);
+// UI primitives import browser focus/scroll helpers. Server-rendered section
+// tests do not exercise those effects, so supply explicit no-op hooks rather
+// than leaving the `@/lib/a11y` alias unresolved from a data-URL module — Node
+// cannot resolve a path alias from inside a `data:` specifier, and the whole
+// suite then dies with ERR_UNSUPPORTED_RESOLVE_REQUEST before any assertion.
+const A11Y_URL = toDataUrl(
+  "export function useFocusTrap() {} export function useScrollLock() {}",
+);
 const reactRewrites = (code) =>
   code
     .replace(/from "react\/jsx-runtime"/g, `from "${resolveUrl("react/jsx-runtime")}"`)
-    .replace(/from "react"/g, `from "${resolveUrl("react")}"`);
+    .replace(/from "react"/g, `from "${resolveUrl("react")}"`)
+    .replace(/from "@\/lib\/a11y"/g, `from "${A11Y_URL}"`);
 const LUCIDE = pathToFileURL(here("../../node_modules/lucide-react/dist/esm/lucide-react.js")).href;
 
 const { createElement } = await import(resolveUrl("react"));

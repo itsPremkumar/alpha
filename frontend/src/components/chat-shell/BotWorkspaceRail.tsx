@@ -35,6 +35,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import {
   botPresence,
@@ -152,7 +153,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     ? botPresence(activeBot)
     : {
         state: "unrecorded" as const,
-        label: "Lead Agent auto-routes",
+        label: `${DEFAULT_AGENT_NAME} auto-routes`,
         raw: null,
       };
 
@@ -194,7 +195,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   const currentBotDisplayName = activeBot
     ? botDisplayName(activeBot)
-    : "Lead Agent";
+    : DEFAULT_AGENT_NAME;
 
   return (
     <div
@@ -212,7 +213,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
           pane inside an already-scrolling sidebar.
 
           BotDropdownMenu is a complete replacement, not a subset: it carries
-          its own Lead Agent row (onSelectBot(null), "Auto-routes") and one row
+          its own default-agent row (onSelectBot(null), "Auto-routes") and one row
           per de-duplicated bot, so nothing became unreachable by removing the
           list. The measured count stays, because the count is real data - what
           was removed is the duplicate way of choosing, not the information. */}
@@ -261,7 +262,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                 </div>
               ) : (
                 <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                  <Bot className="size-4" />
+                  <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-8 rounded-md object-cover" />
                 </div>
               )}
               <div className="min-w-0">

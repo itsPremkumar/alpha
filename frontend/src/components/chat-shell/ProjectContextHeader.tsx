@@ -15,10 +15,10 @@ import {
   Brain,
   PanelRight,
   MoreHorizontal,
-  Bot,
   SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import { WorkspaceView } from "@/lib/workspace-view";
 import { botPresence, contextSentence, conversationTitle, projectStatusText } from "@/lib/chat-shell";
@@ -75,7 +75,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
 
   const presence = bot
     ? botPresence(bot)
-    : { state: "unrecorded" as const, label: "Lead Agent auto-routes", raw: null };
+    : { state: "unrecorded" as const, label: `${DEFAULT_AGENT_NAME} auto-routes`, raw: null };
   const title = conversationTitle(thread);
   const sentence = contextSentence({
     botName: bot ? botDisplayName(bot) : null,
@@ -110,13 +110,16 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
               ) : bot ? (
                 <Code2 className="size-5 text-primary" />
               ) : (
-                <Bot className="size-5 text-primary" />
+                /* The default agent's own face: the lion, sized to sit inside
+                   the 40px tile the way an emoji avatar does. Decorative - the
+                   name and role sit beside it. */
+                <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-10 rounded-md object-cover ring-1 ring-white/15" />
               )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm text-foreground truncate">
-                  {bot ? botDisplayName(bot) : "Lead Agent"}
+                  {bot ? botDisplayName(bot) : DEFAULT_AGENT_NAME}
                 </span>
                 <ChevronDown className="size-3 text-muted-foreground group-hover:text-foreground transition-transform" />
                 <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500 shrink-0">
@@ -202,7 +205,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
         ) : (
           <span className="flex items-center gap-1.5 min-w-0">
             <LeadGlyph />
-            <span className="text-[11px] font-semibold shrink-0">Lead Agent</span>
+            <span className="text-[11px] font-semibold shrink-0">{DEFAULT_AGENT_NAME}</span>
             <span className="text-[10px] text-muted-foreground truncate min-w-0">
               auto-routes, sees every conversation
             </span>

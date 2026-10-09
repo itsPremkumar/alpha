@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import {
   listProjects,
   createProject,
@@ -152,7 +153,7 @@ export function ProjectsSection(props: {
   };
 
   const botLabel = (botName: string | null): string => {
-    if (!botName) return "Lead Agent";
+    if (!botName) return DEFAULT_AGENT_NAME;
     return props.bots.find((b) => b.name === botName)?.display_name || botName;
   };
 

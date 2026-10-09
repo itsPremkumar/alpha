@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Bot } from "lucide-react";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_HINT, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import {
   botStatusText,
   countText,
@@ -204,11 +205,20 @@ export function BotGlyph(props: { initials: string; avatar: string; presence: Pr
   );
 }
 
-/** The "no bot selected" glyph, so Lead Agent is a named state, not an absence. */
+/**
+ * The default agent's avatar — so "no specialist selected" is a named state
+ * with a face, not an absence: Alpha, the lion.
+ */
 export function LeadGlyph(props: { className?: string }) {
   return (
-    <span className={`inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary ${props.className ?? ""}`} title="No specialist selected. The Lead Agent auto-routes.">
-      <Bot className="size-3.5 text-primary" />
+    <span
+      className={`inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary overflow-hidden ${props.className ?? ""}`}
+      title={DEFAULT_AGENT_HINT}
+    >
+      {/* Decorative: every site that renders this glyph puts the agent's name
+          beside it, so `alt=""` avoids the screen reader saying the name
+          twice. */}
+      <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-6 shrink-0 rounded-md object-cover" />
     </span>
   );
 }

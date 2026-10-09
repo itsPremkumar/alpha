@@ -4,20 +4,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   Blocks,
-  Brain,
-  CalendarClock,
   CircleDollarSign,
   CircleHelp,
   Cpu,
   Database,
   Gauge,
-  Landmark,
   Layers,
-  MessageSquare,
-  Plug,
   RefreshCw,
   Server,
-  ShieldCheck,
   Sigma,
   Wifi,
   WifiOff,
@@ -127,21 +121,15 @@ export const VITALS_SUBSYSTEM_KEYS = [
 ] as const;
 
 /**
- * One glyph per subsystem. The old JSX mapped only five of the seven keys, so
- * `watchdog` and `company` rendered as a bare 6px status dot with nothing else
- * in the box. A missing key now falls back to `CircleHelp` rather than to
- * nothing, so an unmapped subsystem is visibly "unidentified" instead of
- * silently anonymous.
+ * NOTE — the `key -> glyph` map that used to live here is gone with the header
+ * chips it served. Each chip duplicated a workspace view that already exists
+ * (Memory / Skills / Scheduled / Channels / System / Companies), so the seven
+ * glyphs are no longer rendered anywhere; the readiness cluster keeps only the
+ * `6/7 ready` ratio with `Layers`. The System view draws a status dot per
+ * probe rather than a glyph, so nothing else in this file needed the mapping.
+ * Re-derive it rather than restoring it beside the ratio, where it would put
+ * the duplication straight back.
  */
-const SUBSYSTEM_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
-  memory: Brain,
-  skills: Blocks,
-  scheduled: CalendarClock,
-  channels: MessageSquare,
-  mcp: Plug,
-  watchdog: ShieldCheck,
-  company: Landmark,
-};
 
 function compactNumber(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -431,6 +419,14 @@ export function VitalsStrip({
   const host = vitals.host;
   const subsystems = vitals.probes.filter((p) => (VITALS_SUBSYSTEM_KEYS as readonly string[]).includes(p.key));
   const readyCount = subsystems.filter((p) => p.ok).length;
+  // The subsurfaces that did NOT answer, carried up into the ratio's tooltip.
+  // The per-subsystem chips used to render each reason in the row; they were
+  // removed from the header because every one of them duplicated a workspace
+  // view that already exists (Memory / Skills / Scheduled / Channels /
+  // System / Companies). The reason itself must not go with them — a failure
+  // still has to be readable from the row that counts it, so it moves into the
+  // ratio's `title`, and the full rows stay in the System view.
+  const failingSubsystems = subsystems.filter((p) => !p.ok);
   const cost = costView(s ? s.cost : null, s ? s.currency : null);
   const link = connectivityView(vitals.connectivity ?? null, vitals.connectivityFailed);
 
@@ -600,42 +596,21 @@ export function VitalsStrip({
             title="Subsystem readiness: UNKNOWN. The probe request failed, so no subsystem was measured. This is NOT 0 of 7, and not a healthy 7 of 7 either — nobody measured anything."
           />
         ) : (
-          <>
-            <Metric
-              icon={<Layers className="size-3" />}
-              value={subsystems.length === 0 ? "—" : `${readyCount}/${subsystems.length}`}
-              label={subsystems.length === 0 ? "ready, none to probe" : "ready"}
-              emphasis={subsystems.length > 0 && readyCount < subsystems.length}
-              title={
-                subsystems.length === 0
-                  ? "Subsystem readiness: the Gateway reported no subsurfaces to probe, so nothing was measured. This is the server's answer, not a missing reading and not a failing one."
-                  : `${readyCount} of ${subsystems.length} probed subsystems answered successfully. Counted ready only on a successful response — hover a failing entry for the reason the server gave.`
-              }
-            />
-            {subsystems.map((p) => {
-              const Icon = SUBSYSTEM_ICON[p.key] ?? CircleHelp;
-              return (
-                <span
-                  key={p.key}
-                  title={`${p.label} — ${p.detail} (${p.blurb}). Probed live by lib/system.ts against the Gateway.`}
-                  data-subsystem={p.key}
-                  data-ready={p.ok ? "true" : "false"}
-                  className={`inline-flex items-center gap-1 whitespace-nowrap px-2 py-1 ${p.ok ? "" : "text-amber-600 dark:text-amber-400"}`}
-                >
-                  <span
-                    className={`size-1.5 rounded-full shrink-0 ${p.ok ? "bg-emerald-500" : "bg-amber-500"}`}
-                    aria-hidden="true"
-                  />
-                  <Icon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  {/* The name is always visible; the reason appears only when
-                      there is something wrong to explain, so a healthy row stays
-                      quiet and a broken row cannot hide. */}
-                  <span className="text-muted-foreground">{p.label}</span>
-                  {p.ok ? null : <span className="font-medium">— {p.detail}</span>}
-                </span>
-              );
-            })}
-          </>
+          <Metric
+            icon={<Layers className="size-3" />}
+            value={subsystems.length === 0 ? "—" : `${readyCount}/${subsystems.length}`}
+            label={subsystems.length === 0 ? "ready, none to probe" : "ready"}
+            emphasis={subsystems.length > 0 && readyCount < subsystems.length}
+            title={
+              subsystems.length === 0
+                ? "Subsystem readiness: the Gateway reported no subsurfaces to probe, so nothing was measured. This is the server's answer, not a missing reading and not a failing one."
+                : `${readyCount} of ${subsystems.length} probed subsystems answered successfully. Counted ready only on a successful response.` +
+                  (failingSubsystems.length
+                    ? ` Not ready: ${failingSubsystems.map((p) => `${p.label} — ${p.detail}`).join("; ")}.`
+                    : " Every probed subsurface answered.") +
+                  " Full per-subsystem rows are in the System view."
+            }
+          />
         )}
       </Cluster>
     </div>

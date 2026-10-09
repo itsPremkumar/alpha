@@ -30,6 +30,13 @@ import test from "node:test";
  *   "Lead Agent"                                 4px -> 57px, flex-shrink: 0
  *   "auto-routes, sees every conversation"       rigid -> 109px, ellipsis
  *   elements narrower than 12px                   1 -> 0
+ *
+ * The markup above is quoted exactly as it was measured on that day. The name
+ * span now renders `{DEFAULT_AGENT_NAME}` - the default agent's identity, whose
+ * value is "Alpha" - instead of the literal `Lead Agent`, which was an internal
+ * architecture term leaking into the product as if it were a name. The layout
+ * invariant is untouched, so the live pin below matches the identifier rather
+ * than whichever word it currently resolves to.
  */
 
 const header = readFileSync(
@@ -65,17 +72,21 @@ function botBranch() {
   return header.slice(start, end);
 }
 
-test("the lead-agent name is never the element that truncates", () => {
+test("the default agent's name is never the element that truncates", () => {
   const branch = leadAgentBranch();
-  const nameSpan = branch.match(/<span className="([^"]*)"[^>]*>\s*Lead Agent\s*<\/span>/);
-  assert.ok(nameSpan, "the Lead Agent name span must be present");
+  // The name is rendered from `DEFAULT_AGENT_NAME`, so the markup carries the
+  // identifier rather than the literal it resolves to. Pinning the identifier
+  // keeps this pin about LAYOUT: a rename of the default agent must not have to
+  // rewrite it, and a name written inline again would no longer be found here.
+  const nameSpan = branch.match(/<span className="([^"]*)"[^>]*>\s*\{DEFAULT_AGENT_NAME\}\s*<\/span>/);
+  assert.ok(nameSpan, "the default agent's name span must be present");
 
   // The invariant: the name is protected from shrinking, because a bot name is
   // the one thing in this chip that must always be readable.
   assert.match(
     nameSpan[1],
     /shrink-0/,
-    "the Lead Agent name must carry shrink-0; without it the name absorbs the " +
+    "the default agent name must carry shrink-0; without it the name absorbs the " +
       "whole flex shortfall and renders at a few pixels wide",
   );
   assert.doesNotMatch(
@@ -127,7 +138,7 @@ test("the extraction helpers cannot silently return the wrong region", () => {
   // truncated makes every assertion above vacuous, and a vacuous test is worse
   // than no test because it reads as coverage.
   const lead = leadAgentBranch();
-  assert.match(lead, /Lead Agent/, "the lead region must contain the name it is named for");
+  assert.match(lead, /DEFAULT_AGENT_NAME/, "the lead region must render the default agent's name");
   assert.match(lead, /auto-routes/, "the lead region must contain the description it is named for");
 
   const bot = botBranch();

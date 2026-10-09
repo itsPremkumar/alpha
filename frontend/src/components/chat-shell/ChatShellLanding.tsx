@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import {
   Code2,
   FileText,
@@ -91,7 +92,9 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
           {botAvatar ? (
             <span className="text-3xl">{botAvatar}</span>
           ) : (
-            <Code2 className="size-9 text-white" />
+            /* No specialist picked: the default agent's own face, not a
+               generic code glyph. */
+            <img src={DEFAULT_AGENT_AVATAR} alt={DEFAULT_AGENT_NAME} className="size-full rounded-md object-cover" />
           )}
         </div>
       </div>
@@ -114,7 +117,7 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
             </>
           )}{" "}
           You are working with{" "}
-          <span className="text-foreground font-semibold">{botName || "Lead Agent"}</span>
+          <span className="text-foreground font-semibold">{botName || DEFAULT_AGENT_NAME}</span>
           {projectName ? (
             <>
               {" "}on the <span className="text-foreground font-semibold">{projectName}</span> project.

@@ -47,6 +47,7 @@ import {
 } from "./Honest";
 import type { BotProfile } from "@/types/bots";
 import { botDisplayName } from "@/types/bots";
+import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 
 export interface ProjectDetailPanelProps {
   project: Project | null;
@@ -286,7 +287,7 @@ export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
                     <div className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-[10px]">
                       {activeBot?.avatar || <Code2 className="size-3" />}
                     </div>
-                    <span>{activeBot ? botDisplayName(activeBot) : "Lead Agent"}</span>
+                    <span>{activeBot ? botDisplayName(activeBot) : DEFAULT_AGENT_NAME}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">

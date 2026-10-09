@@ -20,6 +20,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { botPresence, PresenceView } from "@/lib/chat-shell";
 import { PresenceDot } from "./Honest";
 import type { WorkspaceView } from "@/lib/workspace-view";
@@ -72,9 +73,9 @@ export function BotDropdownMenu({
 
   const presence: PresenceView = activeBot
     ? botPresence(activeBot)
-    : { state: "unrecorded", label: "Lead Agent auto-routes", raw: null };
+    : { state: "unrecorded", label: `${DEFAULT_AGENT_NAME} auto-routes`, raw: null };
 
-  const botTitle = activeBot ? botDisplayName(activeBot) : "Lead Agent";
+  const botTitle = activeBot ? botDisplayName(activeBot) : DEFAULT_AGENT_NAME;
   const botRole = activeBot ? activeBot.role || "Specialist Agent" : "Autonomous Orchestrator";
 
   return (
@@ -120,8 +121,10 @@ export function BotDropdownMenu({
           <div className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] shrink-0 border border-primary/20">
             {activeBot?.avatar ? (
               <span>{activeBot.avatar}</span>
-            ) : (
+            ) : activeBot ? (
               <Bot className="size-3 text-primary" />
+            ) : (
+              <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-5 rounded-md object-cover" />
             )}
           </div>
           <span className="font-semibold text-foreground truncate max-w-32">{botTitle}</span>
@@ -144,8 +147,10 @@ export function BotDropdownMenu({
             <div className="size-9 rounded-xl bg-primary/10 text-primary border border-primary/30 flex items-center justify-center font-bold text-sm shrink-0">
               {activeBot?.avatar ? (
                 <span>{activeBot.avatar}</span>
-              ) : (
+              ) : activeBot ? (
                 <Bot className="size-4 text-primary" />
+              ) : (
+                <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-9 rounded-md object-cover ring-1 ring-white/15" />
               )}
             </div>
             <div className="min-w-0 flex-1">
@@ -175,7 +180,7 @@ export function BotDropdownMenu({
             </div>
 
             <div className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
-              {/* Lead Agent */}
+              {/* The default agent row */}
               <button
                 type="button"
                 onClick={() => {
@@ -189,8 +194,8 @@ export function BotDropdownMenu({
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Bot className="size-3.5 shrink-0" />
-                  <span className="truncate">Lead Agent</span>
+                  <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-3.5 shrink-0 rounded-md object-cover" />
+                  <span className="truncate">{DEFAULT_AGENT_NAME}</span>
                 </div>
                 <span className="text-[9px] opacity-75">Auto-routes</span>
               </button>

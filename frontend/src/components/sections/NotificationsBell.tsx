@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, BellOff, Check, Monitor, Volume2, X, Send } from "lucide-react";
+import { Bell, BellOff, Check, Monitor, ShieldCheck, Sparkles, Users, Volume2, X, Send } from "lucide-react";
 
 import { Btn, ErrorBox } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -35,9 +35,15 @@ const TOAST_MS = 6_000;
 const MAX_VISIBLE = 3;
 
 /**
- * The operator's notification surface: a bell with a real unread count, a
- * day-grouped history, the preference switches, and a toast + chime when a
- * new notification arrives.
+ * The operator's ONE notification surface: a bell with a real unread count, a
+ * day-grouped history, the preference switches, a toast + chime when a new
+ * notification arrives, and the workspace/gateway status.
+ *
+ * **The header used to render two icons that both said "Notifications."** This
+ * was the full one; beside it sat a hand-rolled `<Bell>` toggle whose panel
+ * held a gateway status card and nothing else. Two bells is one too many, so
+ * every feature of that toggle now lives here under `gatewayOk` and
+ * `teamUnread`, and `WorkspaceTopBar` mounts a single `<NotificationsBell />`.
  *
  * The property everything below defends: **the first read establishes a
  * baseline and never announces anything.** Anything that sounded on page load
@@ -49,7 +55,22 @@ const MAX_VISIBLE = 3;
  * Gateway that answers the list but not the preferences must not present the
  * absence as "sound is off", and a failed count must not render as zero.
  */
-export function NotificationsBell(props: { onError?: (message: string) => void }) {
+export function NotificationsBell(props: {
+  onError?: (message: string) => void;
+  /**
+   * Gateway reachability as the shared header probes it, or `null` while it is
+   * still connecting. Carried over from the removed second bell; it is the one
+   * status this header actually measures, so it is the only one rendered.
+   */
+  gatewayOk?: boolean | null;
+  /**
+   * Unread messages across the bot roster, or `null` when the roster read did
+   * not ask for the activity projection. `null` is not zero: it renders
+   * "not reported", exactly as `unreadCount` documents it in the top bar.
+   */
+  teamUnread?: number | null;
+}) {
+  const { gatewayOk = null, teamUnread = null } = props;
   const [items, setItems] = useState<NotificationRecord[] | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [unread, setUnread] = useState<number | null>(null);
@@ -58,6 +79,31 @@ export function NotificationsBell(props: { onError?: (message: string) => void }
   const [prefsError, setPrefsError] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /**
+   * Dismiss on an outside click or Escape.
+   *
+   * This component never had one while it shared the bar with the second bell,
+   * because that bell had its own handler. Now that it IS the only bell, a
+   * panel that only closes by clicking its own trigger again would be the
+   * merged control's most visible flaw — the same `absolute`-inside-`relative`
+   * shape as the profile menu, so one ref covers it (no portal involved).
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<{ visible: NotificationRecord[]; queued: number }>({
     visible: [],
@@ -208,6 +254,27 @@ export function NotificationsBell(props: { onError?: (message: string) => void }
   };
 
   const badge = unreadBadge(unread);
+  /**
+   * The roster's unread is a second, INDEPENDENT signal: the numeric badge
+   * counts notification records, so it must never absorb the message count —
+   * summing two differently-sourced totals would be one number nobody measured.
+   * When there is no record badge but messages are unread, the bell shows the
+   * un-numbered dot the old second icon used: activity, without a count.
+   */
+  const teamDot = teamUnread !== null && teamUnread > 0;
+  /**
+   * Two labelled facts, never one merged number. The `unread !== null` guards
+   * are redundant with `badge` being non-empty at runtime, but they keep this
+   * honest for TypeScript too, where `unread` is still `number | null`.
+   */
+  const summary = [
+    badge && unread !== null
+      ? `${unread} unread notification${unread === 1 ? "" : "s"}`
+      : "",
+    teamDot && teamUnread !== null
+      ? `${teamUnread} unread message${teamUnread === 1 ? "" : "s"}`
+      : "",
+  ].filter(Boolean);
   const groups = groupByDay(items);
   const desktop = desktopPermission();
 
@@ -243,23 +310,27 @@ export function NotificationsBell(props: { onError?: (message: string) => void }
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative" ref={rootRef}>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="relative p-2 rounded-lg hover:bg-muted text-muted-foreground"
-          title="Notifications"
-          aria-label={`Notifications${badge ? `, ${unread} unread` : ""}`}
+          title={summary.length ? `Notifications — ${summary.join(", ")}` : "Notifications"}
+          aria-label={summary.length ? `Notifications, ${summary.join(", ")}` : "Notifications"}
           aria-expanded={open}
         >
           <Bell className="size-4" aria-hidden="true" />
-          {/* `null` (count not read) renders no dot at all — a zero badge here
-              would claim the server measured zero unread. */}
-          {badge && (
+          {/* `null` (count not read) renders no badge at all — a zero badge here
+              would claim the server measured zero unread. The dot fallback below
+              is the second bell's unread indicator, kept so un-read roster
+              messages are still visible when there is no record count to show. */}
+          {badge ? (
             <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
               {badge}
             </span>
-          )}
+          ) : teamDot ? (
+            <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" aria-hidden="true" />
+          ) : null}
         </button>
 
         {open && (
@@ -332,6 +403,59 @@ export function NotificationsBell(props: { onError?: (message: string) => void }
                   {audioNotice && <p className="text-[9px] text-amber-600">{audioNotice}</p>}
                 </>
               )}
+            </div>
+
+            {/* ── Workspace status ──
+                Everything the header's SECOND bell showed, merged in. It is
+                labelled workspace rather than folded into the notification
+                history, because a gateway being offline and a notification
+                being unread are not the same fact. */}
+            <div className="rounded-lg border border-border/60 p-2 space-y-1.5">
+              <p className="text-[10px] font-bold text-muted-foreground">WORKSPACE</p>
+              <div className="flex items-start gap-1.5 text-[11px]">
+                <Sparkles className="size-3 text-primary mt-0.5 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">
+                    {gatewayOk === false
+                      ? "Gateway offline"
+                      : gatewayOk
+                        ? "Gateway connected"
+                        : "Connecting to Gateway…"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {gatewayOk === false
+                      ? "Views are showing local or cached state."
+                      : gatewayOk
+                        ? "Live counts and status come from the Gateway."
+                        : "Reaching the Gateway…"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-1.5 text-[11px]">
+                <Users className="size-3 text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">
+                    {teamUnread === null
+                      ? "Team messages not reported"
+                      : `${teamUnread} unread message${teamUnread === 1 ? "" : "s"}`}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {teamUnread === null
+                      ? "The roster read did not ask for the activity projection, so no count exists — this is not zero."
+                      : "Across the bot roster. The Messages view carries the per-room detail."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-1.5 text-[11px]">
+                <ShieldCheck className="size-3 text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">Service status</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Not reported here. The Supervisor, Integration and System views carry the measured
+                    per-loop status and the reason any control is off.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* ── History ── */}

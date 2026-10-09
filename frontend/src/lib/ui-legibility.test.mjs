@@ -73,9 +73,19 @@ const LUCIDE = pathToFileURL(
 const dataUrl = (code) =>
   `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
 
+// UI primitives import browser focus/scroll helpers. Server-rendered section
+// tests do not exercise those effects, so supply explicit no-op hooks rather
+// than leaving the `@/lib/a11y` alias unresolved from a data-URL module — Node
+// cannot resolve a path alias from inside a `data:` specifier, and the whole
+// suite then dies with ERR_UNSUPPORTED_RESOLVE_REQUEST before any assertion.
+const a11yUrl = dataUrl(
+  "export function useFocusTrap() {} export function useScrollLock() {}",
+);
+
 const uiUrl = dataUrl(
   transpile(read("../components/ui.tsx"), { jsx: ts.JsxEmit.ReactJSX })
     .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
+    .replace(/from\s+"@\/lib\/a11y"/, `from "${a11yUrl}"`)
     .replace(
       /from\s+"react\/jsx-runtime"/,
       `from "${resolveUrl("react/jsx-runtime")}"`,
@@ -274,6 +284,27 @@ const STATS_FAILED = { ...HEALTHY, stats: null };
 const titles = (markup) =>
   [...markup.matchAll(/title="([^"]*)"/g)].map((m) => m[1]);
 
+/**
+ * The `title` belonging to the `Metric` labelled `label`.
+ *
+ * Deliberately not a first-hit `.match()` before `data-vital`: the
+ * `Subsystem readiness` Cluster wrapper carries a `title` of its own and
+ * renders before every metric inside it, so the first `title` in any window is
+ * the CLUSTER's sentence — "6 of 7 probed subsystems answered successfully…".
+ * That passes generic `/of 7/` and `/success/i` assertions while the metric's
+ * own title is never read at all. The metric emits `title` immediately before
+ * `data-vital` on the same element, so the LAST one before the label is the
+ * metric's.
+ *
+ * Returns `null` when the metric is absent, never `undefined`.
+ */
+const metricTitle = (markup, label) => {
+  const at = markup.indexOf(`data-vital="${label}"`);
+  if (at < 0) return null;
+  const found = titles(markup.slice(Math.max(0, at - 4000), at));
+  return found.length ? found[found.length - 1] : null;
+};
+
 /** The `data-vital` label of each `Metric`, i.e. every named measurement. */
 const vitalLabels = (markup) =>
   [...markup.matchAll(/data-vital="([^"]*)"/g)].map((m) => m[1]);
@@ -344,12 +375,16 @@ test("every named measurement spells out what it is", () => {
   ]) {
     assert.ok(text.includes(noun), `"${noun}" must be readable, got: ${text}`);
   }
-  // …and the seven subsystem names, which were all `hidden xl:inline`.
+  // …and the seven subsystems are no longer listed BY NAME in the header.
+  // Each one already has its own workspace view (Memory / Skills / Scheduled /
+  // Channels / System / Companies), so repeating the label here was pure
+  // duplication. The header now carries the count only, and the full rows live
+  // in the System view.
   for (const key of VITALS_SUBSYSTEM_KEYS) {
     const probe = PROBES.find((p) => p.key === key);
     assert.ok(
-      text.includes(probe.label),
-      `subsystem "${probe.label}" must be readable, got: ${text}`,
+      !text.includes(probe.label),
+      `subsystem "${probe.label}" must not be duplicated in the header strip, got: ${text}`,
     );
   }
 });
@@ -417,29 +452,29 @@ test("tokens and cost no longer share a glyph", () => {
 test("the readiness ratio carries a title, which it did not before", () => {
   // Measured: `title: null` on the `6/7` element in the live DOM.
   const markup = render(HEALTHY);
-  // The `title` attribute is emitted before `data-vital` on the same element, so
-  // slice from the match rather than relying on a fixed character budget — a
-  // lucide `<svg>` alone is longer than any sane window.
-  const at = markup.indexOf('data-vital="ready"');
-  assert.ok(at > 0, "expected a ready metric");
-  // `title` is emitted on the same element, before `data-vital`.
-  const title = markup
-    .slice(Math.max(0, at - 800), at)
-    .match(/title="([^"]*)"/);
-  assert.ok(title, "the 6/7 ratio must have a title attribute");
-  assert.match(title[1], /of 7/, "the title must state the counts");
-  assert.match(title[1], /success/i, "the title must say what counts as ready");
+  const title = metricTitle(markup, "ready");
+  assert.ok(
+    title,
+    "the 6/7 ratio must carry a title attribute of its own (not the cluster's)",
+  );
+  assert.match(title, /of 7/, "the title must state the counts");
+  assert.match(title, /success/i, "the title must say what counts as ready");
 });
 
-test("every subsystem entry names its probe reason and its route", () => {
+test("every failing subsystem's reason is carried by the ratio, and routes stay named", () => {
   const markup = render(HEALTHY);
   const all = titles(markup).join("\n");
-  for (const probe of PROBES.filter((p) =>
-    VITALS_SUBSYSTEM_KEYS.includes(p.key),
+  // The per-subsystem chips were removed from the header (each duplicated an
+  // existing workspace view), so a FAILING subsurface's own detail had to move
+  // rather than disappear: it now travels in the readiness ratio's `title`.
+  // Asserting only the failing ones is deliberate — a healthy subsurface's
+  // count ("24 skills") is exactly the noise the dedup removed.
+  for (const probe of PROBES.filter(
+    (p) => VITALS_SUBSYSTEM_KEYS.includes(p.key) && !p.ok,
   )) {
     assert.ok(
       all.includes(probe.detail),
-      `subsystem "${probe.label}" must surface its own detail "${probe.detail}"`,
+      `failing subsystem "${probe.label}" must surface its own detail "${probe.detail}"`,
     );
   }
   // Units named, sources named.
@@ -456,40 +491,41 @@ test("every subsystem entry names its probe reason and its route", () => {
   );
 });
 
-test("a failing subsystem shows its reason in the row, not only on hover", () => {
-  // The company's own 404 detail. A grey dot with the reason locked in a
-  // tooltip is how "Company engine idle" reached the screen in the first place.
+test("a failing subsystem keeps its reason reachable after the header chips were removed", () => {
+  // The company's own 404 detail used to render inside a per-subsystem chip in
+  // the header. Those chips duplicated workspace views and are gone, so the
+  // reason had to travel with them into the readiness ratio's own `title` —
+  // dropping it would have turned a stated failure into a silent amber count.
   const markup = render(HEALTHY);
-  const text = visibleText(markup);
-  assert.ok(
-    text.includes("No active organizations found"),
-    `the server's own reason must be visible in the row, got: ${text}`,
+  const title = metricTitle(markup, "ready");
+  assert.ok(title, "the 6/7 ratio must have a title attribute");
+  assert.match(
+    title,
+    /Autonomous company/,
+    "the failing subsurface must be named from the ratio",
   );
-  assert.match(markup, /data-subsystem="company" data-ready="false"/);
-  // A healthy row stays quiet: 24 skills is not repeated next to "Skills".
-  const skills = markup.match(
-    /data-subsystem="skills"[\s\S]*?<\/span>\s*<\/span>/,
-  )[0];
-  assert.doesNotMatch(
-    skills,
-    /24 skills/,
-    "a passing subsystem must not add noise",
+  assert.match(
+    title,
+    /No active organizations found/,
+    "the server's own reason must stay reachable from the ratio, got: " + title,
   );
+  // The chip itself is gone — the header carries no per-subsystem row.
+  assert.doesNotMatch(markup, /data-subsystem="company"/);
 });
 
-test("no subsystem renders as a bare dot with no glyph and no name", () => {
-  // Measured: watchdog and company were 6px wide — no icon branch existed for
-  // either key, so they collapsed to a lone status dot.
+test("the header renders no per-subsystem chip; each subsurface has its own view", () => {
+  // Replaces the old "no subsystem renders as a bare dot" pin. That test
+  // guarded the chip markup; the chips are gone from the header now, so what
+  // has to be guarded is the *absence* — a subsystem quietly reappearing in the
+  // strip would put the duplication straight back.
   const markup = render(HEALTHY);
-  for (const key of VITALS_SUBSYSTEM_KEYS) {
-    const entry = markup.match(
-      new RegExp(`data-subsystem="${key}"[\\s\\S]*?</span>\\s*</span>`),
-    );
-    assert.ok(entry, `missing subsystem entry for ${key}`);
-    assert.match(entry[0], /lucide-/, `${key} must draw a glyph`);
-    const words = visibleText(entry[0]);
-    assert.ok(words.length > 0, `${key} rendered with no readable name`);
-  }
+  assert.doesNotMatch(
+    markup,
+    /data-subsystem="/,
+    "the readiness strip must not render per-subsystem rows",
+  );
+  // The ratio itself survives: the summary is not the duplication.
+  assert.match(markup, /data-vital="ready"/);
 });
 
 /* ══ 3. A dash is never a bare value ══════════════════════════════════════ */
@@ -914,12 +950,15 @@ test("the readiness ratio counts only the seven declared subsurfaces", () => {
     visibleText(markup).includes("6/7 ready"),
     `expected 6/7, got: ${visibleText(markup)}`,
   );
+  // The seven keys still drive the DENOMINATOR — a subsystem silently dropping
+  // out would turn a red row green with no change on the server — but none of
+  // them renders a chip in the header any more, because each one already has
+  // its own workspace view.
   assert.equal(
     [...markup.matchAll(/data-subsystem="/g)].length,
-    VITALS_SUBSYSTEM_KEYS.length,
+    0,
+    "no per-subsystem chip may render in the header",
   );
-  // The `gateway` probe is NOT one of the seven: it is the connection badge.
-  assert.doesNotMatch(markup, /data-subsystem="gateway"/);
 });
 
 test("a partially-ready workspace emphasises the ratio and names the failure", () => {
@@ -932,15 +971,21 @@ test("a partially-ready workspace emphasises the ratio and names the failure", (
   const text = visibleText(markup);
   // Company was already failing in HEALTHY, so skills is the second failure.
   assert.ok(text.includes("5/7"), `expected the reduced ratio, got: ${text}`);
+  // Both reasons are read out of the titles now: the per-subsystem chips that
+  // used to print them in the row are gone, so a 5/7 with only one explanation
+  // attached would leave the second failure unaccounted for.
+  const all = titles(markup).join("\n");
   assert.ok(
-    text.includes("Skills list failed (HTTP 503)."),
-    "the server's reason must be visible",
+    all.includes("Skills list failed (HTTP 503)."),
+    `the second failure's reason must stay reachable, got: ${all}`,
   );
-  // Both failures are named, so the ratio can be accounted for.
+  // …and the first failure is still named, so the ratio can be accounted for.
   assert.ok(
-    text.includes("No active organizations found"),
+    all.includes("No active organizations found"),
     "the first failure must still be named",
   );
+  // Neither reason was dropped along with the chips.
+  assert.doesNotMatch(markup, /data-subsystem=/);
 });
 
 /* ══ 5. `companyStatus` must not swallow the 404 ═════════════════════════ */

@@ -302,6 +302,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "since start_subagent has no production caller. Measured, with the two honest "
         "options and why an invented runner is refused.",
     ),
+    "FRONTEND_UX_PLAN.md": DocumentSpec(
+        "plans",
+        "The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.",
+    ),
     "FEATURE_COMPLETION_PLAN.md": DocumentSpec(
         "operations",
         "The working plan for every remaining feature, as tickable tasks with a verification "

@@ -33,6 +33,20 @@ import { Activity, AlertTriangle, BarChart3, Bot, Clock, Layers, Scale, ShieldAl
 
 type SubTab = "runs" | "analytics" | "trigger";
 
+/** Rendering order for the three surfaces. */
+const SUBTABS: readonly SubTab[] = ["runs", "analytics", "trigger"];
+
+/**
+ * Operator-facing labels. The ids are route-ish tokens (`trigger`), which read
+ * as raw identifiers in a button; the third one especially is not self-
+ * explanatory as a bare word beside two nouns.
+ */
+const SUBTAB_LABELS: Record<SubTab, string> = {
+  runs: "Runs",
+  analytics: "Analytics",
+  trigger: "Trigger Policy",
+};
+
 /**
  * The War Room: what the deliberation engine actually did.
  *
@@ -133,13 +147,30 @@ export function WarRoomRunsSection() {
       title="War Room"
       hint="Staged, clock-bounded group deliberation with a recorded quorum"
       actions={
-        <div className="flex gap-1">
-          {(["runs", "analytics", "trigger"] as SubTab[]).map((tab) => (
-            <Btn key={tab} onClick={() => setSubTab(tab)}>
-              {tab}
-            </Btn>
-          ))}
-          <Btn onClick={loadIndex}>Refresh</Btn>
+        <div className="flex flex-wrap gap-1">
+          {/* Every button used to render its raw lowercase id with no selected
+              state, so three identical controls sat there and none of them said
+              which surface was on screen. The selected one now fills, the rest
+              outline, and `aria-current` carries the same fact for a reader
+              that cannot see the colour. Refresh is an action rather than a
+              view, so it stays outlined instead of competing with the tab. */}
+          {SUBTABS.map((tab) => {
+            const active = subTab === tab;
+            return (
+              <Btn
+                key={tab}
+                variant={active ? "primary" : "ghost"}
+                ariaCurrent={active ? "page" : undefined}
+                onClick={() => setSubTab(tab)}
+                title={active ? `${SUBTAB_LABELS[tab]} — current view` : SUBTAB_LABELS[tab]}
+              >
+                {SUBTAB_LABELS[tab]}
+              </Btn>
+            );
+          })}
+          <Btn variant="ghost" onClick={loadIndex} title="Re-read the run list">
+            Refresh
+          </Btn>
         </div>
       }
     >

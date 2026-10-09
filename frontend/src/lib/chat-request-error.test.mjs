@@ -135,6 +135,13 @@ async function send(
     // the reducer's real value (loaded via `moduleUrl`), so the harness cannot
     // drift from the shape the plan panel actually renders.
     setLivePlan: setter("livePlan"),
+    // The stream-reconnect banner setter. `sendMessage` writes it from its
+    // retry/reconnect callbacks, so an unbound name throws a ReferenceError
+    // *inside* the request and masks every status-code assertion below behind
+    // a generic failure — the same masking this harness already guards against
+    // for `reasoningEffort`. Only the setter is injected: the state value is
+    // read once, in the render, never inside `sendMessage`.
+    setStreamReconnect: setter("streamReconnect"),
     emptyTodoPlan,
     autoTriggerCommand: async () => null,
     appendLocalMessages: (_tid, messages) => state.saved.push(...messages),

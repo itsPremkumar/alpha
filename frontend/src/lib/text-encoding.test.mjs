@@ -341,12 +341,17 @@ test("the kanban card footer renders no value rather than a stray quote", () => 
     `an absent createdAt must render an empty string, not ${JSON.stringify(footer[1])}`,
   );
 
-  // The sibling separators in the same file: the parenthetical dash role that
-  // lines 62/151/157 fill with a real em dash.
+  // The sibling separators in the same file: the parenthetical dash role the
+  // move guard fills with a real em dash. The save guard's message was renamed
+  // by the CardEditor -> Modal refactor (e216b8e), which replaced the inline
+  // `onSave` that used to carry the second em-dash sentence with
+  // `saveEditing()`, so that one is now pinned by its own current text rather
+  // than as an em-dash form. Both strings are read from the real source, so a
+  // rename still fails here instead of leaving a silent exemption.
   for (const expected of [
     'setError("A blocked card needs a reason \u2014 added it in the editor.");',
-    'setError("Blocked cards need a reason \u2014 what is stopping it?");',
+    'setError("A blocked task needs a reason.");',
   ]) {
-    assert.ok(src.includes(expected), `expected the em-dash form: ${JSON.stringify(expected)}`);
+    assert.ok(src.includes(expected), `expected the current message: ${JSON.stringify(expected)}`);
   }
 });

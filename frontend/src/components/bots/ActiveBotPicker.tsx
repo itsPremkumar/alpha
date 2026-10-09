@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
+import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { totalRuns, uniqueDepartments } from "@/lib/bots";
 import { ChevronDown, Bot, Search, Check, Sparkles } from "lucide-react";
 
@@ -60,10 +61,10 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
           {activeBot ? (
             activeBot.avatar ? <span>{activeBot.avatar}</span> : <span className="text-[10px]">{botInitials(activeBot)}</span>
           ) : (
-            <Bot className="size-3.5" />
+            <img src={DEFAULT_AGENT_AVATAR} alt="" className="size-6 rounded-md object-cover ring-1 ring-white/15" />
           )}
         </span>
-        <span className="truncate">{activeBot ? botDisplayName(activeBot) : "Lead Agent"}</span>
+        <span className="truncate">{activeBot ? botDisplayName(activeBot) : DEFAULT_AGENT_NAME}</span>
         <span className="text-[10px] text-muted-foreground hidden sm:inline">{bots.length} bots</span>
         <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -107,7 +108,7 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
                 <Sparkles className="size-4 text-primary" />
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-xs font-semibold">Lead Agent</span>
+                <span className="block text-xs font-semibold">{DEFAULT_AGENT_NAME}</span>
                 <span className="block text-[11px] text-muted-foreground truncate">Auto-routes • sees all conversations</span>
               </span>
               {!activeBot && <Check className="size-4 text-primary shrink-0" />}

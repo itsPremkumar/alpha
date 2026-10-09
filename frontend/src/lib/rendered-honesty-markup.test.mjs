@@ -67,6 +67,16 @@ export function pick(o, k, f) { for (const x of k) if (o && o[x] !== undefined &
 export function errMsg(e) { return e instanceof Error ? e.message : String(e); }
 `);
 
+// UI primitives import browser focus/scroll helpers. Server-rendered markup
+// tests do not exercise those effects, so supply explicit no-op hooks rather
+// than leaving the `@/lib/a11y` alias unresolved from a file-backed module —
+// Node cannot resolve a path alias, and the whole suite then dies with
+// ERR_MODULE_NOT_FOUND before any assertion runs.
+const a11yStubUrl = stub(
+  "a11y",
+  "export function useFocusTrap() {} export function useScrollLock() {}",
+);
+
 const teamopsStubUrl = stub("teamops", `
 export async function orgChart() { return {}; }
 export async function fleetHealth() { return {}; }
@@ -138,6 +148,12 @@ function loadComponent(rel, extraRewrites = {}) {
       .replace(/from "react\/jsx-runtime"/g, `from "${resolve("react/jsx-runtime")}"`)
       .replace(/from "react"/g, `from "${resolve("react")}"`)
       .replace(/from "lucide-react"/g, `from "${lucide}"`)
+      // UI primitives import browser focus/scroll helpers. Server-rendered
+      // markup tests do not exercise those effects, so supply no-op hooks
+      // rather than leaving the `@/lib/a11y` alias unresolved: Node cannot
+      // resolve a path alias from a file-backed module, and the whole suite
+      // dies with ERR_MODULE_NOT_FOUND before any assertion runs.
+      .replace(/from "@\/lib\/a11y"/g, `from "${a11yStubUrl}"`)
       .replace(/from "@\/lib\/utils"/g, JSON.stringify(stub("utils", `
 export function cn(...parts) { return parts.filter(Boolean).join(" "); }
 `)));
