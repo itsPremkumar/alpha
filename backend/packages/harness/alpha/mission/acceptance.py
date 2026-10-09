@@ -24,6 +24,14 @@ This module is the missing evaluation seam, and it is deliberately narrow:
   exit report or a real artifact digest.  They assemble into the same report and
   the same gate: a criterion with no record, or with two conflicting records,
   stays ``UNVERIFIED``.
+- **Contradictory measurements are refused, never arbitrated.**  Two evidence
+  entries for the same criterion that disagree (including entries that differ
+  only by surrounding whitespace), or two registered probes that return opposite
+  booleans, leave the criterion ``UNVERIFIED`` with the contradiction named.
+  Picking a winner silently is fabrication by either name.
+- **A report covers its criteria exactly once.**  A report that names the same
+  criterion more than once is refused: coverage is not a quantity that can be
+  inflated by repeating a row.
 """
 
 from __future__ import annotations
@@ -55,6 +63,7 @@ class CriterionVerdict(StrEnum):
 REASON_NO_CRITERIA = "mission has no acceptance criteria to evaluate"
 REASON_NOT_EVALUATED = "acceptance criteria were not all evaluated"
 REASON_NOT_MET = "one or more acceptance criteria were evaluated and did not hold"
+REASON_DUPLICATE_COVERAGE = "acceptance report covers a criterion more than once"
 
 
 @dataclass(frozen=True)
@@ -135,7 +144,15 @@ class AcceptanceReport:
 
     @property
     def passed(self) -> bool:
-        return self.all_evaluated and self.all_hold
+        """The pass fact is exactly ``refusal_reason() is None``.
+
+        Deriving it from the refusal check rather than recomputing
+        ``all_evaluated and all_hold`` here keeps the two from ever
+        disagreeing: a report this module would refuse cannot also report
+        itself as passed through any other door (``to_dict``, the mission
+        journal's ``passed`` field, a caller reading the property).
+        """
+        return self.refusal_reason() is None
 
     @property
     def unevaluated(self) -> list[str]:
@@ -149,11 +166,31 @@ class AcceptanceReport:
         """Why this report is not a pass, or ``None`` when it is."""
         if not self.criteria:
             return REASON_NO_CRITERIA
+        duplicated = self._duplicated_criteria()
+        if duplicated:
+            return f"{REASON_DUPLICATE_COVERAGE}: {', '.join(duplicated)}"
         if not self.all_evaluated:
             return f"{REASON_NOT_EVALUATED}: {len(self.unevaluated)} of {len(self.criteria)} unevaluated"
         if not self.all_hold:
             return f"{REASON_NOT_MET}: {len(self.not_met)} of {len(self.criteria)} failed"
         return None
+
+    def _duplicated_criteria(self) -> list[str]:
+        """Criteria named by more than one result, in first-seen order.
+
+        Compared on stripped text because evidence matching is
+        whitespace-insensitive: ``"tests pass"`` and ``" tests pass "`` are the
+        same criterion, so a report counting them as two rows is double-counting
+        one measurement.
+        """
+        seen: set[str] = set()
+        duplicated: list[str] = []
+        for result in self.criteria:
+            key = str(result.criterion).strip()
+            if key in seen and key not in duplicated:
+                duplicated.append(key)
+            seen.add(key)
+        return duplicated
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -171,8 +208,21 @@ class AcceptanceReport:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> AcceptanceReport:
+        raw_criteria = data.get("criteria", []) or []
+        if not isinstance(raw_criteria, (list, tuple)):
+            # A corrupt payload (missions.json is a local JSON file) must stay
+            # visible rather than crash the loader or read as an empty report.
+            # One unreadable blob becomes one UNVERIFIED row, so the report
+            # fails closed and the caller sees the junk it could not parse.
+            raw_criteria = [raw_criteria]
+        criteria: list[CriterionResult] = []
+        for item in raw_criteria:
+            if isinstance(item, Mapping):
+                criteria.append(CriterionResult.from_dict(item))
+            else:
+                criteria.append(CriterionResult(criterion=str(item), verdict=CriterionVerdict.UNVERIFIED))
         return cls(
-            criteria=[CriterionResult.from_dict(item) for item in data.get("criteria", []) or []],
+            criteria=criteria,
             evaluator=str(data.get("evaluator", "none")),
             generated_at=float(data.get("generated_at", 0.0) or 0.0),
             report_id=str(data.get("report_id", "")),
@@ -203,14 +253,21 @@ def evaluate_acceptance(
     entry stays UNVERIFIED — it is never assumed true, and it never silently
     disappears from the report.  Evidence entries that match no criterion are
     reported as notes so a typo in a key cannot masquerade as coverage.
+
+    Two entries for the same criterion that measure **different** booleans
+    (including keys that differ only by surrounding whitespace) are a
+    contradiction: no value is picked for it, the criterion stays UNVERIFIED,
+    and the contradiction is named in the notes.
     """
-    normalized: dict[str, bool] = {}
+    measurements: dict[str, list[bool]] = {}
     invalid: list[str] = []
     for key, value in evidence.items():
         if type(value) is not bool:
             invalid.append(str(key).strip())
             continue
-        normalized[str(key).strip()] = value
+        measurements.setdefault(str(key).strip(), []).append(value)
+    contradictory = sorted(key for key, values in measurements.items() if any(value != values[0] for value in values))
+    normalized: dict[str, bool] = {key: values[0] for key, values in measurements.items() if key not in contradictory}
     results: list[CriterionResult] = []
     for criterion in criteria:
         key = str(criterion).strip()
@@ -231,6 +288,8 @@ def evaluate_acceptance(
     all_notes = list(notes or [])
     if invalid:
         all_notes.append(f"evidence for {len(invalid)} criterion key(s) was not a boolean measurement and was ignored: {sorted(invalid)}")
+    if contradictory:
+        all_notes.append(f"contradictory measured evidence for {len(contradictory)} criterion key(s); no value was assumed and the criterion stays UNVERIFIED: {contradictory}")
     if unused:
         all_notes.append(f"evidence supplied for {len(unused)} criterion key(s) that match no criterion: {sorted(unused)}")
     return AcceptanceReport(criteria=results, evaluator=evaluator, notes=all_notes)
@@ -516,7 +575,14 @@ class AcceptanceRegistry:
             return sorted(self._evaluators)
 
     def evaluate(self, criteria: list[str]) -> AcceptanceReport:
-        """Run every registered probe; any ``None``/error leaves a criterion UNVERIFIED."""
+        """Run every registered probe; any ``None``/error leaves a criterion UNVERIFIED.
+
+        Every probe is consulted for every criterion — the first decidable
+        answer does not end the search.  If two probes measure the same
+        criterion and disagree, no value is picked: the contradiction is named
+        in the notes and the criterion stays UNVERIFIED, exactly as two
+        contradictory evidence entries would.
+        """
         with self._lock:
             evaluators = dict(self._evaluators)
         if not evaluators:
@@ -525,6 +591,7 @@ class AcceptanceRegistry:
         notes: list[str] = []
         for criterion in criteria:
             key = str(criterion).strip()
+            answers: dict[str, bool] = {}
             for name, probe in sorted(evaluators.items()):
                 try:
                     measured = probe(criterion)
@@ -536,11 +603,15 @@ class AcceptanceRegistry:
                 if type(measured) is not bool:
                     notes.append(f"evaluator {name!r} returned {type(measured).__name__} for criterion {criterion!r}; expected bool or None")
                     continue
-                evidence[key] = measured
-                break
+                answers[name] = measured
+            distinct = set(answers.values())
+            if len(distinct) > 1:
+                detail = ", ".join(f"{name}={answers[name]}" for name in sorted(answers))
+                notes.append(f"evaluators disagree for criterion {criterion!r} ({detail}); no verdict was assumed and it stays UNVERIFIED")
+            elif distinct:
+                evidence[key] = distinct.pop()
             else:
-                if evaluators:
-                    notes.append(f"no evaluator could decide criterion {criterion!r}; it stays UNVERIFIED")
+                notes.append(f"no evaluator could decide criterion {criterion!r}; it stays UNVERIFIED")
         report = evaluate_acceptance(criteria, evidence, evaluator="+".join(sorted(evaluators)), notes=notes)
         return report
 
@@ -556,10 +627,11 @@ def get_acceptance_registry() -> AcceptanceRegistry:
 def assert_acceptance_passed(report: AcceptanceReport | None) -> AcceptanceReport:
     """Return ``report`` when it is a real pass, else raise with the real reason.
 
-    A ``None`` report, an empty report, a report with an un-evaluated criterion
-    and a report with a failed criterion are all refused, each with its own
-    reason.  Nothing here can be satisfied by a criterion that was never
-    measured.
+    A ``None`` report, an empty report, a report that names a criterion more
+    than once, a report with an un-evaluated criterion and a report with a
+    failed criterion are all refused, each with its own reason.  Nothing here
+    can be satisfied by a criterion that was never measured, and coverage
+    cannot be inflated by repeating a row.
     """
     if report is None:
         raise AcceptanceNotSatisfied(REASON_NO_CRITERIA)
@@ -585,6 +657,7 @@ __all__ = [
     "CriterionVerdict",
     "EvidenceKind",
     "EvidenceRecord",
+    "REASON_DUPLICATE_COVERAGE",
     "REASON_NO_CRITERIA",
     "REASON_NOT_EVALUATED",
     "REASON_NOT_MET",
