@@ -10,10 +10,14 @@ came from. Claims I could not verify are marked **UNVERIFIED**.
 > Driver** is the one external driver worth wiring in, and exactly what that wiring
 > does and does not prove.
 >
-> **What it is not.** Evidence that Cua Driver runs. No `cua-driver` binary was
-> executed in this environment; the integration shipped alongside this document is a
-> *disabled-by-default configuration entry plus a contract test*. Runtime behaviour is
-> **UNVERIFIED here** and the setup runbook below is the thing that would verify it.
+> **What it is not.** A claim that every surface works everywhere. The integration is a
+> *disabled-by-default configuration entry plus a contract test*, and the runtime
+> behaviour **was measured on one Windows 11 host** (§3.3) with `cua-driver 0.34.0`
+> installed and the daemon running — including a real screenshot captured, real text
+> typed into a real window, and `6 × 7 = 42` computed in a Calculator that never took
+> focus. macOS and Linux were **not** measured; the setup runbook in §7 is the thing
+> that would verify them, and the live suite in §9 is the thing that re-verifies this
+> host.
 
 ---
 
@@ -38,7 +42,10 @@ came from. Claims I could not verify are marked **UNVERIFIED**.
    in `extensions_config.example.json`, disabled, mirroring the `browser-use` block.
    Alpha's governance layer then classifies every `cua-driver_*` tool as an elevated
    (untrusted-source) tool by default, so an operator must opt into auto-approval
-   rather than out of it. See §6.
+   rather than out of it. See §6. **This path is runtime-verified on Windows** (§3.3):
+   59 tools discovered through Alpha's own loader, a real screenshot captured to a real
+   PNG, and real text typed into a real edit control and read back from the control's
+   own value.
 5. **Do not install its AGPL extensions.** `cua-perception` (AGPL-3.0-only) and the
    optional `cua-som` package (AGPL-3.0-or-later) stay out; Cua Spaces apps are
    FSL-1.1-MIT source-available, not MIT. Only the driver itself is MIT. See §4.1.
@@ -120,7 +127,10 @@ executes one bounded class of action.
 
 The macOS reference page counts **56 tools**; the count is per-platform (several
 pointer tools are Linux-only, `debug_window_info` is Windows-only), so treat 56 as the
-macOS ceiling, not a portable number. Two properties matter more than the count:
+macOS ceiling, not a portable number. **Measured on this integration's development host
+(Windows 11, `cua-driver 0.34.0`): 59 tools** — including a `browser_*` family
+(`browser_navigate`, `browser_click`, `browser_type`, …) that the reference page groups
+separately. Two properties matter more than the count:
 
 - **Grounding is token-based, not coordinate-only.** Input tools address an
   `element_token` from a just-observed window snapshot, which is the same shape as
@@ -129,6 +139,29 @@ macOS ceiling, not a portable number. Two properties matter more than the count:
 - **`verify_state` is deterministic.** Bounded predicates checked against one exact
   window, i.e. the external driver has its own "did that actually happen" primitive.
   Alpha should consume that rather than re-deriving success from a happy-path return.
+
+**Two gaps between the driver's design and what Alpha's tool surface can express**
+(both measured, see §3.3). The driver's preferred addressing forms —
+`element_token`, and the `capture_id` that admits pixel coordinates against a capture —
+arrive in MCP `structuredContent`. LangChain's adapter keeps that only as an
+*artifact*, and langchain-core drops it when the tool is invoked, so through Alpha's
+`get_mcp_tools()` surface **the model never sees a token or a capture id**. It sees the
+Markdown rendering of the tree, which carries element indices and automation ids but no
+handles. Consequences, in order of usefulness:
+
+| What the model can still do | Tool form |
+| --- | --- |
+| Invoke a menu by its label path | `invoke_menu(pid, window_id, path=["File", "Save"])` |
+| Send keys / chords to a window | `press_key`, `hotkey` (background first, `foreground` only on refusal) |
+| Click / type / scroll / drag by **pixel coordinates** | `click`, `type_text`, `scroll`, `drag` with `x, y` |
+| Read state and take screenshots | `get_window_state`, `get_desktop_state`, `verify_state`, `zoom` |
+
+Pixel actions need a screenshot snapshot taken on the **same MCP session** first, which
+is why the persistent stdio session pool matters (§3.3). `parse_visual_regions` — the
+one tool that would turn a screenshot into labelled regions without a vision model —
+is the AGPL `cua-perception` extension and is **not installed** (§4); on a host without
+it the tool answers honestly with *"the optional cua-perception extension is not
+installed"*.
 
 ### 3.2 Runtime and permission model
 
@@ -153,6 +186,66 @@ macOS ceiling, not a portable number. Two properties matter more than the count:
 - **Optional `cua-mcp-filter` wrapper** exists upstream as an allow-list shim over the
   tool set. Alpha does not need it: `tool_search`/routing plus the governance gate
   already bound what the model can see and do.
+
+### 3.3 Verified on a real desktop (2026-10-10)
+
+Everything above is upstream documentation. This section is what was actually observed
+on a Windows 11 host with `cua-driver 0.34.0` installed, driving Alpha through
+`get_mcp_tools()`. It is the difference between a design that reads correctly and one
+that works.
+
+**Verified working, end to end**
+
+| Observation | Evidence |
+| --- | --- |
+| Alpha's MCP loader connects to the real stdio server and publishes 59 `cua-driver_*` tools | `test_alpha_mcp_loader_publishes_real_cua_driver_tools` |
+| A real PNG screenshot of a real window is captured to disk (681×364, ~10 KB) | parsed IHDR of the file `get_window_state` wrote |
+| Typed text at pixel coordinates lands in a real Win32 `EDIT` control | the control's own value read back from the UIA tree |
+| The target app itself confirms what landed | the helper's window title, mirrored from the edit's value |
+| `6 × 7 = 42` computed in Calculator with the window never focused | four background UIA invokes, then `verify_state` → `satisfied`, `stable: true` |
+| A second screenshot after typing differs from the first | byte comparison of the two PNGs |
+
+**The session requirement is the load-bearing detail.** The driver refuses coordinate
+actions with *"No current snapshot for this window contains a screenshot owned by this
+session"* unless the capture and the action share one MCP session. A bare
+`langchain_mcp_adapters` `MultiServerMCPClient` opens a **new session per call**, so
+through that client *every* pixel action fails — a truthful refusal, since the capture
+really did belong to a session that no longer exists. Alpha's `get_mcp_tools()` wraps
+stdio tools in a persistent session pool scoped by `(server_name, user_id:thread_id)`,
+which is what makes capture-then-act work on the Gateway path. Any future direct
+`MultiServerMCPClient` use of this driver must hold one session open.
+
+**Refusals that are correct behaviour, not bugs** (all observed)
+
+| Refusal | Why it is right |
+| --- | --- |
+| `kill_app` → *"standard mode may terminate only a process proven to have been launched by this Cua runtime"* | Intervening in a process the runtime cannot vouch for is exactly what an MCP tool must not do. It refused on a host whose Calculator window this integration never opened — which is what kept the user's own window alive. |
+| `launch_app(start_minimized: true)` → *"Windows did not grant the foreground lock required to prevent the new process from activating"* | The driver refuses rather than pretending it can hide a launch it cannot control. |
+| Pixel input on a `TkTopLevel` → *"Background delivery is not available for target window class"* | Tk's input stack drops posted events; the driver says so instead of reporting a click that never arrives. |
+| Stale `element_token` → *"call get_window_state again to refresh"* | Tokens are per-snapshot by design; a reused handle would address whatever the index now points at. |
+| `parse_visual_regions` → *"the optional cua-perception extension is not installed"* | The AGPL extension is absent by choice (§4), and the tool does not fake a substitute. |
+
+**Honesty the driver models well, and Alpha should copy**
+
+- Clicks return `effect: "unverifiable"` — the driver will not claim a click took effect.
+- `type_text` over PostMessage returns *"not verified — could not read the focused field
+  back"*; through `element_token` it returns *"verify: confirmed"*. Same action, two
+  different truth labels.
+- `verify_state` returns **satisfied / unsatisfied / unknown**, and its own description
+  states unknown never implies success.
+- `get_window_state` that invalidates a snapshot says so: *"Invalidated snapshots
+  s00000002: their element_tokens are stale."*
+
+**Reproduce it**
+
+```bash
+cua-driver --version
+cua-driver doctor                 # binary, grants, interactive session
+cua-driver serve                  # daemon; the MCP path proxies to it on Windows
+cua-driver call list_apps
+# then, from backend/:
+ALPHA_RUN_LIVE_TESTS=1 PYTHONPATH=. uv run pytest tests/test_cua_driver_live_mcp.py -v -s
+```
 
 ---
 
@@ -223,6 +316,10 @@ A `cua-driver` stdio entry in `extensions_config.example.json`, next to `browser
 Contract-pinned by `backend/tests/test_cua_driver_mcp_integration.py`, which mirrors
 `test_browser_use_mcp_integration.py`: exact command/args, disabled default,
 prefixing, routing keywords, timeout floors, description honesty.
+
+A second file, `backend/tests/test_cua_driver_live_mcp.py`, is opt-in and drives the real
+desktop (discovery, a real screenshot, real typing, and the two refusals above). It is
+not part of `make test`; see §3.3 and §9.
 
 ### 6.2 The five decisions and why
 
@@ -302,9 +399,14 @@ means:
 Order matters; each step has a check.
 
 1. **Install the driver** (Windows): `irm https://cua.ai/driver/install.ps1 | iex`,
-   then `cua-driver --version` and `cua-driver doctor`.
-2. **Confirm it can see the desktop:** `cua-driver call list_apps`. If this fails,
-   no MCP wiring will help.
+   then `cua-driver --version` and `cua-driver doctor`. `doctor` is the one check that
+   names a missing grant; if it cannot see an interactive desktop session, nothing
+   downstream will work.
+2. **Start the daemon and confirm it can see the desktop:**
+   `cua-driver serve` (autostart is registered at install, so this is usually already
+   running after a logon), then `cua-driver call list_apps`. If this fails, no MCP
+   wiring will help. On Windows the MCP path proxies to this daemon, so a stopped daemon
+   is the first thing to check when a call returns nothing.
 3. **Enable the server** — either copy the `cua-driver` block from
    `extensions_config.example.json` into your `extensions_config.json` and set
    `"enabled": true`, **or** set
@@ -313,31 +415,61 @@ Order matters; each step has a check.
    (hot reload), but the driver binary must be on the Gateway's `PATH`.
 4. **Confirm discovery:** `GET /api/mcp/config` should list the server enabled; a
    session should surface `cua-driver_*` tools.
-5. **Make one bounded, observable call** and read the result back through a
-   *separate* observation (`get_window_state` or Alpha's own `desktop_screenshot`),
-   not through the action's own return value. A completed call is not a verified
-   effect.
-6. **Decide governance per tool** in `config.yaml -> tool_governance` if
+5. **Prove the control loop on a disposable target before pointing it at anything that
+   matters.** The upstream quickstart's recipe, verified on this host
+   (§3.3): `launch_app` Calculator by AUMID
+   (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), `get_window_state` to index it,
+   `click` the `Six` / `Multiply by` / `Seven` / `Equals` controls with
+   `delivery_mode: background`, then `verify_state` for the display reading `42`.
+   Windows Calculator repeats the operand on `=` with no second operand, so
+   `6 7 × =` yields 4489; `6 × 7 =` yields 42. That is Calculator's behaviour, not a
+   driver fault.
+6. **Make one bounded, observable call in your own workflow and read the result back
+   through a *separate* observation** (`get_window_state`, `verify_state`, or Alpha's
+   own `alpha.computer_use.screen.capture_screenshot`), not through the action's own
+   return value. A completed call is not a verified effect.
+7. **Decide governance per tool** in `config.yaml -> tool_governance` if
    approval-per-click is too heavy for your use case — explicitly, per tool name.
 
 If any step fails, the honest status is "not working", with the failing step named.
+
+**Two operational facts that will cost time otherwise.** `launch_app` does not quote
+spaces in `additional_arguments`, so a helper script under a user directory will not
+launch through it; and on a uv-managed venv `python.exe` is a redirector, so the pid the
+launcher reports is not the pid that owns the window. Both are why the live test starts
+its own helper and targets the pid the window listing reports.
 
 ---
 
 ## 8. Honest limits
 
-- **No runtime evidence in this worktree.** `cua-driver` was not installed or executed
-  here; the tool counts, permission-mode names and install commands above are read
-  from upstream docs retrieved 2026-10-09 and could drift. The test suite pins the
-  *configuration contract*, not the driver's behaviour.
-- **Platform columns differ per tool.** The 56-tool figure is the macOS reference
-  page; Windows/Linux expose subsets. Do not quote a single tool count as portable.
+- **What is verified, and where.** §3.3 was measured on one host (Windows 11,
+  `cua-driver 0.34.0`, 1920×1080 @1.25) with the driver installed and the daemon
+  running. The verification is reproducible through
+  `backend/tests/test_cua_driver_live_mcp.py`, which is opt-in and skips itself without
+  the binary. It was **not** measured on macOS or Linux, where the permission model and
+  the delivery paths differ (§3.2), so nothing here should be read as a cross-platform
+  claim.
+- **The tool surface is verified only as far as these calls went.** Discovery, screenshot
+  capture, window/detail reads, pixel typing, `invoke_menu`, `press_key`, `hotkey`,
+  `verify_state`, `launch_app`, `kill_app` and a browser-adjacent tool list were all
+  exercised. The `browser_*` family, `drag`, `scroll`, clipboard, sessions, recording and
+  the config tools were not — an untested tool is an unknown, not a working one.
+- **`element_token` and `capture_id` are unreachable through Alpha's tool surface**
+  (§3.1). The driver's preferred, verifiable addressing form cannot be used by an Alpha
+  model until something surfaces MCP `structuredContent`. The pixel path works, but it
+  is the weaker of the two: the driver itself prefers tokens and labels PostMessage
+  typing `not verified`.
+- **Platform columns differ per tool.** The 56-tool figure is the macOS reference page
+  and the 59-tool figure is one Windows build. Do not quote a single tool count as
+  portable.
 - **`standard` permission mode allows input to every application.** That is upstream's
   default and it is deliberately visible in the example block; `bounded` needs a
   capability manifest Alpha does not ship.
-- **Foreground/background behaviour is platform-dependent** ("when the app and
-  platform support it" — upstream's own wording). Windows background delivery is not
-  claimed here as measured.
+- **Background delivery is target-dependent.** Where the app's input stack drops posted
+  events the driver refuses and names the class (`TkTopLevel`, Chromium content, …);
+  the `foreground` escalation exists, is honest that it briefly steals focus, and is
+  deliberately not used anywhere in this integration's tests.
 - **No benchmark claim.** Nothing in this document asserts an OSWorld-style score for
   this integration; the benchmark-trust audit in
   [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) explains why
@@ -349,6 +481,20 @@ If any step fails, the honest status is "not working", with the failing step nam
   exact command/args, `enabled: false`, prefixing, routing keywords, timeout floors,
   `$`-style env expansion hygiene, and a description that names the governance
   reality and the sentinel gap rather than implying a safety net that does not exist.
+- `backend/tests/test_cua_driver_live_mcp.py` — opt-in real-computer control
+  (`ALPHA_RUN_LIVE_TESTS=1`, Windows, driver installed). Four cases, each of which was
+  observed to fail *before* it passed, which is why they exist:
+  1. Alpha's loader publishes the real prefixed tool set over real stdio.
+  2. A real PNG is captured, text typed at pixel coordinates lands in a real edit
+     control, and the result is confirmed from the control's own value and the mirrored
+     window title — never from the typing call's return value, which the driver labels
+     `not verified`.
+  3. `verify_state` reports no satisfied verdict for a widget that does not exist.
+  4. `kill_app` refuses a process the runtime cannot prove it launched, and the target
+     is still alive afterwards.
+  Its target is a Win32 helper this file owns (§3.3), its screenshots are verified by
+  parsing the PNG rather than trusting a size, and its cleanup terminates a process
+  rather than closing a window, so it can never raise a save prompt.
 - Existing coverage this document leans on and does not modify:
   `backend/tests/test_browser_use_mcp_integration.py` (the pattern),
   `backend/tests/test_docs_claim_honesty.py` and

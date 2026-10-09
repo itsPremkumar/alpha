@@ -822,12 +822,17 @@ exactly-once execution.
   typed text — which are re-observed and locally resolved before a sentinel-guarded
   dispatch; low-confidence, stale or shadow decisions dispatch nothing. Disabled by
   default.
-- **Cua Driver over MCP (opt-in, external)** — a disabled-by-default `cua-driver`
+- **Cua Driver over MCP (opt-in, external)** - a disabled-by-default `cua-driver`
   stdio block adds cross-platform full-desktop control (per-window accessibility
-  snapshots, background pointer/keyboard input, clipboard, app/window lifecycle)
-  from the MIT Cua Driver binary Alpha does not vendor or install. Its MCP tools
-  default to the elevated ask-per-call governance class, and SentinelGuard does not
-  wrap MCP-delivered input. Research, licensing table and runbook:
+  snapshots plus a real screenshot, background pointer/keyboard input, clipboard,
+  app/window lifecycle, deterministic `verify_state` predicates) from the MIT Cua
+  Driver binary Alpha does not vendor or install. Runtime-verified on Windows 11 with
+  `cua-driver 0.34.0`: 59 tools discovered through Alpha's own MCP loader, a window
+  screenshot written to a real PNG, and text typed at pixel coordinates read back from
+  the target's own value, with `6 x 7 = 42` computed in a Calculator that never took
+  focus. Its MCP tools default to the elevated ask-per-call governance class, and
+  SentinelGuard does not wrap MCP-delivered input. Research, licensing table, verified
+  behaviour and runbook:
   [docs/RESEARCH_COMPUTER_USE_CUA.md](docs/RESEARCH_COMPUTER_USE_CUA.md).
 
 → [docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md) ·

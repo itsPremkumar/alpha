@@ -84,7 +84,7 @@ APEX session, mode, and goal snapshots use same-host local file locking; goal de
 ## Plans and research
 
 - [Agent landscape and roadmap](AGENT_LANDSCAPE_AND_ROADMAP.md): research survey and roadmap for the open-source agent landscape.
-- [Computer-use research](RESEARCH_COMPUTER_USE_CUA.md): Alpha's native sentinel-guarded desktop stack, the open CUA landscape, and the disabled-by-default Cua Driver MCP integration with its licensing and governance boundaries.
+- [Computer-use research](RESEARCH_COMPUTER_USE_CUA.md): Alpha's native sentinel-guarded desktop stack, the open CUA landscape, and the disabled-by-default Cua Driver MCP integration with its licensing and governance boundaries, plus the behaviour measured on a real Windows desktop (59 tools, a real screenshot, real typed input, and the refusals the driver returns).
 - [Unified integration plan](ALPHA_UNIFIED_INTEGRATION_PLAN.md): local-only integration sequencing.
 - [Implementation matrix](IMPLEMENTATION_MATRIX.md): living production status matrix.
 - [Multi-agent project collaboration plan](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md): enhanced collaboration plan.
