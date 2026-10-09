@@ -37,6 +37,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
@@ -47,6 +48,63 @@ DEFAULT_READ_LIMIT = 1000
 #: Longest grep line preview retained in a :class:`GrepMatch`; longer lines are
 #: truncated with an explicit marker instead of being carried whole.
 GREP_LINE_PREVIEW_CHARS = 1000
+
+#: Deepest workspace path accepted by every backend (``/a/b/c/d/e/f/g/h``).
+#: A bound, not a clamp: a deeper path is refused so a pathological write
+#: cannot turn the rendered index into an unreadable wall of prefixes.
+MAX_PATH_DEPTH = 8
+
+#: Longest workspace path accepted by every backend, in characters.
+MAX_PATH_CHARS = 200
+
+#: Longest single path component (file or directory name) accepted.
+MAX_COMPONENT_CHARS = 64
+
+
+def normalize_workspace_parts(path: str, *, allow_root: bool = False) -> list[str]:
+    """Split a workspace path into validated components (fail-closed).
+
+    The one path rule every backend shares, so the disk-backed
+    :class:`LocalWorkspace` and the in-state :class:`StateWorkspace` cannot
+    drift apart on what ``..`` or ``C:`` means. Backslashes normalise to ``/``
+    first so a Windows-style path is either accepted or refused by the same
+    rule, never silently reinterpreted.
+
+    ``allow_root=True`` permits ``"/"`` and returns ``[]``. Only the listing
+    roots need it: every *file* path must name at least one component, and a
+    backend that silently accepted ``"/"`` as a file would turn a listing into a
+    read of nothing.
+
+    Raises:
+        WorkspacePathError: the path is malformed, escapes the root, uses a
+            drive/stream component, exceeds a bound, or names no component.
+    """
+    raw = str(path).replace("\\", "/")
+    if len(raw) > MAX_PATH_CHARS:
+        raise WorkspacePathError(f"workspace path exceeds {MAX_PATH_CHARS} characters: {path!r}")
+    parts: list[str] = []
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            raise WorkspacePathError(f"'..' is not allowed in workspace paths: {path!r}")
+        if ":" in part:
+            raise WorkspacePathError(f"drive/stream components are not allowed in workspace paths: {path!r}")
+        if len(part) > MAX_COMPONENT_CHARS:
+            raise WorkspacePathError(f"path component exceeds {MAX_COMPONENT_CHARS} characters in {path!r}")
+        parts.append(part)
+    if not parts:
+        if allow_root:
+            return []
+        raise WorkspacePathError(f"a workspace path must name at least one component: {path!r}")
+    if len(parts) > MAX_PATH_DEPTH:
+        raise WorkspacePathError(f"workspace path exceeds {MAX_PATH_DEPTH} components: {path!r}")
+    return parts
+
+
+def join_workspace_path(parts: Sequence[str]) -> str:
+    """Render validated components back into the canonical ``/a/b`` form."""
+    return "/" + "/".join(parts)
 
 
 class WorkspaceError(RuntimeError):
@@ -147,17 +205,9 @@ class LocalWorkspace:
 
     @staticmethod
     def _relative_parts(path: str) -> list[str]:
-        raw = str(path).replace("\\", "/")
-        parts: list[str] = []
-        for part in raw.split("/"):
-            if part in ("", "."):
-                continue
-            if part == "..":
-                raise WorkspacePathError(f"'..' is not allowed in workspace paths: {path!r}")
-            if ":" in part:
-                raise WorkspacePathError(f"drive/stream components are not allowed in workspace paths: {path!r}")
-            parts.append(part)
-        return parts
+        # ``allow_root`` because ``_resolve`` already maps "no components" to the
+        # workspace root itself, which is what a directory listing addresses.
+        return normalize_workspace_parts(path, allow_root=True)
 
     def _resolve(self, path: str) -> Path:
         parts = self._relative_parts(path)
@@ -267,9 +317,7 @@ class LocalWorkspace:
         if count == 0:
             raise WorkspaceConflictError(f"'old' string not found in {display!r}")
         if count > 1 and not replace_all:
-            raise WorkspaceConflictError(
-                f"'old' string occurs {count} times in {display!r}; pass replace_all=True to replace every occurrence"
-            )
+            raise WorkspaceConflictError(f"'old' string occurs {count} times in {display!r}; pass replace_all=True to replace every occurrence")
         self._write_sync(path, text.replace(old, new))
 
     def _delete_sync(self, path: str) -> None:
@@ -392,7 +440,4 @@ class LocalWorkspace:
         return await asyncio.to_thread(self._grep_sync, pattern, path, max_results)
 
     async def execute(self, command: str, cwd: str | None = None) -> str:
-        raise WorkspaceUnsupported(
-            "LocalWorkspace does not run commands (not implemented by design); "
-            "shell execution lives in alpha.sandbox (the 'bash' tool / Sandbox.execute_command)"
-        )
+        raise WorkspaceUnsupported("LocalWorkspace does not run commands (not implemented by design); shell execution lives in alpha.sandbox (the 'bash' tool / Sandbox.execute_command)")

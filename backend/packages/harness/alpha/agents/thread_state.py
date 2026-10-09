@@ -19,6 +19,7 @@ import alpha.checkpoint_patches as _checkpoint_patches  # noqa: F401 - import-ti
 from alpha.agents.goal_state import GoalState
 from alpha.agents.task_continuity.state import TaskNotesChannel, merge_task_notes
 from alpha.config.database_config import DEFAULT_CHECKPOINT_SNAPSHOT_FREQUENCY, CheckpointChannelMode
+from alpha.deepagent.state import WorkingFile, merge_working_files
 from alpha.subagents.status_contract import SUBAGENT_STATUS_VALUES
 
 
@@ -289,6 +290,7 @@ class ThreadState(AgentState):
     promoted: Annotated[PromotedTools | None, merge_promoted]
     delegations: Annotated[list[DelegationEntry], merge_delegations]
     skill_context: Annotated[list[SkillEntry], merge_skill_context]
+    working_files: Annotated[list[WorkingFile], merge_working_files]
     task_notes: Annotated[dict | None, TaskNotesChannel(dict | None, merge_task_notes)]
     task_history: NotRequired[dict | None]
     summary_text: NotRequired[str | None]
@@ -408,6 +410,7 @@ THREAD_STATE_REDUCER_FIELDS = frozenset(
         "promoted",
         "delegations",
         "skill_context",
+        "working_files",
         "task_notes",
     }
 )

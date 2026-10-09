@@ -30,7 +30,7 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 59
+config_version: 60
 
 # ============================================================================
 # Logging
@@ -3028,6 +3028,32 @@ task_continuity:
   max_batches: 32
   max_records_per_batch: 256
   max_record_chars: 16000
+
+# Deep-agent working plane (LangChain "deepagents"' state backend)
+# ----------------------------------------------------------------------------
+# The agent gets its own bounded, thread-scoped scratch filesystem held in graph
+# state — not on disk and not in a sandbox. Write findings, drafts, decisions
+# and open questions here instead of holding them in the message tail, because
+# compaction discards the tail and keeps this plane. Every bound below is a
+# REFUSAL, never a clamp: an over-bounds write names the limit it hit so the
+# model can split the note or delete another file.
+deepagent:
+  # Master switch. When false the tool is never bound and no index is injected,
+  # so the agent behaves exactly as it did before this feature existed.
+  enabled: true
+  # Project the bounded working-plane index (path, size, purpose — never the
+  # body) into every model request. Disable to keep the tools without the
+  # per-step reminder, at the cost of the model guessing what it wrote.
+  inject_index: true
+  # Most files the working plane holds per thread.
+  max_files: 64
+  # Ceiling on one file's content, in bytes. Larger work belongs on disk.
+  max_file_bytes: 32768
+  # Ceiling on the summed size of every working file, in bytes.
+  max_total_bytes: 262144
+  # Ceiling on the per-file one-line purpose the model may declare. 0 disables
+  # summaries and degrades the index to bare paths.
+  max_summary_chars: 160
 
 summarization:
   enabled: true

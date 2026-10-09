@@ -162,6 +162,7 @@ from alpha.tools.builtins import (
     war_room_tool,
     workflow_dag_manage,
 )
+from alpha.tools.builtins.deepagent_tool import append_deepagent_tools
 from alpha.tools.mcp_metadata import tag_mcp_tool
 from alpha.tools.sync import make_sync_tool_wrapper
 
@@ -357,6 +358,11 @@ BUILTIN_TOOLS = [
     # lifecycle (hire/clone/rescope/archive) and the fenced capability
     # acquisition pipeline. Present in BUILTIN_TOOLS so every agent can open a
     # room; the governance and authority checks live inside the tool, not here.
+    #
+    # The deep-agent working plane tool is deliberately NOT in this literal. It
+    # is appended by ``append_deepagent_tools`` inside ``get_available_tools``
+    # when ``deepagent.enabled`` is true, exactly as ``task_note`` is gated on
+    # ``task_continuity.enabled``. Listing it here would make it unconditional.
     war_room_tool,
 ]
 
@@ -500,6 +506,12 @@ def get_available_tools(
     # default-off switch and is dropped here so the model is never offered it.
     if not is_in_process_repl_allowed(config):
         builtin_tools = [t for t in builtin_tools if getattr(t, "name", None) != "python_repl"]
+
+    # The deep-agent working plane is gated on ``deepagent.enabled``, the same
+    # way task_continuity gates ``task_note`` below. The tool object is imported
+    # at module scope but never bound here while the flag is off, so the tool
+    # registry and its reported count describe what the deployment actually has.
+    append_deepagent_tools(builtin_tools, config)
 
     # Add subagent tools only if enabled via runtime parameter
     if subagent_enabled:
