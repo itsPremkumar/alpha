@@ -199,7 +199,7 @@ that works.
 | Observation | Evidence |
 | --- | --- |
 | Alpha's MCP loader connects to the real stdio server and publishes 59 `cua-driver_*` tools | `test_alpha_mcp_loader_publishes_real_cua_driver_tools` |
-| A real PNG screenshot of a real window is captured to disk (681×364, ~10 KB) | parsed IHDR of the file `get_window_state` wrote |
+| A real PNG screenshot of a real window is captured to disk (681×364, ~10 KB) | header magic, IHDR, an `IDAT` chunk, a size floor, and — when Pillow is installed — a pixel check that the capture is not one flat colour |
 | Typed text at pixel coordinates lands in a real Win32 `EDIT` control | the control's own value read back from the UIA tree |
 | The target app itself confirms what landed | the helper's window title, mirrored from the edit's value |
 | `6 × 7 = 42` computed in Calculator with the window never focused | four background UIA invokes, then `verify_state` → `satisfied`, `stable: true` |

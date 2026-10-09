@@ -378,6 +378,47 @@ def _png_dimensions(path: Path) -> tuple[int, int] | None:
     return (width, height) if width and height else None
 
 
+def _screenshot_defect(path: Path) -> str | None:
+    """A reason this PNG is not a meaningful capture, or ``None`` if it is one.
+
+    The header is read by hand so the structural half works with no imaging
+    dependency at all. When Pillow is installed it also checks the *pixels*, which is
+    the half that matters: a header can be perfect while the capture is a flat
+    rectangle of nothing, and that is exactly the failure a size assertion cannot
+    see. When Pillow is absent the check says so rather than implying pixels were
+    inspected.
+    """
+    dimensions = _png_dimensions(path)
+    if dimensions is None:
+        return "not a decodable PNG (bad magic or missing IHDR)"
+    width, height = dimensions
+    if width < 100 or height < 100:
+        return f"unreasonable dimensions {width}x{height}"
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return f"unreadable: {exc}"
+    if len(data) < 1024:
+        return f"only {len(data)} bytes; a real window screenshot is larger"
+    if b"IDAT" not in data:
+        return "no IDAT chunk; the PNG carries no image data"
+
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        with Image.open(path) as img:
+            # This helper's window carries a title bar, a bordered edit control and a
+            # title mirrored from it, so a single flat colour is a blank grab.
+            extrema = img.convert("L").getextrema()
+    except Exception as exc:  # noqa: BLE001 - any decode failure is itself a defect
+        return f"could not be decoded: {type(exc).__name__}: {exc}"
+    if extrema[0] == extrema[1]:
+        return f"the capture is one flat colour (grey {extrema[0]}), i.e. a blank image"
+    return None
+
+
 async def _resolve_window(by_name: dict, real_pid: int, session: str) -> int | None:
     """Poll for the helper's window id, using the driver's own listing."""
     for _ in range(20):
@@ -407,12 +448,8 @@ async def _capture_screenshot(by_name: dict, real_pid: int, window_id: int, targ
         timeout=180,
     )
     assert target.is_file(), "the driver must write the PNG it reports"
-    size = target.stat().st_size
-    assert size >= 1024, f"a real window screenshot is not {size} bytes; the capture did not produce an image"
-    dimensions = _png_dimensions(target)
-    assert dimensions, f"{target} is not a decodable PNG; the capture produced something else"
-    width, height = dimensions
-    assert width >= 100 and height >= 100, f"unreasonable screenshot dimensions {width}x{height}"
+    defect = _screenshot_defect(target)
+    assert defect is None, f"{target.name} is not a usable screenshot: {defect}"
 
 
 # ---------------------------------------------------------------------------
