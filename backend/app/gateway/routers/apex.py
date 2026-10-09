@@ -1229,19 +1229,6 @@ async def session_events(
 
         loop = asyncio.get_running_loop()
         seen: set[int] = set()
-        yield f"event: ready\ndata: {_json.dumps({'session_id': session_id, 'after_seq': after_seq})}\n\n"
-
-        def _replay() -> list[Any]:
-            return store.read_events(session_id, after_seq=after_seq)[:limit]
-
-        try:
-            replayed = await asyncio.to_thread(_replay)
-        except Exception as exc:
-            yield f"event: error\ndata: {_json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n\n"
-            return
-        for event in replayed:
-            seen.add(event.seq)
-            yield f"event: {event.event_type}\ndata: {_json.dumps(event.to_dict())}\n\n"
 
         queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         discloser = _BacklogDiscloser()
@@ -1249,9 +1236,26 @@ async def session_events(
         def _publish(event: Any) -> None:
             loop.call_soon_threadsafe(_enqueue_or_disclose, queue, event, discloser)
 
+        # Subscribe before taking the journal snapshot. Events emitted before
+        # the snapshot are replayed; events emitted after it are queued here.
+        # Sequence dedupe below joins the two streams without a blind window.
         APEX_EVENTS.subscribe(session_id, _publish)
         deadline = loop.time() + MAX_STREAM_SECONDS
         try:
+            yield f"event: ready\ndata: {_json.dumps({'session_id': session_id, 'after_seq': after_seq})}\n\n"
+
+            def _replay() -> list[Any]:
+                return store.read_events(session_id, after_seq=after_seq)[:limit]
+
+            try:
+                replayed = await asyncio.to_thread(_replay)
+            except Exception as exc:
+                yield f"event: error\ndata: {_json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n\n"
+                return
+            for event in replayed:
+                seen.add(event.seq)
+                yield f"event: {event.event_type}\ndata: {_json.dumps(event.to_dict())}\n\n"
+
             while loop.time() < deadline:
                 # Checked on every turn, keepalive included: a drop during a
                 # quiet stretch must be announced at once rather than at the

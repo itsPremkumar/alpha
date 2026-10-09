@@ -616,6 +616,27 @@ class TestEventStream:
         # The tail loop must close rather than run to the production ceiling.
         assert "event: stream_closed" in body
 
+    def test_event_emitted_during_replay_is_not_lost(self, client: TestClient, store: ApexStore, short_stream, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = _create(client)["session"]
+        session_id = session["session_id"]
+        read_events = store.read_events
+        emitted = False
+
+        def read_then_emit(*args, **kwargs):
+            nonlocal emitted
+            replayed = read_events(*args, **kwargs)
+            if not emitted:
+                emitted = True
+                store.emit(session_id, "race.during_replay")
+            return replayed
+
+        monkeypatch.setattr(store, "read_events", read_then_emit)
+        with client.stream("GET", f"/api/apex/sessions/{session_id}/events") as response:
+            body = "".join(response.iter_text())
+
+        assert emitted
+        assert "event: race.during_replay" in body
+
     def test_streaming_an_unknown_session_is_404(self, client: TestClient, store: ApexStore) -> None:
         assert client.get("/api/apex/sessions/apx-nope/events").status_code == 404
 
