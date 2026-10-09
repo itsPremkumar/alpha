@@ -188,63 +188,24 @@ fixed minimal graph and ignores presets. Tests: `tests/test_agent_presets.py`.
 
 ### Self-inventory (`workflow/registry/`, `intelligence/self_inventory.py`, `knowledge/code_index.py`, `ops/config_diagnosis.py`)
 
-Eleven read-only registries behind one `list` / `describe` / `health` protocol:
-`identity`, `tools`, `skills`, `mcp`, `models`, `bots`, `commands`,
-`capabilities`, `engines`, `wiring`, `memory`. **One source of truth per fact,
-never a re-derivation.** `engines` and `wiring` read the generated
-`contracts/feature_manifest.json` through the single `manifest_source` loader;
-`models` reads the live `AppConfig`. A registry that recomputed any of those
-counts itself would be a second, unreviewed answer to a question
-`scripts/check_generated_drift.py` already settles — the drift class this repo has
-paid for five times (89 → 97 → 99 engines, 127 → 130 → 134 tools, 55 → 57 → 60 → 61
-routers, 8 → 9 loops).
+Eleven read-only registries behind one `list` / `describe` / `health` protocol,
+with `alpha.workflow.registry` the single source per fact: `engines` and `wiring`
+read the generated `contracts/feature_manifest.json` through the one
+`manifest_source` loader rather than recomputing a count
+`scripts/check_generated_drift.py` already settles.
 
-- **Availability is what the source declares; health is what we probed.** A
-  *declared* model is `available` with `health="unverified"`; an *enabled* MCP
-  server likewise. Nothing here executes what it lists, so `health` is
-  `unverified` on every descriptor and `version` is `None` unless a source declares
-  one (only the runtime identity row does). Collapsing "configured" into "working"
-  is how a status line ends up asserting something nobody checked.
-- **A broken source must not read as an empty one.** `list()`/`describe()` raise
-  `RegistryUnavailable` with the real exception text; the inventory converts that
-  into `status="unavailable"` with `count: null` — **never `0`**. "I could not
-  look" and "I looked and found nothing" lead to opposite decisions.
-- **Availability is per-entry, not per-registry.** `CommandRegistry` gates on
-  `has_handler`, because a catalog row with no handler returns
-  `UNIMPLEMENTED_STATUS`, never `success` — 475 registered commands and 68
-  dispatchable ones are different claims. `BotProfileRegistry` passes
-  `include_archived=False` **explicitly**: `list_bots` defaults it to `True` (right
-  for a roster view, wrong here), and `retire_bot` is a soft delete, so listing an
-  archived Bot advertises a worker that is gone.
-- **`EngineRegistry` falls back to a declared submodule.** A namespace has no
-  `__init__.py` of its own, so `find_spec("alpha.x")` returns `None` for a healthy
-  namespace. Probing only the id would report every namespace as unavailable.
-- **`WiringRegistry` namespaces ids per class** (`router:` / `middleware:` /
-  `loop:`) because the three sections can legitimately contain the same token, and
-  a flat id space lets one class shadow another.
-- **The symbol lookup is query-driven, not a prebuilt index.** A whole-repo index
-  was built first and was unusable: 195s to build, and its cap truncated
-  *alphabetically* inside `alpha/swarm/` so `get_available_tools` returned zero
-  results from an index reporting itself healthy. Completeness now depends only on
-  whether the query string occurs in a file — bytes prefilter, then AST-parse only
-  real hits — and every response carries a `coverage` block. It returns
-  names/signatures/`path:line` but **never a body** (67.8% reuse from an interface
-  map vs 29.2% from a source dump); TypeScript rows are `extraction="regex"` and
-  say so.
-- **`config_diagnosis` is read-only and has no `apply`.** `config.yaml` and
-  `extensions_config.json` are already API-writable under the dual write locks; a
-  model-writable path would be a fourth writer holding the agent's authority rather
-  than the operator's — the same property as "a Bot may configure itself, but may not
-  widen itself". A missing API key reports the **variable name only**. A disabled
-  capability is `info`, because a deliberate operator choice must not train
-  operators to ignore warnings.
+The load-bearing invariants live in the root guide's self-inventory plane
+section and are deliberately **not restated here**: *available* is what a source
+declares while `health` stays `unverified`, a broken source reports `count: null`
+and never `0`, availability is per-entry (`CommandRegistry.has_handler`;
+`BotProfileRegistry`'s explicit `include_archived=False`),
+`EngineRegistry` falls back to a declared submodule because a namespace has no
+`__init__.py`, `alpha.knowledge.code_index` returns names/signatures/`path:line`
+but **never a body**, and `config_diagnosis` is read-only with no `apply`.
 
-The model surface is the single `alpha_capability` tool; it is a **lead-agent**
-tool and is deliberately absent from `SUBAGENT_TOOLS`. HTTP: `GET
-/api/intelligence/inventory`, `GET /api/intelligence/inventory/status`, and the
-widened `GET /api/workflows/system/registries` (whose old bare `[:100]` slice
-silently truncated `commands`/`engines` and now reports `returned` + `truncated`).
-Tests: `backend/tests/test_self_inventory_plane.py`; operations:
+Model surface: the single `alpha_capability` tool, lead-agent-only and absent from
+`SUBAGENT_TOOLS`. HTTP: `GET /api/intelligence/inventory`. Tests:
+`backend/tests/test_self_inventory_plane.py`; operations:
 [docs/SELF_AWARENESS.md](../../../docs/SELF_AWARENESS.md).
 
 ### Invariant Registry (`diagnostics/invariants.py`)
@@ -657,21 +618,56 @@ Tests: `tests/test_workflow_graph_diff.py`, `tests/test_workflow_plan_diff_route
 
 Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay, and append-only plan history. That local adapter, the lease store, and wave concurrency are atomic and restart-recoverable for one Gateway process, not a shared multi-worker lease/exactly-once repository: do not claim cross-process exactly-once execution, and keep the `worker_id` a pid — it is exactly as specific as the guarantee available. Hydration still refuses stale projections; `/recover` is an explicit route, not a relaxation of `/hydrate`. Full operations, API examples, architecture, gap inventory, and the regression suites are in [`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md), [`docs/ALPHA-WORKFLOW-ARCHITECTURE.md`](../../../docs/ALPHA-WORKFLOW-ARCHITECTURE.md), and [`docs/ALPHA-WORKFLOW-CURRENT-STATE.md`](../../../docs/ALPHA-WORKFLOW-CURRENT-STATE.md).
 
-## Governed variation engine boundary
+## Governed variation engine boundary (`avo/`)
 
-`alpha.avo` is the governed-autonomous variation engine, and its layer is the
-answer to one question no part of it could answer before: **whether a proposed
-variation may run at all.** The rule that holds it together is *the model
-proposes, the server disposes* — risk is computed rather than declared, approval
-is required rather than requested, and a tier that did not run is never a tier
-that passed.
+`alpha.avo` already decided *which* variation to try and *whether it looked good
+afterwards*; the governance layer answers the question no part of it could:
+**whether a proposed variation may run at all.** One rule holds the design
+together — **the model proposes, the server disposes.**
+
+- **Risk is computed, never declared.** `policy.py` derives risk from what a
+  proposal touches, what it can undo and what it spends, so a `ProposedAction`
+  cannot lower its own risk by describing itself carefully. `contracts.py` is
+  `extra="forbid"` and digests every field, so a field added between the request
+  and the decision changes the **digest**, not the grant.
+- **Approval is required, not requested.** An action the gate decides needs an
+  operator parks in `WAITING_APPROVAL` with a **non-terminal** `BLOCKED` report,
+  so a parked action and a rejected one stay distinguishable by state rather than
+  prose. There is deliberately **no second complexity ceiling**:
+  `TaskFeatures.estimated_complexity` is it, and
+  `TooComplexForGovernance`/`COMPLEXITY_CEILING` were removed rather than left to
+  race it.
+- **A tier that did not run is never a tier that passed.** `evaluation.py` keeps
+  `skipped` and `inconclusive` separate from `passed`, so a pipeline that
+  short-circuits on the first tier cannot be summarised as a clean sweep.
+- **Every attempt is receipted, denials included.** `receipts.py` is an
+  append-only tamper-evident chain, and the model cannot mint one — so "what
+  happened and why" is a record rather than a retelling.
+- **Profiles re-resolve on resume.** `checkpointing.py` re-resolves capability,
+  evaluator and approval profiles when a run continues, which is what stops a
+  checkpoint from preserving a grant revoked while the run was parked.
+- **Budgets are ceiling-owned.** `budgets.py` reserves, charges, releases and
+  reconciles; there is no `reset` and no `grant_more`, and exhaustion reports the
+  measured figures rather than a rounded-down remainder.
+- **Paths are confined by refusal, not by repair.** `paths.py` normalises first
+  and then refuses traversal, absolute, URL and symlink escapes; a directory grant
+  covers its subtree and nothing outside it.
+- **The router records why, not just that.** `router.py` records every unmet
+  condition as a refusal *reason*, so a run declines with the list of what it
+  needed rather than one opaque no. `lifecycle.py` then restricts transitions to
+  a closed graph, so a model actor can neither enter nor leave a terminal state.
+
+`profiles.py` resolves default-deny profiles **server-side by id**: three path
+lists, one action allow-list and one network policy, where an empty list denies
+everything rather than everything having to be named. `alpha_self_update` is
+present and **`enabled=False`** with `allowed_action_types=[]` — a capability that
+exists but cannot be enabled is more honest than one that is silently reachable,
+and real self-update belongs to the guarded source auto-update contract below.
 
 Three boundaries must not be crossed: `scorer_authority.py` stays server-owned,
-because a candidate that authors its own fitness function is selecting for
-confidence rather than correctness; `commit_gate.py` stays the only writer of a
-promoted version; and nothing here may promote a variation by itself. Contract,
-per-module ownership and the refusal semantics:
-**[packages/harness/alpha/avo/AGENTS.md](avo/AGENTS.md)**. Tests:
+because a candidate that authors its own fitness function selects for confidence
+rather than correctness; `commit_gate.py` stays the only writer of a promoted
+version; and nothing here may promote a variation by itself. Tests:
 `tests/test_avo_governance.py`, `tests/test_avo_governance_layer.py`.
 
 ## Guarded source auto-update contract
