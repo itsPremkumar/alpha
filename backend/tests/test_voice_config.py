@@ -123,9 +123,17 @@ def test_voice_extra_is_bounded_local_runtime_and_root_forwards_it():
     assert voice_dependencies == [
         "faster-whisper>=1.2.1,<2",
         "piper-tts>=1.8.0,<2",
+        "kokoro-onnx>=0.6.1,<0.7",
+        "openwakeword>=0.6,<0.7",
         "rapidocr-onnxruntime>=1.4.4,<2",
         "tokenizers>=0.21,<1",
         "webrtcvad-wheels>=2.0.11,<3",
     ]
-    assert not any(dependency.startswith(("edge-tts", "openwakeword")) for dependency in voice_dependencies)
+    # Still refused: edge-tts is a cloud engine, and this extra is the local-only
+    # runtime (voice.routing.mode == "local_only"). openWakeWord used to be refused
+    # too, because its tflite-runtime transitive had no cp312+ Linux wheel; backend
+    # pyproject's `override-dependencies` now bounds it to `python_full_version <
+    # '3.12'`, so it resolves on every interpreter Alpha supports and the wake
+    # engine belongs in the default voice stack (see the harness pyproject comment).
+    assert not any(dependency.startswith("edge-tts") for dependency in voice_dependencies)
     assert root["project"]["optional-dependencies"]["voice"] == ["alpha-harness[voice]"]

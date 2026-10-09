@@ -50,11 +50,11 @@ def _registered_loop_ids() -> set[str]:
 
 def test_register_default_loops_is_found_and_non_empty() -> None:
     ids = _registered_loop_ids()
-    assert len(ids) == 9, f"expected the nine documented loops, parsed {sorted(ids)}"
+    assert len(ids) == 10, f"expected the ten documented loops, parsed {sorted(ids)}"
 
 
 def test_the_registry_agrees_with_the_generated_manifest() -> None:
-    """The two independent inventories of the same nine loops must match.
+    """The two independent inventories of the same set of loops must match.
 
     `contracts/feature_manifest.json` counts them from the wiring point; this file
     counts them from the registration tuple. Neither is derived from the other, so
