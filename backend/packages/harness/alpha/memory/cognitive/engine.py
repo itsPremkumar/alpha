@@ -209,6 +209,8 @@ class CognitiveMemorySystem:
                         last_executed_at=float(s_dict.get("last_executed_at", 0.0)),
                         failure_reasons=s_dict.get("failure_reasons", []),
                         created_at=s_dict.get("created_at"),
+                        lifecycle=(s_dict.get("lifecycle") or "proposed"),
+                        lifecycle_reason=(s_dict.get("lifecycle_reason") or ""),
                     )
                 for e_dict in data.get("spatio_temporal_events", []):
                     self.spatio_temporal.record_event(

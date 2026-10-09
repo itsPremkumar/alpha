@@ -26,3 +26,32 @@
   `backend/packages/harness/alpha/tools/builtins/cognitive_memory_tool.py:29`.
   Regressions: `backend/tests/test_cognitive_memory_isolation.py` and
   `backend/tests/test_cognitive_memory.py`.
+
+## Procedural-skill lifecycle (`skill_lifecycle.py`)
+
+`ProceduralSkill.success_rate` returns **1.0 when nothing has ever been
+measured**, and that fabricated perfect score used to drive recall, capacity
+trimming, and the persisted snapshot. `success_rate` is therefore a display
+convenience only; ranking and eviction must use `strength`
+(`smoothed_effectiveness`), and any caller that needs to know whether a number
+exists must read `effectiveness`, which is `None` while `evidence_count` is 0.
+
+- `evidence_count` is **derived** (`success_count + failure_count`), never
+  stored, so a restored snapshot cannot drift from its own counts and there is
+  no migration.
+- `skill_lifecycle.evaluate()` derives the state the measurements support and
+  reports why; `transition()` records a reason on the skill and **refuses**
+  illegal moves rather than clamping them. A never-verified skill cannot be
+  promoted, so one lucky run cannot reach `promoted`.
+- `ProceduralSkillMemory.rank_for_recall()` is the honest-scoring twin of
+  `find_matching_skills()`; `lifecycle_summary()` counts derived states, so a
+  skill stored as `promoted` that has since failed every run is counted where its
+  evidence puts it, with the stored value left visible for the disagreement.
+- `_enforce_capacity` evicts by `retirement_priority()`: weakest evidence first,
+  and a skill that is the **only** one able to serve a pattern is held to the
+  end, because dropping it removes a capability instead of freeing a slot.
+- `record_outcome` moves `proposed -> verified` on the first outcome and nothing
+  more; promotion and deprecation are decisions with a sample-size floor that
+  belong to an explicit `evaluate` + `transition` pair.
+
+Regression coverage: `backend/tests/test_cognitive_skill_lifecycle.py`.
