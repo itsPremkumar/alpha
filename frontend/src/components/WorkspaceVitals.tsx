@@ -6,6 +6,7 @@ import {
   Blocks,
   CircleDollarSign,
   CircleHelp,
+  ChevronRight,
   Cpu,
   Database,
   Gauge,
@@ -253,20 +254,75 @@ function Metric({
  * subsystems are answering right now*. One border style and one separator style
  * across all three, so the row scans as three things rather than sixteen.
  */
-function Cluster({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
-  return (
-    <div
-      role="group"
-      aria-label={label}
-      title={title}
-      className="inline-flex items-stretch divide-x divide-border/60 rounded-xl border border-border/60 bg-card/40"
-    >
+/**
+ * A bordered group of related measurements.
+ *
+ * Three clusters are what give the row its hierarchy: *is the backend up and
+ * how loaded is the box*, *how much work has this workspace done*, *which
+ * subsystems are answering right now*. One border style and one separator style
+ * across all three, so the row scans as three things rather than sixteen.
+ *
+ * When `onOpen` is supplied the cluster becomes a real button that opens the
+ * Vitals page, because a strip that only *summarises* is a dead end: the
+ * operator's next question is always "show me", and this is where that lands.
+ * The whole cluster is the target rather than a separate chevron affordance,
+ * so there is exactly one obvious thing to click.
+ */
+function Cluster({
+  label,
+  title,
+  onOpen,
+  children,
+}: {
+  label: string;
+  title: string;
+  onOpen?: () => void;
+  children: React.ReactNode;
+}) {
+  const body = (
+    <>
+      {onOpen && (
+        <span className="self-stretch px-1.5 flex items-center text-muted-foreground/60 group-hover/cluster:text-foreground transition-colors" aria-hidden="true">
+          <ChevronRight className="size-3.5" />
+        </span>
+      )}
       {children}
-    </div>
+    </>
+  );
+
+  if (!onOpen) {
+    return (
+      <div role="group" aria-label={label} title={title} className="inline-flex items-stretch divide-x divide-border/60 rounded-xl border border-border/60 bg-card/40">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open the full Vitals page — ${label}`}
+      title={`${title} Click for the full detail, per endpoint and per subsystem.`}
+      className="group/cluster inline-flex items-stretch divide-x divide-border/60 rounded-xl border border-border/60 bg-card/40 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+    >
+      {body}
+    </button>
   );
 }
 
-export function WorkspaceVitals({ className = "" }: { className?: string }) {
+export function WorkspaceVitals({
+  className = "",
+  onOpenVitals,
+}: {
+  className?: string;
+  /**
+   * Opens the full Vitals page. Passing it turns the strip's clusters into
+   * real navigation: a cluster answers "which thing is this" with one click,
+   * and the page behind it holds every measurement the strip summarises.
+   */
+  onOpenVitals?: () => void;
+}) {
   const [vitals, setVitals] = useState<Vitals | null>(null);
   const [loading, setLoading] = useState(true);
   /**
@@ -341,6 +397,7 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
     <VitalsStrip
       vitals={vitals}
       className={className}
+      onOpenVitals={onOpenVitals}
       onRetryConnectivity={onRetryConnectivity}
       rechecking={rechecking}
       recheckError={recheckError}
@@ -404,12 +461,14 @@ function ConnectivityRetry({
 export function VitalsStrip({
   vitals,
   className = "",
+  onOpenVitals,
   onRetryConnectivity,
   rechecking = false,
   recheckError = null,
 }: {
   vitals: Vitals;
   className?: string;
+  onOpenVitals?: () => void;
   /** Omitted in the pure-render tests, which pass no control at all. */
   onRetryConnectivity?: () => void;
   rechecking?: boolean;
@@ -435,6 +494,7 @@ export function VitalsStrip({
       {/* ── Cluster 1 · is the backend there, and how loaded is the box ─────── */}
       <Cluster
         label="Backend connection"
+        onOpen={onOpenVitals}
         title="Measured live: GET /api/features (reachability), GET /api/ops/version, GET /api/system/vitals (host load), GET /api/ops/network (internet link)."
       >
         <span className="inline-flex items-center px-2.5">
@@ -529,6 +589,7 @@ export function VitalsStrip({
       {/* ── Cluster 2 · how much work this workspace has done ───────────────── */}
       <Cluster
         label="Workspace totals"
+        onOpen={onOpenVitals}
         title={
           s
             ? "Lifetime totals from GET /api/console/stats. These are the server's own counts, not this UI's, and cost is shown only when the server priced it."
@@ -573,6 +634,7 @@ export function VitalsStrip({
       {/* ── Cluster 3 · which subsystems are answering right now ───────────── */}
       <Cluster
         label="Subsystem readiness"
+        onOpen={onOpenVitals}
         title={
           vitals.probesFailed
             ? "Subsystem status: UNAVAILABLE. The probe request itself failed, so readiness is unknown — this is neither 0 of 7 nor 7 of 7, because nobody measured it."

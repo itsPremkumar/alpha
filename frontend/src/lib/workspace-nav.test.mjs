@@ -234,8 +234,7 @@ test("closing the panel clears the query", () => {
   assert.match(SRC, /setPanel\(null\);\s*setQuery\(""\)/, "close resets both the panel and the query");
 });
 
-test("the finder's derivation runs after the list it reads", () => {
-  // THE REGRESSION THIS PINS. The match block was written above
+test("the finder's derivation runs after the list it reads", () => {  // THE REGRESSION THIS PINS. The match block was written above
   // `const secondaryTabs = ...`, and `matchedGroups` reads it. `const` is not
   // hoisted, so every server render threw
   //   ReferenceError: Cannot access 'secondaryTabs' before initialization
@@ -269,4 +268,31 @@ test("the finder's derivation runs after the list it reads", () => {
   );
   assert.ok(secondary < needleAt, "needle is derived from the same list and must follow it too");
   assert.ok(matched < ret, "the derivation must still precede the return that renders it");
+});
+
+test("the Vitals detail view is wired in all four places", () => {
+  // The header vitals strip summarises six measurements and its clusters now
+  // open this view. A view the nav offers but the view registry does not know
+  // silently falls back to `chat`, which is exactly the defect class this
+  // file was written for.
+  const sources = {
+    union: SRC,
+    workspaceView: readFileSync(new URL("./workspace-view.ts", import.meta.url), "utf8"),
+    chatView: readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8"),
+  };
+  for (const [name, src] of Object.entries(sources)) {
+    assert.ok(src.includes("vitals"), `${name} must declare the vitals view`);
+  }
+  assert.match(sources.chatView, /VitalsSection/, "ChatView must import the section");
+  assert.match(sources.chatView, /view === "vitals"/, "ChatView must render a case for it");
+});
+
+test("the vitals strip opens the detail page rather than dead-ending", () => {
+  // A strip that only summarises is a dead end: the operator's next question
+  // is always "show me". The clusters are the target, not a chevron beside
+  // them, so there is one obvious thing to click.
+  const vitals = readFileSync(new URL("../components/WorkspaceVitals.tsx", import.meta.url), "utf8");
+  assert.match(vitals, /onOpenVitals/, "the strip must accept an open handler");
+  assert.match(vitals, /onOpen=\{onOpenVitals\}/, "every cluster must pass it to Cluster");
+  assert.match(vitals, /<button[\s\S]{0,400}onClick=\{onOpen\}/, "Cluster must render a real button that navigates");
 });

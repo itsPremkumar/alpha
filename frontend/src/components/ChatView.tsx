@@ -306,6 +306,13 @@ const SystemSection = dynamic(
     })),
   { loading: () => <SectionFallback /> },
 );
+const VitalsSection = dynamic(
+  () =>
+    import("@/components/sections/VitalsSection").then((m) => ({
+      default: m.VitalsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 const IntegrationSection = dynamic(
   () =>
     import("@/components/sections/IntegrationSection").then((m) => ({
@@ -2944,7 +2951,7 @@ export default function ChatView({
                 view — here it was a second instance of a control the chat view
                 never showed at all. */}
               <div className="flex items-start justify-between gap-3 flex-wrap">
-                <WorkspaceVitals />
+                <WorkspaceVitals onOpenVitals={() => setView("vitals")} />
                 <div className="flex items-center gap-1.5 ml-auto">
                   {/*
                   Clicking the control now opens the provider list rather than
@@ -3324,6 +3331,10 @@ export default function ChatView({
                   threadId={activeThreadId}
                   browserActive={features.browserControl}
                 />
+              </Suspense>
+            ) : view === "vitals" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <VitalsSection />
               </Suspense>
             ) : view === "integration" ? (
               <Suspense fallback={<SectionFallback />}>

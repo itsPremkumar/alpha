@@ -60,6 +60,7 @@ export type WorkspaceView =
   | "projects"
   | "dashboard"
   | "agents"
+  | "vitals"
   | "team"
   | "channels"
   | "workforce"
@@ -118,6 +119,8 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "agents", label: "Agents", icon: <Sparkles className="size-3.5" />, blurb: "Custom personas", category: "operations" },
   { id: "workflows", label: "Workflows", icon: <Workflow className="size-3.5" />, blurb: "Dynamic flows, goals, checkpoints & jobs", category: "operations" },
   { id: "forge", label: "Forge", icon: <Hammer className="size-3.5" />, blurb: "Skill workshop, evolution, policy & benchmarks", category: "operations" },
+
+  { id: "vitals", label: "Vitals", icon: <Gauge className="size-3.5" />, blurb: "Internet speed, memory, CPU, disks and every subsystem reading in full", category: "system" },
 
   // System & Platform
   { id: "system", label: "System", icon: <ServerCog className="size-3.5" />, blurb: "Live status, shortcuts, apps", category: "system" },

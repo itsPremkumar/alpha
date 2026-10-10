@@ -23,6 +23,10 @@ export const WORKSPACE_VIEW_IDS = [
   "dashboard",
   "agents",
   "team",
+  // The full system-and-network monitor behind the header vitals strip. Clicking
+  // a cluster in the strip opens it, so it must resolve from `?view=` like every
+  // other id.
+  "vitals",
   "channels",
   "workforce",
   "system",
