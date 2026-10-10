@@ -117,7 +117,7 @@ _TRANSITIONS: dict[SkillLifecycle, frozenset[SkillLifecycle]] = {
     SkillLifecycle.PROPOSED: frozenset({SkillLifecycle.VERIFIED, SkillLifecycle.RETIRED}),
     SkillLifecycle.VERIFIED: frozenset({SkillLifecycle.PROMOTED, SkillLifecycle.DEPRECATED, SkillLifecycle.RETIRED}),
     SkillLifecycle.PROMOTED: frozenset({SkillLifecycle.DEPRECATED, SkillLifecycle.RETIRED}),
-    SkillLifecycle.DEPRECATED: frozenset({SkillLifecycle.PROMOTED, SkillLifecycle.RETIRED}),
+    SkillLifecycle.DEPRECATED: frozenset({SkillLifecycle.PROMOTED, SkillLifecycle.VERIFIED, SkillLifecycle.RETIRED}),
     SkillLifecycle.RETIRED: frozenset(),
 }
 

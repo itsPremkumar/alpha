@@ -119,6 +119,20 @@ class CognitiveMemorySystem:
         self.save_to_disk()
         return report
 
+    def run_upkeep(self, *, trials: int = 5) -> dict[str, Any]:
+        """One autonomous upkeep pass over this owner's skills and memory.
+
+        Owner-scoped by construction: the system is already resolved to one
+        owner, so a loop sweeping several of them cannot cross that boundary. A
+        pass that cannot verify blocks itself rather than acting on a degraded
+        verdict; see `autonomous_upkeep`.
+        """
+        from alpha.memory.cognitive.autonomous_upkeep import run_upkeep_pass
+
+        report = run_upkeep_pass(self, trials=trials)
+        self.save_to_disk()
+        return report.to_dict()
+
     def reconsolidation_disclosure(self) -> dict[str, Any]:
         """What the most recent recall folded back into the store, per tier."""
         items = [

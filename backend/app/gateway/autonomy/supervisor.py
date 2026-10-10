@@ -206,6 +206,7 @@ class AutonomySupervisor:
             ("perpetual", "Perpetual daemon heartbeat: discovery, consolidation, stagnation.", loop_adapters.perpetual_tick, 900.0),
             ("review_queue", "Deferred learning reviews: observe pending count, publish a bus signal.", loop_adapters.review_queue_tick, 120.0),
             ("skill_curator", "Skill curator prune pass (dry-run unless configured otherwise).", loop_adapters.skill_curator_tick, 3600.0),
+            ("memory_upkeep", "Autonomous skill-lifecycle upkeep and memory reconsolidation, blocked by a degrading verification.", loop_adapters.memory_upkeep_tick, 900.0),
             ("enterprise_heartbeat", "Enterprise heartbeat cycle.", loop_adapters.enterprise_heartbeat_tick, 1800.0),
             ("swarm_status", "Telemetry-only swarm tick: report active swarm state.", loop_adapters.swarm_status_tick, 300.0),
             ("free_models_sync", "Daily discovery and health check for keyless free LLM models.", loop_adapters.free_models_sync_tick, 86400.0),

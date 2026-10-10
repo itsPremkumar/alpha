@@ -135,6 +135,40 @@ def skill_curator_tick(*, dry_run: bool = True) -> dict[str, Any]:
     return curator.apply_transitions(dry_run=dry_run)
 
 
+def memory_upkeep_tick(*, trials: int = 5) -> dict[str, Any]:
+    """One autonomous skill/memory upkeep pass.
+
+    Owner-scoped and model-free by default: it walks every owner's cognitive
+    memory, ingests nothing (a loop has no work outcomes of its own — those come
+    from the caller that ran the work), reconciles each skill's lifecycle against
+    its measured evidence, replays what worked, and runs the four proof gates. A
+    ``degraded`` verification makes the pass report and apply nothing, which is
+    what makes this safe to run unattended.
+
+    Ingestion stays a caller responsibility on purpose: a background loop has no
+    way to know whether a recall was actually useful, and inventing that verdict
+    would feed the lifecycle fabricated evidence.
+    """
+    from alpha.memory.cognitive.engine import _owner_systems, _owner_systems_lock
+
+    passed = blocked = 0
+    reports: list[dict[str, Any]] = []
+    with _owner_systems_lock:
+        systems = list(_owner_systems.values())
+    for system in systems:
+        try:
+            report = system.run_upkeep(trials=trials)
+        except Exception as exc:  # noqa: BLE001 - one owner must not stop the sweep
+            logger.warning("memory upkeep failed for one owner system: %s", exc, exc_info=True)
+            continue
+        reports.append(report)
+        if report.get("blocked_by_verification"):
+            blocked += 1
+        else:
+            passed += 1
+    return {"owners_swept": len(systems), "applied": passed, "blocked_by_verification": blocked, "reports": reports}
+
+
 def enterprise_heartbeat_tick() -> dict[str, Any]:
     """One enterprise heartbeat cycle."""
     from alpha.enterprise.heartbeat import get_enterprise_heartbeat_coordinator

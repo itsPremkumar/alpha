@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from alpha.memory.cognitive.procedural_memory import ProceduralSkillMemory
 
 from alpha.memory.cognitive.models import ProceduralSkill
-from alpha.memory.cognitive.skill_lifecycle import retirement_priority
+from alpha.memory.cognitive.skill_lifecycle import evaluate, retirement_priority
 
 __all__ = [
     "GATE_NAMES",
@@ -350,7 +350,20 @@ def _gate_regression(memory: ProceduralSkillMemory) -> GateResult:
     if not measured:
         return GateResult("regression", None, "no measured skills, so there is no prior success to protect", {"skills": len(memory.list_skills(limit=500))})
 
-    best = max(measured, key=lambda s: s.smoothed_effectiveness)
+    # Gate 4 protects *prior success*, so the skill under protection has to be
+    # one whose evidence actually clears the bar. A skill measured at 0% is not
+    # prior success, and comparing an unproven newcomer against it would report a
+    # regression on a library whose best skill is simply bad.
+    proven = [s for s in measured if evaluate(s).promotion_eligible]
+    if not proven:
+        return GateResult(
+            "regression",
+            None,
+            "no skill clears the promotion bar, so there is no prior success to protect",
+            {"measured": len(measured)},
+        )
+
+    best = max(proven, key=lambda s: s.smoothed_effectiveness)
     newcomer = ProceduralSkill(name="regression_probe", description=best.description, trigger_pattern=best.trigger_pattern, steps=list(best.steps))
     probe_memory = _fresh_memory(memory.max_skills)
     for skill in memory.list_skills(limit=500):

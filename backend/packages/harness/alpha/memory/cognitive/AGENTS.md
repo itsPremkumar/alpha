@@ -139,3 +139,47 @@ Callers should run this before treating a skill library as improved, and should
 report the verdict plus `trials` rather than only the outcome — a pass over 3
 shuffled orderings is weaker evidence than one over 20, and the number is what
 lets a reader weigh it. Regression coverage: `tests/test_cognitive_improvement_verification.py`.
+## Autonomous upkeep (`autonomous_upkeep.py`)
+
+Skills and memory were **on-demand**: nothing promoted or deprecated a skill and
+consolidation only ran when a caller asked. `run_upkeep_pass()` is the driver that
+runs unattended — ingest what the work did, reconcile every skill's lifecycle
+against its measured evidence, replay what worked, then verify.
+
+`CognitiveMemorySystem.run_upkeep()` is the owner-scoped entry point, and
+`memory_upkeep_tick` (registered in `register_default_loops()` under
+`autonomy.loops.memory_upkeep`, default 900s, model-free) sweeps every live owner
+system. A loop supplies no work outcomes on purpose: a background tick cannot know
+whether a recall was actually useful, and inventing that verdict would feed the
+lifecycle fabricated evidence.
+
+### The load-bearing safety property
+
+**A `degraded` verification blocks the pass from acting.** The four gates run
+*before* any transition is applied, and when the verdict is `degraded` the pass
+reports what it would have done — marked `blocked:` — and applies nothing. This is
+the boundary the self-improvement literature insists on (Arize 2026): the
+component that discovers a failure must not also hold the authority to deploy its
+own fix, and the system being evaluated must not rewrite the test that certifies it.
+
+Invariants:
+
+- Reconciliation walks **one legal step at a time**. `transition` refuses to skip
+  verification, so a skill carrying conclusive evidence goes `proposed -> verified
+  -> promoted` in two recorded actions rather than having the promotion forced
+  through. A blocked pass shadows the immediate legal step only.
+- **Demotion is real.** A promoted skill that falls below the promotion bar again
+  demotes to `verified` (`promoted -> deprecated -> verified`, the recovery move
+  added to `_TRANSITIONS` for exactly this). Leaving it promoted because it was
+  promoted once is the stale state this loop exists to fix.
+- **Two retirements, two reasons.** A deprecated-and-idle skill is retired for
+  having failed its bar; a never-executed one is retired for reclaiming a slot,
+  with the reason saying the idea was never judged. They are not the same event.
+- A skill already in the state its evidence supports produces **no** action — a
+  no-op reported as work is the smallest available over-claim.
+- `ingested` counts records applied; an outcome naming an untracked skill is
+  reported in `reasons` rather than silently dropped.
+- "upkeep pass had nothing to do" is the honest report for a pass with no work and
+  no warranted change.
+
+Regression coverage: `backend/tests/test_cognitive_autonomous_upkeep.py`.

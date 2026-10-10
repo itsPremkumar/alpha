@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-09T18:18:40Z",
+ "generated_at": "2026-10-10T06:18:48Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1973,6 +1973,13 @@
   {
    "id": "free_models_sync",
    "module": "app.gateway.autonomy.loops:free_models_sync_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "memory_upkeep",
+   "module": "app.gateway.autonomy.loops:memory_upkeep_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
