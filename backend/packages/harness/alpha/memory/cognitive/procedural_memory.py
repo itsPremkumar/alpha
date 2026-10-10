@@ -11,6 +11,7 @@ import re
 import time
 from typing import Any
 
+from alpha.memory.cognitive.improvement_verification import SkillImprovementReport, verify_skill_memory
 from alpha.memory.cognitive.models import ProceduralSkill
 from alpha.memory.cognitive.skill_lifecycle import (
     SkillLifecycle,
@@ -206,6 +207,10 @@ class ProceduralSkillMemory:
         if skill is None:
             raise KeyError(f"no procedural skill with id {skill_id!r}")
         return evaluate(skill, **kwargs)
+
+    def verify_self_improvement(self, *, trials: int = 5, seed: int = 20261010) -> SkillImprovementReport:
+        """Run the four proof gates over this library; see `improvement_verification`."""
+        return verify_skill_memory(self, trials=trials, seed=seed)
 
     def lifecycle_summary(self) -> dict[str, Any]:
         """Counts by *derived* lifecycle state, plus the unproven skill names.

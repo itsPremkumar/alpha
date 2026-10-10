@@ -94,3 +94,48 @@ Invariants, all pinned by `tests/test_cognitive_reconsolidation.py`:
   measured evolve-set score delta per component (`g_t`). `evidence_gap_reason()`
   states that instead of producing a plausible-looking mapping. Do not "fix"
   this by asserting one.
+## Improvement verification (`improvement_verification.py`)
+
+A self-improving subsystem that reports it works is worth nothing, and a verifier
+that only ever passes the cases it was written for is the same fiction. Arize's
+`Self-improving agents: what changes, what persists, and how to prove it` (2026)
+frames the proof as **four gates**, each catching a different failure mode, and
+arXiv:2607.13104 §8 backs the same protocol. The "Fragility of Self-Improving
+Agents" re-evaluation (arXiv:2608.18066) is why gate 2 exists: ReasoningBank
+improved pass@1 by **+1.5** under a benchmark's default task order and **degraded
+by -4.5** when the order was shuffled, and run-to-run variance exceeded the
+no-memory baseline in 17 of 24 domain-level comparisons.
+
+`ProceduralSkillMemory.verify_self_improvement()` runs all four and returns a
+`SkillImprovementReport`:
+
+| Gate | Question | Fails when |
+| --- | --- | --- |
+| `target` | does recall follow measured effectiveness? | a weaker-evidenced skill is recalled above a stronger one |
+| `repetition_order` | does the ordering survive a shuffled input? | `trials` replays produce a different evidence ordering |
+| `held_out` | does measured still beat unproven on a held-out context? | an unproven skill outranks a measured one off the selection context |
+| `regression` | do prior successes survive? | a newcomer demotes the best-proven skill, or eviction prefers proven over weak evidence |
+
+Invariants:
+
+- **A gate is tri-state.** `passed is None` means the gate could not run and
+  reports `not_run` with what was missing; it is never a pass.
+- **The verdict is earned.** `verified` requires every *runnable* gate to pass and
+  at least one to have run. With nothing to check the verdict is `unverified`.
+- **Gate 2 compares evidence strengths, not names.** Two skills with identical
+  evidence are interchangeable, so a tie swapping them between runs is a stable-sort
+  artefact; flagging it would be a false positive. Names are still reported.
+- **The verifier reads, it does not score.** Gates consume the memory's own
+  recorded outcomes; nothing re-derives a score the thing under test also writes,
+  which keeps the eval outside the boundary the literature says must hold: the
+  system being evaluated cannot rewrite the test that certifies it.
+- **`assert_no_worse_than_baseline` refuses to call a tie an improvement.**
+  Identical orderings are `unchanged`; `improved` requires every baseline entry
+  to survive at its original rank *or better* with the ordering extended.
+  Anything else is `degraded`, including a legitimate-looking reorder, because
+  the comparator cannot see the *why*.
+
+Callers should run this before treating a skill library as improved, and should
+report the verdict plus `trials` rather than only the outcome — a pass over 3
+shuffled orderings is weaker evidence than one over 20, and the number is what
+lets a reader weigh it. Regression coverage: `tests/test_cognitive_improvement_verification.py`.
