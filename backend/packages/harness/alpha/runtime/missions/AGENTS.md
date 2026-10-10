@@ -80,6 +80,20 @@ after compaction, so it continues from where it is rather than restarting earlie
 work. None of these is a prompt rewrite; they are records the agent re-reads, exactly
 as a steer is a record in APEX.
 
+**The loop brake is fail-closed, and it does not trust the agent.** The one lesson
+every Codex loop controller shares (and Codex issue #37937 makes concrete) is that
+an autonomous loop must not run forever: a repeated block with no new information
+should *stop once and return control*, not burn another turn until a quota dies.
+`decide_mission()` reads only durable state and returns exactly `continue`, `done`,
+or `park`. `done` requires every milestone `VERIFIED` on measured evidence — never
+a summary. `park` fires on an explicit `block`, on the same attempt *signature*
+repeating past the threshold (no new information), or on `no_progress_cycles`
+crossing the threshold. It is model-free so the "why did it stop" answer is
+reproducible, and it has no "keep going anyway" path — the failure mode it exists
+to prevent. Alpha already has node-level stagnation and APEX's acceptance gate;
+this is the *mission-scoped* brake that composes with the human-readable anchor and
+has no equivalent here.
+
 **Where things live**:
 - `milestones.py` — `Milestone`, `MilestonePlan`, `MilestoneStatus`, `InvalidMilestonePlan`, stop-and-fix transitions.
 - `scratchpad.py` — `Scratchpad` bounded reasoning ring.
@@ -87,4 +101,5 @@ as a steer is a record in APEX.
 - `anchor.py` — `render_anchor()` — the compact, bounded per-turn anchor callers project.
 - `checkpoint.py` — `ResumeCheckpoint` + `render_resume_checkpoint()` — the structured continuation checkpoint.
 - `verify.py` — `verify_milestone()`, `MilestoneVerdict`, `MilestoneVerification` — a measured evidence record becomes a verdict (`met`/`not_met`/`unverified`).
-- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt fail-open, evidence→verdict, resume-checkpoint render, ring bounds, anchor blocks), `tests/test_mission_memory_wiring.py` (tool actions incl. steer/checkpoint/reject/defer/brief + middleware injection + real test/artifact evidence + honesty).
+- `brakes.py` — `decide_mission()`, `LoopDecision`, `MissionAction` — the model-free loop brake: `continue` / `done` / `park`.
+- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt fail-open, evidence→verdict, resume-checkpoint render, ring bounds, anchor blocks, loop brake), `tests/test_mission_memory_wiring.py` (tool actions incl. steer/checkpoint/reject/defer/brief/block/tick/decide + middleware injection + real test/artifact evidence + honesty).

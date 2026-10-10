@@ -52,6 +52,9 @@ def render_anchor(stack: MissionStack, *, status_tail: int = 4, scratch_tail: in
 
     parts: list[str] = [ANCHOR_HEADER + "\n"]
 
+    if stack.blocked.strip():
+        parts.append("## Blocked — awaiting an operator\n" + f"{stack.blocked.strip()}\n\n")
+
     if stack.spec_objective:
         parts.append(f"## Objective\n{stack.spec_objective}\n\n")
     constraints = _bullets(stack.spec_constraints, limit=8)

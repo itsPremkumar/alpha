@@ -310,3 +310,41 @@ def test_middleware_surfaces_steer_and_resume_checkpoint(tmp_path, monkeypatch) 
     assert "## Operator steer" in body and "prioritize correctness" in body
     assert "## Resume checkpoint" in body and "run pytest" in body
     assert "Do not repeat: weaken the suite" in body  # the checkpoint's own do-not-repeat survives
+
+
+# ---------------------------------------------------------------------------
+# The fail-closed loop brake: an unsupervised mission stops instead of looping
+# ---------------------------------------------------------------------------
+
+
+def test_tool_decide_is_continue_then_park_on_repeated_failure(tmp_path, tool_env) -> None:
+    assert tool_env.func(runtime=tool_env.runtime, action="set_spec", objective="Ship it")["success"]
+    assert tool_env.func(runtime=tool_env.runtime, action="set_plan", milestones_json='[{"id":"m1","title":"A","acceptance":"a","validation":"cmd"}]')["success"]
+
+    first = tool_env.func(runtime=tool_env.runtime, action="decide")
+    assert first["action"] == "continue" and first["current_milestone"] == "m1"
+
+    # The same failing signature repeats with no new information -> park, not loop.
+    for _ in range(3):
+        tool_env.func(runtime=tool_env.runtime, action="tick", progressed=False, signature="m1:same-error")
+    parked = tool_env.func(runtime=tool_env.runtime, action="decide")
+    assert parked["action"] == "park" and parked["repeated_signature"] == "m1:same-error"
+
+
+def test_tool_decide_done_requires_all_verified(tmp_path, tool_env) -> None:
+    f = tool_env.func
+    f(runtime=tool_env.runtime, action="set_spec", objective="Ship it")
+    f(runtime=tool_env.runtime, action="set_plan", milestones_json='[{"id":"m1","title":"A","acceptance":"a","validation":"cmd"}]')
+    f(runtime=tool_env.runtime, action="verify", milestone_id="m1", passed=True, evidence="ok")
+    done = f(runtime=tool_env.runtime, action="decide")
+    assert done["action"] == "done"
+
+
+def test_tool_block_parks_and_anchor_shows_it_then_unblock(tmp_path, tool_env) -> None:
+    assert tool_env.func(runtime=tool_env.runtime, action="set_spec", objective="Ship it")["success"]
+    blocked = tool_env.func(runtime=tool_env.runtime, action="block", blocked="need a staging credential")
+    assert blocked["success"]
+    assert tool_env.func(runtime=tool_env.runtime, action="decide")["action"] == "park"
+    assert "Blocked" in blocked["anchor"]
+    assert tool_env.func(runtime=tool_env.runtime, action="unblock")["success"]
+    assert tool_env.func(runtime=tool_env.runtime, action="decide")["action"] == "continue"

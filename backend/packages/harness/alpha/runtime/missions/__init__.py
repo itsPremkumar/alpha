@@ -56,6 +56,13 @@ from alpha.runtime.missions.anchor import (
     MISSION_NOTICE,
     render_anchor,
 )
+from alpha.runtime.missions.brakes import (
+    DEFAULT_NO_PROGRESS_CYCLES,
+    DEFAULT_REPEATED_FAILURE,
+    LoopDecision,
+    MissionAction,
+    decide_mission,
+)
 from alpha.runtime.missions.checkpoint import (
     ResumeCheckpoint,
     render_resume_checkpoint,
@@ -86,8 +93,11 @@ from alpha.runtime.missions.verify import (
 __all__ = [
     "ANCHOR_HEADER",
     "DEFAULT_MAX_SCRATCH_ENTRIES",
+    "DEFAULT_NO_PROGRESS_CYCLES",
+    "DEFAULT_REPEATED_FAILURE",
     "EvidenceLike",
     "InvalidMilestonePlan",
+    "LoopDecision",
     "MAX_MILESTONES",
     "MAX_MISSION_FILE_BYTES",
     "MISSION_NOTICE",
@@ -96,10 +106,12 @@ __all__ = [
     "MilestoneStatus",
     "MilestoneVerification",
     "MilestoneVerdict",
+    "MissionAction",
     "MissionManager",
     "MissionStack",
     "ResumeCheckpoint",
     "Scratchpad",
+    "decide_mission",
     "render_anchor",
     "render_resume_checkpoint",
     "verify_milestone",

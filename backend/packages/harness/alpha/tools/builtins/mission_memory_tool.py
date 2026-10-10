@@ -37,6 +37,7 @@ from alpha.runtime.missions import (
     MilestoneVerdict,
     MissionManager,
     ResumeCheckpoint,
+    decide_mission,
     render_anchor,
     render_resume_checkpoint,
     verify_milestone,
@@ -66,6 +67,10 @@ _ACTIONS = (
     "defer",
     "checkpoint",
     "brief",
+    "block",
+    "unblock",
+    "tick",
+    "decide",
 )
 
 
@@ -171,6 +176,9 @@ def mission_memory(
     reject: str = "",
     defer: str = "",
     checkpoint_json: str = "{}",
+    blocked: str = "",
+    progressed: bool = False,
+    signature: str = "",
 ) -> dict[str, Any]:
     """Record/inspect the durable mission memory for an autonomous long-horizon run.
 
@@ -182,7 +190,7 @@ def mission_memory(
     failed milestone.
 
     Args:
-        action: One of ``status``, ``set_spec``, ``set_runbook``, ``set_plan``, ``log``, ``note``, ``verify``, ``advance``, ``steer``, ``reject``, ``defer``, ``checkpoint``, ``brief``.
+        action: One of ``status``, ``set_spec``, ``set_runbook``, ``set_plan``, ``log``, ``note``, ``verify``, ``advance``, ``steer``, ``reject``, ``defer``, ``checkpoint``, ``brief``, ``block``, ``unblock``, ``tick``, ``decide``.
         objective: For ``set_spec``: the frozen target. Keep it one testable sentence.
         constraints_json: For ``set_spec``: JSON array of hard-constraint strings that must not regress.
         done_when_json: For ``set_spec``: JSON array of the criteria that define done.
@@ -202,6 +210,9 @@ def mission_memory(
         reject: For ``reject``: a path already tried and rejected; rendered as a "do not repeat" block so it is not re-attempted after a compaction.
         defer: For ``defer``: a useful idea parked for later, kept out of the current work but not lost.
         checkpoint_json: For ``checkpoint``: JSON object with ``current_phase``, ``next_action``, ``stop_condition``, ``progress``, ``confirmed_facts``, ``rejected_paths``, ``do_not_repeat``. For ``brief``: ignored.
+        blocked: For ``block``: why the mission is park. Cleared by ``unblock``.
+        progressed: For ``tick``: whether this cycle made real progress (a milestone verified, a new status/checkpoint); resets the no-progress counter.
+        signature: For ``tick``: a short stable token identifying this attempt (e.g. the failing milestone + its evidence digest). Repeated identical signatures trigger the no-new-information brake.
     """
 
     normalized = (action or "status").strip().lower()
@@ -328,6 +339,24 @@ def mission_memory(
                 "rejected": list(stack.rejected),
                 "deferred": list(stack.deferred),
             }
+
+        elif normalized == "block":
+            if not _clean(blocked):
+                return {"success": False, "error": "empty_block"}
+            stack = stack.block(_clean(blocked))
+
+        elif normalized == "unblock":
+            stack = stack.unblock()
+
+        elif normalized == "tick":
+            stack = stack.tick(progressed=bool(progressed), signature=_clean(signature))
+
+        elif normalized == "decide":
+            # Model-free: reads only durable state, changes nothing, never "keeps
+            # going anyway". Done requires a fully verified plan; a repeated
+            # signature or no-progress parks; otherwise it continues.
+            decision = decide_mission(stack)
+            return {"success": True, "action": "decide", **decision.to_dict()}
 
     except InvalidMilestonePlan as exc:
         return {"success": False, "error": "invalid_plan", "reason": exc.reason}

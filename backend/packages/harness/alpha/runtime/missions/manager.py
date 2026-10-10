@@ -104,6 +104,13 @@ class MissionStack:
     # The structured resume checkpoint read after a compaction to continue from
     # the current point rather than restarting earlier work.
     checkpoint: ResumeCheckpoint | None = None
+    # Loop-brake state (the fail-closed lesson from the Codex loop ecosystem: a
+    # mission must never loop forever on a blocked/no-progress/repeated-failure
+    # path; it parks once and returns control to a human).
+    blocked: str = ""
+    attempts: tuple[str, ...] = ()
+    cycle_count: int = 0
+    no_progress_cycles: int = 0
     max_status_lines: int = _DEFAULT_MAX_STATUS_LINES
     max_ring: int = _DEFAULT_RING
     load_error: str | None = None
@@ -183,6 +190,30 @@ class MissionStack:
     def with_checkpoint(self, checkpoint: ResumeCheckpoint) -> MissionStack:
         return replace(self, checkpoint=checkpoint)
 
+    def block(self, reason: str) -> MissionStack:
+        """Park the mission behind an operator; the loop decides nothing more."""
+        return replace(self, blocked=_clean_line(reason, limit=500))
+
+    def unblock(self) -> MissionStack:
+        return replace(self, blocked="")
+
+    def tick(self, *, progressed: bool, signature: str = "") -> MissionStack:
+        """Record one continuation cycle for the loop brake.
+
+        ``signature`` is a short stable token for the attempt (e.g. the failing
+        milestone + a digest of its evidence); repeated identical signatures are
+        what the brake reads as "no new information". ``progressed`` resets the
+        no-progress counter on any real step forward (a milestone verified, a new
+        status line, a new checkpoint), which is the property a mere activity
+        pulse does not have.
+        """
+        attempts = self.attempts
+        if signature:
+            attempts = (*attempts, _clean_line(signature, limit=200))[-self.max_ring :]
+        if progressed:
+            return replace(self, attempts=attempts, cycle_count=self.cycle_count + 1, no_progress_cycles=0)
+        return replace(self, attempts=attempts, cycle_count=self.cycle_count + 1, no_progress_cycles=self.no_progress_cycles + 1)
+
     # ---- persistence -------------------------------------------------------------
 
     def to_dict(self) -> dict[str, object]:
@@ -199,6 +230,10 @@ class MissionStack:
             "rejected": list(self.rejected),
             "deferred": list(self.deferred),
             "checkpoint": self.checkpoint.to_dict() if self.checkpoint is not None else None,
+            "blocked": self.blocked,
+            "attempts": list(self.attempts),
+            "cycle_count": self.cycle_count,
+            "no_progress_cycles": self.no_progress_cycles,
             "max_status_lines": self.max_status_lines,
             "max_ring": self.max_ring,
             "updated_at": self.updated_at,
@@ -231,6 +266,10 @@ class MissionStack:
             rejected=tuple(str(c) for c in rejected) if isinstance(rejected, list) else (),
             deferred=tuple(str(c) for c in deferred) if isinstance(deferred, list) else (),
             checkpoint=checkpoint,
+            blocked=str(data.get("blocked", "")),
+            attempts=tuple(str(c) for c in data.get("attempts", [])) if isinstance(data.get("attempts", []), list) else (),
+            cycle_count=int(data.get("cycle_count", 0) or 0),
+            no_progress_cycles=int(data.get("no_progress_cycles", 0) or 0),
             max_status_lines=int(data.get("max_status_lines", _DEFAULT_MAX_STATUS_LINES) or _DEFAULT_MAX_STATUS_LINES),
             max_ring=int(data.get("max_ring", _DEFAULT_RING) or _DEFAULT_RING),
             updated_at=str(data.get("updated_at", "")),

@@ -311,3 +311,54 @@ def test_anchor_surfaces_steer_checkpoint_reject_defer() -> None:
     assert "## Resume checkpoint" in anchor and "Next action: run pytest" in anchor
     assert "## Do not repeat" in anchor and "skip tests to go faster" in anchor
     assert "## Deferred (not now)" in anchor and "nice error messages" in anchor
+
+
+# ---------------------------------------------------------------------------
+# The fail-closed loop brake: continue / done / park, never loop forever
+# ---------------------------------------------------------------------------
+
+
+def test_decide_done_only_when_all_verified() -> None:
+    from alpha.runtime.missions import MissionAction, decide_mission
+
+    plan = _plan()
+    # Not done while a milestone is unverified, even mid-flight.
+    partial = plan.verify("m1", passed=True, evidence="e").advance()
+    assert decide_mission(MissionStack(plan=partial)).action is MissionAction.CONTINUE
+    complete = partial.verify("m2", passed=True, evidence="e")
+    decision = decide_mission(MissionStack(plan=complete))
+    assert decision.action is MissionAction.DONE and "verified" in decision.reason
+
+
+def test_decide_parks_on_repeated_signature_no_new_information() -> None:
+    from alpha.runtime.missions import MissionAction, decide_mission
+
+    stack = MissionStack(plan=_plan())
+    for _ in range(3):
+        stack = stack.tick(progressed=False, signature="m1:deadbeef")
+    decision = decide_mission(stack)
+    assert decision.action is MissionAction.PARK and decision.repeated_signature == "m1:deadbeef"
+
+
+def test_decide_parks_on_no_progress_but_progress_resets_it() -> None:
+    from alpha.runtime.missions import MissionAction, decide_mission
+
+    stack = MissionStack(plan=_plan())
+    stack = stack.tick(progressed=False, signature="a").tick(progressed=False, signature="b")
+    assert decide_mission(stack).action is MissionAction.CONTINUE
+    for _ in range(6):
+        stack = stack.tick(progressed=False, signature=f"c{_}")
+    assert decide_mission(stack).action is MissionAction.PARK
+
+    # A real step forward resets the counter; an activity pulse does not.
+    reset = stack.tick(progressed=True, signature="x")
+    assert reset.no_progress_cycles == 0 and decide_mission(reset).action is MissionAction.CONTINUE
+
+
+def test_decide_parks_on_explicit_block_and_unblock_releases() -> None:
+    from alpha.runtime.missions import MissionAction, decide_mission
+
+    blocked = MissionStack(plan=_plan()).block("waiting on a credential")
+    decision = decide_mission(blocked)
+    assert decision.action is MissionAction.PARK and "blocked" in decision.reason
+    assert decide_mission(blocked.unblock()).action is MissionAction.CONTINUE
