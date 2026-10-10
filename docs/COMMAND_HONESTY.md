@@ -18,12 +18,12 @@ the numbers below can be reproduced.
 
 | quantity | value |
 | --- | --- |
-| raw rows in `catalog.get_default_catalog_entries()` | 442 |
-| unique command names (what the registry keys on) | **440** |
-| names registered in the registry | 475 |
+| raw rows in `catalog.get_default_catalog_entries()` | 444 |
+| unique command names (what the registry keys on) | **442** |
+| names registered in the registry | 477 |
 | duplicate rows (first one silently discarded) | `/learn`, `/usage` |
 
-440 is confirmed. The 442 vs 440 gap is the two duplicated rows, which the
+442 is confirmed. The 444 vs 442 gap is the two duplicated rows, which the
 existing parity test already pins as `DUPLICATE_CATALOG_ROWS`. The fourteen
 `/apex` rows are unique and handler-backed, so they raise every count above
 without touching the duplicate set.
@@ -60,7 +60,7 @@ the fourteen apex rows raise the counts above without moving the 407 below.
 
 **The audit's 410 is the original filter's number, not the repository's.** The
 first row is the audit's 426-row snapshot under the filter as written; the
-second is today's 440-row one under the corrected filter. The true count of
+second is today's 442-row one under the corrected filter. The true count of
 catalog rows that reach the fallback path is 407 and was at 426 too: the
 audit's three-row difference is `/goal`, `/goal clear` and `/goal verify`,
 which do have handlers, and the fourteen apex rows are all handler-backed, so
@@ -69,7 +69,7 @@ they moved the backed count 19 → 33 without moving 407.
 ### What the fallback path actually returns
 
 Over all 426 catalog rows (the snapshot this audit measured, before the
-`/apex` family grew the catalog to 442 raw / 440 unique),
+`/apex` and `/mission` families grew the catalog to 444 raw / 442 unique),
 `command_registry.execute(row)`:
 
 ```

@@ -569,6 +569,16 @@ def build_middlewares(
 
     middlewares.append(DynamicContextMiddleware(agent_name=agent_name, app_config=resolved_app_config))
 
+    # Durable mission memory -- re-anchor every turn on the frozen objective and
+    # the current milestone so a run that survives a compaction or a restart does
+    # not drift. Registered like ContinualHarnessMiddleware: it is a `before`/model
+    # context enrichment, its absence is a config flag (never a broken run), and it
+    # is opt-in-safe because the durable file is empty on a first run (no injection).
+    if getattr(resolved_app_config, "mission_memory", None) is not None and resolved_app_config.mission_memory.enabled:
+        from alpha.agents.middlewares.mission_memory_middleware import MissionMemoryMiddleware
+
+        middlewares.append(MissionMemoryMiddleware(app_config=resolved_app_config))
+
     # Grounding layer -- the capability manifest the agent can read, plus the
     # per-step deterministic-first gates. Registered unconditionally so the gates
     # are live; `grounding.enabled=false` in config suppresses only the prompt

@@ -486,9 +486,28 @@ Honesty about the boundary is part of the feature.
 | `config.yaml -> network` | `alpha.config.network_resilience_config` | `tests/test_network_resilience.py` |
 | `config.yaml -> network_wait` | `alpha.config.network_wait_config` | `tests/test_network_wait_timeline.py` |
 | `NETWORK_UNAVAILABLE` error code | `alpha.errors.registry` | `tests/test_error_codes.py` |
+| Durable mission memory (the re-read that stops drift) | `alpha.runtime.missions` | `tests/test_mission_memory.py`, `tests/test_mission_memory_wiring.py` |
 
 Each subsystem's own `AGENTS.md` next to the code is the normative contract;
 this page is the map.
+
+operator), which records a measured result here. This never infers an outcome
+from a model's summary. The durable-runtime loops and APEX own *scheduling*;
+this package is the memory those loops dispatch *into*, and its `mission`
+watchdog loop (registered in `AutonomySupervisor`) enforces the brake even when
+no agent session is alive — it *tightens only* (parks stuck/blocked missions) and
+never dispatches, so it is not a second executor. Contract: the module's own
+`runtime/missions/AGENTS.md`.
+
+**The cognition of durability is separate from the durability itself.** Everything
+above makes the *process* survive an outage, crash or restart. What none of it
+supplies is the objective once it scrolls out of the context window: a run can be
+durable and still drift. `alpha.runtime.missions` is that missing half — a
+per-`(owner, thread)` spec/plan/status/scratchpad stack re-read before every model
+turn, with milestones that only advance on a *measured* result (stop-and-fix). It is
+additive and owns no lifecycle, dispatch or recovery; it is the memory the loops
+below dispatch *into*. Its own `AGENTS.md`:
+`backend/packages/harness/alpha/runtime/missions/AGENTS.md`.
 
 ## Verifying it actually works
 

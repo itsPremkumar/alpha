@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-09T19:44:57Z",
+ "generated_at": "2026-10-10T06:43:50Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -719,6 +719,14 @@
    "id": "schedule_work_queue",
    "module": "alpha.tools.builtins.mission_hierarchy_tool",
    "symbol": "schedule_work_queue",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "mission_memory",
+   "module": "alpha.tools.builtins.mission_memory_tool",
+   "symbol": "mission_memory",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1668,13 +1676,6 @@
    "state": "wired"
   },
   {
-   "id": "alpha.agents.middlewares.deepagent_context_middleware",
-   "module": "alpha.agents.middlewares.deepagent_context_middleware",
-   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
-   "wired": true,
-   "state": "wired"
-  },
-  {
    "id": "alpha.agents.middlewares.deferred_tool_filter_middleware",
    "module": "alpha.agents.middlewares.deferred_tool_filter_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
@@ -1768,6 +1769,13 @@
   {
    "id": "alpha.agents.middlewares.metacognitive_middleware",
    "module": "alpha.agents.middlewares.metacognitive_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha.agents.middlewares.mission_memory_middleware",
+   "module": "alpha.agents.middlewares.mission_memory_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
    "wired": true,
    "state": "wired"
@@ -1980,6 +1988,13 @@
   {
    "id": "free_models_sync",
    "module": "app.gateway.autonomy.loops:free_models_sync_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "mission",
+   "module": "app.gateway.autonomy.loops:mission_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2602,6 +2617,7 @@
     "checkpoint_cache",
     "checkpointer",
     "events",
+    "missions",
     "network",
     "resilience",
     "rlm",

@@ -112,6 +112,7 @@ from .metacognitive_tool import check_metacognitive_health
 
 # Mission Hierarchy, Work Queue DAG & Universal Artifact Lineage
 from .mission_hierarchy_tool import manage_mission_hierarchy, schedule_work_queue
+from .mission_memory_tool import mission_memory
 from .moa_reasoning_tool import moa_multi_model_reasoning
 
 # Free local-first OS computer use & laptop automation (Module C): guarded
@@ -216,6 +217,7 @@ __all__ = [
     "swarm_tool",
     "group_chat_tool",
     "kanban_board_tool",
+    "mission_memory",
     "canvas_widget_tool",
     "goal_engine_tool",
     "trajectory_audit_tool",

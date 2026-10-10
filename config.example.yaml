@@ -30,15 +30,6 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-# 60: two things reached 60 together. `feat/network-wait-resilience` documented
-# `network_wait` (how long a network-parked session waits); it carries
-# `max_attempts: 0` = UNBOUNDED, so a config that never declares it now waits
-# indefinitely where it previously gave up after 24 attempts. That is the
-# intended change, but it IS a behaviour change for an existing install: set
-# `network_wait.max_attempts` to your old number to keep the previous bound.
-# `feat/context-window-resilience` added the `context_window` block below
-# (pressure bands and the exhaustion ladder) at the same number, so a version 60
-# install is expected to carry both.
 config_version: 60
 
 # ============================================================================
@@ -3038,32 +3029,6 @@ task_continuity:
   max_records_per_batch: 256
   max_record_chars: 16000
 
-# Deep-agent working plane (LangChain "deepagents"' state backend)
-# ----------------------------------------------------------------------------
-# The agent gets its own bounded, thread-scoped scratch filesystem held in graph
-# state — not on disk and not in a sandbox. Write findings, drafts, decisions
-# and open questions here instead of holding them in the message tail, because
-# compaction discards the tail and keeps this plane. Every bound below is a
-# REFUSAL, never a clamp: an over-bounds write names the limit it hit so the
-# model can split the note or delete another file.
-deepagent:
-  # Master switch. When false the tool is never bound and no index is injected,
-  # so the agent behaves exactly as it did before this feature existed.
-  enabled: true
-  # Project the bounded working-plane index (path, size, purpose — never the
-  # body) into every model request. Disable to keep the tools without the
-  # per-step reminder, at the cost of the model guessing what it wrote.
-  inject_index: true
-  # Most files the working plane holds per thread.
-  max_files: 64
-  # Ceiling on one file's content, in bytes. Larger work belongs on disk.
-  max_file_bytes: 32768
-  # Ceiling on the summed size of every working file, in bytes.
-  max_total_bytes: 262144
-  # Ceiling on the per-file one-line purpose the model may declare. 0 disables
-  # summaries and degrades the index to bare paths.
-  max_summary_chars: 160
-
 summarization:
   enabled: true
 
@@ -3130,49 +3095,6 @@ summarization:
     - read
     - view
     - cat
-
-# Context-window pressure: how full a thread is, and what happens when it fills.
-#
-# `models[].context_window` is an INPUT window (the prompt a model accepts:
-# system prompt + history + tool results + tool schemas). It is NOT prompt +
-# completion — the response is paid for out of the reserve below, so the total
-# is derived, never declared twice. This section is what turns that declaration
-# into a usable number and an ordered plan.
-#
-# Hot-reloadable in full: every value is read per request, so an edit applies to
-# the next thread read without a restart.
-context_window:
-  enabled: true
-
-  # Occupancy fractions of the USABLE input window (declared minus the reserves
-  # below), not of the declared one. Every value must be in (0, 1], and the
-  # three must be strictly increasing — an inverted or duplicated set makes the
-  # middle band unreachable, so it is refused at config load rather than
-  # silently disabling the guard.
-  elevated_fraction: 0.60   # compaction is offered before the next turn
-  critical_fraction: 0.80   # a turn no longer fits the headroom; the ladder is declared
-  over_fraction: 0.95       # occupancy exceeds the usable window
-  # The over band sits below 1.0 on purpose: a window filled to capacity is a
-  # window the model reasons badly over, long before the provider refuses the
-  # request. Raising it to 1.0 buys a few percent of headroom and pays for it in
-  # degraded answers.
-
-  # Tokens held back so a request that fits now still leaves room for what comes
-  # after it. Subtract both from `models[].context_window` to get the usable
-  # window the fractions above resolve against.
-  output_reserve_tokens: 4096      # the model's own response
-  next_turn_reserve_tokens: 2048   # the turn after this one
-
-  # Floor the usable window is clamped to when the reserves would consume the
-  # declared window. Without it, a 4000-token model with 6000 reserved reads as
-  # "always over" and compacts every thread on every turn.
-  minimum_usable_input_window: 1024
-
-  # When the window is already over, may the ladder re-route the run to a model
-  # with a strictly larger declared `context_window`? This costs money and
-  # changes the serving model, so an operator may turn it off — in which case
-  # the ladder falls through to compaction, eviction, and parking.
-  escalate_to_larger_window: true
 
 # ============================================================================
 # Memory Configuration
@@ -4128,43 +4050,6 @@ network:
   #     timeout_seconds: 2.0
 
 # ============================================================================
-# Connectivity Waits
-#
-# How long a network-parked session keeps waiting. `network` above measures
-# whether the link is up; this section decides what happens to work that was
-# mid-flight when it went down.
-#
-# The default is UNBOUNDED (max_attempts: 0). A wait is a parked task, not a
-# retry loop - the task did nothing wrong, the internet did. Two other bounds
-# already exist and are deliberately left where they are:
-#   * network.backoff_* caps how loudly the link is re-checked (300s ceiling)
-#     and never stops polling, so this section does not need to;
-#   * run_ownership.max_resume_attempts bounds how many times a *continuation
-#     that keeps dying* may be relaunched.
-# Charging the wait itself against a fixed count turns "the internet was gone
-# for an hour" into "gave up after N tries".
-#
-# Restart-required: the recovery pass owns a background task and an in-flight
-# backoff schedule, and a row admitted under one ceiling could be surrendered
-# under another.
-network_wait:
-  enabled: true                 # false records no park and starts no recovery pass.
-  max_attempts: 0               # Resume attempts before the wait is reported as
-                                # `gave_up`. 0 = UNBOUNDED: a parked session waits
-                                # until the link returns, however long that takes.
-                                # Set a positive number only when an operator is
-                                # expected to intervene, and exhaustion is then
-                                # reported with its reason rather than dropped.
-  backoff_initial_seconds: 15.0 # First delay before a parked session is retried.
-  backoff_max_seconds: 900.0    # Ceiling for the retry ladder.
-  backoff_multiplier: 2.0       # Growth per failed resume attempt.
-  poll_interval_seconds: 30.0   # How often the pass sweeps for due waits.
-  claim_lease_seconds: 30.0     # Lease on a wait being resumed, so two Gateway
-                                # instances cannot both launch a continuation.
-  max_claims_per_pass: 5        # Waits one pass may take, so a backlog does not
-                                # stampede the provider the moment the link returns.
-
-# ============================================================================
 # Stream Bridge Configuration
 # ============================================================================
 # The stream bridge carries live agent events from gateway workers to SSE
@@ -4761,7 +4646,7 @@ authorization:
 # Single supervisor owns every background loop. Flags off = zero activity.
 # Per-loop ids: sentinel, perpetual, review_queue, skill_curator,
 # enterprise_heartbeat, swarm_status, free_models_sync, company_operations,
-# self_update. A loop id absent from `loops` stays DISABLED.
+# self_update, apex, mission. A loop id absent from `loops` stays DISABLED.
 autonomy:
   enabled: true                 # master switch for the supervisor + event bus
   bus:
@@ -4792,6 +4677,27 @@ autonomy:
   # not `enabled` is skipped, and a company whose breaker refuses (paused, over
   # its daily ceiling, no progress, kill switch) is reported rather than silently
   # dropped. The tick is model-free, so enabling this loop spends no tokens.
+
+# ============================================================================
+# Durable, per-thread mission memory: the re-read that stops long-horizon drift.
+# A run that survives a context compaction or a process restart re-anchors on the
+# frozen objective and the current milestone before every turn, instead of
+# producing work that has detached from what was asked. The agent records the
+# spec/plan/status/scratchpad with the `mission_memory` tool; a milestone is only
+# `verified` when a measured result (exit code, artifact, benchmark) supports it,
+# and advancing past a failed milestone is refused (stop-and-fix).
+#
+# Hot-reloadable: the anchor budget and ring depths apply on the next run. On a
+# first run the durable file is empty, so nothing is injected until the agent
+# records a mission.
+mission_memory:
+  enabled: true                 # inject the anchor into every lead-agent turn
+  max_anchor_chars: 4000        # char budget for the per-turn anchor; the objective
+                                # is preserved first, the tail (scratchpad) drops first
+  max_status_lines: 40          # append-only status-log ring depth
+  max_scratch_entries: 60       # durable scratchpad ring depth
+  status_tail: 4                # recent status lines shown in the anchor
+  scratch_tail: 2               # recent scratchpad notes shown in the anchor
 
 # ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it

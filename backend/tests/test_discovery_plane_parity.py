@@ -88,6 +88,24 @@ IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
         "/skills create",
         "/teamwork-preview",
         "/usage",
+        "/mission",
+        "/mission set",
+        # Subsystem commands bound by alpha.commands.backend_handlers and
+        # published in the catalog. These carried concrete handlers but were
+        # absent from this declaration (pre-existing rot this change corrects),
+        # so they had no execution assertion.
+        "/loop pause",
+        "/loop resume",
+        "/loop start",
+        "/loop status",
+        "/security review",
+        "/security-review",
+        "/skill create",
+        "/skill list",
+        "/skill test",
+        "/skills list",
+        "/subagent list",
+        "/subagent spawn",
     }
 )
 
@@ -121,31 +139,14 @@ NO_HANDLER_PROBES: tuple[str, ...] = ("/help", "/status", "/plan")
 # aliases, for the same reason the row count was wrong.
 UNPUBLISHED_ALIASES: frozenset[str] = frozenset(
     {
-        # alpha.commands.backend_handlers
-        "/loop pause",
-        "/loop resume",
-        "/loop start",
-        "/loop status",
-        "/loop:pause",
-        "/loop:resume",
-        "/loop:start",
-        "/loop:status",
-        "/security review",
-        "/security-review",
-        "/skill create",
-        "/skill list",
-        "/skill test",
-        "/skill:create",
-        "/skill:list",
-        "/skill:test",
-        "/skills list",
-        "/subagent list",
-        "/subagent spawn",
-        "/subagent:list",
-        "/subagent:spawn",
-        # alpha.mission.goalloop.bindings. These were invisible to the previous
-        # revision of this inventory, which filtered production handlers on
-        # `alpha.commands.*` and so never saw the goal-loop bindings at all.
+        # alpha.mission.goalloop.bindings. These are reachable but the catalog
+        # never publishes them (no `/goal draft`, `/subgoal`, ... rows), so they
+        # are genuinely undiscoverable and pinned here.
+        #
+        # The former backend_handlers entries (/loop, /security, /skill,
+        # /subagent and their colon spellings) were removed: their canonical
+        # space forms are published in the catalog, so they are discoverable and
+        # no longer "unpublished". They are declared in IMPLEMENTED_COMMANDS.
         "/goal draft",
         "/goal gate",
         "/goal gate add",
@@ -290,9 +291,9 @@ def test_no_handler_row_count_is_exact() -> None:
     handler_backed = _handler_backed_catalog_rows()
     no_handler = _no_handler_catalog_rows()
 
-    # 426 -> 431 -> 440: the fourteen `/apex` rows. Every one is
-    # handler-backed, so the known-gap count above is unchanged.
-    assert len(catalog) == 440, f"the unique catalog row count changed: {len(catalog)}"
+    # 452 -> 454: the two `/mission` rows. Every one is handler-backed, so the
+    # known-gap count above (407) is unchanged.
+    assert len(catalog) == 454, f"the unique catalog row count changed: {len(catalog)}"
     assert len(no_handler) == NO_HANDLER_ROW_COUNT, (
         f"{len(catalog)} unique catalog rows, {len(handler_backed)} with handlers, "
         f"{len(no_handler)} with none (expected {NO_HANDLER_ROW_COUNT}). A new catalog "

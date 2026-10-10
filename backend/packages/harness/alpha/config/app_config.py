@@ -33,6 +33,7 @@ from alpha.config.input_polish_config import InputPolishConfig
 from alpha.config.loop_detection_config import LoopDetectionConfig
 from alpha.config.mcp_tasks_config import McpTasksConfig
 from alpha.config.memory_config import MemoryConfig, load_memory_config_from_dict
+from alpha.config.mission_memory_config import MissionMemoryConfig
 from alpha.config.model_catalog_schema import (
     CatalogProviderEntry,
     FreeGatewayEntry,
@@ -425,6 +426,10 @@ class AppConfig(BaseModel):
     review_guard: ReviewGuardConfig = Field(default_factory=ReviewGuardConfig, description="Review guard middleware configuration (comment density, role-scoped writes)")
     safety_finish_reason: SafetyFinishReasonConfig = Field(default_factory=SafetyFinishReasonConfig, description="Provider safety-filter finish_reason interception middleware configuration")
     autonomy: AutonomyConfig = Field(default_factory=AutonomyConfig, description="Self-running subsystems: event bus, observe-only middlewares and background loops (AutonomySupervisor).")
+    mission_memory: MissionMemoryConfig = Field(
+        default_factory=MissionMemoryConfig,
+        description="Durable per-thread mission memory (spec/plan/status/scratchpad); injects the objective + current-milestone anchor before each turn to stop long-horizon drift. Hot-reloadable (next run).",
+    )
     capabilities: CapabilitiesConfig = Field(default_factory=CapabilitiesConfig, description="Opt-in capability subsystems (see alpha.capabilities.catalog); all off unless enabled here.")
     specialists: SpecialistCatalogConfig = Field(
         default_factory=SpecialistCatalogConfig,

@@ -492,5 +492,11 @@ def get_default_catalog_entries():
         ("/apex reject", CommandCategory.AUTONOMOUS_OPS, "Rejects the pending approval; the session stays parked", "/apex reject", True),
         ("/apex replan", CommandCategory.AUTONOMOUS_OPS, "Moves this session's non-terminal goals back to replanning", "/apex replan", True),
         ("/apex verify", CommandCategory.AUTONOMOUS_OPS, "Verifies this session's goals against their success criteria", "/apex verify", True),
+        # Durable mission memory (real handlers in alpha/mission/commands.py).
+        # `/mission` alone is a read-only resume brief; `/mission set` starts or
+        # refreshes the objective. The owner is server-resolved, never the
+        # client-supplied context, so one conversation's mission stays its own.
+        ("/mission", CommandCategory.MISSION, "Shows this conversation's mission, progress and resume brief", "/mission", True),
+        ("/mission set", CommandCategory.MISSION, "Starts or refreshes this conversation's mission objective", "/mission set <objective>", True),
     ]
     return entries

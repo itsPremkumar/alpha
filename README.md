@@ -9,7 +9,7 @@
 **Alpha is a self-hosted, local-first AI agent platform that plans and executes
 long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
-research, multi-agent swarms, sandboxed code execution, persistent memory, 136 native
+research, multi-agent swarms, sandboxed code execution, persistent memory, 137 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
 proprietary backend.
 
@@ -90,7 +90,7 @@ control.
 In one sentence:
 
 > Alpha is a LangGraph-based agent operating system: a Python/FastAPI Gateway runs
-> the agent runtime and 136 native tools, a Next.js 15 workspace and an Electron
+> the agent runtime and 137 native tools, a Next.js 15 workspace and an Electron
 > Windows app are the front ends, and a single Nginx port is the only thing you
 > expose.
 
@@ -104,7 +104,7 @@ In one sentence:
 | **Do I need a paid backend?** | No. MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
 | **Which models?** | Any provider you put in `config.yaml` — OpenRouter, OpenAI, Anthropic, Google, DeepSeek, Moonshot, Ollama, and self-hosted endpoints. |
 | **Does it run offline?** | Local models, local speech (Whisper + Piper), and local SQLite/PostgreSQL are all supported. |
-| **What happens when the internet drops?** | Alpha measures its own connectivity and says so — the workspace header shows the link state and its measured round-trip. Work that needs the link is *parked*, not lost, and the backend keeps re-probing automatically (5s → 300s backoff, no give-up) until it returns, then resumes on its own — **waiting indefinitely by default**, because a session that did nothing wrong should not be abandoned for surviving an outage. The chat itself says so: a bubble records when the link dropped, a live counter while it waits, and when it came back with the time it lost. A **Retry** button on the header reading asks for an immediate measurement. See [durable runtime](./docs/architecture/durable-runtime.md). |
+| **What happens when the internet drops?** | Alpha measures its own connectivity and says so — the workspace header shows the link state and its measured round-trip. Work that needs the link is *parked*, not lost, and the backend keeps re-probing automatically (5s → 300s backoff, no give-up) until it returns, then resumes on its own. A **Retry** button on that reading asks for an immediate measurement. See [durable runtime](./docs/architecture/durable-runtime.md). |
 | **Is it a framework or an app?** | Both. Use it as a finished app, or import `alpha-harness` (`import alpha.*`) and build your own agent runtime on the same engines. |
 
 ---
@@ -122,7 +122,7 @@ In one sentence:
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
 | **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
-| **Native tools** | 136 (`contracts/feature_manifest.json`, generated) |
+| **Native tools** | 137 (`contracts/feature_manifest.json`, generated) |
 | **Middleware layers** | 44 |
 | **Background supervisor loops** | 10 |
 | **Public skills** | 24 in `skills/public/` |
@@ -154,7 +154,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["136 tools + 45 middlewares + MCP + 24 skills"]
+        Tools["137 tools + 45 middlewares + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -192,7 +192,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
 | **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed and `X-Trace-Id` correlation on every log line. ⚠️ The trajectory flight recorder's writer is not installed in production, so span-level tracing is off by default and not reachable from `config.yaml`. |
-| **It can't use your tools** | 136 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
+| **It can't use your tools** | 137 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
 | **You can't evaluate it** | A benchmarks registry, a skill quality reviewer, a 5-pass research citation contract, and a generated `feature_manifest.json` that fails CI on registry drift. |
@@ -787,13 +787,6 @@ exactly-once execution.
   Windows restart never becomes a task failure: session lifecycle, connectivity as
   a first-class state, a per-effect `UNKNOWN` + reconciliation ledger, a
   crash-loop-bounded process supervisor, and an ordered, honestly reported shutdown.
-- **Unbounded network waits, told to the user** — a run that loses its link parks
-  as `waiting_network` rather than failing, and waits **indefinitely** by default
-  (`network_wait.max_attempts: 0`) instead of being surrendered for surviving an
-  outage that outlasted a counter. `GET /api/threads/{id}/network-waits` reports
-  each park's drop time, recovery time, and measured wait, and the chat renders it
-  inline as a bubble with both timestamps and a live counter — so "waiting for the
-  internet" is visibly different from "stuck".
 - **Workflow fork, dry run & templates** — fork a new run from any point in an
   event history without repeating inherited work, dry-run a graph on a throwaway
   engine (zero side effects, zero tokens, labelled `dry_run_simulation`), and gate
@@ -829,26 +822,10 @@ exactly-once execution.
   typed text — which are re-observed and locally resolved before a sentinel-guarded
   dispatch; low-confidence, stale or shadow decisions dispatch nothing. Disabled by
   default.
-- **Cua Driver over MCP (opt-in, external)** - a disabled-by-default `cua-driver`
-  stdio block adds cross-platform full-desktop control (per-window accessibility
-  snapshots plus a real screenshot, background pointer/keyboard input, clipboard,
-  app/window lifecycle, deterministic `verify_state` predicates) from the MIT Cua
-  Driver binary Alpha does not vendor or install. Runtime-verified on Windows 11 with
-  `cua-driver 0.34.0`: 59 tools discovered through Alpha's own MCP loader, a window
-  screenshot written to a real PNG, and text typed at pixel coordinates read back from
-  the target's own value, with `6 x 7 = 42` computed in a Calculator that never took
-  focus. Addressing by the driver's own `element_token` works too, which is why the
-  block sets `include_structured_content`: the handles live only in MCP
-  `structuredContent`, which no model is otherwise shown, and the token path gets a
-  driver-verified result where the pixel path reports `not verified`. Its MCP tools
-  default to the elevated ask-per-call governance class, and SentinelGuard does not
-  wrap MCP-delivered input. Research, licensing table, verified behaviour and runbook:
-  [docs/RESEARCH_COMPUTER_USE_CUA.md](docs/RESEARCH_COMPUTER_USE_CUA.md).
 
 → [docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md) ·
 [docs/MEMORY.md](docs/MEMORY.md) · [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) ·
 [docs/SENTINEL.md](docs/SENTINEL.md) ·
-[docs/RESEARCH_COMPUTER_USE_CUA.md](docs/RESEARCH_COMPUTER_USE_CUA.md) ·
 [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) ·
 [docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md) ·
 [docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md) ·
@@ -1088,7 +1065,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 136 tools, 68 routers, 45 middlewares, and 10 supervisor loops. CI fails
+  pins all 137 tools, 68 routers, 45 middlewares, and 11 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
@@ -1127,7 +1104,7 @@ access; pairing is explicit and uses a high-entropy out-of-band code.**
 **A:** An open-source autonomous multi-agent AI operating system: a LangGraph agent
 runtime behind a FastAPI Gateway, with a Next.js 15 workspace and an Electron
 Windows app, running long-horizon work with sandboxed execution, persistent
-memory, 136 native tools, MCP extensions, and 24 public skills. MIT licensed,
+memory, 137 native tools, MCP extensions, and 24 public skills. MIT licensed,
 self-hosted, no proprietary backend.
 
 **Q: How do I install and run it?**
