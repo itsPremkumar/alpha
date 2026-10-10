@@ -41,6 +41,7 @@ class NodeType(StrEnum):
     REDUCE = "reduce"
     RACE = "race"
     QUORUM = "quorum"
+    SWARM = "swarm"
     LOOP = "loop"
     REVIEW = "review"
     APPROVAL = "approval"

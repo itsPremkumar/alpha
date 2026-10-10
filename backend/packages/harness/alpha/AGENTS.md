@@ -527,6 +527,26 @@ reporting measured sleep), `EVENT_WAIT` (parks the run in `WAITING_EVENT`),
 only a `completed` child is adopted, self recursion refused) complete on a
 measurement the runtime takes itself.
 
+**The `SWARM` node kind.** `NodeType.SWARM` is the swarm paradigm's construct
+in the graph model (`alpha/workflow/swarm/`), dispatched on that same
+structural path so it can never fall through to the default runner. Members
+are read from `node.config["members"]` at execution time (membership changes
+between runs need no graph edit) and run on a bounded pool — `max_concurrency`
+clamped to `MAX_SWARM_CONCURRENCY` (32) and the member count. Aggregation is
+policy-driven (`FIRST_SUCCESS` / `QUORUM` / `ALL` / `ANY`) and the verdict is
+**frozen once decided**: a straggler landing late updates the measured totals
+but never flips a decision the caller already acted on. It is *not*
+executor-free — members dispatch through the bound member runner, and with
+none bound every member fails with that real reason rather than a fabricated
+result. Per-member tokens/cost come from the actual runner results
+(`total_cost_usd` is `None` when unpriced, never a reassuring `0.0`), are
+charged through the run's budget gate by `_charge_node_tokens` (returning
+`True` there is load-bearing — a falsy return would re-dispatch the failed
+swarm), and the ledger lands in `run.state[f"{nid}_ledger"]`, never mutated
+into `node.config` (the member wrapper node carries an **empty** config, so a
+runner re-reading config cannot recurse). Tests:
+`tests/test_workflow_swarm_node.py`.
+
 **Declared verification execution.** `alpha.workflow.verification` is the
 consumer of `WorkflowNode.config["verification_cmd"]` — a field the decomposer
 wrote onto every task and the bridge copied into the graph, and which nothing
@@ -543,8 +563,8 @@ resolution, *before* any import. The gate runs on the **default / agent / tool
 / bot path** of `_execute_single_node`, after the lease verdict and the
 evidence check but before either is folded into run state, and outside
 `_STATE_LOCK`. Kinds the runtime measures itself — the executor-free list
-above plus `condition`, `router`, `map`, `reduce`, `race`, `quorum` and
-`compensation`, all of which return before that path — do **not** execute a
+above plus `condition`, `router`, `map`, `reduce`, `race`, `quorum`, `swarm`
+and `compensation`, all of which return before that path — do **not** execute a
 declared verifier, so declare one on a runnable node kind; a test pins that
 boundary rather than leaving it implied. `failed` and `unresolved` **block**:
 the node fails through `_fail_node` carrying the verifier's own reason and a
@@ -619,7 +639,15 @@ different digits" is measurable rather than argued about. Emitted events:
 
 **Durable attempt leases and orphan recovery.** `alpha.workflow.leases` records
 each attempt at `runtime_home()/workflow_store/leases.json` with an atomic
-replace. The order is load-bearing: acquire **before** a node is marked
+replace, and every read-modify-write in that store (acquire, heartbeat,
+release, reclaim, `forget_run`, and the fence reads behind `check_result`)
+runs under a cross-process `FileLock` (`alpha/utils/file_lock.py`) held from
+the reload through the persist, so a second process sharing the directory
+cannot clobber the first one's mutation. The lock is advisory and
+filesystem-local — not distributed, not cross-process *exactly-once* — and a
+timeout raises `LeaseStoreError` naming the real reason rather than
+proceeding unlocked; a process-local manager (`store_dir=None`) skips it
+entirely. The order is load-bearing: acquire **before** a node is marked
 `RUNNING`, release in `finally`, and `check_result` runs **before** any runner
 output is folded into run state — `STALE_LEASE`, `SUPERSEDED_REVISION` and
 `UNKNOWN_LEASE` all discard the work, because an unverifiable key is refused
@@ -655,7 +683,12 @@ marker. Exposed at
 `GET /api/workflows/{workflow_id}/plans/{version}/diff?base={n}`.
 Tests: `tests/test_workflow_graph_diff.py`, `tests/test_workflow_plan_diff_router.py`.
 
-Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay, and append-only plan history. That local adapter, the lease store, and wave concurrency are atomic and restart-recoverable for one Gateway process, not a shared multi-worker lease/exactly-once repository: do not claim cross-process exactly-once execution, and keep the `worker_id` a pid — it is exactly as specific as the guarantee available. Hydration still refuses stale projections; `/recover` is an explicit route, not a relaxation of `/hydrate`. Full operations, API examples, architecture, gap inventory, and the regression suites are in [`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md), [`docs/ALPHA-WORKFLOW-ARCHITECTURE.md`](../../../docs/ALPHA-WORKFLOW-ARCHITECTURE.md), and [`docs/ALPHA-WORKFLOW-CURRENT-STATE.md`](../../../docs/ALPHA-WORKFLOW-CURRENT-STATE.md).
+Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay, and append-only plan history. That local adapter and wave concurrency are atomic and restart-recoverable for
+one Gateway process, and the lease store now takes a cross-process file lock —
+same-filesystem advisory coordination, still not a shared multi-worker
+lease/exactly-once repository: do not claim cross-process exactly-once
+execution, and keep the `worker_id` a pid — it is exactly as specific as the
+guarantee available. Hydration still refuses stale projections; `/recover` is an explicit route, not a relaxation of `/hydrate`. Full operations, API examples, architecture, gap inventory, and the regression suites are in [`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md), [`docs/ALPHA-WORKFLOW-ARCHITECTURE.md`](../../../docs/ALPHA-WORKFLOW-ARCHITECTURE.md), and [`docs/ALPHA-WORKFLOW-CURRENT-STATE.md`](../../../docs/ALPHA-WORKFLOW-CURRENT-STATE.md).
 
 ## Guarded source auto-update contract
 

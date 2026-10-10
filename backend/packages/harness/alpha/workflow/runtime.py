@@ -2405,11 +2405,12 @@ class DynamicWorkflowEngine:
             if not self._apply_node_worktree(nid, run, node):
                 return
             # 3. Structural node types (checkpoint / goal_gate / handoff /
-            #    wait / event_wait / parallel / subworkflow).  These need no
-            #    executor: their completion evidence is a measurement the engine
-            #    can take itself.  Handled first so such a node cannot fall
-            #    through to the default runner path and demand an executor for
-            #    work the runtime already did.
+            #    wait / event_wait / parallel / subworkflow / swarm).  These
+            #    need no executor: their completion evidence is a measurement
+            #    the engine can take itself (a swarm's members need a runner,
+            #    and fail with the real reason when none is bound).  Handled
+            #    first so such a node cannot fall through to the default runner
+            #    path and demand an executor for work the runtime already did.
             if self._handle_structural_node(nid, graph, run, node_runner, compensation_runner):
                 return
 
@@ -2891,6 +2892,8 @@ class DynamicWorkflowEngine:
             return self._handle_parallel(nid, graph, run, node, node_runner, compensation_runner)
         if kind == NodeType.SUBWORKFLOW:
             return self._handle_subworkflow(nid, run, node, node_runner, compensation_runner)
+        if kind == NodeType.SWARM:
+            return self._handle_swarm(nid, graph, run, node, node_runner)
         return False
 
     def _handle_checkpoint(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
@@ -3033,6 +3036,80 @@ class DynamicWorkflowEngine:
             run.state[f"{nid}_handoff"] = contract
         node.evidence.append(f"handoff contract recorded: {len(completed)} completed, {len(failed)} failed, {len(remaining)} remaining, {len(decisions)} decision(s)")
         self._succeed_node(run, node, contract)
+        return True
+
+    def _handle_swarm(
+        self,
+        nid: str,
+        graph: WorkflowGraph,
+        run: WorkflowRun,
+        node: WorkflowNode,
+        node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+    ) -> bool:
+        """Execute a SWARM node: dynamic members, policy-driven aggregation, cost ledger.
+
+        Unlike PARALLEL (a static all-or-nothing fan-out), a SWARM node reads
+        its member list from config at execution time, dispatches each member
+        through a swarm-specific runner, and aggregates per the declared policy
+        (FIRST_SUCCESS, QUORUM, ALL, ANY). The cost ledger records per-member
+        token/cost usage from actual runner results.
+
+        When no swarm member runner is bound, every member fails with the
+        honest reason — the swarm never fabricates member results.
+        """
+        from alpha.workflow.swarm.execution import SwarmConfig, execute_swarm_node
+
+        config = SwarmConfig.from_node(node)
+
+        # Resolve the member runner: prefer a swarm-specific runner, fall back
+        # to the node_runner by wrapping it as a swarm member runner.
+        member_runner = None
+        swarm_runner = node.config.get("swarm_runner")
+        if swarm_runner is not None and callable(swarm_runner):
+            member_runner = swarm_runner
+        elif node_runner is not None:
+
+            def member_runner(member_id: str, prompt: str) -> dict[str, Any]:
+                # Wrap the node runner: build a transient member node and
+                # delegate. It inherits the swarm node's executor (that is how
+                # a host dispatches) but carries an EMPTY config — a runner
+                # that re-read config must not see the swarm's member list and
+                # recurse into spawning a swarm of its own.
+                member_node = WorkflowNode(
+                    id=f"{nid}:{member_id}",
+                    type=node.type,
+                    executor=node.executor,
+                    prompt=prompt,
+                    config={},
+                )
+                return node_runner(member_node, run)
+
+        outcome = execute_swarm_node(node, run, config, member_runner)
+
+        ledger = outcome.ledger
+        members = ledger.get("members", [])
+        total = len(members)
+        succeeded = sum(1 for m in members if m.get("status") == "succeeded")
+        for ev in outcome.evidence:
+            node.evidence.append(ev)
+        node.evidence.append(f"swarm {config.aggregation.value}: {succeeded}/{total} members succeeded, total_tokens={ledger.get('total_tokens', 0)}")
+
+        # Member tokens are real spend, so they are charged through the same
+        # budget gate a plain runner result goes through — a swarm must not be
+        # the one path that spends outside the run's budget.  ``True`` is
+        # load-bearing: a falsy return would tell the structural dispatcher the
+        # node was NOT handled, and the already-failed swarm would fall through
+        # into the default runner path and execute a second time.
+        if self._charge_node_tokens(run, node, ledger.get("total_tokens", 0)):
+            return True
+
+        if outcome.succeeded:
+            with self.state():
+                run.state[f"{nid}_result"] = outcome.outputs
+                run.state[f"{nid}_ledger"] = ledger
+            self._succeed_node(run, node, {"outputs": outcome.outputs, "ledger": ledger})
+        else:
+            self._fail_node(run, node, outcome.reason or "swarm aggregation not satisfied", swarm_ledger=ledger)
         return True
 
     def _handle_wait(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:

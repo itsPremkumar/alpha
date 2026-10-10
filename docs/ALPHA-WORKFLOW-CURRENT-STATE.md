@@ -270,10 +270,11 @@ listed rather than implied:
 
 ## Honesty boundaries
 
-- The lease store, the event log and wave concurrency are **process-local**.
-  They are atomic and restart-recoverable for a single Gateway; they are not a
-  shared multi-worker lease repository and are never described as
-  cross-process exactly-once.
+- The event log and wave concurrency are **process-local**. The lease store
+  now coordinates across processes on one filesystem through an advisory
+  `FileLock` beside its data file (a timeout is a `LeaseStoreError`, never a
+  silently unlocked mutation) — still not a shared multi-worker lease
+  repository and never described as cross-process exactly-once.
 - Hydration **still refuses** stale projections. `/recover` is an explicit,
   owner-scoped route; it does not relax `/hydrate`.
 - A completed run is never a verified run, and a dry run

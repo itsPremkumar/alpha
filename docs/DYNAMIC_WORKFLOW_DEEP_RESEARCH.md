@@ -65,14 +65,14 @@ prompt → DynamicPerceptionEngine.perceive()
 `PENDING`, `READY`, `RUNNING`, `WAITING`, `SUCCEEDED`, `FAILED`, `RETRYING`,
 `SKIPPED`, `CANCELLED`, `SUSPENDED`, `COMPENSATING`, `ABORTED`
 
-### NodeType (32 kinds)
+### NodeType (36 kinds)
 
 `AGENT`, `BOT`, `SUBAGENT`, `TOOL`, `MCP`, `ROUTER`, `CONDITION`, `PARALLEL`,
-`MAP`, `REDUCE`, `RACE`, `QUORUM`, `LOOP`, `REVIEW`, `APPROVAL`, `WAIT`,
-`EVENT_WAIT`, `SUBWORKFLOW`, `CHECKPOINT`, `COMPENSATION`, `GOAL_GATE`,
-`STANDARD`, `SKILL`, `MODEL`, `WORKFLOW`, `AUTOMATION`, `PROJECT`, `COMMAND`,
-`HUMAN_APPROVAL`, `MEMORY`, `RESEARCH`, `VALIDATION`, `SYSTEM`, `HANDOFF`,
-`CONNECTIVITY_WAIT`
+`MAP`, `REDUCE`, `RACE`, `QUORUM`, `SWARM`, `LOOP`, `REVIEW`, `APPROVAL`,
+`WAIT`, `EVENT_WAIT`, `SUBWORKFLOW`, `CHECKPOINT`, `COMPENSATION`,
+`GOAL_GATE`, `STANDARD`, `SKILL`, `MODEL`, `WORKFLOW`, `AUTOMATION`,
+`PROJECT`, `COMMAND`, `HUMAN_APPROVAL`, `MEMORY`, `RESEARCH`, `VALIDATION`,
+`SYSTEM`, `HANDOFF`, `CONNECTIVITY_WAIT`
 
 ### WorkflowRunStatus (15 states)
 
@@ -103,15 +103,13 @@ prompt → DynamicPerceptionEngine.perceive()
 `insert_after`, `fan_out`, `fan_in`, `create_loop`, `set_loop_limit`,
 `retry_node`, `skip_node`, `request_human`, `request_review`
 
-**Supported in core engine (11):** `add_node`, `remove_node`, `replace_node`,
-`update_node_config`, `retry_node`, `add_edge`, `remove_edge`,
-`insert_before`, `insert_after`, `create_loop`, `set_route`
-
-**Deferred no-op (1):** `update_edge_condition` — recognised but not applied;
-the legacy DAG tool applies it at its call site.
-
-**Unsupported (6):** `fan_out`, `fan_in`, `set_loop_limit`, `skip_node`,
-`request_human`, `request_review` — refused with an honest reason.
+**Supported in core engine (19 of 19):** every declared operation applies,
+including the former deferrals — `update_edge_condition` (the validator
+simulates accumulated edges and refuses a missing one up front; the engine
+applies the condition) and the former six refusals `fan_out`, `fan_in`,
+`set_loop_limit`, `skip_node`, `request_human`, `request_review`. The legacy
+DAG tool keeps only a post-apply cross-check that refuses to sync back a
+patch whose edge vanished between validation and apply.
 
 ## 4. Run Lifecycle
 
@@ -303,11 +301,13 @@ the legacy DAG tool applies it at its call site.
 
 ### Mode Mapper
 
-- 7 paradigms mapped: `direct_agent`, `subagent`, `bot_profile`, `moa`,
-  `deep_research`, `deep_think` are expressible
-- **Swarm is NOT expressible** — the DWE graph model has no dynamic
-  swarm-topology construct (member join/leave, supervisor hierarchy, cost
-  ledger land with P7); a static MAP fan-out would misrepresent a swarm
+- All 7 paradigms are expressible: `direct_agent`, `subagent`, `bot_profile`,
+  `moa`, `deep_research`, `deep_think`, and `swarm`
+- **Swarm maps to a real `SWARM` node** (§9.2) — dynamic members read from
+  node config at execution time, policy aggregation, and a per-member cost
+  ledger. A static MAP fan-out would misrepresent it, so it is a first-class
+  node kind rather than fan-out branding; only an *unknown* paradigm name is
+  refused now.
 
 ### DynamicWorkflowService
 
@@ -337,47 +337,58 @@ Every module enforces:
 
 ### 9.1 Patch Engine Completeness (Medium effort, high value)
 
-**Current state:** 6 of 19 declared patch operations are unsupported in the
-core engine (`fan_out`, `fan_in`, `set_loop_limit`, `skip_node`,
-`request_human`, `request_review`), and `update_edge_condition` is a deferred
-no-op.
-
-**Improvement:** Implement all 19 operations in the core patch engine.
+**Implemented.** All 19 declared operations apply in the core patch engine —
+previously 6 were refused with an honest reason (`fan_out`, `fan_in`,
+`set_loop_limit`, `skip_node`, `request_human`, `request_review`) and
+`update_edge_condition` was a deferred no-op:
 
 - `fan_out` / `fan_in` — clone a node's subgraph to N targets / merge N
-  sources into one; the graph model already supports the edge semantics
-- `set_loop_limit` — update `loop_policy.max_iterations` on an existing node;
-  the validator already protects `loop_policy` from arbitrary mutation
+  sources into one; the graph model already supported the edge semantics
+- `set_loop_limit` — update `loop_policy.max_iterations` on an existing node,
+  keeping the validator's protection of `loop_policy` from arbitrary mutation
 - `skip_node` — mark a node SKIPPED without executing it; the scheduler
   already treats SKIPPED as a valid terminal node state
 - `request_human` / `request_review` — create an approval gate node; the
-  APPROVAL node kind and `resolve_approval` already exist
-- `update_edge_condition` — apply the condition mutation in the core engine
-  rather than deferring to the DAG tool call site
+  APPROVAL node kind and `resolve_approval` already existed
+- `update_edge_condition` — the validator now simulates accumulated edges and
+  refuses a missing one up front (`Patch rejected:`), and the engine applies
+  the condition itself; the DAG tool keeps only a post-apply cross-check that
+  refuses to sync back a patch whose edge vanished between validation and
+  apply
 
-**Value:** Eliminates the "unsupported patch operation" refusal path, makes
-the patch engine self-contained, and removes the DAG tool's special-case edge
-mutation.
+**Value delivered:** the "unsupported patch operation" refusal path is gone,
+the patch engine is self-contained, and the DAG tool's special-case edge
+mutation is reduced to that cross-check. Tests:
+`tests/test_workflow_patch_completeness.py`.
 
 ### 9.2 Swarm Paradigm Expressibility (High effort, high value)
 
-**Current state:** Swarm is refused with an honest reason: the DWE graph model
-has no dynamic swarm-topology construct.
+**Implemented.** A `SWARM` node kind (`alpha/workflow/swarm/`) closes the
+last non-expressible paradigm — it is a first-class construct, not a MAP
+fan-out wearing swarm's name:
 
-**Improvement:** Add a `SWARM` node kind that maps to a dynamic fan-out with
-member join/leave semantics.
+- **Members are dynamic.** The node reads its member list from
+  `node.config["members"]` at execution time, so membership changes between
+  runs without a graph edit.
+- **Aggregation is policy-driven** — `FIRST_SUCCESS` / `QUORUM` / `ALL` /
+  `ANY`, chosen per swarm rather than implied by graph edges. The verdict is
+  **frozen once decided**: a straggler landing late updates the measured
+  totals but never flips a decision the caller already acted on.
+- **The cost ledger is real.** Per-member tokens/cost accumulate from the
+  actual runner results into `run.state["<node>_ledger"]`; an unpriced swarm
+  reports `total_cost_usd: None`, never a reassuring `0.0`.
+- **Bounded dispatch** — members run on a pool clamped to
+  `MAX_SWARM_CONCURRENCY` (32) and the member count, so a swarm is a fan-out,
+  not a thread bomb.
+- **Honest unbound state** — with no member runner bound, every member fails
+  with the real reason and no member result is fabricated. Member tokens go
+  through the run's budget gate like any other runner spend.
 
-- A `SWARM` node would declare a member set (bots/subagents) and a topology
-  (hierarchical, flat, pipeline)
-- The engine would dispatch members as a bounded wave, track membership
-  dynamically, and aggregate results through a supervisor node
-- The cost ledger (tokens per member) would be journalled as `node_timed`
-  events per member
-- This closes the last non-expressible paradigm and makes the DWE a complete
-  orchestration plane
+**Still beyond this construct:** live member join/leave *during* a run and a
+supervisor hierarchy — the swarm is a node kind, not a membership protocol.
 
-**Value:** The DWE becomes the single orchestration plane for all paradigms;
-no honest refusal needed for swarm.
+**Value:** The DWE is the single orchestration plane for every declared
+paradigm; only an unknown paradigm name is refused.
 
 ### 9.3 DecisionRecords Journaling (Medium effort, medium value)
 
@@ -400,10 +411,24 @@ perception, decomposition, and assembly decisions that produced a run.
 
 ### 9.4 Cross-Process Coordination (High effort, high value)
 
-**Current state:** The lease store, event log, and wave concurrency are
-process-local. They are atomic and restart-recoverable for ONE Gateway
-process; a multi-worker deployment still needs shared lease/coordination
-before claiming cross-process exactly-once execution.
+**Partially implemented.** The lease store now coordinates across processes
+on one filesystem: every read-modify-write (acquire, heartbeat, release,
+reclaim, fence checks) runs under a cross-process `FileLock`
+(`alpha/utils/file_lock.py` — `fcntl.flock` on POSIX, `msvcrt.locking` on
+Windows) beside the data file, so two Gateway processes sharing a directory
+can no longer lose an update through atomic-but-uncoordinated `os.replace`
+writes. A lock that cannot be taken is a `LeaseStoreError`, never a silent
+unlocked mutation.
+
+The lock is **advisory** and filesystem-local — it is not a distributed lock,
+and it does not make the store cross-process *exactly-once*. Still open:
+
+- The event log, wave concurrency, and the template and quarantine stores
+  remain single-process.
+- A multi-host deployment still needs a shared coordination backend before
+  claiming cross-process exactly-once execution.
+- The `worker_id` is still a pid — exactly as specific as the guarantee
+  available.
 
 **Improvement:** Add a shared coordination backend.
 
@@ -528,9 +553,9 @@ passive list; records don't get forgotten.
 | Improvement | Effort | Value | Dependencies | Risk | Status |
 | --- | --- | --- | --- | --- | --- |
 | Patch engine completeness | Medium | High | None | Low — additive operations | **Implemented** |
-| Swarm paradigm | High | High | New node kind, supervisor | Medium — new semantics | Not implemented (architectural) |
+| Swarm paradigm | High | High | New node kind, supervisor | Medium — new semantics | **Implemented** (`SWARM` node kind, policy aggregation) |
 | DecisionRecords journaling | Medium | Medium | Event schema | Low — additive events | **Implemented** |
-| Cross-process coordination | High | High | Shared backend | High — changes consistency model | Not implemented (architectural) |
+| Cross-process coordination | High | High | Shared backend | High — changes consistency model | **Partially implemented** (advisory file lock on the lease store, same filesystem only) |
 | Automatic evidence collectors | Medium | High | Verification executor | Medium — new wiring | **Implemented** |
 | Semantic drift detection | Medium | Medium | Embedding model | Low — additive scoring | **Implemented** (char n-gram, model-free) |
 | Worktree resource limits | Low | Medium | None | Low — additive limits | **Implemented** |
@@ -538,10 +563,12 @@ passive list; records don't get forgotten.
 | Connectivity probe implementations | Low | Medium | None | Low — additive callables | **Implemented** |
 | Quarantine escalation policies | Low | Medium | Notification system | Low — additive events | **Implemented** |
 
-**8 of 10 implemented.** The two remaining items (swarm paradigm, cross-process
-coordination) are architectural changes requiring a shared SQL backend or a new
-node kind with supervisor semantics — each needs a dedicated design pass rather
-than an incremental patch.
+**9 of 10 implemented; 1 partially.** The swarm paradigm is closed by the
+`SWARM` node kind (§9.2). Cross-process coordination now holds for cooperating
+processes on one filesystem via the lease store's advisory `FileLock`, but the
+event log and the other workflow stores are still single-process and no
+shared SQL/Redis backend exists — so nothing here is cross-process
+*exactly-once*, and multi-host still needs the backend §9.4 describes.
 
 ## 11. Recommended Implementation Order
 
@@ -557,8 +584,9 @@ than an incremental patch.
    evidence-backed ✅
 7. **Semantic drift detection** — medium effort, reduces false positives ✅
 8. **Trigger cross-process fencing** — medium effort, enables multi-worker ✅
-9. **Swarm paradigm** — high effort, closes the last non-expressible paradigm
+9. **Swarm paradigm** — high effort, closes the last non-expressible paradigm ✅
 10. **Cross-process coordination** — high effort, enables horizontal scaling
+    ✅ same-filesystem advisory locking; shared backend for multi-host remains
 
 Each improvement preserves the honesty contract: missing prerequisites are
 failures carrying the real reason, and nothing is fabricated when a

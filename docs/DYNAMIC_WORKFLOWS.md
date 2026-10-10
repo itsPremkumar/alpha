@@ -65,9 +65,13 @@ execution to the existing scheduler/host lifecycle.
 
 `POST /api/workflows/turns` remains the low-latency compatibility seam. By
 default it maps a known paradigm (`direct_agent`, `subagent`, `bot_profile`,
-`moa`, `deep_research`, or `deep_think`) to a bounded graph and returns a
-`TurnOutcome`. Unknown paradigms and the dynamic swarm paradigm fail before a
-run is created. Set `dynamic: true` to use the full perception/discovery service
+`moa`, `deep_research`, `deep_think`, or `swarm`) to a bounded graph and
+returns a `TurnOutcome`. `swarm` maps onto a real `SWARM` node — dynamic
+members read from node config, policy aggregation (`FIRST_SUCCESS` / `QUORUM`
+/ `ALL` / `ANY`), and a per-member cost ledger measured from runner results;
+when no member runner is bound the members fail with that honest reason rather
+than a fabricated result. Only an *unknown* paradigm name fails before a run
+is created. Set `dynamic: true` to use the full perception/discovery service
 for that turn instead.
 
 `POST /api/bots/{name}/workflow` runs the same service in `bot` mode after the
@@ -175,6 +179,17 @@ an executor for work the engine already did:
 | `EVENT_WAIT` | Parks the node until a named signal arrives, making `WAITING_EVENT` reachable. |
 | `PARALLEL` | Runs a named member set as one bounded wave. All-or-nothing: a single non-succeeded member fails the group. |
 | `SUBWORKFLOW` | Runs a registered child workflow to a terminal state through this same engine and adopts only a genuinely `completed` child. Self-recursion is refused. |
+
+`SWARM` is dispatched on that same structural path but is **not** in the table
+above — it needs a member runner. Members are read from
+`node.config["members"]` at execution time and dispatched on a bounded pool;
+aggregation is policy-driven (`FIRST_SUCCESS` / `QUORUM` / `ALL` / `ANY`)
+with the verdict **frozen once decided**; the per-member cost ledger is
+measured from real runner results (`total_cost_usd` is `None` when unpriced),
+charged through the run's budget gate, and stored in
+`run.state["<node>_ledger"]`. With no member runner bound, every member fails
+with that real reason — no member result is fabricated. Like every kind
+handled before the runner path, it does not execute a declared verifier.
 
 ## Declared verification
 
@@ -416,7 +431,15 @@ instead of argued about. The engine emits `failure_classified`,
 
 **Every attempt holds a durable, fenced lease.**
 `alpha.workflow.leases` records each attempt at
-`runtime_home()/workflow_store/leases.json` with an atomic replace. The
+`runtime_home()/workflow_store/leases.json` with an atomic replace. Every
+read-modify-write in that store — acquire, heartbeat, release, reclaim, the
+fence reads behind `check_result` — additionally runs under a cross-process
+`FileLock` beside the file (`alpha/utils/file_lock.py`: `fcntl.flock` on
+POSIX, `msvcrt.locking` on Windows), so a second Gateway process sharing the
+directory reloads what the first one just wrote instead of clobbering it. The
+lock is advisory and same-filesystem: never distributed, never
+cross-process *exactly-once*, and a timeout is a `LeaseStoreError` naming the
+real reason rather than a silently unlocked mutation. The
 lifecycle is: acquire *before* the node is marked `RUNNING`, release in
 `finally`, and **check the fence before adopting any output**. A result whose
 lease reports `STALE_LEASE`, `SUPERSEDED_REVISION` or `UNKNOWN_LEASE` is
@@ -485,9 +508,11 @@ lateness.
 
 Day-of-month and day-of-week follow the Vixie rule — restricted both, either
 matches — because the AND misreading makes `0 9 1 * 1` ("09:00 on the 1st or
-on Mondays") fire only when the 1st is a Monday. The store, like the lease
-and event-log stores beside it, is single-Gateway: atomic and
-restart-recoverable for one process, never cross-process coordination.
+on Mondays") fire only when the 1st is a Monday. The trigger store, like the
+event-log store beside it, is single-Gateway: atomic and restart-recoverable
+for one process. (The lease store now takes a cross-process file lock — that
+is same-filesystem coordination between cooperating processes, not a shared
+multi-worker repository.)
 
 ## Dead-letter quarantine
 
@@ -615,11 +640,15 @@ What remains true and must keep being said plainly:
 - A deadline is enforced by **fencing**, not by cancelling: CPython cannot kill a
   thread, so timed-out work may still be completing in the background and its
   result is discarded rather than adopted.
-- Wave concurrency, the durable event log **and the lease store** are
-  **process-local**. They are atomic and restart-recoverable for ONE Gateway
-  process; a multi-worker deployment still needs shared lease/coordination
-  before claiming cross-process exactly-once execution. The lease `worker_id`
-  is a pid for exactly that reason — as specific as the guarantee available.
+- Wave concurrency and the durable event log are **process-local** — atomic
+  and restart-recoverable for ONE Gateway process. The **lease store** now
+  coordinates across processes through an advisory `FileLock` beside its data
+  file, so two processes sharing one directory cannot lose a lease or fence
+  update; that is same-filesystem mutual exclusion, not a shared multi-worker
+  repository. A multi-worker deployment still needs a shared
+  lease/coordination backend before claiming cross-process exactly-once
+  execution, and the lease `worker_id` stays a pid for exactly that reason —
+  as specific as the guarantee available.
 - Hydration **still refuses** stale projections. `/recover` is an explicit
   route and does not relax `/hydrate`.
 - The template store is local and atomic for ONE Gateway process. It is not a
@@ -637,11 +666,13 @@ What remains true and must keep being said plainly:
 Known gaps that are not implemented (see
 [`ALPHA-WORKFLOW-CURRENT-STATE.md`](ALPHA-WORKFLOW-CURRENT-STATE.md) for the
 full list): workflow triggers still disclose the missing scheduler handoff
-rather than creating a second cron owner, and the swarm paradigm is not
-expressible as a node kind (the mode mapper refuses it honestly rather than
-faking a parallel fan-out). Cross-process coordination still needs a shared
-lease/coordination backend before a multi-worker deployment can claim
-exactly-once execution.
+rather than creating a second cron owner, and live member join/leave *during*
+a swarm run plus a supervisor topology sit beyond the `SWARM` node kind's
+execution-time member list. Cross-process coordination now covers the lease
+store on one filesystem through an advisory file lock; the event log and the
+other workflow stores are still single-process, and a shared
+lease/coordination backend is still required before a multi-worker deployment
+can claim exactly-once execution.
 
 ### Recent improvements (v2)
 
@@ -682,6 +713,20 @@ The following capabilities were added after the initial v2 release:
   records older than a threshold; `escalate_stale()` marks them escalated
   (keeping the record QUARANTINED — escalation is a signal, not a resolution)
   with the measured age recorded.
+- **Swarm paradigm** — the `SWARM` node kind closes the last non-expressible
+  paradigm: members are read from node config at execution time,
+  aggregation is policy-driven (`FIRST_SUCCESS` / `QUORUM` / `ALL` / `ANY`)
+  with the verdict frozen once decided, the per-member cost ledger is measured
+  from real runner results, dispatch runs on a bounded pool, and an unbound
+  member runner fails every member with the real reason instead of fabricating
+  results. Member tokens are charged through the run's budget gate.
+- **Cross-process lease coordination** — every lease-store read-modify-write
+  runs under an advisory `FileLock` (`alpha/utils/file_lock.py`: `flock` on
+  POSIX, `msvcrt.locking` on Windows) beside the data file, so two processes
+  sharing a directory reload instead of clobbering each other's mutation. It
+  is same-filesystem mutual exclusion — never distributed, never
+  cross-process *exactly-once* — and a lock timeout raises `LeaseStoreError`
+  rather than proceeding unlocked.
 
 ## Regression coverage
 
@@ -723,6 +768,13 @@ The implementation is covered by `backend/tests/test_dynamic_workflow_service.py
   handoff surfacing
 - `test_workflow_evidence_collectors.py` — declared evidence readers wired
   into the verification gate
+- `test_workflow_swarm_node.py` — aggregation policies, the frozen verdict,
+  the measured per-member cost ledger, bounded dispatch, honest unbound
+  failure, and the engine / budget / mode-mapper integration
+- `test_workflow_cross_process_leases.py` — `FileLock` exclusivity and its
+  sidecar, two managers over one store (lease visibility, refused
+  double-claim, cross-instance fence freshness), lock-timeout
+  `LeaseStoreError`, the process-local skip, and corrupt-store refusals
 
 and the frontend `workflows.test.mjs` / `workflows-observability.test.mjs` client
 contract tests.

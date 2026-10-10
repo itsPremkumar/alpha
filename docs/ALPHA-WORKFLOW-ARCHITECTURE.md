@@ -139,9 +139,12 @@ truncated with a marker rather than allowed to grow without limit.
 
 These are disclosed limitations, not bugs to silently "fix":
 
-- **The lease store is single-Gateway.** It is atomic (`os.replace`) and
-  restart-recoverable for one process; it is not a shared SQL lease repository
-  and gives no cross-process exactly-once guarantee. `worker_id` is a pid for
+- **The lease store coordinates on one filesystem, not across hosts.** It is
+  atomic (`os.replace`) and restart-recoverable, and every mutation now takes
+  an advisory cross-process `FileLock` beside the data file, so cooperating
+  processes sharing a directory cannot silently clobber each other's
+  read-modify-write. It is still not a shared SQL lease repository and gives no
+  cross-process exactly-once guarantee. `worker_id` is a pid for
   exactly that reason — as specific as the guarantee actually available.
 - **The event log and wave concurrency are likewise process-local.** Parallel
   waves reorder the event log, which is why `policies.max_concurrency` is

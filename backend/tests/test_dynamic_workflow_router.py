@@ -40,7 +40,6 @@ import alpha.workflow.dynamic_decomposer as dynamic_decomposer_module
 import alpha.workflow.runtime as runtime_module
 from alpha.orchestrator.domain_executors import MODEL_EXECUTOR
 from alpha.orchestrator.executors import DIGEST_EXECUTOR, ExecutorRegistry
-from alpha.orchestrator.mode_mapper import NON_EXPRESSIBLE_REASONS
 from alpha.tools.builtins.workflow_dag_tool import workflow_dag_manage
 from alpha.workflow.plan_graph import PlanGraphStore
 from app.gateway.routers.workflows import (
@@ -562,8 +561,8 @@ def test_concurrent_patches_through_rest_commit_once_and_occ_reject_loser(monkey
 
 
 @pytest.mark.asyncio
-async def test_turn_endpoint_completes_and_refuses_swarm_honestly(monkeypatch):
-    """``POST /turns``: a real journalled run comes back; swarm is a 400."""
+async def test_turn_endpoint_completes_and_refuses_unknown_paradigm_honestly(monkeypatch):
+    """``POST /turns``: a real journalled run comes back; an unknown paradigm is a 400."""
     _bind_digest_registry(monkeypatch)
     req = MagicMock()
 
@@ -583,11 +582,22 @@ async def test_turn_endpoint_completes_and_refuses_swarm_honestly(monkeypatch):
     assert run["status"] == "completed"
     assert run["metrics"]["execution_mode"] == "normal"
 
-    # Swarm: no run is created; the 400 detail is the mapper's VERBATIM reason.
+    # Swarm: expressible now (SWARM node kind), so it creates a REAL run whose
+    # members execute through the bound digest runner and aggregate by quorum.
+    swarm = await run_workflow_turn(WorkflowTurnRequest(prompt="self-organize now", paradigm="swarm"), req)
+    assert swarm["paradigm"] == "swarm"
+    assert swarm["run_id"] and swarm["workflow_id"]
+    assert swarm["status"] == "completed"
+    assert swarm["failed_nodes"] == []
+    swarm_run = await get_workflow_run(swarm["run_id"], req)
+    ledger = swarm_run.get("state", {}).get("swarm_ledger") or {}
+    assert ledger.get("completed") is True  # a real ledger, not a bare "done"
+
+    # An UNKNOWN paradigm is still the 400; the detail is the mapper's VERBATIM reason.
     with pytest.raises(HTTPException) as excinfo:
-        await run_workflow_turn(WorkflowTurnRequest(prompt="self-organize now", paradigm="swarm"), req)
+        await run_workflow_turn(WorkflowTurnRequest(prompt="anything", paradigm="teleport_through_walls"), req)
     assert excinfo.value.status_code == 400
-    assert str(excinfo.value.detail) == NON_EXPRESSIBLE_REASONS["swarm"]
+    assert "not expressible yet" in str(excinfo.value.detail)
 
     # Fail-closed input: an unknown mode never starts a run either.
     with pytest.raises(HTTPException) as mode_excinfo:
