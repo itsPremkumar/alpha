@@ -285,7 +285,7 @@ def _cua_server_config(binary: str) -> dict:
     }
 
 
-async def _alpha_cua_tools() -> dict:
+async def _alpha_cua_tools(*, include_structured_content: bool = False) -> dict:
     """Load the real driver through Alpha's own MCP loader.
 
     Deliberately not ``MultiServerMCPClient``: see the module docstring — that client
@@ -299,13 +299,48 @@ async def _alpha_cua_tools() -> dict:
     from alpha.config.extensions_config import ExtensionsConfig
     from alpha.mcp.tools import get_mcp_tools
 
-    config = ExtensionsConfig(mcpServers={"cua-driver": _cua_server_config(binary)})
+    block = _cua_server_config(binary)
+    block["include_structured_content"] = include_structured_content
+    config = ExtensionsConfig(mcpServers={"cua-driver": block})
     with mock.patch("alpha.mcp.tools.ExtensionsConfig.from_file", return_value=config):
         tools = await asyncio.wait_for(get_mcp_tools(), timeout=240)
     by_name = {tool.name: tool for tool in tools}
     for required in ("cua-driver_list_windows", "cua-driver_get_window_state", "cua-driver_type_text"):
         assert required in by_name, f"{required} must be published; got {sorted(by_name)[:15]}..."
     return by_name
+
+
+def _structured_content_block(result: object) -> str | None:
+    """Return the ``<structured_content>`` text block a model would be shown, if any.
+
+    Reads the model-visible content only — never the artifact — because that is exactly
+    the distinction the opt-in exists to make.
+    """
+    from alpha.mcp.tools import STRUCTURED_CONTENT_CLOSE, STRUCTURED_CONTENT_OPEN
+
+    parts = result if isinstance(result, (list, tuple)) else [result]
+    for part in parts:
+        if isinstance(part, dict) and part.get("type") == "text":
+            text = part.get("text", "")
+            if text.lstrip().startswith(STRUCTURED_CONTENT_OPEN):
+                return text[text.index(">") + 1 : text.rindex(STRUCTURED_CONTENT_CLOSE)].strip()
+    return None
+
+
+def _edit_element_token(fenced_payload: str) -> str | None:
+    """Find an editable element's handle in the model-visible structured payload."""
+    import json
+
+    try:
+        payload = json.loads(fenced_payload)
+    except json.JSONDecodeError:
+        return None
+    for element in payload.get("elements") or []:
+        if isinstance(element, dict) and str(element.get("role", "")).lower() in {"edit", "document"}:
+            token = element.get("element_token")
+            if isinstance(token, str) and token:
+                return token
+    return None
 
 
 def _start_helper(tmp_path: Path) -> tuple[subprocess.Popen, int]:
@@ -563,6 +598,74 @@ async def test_real_screenshot_and_typing_reach_a_real_window(tmp_path: Path) ->
         assert after.read_bytes() != before_bytes, "the second screenshot is byte-identical to the first; the capture is not reflecting the window's state"
     finally:
         # Terminating the helper raises no save dialog, so nothing can be written to disk.
+        if window_id is not None:
+            _kill_process_tree(real_pid)
+        proc.kill()
+
+
+@pytest.mark.asyncio
+async def test_element_token_addressing_reaches_the_model_and_is_verified(tmp_path: Path) -> None:
+    """The driver's *preferred* addressing form works end to end, not just pixels.
+
+    Two things are proven that the pixel test cannot show:
+
+    * ``include_structured_content`` puts the ``element_token`` handles where the model
+      can actually read them. Without it the payload rides as a ``ToolMessage``
+      artifact and the model is left guessing pixel coordinates.
+    * Acting by token gets a **stronger claim back**. Typing by pixels reports
+      "not verified - could not read the focused field back"; typing by token writes
+      through UIA ``ValuePattern`` and the driver reads the field back itself and
+      answers "verify: confirmed".
+
+    The wording assertions below are deliberately tied to those two exact phrases: a
+    change in the driver's wording is a real change in what this test is claiming, so
+    it should be a deliberate edit rather than a silent pass.
+    """
+    by_name = await _alpha_cua_tools(include_structured_content=True)
+    proc, real_pid = _start_helper(tmp_path)
+    session = "alpha-token"
+    window_id: int | None = None
+    try:
+        window_id = await _resolve_window(by_name, real_pid, session)
+        if window_id is None:
+            pytest.skip(f"the helper's window never appeared (real pid {real_pid})")
+
+        # A pixel action needs a screenshot from this session first; the capture also
+        # matches what an agent does before acting.
+        await _capture_screenshot(by_name, real_pid, window_id, tmp_path / "before_token.png", session)
+
+        state = await asyncio.wait_for(
+            by_name["cua-driver_get_window_state"].ainvoke({"pid": real_pid, "window_id": window_id, "include_screenshot": False, "session": session}),
+            timeout=180,
+        )
+        fenced = _structured_content_block(state)
+        assert fenced is not None, "include_structured_content is on but no <structured_content> block reached the model-visible text; without it the model has no way to obtain an element_token"
+
+        token = _edit_element_token(fenced)
+        assert token, f"no editable element with a handle in the model-visible payload: {fenced[:300]!r}"
+
+        # Act by handle. window_id is omitted deliberately: the token carries it, and
+        # passing both is how a caller ends up addressing a window it did not observe.
+        typed = await asyncio.wait_for(
+            by_name["cua-driver_type_text"].ainvoke({"pid": real_pid, "element_token": token, "text": _LIVE_STRING, "session": session}),
+            timeout=180,
+        )
+        typed_text = _result_text(typed)
+        assert "not verified" not in typed_text.lower(), f"a token-addressed write must not report the pixel path's weaker label: {typed_text[:300]!r}"
+        assert "confirm" in typed_text.lower(), f"the driver reports a verified write over ValuePattern; not seeing that here means the token was ignored or degraded to a post: {typed_text[:300]!r}"
+        await asyncio.sleep(0.8)
+
+        # Confirm from the target's own state, not from the driver's claim.
+        titles = await asyncio.wait_for(by_name["cua-driver_list_windows"].ainvoke({"pid": real_pid, "session": session}), timeout=180)
+        assert _LIVE_STRING in _result_text(titles), "the typed text never reached the mirrored window title"
+
+        after = await asyncio.wait_for(
+            by_name["cua-driver_get_window_state"].ainvoke({"pid": real_pid, "window_id": window_id, "include_screenshot": False, "session": session}),
+            timeout=180,
+        )
+        match = re.search(r'\[0\] Edit \[value="([^"]*)"', _result_text(after))
+        assert match and _LIVE_STRING in match.group(1), f"the edit value does not contain the token-addressed text ({match.group(1) if match else None!r})"
+    finally:
         if window_id is not None:
             _kill_process_tree(real_pid)
         proc.kill()

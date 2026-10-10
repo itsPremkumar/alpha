@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -352,7 +353,7 @@ def _rewrite_local_paths_in_text(
                 )
             rewritten = translated_by_source[remainder]
             if rewritten is not None:
-                return f"{rewritten}{stripped[len(remainder):]}{trailing}"
+                return f"{rewritten}{stripped[len(remainder) :]}{trailing}"
         return token
 
     rewritten = _LOCAL_PATH_IN_TEXT_RE.sub(_replace, text)
@@ -392,6 +393,7 @@ def _convert_call_tool_result(
     user_id: str | None = None,
     source_base_dir: Path | None = None,
     changed_files: Iterable[Path] | None = None,
+    include_structured_content: bool = False,
 ) -> Any:
     """Convert an MCP CallToolResult to the LangChain ``content_and_artifact`` format.
 
@@ -406,6 +408,11 @@ def _convert_call_tool_result(
     with their cwd/temp pinned inside the mounted tree, so they already live in
     a servable location. Remote URIs and files outside the thread's user-data
     tree are left untouched.
+
+    ``include_structured_content`` is **opt-in per server**. When true, the
+    ``structuredContent`` payload is appended as a bounded fenced text block so the
+    model can actually read it; see :func:`_render_structured_content` for why that
+    is otherwise invisible, and note the artifact keeps carrying it either way.
     """
     from langchain_core.messages import ToolMessage
     from langchain_core.messages.content import create_file_block, create_image_block, create_text_block
@@ -510,6 +517,13 @@ def _convert_call_tool_result(
     artifact = None
     if call_tool_result.structuredContent is not None:
         artifact = {"structured_content": call_tool_result.structuredContent}
+        if include_structured_content:
+            # Opt-in only, and through the same budget as every other server-supplied
+            # byte: the artifact is not model-visible, so without this the model's only
+            # route to structuredContent is guessing.
+            rendered = _render_structured_content(call_tool_result.structuredContent, bounded_text=_bounded_text)
+            if rendered is not None:
+                lc_content.append(create_text_block(text=rendered))
 
     return lc_content, artifact
 
@@ -585,6 +599,59 @@ def _resolve_session_init_timeout(server_cfg: Any) -> float | None:
     return float(value)
 
 
+#: Marker delimiting the structured-content block appended to a tool result. The
+#: block is server-supplied data, so it is fenced explicitly: a model reading
+#: ``structured_content`` inside a tool result must be able to tell where the
+#: server's own prose stopped and the machine-readable part began.
+STRUCTURED_CONTENT_OPEN = "<structured_content>"
+STRUCTURED_CONTENT_CLOSE = "</structured_content>"
+
+
+def _resolve_include_structured_content(server_cfg: Any) -> bool:
+    """Whether to render this server's ``structuredContent`` into model-visible text.
+
+    Defaults to ``False`` for every server. This is a *presentation* opt-in that
+    changes what the model is shown, so it is never inferred: an operator asks for it
+    per server, in the same shape as ``tool_name_prefix``.
+    """
+    if server_cfg is None:
+        return False
+    return bool(getattr(server_cfg, "include_structured_content", False))
+
+
+def _render_structured_content(structured: Any, *, bounded_text: Callable[[str], str]) -> str | None:
+    """Render an MCP ``structuredContent`` payload as a bounded, fenced text block.
+
+    Returns ``None`` when there is nothing to render, so the caller can leave the
+    tool result byte-identical to what it would have been without this feature.
+
+    Why this exists: an MCP server's preferred addressing data does not live in its
+    text content. Cua Driver's ``get_window_state`` returns the tree as Markdown and
+    the ``element_token`` handles (plus the ``capture_id`` that admits pixel
+    coordinates against that exact capture) only in ``structuredContent``. LangChain
+    keeps that as an *artifact* on the ``ToolMessage``, which no model is shown, so
+    without this the model's only option is pixel guessing on a lower-trust path.
+
+    Two rules make it safe to append. It is **opt-in per server** (the caller only
+    asks for it explicitly), and it goes through the same per-result text budget as
+    every other byte from outside the trust boundary, so a server returning a
+    megabyte of JSON cannot use this to blow the turn's context - truncation is
+    marked, never silent.
+    """
+    if structured is None:
+        return None
+    try:
+        rendered = json.dumps(structured, ensure_ascii=False, separators=(",", ":"), default=str)
+    except Exception as exc:  # noqa: BLE001 - rendering is presentation, never a call outcome
+        # Deliberately broad: `default=str` invokes `__repr__` on unknown objects, and
+        # a payload carrying a broken one must degrade to a note rather than raise. The
+        # action the server already performed is not a failure, and reporting it as one
+        # would make a model retry a side effect that already happened.
+        return f"{STRUCTURED_CONTENT_OPEN}\nunserialisable structured content: {type(exc).__name__}: {exc}\n{STRUCTURED_CONTENT_CLOSE}"
+    body = bounded_text(f"{STRUCTURED_CONTENT_OPEN}\n{rendered}\n{STRUCTURED_CONTENT_CLOSE}")
+    return body
+
+
 def _make_session_pool_tool(
     tool: BaseTool,
     server_name: str,
@@ -593,6 +660,7 @@ def _make_session_pool_tool(
     tool_call_timeout: float | None = None,
     session_init_timeout: float | None = None,
     tool_name_prefix: bool = True,
+    include_structured_content: bool = False,
 ) -> BaseTool:
     """Wrap an MCP tool so it reuses a persistent session from the pool.
 
@@ -743,6 +811,7 @@ def _make_session_pool_tool(
             user_id=user_id,
             source_base_dir=process_cwd,
             changed_files=changed_files,
+            include_structured_content=include_structured_content,
         )
 
     return StructuredTool(
@@ -1036,10 +1105,7 @@ async def get_mcp_tools() -> list[BaseTool]:
                 return_exceptions=True,
             )
         )
-        tools_by_server: list[list[BaseTool]] = [
-            _tools_for_one_server(server_name, result)
-            for server_name, result in zip(servers_config, gathered, strict=True)
-        ]
+        tools_by_server: list[list[BaseTool]] = [_tools_for_one_server(server_name, result) for server_name, result in zip(servers_config, gathered, strict=True)]
         tools = [tool for server_tools in tools_by_server for tool in server_tools]
         logger.info(f"Successfully loaded {len(tools)} tool(s) from MCP servers")
 
@@ -1097,12 +1163,23 @@ async def get_mcp_tools() -> list[BaseTool]:
                             tool_call_timeout=_timeout,
                             session_init_timeout=_init_timeout,
                             tool_name_prefix=tool_name_prefix,
+                            include_structured_content=_resolve_include_structured_content(server_cfg),
                         )
                     )
                 else:
                     if transport != "stdio" and server_cfg and server_cfg.tool_call_timeout is not None:
                         logger.warning(
                             "Ignoring tool_call_timeout for MCP server '%s' because transport '%s' is not stdio; configure HTTP/SSE transport-level timeouts instead.",
+                            source_name,
+                            transport,
+                        )
+                    if _resolve_include_structured_content(server_cfg):
+                        # Only Alpha's own stdio path renders structured content into the
+                        # text; HTTP/SSE tools are built by the upstream adapter's
+                        # converter, which keeps it as an artifact only. Say so rather
+                        # than letting an operator set the flag and see no effect.
+                        logger.warning(
+                            "Ignoring include_structured_content for MCP server '%s' because transport '%s' is not stdio; only stdio servers render structuredContent into model-visible text.",
                             source_name,
                             transport,
                         )

@@ -127,6 +127,24 @@ def test_prefixes_tool_names_to_avoid_collision_with_native_desktop_tools(
     assert cua_driver_block["tool_name_prefix"] is True
 
 
+def test_surfaces_structured_content_so_the_drivers_own_handles_are_reachable(cua_driver_block: dict) -> None:
+    """The driver's preferred addressing lives only in `structuredContent`.
+
+    `get_window_state` returns the tree as Markdown and keeps the `element_token`
+    handles and the `capture_id` in `structuredContent`, which LangChain carries as a
+    `ToolMessage` artifact **no model is shown**. Leaving this off would mean the model
+    can only ever act by guessed pixels — the path the driver itself labels the weaker
+    one. The flag is per-server and opt-in everywhere else, so turning it on here says
+    nothing about other servers.
+    """
+    assert cua_driver_block["include_structured_content"] is True
+
+    other_servers = {name: block for name, block in _load_example_config()["mcpServers"].items() if name != "cua-driver"}
+    assert other_servers, "the example config should ship other MCP servers for this comparison to mean anything"
+    for name, block in other_servers.items():
+        assert block.get("include_structured_content") in (None, False), f"only the server that needs it opts in; '{name}' must not be opted in by this block's presence"
+
+
 def test_env_declares_permission_mode_as_a_literal_not_a_secret(cua_driver_block: dict) -> None:
     """`CUA_DRIVER_PERMISSION_MODE` names a mode, it is not a credential.
 

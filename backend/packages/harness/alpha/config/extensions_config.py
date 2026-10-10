@@ -229,6 +229,15 @@ class McpServerConfig(BaseModel):
         default=True,
         description="Whether to prefix discovered tool names with the MCP server name to avoid cross-server collisions",
     )
+    include_structured_content: bool = Field(
+        default=False,
+        description=(
+            "Whether to append this server's structuredContent to model-visible tool text. Off by default: "
+            "structuredContent is otherwise carried only as a ToolMessage artifact, which no model is shown. "
+            "Enable for servers whose preferred addressing data lives there (Cua Driver's element_token and "
+            "capture_id). stdio only; the appended block is bounded by the shared per-result text budget."
+        ),
+    )
     tool_call_timeout: float | None = Field(
         default=None,
         description=("Timeout in seconds for individual stdio MCP tool calls and durable-task calls on every transport. Other HTTP/SSE tools use transport-level timeouts. None means no call-level timeout."),

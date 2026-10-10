@@ -143,17 +143,25 @@ separately. Two properties matter more than the count:
 **Two gaps between the driver's design and what Alpha's tool surface can express**
 (both measured, see §3.3). The driver's preferred addressing forms —
 `element_token`, and the `capture_id` that admits pixel coordinates against a capture —
-arrive in MCP `structuredContent`. LangChain's adapter keeps that only as an
-*artifact*, and langchain-core drops it when the tool is invoked, so through Alpha's
-`get_mcp_tools()` surface **the model never sees a token or a capture id**. It sees the
-Markdown rendering of the tree, which carries element indices and automation ids but no
-handles. Consequences, in order of usefulness:
+arrive in MCP `structuredContent`, and **no model is ever shown that payload**: LangChain
+keeps it as an *artifact* on the `ToolMessage`, which is a programmatic field. (A direct
+`tool.ainvoke(args)` outside a graph loses even that, because langchain-core's
+`_format_output` returns bare content whenever `tool_call_id` is `None` — an easier trap
+to fall into than the real run path, and one this work hit before measuring it.)
+
+`extensions_config.json -> mcpServers.<server>.include_structured_content` (default
+`false`, stdio only) closes that: the payload is appended as one budget-bounded,
+fenced `<structured_content>` text block, and the artifact still carries it. Alpha ships
+it **on** for `cua-driver` and off everywhere else. With it on, the model can see the
+handles and act on the driver's preferred, verified addressing instead of guessing
+pixels. What the model can do, in both configurations:
 
 | What the model can still do | Tool form |
 | --- | --- |
+| Address a control by handle from the observation it just made | `click`, `type_text`, `set_value`, `scroll`, `press_key` with `element_token` (needs `include_structured_content`) |
+| Act against a capture it just took | `click`/`type_text`/`scroll`/`drag` with `capture_id`, or `x, y` in the capture's pixel space |
 | Invoke a menu by its label path | `invoke_menu(pid, window_id, path=["File", "Save"])` |
 | Send keys / chords to a window | `press_key`, `hotkey` (background first, `foreground` only on refusal) |
-| Click / type / scroll / drag by **pixel coordinates** | `click`, `type_text`, `scroll`, `drag` with `x, y` |
 | Read state and take screenshots | `get_window_state`, `get_desktop_state`, `verify_state`, `zoom` |
 
 Pixel actions need a screenshot snapshot taken on the **same MCP session** first, which
@@ -201,6 +209,7 @@ that works.
 | Alpha's MCP loader connects to the real stdio server and publishes 59 `cua-driver_*` tools | `test_alpha_mcp_loader_publishes_real_cua_driver_tools` |
 | A real PNG screenshot of a real window is captured to disk (681×364, ~10 KB) | header magic, IHDR, an `IDAT` chunk, a size floor, and — when Pillow is installed — a pixel check that the capture is not one flat colour |
 | Typed text at pixel coordinates lands in a real Win32 `EDIT` control | the control's own value read back from the UIA tree |
+| **Typed text by `element_token` lands too, and gets a stronger claim back** | `include_structured_content` puts the handle where the model reads it; the driver answers `verify: confirmed` / `effect: confirmed` where the pixel path answered `not verified` |
 | The target app itself confirms what landed | the helper's window title, mirrored from the edit's value |
 | `6 × 7 = 42` computed in Calculator with the window never focused | four background UIA invokes, then `verify_state` → `satisfied`, `stable: true` |
 | A second screenshot after typing differs from the first | byte comparison of the two PNGs |
@@ -491,11 +500,12 @@ its own helper and targets the pid the window listing reports.
   `verify_state`, `launch_app`, `kill_app` and a browser-adjacent tool list were all
   exercised. The `browser_*` family, `drag`, `scroll`, clipboard, sessions, recording and
   the config tools were not — an untested tool is an unknown, not a working one.
-- **`element_token` and `capture_id` are unreachable through Alpha's tool surface**
-  (§3.1). The driver's preferred, verifiable addressing form cannot be used by an Alpha
-  model until something surfaces MCP `structuredContent`. The pixel path works, but it
-  is the weaker of the two: the driver itself prefers tokens and labels PostMessage
-  typing `not verified`.
+- **`element_token` and `capture_id` are not model-visible by default** (§3.1). The
+  driver's preferred, verifiable addressing form reaches a real Alpha run only as a
+  `ToolMessage` artifact. `include_structured_content` (on for `cua-driver`) surfaces it
+  as bounded text so the model can use it; with the flag off the working paths are menu
+  paths, keys, and pixel coordinates, and the driver labels the pixel path the weaker
+  one itself.
 - **Platform columns differ per tool.** The 56-tool figure is the macOS reference page
   and the 59-tool figure is one Windows build. Do not quote a single tool count as
   portable.
@@ -518,15 +528,18 @@ its own helper and targets the pid the window listing reports.
   `$`-style env expansion hygiene, and a description that names the governance
   reality and the sentinel gap rather than implying a safety net that does not exist.
 - `backend/tests/test_cua_driver_live_mcp.py` — opt-in real-computer control
-  (`ALPHA_RUN_LIVE_TESTS=1`, Windows, driver installed). Four cases, each of which was
+  (`ALPHA_RUN_LIVE_TESTS=1`, Windows, driver installed). Five cases, each of which was
   observed to fail *before* it passed, which is why they exist:
   1. Alpha's loader publishes the real prefixed tool set over real stdio.
   2. A real PNG is captured, text typed at pixel coordinates lands in a real edit
      control, and the result is confirmed from the control's own value and the mirrored
      window title — never from the typing call's return value, which the driver labels
      `not verified`.
-  3. `verify_state` reports no satisfied verdict for a widget that does not exist.
-  4. `kill_app` refuses a process the runtime cannot prove it launched, and the target
+  3. The same is done by `element_token` instead, which additionally proves
+     `include_structured_content` makes the handle model-visible and that the token
+     path returns a *verified* result where the pixel path does not.
+  4. `verify_state` reports no satisfied verdict for a widget that does not exist.
+  5. `kill_app` refuses a process the runtime cannot prove it launched, and the target
      is still alive afterwards.
   Its target is a Win32 helper this file owns (§3.3), its screenshots are verified by
   parsing the PNG rather than trusting a size, and its cleanup terminates a process
