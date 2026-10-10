@@ -146,6 +146,12 @@ const timelineRef = emit(
     },
   })
 );
+// The context-window bands are a pure derivation over the run payload, but the
+// module still reads `get` from the transport, so it needs the same stub the
+// rest of the graph gets. Without this entry the section's `@/lib/context-window`
+// specifier reaches Node unresolved and dies as package `@/lib` before any
+// assertion runs — a harness gap, not a defect in the section.
+const contextWindowRef = emit("context-window", compile("./context-window.ts", { specifiers: { "./http": httpRef } }));
 const componentRef = emit(
   "RunInspectorSection",
   compile("../components/sections/RunInspectorSection.tsx", {
@@ -158,6 +164,7 @@ const componentRef = emit(
       "@/lib/runs": runsRef,
       "@/lib/runs-inspector": inspectorRef,
       "@/lib/runs-inspector-picker": pickerRef,
+      "@/lib/context-window": contextWindowRef,
       "@/components/ui": uiRef,
       "@/components/ToolPill": toolPillRef,
       "./RunInspectorTimeline": timelineRef,
@@ -900,7 +907,18 @@ test("thread context usage maps its own fields and keeps an absent one null", as
   const usage = await inspector.fetchThreadTokenUsage("t-1");
   assert.equal(usage.totalTokens, 53244);
   assert.equal(usage.totalRuns, 1);
-  assert.deepEqual(usage.contextUsage, { tokenCount: 1204, maxContextTokens: 262144, percentage: 0.5 });
+  // The payload carries no derived pressure reading, so `pressure` stays null:
+  // an unreported band is unknown, never a named one.
+  assert.deepEqual(usage.contextUsage, { tokenCount: 1204, maxContextTokens: 262144, percentage: 0.5, pressure: null });
+
+  route({
+    "/token-usage": {
+      ...THREAD_USAGE,
+      context_usage: { ...THREAD_USAGE.context_usage, pressure: { band: "critical", used: 0.91, limit: 262144 } },
+    },
+  });
+  const pressured = await inspector.fetchThreadTokenUsage("t-1");
+  assert.equal(pressured.contextUsage.pressure.band, "critical", "a reported band is carried through verbatim");
 
   route({ "/token-usage": { thread_id: "t-1", total_tokens: 0 } });
   const bare = await inspector.fetchThreadTokenUsage("t-1");

@@ -184,6 +184,13 @@ export const RunReplayControls = marker("RunReplayControls");
 `
 );
 
+// The context-window bands are a pure derivation over the run payload, but the
+// module still reads `get` from the transport, so it needs the same stub the
+// rest of the graph gets. Without this entry the section's `@/lib/context-window`
+// specifier reaches Node unresolved and dies as package `@/lib` before any
+// assertion runs — a harness gap, not a defect in the section.
+const contextWindowRef = emit("context-window", compile("./context-window.ts", { specifiers: { "./http": httpRef } }));
+
 const componentRef = emit(
   "RunInspectorSection",
   compile("../components/sections/RunInspectorSection.tsx", {
@@ -196,6 +203,7 @@ const componentRef = emit(
       "@/lib/runs": runsRef,
       "@/lib/runs-inspector": inspectorRef,
       "@/lib/runs-inspector-picker": pickerRef,
+      "@/lib/context-window": contextWindowRef,
       "@/components/ui": uiRef,
       "@/components/ToolPill": toolPillRef,
       "./RunInspectorTimeline": timelineRef,
