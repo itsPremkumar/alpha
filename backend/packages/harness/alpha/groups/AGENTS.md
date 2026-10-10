@@ -273,7 +273,7 @@ cannot know ("refactoring the router").
 ### Reconciliation is on read
 
 Matching `crew.ensure_crew()` and `LockManager.sweep_expired()`. No new
-supervisor loop, so **no capability count moves** - 136 tools / 66 routers / 44
+supervisor loop, so **no capability count moves** - 137 tools / 66 routers / 44
 middlewares / 9 loops / 117 engines all stay correct.
 
 ### Claims are a separate store from locks, on purpose

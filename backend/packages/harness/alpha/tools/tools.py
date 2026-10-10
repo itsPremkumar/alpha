@@ -108,6 +108,7 @@ from alpha.tools.builtins import (
     manage_mission_hierarchy,
     manage_model_performance_registry,
     manage_reflexion_memory,
+    mission_memory,
     moa_multi_model_reasoning,
     present_file_tool,
     process_handle_tool,
@@ -283,6 +284,9 @@ BUILTIN_TOOLS = [
     # Mission Hierarchy & Universal Work Queue:
     manage_mission_hierarchy,
     schedule_work_queue,
+    # Durable mission memory -- the re-read spec/plan/status/scratchpad that stops
+    # long-horizon drift; records + verifies the per-thread objective.
+    mission_memory,
     trace_artifact_lineage,
     # Knowledge, Benchmark & Performance Evaluation:
     query_knowledge_graph,

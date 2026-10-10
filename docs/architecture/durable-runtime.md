@@ -413,9 +413,20 @@ Honesty about the boundary is part of the feature.
 | Existing safe recovery contract | `app.gateway.run_recovery` | `tests/test_safe_run_recovery.py` |
 | `config.yaml -> network` | `alpha.config.network_resilience_config` | `tests/test_network_resilience.py` |
 | `NETWORK_UNAVAILABLE` error code | `alpha.errors.registry` | `tests/test_error_codes.py` |
+| Durable mission memory (the re-read that stops drift) | `alpha.runtime.missions` | `tests/test_mission_memory.py`, `tests/test_mission_memory_wiring.py` |
 
 Each subsystem's own `AGENTS.md` next to the code is the normative contract;
 this page is the map.
+
+**The cognition of durability is separate from the durability itself.** Everything
+above makes the *process* survive an outage, crash or restart. What none of it
+supplies is the objective once it scrolls out of the context window: a run can be
+durable and still drift. `alpha.runtime.missions` is that missing half — a
+per-`(owner, thread)` spec/plan/status/scratchpad stack re-read before every model
+turn, with milestones that only advance on a *measured* result (stop-and-fix). It is
+additive and owns no lifecycle, dispatch or recovery; it is the memory the loops
+below dispatch *into*. Its own `AGENTS.md`:
+`backend/packages/harness/alpha/runtime/missions/AGENTS.md`.
 
 ## Verifying it actually works
 

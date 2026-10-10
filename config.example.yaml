@@ -30,7 +30,7 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 59
+config_version: 60
 
 # ============================================================================
 # Logging
@@ -4677,6 +4677,27 @@ autonomy:
   # not `enabled` is skipped, and a company whose breaker refuses (paused, over
   # its daily ceiling, no progress, kill switch) is reported rather than silently
   # dropped. The tick is model-free, so enabling this loop spends no tokens.
+
+# ============================================================================
+# Durable, per-thread mission memory: the re-read that stops long-horizon drift.
+# A run that survives a context compaction or a process restart re-anchors on the
+# frozen objective and the current milestone before every turn, instead of
+# producing work that has detached from what was asked. The agent records the
+# spec/plan/status/scratchpad with the `mission_memory` tool; a milestone is only
+# `verified` when a measured result (exit code, artifact, benchmark) supports it,
+# and advancing past a failed milestone is refused (stop-and-fix).
+#
+# Hot-reloadable: the anchor budget and ring depths apply on the next run. On a
+# first run the durable file is empty, so nothing is injected until the agent
+# records a mission.
+mission_memory:
+  enabled: true                 # inject the anchor into every lead-agent turn
+  max_anchor_chars: 4000        # char budget for the per-turn anchor; the objective
+                                # is preserved first, the tail (scratchpad) drops first
+  max_status_lines: 40          # append-only status-log ring depth
+  max_scratch_entries: 60       # durable scratchpad ring depth
+  status_tail: 4                # recent status lines shown in the anchor
+  scratch_tail: 2               # recent scratchpad notes shown in the anchor
 
 # ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it

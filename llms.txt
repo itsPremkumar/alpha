@@ -3,7 +3,7 @@
 > Alpha is an open-source autonomous multi-agent AI operating system. A LangGraph
 > agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
 > Electron Windows desktop app, executing long-horizon work with sandboxed code
-> execution, persistent memory, 136 native tools, MCP extensions, and 24 public
+> execution, persistent memory, 137 native tools, MCP extensions, and 24 public
 > skills. Self-hosted, MIT licensed, no proprietary backend.
 
 Canonical repository: https://github.com/itsPremkumar/alpha
@@ -50,7 +50,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
   `extensions_config.json` (MCP servers + skills, API-editable at runtime),
   `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
 - Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
-  136 tools, 68 routers, 44 middlewares, 10 supervisor loops.
+  137 tools, 68 routers, 45 middlewares, 10 supervisor loops.
 - Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
   `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
 - Third-party Python extensions use the operator-controlled top-level `plugins:`
