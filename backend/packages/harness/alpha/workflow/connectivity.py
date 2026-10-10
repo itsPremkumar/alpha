@@ -32,6 +32,8 @@ Honesty rules
 from __future__ import annotations
 
 import math
+import socket
+import urllib.request
 from typing import Any
 
 __all__ = [
@@ -41,6 +43,9 @@ __all__ = [
     "connectivity_evidence",
     "parse_deadline_seconds",
     "release_event_for",
+    "http_probe",
+    "tcp_probe",
+    "dns_probe",
 ]
 
 #: Marker recorded in the run's external-wait registry so the sweep, the
@@ -99,3 +104,67 @@ def connectivity_evidence(*, reachable: bool, target: str, release: str) -> str:
     if reachable:
         return f"connectivity to {target} measured reachable by the host-bound probe"
     return f"connectivity wait released by signal '{release}'; reachability was asserted, not measured"
+
+
+# ---------------------------------------------------------------------------
+# Ready-made probe implementations
+#
+# A host installs one of these via ``engine.connectivity_probe = ...``. Each
+# callable takes no arguments and returns ``True`` when the link is measured
+# reachable, ``False`` otherwise. They never raise — a probe that cannot
+# measure reports unreachable, because a connectivity wait with no measurement
+# is a wait that can only end at its deadline.
+# ---------------------------------------------------------------------------
+
+
+def http_probe(url: str, *, timeout_seconds: float = 5.0, expected_status: int = 200):
+    """Build an HTTP probe that GETs ``url`` and checks the status code.
+
+    The returned callable is suitable for ``engine.connectivity_probe``. A
+    non-2xx response, a connection error, or a timeout all report unreachable.
+    """
+
+    def probe() -> bool:
+        try:
+            request = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+                return response.status == expected_status
+        except Exception:
+            return False
+
+    return probe
+
+
+def tcp_probe(host: str, port: int, *, timeout_seconds: float = 5.0):
+    """Build a TCP probe that attempts a socket connection to ``host:port``.
+
+    The returned callable is suitable for ``engine.connectivity_probe``. A
+    refused connection, DNS failure, or timeout all report unreachable.
+    """
+
+    def probe() -> bool:
+        try:
+            with socket.create_connection((host, port), timeout=timeout_seconds):
+                return True
+        except Exception:
+            return False
+
+    return probe
+
+
+def dns_probe(hostname: str, *, timeout_seconds: float = 5.0):
+    """Build a DNS probe that resolves ``hostname`` and reports success.
+
+    The returned callable is suitable for ``engine.connectivity_probe``. A
+    resolution failure or timeout reports unreachable.
+    """
+
+    def probe() -> bool:
+        try:
+            socket.setdefaulttimeout(timeout_seconds)
+            socket.getaddrinfo(hostname, None)
+            return True
+        except Exception:
+            return False
+
+    return probe

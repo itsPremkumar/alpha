@@ -16,6 +16,7 @@
 - [CHAT_SHELL_UX.md](CHAT_SHELL_UX.md) — Chat shell UX implementation notes: the component set, how the rail is wired into the existing sidebar, and the additive-change discipline it followed.
 - [CONTINUAL_INTELLIGENCE.md](CONTINUAL_INTELLIGENCE.md) — Continual-intelligence layer: replay reservoir, regression gates, plasticity, expert fabric, paging.
 - [DYNAMIC_WORKFLOWS.md](DYNAMIC_WORKFLOWS.md) — Typed, evidence-gated dynamic workflow runtime.
+- [DYNAMIC_WORKFLOW_DEEP_RESEARCH.md](DYNAMIC_WORKFLOW_DEEP_RESEARCH.md) — Deep architectural review of the dynamic workflow plane with an improvement matrix.
 - [EXTENSIONS.md](EXTENSIONS.md) — Extension packages, hooks, services, and routers.
 - [LION_COMPANION.md](LION_COMPANION.md) — Local-first lion companion behavior and presentation contract.
 - [SELF_AWARENESS.md](SELF_AWARENESS.md) — Self-inventory plane: one bounded call reports every registry kind, the public repository identity, and read-only configuration diagnosis.

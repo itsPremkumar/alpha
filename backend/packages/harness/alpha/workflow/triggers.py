@@ -266,6 +266,10 @@ class WorkflowTrigger(BaseModel):
     updated_at: float = Field(default_factory=time.time)
     #: Free-text provenance for the schedule (the prompt or request that made it).
     note: str = ""
+    #: Monotonic fencing token: advances by 1 on every accepted fire. A reader
+    #: that holds a stale token loses the compare-and-set race, so a double-fire
+    #: from a stale scheduler is refused rather than silently executed twice.
+    fire_token: int = 0
 
     def touch(self) -> None:
         self.updated_at = time.time()
@@ -469,6 +473,7 @@ class TriggerStore:
             if trigger is None:
                 raise KeyError(f"trigger '{trigger_id}' not found")
             fired = time.time() if fired_at is None else float(fired_at)
+            trigger.fire_token += 1
             trigger.fire_count += 1
             trigger.last_fired_at = fired
             if trigger.kind is TriggerKind.CRON and trigger.expression:
@@ -497,6 +502,53 @@ class TriggerStore:
             if doomed:
                 self._persist()
             return len(doomed)
+
+    def try_claim_fire(
+        self,
+        trigger_id: str,
+        *,
+        expected_token: int,
+        fired_at: float | None = None,
+    ) -> tuple[bool, WorkflowTrigger | None, str]:
+        """Compare-and-set fire claim: succeeds only when ``fire_token`` still equals ``expected_token``.
+
+        Returns ``(claimed, trigger, reason)``. A successful claim advances the
+        token by 1 and records the fire (same bookkeeping as ``record_fire``).
+        A stale reader — a scheduler that read the trigger, was descheduled,
+        and woke after another worker already fired it — loses the race and
+        receives ``(False, None, reason)`` with the current token named, so it
+        can re-read rather than double-fire. This is the fencing primitive a
+        multi-worker deployment needs; it is atomic within this process (under
+        the persist lock) and across processes only to the extent the
+        underlying file store's atomic replace gives atomic read-modify-write —
+        it does not claim cross-process exactly-once.
+        """
+        with _PERSIST_LOCK:
+            trigger = self._triggers.get(trigger_id)
+            if trigger is None:
+                return False, None, f"trigger '{trigger_id}' not found"
+            if trigger.fire_token != expected_token:
+                return False, None, (f"stale fire token {expected_token} (current {trigger.fire_token}): another worker already fired this occurrence")
+            fired = time.time() if fired_at is None else float(fired_at)
+            trigger.fire_token += 1
+            trigger.fire_count += 1
+            trigger.last_fired_at = fired
+            if trigger.kind is TriggerKind.CRON and trigger.expression:
+                base = trigger.next_fire_at if trigger.next_fire_at is not None else fired
+                nxt = cron_next_after(trigger.expression, base)
+                trigger.next_fire_at = nxt
+                if nxt is None:
+                    trigger.enabled = False
+                    trigger.disabled_reason = "cron expression matched no further time inside the search horizon"
+            elif trigger.kind is TriggerKind.INTERVAL:
+                base = trigger.next_fire_at if trigger.next_fire_at is not None else fired
+                trigger.next_fire_at = base + float(trigger.interval_seconds or MIN_INTERVAL_SECONDS)
+            if trigger.max_fires is not None and trigger.fire_count >= trigger.max_fires:
+                trigger.enabled = False
+                trigger.disabled_reason = f"max_fires ({trigger.max_fires}) reached"
+            trigger.touch()
+            self._persist()
+            return True, trigger, ""
 
 
 def fire_trigger_on_engine(engine: Any, store: TriggerStore, trigger_id: str, *, fired_at: float | None = None) -> TriggerFireResult:

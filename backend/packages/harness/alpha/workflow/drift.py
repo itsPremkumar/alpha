@@ -52,12 +52,14 @@ __all__ = [
     "GOAL_DRIFT_SAMPLES_KEY",
     "GOAL_METADATA_KEY",
     "MIN_MEASURABLE_SAMPLES",
+    "NGRAM_SIZE",
     "DriftSample",
     "DriftVerdict",
     "GoalDriftReport",
     "evaluate_trajectory",
     "extract_terms",
     "measure_text_overlap",
+    "measure_semantic_similarity",
     "resolve_goal",
 ]
 
@@ -95,6 +97,11 @@ MAX_DRIFT_SAMPLES = 50
 #: 10 MB node output from being scanned per node.
 MAX_TERMS = 24
 MAX_TEXT_CHARS = 4000
+
+#: Character n-gram size for the semantic fingerprint. A 3-gram (trigram)
+#: fingerprint catches morphological variants ("run", "running", "runs") that
+#: exact token overlap misses, while remaining deterministic and model-free.
+NGRAM_SIZE = 3
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_\-/]{1,}")
 
@@ -257,6 +264,42 @@ def measure_text_overlap(text: str, terms: tuple[str, ...]) -> tuple[float, tupl
     hit = tuple(term for term in terms if term in tokens)
     missed = tuple(term for term in terms if term not in tokens)
     return len(hit) / len(terms), hit, missed
+
+
+def _char_ngrams(text: str, n: int = NGRAM_SIZE) -> set[str]:
+    """Character n-gram fingerprint of ``text``.
+
+    A deterministic, model-free similarity signal: two texts that share
+    character n-grams are morphologically related even when they share no
+    exact tokens. This is NOT an embedding — it is a pure function of the
+    input text, so an operator can recompute it by hand.
+    """
+    normalized = " ".join(text.lower().split())
+    if len(normalized) < n:
+        return {normalized} if normalized else set()
+    return {normalized[i : i + n] for i in range(len(normalized) - n + 1)}
+
+
+def measure_semantic_similarity(text: str, goal: str) -> float:
+    """Jaccard similarity between the character n-gram fingerprints of ``text`` and ``goal``.
+
+    Returns a value in ``[0, 0, 1]`` where 1.0 means the two texts share every
+    character n-gram (identical after normalization) and 0.0 means they share
+    none. This is a deterministic, model-free complement to the lexical term
+    overlap: it catches morphological variants and paraphrases that exact
+    token matching misses, without requiring an embedding model.
+
+    Unmeasurable text (empty or shorter than ``NGRAM_SIZE``) scores ``None``,
+    exactly like the lexical path — a detector that cries on hashes gets
+    ignored.
+    """
+    text_grams = _char_ngrams(text)
+    goal_grams = _char_ngrams(goal)
+    if not text_grams or not goal_grams:
+        return 0.0
+    intersection = len(text_grams & goal_grams)
+    union = len(text_grams | goal_grams)
+    return intersection / union if union else 0.0
 
 
 def measure_node(node_id: str, output: Any, terms: tuple[str, ...]) -> DriftSample:

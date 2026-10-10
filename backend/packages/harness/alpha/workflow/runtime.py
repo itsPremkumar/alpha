@@ -102,6 +102,9 @@ from alpha.workflow.worktrees import (
     sanitized_repo_root,
 )
 
+# Lazily imported: the mission acceptance collectors live outside the workflow
+# package and are only needed when a node declares an evidence path.
+
 # Module-level node-runner seam: the single default executor binding shared by
 # every DynamicWorkflowEngine. ``None`` means NO executor is bound, and nodes
 # that require real execution must fail with the honest reason.
@@ -603,6 +606,42 @@ class DynamicWorkflowEngine:
             **outcome.to_dict(),
         )
         return outcome
+
+    def _collect_declared_evidence(self, node: WorkflowNode) -> list[str]:
+        """Read declared evidence artifacts after a passing verification.
+
+        A node may declare ``evidence_test_report`` (a path to a test exit
+        report) or ``evidence_artifact`` plus ``evidence_artifact_root`` (a
+        relative path under a confined root). These are **readers**: they
+        parse or hash what already exists on disk and return ``None`` — never
+        a guess — when the source is missing, unreadable, or malformed.
+        Nothing here runs a suite or fabricates proof. Returns a list of
+        evidence strings (possibly empty).
+        """
+        evidence: list[str] = []
+        report_path = node.config.get("evidence_test_report")
+        if isinstance(report_path, str) and report_path.strip():
+            try:
+                from alpha.mission.acceptance import collect_test_exit_report
+
+                record = collect_test_exit_report(report_path, criterion=f"node:{node.id}")
+                if record is not None:
+                    evidence.append(f"test exit report: {record.source} -> measured={record.measured}")
+            except Exception as exc:  # noqa: BLE001 — a reader failure is disclosed, never raised
+                evidence.append(f"evidence collection failed for test report {report_path!r}: {type(exc).__name__}: {exc}")
+
+        artifact_rel = node.config.get("evidence_artifact")
+        artifact_root = node.config.get("evidence_artifact_root")
+        if isinstance(artifact_rel, str) and artifact_rel.strip() and isinstance(artifact_root, str) and artifact_root.strip():
+            try:
+                from alpha.mission.acceptance import collect_artifact_digest
+
+                record = collect_artifact_digest(artifact_root, artifact_rel, criterion=f"node:{node.id}")
+                if record is not None:
+                    evidence.append(f"artifact digest: {record.source} -> measured={record.measured}")
+            except Exception as exc:  # noqa: BLE001 — a reader failure is disclosed, never raised
+                evidence.append(f"evidence collection failed for artifact {artifact_rel!r}: {type(exc).__name__}: {exc}")
+        return evidence
 
     # ----------------------------------------------------------------- leases
 
@@ -2394,6 +2433,22 @@ class DynamicWorkflowEngine:
                 if nid not in run.completed_nodes:
                     run.completed_nodes.append(nid)
                 self.events.emit(
+                    "decision_recorded",
+                    run.run_id,
+                    node_id=nid,
+                    decision=f"condition '{node.condition}' -> {cond_result}",
+                    kind="condition",
+                    detail={"expression": node.condition, "result": cond_result},
+                )
+                run.metrics.setdefault("decisions", []).append(
+                    {
+                        "node_id": nid,
+                        "decision": f"condition '{node.condition}' -> {cond_result}",
+                        "kind": "condition",
+                        "detail": {"expression": node.condition, "result": cond_result},
+                    }
+                )
+                self.events.emit(
                     "node_completed",
                     run.run_id,
                     node_id=nid,
@@ -2410,6 +2465,22 @@ class DynamicWorkflowEngine:
                 node.status = NodeStatus.SUCCEEDED
                 run.node_states[nid] = NodeStatus.SUCCEEDED
                 run.completed_nodes.append(nid)
+                self.events.emit(
+                    "decision_recorded",
+                    run.run_id,
+                    node_id=nid,
+                    decision=f"router selected {len(decisions)} target(s): {[d.target for d in decisions]}",
+                    kind="router",
+                    detail={"targets": [d.target for d in decisions]},
+                )
+                run.metrics.setdefault("decisions", []).append(
+                    {
+                        "node_id": nid,
+                        "decision": f"router selected {len(decisions)} target(s): {[d.target for d in decisions]}",
+                        "kind": "router",
+                        "detail": {"targets": [d.target for d in decisions]},
+                    }
+                )
                 self.events.emit(
                     "node_completed",
                     run.run_id,
@@ -2698,6 +2769,11 @@ class DynamicWorkflowEngine:
                         # already journalled as node_verification and must not
                         # be mistaken for proof.
                         node.evidence.append(verification.evidence)
+                    # Collect declared evidence artifacts (test report, file
+                    # digest) — readers only, never a guess. Emitted only when
+                    # the node actually declares an evidence path.
+                    for ev in self._collect_declared_evidence(node):
+                        node.evidence.append(ev)
                     node.output = output
                     if node.loop_policy:
                         stop_met = False
@@ -2922,15 +2998,26 @@ class DynamicWorkflowEngine:
         """Publish a cross-mode handoff contract into the run's state.
 
         The contract is built from REAL run state only: completed nodes, failed
-        nodes, and what remains. ``decisions`` stays empty because the engine
-        journals no DecisionRecords, so this node cannot become a place where
-        artefacts are conjured up to make a handoff look complete.
+        nodes, what remains, and any ``decision_recorded`` events replayed into
+        ``run.metrics["decisions"]``. It is honestly empty when nothing was
+        recorded rather than conjuring artefacts to make a handoff look
+        complete.
         """
         completed = list(run.completed_nodes)
         failed = sorted(set(run.failed_nodes))
         remaining = sorted(nid_ for nid_, status in run.node_states.items() if status.value not in ("succeeded", "skipped"))
         declared_files = node.config.get("files")
         files = [str(item) for item in declared_files] if isinstance(declared_files, list) else []
+        raw_decisions = run.metrics.get("decisions", [])
+        decisions: list[str] = []
+        if isinstance(raw_decisions, list):
+            for item in raw_decisions:
+                if isinstance(item, dict):
+                    text = item.get("decision")
+                    if isinstance(text, str) and text:
+                        decisions.append(text)
+                elif isinstance(item, str) and item:
+                    decisions.append(item)
         contract = {
             "objective": str(run.state.get("objective") or node.prompt or nid),
             "from_node": nid,
@@ -2940,11 +3027,11 @@ class DynamicWorkflowEngine:
             "failed": failed,
             "remaining": remaining,
             "files": files,
-            "decisions": [],
+            "decisions": decisions,
         }
         with self.state():
             run.state[f"{nid}_handoff"] = contract
-        node.evidence.append(f"handoff contract recorded: {len(completed)} completed, {len(failed)} failed, {len(remaining)} remaining; decisions are empty because the run recorded none")
+        node.evidence.append(f"handoff contract recorded: {len(completed)} completed, {len(failed)} failed, {len(remaining)} remaining, {len(decisions)} decision(s)")
         self._succeed_node(run, node, contract)
         return True
 

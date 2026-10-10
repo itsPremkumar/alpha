@@ -395,6 +395,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "Continual-intelligence layer: replay reservoir, regression gates, plasticity, expert fabric, paging.",
     ),
     "DYNAMIC_WORKFLOWS.md": DocumentSpec("architecture", "Typed, evidence-gated dynamic workflow runtime."),
+    "DYNAMIC_WORKFLOW_DEEP_RESEARCH.md": DocumentSpec(
+        "architecture",
+        "Deep architectural review of the dynamic workflow plane with an improvement matrix.",
+    ),
     "EXTENSIONS.md": DocumentSpec("architecture", "Extension packages, hooks, services, and routers."),
     "FAQ.md": DocumentSpec(
         "contributing",

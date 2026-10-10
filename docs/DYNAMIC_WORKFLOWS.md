@@ -637,9 +637,51 @@ What remains true and must keep being said plainly:
 Known gaps that are not implemented (see
 [`ALPHA-WORKFLOW-CURRENT-STATE.md`](ALPHA-WORKFLOW-CURRENT-STATE.md) for the
 full list): workflow triggers still disclose the missing scheduler handoff
-rather than creating a second cron owner, and there is no failure quarantine
-store, no connectivity wait state, no goal-drift detection and no worktree
-claiming.
+rather than creating a second cron owner, and the swarm paradigm is not
+expressible as a node kind (the mode mapper refuses it honestly rather than
+faking a parallel fan-out). Cross-process coordination still needs a shared
+lease/coordination backend before a multi-worker deployment can claim
+exactly-once execution.
+
+### Recent improvements (v2)
+
+The following capabilities were added after the initial v2 release:
+
+- **Patch engine completeness** — all 19 declared patch operations are now
+  supported: `fan_out`, `fan_in`, `set_loop_limit`, `skip_node`,
+  `request_human`, `request_review`, and `update_edge_condition` all apply in
+  the core engine (previously 6 were refused and 1 was a deferred no-op).
+- **DecisionRecords journaling** — `CONDITION` and `ROUTER` nodes emit
+  `decision_recorded` events and record into `run.metrics["decisions"]`;
+  `HandoffContract` and the `HANDOFF` node surface real decisions instead of
+  reporting empty.
+- **Automatic evidence collectors** — a node declaring `evidence_test_report`
+  or `evidence_artifact` + `evidence_artifact_root` gets its evidence read by
+  the existing `collect_test_exit_report` / `collect_artifact_digest` readers
+  after a passing verification. These are readers only — they never run a
+  suite and return `None` (disclosed, never guessed) on a missing or
+  malformed source.
+- **Semantic drift detection** — `measure_semantic_similarity()` adds a
+  character n-gram Jaccard layer beside the lexical term-overlap path. It is
+  deterministic and model-free (no embedding required), catching morphological
+  variants that exact token matching misses.
+- **Worktree resource limits** — `provision_worktree()` accepts
+  `max_disk_usage_bytes` and refuses a worktree that exceeds the bound;
+  `WorktreeStore.cleanup_stale_claims()` reclaims CLAIMED records whose path
+  no longer exists on disk.
+- **Trigger cross-process fencing** — `WorkflowTrigger.fire_token` is a
+  monotonic fencing token that advances on every fire. `try_claim_fire()`
+  gives compare-and-set semantics: a stale scheduler that wakes after another
+  worker already fired loses the race and is refused with the current token
+  named, rather than double-firing.
+- **Connectivity probe implementations** — `http_probe()`, `tcp_probe()`, and
+  `dns_probe()` are ready-made probe factories a host installs via
+  `engine.connectivity_probe = ...`. Each returns a callable that never raises
+  and reports unreachable on any failure.
+- **Quarantine escalation** — `QuarantineStore.stale_records()` finds open
+  records older than a threshold; `escalate_stale()` marks them escalated
+  (keeping the record QUARANTINED — escalation is a signal, not a resolution)
+  with the measured age recorded.
 
 ## Regression coverage
 
@@ -669,6 +711,18 @@ The implementation is covered by `backend/tests/test_dynamic_workflow_service.py
   structural-vs-runtime revision diff, its endpoint, and owner scoping
 - `test_workflow_durability_router.py` — the journal, projection, the
   stale-projection refusal, and `/recover`
+- `test_workflow_patch_completeness.py` — all 19 patch operations including
+  fan_out, fan_in, set_loop_limit, skip_node, request_human, request_review,
+  and update_edge_condition
+- `test_workflow_connectivity_probes.py` — HTTP, TCP, and DNS probe factories
+- `test_workflow_quarantine_escalation.py` — stale record query and escalation
+- `test_workflow_worktree_limits.py` — disk bounds and stale claim cleanup
+- `test_workflow_drift_semantic.py` — character n-gram semantic similarity
+- `test_workflow_trigger_fencing.py` — compare-and-set fire tokens
+- `test_workflow_decision_journaling.py` — decision_recorded events and
+  handoff surfacing
+- `test_workflow_evidence_collectors.py` — declared evidence readers wired
+  into the verification gate
 
 and the frontend `workflows.test.mjs` / `workflows-observability.test.mjs` client
 contract tests.

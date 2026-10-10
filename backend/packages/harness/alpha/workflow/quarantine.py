@@ -302,6 +302,40 @@ class QuarantineStore:
     def open_for_run(self, run_id: str) -> list[QuarantineRecord]:
         return [record for record in self._records.values() if record.run_id == run_id and record.status is QuarantineStatus.QUARANTINED]
 
+    def stale_records(self, *, threshold_seconds: float, now: float | None = None) -> list[QuarantineRecord]:
+        """Open records that have been quarantined longer than ``threshold_seconds``.
+
+        A record that stays open too long is just... open. This query makes the
+        dead-letter queue a live work queue: the operator (or an escalation
+        policy) can find records that have been waiting too long and act on
+        them — notify the owner, trigger an automatic replay, or escalate to a
+        human.
+        """
+        current = now if now is not None else time.time()
+        return [record for record in self._records.values() if record.status is QuarantineStatus.QUARANTINED and (current - record.quarantined_at) > threshold_seconds]
+
+    def escalate_stale(self, *, threshold_seconds: float, note: str = "", now: float | None = None) -> list[QuarantineRecord]:
+        """Mark stale open records as escalated and return them.
+
+        Escalation records the measured age on the record and appends the
+        escalation note. The record stays QUARANTINED — escalation is a signal,
+        not a resolution. The caller (engine or operator) decides what happens
+        next: notify the owner, trigger an automatic replay, or escalate to a
+        human.
+        """
+        current = now if now is not None else time.time()
+        escalated: list[QuarantineRecord] = []
+        with _PERSIST_LOCK:
+            for record in self._records.values():
+                if record.status is QuarantineStatus.QUARANTINED and (current - record.quarantined_at) > threshold_seconds:
+                    age = current - record.quarantined_at
+                    record.resolution_note = f"escalated after {age:.0f}s: {note or 'no note'}".strip()
+                    record.updated_at = current
+                    escalated.append(record)
+            if escalated:
+                self._persist()
+            return escalated
+
     def forget_run(self, run_id: str) -> int:
         """Drop every record for a run whose data the operator purged."""
         with _PERSIST_LOCK:

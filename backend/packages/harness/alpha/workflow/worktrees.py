@@ -63,6 +63,7 @@ __all__ = [
     "WorktreeStore",
     "WorktreeStoreError",
     "confined_worktree_path",
+    "disk_usage_bytes",
     "provision_worktree",
     "release_worktree",
 ]
@@ -303,6 +304,24 @@ class WorktreeStore:
                 self._persist()
             return len(doomed)
 
+    def cleanup_stale_claims(self, *, root: Path) -> list[str]:
+        """Remove CLAIMED records whose worktree path no longer exists on disk.
+
+        A crashed or killed process can leave a CLAIMED record for a worktree that
+        was never provisioned (or was already removed). This method reclaims
+        those stale claims so the exclusive path lock is not held forever by a
+        dead record. Returns the claim_ids that were removed.
+        """
+        stale_ids: list[str] = []
+        with _PERSIST_LOCK:
+            for key, claim in list(self._claims.items()):
+                if claim.status is WorktreeStatus.CLAIMED and not (Path(claim.path)).exists():
+                    del self._claims[key]
+                    stale_ids.append(key)
+            if stale_ids:
+                self._persist()
+            return stale_ids
+
 
 # --------------------------------------------------------------------- git seams
 
@@ -329,12 +348,30 @@ def _run_git(args: list[str], *, timeout_seconds: float) -> tuple[bool, str, str
     return True, completed.stdout.strip(), ""
 
 
+def disk_usage_bytes(path: Path) -> int:
+    """Measure the total disk usage of a directory tree in bytes.
+
+    Returns 0 when the path does not exist. This is used by the worktree
+    resource limit to enforce a disk bound on a provisioned worktree.
+    """
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            fp = os.path.join(root, name)
+            try:
+                total += os.path.getsize(fp)
+            except OSError:
+                pass
+    return total
+
+
 def provision_worktree(
     *,
     path: Path,
     repo_root: str,
     base_ref: str,
     timeout_seconds: float = DEFAULT_GIT_TIMEOUT_SECONDS,
+    max_disk_usage_bytes: int | None = None,
 ) -> ProvisionOutcome:
     """Create a real detached worktree and return the head it was created at.
 
@@ -342,6 +379,10 @@ def provision_worktree(
     HEAD`` inside the new worktree. The recorded head is what makes "what did
     this task actually see" answerable later; a creation whose head cannot be
     read is a failure, not a claim.
+
+    When ``max_disk_usage_bytes`` is declared, the worktree's disk usage is
+    measured after provisioning and the provision FAILS if the worktree exceeds
+    the bound — a pathological worktree cannot consume unbounded disk.
     """
     root = Path(repo_root)
     if not root.is_dir():
@@ -358,6 +399,11 @@ def provision_worktree(
     ok, head, reason = _run_git(["-C", str(path), "rev-parse", "HEAD"], timeout_seconds=timeout_seconds)
     if not ok:
         return ProvisionOutcome(ok=False, reason=f"worktree created but its head could not be read: {reason}")
+    if max_disk_usage_bytes is not None:
+        usage = disk_usage_bytes(path)
+        if usage > max_disk_usage_bytes:
+            _run_git(["-C", str(root), "worktree", "remove", "--force", str(path)], timeout_seconds=timeout_seconds)
+            return ProvisionOutcome(ok=False, reason=f"worktree disk usage {usage} bytes exceeds bound {max_disk_usage_bytes} bytes")
     return ProvisionOutcome(ok=True, head_commit=head)
 
 
