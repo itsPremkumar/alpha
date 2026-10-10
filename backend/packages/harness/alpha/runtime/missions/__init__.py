@@ -23,10 +23,12 @@ What this package is, and is not:
   path-safe, atomic storage of a :class:`~.manager.MissionStack`;
   :mod:`.milestones` segments the objective into evidence-verified checkpoints
   with a structural stop-and-fix rule; :mod:`.scratchpad` holds bounded durable
-  reasoning; :mod:`.anchor` projects it into the compact per-turn anchor; and
-  :mod:`.verify` turns a measured :class:`EvidenceRecord` (collected by the
-  caller, normally from :mod:`alpha.mission.acceptance`) into a milestone
-  verdict -- ``UNVERIFIED`` when no record was measured.
+  reasoning; :mod:`.anchor` projects it into the compact per-turn anchor;
+  :mod:`.checkpoint` holds the structured resume checkpoint that lets a run
+  continue from the current point after a compaction; and :mod:`.verify` turns a
+  measured :class:`EvidenceRecord` (collected by the caller, normally from
+  :mod:`alpha.mission.acceptance`) into a milestone verdict -- ``UNVERIFIED``
+  when no record was measured.
 * It is **not** a second lifecycle owner. It does not admit, cancel, dispatch or
   recover runs -- :func:`alpha.runtime.runs.manager.RunManager` stays the sole
   lifecycle owner and :func:`alpha.runtime.sessions` the sole state vocabulary.
@@ -53,6 +55,10 @@ from alpha.runtime.missions.anchor import (
     ANCHOR_HEADER,
     MISSION_NOTICE,
     render_anchor,
+)
+from alpha.runtime.missions.checkpoint import (
+    ResumeCheckpoint,
+    render_resume_checkpoint,
 )
 from alpha.runtime.missions.manager import (
     MAX_MISSION_FILE_BYTES,
@@ -86,13 +92,15 @@ __all__ = [
     "MAX_MISSION_FILE_BYTES",
     "MISSION_NOTICE",
     "Milestone",
-    "MissionManager",
     "MilestonePlan",
     "MilestoneStatus",
     "MilestoneVerification",
     "MilestoneVerdict",
+    "MissionManager",
     "MissionStack",
+    "ResumeCheckpoint",
     "Scratchpad",
     "render_anchor",
+    "render_resume_checkpoint",
     "verify_milestone",
 ]

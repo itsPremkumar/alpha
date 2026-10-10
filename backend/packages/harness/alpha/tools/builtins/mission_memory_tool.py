@@ -36,7 +36,9 @@ from alpha.runtime.missions import (
     MilestonePlan,
     MilestoneVerdict,
     MissionManager,
+    ResumeCheckpoint,
     render_anchor,
+    render_resume_checkpoint,
     verify_milestone,
 )
 from alpha.runtime.user_context import resolve_runtime_user_id
@@ -50,7 +52,21 @@ __all__ = ["mission_memory", "MAX_INPUT_CHARS"]
 #: tools. Durable memory must not be a place to grow without limit.
 MAX_INPUT_CHARS = 4000
 
-_ACTIONS = ("status", "set_spec", "set_runbook", "set_plan", "log", "note", "verify", "advance")
+_ACTIONS = (
+    "status",
+    "set_spec",
+    "set_runbook",
+    "set_plan",
+    "log",
+    "note",
+    "verify",
+    "advance",
+    "steer",
+    "reject",
+    "defer",
+    "checkpoint",
+    "brief",
+)
 
 
 def _resolve_scope(runtime: Runtime) -> tuple[str | None, str | None]:
@@ -151,6 +167,10 @@ def mission_memory(
     evidence_source: str = "",
     artifact_root: str = "",
     criterion: str = "",
+    steer: str = "",
+    reject: str = "",
+    defer: str = "",
+    checkpoint_json: str = "{}",
 ) -> dict[str, Any]:
     """Record/inspect the durable mission memory for an autonomous long-horizon run.
 
@@ -162,7 +182,7 @@ def mission_memory(
     failed milestone.
 
     Args:
-        action: One of ``status``, ``set_spec``, ``set_runbook``, ``set_plan``, ``log``, ``note``, ``verify``, ``advance``.
+        action: One of ``status``, ``set_spec``, ``set_runbook``, ``set_plan``, ``log``, ``note``, ``verify``, ``advance``, ``steer``, ``reject``, ``defer``, ``checkpoint``, ``brief``.
         objective: For ``set_spec``: the frozen target. Keep it one testable sentence.
         constraints_json: For ``set_spec``: JSON array of hard-constraint strings that must not regress.
         done_when_json: For ``set_spec``: JSON array of the criteria that define done.
@@ -178,6 +198,10 @@ def mission_memory(
         evidence_source: For ``verify``: the report path, or the artifact path relative to ``artifact_root``.
         artifact_root: For ``verify``: the confined root ``evidence_source`` is read within (``artifact_digest`` only).
         criterion: For ``verify``: the criterion label recorded on the evidence; defaults to the milestone title.
+        steer: For ``steer``: a live operator constraint recorded mid-run; surfaced every turn so a course correction survives the next compaction.
+        reject: For ``reject``: a path already tried and rejected; rendered as a "do not repeat" block so it is not re-attempted after a compaction.
+        defer: For ``defer``: a useful idea parked for later, kept out of the current work but not lost.
+        checkpoint_json: For ``checkpoint``: JSON object with ``current_phase``, ``next_action``, ``stop_condition``, ``progress``, ``confirmed_facts``, ``rejected_paths``, ``do_not_repeat``. For ``brief``: ignored.
     """
 
     normalized = (action or "status").strip().lower()
@@ -267,6 +291,43 @@ def mission_memory(
             if not stack.plan:
                 return {"success": False, "error": "no_plan"}
             stack = stack.with_plan(stack.plan.advance())
+
+        elif normalized == "steer":
+            if not _clean(steer):
+                return {"success": False, "error": "empty_steer"}
+            stack = stack.steer(_clean(steer))
+
+        elif normalized == "reject":
+            if not _clean(reject):
+                return {"success": False, "error": "empty_reject"}
+            stack = stack.reject(_clean(reject))
+
+        elif normalized == "defer":
+            if not _clean(defer):
+                return {"success": False, "error": "empty_defer"}
+            stack = stack.defer(_clean(defer))
+
+        elif normalized == "checkpoint":
+            try:
+                parsed = json.loads(checkpoint_json or "{}")
+            except (TypeError, ValueError):
+                return {"success": False, "error": "invalid_json"}
+            if not isinstance(parsed, dict):
+                return {"success": False, "error": "invalid_json", "expected": "object"}
+            stack = stack.with_checkpoint(ResumeCheckpoint.from_dict(parsed))
+
+        elif normalized == "brief":
+            brief = render_resume_checkpoint(stack.checkpoint) if stack.checkpoint is not None else ""
+            return {
+                "success": True,
+                "action": "brief",
+                "objective": stack.spec_objective,
+                "anchor": render_anchor(stack, status_tail=int(getattr(cfg, "status_tail", 4)), scratch_tail=int(getattr(cfg, "scratch_tail", 2)), max_chars=int(getattr(cfg, "max_anchor_chars", 4000))),
+                "resume_checkpoint": brief,
+                "steers": list(stack.steers),
+                "rejected": list(stack.rejected),
+                "deferred": list(stack.deferred),
+            }
 
     except InvalidMilestonePlan as exc:
         return {"success": False, "error": "invalid_plan", "reason": exc.reason}

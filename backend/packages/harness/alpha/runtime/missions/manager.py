@@ -43,6 +43,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from alpha.runtime.missions.checkpoint import ResumeCheckpoint
 from alpha.runtime.missions.milestones import MilestonePlan
 from alpha.runtime.missions.scratchpad import Scratchpad
 
@@ -62,6 +63,7 @@ MAX_MISSION_FILE_BYTES: Final[int] = 512 * 1024
 
 _DEFAULT_MAX_STATUS_LINES: Final[int] = 40
 _MAX_LINE_CHARS: Final[int] = 2000
+_DEFAULT_RING: Final[int] = 12
 
 #: A scope component must be a single safe path segment: no separators, no
 #: traversal, no leading dot. Anything else is a mis-shaped scope and is refused.
@@ -90,7 +92,20 @@ class MissionStack:
     plan: MilestonePlan | None = None
     status_lines: tuple[str, ...] = ()
     scratchpad: Scratchpad = field(default_factory=Scratchpad)
+    # Live operator steer constraints recorded mid-run; surfaced every turn so a
+    # course correction survives the next compaction instead of being a one-off.
+    steers: tuple[str, ...] = ()
+    # Paths already tried and rejected — rendered as an explicit "do not repeat"
+    # block so a post-compaction agent does not re-attempt a dead end.
+    rejected: tuple[str, ...] = ()
+    # Useful ideas parked for later, never worked on now; kept out of the way but
+    # not lost, so the mission can pick them up after the current objective.
+    deferred: tuple[str, ...] = ()
+    # The structured resume checkpoint read after a compaction to continue from
+    # the current point rather than restarting earlier work.
+    checkpoint: ResumeCheckpoint | None = None
     max_status_lines: int = _DEFAULT_MAX_STATUS_LINES
+    max_ring: int = _DEFAULT_RING
     load_error: str | None = None
     updated_at: str = ""
 
@@ -101,7 +116,16 @@ class MissionStack:
 
         An empty stack is not a mission; the middleware injects nothing for it.
         """
-        return bool(self.spec_objective.strip()) or self.plan is not None or bool(self.status_lines) or self.scratchpad.count > 0
+        return (
+            bool(self.spec_objective.strip())
+            or self.plan is not None
+            or bool(self.status_lines)
+            or self.scratchpad.count > 0
+            or bool(self.steers)
+            or bool(self.rejected)
+            or bool(self.deferred)
+            or (self.checkpoint is not None and not self.checkpoint.is_empty())
+        )
 
     # ---- mutators (each returns a new stack) -------------------------------------
 
@@ -134,6 +158,31 @@ class MissionStack:
     def touch(self, updated_at: str) -> MissionStack:
         return replace(self, updated_at=updated_at)
 
+    def _ring(self, name: str, line: str) -> MissionStack:
+        cleaned = _clean_line(line)
+        if not cleaned:
+            return self
+        current = getattr(self, name)
+        items = (*current, cleaned)
+        if len(items) > self.max_ring:
+            items = items[-self.max_ring :]
+        return replace(self, **{name: items})
+
+    def steer(self, line: str) -> MissionStack:
+        """Record a live operator steer constraint (a record, never a control)."""
+        return self._ring("steers", line)
+
+    def reject(self, line: str) -> MissionStack:
+        """Record a rejected path so it is never silently re-attempted."""
+        return self._ring("rejected", line)
+
+    def defer(self, line: str) -> MissionStack:
+        """Park a useful idea for later without it leaking into the current work."""
+        return self._ring("deferred", line)
+
+    def with_checkpoint(self, checkpoint: ResumeCheckpoint) -> MissionStack:
+        return replace(self, checkpoint=checkpoint)
+
     # ---- persistence -------------------------------------------------------------
 
     def to_dict(self) -> dict[str, object]:
@@ -146,7 +195,12 @@ class MissionStack:
             "plan": self.plan.to_dict() if self.plan is not None else None,
             "status_lines": list(self.status_lines),
             "scratchpad": self.scratchpad.to_dict(),
+            "steers": list(self.steers),
+            "rejected": list(self.rejected),
+            "deferred": list(self.deferred),
+            "checkpoint": self.checkpoint.to_dict() if self.checkpoint is not None else None,
             "max_status_lines": self.max_status_lines,
+            "max_ring": self.max_ring,
             "updated_at": self.updated_at,
         }
 
@@ -159,6 +213,11 @@ class MissionStack:
         constraints = data.get("spec_constraints", [])
         done = data.get("spec_done_when", [])
         status = data.get("status_lines", [])
+        steers = data.get("steers", [])
+        rejected = data.get("rejected", [])
+        deferred = data.get("deferred", [])
+        checkpoint_raw = data.get("checkpoint")
+        checkpoint = ResumeCheckpoint.from_dict(checkpoint_raw) if isinstance(checkpoint_raw, dict) else None
         return cls(
             scope_key=str(data.get("scope_key", "")),
             spec_objective=str(data.get("spec_objective", "")),
@@ -168,7 +227,12 @@ class MissionStack:
             plan=plan,
             status_lines=tuple(str(c) for c in status) if isinstance(status, list) else (),
             scratchpad=Scratchpad.from_dict(data.get("scratchpad")),
+            steers=tuple(str(c) for c in steers) if isinstance(steers, list) else (),
+            rejected=tuple(str(c) for c in rejected) if isinstance(rejected, list) else (),
+            deferred=tuple(str(c) for c in deferred) if isinstance(deferred, list) else (),
+            checkpoint=checkpoint,
             max_status_lines=int(data.get("max_status_lines", _DEFAULT_MAX_STATUS_LINES) or _DEFAULT_MAX_STATUS_LINES),
+            max_ring=int(data.get("max_ring", _DEFAULT_RING) or _DEFAULT_RING),
             updated_at=str(data.get("updated_at", "")),
         )
 

@@ -244,3 +244,70 @@ def test_evidence_verify_is_idempotent_once_verified() -> None:
     twice, verification = verify_milestone(once, milestone_id="m1", record=_record(measured=True, detail="exit_code=0"))
     assert twice.get("m1").evidence == "exit_code=0 [test_exit_report:/tmp/report.json]"
     assert verification.verdict.value == "met"
+
+
+# ---------------------------------------------------------------------------
+# Resume checkpoint, steer/reject/defer, and the anchor that surfaces them
+# ---------------------------------------------------------------------------
+
+
+def test_resume_checkpoint_renders_structured_fields_and_do_not_repeat() -> None:
+    from alpha.runtime.missions import ResumeCheckpoint, render_resume_checkpoint
+
+    assert render_resume_checkpoint(ResumeCheckpoint()) == ""
+    rendered = render_resume_checkpoint(
+        ResumeCheckpoint(
+            current_phase="optimize checkout",
+            next_action="rerun the benchmark",
+            stop_condition="p95 < 120ms",
+            rejected_paths="cache-first attempt regressed the suite",
+            do_not_repeat="do not loosen the benchmark to pass",
+        )
+    )
+    assert "## Resume checkpoint" in rendered
+    assert "Current phase: optimize checkout" in rendered
+    assert "Next action: rerun the benchmark" in rendered
+    assert "Do not repeat: do not loosen the benchmark to pass" in rendered
+    # A rejected path stays visible; it is never smoothed out of the view.
+    assert "Rejected paths: cache-first" in rendered
+
+
+def test_stack_rings_are_bounded() -> None:
+    stack = MissionStack(max_ring=2)
+    for i in range(5):
+        stack = stack.steer(f"s{i}").reject(f"r{i}").defer(f"d{i}")
+    assert stack.steers == ("s3", "s4")
+    assert stack.rejected == ("r3", "r4")
+    assert stack.deferred == ("d3", "d4")
+
+
+def test_stack_roundtrip_preserves_checkpoint_and_rings() -> None:
+    import json
+
+    from alpha.runtime.missions import ResumeCheckpoint
+
+    checkpoint = ResumeCheckpoint(current_phase="phase-Two", next_action="run tests", stop_condition="suite green")
+    stack = MissionStack(scope_key="t").with_spec(objective="ship").steer("focus on the happy path first").reject("inline styles").defer("dark mode").with_checkpoint(checkpoint)
+    restored = MissionStack.from_dict(json.loads(json.dumps(stack.to_dict())))
+    assert restored.steers == ("focus on the happy path first",)
+    assert restored.rejected == ("inline styles",)
+    assert restored.deferred == ("dark mode",)
+    assert restored.checkpoint is not None and restored.checkpoint.current_phase == "phase-Two"
+
+
+def test_anchor_surfaces_steer_checkpoint_reject_defer() -> None:
+    from alpha.runtime.missions import ResumeCheckpoint, render_anchor
+
+    stack = (
+        MissionStack(scope_key="t")
+        .with_spec(objective="objective")
+        .steer("prioritize correctness")
+        .reject("skip tests to go faster")
+        .defer("nice error messages")
+        .with_checkpoint(ResumeCheckpoint(current_phase="writing tests", next_action="run pytest"))
+    )
+    anchor = render_anchor(stack, max_chars=6000)
+    assert "## Operator steer" in anchor and "prioritize correctness" in anchor
+    assert "## Resume checkpoint" in anchor and "Next action: run pytest" in anchor
+    assert "## Do not repeat" in anchor and "skip tests to go faster" in anchor
+    assert "## Deferred (not now)" in anchor and "nice error messages" in anchor

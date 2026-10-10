@@ -262,3 +262,51 @@ def test_tool_verify_owner_assertion_still_records_but_is_labelled(tmp_path, too
     out = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m1", passed=True, evidence="looks good")
     assert out["verdict"] == "verified"
     assert "observed_fact:owner-assertion" in out["verified_evidence"]  # provenance, not a measured check
+
+
+# ---------------------------------------------------------------------------
+# Steering, resume checkpoint, reject/defer: Codex mid-flight steering + the
+# fix for the documented compaction restart loop.
+# ---------------------------------------------------------------------------
+
+
+def test_tool_steer_and_checkpoint_persist_across_reload(tmp_path, tool_env) -> None:
+    f = tool_env.func
+    assert f(runtime=tool_env.runtime, action="set_spec", objective="Ship it")["success"]
+    assert f(runtime=tool_env.runtime, action="steer", steer="prioritize the happy path")["success"]
+    assert f(runtime=tool_env.runtime, action="reject", reject="inline styles regress a11y")["success"]
+    assert f(runtime=tool_env.runtime, action="defer", defer="dark mode")["success"]
+    cp = f(runtime=tool_env.runtime, action="checkpoint", checkpoint_json='{"current_phase":"writing tests","next_action":"run pytest","do_not_repeat":"weaken assertions"}')
+    assert cp["success"]
+    reloaded = MissionManager(Paths(str(tmp_path))).load("u1", "t1")
+    assert reloaded.steers == ("prioritize the happy path",)
+    assert reloaded.rejected == ("inline styles regress a11y",)
+    assert reloaded.deferred == ("dark mode",)
+    assert reloaded.checkpoint is not None and reloaded.checkpoint.next_action == "run pytest"
+
+
+def test_tool_brief_returns_the_resume_checkpoint_without_side_effects(tmp_path, tool_env) -> None:
+    assert tool_env.func(runtime=tool_env.runtime, action="set_spec", objective="Ship it")["success"]
+    assert tool_env.func(runtime=tool_env.runtime, action="steer", steer="correctness first")["success"]
+    brief = tool_env.func(runtime=tool_env.runtime, action="brief")
+    assert brief["success"] and brief["action"] == "brief"
+    assert brief["steers"] == ["correctness first"]
+    assert brief["anchor"].startswith("<system_memory")
+
+
+def test_tool_checkpoint_rejects_non_object_json(tmp_path, tool_env) -> None:
+    assert tool_env.func(runtime=tool_env.runtime, action="set_spec", objective="x")["success"]
+    assert tool_env.func(runtime=tool_env.runtime, action="checkpoint", checkpoint_json="[1,2]")["error"] == "invalid_json"
+
+
+def test_middleware_surfaces_steer_and_resume_checkpoint(tmp_path, monkeypatch) -> None:
+    from alpha.runtime.missions import ResumeCheckpoint
+
+    stack = MissionStack().with_spec(objective="steady the course").steer("prioritize correctness").with_checkpoint(ResumeCheckpoint(current_phase="testing", next_action="run pytest", do_not_repeat="weaken the suite"))
+    MissionManager(Paths(str(tmp_path))).save("u1", "t1", stack)
+    mw = _middleware(tmp_path, monkeypatch)
+    overridden = mw._build_override(_FakeRequest([SystemMessage(content="sys")]))
+    body = [m.content for m in overridden.messages if isinstance(m.content, str) and "<system_memory" in m.content][0]
+    assert "## Operator steer" in body and "prioritize correctness" in body
+    assert "## Resume checkpoint" in body and "run pytest" in body
+    assert "Do not repeat: weaken the suite" in body  # the checkpoint's own do-not-repeat survives

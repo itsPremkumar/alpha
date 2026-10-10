@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Final
 
+from alpha.runtime.missions.checkpoint import render_resume_checkpoint
 from alpha.runtime.missions.manager import MissionStack
 
 __all__ = ["ANCHOR_HEADER", "render_anchor", "MISSION_NOTICE"]
@@ -74,6 +75,21 @@ def render_anchor(stack: MissionStack, *, status_tail: int = 4, scratch_tail: in
         parts.append("\n")
     elif plan is not None and plan.total == 0:
         parts.append("## Plan\n(no milestones yet)\n\n")
+
+    steers = _bullets(stack.steers, limit=3)
+    if steers:
+        parts.append("## Operator steer\n" + steers + "\n")
+
+    if stack.checkpoint is not None:
+        rendered = render_resume_checkpoint(stack.checkpoint)
+        if rendered:
+            parts.append(rendered + "\n")
+
+    if stack.rejected:
+        parts.append("## Do not repeat\n" + _bullets(stack.rejected, limit=5) + "\n")
+
+    if stack.deferred:
+        parts.append("## Deferred (not now)\n" + _bullets(stack.deferred, limit=3) + "\n")
 
     if stack.status_lines:
         parts.append("## Recent status\n" + _bullets(stack.status_lines, limit=status_tail) + "\n")

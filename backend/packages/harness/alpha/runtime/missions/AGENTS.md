@@ -67,10 +67,24 @@ command and never imports `alpha.mission.acceptance` at module scope (the caller
 imports it lazily), so the acceptance plane stays the single evidence authority and
 there is no cycle.
 
+**Steering is a record, never a control; the resume checkpoint beats the drift of
+compaction.** Two Codex techniques land here as durable state. A `steer` is a live
+operator constraint surfaced every turn (`## Operator steer`) so a course correction
+survives the next compaction instead of being spoken once. A `reject` becomes a
+`## Do not repeat` line so a post-compaction agent does not re-attempt a dead end,
+and a `defer` parks a good idea (`## Deferred`) without it leaking into the current
+work. The `ResumeCheckpoint` is the fix for the documented "successful compaction
+that resumes from the wrong point" loop: a *structured* `current_phase` /
+`next_action` / `stop_condition` / `rejected_paths` / `do_not_repeat` the run reads
+after compaction, so it continues from where it is rather than restarting earlier
+work. None of these is a prompt rewrite; they are records the agent re-reads, exactly
+as a steer is a record in APEX.
+
 **Where things live**:
 - `milestones.py` — `Milestone`, `MilestonePlan`, `MilestoneStatus`, `InvalidMilestonePlan`, stop-and-fix transitions.
 - `scratchpad.py` — `Scratchpad` bounded reasoning ring.
-- `manager.py` — `MissionStack` value object + `MissionManager` path-safe atomic store.
+- `manager.py` — `MissionStack` value object (spec/plan/status/scratchpad/steers/rejected/deferred/checkpoint) + `MissionManager` path-safe atomic store.
 - `anchor.py` — `render_anchor()` — the compact, bounded per-turn anchor callers project.
+- `checkpoint.py` — `ResumeCheckpoint` + `render_resume_checkpoint()` — the structured continuation checkpoint.
 - `verify.py` — `verify_milestone()`, `MilestoneVerdict`, `MilestoneVerification` — a measured evidence record becomes a verdict (`met`/`not_met`/`unverified`).
-- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt-file fail-open, evidence→verdict), `tests/test_mission_memory_wiring.py` (tool actions + middleware injection + real test-exit/artifact evidence + honesty).
+- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt fail-open, evidence→verdict, resume-checkpoint render, ring bounds, anchor blocks), `tests/test_mission_memory_wiring.py` (tool actions incl. steer/checkpoint/reject/defer/brief + middleware injection + real test/artifact evidence + honesty).
