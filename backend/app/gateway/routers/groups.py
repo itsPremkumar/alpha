@@ -193,6 +193,54 @@ async def create_room(body: RoomCreateRequest) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Mention grammar preview — server-side resolution for the composer.
+# ---------------------------------------------------------------------------
+
+
+class MentionPreviewRequest(BaseModel):
+    room_name: str = Field(min_length=1, max_length=64)
+    content: str = Field(default="", max_length=20000)
+    sender: str | None = Field(default=None, max_length=64)
+
+
+class MentionPreviewResponse(BaseModel):
+    text: str
+    spans: list[dict[str, Any]]
+    targets: list[dict[str, Any]]
+    unresolved: list[dict[str, str]]
+    resolved_handles: list[str]
+    ok: bool
+    human_line: str
+
+
+@router.post("/mentions/preview", response_model=MentionPreviewResponse, summary="Preview how a draft will resolve in this room")
+async def preview_mentions(body: MentionPreviewRequest) -> MentionPreviewResponse:
+    """Run the ONE mention grammar against a room's roster.
+
+    This is the composer's pre-send check. It is not a write — the same
+    grammar runs inside `post_message`, but seeing the result beforehand lets
+    the operator fix an unknown handle before the run starts. The response
+    carries the server's own reason strings so the two surfaces never disagree.
+    """
+    svc = _service()
+    resolution = await asyncio.to_thread(
+        svc.resolve_mentions,
+        body.room_name,
+        body.content,
+        sender=body.sender,
+    )
+    return MentionPreviewResponse(
+        text=resolution.text,
+        spans=[s.to_dict() for s in resolution.spans],
+        targets=[t.to_dict() for t in resolution.targets],
+        unresolved=[dict(u) for u in resolution.unresolved],
+        resolved_handles=list(resolution.resolved_handles),
+        ok=resolution.ok,
+        human_line=resolution.human_line(),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Nesting — the WhatsApp-community shape.
 #
 # `GET /tree` is declared before `GET /{name}` on purpose: Starlette matches in

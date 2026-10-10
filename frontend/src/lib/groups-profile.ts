@@ -291,3 +291,45 @@ export function subscribeRoomEvents(
   source.onerror = (event: Event) => onError?.(event);
   return () => source.close();
 }
+
+// ── Mention preview ──────────────────────────────────────────────────────────
+
+/** One unresolved token from the server's grammar. */
+export interface MentionUnresolved {
+  raw: string;
+  reason: string;
+}
+
+/** The complete server-side resolution of a draft. */
+export interface MentionPreviewResponse {
+  text: string;
+  spans: Array<{ start: number; end: number; raw: string; kind: string; body: string }>;
+  targets: Array<{ kind: string; selector: string; resolved: string[]; via: string }>;
+  unresolved: MentionUnresolved[];
+  resolved_handles: string[];
+  /** Camel-case alias for the client type. */
+  resolvedHandles: string[];
+  ok: boolean;
+  human_line: string;
+}
+
+/**
+ * Preview how the server's ONE mention grammar will resolve a draft in a room.
+ *
+ * This is the composer's pre-send check. It is a read — no write is performed.
+ * The response carries the server's own reason strings so the composer and the
+ * transcript never disagree on why a tag addressed nobody.
+ */
+export async function previewMentions(
+  room: string,
+  content: string,
+  sender?: string,
+): Promise<MentionPreviewResponse> {
+  const raw = await send<MentionPreviewResponse>(`/groups/${enc(room)}/mentions/preview`, "POST", {
+    room_name: room,
+    content,
+    sender,
+  });
+  // The server returns snake_case; populate the camel-case alias the client uses.
+  return { ...raw, resolvedHandles: raw.resolved_handles };
+}

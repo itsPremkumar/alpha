@@ -20,6 +20,8 @@ import {
   AtSign,
   Users,
   ArrowLeftRight,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
 import {
@@ -55,6 +57,7 @@ import {
   type MentionAgent,
   type MentionRow,
 } from "@/lib/agent-mentions";
+import { previewMentions, type MentionPreviewResponse } from "@/lib/groups-profile";
 import {
   buildSlashCommandPalette,
   describePalette,
@@ -298,6 +301,21 @@ interface ComposerProps {
   effortLabels?: Readonly<Record<string, string>>;
   /** Name of the current active bot for the placeholder */
   botDisplayName?: string;
+  /**
+   * The group room name (for a group chat). When provided, the composer calls
+   * `GET /groups/{name}/mentions/preview` on each draft change so the server's
+   * exact resolution is shown live — including `@role:` resolution and the
+   * fan-out ceiling that the client cannot know. Omit for a DM thread.
+   */
+  roomName?: string | null;
+  /**
+   * The thread ID (for a DM). When provided with `roomName` absent, the
+   * server preview is skipped and the client mirror is used — DMs have no
+   * server-side role index, so `@role:` would be an unresolvable claim.
+   */
+  threadId?: string | null;
+  /** Current user's handle (to exclude from @everyone fan-out). */
+  currentUserHandle?: string | null;
 }
 
 export function Composer({
@@ -340,6 +358,9 @@ export function Composer({
   onDelegationChange,
   effortLadder = FALLBACK_LADDER,
   effortLabels = FALLBACK_LABELS,
+  roomName = null,
+  threadId = null,
+  currentUserHandle = null,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -552,6 +573,45 @@ export function Composer({
     if (countMentionTokens(input) === 0) return null;
     return parseMentions(input, rosterHandles(mentionAgents), departmentRoleIndex(mentionAgents));
   }, [input, mentionAgents]);
+
+  /**
+   * Server-side mention preview for group rooms.
+   *
+   * In a group chat (`roomName` provided), the server owns the authoritative
+   * resolution — it has the room's roster, the member departments for `@role:`,
+   * and the fan-out ceiling. The client mirror is used only for DMs (`threadId`
+   * without `roomName`), where no server-side role index exists.
+   */
+  const [serverTagStatus, setServerTagStatus] = useState<MentionPreviewResponse | null>(null);
+  const [serverPreviewLoading, setServerPreviewLoading] = useState(false);
+  const [serverPreviewError, setServerPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!roomName || serverPreviewLoading) return;
+    if (countMentionTokens(input) === 0) {
+      setServerTagStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setServerPreviewLoading(true);
+    setServerPreviewError(null);
+    previewMentions(roomName, input, currentUserHandle ?? undefined)
+      .then((res) => {
+        if (!cancelled) setServerTagStatus(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setServerPreviewError(errMsg(err));
+      })
+      .finally(() => {
+        if (!cancelled) setServerPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomName, input, currentUserHandle, serverPreviewLoading]);
+
+  /** The authoritative status: server in a room, client mirror in a DM. */
+  const authoritativeStatus = roomName ? serverTagStatus : tagStatus;
 
   /**
    * The palette header's one-line state.
@@ -1173,7 +1233,7 @@ export function Composer({
           }
           rows={1}
           aria-label="Message the agent"
-          aria-describedby={tagStatus ? "composer-tag-status" : undefined}
+          aria-describedby={authoritativeStatus ? "composer-tag-status" : undefined}
           className="w-full resize-none bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-muted-foreground max-h-48 text-foreground"
         />
 
@@ -1185,35 +1245,55 @@ export function Composer({
             handle to nothing rather than to a near match, so the message would go
             out and call nobody. Naming the reason is the only point at which the
             operator can still fix it. */}
-        {tagStatus && (
+        {authoritativeStatus && (
           <div id="composer-tag-status" className="mx-2 mb-1.5 flex items-center gap-2 flex-wrap text-[10.5px]">
-            {tagStatus.unresolved.length > 0 ? (
+            {/* Server preview loading indicator */}
+            {roomName && serverPreviewLoading && (
+              <span className="inline-flex items-center gap-1 text-muted-foreground/70">
+                <Loader2 className="size-3 animate-spin" />
+                Checking with server…
+              </span>
+            )}
+            {/* Server preview error */}
+            {roomName && serverPreviewError && (
+              <span className="inline-flex items-center gap-1 text-destructive/70">
+                <AlertTriangle className="size-3" />
+                Preview failed — {serverPreviewError}
+              </span>
+            )}
+            {authoritativeStatus.unresolved.length > 0 ? (
               <>
                 <span className="inline-flex items-center gap-1 text-destructive font-medium">
                   <X className="size-3" />
-                  {tagStatus.unresolved.length} tag{tagStatus.unresolved.length === 1 ? "" : "s"} address nobody
+                  {authoritativeStatus.unresolved.length} tag{authoritativeStatus.unresolved.length === 1 ? "" : "s"} address nobody
                 </span>
-                {tagStatus.unresolved.slice(0, 3).map((bad) => (
+                {authoritativeStatus.unresolved.slice(0, 3).map((bad) => (
                   <span key={bad.raw} className="text-muted-foreground">
                     <code className="font-mono text-destructive">{bad.raw}</code>{" "}
                     <span className="text-muted-foreground/80">{bad.reason}</span>
                   </span>
                 ))}
-                {tagStatus.unresolved.length > 3 && (
-                  <span className="text-muted-foreground/70">+{tagStatus.unresolved.length - 3} more</span>
+                {authoritativeStatus.unresolved.length > 3 && (
+                  <span className="text-muted-foreground/70">+{authoritativeStatus.unresolved.length - 3} more</span>
                 )}
               </>
             ) : (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <Check className="size-3 text-primary" />
-                {tagStatus.resolvedHandles.length === 1
-                  ? `Tagging ${tagStatus.resolvedHandles[0]}`
-                  : `Tagging ${tagStatus.resolvedHandles.length} agents`}
-                {tagStatus.resolvedHandles.length > 0 && (
+                {authoritativeStatus.resolvedHandles.length === 1
+                  ? `Tagging ${authoritativeStatus.resolvedHandles[0]}`
+                  : `Tagging ${authoritativeStatus.resolvedHandles.length} agents`}
+                {authoritativeStatus.resolvedHandles.length > 0 && (
                   <span className="text-muted-foreground/70 font-mono">
-                    {tagStatus.resolvedHandles.map((h) => `@${h}`).join(" ")}
+                    {authoritativeStatus.resolvedHandles.map((h) => `@${h}`).join(" ")}
                   </span>
                 )}
+              </span>
+            )}
+            {/* Server source disclosure */}
+            {roomName && authoritativeStatus.ok && authoritativeStatus.resolvedHandles.length > 0 && (
+              <span className="text-muted-foreground/50 font-mono text-[9px]">
+                via server
               </span>
             )}
           </div>

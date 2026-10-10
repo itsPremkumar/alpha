@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from alpha.bots.registry import get_bot_registry
+from alpha.channels.mentions import MentionResolution, normalise_handle
 from alpha.groups.orchestration import GroupOrchestrator
 from alpha.groups.quorum import QuorumEngine
 from alpha.groups.room import (
@@ -328,6 +329,63 @@ class GroupChatService:
         with self._lock:
             return ancestors_of(self._scopes, room_id)
 
+    def build_role_index(self, room: GroupRoom) -> dict[str, list[str]]:
+        """Index the room's members by their registry `department`, for `@role:`.
+
+        This is the server-side half of a role selector, and it is deliberately
+        derived from a real roster column rather than a second taxonomy: a bot
+        profile's `department` is what group *membership rules* already match
+        against, so `@role:engineering` addresses the same set a rule would.
+
+        Only members **of this room** are indexed. A role that would address a
+        bot outside the room is not a fan-out, it is a routing bug, and the
+        mention grammar refuses a role whose members are not all present.
+
+        An unreadable registry yields no index rather than a guessed one: with no
+        index, `@role:x` resolves to nothing *and says the role is undefined*,
+        which is a far smaller lie than a fan-out built from a roster we could
+        not read.
+        """
+        try:
+            registry = get_bot_registry()
+        except Exception:  # noqa: BLE001 - a registry that cannot load is not a routing error
+            return {}
+        index: dict[str, list[str]] = {}
+        for member in room.members:
+            try:
+                profile = registry.get_bot(member)
+            except Exception:  # noqa: BLE001 - one unreadable row must not void the index
+                continue
+            department = normalise_handle(getattr(profile, "department", "") or "")
+            if not department:
+                continue
+            bucket = index.setdefault(department, [])
+            if member not in bucket:
+                bucket.append(member)
+        return {role: members for role, members in index.items() if members}
+
+    def resolve_mentions(
+        self,
+        room_name: str,
+        content: str,
+        *,
+        sender: str | None = None,
+        roles: Mapping[str, Iterable[str]] | None = None,
+    ) -> MentionResolution:
+        """The ONE mention grammar applied to one room's membership.
+
+        Exposed on the service (not only the orchestrator) because "which tags in
+        this draft resolve" is a question the composer asks about a room it has
+        not posted to yet.
+        """
+        room = self.get_or_create_room(room_name)
+        return GroupOrchestrator.resolve_mentions(
+            content,
+            room.members,
+            roles=roles if roles is not None else self.build_role_index(room),
+            sender=sender,
+        )
+
     def post_message(
         self,
         room_name: str,
@@ -348,14 +406,27 @@ class GroupChatService:
         claim a message exists when none does.
         """
         room = self.get_or_create_room(room_name)
-        mentions = self.orchestrator.parse_mentions(content, room.members)
+        role_index = self.build_role_index(room)
+        resolution = self.orchestrator.resolve_mentions(content, room.members, roles=role_index, sender=sender)
+        mentions = list(resolution.resolved_handles)
+
+        # A tag that addressed nobody used to vanish silently: the message posted,
+        # `mentions` was empty, and the operator had no way to learn their tag was
+        # dead. The reasons ride the message so the transcript can name them —
+        # "unknown handle" and "5 handles above the fan-out ceiling" are very
+        # different things to see after the fact.
+        stored_metadata: dict[str, Any] = dict(metadata or {})
+        if resolution.unresolved:
+            stored_metadata["unresolved_mentions"] = [dict(u) for u in resolution.unresolved]
+        if resolution.spans:
+            stored_metadata["mention_spans"] = [s.to_dict() for s in resolution.spans]
 
         msg = room.append_message(
             sender=sender,
             content=content,
             intent=intent,  # type: ignore[arg-type]
             mentions=mentions,
-            metadata=metadata or {},
+            metadata=stored_metadata,
             reply_to=reply_to,
             forwarded_from=forwarded_from,
         )
