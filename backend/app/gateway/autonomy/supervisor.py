@@ -212,6 +212,7 @@ class AutonomySupervisor:
             ("company_operations", "Bounded sweep of Company OS loops: observe, plan, act, verify, ledger.", loop_adapters.company_operations_tick, 300.0),
             ("self_update", "Opt-in GitHub source update check and guarded apply.", loop_adapters.self_update_tick, 21600.0),
             ("apex", "APEX executive cycle with idempotent RunManager dispatch and run observation.", loop_adapters.apex_tick, 120.0),
+            ("mission", "Fail-closed mission watchdog: park done-stuck/blocked missions (never loops, never dispatches).", loop_adapters.mission_tick, 300.0),
         )
         for loop_id, description, tick, interval in defaults:
             self.register(LoopSpec(loop_id=loop_id, description=description, tick=tick, default_interval_seconds=interval))

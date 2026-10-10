@@ -230,8 +230,7 @@ Every Alpha figure in this document is generated, not hand-maintained:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-The manifest pins **137 tools, 68 routers, 45 middlewares, and 10 supervisor
-loops**, and `tests/test_feature_manifest_wiring.py` plus the generated-drift CI
+The manifest pins **137 tools, 68 routers, 45 middlewares, and 11 supervisor loops**, and `tests/test_feature_manifest_wiring.py` plus the generated-drift CI
 gate fail the build if the documentation and the live registries disagree.
 
 ---

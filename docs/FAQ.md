@@ -138,8 +138,7 @@ Discord, Buzz, and Signal.
 
 ### How many tools, skills, routers, and middlewares ship?
 
-137 native tools, Gateway 68 routers, 45 middleware layers, and 10 background
-supervisor loops, plus 24 public skills and 119 harness engine packages. These
+137 native tools, Gateway 68 routers, 45 middleware layers, and 11 background supervisor loops, plus 24 public skills and 119 harness engine packages. These
 numbers are generated into
 [`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and enforced
 by a CI drift gate, so they cannot silently rot.

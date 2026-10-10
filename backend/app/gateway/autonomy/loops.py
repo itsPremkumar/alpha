@@ -127,6 +127,54 @@ def review_queue_tick() -> dict[str, Any]:
     return {"pending": len(pending), "session_ids": [entry.session_id for entry in pending]}
 
 
+def mission_tick(*, max_scopes: int = 200) -> dict[str, Any]:
+    """Fail-closed mission watchdog: park stuck/blocked missions, never loop.
+
+    Model-free. Scans durable missions, applies the mission loop brake
+    (:func:`alpha.runtime.missions.decide_mission`) to each, and *tightens only*:
+    a mission the brake says to park is recorded as ``blocked`` with the reason,
+    so the brake holds even if the agent session that owned it died mid-run or a
+    process restarted. It never dispatches work and never un-parks -- ``RunManager``
+    and the APEX dispatcher stay the only execution authorities, so this is a
+    safety net, not a second executor. A single unreadable mission never stalls
+    the pass, and the scan is bounded.
+    """
+    from alpha.config.paths import get_paths
+    from alpha.runtime.missions import MissionManager, decide_mission
+
+    try:
+        manager = MissionManager(get_paths())
+        scopes = manager.scan_active(max_scopes=max_scopes)
+    except Exception as exc:  # fail-open: an unreadable store is "no missions", not a fault
+        return {"scanned": 0, "error": f"{type(exc).__name__}: {exc}"}
+
+    counts = {"continue": 0, "done": 0, "park": 0}
+    parked: list[dict[str, str]] = []
+    for owner, thread_id, stack in scopes:
+        try:
+            decision = decide_mission(stack)
+        except Exception:
+            continue
+        action = decision.action.value
+        counts[action] = counts.get(action, 0) + 1
+        # Tighten only: record the brake's reason, but never overwrite an
+        # operator's existing block note and never un-park or dispatch.
+        if decision.should_park and not stack.blocked.strip():
+            try:
+                manager.save(owner, thread_id, stack.block(decision.reason))
+                parked.append({"owner": owner, "thread": thread_id, "reason": decision.reason})
+            except (OSError, ValueError):
+                continue
+    return {
+        "scanned": len(scopes),
+        "continue": counts["continue"],
+        "done": counts["done"],
+        "park": counts["park"],
+        "newly_parked": len(parked),
+        "parked": parked[:20],
+    }
+
+
 def skill_curator_tick(*, dry_run: bool = True) -> dict[str, Any]:
     """One skill-curator prune pass. Dry-run by default; the flag decides."""
     from alpha.skills.curator import SkillCurator

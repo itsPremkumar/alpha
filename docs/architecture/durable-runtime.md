@@ -418,6 +418,14 @@ Honesty about the boundary is part of the feature.
 Each subsystem's own `AGENTS.md` next to the code is the normative contract;
 this page is the map.
 
+operator), which records a measured result here. This never infers an outcome
+from a model's summary. The durable-runtime loops and APEX own *scheduling*;
+this package is the memory those loops dispatch *into*, and its `mission`
+watchdog loop (registered in `AutonomySupervisor`) enforces the brake even when
+no agent session is alive — it *tightens only* (parks stuck/blocked missions) and
+never dispatches, so it is not a second executor. Contract: the module's own
+`runtime/missions/AGENTS.md`.
+
 **The cognition of durability is separate from the durability itself.** Everything
 above makes the *process* survive an outage, crash or restart. What none of it
 supplies is the objective once it scrolls out of the context window: a run can be

@@ -44,7 +44,7 @@ locally, not a cryptographic attestation.
 isolation, so the model never receives raw secrets. → [SECURITY.md](SECURITY.md)
 
 **Autonomy loop** — a background loop owned by the autonomy supervisor (sentinel,
-perpetual, review_queue, skill_curator, enterprise_heartbeat). Gated by
+perpetual, review_queue, skill_curator, enterprise_heartbeat, apex, mission). Gated by
 `config.yaml -> autonomy.loops`; an absent id means disabled. → [ARCHITECTURE.md](ARCHITECTURE.md)
 
 **AVO (Agentic Variation Operators)** — evolutionary mutation operators for

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-10T01:14:19Z",
+ "generated_at": "2026-10-10T06:43:50Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1988,6 +1988,13 @@
   {
    "id": "free_models_sync",
    "module": "app.gateway.autonomy.loops:free_models_sync_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "mission",
+   "module": "app.gateway.autonomy.loops:mission_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"

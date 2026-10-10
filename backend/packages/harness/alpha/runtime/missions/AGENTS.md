@@ -102,4 +102,15 @@ has no equivalent here.
 - `checkpoint.py` — `ResumeCheckpoint` + `render_resume_checkpoint()` — the structured continuation checkpoint.
 - `verify.py` — `verify_milestone()`, `MilestoneVerdict`, `MilestoneVerification` — a measured evidence record becomes a verdict (`met`/`not_met`/`unverified`).
 - `brakes.py` — `decide_mission()`, `LoopDecision`, `MissionAction` — the model-free loop brake: `continue` / `done` / `park`.
-- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt fail-open, evidence→verdict, resume-checkpoint render, ring bounds, anchor blocks, loop brake), `tests/test_mission_memory_wiring.py` (tool actions incl. steer/checkpoint/reject/defer/brief/block/tick/decide + middleware injection + real test/artifact evidence + honesty).
+- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt fail-open, evidence→verdict, resume-checkpoint render, ring bounds, anchor blocks, loop brake), `tests/test_mission_memory_wiring.py` (tool actions incl. steer/checkpoint/reject/defer/brief/block/tick/decide + middleware injection + real test/artifact evidence + honesty), `tests/test_mission_loop.py` (the watchdog loop parks stuck missions, never dispatches/un-parks).
+
+**The brake is enforced even when no agent session is alive.** The `mission`
+AutonomySupervisor loop (`app/gateway/autonomy/loops.py::mission_tick`, off by
+default like every loop) is a model-free watchdog: each pass it scans active
+missions (`MissionManager.scan_active`, bounded + owner-scoped) and applies
+`decide_mission`, *tightening only* — a mission the brake says to park is recorded
+as `blocked` with the reason, so an unattended run cannot loop forever even if the
+session that owned it died or the process restarted. It never dispatches work and
+never un-parks; `RunManager` and the APEX dispatcher stay the only execution
+authorities, so this is a safety net, not a second executor. It is registered in
+`register_default_loops()` (loop count is generated: now 11).

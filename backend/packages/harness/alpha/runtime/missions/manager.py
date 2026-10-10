@@ -375,3 +375,36 @@ class MissionManager:
             # A directory fsync is best-effort on filesystems that refuse it; the
             # file fsync above is the load-bearing durability.
             pass
+
+    def scan_active(self, *, max_scopes: int = 200) -> list[tuple[str, str, MissionStack]]:
+        """Return active missions across every owner, bounded by *max_scopes*.
+
+        Enumerates ``{users}/*/missions/*.json`` — the same layout
+        :meth:`_path` writes — and loads each stack (fail-open: a corrupt or
+        unreadable file yields an inactive stack and is skipped). This is the
+        bounded, read-only scan a *watchdog* loop uses; it reads durable state and
+        never dispatches, so it does not become a second execution authority. The
+        owner is the glob path component, so no caller can inject one.
+        """
+        users_root = self._paths.base_dir / "users"
+        if not users_root.is_dir():
+            return []
+        results: list[tuple[str, str, MissionStack]] = []
+        for path in sorted(users_root.glob("*/missions/*.json")):
+            if len(results) >= max_scopes:
+                break
+            mission_dir = path.parent
+            owner_dir = mission_dir.parent
+            if owner_dir.parent != users_root:
+                continue  # defensive: never trust a nested match outside users/*
+            owner = owner_dir.name
+            thread_id = path.stem
+            try:
+                self._safe_token(owner)
+                self._safe_token(thread_id)
+            except ValueError:
+                continue
+            stack = self.load(owner, thread_id)
+            if stack.is_active():
+                results.append((owner, thread_id, stack))
+        return results
