@@ -362,3 +362,28 @@ def test_decide_parks_on_explicit_block_and_unblock_releases() -> None:
     decision = decide_mission(blocked)
     assert decision.action is MissionAction.PARK and "blocked" in decision.reason
     assert decide_mission(blocked.unblock()).action is MissionAction.CONTINUE
+
+
+# ---------------------------------------------------------------------------
+# progress() and the resume brief: the "step away and understand what happened"
+# ---------------------------------------------------------------------------
+
+
+def test_progress_is_measured_only() -> None:
+    progress = MissionStack(plan=_plan().verify("m1", passed=True, evidence="e").advance()).progress()
+    assert progress["milestones_total"] == 2
+    assert progress["milestones_verified"] == 1
+    assert progress["complete"] is False
+    assert progress["current_milestone"] == "m2"
+
+
+def test_resume_brief_is_bounded_and_names_the_next_action() -> None:
+    from alpha.runtime.missions import ResumeCheckpoint, render_resume_brief
+
+    assert render_resume_brief(MissionStack()) == ""
+    stack = MissionStack(scope_key="t").with_spec(objective="reduce p95").with_plan(_plan()).with_checkpoint(ResumeCheckpoint(current_phase="profiling", next_action="rerun the benchmark"))
+    brief = render_resume_brief(stack)
+    assert brief.startswith("# Mission resume brief")
+    assert "reduce p95" in brief and "rerun the benchmark" in brief and "0/2 milestones verified" in brief
+    blocked = stack.block("need a credential")
+    assert "Blocked: need a credential" in render_resume_brief(blocked)

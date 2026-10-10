@@ -165,6 +165,29 @@ class MissionStack:
     def touch(self, updated_at: str) -> MissionStack:
         return replace(self, updated_at=updated_at)
 
+    def progress(self) -> dict[str, object]:
+        """A bounded, honest progress projection of the mission.
+
+        Counts come from measured state only: ``verified``/``total`` from the
+        milestone plan (a milestone is counted only once its evidence held), and
+        ``complete`` is true only when every milestone is ``VERIFIED``. ``current``
+        is the one active milestone, ``blocked`` echoes an operator park, and the
+        cycle counters are the loop brake's inputs. Nothing here is inferred from
+        a model summary.
+        """
+        plan = self.plan
+        current = plan.current.id if plan is not None and plan.current is not None else None
+        return {
+            "current_milestone": current,
+            "milestones_total": plan.total if plan else 0,
+            "milestones_verified": plan.verified_count if plan else 0,
+            "complete": bool(plan.complete) if plan else False,
+            "blocked": self.blocked.strip() or None,
+            "cycle_count": self.cycle_count,
+            "no_progress_cycles": self.no_progress_cycles,
+            "has_objective": bool(self.spec_objective.strip()),
+        }
+
     def _ring(self, name: str, line: str) -> MissionStack:
         cleaned = _clean_line(line)
         if not cleaned:

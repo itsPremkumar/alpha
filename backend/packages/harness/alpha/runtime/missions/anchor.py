@@ -107,3 +107,36 @@ def render_anchor(stack: MissionStack, *, status_tail: int = 4, scratch_tail: in
     if len(text) > max_chars:
         text = text[: max(0, max_chars - len("\n[truncated]"))] + "\n[truncated]" + MISSION_NOTICE
     return text
+
+
+def render_resume_brief(stack: MissionStack, *, max_chars: int = 2000) -> str:
+    """Render a single, bounded "step away" brief for *stack*.
+
+    This is the human/operator artifact the long-horizon write-ups lean on: an
+    owner returning after hours wants to know, in one read, what the objective
+    is, how far it has got (from *measured* milestone progress), what is blocked,
+    what the next step is, and what was last done. It composes the same durable
+    state the per-turn anchor uses, but as a linear narrative rather than a
+    re-anchoring block. It asserts no correctness verdict.
+    """
+    if not stack.is_active():
+        return ""
+    progress = stack.progress()
+    lines: list[str] = ["# Mission resume brief"]
+    lines.append(f"Objective: {stack.spec_objective or '(none recorded yet)'}")
+    lines.append(f"Progress: {progress['milestones_verified']}/{progress['milestones_total']} milestones verified" + (" (complete)" if progress["complete"] else ""))
+    if progress["current_milestone"]:
+        lines.append(f"Current milestone: {progress['current_milestone']}")
+    if stack.blocked.strip():
+        lines.append(f"Blocked: {stack.blocked.strip()}")
+    if stack.checkpoint is not None and stack.checkpoint.next_action:
+        lines.append(f"Next action: {stack.checkpoint.next_action}")
+    elif progress["current_milestone"] and stack.plan is not None and stack.plan.current is not None:
+        ms = stack.plan.current
+        lines.append(f"Next action: work milestone {ms.title!r}" + (f" — verify by {ms.validation}" if ms.validation else ""))
+    if stack.status_lines:
+        lines.append(f"Last status: {stack.status_lines[-1]}")
+    text = "\n".join(lines)
+    if len(text) > max_chars:
+        text = text[: max(0, max_chars - 1)] + "…"
+    return text

@@ -55,6 +55,7 @@ from alpha.runtime.missions.anchor import (
     ANCHOR_HEADER,
     MISSION_NOTICE,
     render_anchor,
+    render_resume_brief,
 )
 from alpha.runtime.missions.brakes import (
     DEFAULT_NO_PROGRESS_CYCLES,
@@ -113,6 +114,7 @@ __all__ = [
     "Scratchpad",
     "decide_mission",
     "render_anchor",
+    "render_resume_brief",
     "render_resume_checkpoint",
     "verify_milestone",
 ]
