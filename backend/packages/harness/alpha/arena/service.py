@@ -35,22 +35,43 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from alpha.arena import bracket
 from alpha.arena.cards import deal_cards, load_deck
 from alpha.arena.config import ArenaConfig, arena_config
 from alpha.arena.executor import ArenaExecutor, ArenaRunError
 from alpha.arena.models import ArenaPlan
+from alpha.arena.modes import RunMode
 from alpha.arena.runner import ArenaAgentRunner, SubagentArenaRunner
-from alpha.arena.store import ArenaStore, ArenaStoreError
+from alpha.arena.store import ArenaStore
 
 logger = logging.getLogger(__name__)
 
 #: Strategy-bank scope for arena outcomes.
 REASONING_SCOPE = "arena"
+
+
+def _check_mode(mode: str, *, start: bool) -> str:
+    """Validate a run mode, refusing what is not implemented.
+
+    ``compare`` and ``synthesize`` are declared by the plan but the
+    executor only runs a single-elimination bracket, so they are
+    refused by name rather than silently degraded into ``decide`` -
+    a run labelled ``synthesize`` that produced no synthesis would be
+    a fabricated capability.
+    """
+    try:
+        resolved = RunMode(str(mode).lower())
+    except ValueError:
+        raise ValueError(f"unknown arena mode '{mode}' (expected one of {[m.value for m in RunMode]})") from None
+    if resolved in (RunMode.COMPARE, RunMode.SYNTHESIZE):
+        raise ValueError(f"mode '{resolved.value}' is declared but not implemented: this arena runs a single-elimination bracket (mode 'decide'), or projects cost only (mode 'plan')")
+    if resolved is RunMode.PLAN and start:
+        raise ArenaRunError("mode 'plan' spends nothing; project the cost with 'estimate' instead of 'start'")
+    return resolved.value
 
 
 class ArenaConfirmationRequired(RuntimeError):
@@ -60,11 +81,7 @@ class ArenaConfirmationRequired(RuntimeError):
         self.plan = plan
         self.estimated_tokens = estimated_tokens
         self.ceiling = ceiling
-        super().__init__(
-            f"arena run projected at {plan.total_calls} sub-agent calls "
-            f"(~{estimated_tokens:,} estimated tokens) exceeds the confirmation "
-            f"ceiling of {ceiling} calls; pass confirm=True to run it"
-        )
+        super().__init__(f"arena run projected at {plan.total_calls} sub-agent calls (~{estimated_tokens:,} estimated tokens) exceeds the confirmation ceiling of {ceiling} calls; pass confirm=True to run it")
 
 
 class ArenaService:
@@ -93,12 +110,87 @@ class ArenaService:
 
     # ------------------------------------------------------------------ plan
 
+    def resolve_profile(
+        self,
+        *,
+        profile: str | None = None,
+        task: str = "",
+        agents: int | None = None,
+        wave: int | None = None,
+        available_budget_calls: int | None = None,
+        safety_level: str = "medium",
+    ) -> dict[str, Any]:
+        """Resolve the competitor count and wave size for a run.
+
+        Precedence, highest first:
+
+        1. an explicit ``agents``/``wave`` argument;
+        2. a named profile (``quick`` / ``standard`` / ``deep``);
+        3. ``profile="auto"`` - the adaptive router, which reads only
+           local signals (task length, requirement count, safety level,
+           remaining budget) and always reports the reason it chose;
+        4. the configured defaults.
+
+        A profile is refused, never clamped, when it exceeds an
+        operator ceiling - the ceiling is the operator's call.
+        """
+        from alpha.arena.modes import PROFILES, RouteInputs, route, spec_for
+
+        reason = "configured defaults"
+        routed_profile: str | None = None
+        if profile:
+            if profile == "auto":
+                routed_profile, reason = route(
+                    RouteInputs(
+                        task_length=len(task or ""),
+                        safety_level=safety_level,
+                        available_budget_calls=available_budget_calls,
+                    )
+                )
+            else:
+                spec_for(profile)  # unknown names raise here, by name
+                routed_profile, reason = profile, "explicit profile"
+        if routed_profile is not None:
+            spec = spec_for(routed_profile)
+            if agents is None:
+                agents = spec.agents
+            if wave is None:
+                wave = spec.wave
+        resolved_agents = self._resolve_agents(agents)
+        resolved_wave = self._resolve_wave(wave)
+        return {
+            "agents": resolved_agents,
+            "wave": resolved_wave,
+            "profile": routed_profile or "custom",
+            "reason": reason,
+            "declared": spec_for(routed_profile).to_dict() if routed_profile else None,
+            "all_profiles": [spec.to_dict() for spec in PROFILES.values()],
+        }
+
+    def profiles(self) -> dict[str, Any]:
+        """The declared budget profiles and the mode vocabulary.
+
+        Read-only: the model surface asks what a run can be before it
+        commits to one, and the answer lists only what this engine
+        actually implements.
+        """
+        from alpha.arena.modes import PROFILES, describe_modes
+
+        return {
+            "profiles": [spec.to_dict() for spec in PROFILES.values()],
+            "modes": describe_modes(),
+            "implemented_modes": [RunMode.DECIDE.value, RunMode.PLAN.value],
+        }
+
     def estimate(
         self,
         *,
         agents: int | None = None,
         wave: int | None = None,
         baseline: bool = False,
+        task: str = "",
+        profile: str | None = None,
+        mode: str | None = None,
     ) -> dict[str, Any]:
         """Project a run's cost before anything exists.
 
@@ -107,19 +199,22 @@ class ArenaService:
         match costs ``CALLS_PER_MATCH`` sub-agent calls
         plus one spawn per competitor.
         """
-        agents = self._resolve_agents(agents)
-        wave = self._resolve_wave(wave)
+        if mode is not None:
+            _check_mode(mode, start=False)
+        resolved = self.resolve_profile(profile=profile, task=task, agents=agents, wave=wave)
+        agents = resolved["agents"]
+        wave = resolved["wave"]
         plan = bracket.plan(agents, wave, baseline=baseline)
         estimated_tokens = plan.total_calls * self._config.estimate_tokens_per_call
         return {
             "plan": plan.to_dict(),
             "estimated_tokens": estimated_tokens,
             "estimated_calls": plan.total_calls,
-            "confirmation_required": (
-                self._config.require_confirmation_over_calls > 0
-                and plan.total_calls > self._config.require_confirmation_over_calls
-            ),
+            "confirmation_required": (self._config.require_confirmation_over_calls > 0 and plan.total_calls > self._config.require_confirmation_over_calls),
             "confirmation_ceiling": self._config.require_confirmation_over_calls,
+            "profile": resolved["profile"],
+            "route_reason": resolved["reason"],
+            "mode": mode or RunMode.DECIDE.value,
         }
 
     # ------------------------------------------------------------------ create
@@ -137,6 +232,8 @@ class ArenaService:
         max_subagent_calls: int | None = None,
         max_tokens: int | None = None,
         max_wall_seconds: float | None = None,
+        profile: str | None = None,
+        mode: str | None = None,
     ) -> dict[str, Any]:
         """Deal the cards and persist a draft run.
 
@@ -147,8 +244,10 @@ class ArenaService:
         """
         if not str(task).strip():
             raise ValueError("an arena needs a task")
-        agents = self._resolve_agents(agents)
-        wave = self._resolve_wave(wave)
+        resolved_mode = _check_mode(mode, start=False) if mode else RunMode.DECIDE.value
+        resolved = self.resolve_profile(profile=profile, task=task, agents=agents, wave=wave)
+        agents = resolved["agents"]
+        wave = resolved["wave"]
         if seed is None:
             seed = random.randrange(2**32)
         state = bracket.new_run(
@@ -163,12 +262,18 @@ class ArenaService:
             max_tokens=self._coalesce_budget(max_tokens, "max_tokens_per_run"),
             max_wall_seconds=self._coalesce_budget(max_wall_seconds, "max_wall_seconds_per_run"),
         )
+        state["profile"] = resolved["profile"]
+        state["route_reason"] = resolved["reason"]
+        state["mode"] = resolved_mode
         cards = deal_cards(agents, seed, self._load_deck())
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(agents), cards)})
         state["recalled"] = self._recall(task)
         self._store.ensure_dirs(state["run_id"])
         self._store.save(state)
-        self._store.append_log(state["run_id"], f"created with {agents} competitors, seed {seed}")
+        self._store.append_log(
+            state["run_id"],
+            f"created with {agents} competitors, seed {seed}, profile {resolved['profile']} ({resolved['reason']}), mode {resolved_mode}",
+        )
         return state
 
     def _load_deck(self) -> dict[str, Any]:
@@ -198,18 +303,35 @@ class ArenaService:
 
     # ------------------------------------------------------------------ execute
 
-    async def start(self, run_id: str, owner_id: str, *, confirm: bool = False) -> dict[str, Any]:
-        """Run a draft to completion, behind the gate."""
+    def check_start(self, run_id: str, owner_id: str, *, confirm: bool = False) -> dict[str, Any]:
+        """Apply the mode and confirmation gates without spending anything.
+
+        ``start`` calls this itself; a caller that must assemble a
+        sub-agent runner before it *can* execute calls it first, so a
+        refusal costs zero assembly and zero model calls.
+        """
         state = self._store.load(run_id, owner_id)
+        _check_mode(state.get("mode") or RunMode.DECIDE.value, start=True)
         plan = bracket.plan(state["agents_n"], state["wave"], baseline=bool(state.get("baseline")))
         estimated_tokens = plan.total_calls * self._config.estimate_tokens_per_call
-        if (
-            self._config.require_confirmation_over_calls > 0
-            and plan.total_calls > self._config.require_confirmation_over_calls
-            and not confirm
-        ):
+        if self._config.require_confirmation_over_calls > 0 and plan.total_calls > self._config.require_confirmation_over_calls and not confirm:
             raise ArenaConfirmationRequired(plan, estimated_tokens, self._config.require_confirmation_over_calls)
-        return await self._drive(state)
+        return state
+
+    def check_resume(self, run_id: str, owner_id: str) -> dict[str, Any]:
+        """Refuse a terminal run, without spending anything.
+
+        Same reason as :meth:`check_start`: the refusal must be cheap
+        enough to be worth running before any assembly happens.
+        """
+        state = self._store.load(run_id, owner_id)
+        if state["status"] in ("completed", "stopped", "failed", "budget_exhausted"):
+            raise ArenaRunError(f"run is {state['status']} and cannot be resumed")
+        return state
+
+    async def start(self, run_id: str, owner_id: str, *, confirm: bool = False) -> dict[str, Any]:
+        """Run a draft to completion, behind the gate."""
+        return await self._drive(self.check_start(run_id, owner_id, confirm=confirm))
 
     async def resume(self, run_id: str, owner_id: str) -> dict[str, Any]:
         """Drive a stopped or interrupted run onward.
@@ -219,10 +341,7 @@ class ArenaService:
         terminal by design. Resume is for a run that
         stopped mid-bracket.
         """
-        state = self._store.load(run_id, owner_id)
-        if state["status"] in ("completed", "stopped", "failed", "budget_exhausted"):
-            raise ArenaRunError(f"run is {state['status']} and cannot be resumed")
-        return await self._drive(state)
+        return await self._drive(self.check_resume(run_id, owner_id))
 
     async def _drive(self, state: dict[str, Any]) -> dict[str, Any]:
         runner = self._build_runner()
@@ -253,10 +372,7 @@ class ArenaService:
             if hasattr(factory_result, "run_job"):
                 return factory_result  # type: ignore[return-value]
             return SubagentArenaRunner(self._runner_factory)
-        raise ArenaRunError(
-            "no sub-agent runner is bound to this arena service; "
-            "execution requires a request-bound SubagentExecutor factory"
-        )
+        raise ArenaRunError("no sub-agent runner is bound to this arena service; execution requires a request-bound SubagentExecutor factory")
 
     def _on_event(self, name: str, payload: dict[str, Any]) -> None:
         """Publish on the in-process bus, off the hot path.
@@ -310,9 +426,10 @@ class ArenaService:
         summary["stop_reason"] = state.get("stop_reason")
         summary["failed"] = state.get("failed", {})
         summary["recalled"] = state.get("recalled", [])
-        summary["log"] = [
-            entry.get("line", "") for entry in self._store.read_log(run_id, tail=10)
-        ]
+        summary["profile"] = state.get("profile", "custom")
+        summary["route_reason"] = state.get("route_reason", "")
+        summary["mode"] = state.get("mode", RunMode.DECIDE.value)
+        summary["log"] = [entry.get("line", "") for entry in self._store.read_log(run_id, tail=10)]
         return summary
 
     def pairings(self, run_id: str, owner_id: str) -> dict[str, Any]:
@@ -331,12 +448,15 @@ class ArenaService:
                 "b": match["b"],
                 "a_card": state["cards"].get(match["a"], {}).get("reasoning", {}).get("name"),
                 "b_card": state["cards"].get(match["b"], {}).get("reasoning", {}).get("name"),
-                "attacks_recorded": {
-                    side: len(match["attacks"].get(side, [])) for side in (match["a"], match["b"])
-                },
+                "attacks_recorded": {side: len(match["attacks"].get(side, [])) for side in (match["a"], match["b"])},
                 "revised": {side: side in match["revised"] for side in (match["a"], match["b"])},
                 "winner": match.get("winner"),
                 "verdict": match.get("verdict"),
+                "repairs": match.get("repairs", [])[:20],
+                "unanswered_attacks": match.get("repairs_unresolved", {}),
+                "gates": match.get("gates", {}),
+                "judge_blind": (match.get("judge_presentation") or {}).get("blind"),
+                "judge_swapped": (match.get("judge_presentation") or {}).get("swapped"),
             }
             matches.append(entry)
         return {

@@ -3,21 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+
 import pytest
 
 from alpha.arena import (
-    ArenaBudget,
     ArenaStatus,
-    AttackRecord,
-    AttackSeverity,
-    DefenseRecord,
-    DefenseVerdict,
     StrategyCard,
-    VerdictScores,
     bracket,
 )
 from alpha.arena.executor import ArenaExecutor
-from alpha.arena.runner import ArenaJob, ArenaJobResult, NO_OUTPUT, ScriptedArenaRunner
+from alpha.arena.runner import NO_OUTPUT, ArenaJob, ArenaJobResult, ScriptedArenaRunner
 
 
 def _make_card(rid: str, w_id: str, s_id: str) -> StrategyCard:
@@ -47,7 +42,10 @@ class TestExecutorScripted:
             if kind == "judge":
                 return ArenaJobResult(
                     ok=True,
-                    text='{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, "b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}',
+                    text=(
+                        '{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, '
+                        '"b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}'
+                    ),
                 )
             if kind == "final":
                 return ArenaJobResult(ok=True, text="VERDICT: PASS\nREASON: passes")
@@ -57,8 +55,9 @@ class TestExecutorScripted:
 
     @pytest.fixture
     def store(self):
-        from alpha.arena.store import ArenaStore
         import tempfile
+
+        from alpha.arena.store import ArenaStore
 
         with tempfile.TemporaryDirectory() as tmp:
             yield ArenaStore(tmp)
@@ -74,6 +73,7 @@ class TestExecutorScripted:
         )
         # Deal cards
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(agents, "42", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(agents), cards)})
@@ -129,6 +129,7 @@ class TestExecutorScripted:
             max_subagent_calls=5,  # Too small for 4 agents (needs ~43)
         )
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(4, "42", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(4), cards)})
@@ -141,18 +142,24 @@ class TestExecutorScripted:
     @pytest.mark.asyncio
     async def test_spawn_failure_drops_agent(self, store):
         """An agent that fails to spawn is recorded and excluded."""
+
         def bad_spawn(job: ArenaJob) -> ArenaJobResult:
             if job.kind == "spawn" and job.agent_id == "agent-1":
                 return ArenaJobResult(ok=False, text="", error="no file written")
             if job.kind == "judge":
                 return ArenaJobResult(
                     ok=True,
-                    text='{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, "b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "b", "reason": "b better"}',
+                    text=(
+                        '{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, '
+                        '"b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "b", "reason": "b better"}'
+                    ),
                 )
             return ArenaJobResult(ok=True, text="ok")
+
         runner = ScriptedArenaRunner(bad_spawn)
         state = bracket.new_run(owner_id="test", task="t", seed=1, agents_n=2, wave=2)
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(2, "1", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(2), cards)})
@@ -166,18 +173,24 @@ class TestExecutorScripted:
     @pytest.mark.asyncio
     async def test_attack_failure_is_no_attacks(self, store):
         """A failed attack is recorded as no attacks."""
+
         def bad_attack(job: ArenaJob) -> ArenaJobResult:
             if job.kind == "attack":
                 return ArenaJobResult(ok=False, text="", error=NO_OUTPUT)
             if job.kind == "judge":
                 return ArenaJobResult(
                     ok=True,
-                    text='{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, "b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}',
+                    text=(
+                        '{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, '
+                        '"b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}'
+                    ),
                 )
             return ArenaJobResult(ok=True, text="ok")
+
         runner = ScriptedArenaRunner(bad_attack)
         state = bracket.new_run(owner_id="test", task="t", seed=1, agents_n=2, wave=2)
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(2, "1", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(2), cards)})
@@ -199,9 +212,11 @@ class TestExecutorScripted:
                     return ArenaJobResult(ok=True, text="not json")
                 return ArenaJobResult(ok=True, text='{"scores": {"a": {}, "b": {}}}')  # still bad
             return ArenaJobResult(ok=True, text="ok")
+
         runner = ScriptedArenaRunner(flaky_judge)
         state = bracket.new_run(owner_id="test", task="t", seed=1, agents_n=2, wave=2)
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(2, "1", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(2), cards)})
@@ -232,16 +247,21 @@ class TestExecutorScripted:
             if job.kind == "judge":
                 return ArenaJobResult(
                     ok=True,
-                    text='{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, "b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}',
+                    text=(
+                        '{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, '
+                        '"b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}'
+                    ),
                 )
             if job.kind == "spawn":
                 return ArenaJobResult(ok=True, text=f"WROTE {job.reply_hint}")
             if job.kind == "defend":
                 return ArenaJobResult(ok=True, text="ATTACK 1: CONCEDE. fixed\nWROTE " + job.reply_hint)
             return ArenaJobResult(ok=False, text="", error=NO_OUTPUT)
+
         runner = ScriptedArenaRunner(check_concurrency)
         state = bracket.new_run(owner_id="test", task="t", seed=1, agents_n=4, wave=4)
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(4, "1", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(4), cards)})
@@ -263,6 +283,7 @@ class TestExecutorScripted:
             max_subagent_calls=5,
         )
         from alpha.arena.cards import deal_cards, load_deck
+
         deck = load_deck()
         cards = deal_cards(4, "1", deck)
         bracket.set_cards(state, {agent: card for agent, card in zip(bracket.agent_ids(4), cards)})

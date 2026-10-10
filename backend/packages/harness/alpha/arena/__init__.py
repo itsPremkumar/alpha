@@ -6,6 +6,44 @@ bracket in which every pair attacks, defends and revises, and a judge scores
 both revised solutions on a written rubric until one solution survives.
 """
 
+from alpha.arena.bracket import (
+    CALLS_PER_MATCH,
+    agent_ids,
+    bracket_sizes,
+    is_done,
+    new_run,
+    next_actions,
+    plan,
+    record_attack,
+    record_defense,
+    record_final,
+    record_solution,
+    record_verdict,
+    run_summary,
+    set_cards,
+    spawn_complete,
+    start_round,
+    start_run,
+)
+from alpha.arena.candidate import (
+    CandidateArtifact,
+    Contribution,
+    CoverageStatus,
+    RequirementCoverage,
+    best_contributions,
+    synthesis_gaps,
+)
+from alpha.arena.cards import DEFAULT_DECK_PATH, deal, deal_cards, load_deck, validate_deck
+from alpha.arena.config import DEFAULT_ESTIMATE_TOKENS_PER_CALL, ArenaConfig, arena_config
+from alpha.arena.evidence import (
+    ClaimCheck,
+    EvidenceLedger,
+    gate_from_ledger,
+)
+from alpha.arena.evidence import (
+    Verdict as ClaimVerdict,
+)
+from alpha.arena.executor import DEFAULT_JUDGE_ATTEMPTS, ArenaExecutor, ArenaRunError
 from alpha.arena.models import (
     ArenaBudget,
     ArenaPhase,
@@ -21,64 +59,6 @@ from alpha.arena.models import (
     StrategyCard,
     VerdictScores,
 )
-from alpha.arena.cards import DEFAULT_DECK_PATH, deal, deal_cards, load_deck, validate_deck
-from alpha.arena.rubric import WEIGHTS, decide, weighted_total
-from alpha.arena.bracket import CALLS_PER_MATCH, agent_ids, bracket_sizes, is_done, new_run, next_actions, plan, record_attack, record_defense, record_final, record_solution, record_verdict, run_summary, set_cards, spawn_complete, start_round, start_run
-from alpha.arena.rubric import RUBRIC_TEXT
-from alpha.arena.prompts import TEMPLATES, card_values, fill, render
-from alpha.arena.store import ArenaStore, ArenaStoreError, store_root
-from alpha.arena.runner import ArenaAgentRunner, ArenaJob, ArenaJobResult, NO_OUTPUT, ScriptedArenaRunner, SubagentArenaRunner
-from alpha.arena.executor import ArenaExecutor, ArenaRunError, DEFAULT_JUDGE_ATTEMPTS
-from alpha.arena.service import ArenaConfirmationRequired, ArenaService, REASONING_SCOPE
-from alpha.arena.config import ArenaConfig, DEFAULT_ESTIMATE_TOKENS_PER_CALL, arena_config
-from alpha.arena.task_contract import (
-    AcceptanceCheck,
-    Constraint,
-    Requirement,
-    TaskContract,
-    TaskType,
-)
-from alpha.arena.candidate import (
-    CandidateArtifact,
-    Contribution,
-    CoverageStatus,
-    RequirementCoverage,
-    best_contributions,
-    synthesis_gaps,
-)
-from alpha.arena.repair import (
-    Disposition,
-    RepairEntry,
-    RepairRound,
-    fatal_conceded,
-    is_terminal,
-    parse_repairs,
-    unresolved_attacks,
-)
-from alpha.arena.task_rubrics import (
-    TASK_WEIGHTS,
-    HardGate,
-    any_gate_tripped,
-    apply_gates,
-    default_gates,
-    pair_order,
-    weights_for,
-    weighted_total_for,
-)
-from alpha.arena.evidence import (
-    ClaimCheck,
-    EvidenceLedger,
-    Verdict as ClaimVerdict,
-    gate_from_ledger,
-)
-from alpha.arena.synthesis import (
-    MergePlan,
-    PatchContribution,
-    SynthesisResult,
-    plan_merge,
-    render_markdown,
-    synthesize,
-)
 from alpha.arena.modes import (
     PROFILES,
     Profile,
@@ -88,6 +68,45 @@ from alpha.arena.modes import (
     describe_modes,
     route,
     spec_for,
+)
+from alpha.arena.prompts import TEMPLATES, card_values, fill, render
+from alpha.arena.repair import (
+    Disposition,
+    RepairEntry,
+    RepairRound,
+    fatal_conceded,
+    is_terminal,
+    parse_repairs,
+    unresolved_attacks,
+)
+from alpha.arena.rubric import RUBRIC_TEXT, WEIGHTS, decide, weighted_total
+from alpha.arena.runner import NO_OUTPUT, ArenaAgentRunner, ArenaJob, ArenaJobResult, ScriptedArenaRunner, SubagentArenaRunner
+from alpha.arena.service import REASONING_SCOPE, ArenaConfirmationRequired, ArenaService
+from alpha.arena.store import ArenaStore, ArenaStoreError, store_root
+from alpha.arena.synthesis import (
+    MergePlan,
+    PatchContribution,
+    SynthesisResult,
+    plan_merge,
+    render_markdown,
+    synthesize,
+)
+from alpha.arena.task_contract import (
+    AcceptanceCheck,
+    Constraint,
+    Requirement,
+    TaskContract,
+    TaskType,
+)
+from alpha.arena.task_rubrics import (
+    TASK_WEIGHTS,
+    HardGate,
+    any_gate_tripped,
+    apply_gates,
+    default_gates,
+    pair_order,
+    weighted_total_for,
+    weights_for,
 )
 
 __all__ = [
@@ -130,6 +149,7 @@ __all__ = [
     "AcceptanceCheck",
     "CandidateArtifact",
     "ClaimCheck",
+    "ClaimVerdict",
     "Constraint",
     "Contribution",
     "CoverageStatus",

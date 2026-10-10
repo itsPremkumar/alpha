@@ -8,12 +8,14 @@ routes before ``/{run_id}`` catch-alls.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import asyncio
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from alpha.arena.config import arena_config
 from alpha.arena.service import ArenaConfirmationRequired, ArenaRunError, ArenaService
-from alpha.arena.store import ArenaStore
 from alpha.config import get_app_config
 from app.gateway.deps import get_current_user_from_request, require_admin_user
 
@@ -39,6 +41,9 @@ class ArenaEstimateRequest(BaseModel):
     agents: int | None = Field(default=None, ge=1)
     wave: int | None = Field(default=None, ge=1)
     baseline: bool = False
+    task: str = ""
+    profile: str | None = None
+    mode: str | None = None
 
 
 class ArenaCreateRequest(BaseModel):
@@ -50,6 +55,8 @@ class ArenaCreateRequest(BaseModel):
     max_subagent_calls: int | None = Field(default=None, ge=1)
     max_tokens: int | None = Field(default=None, ge=1)
     max_wall_seconds: float | None = Field(default=None, ge=1)
+    profile: str | None = None
+    mode: str | None = None
 
 
 class ArenaStartRequest(BaseModel):
@@ -83,6 +90,19 @@ async def get_config() -> dict[str, Any]:
     }
 
 
+@router.get("/profiles")
+async def get_profiles(
+    user: str = Depends(get_current_user_from_request),
+) -> dict[str, Any]:
+    """The declared budget profiles and run modes.
+
+    Read-only: what a run *can* be, before one is created. The
+    ``implemented_modes`` list is the honest boundary - a declared
+    mode the executor does not run is refused by name at create.
+    """
+    return get_service().profiles()
+
+
 @router.post("/estimate")
 async def estimate(
     body: ArenaEstimateRequest,
@@ -90,7 +110,17 @@ async def estimate(
 ) -> dict[str, Any]:
     """Project a run's cost before anything exists."""
     service = get_service()
-    return service.estimate(agents=body.agents, wave=body.wave, baseline=body.baseline)
+    try:
+        return service.estimate(
+            agents=body.agents,
+            wave=body.wave,
+            baseline=body.baseline,
+            task=body.task,
+            profile=body.profile,
+            mode=body.mode,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 @router.post("/runs")
@@ -100,19 +130,31 @@ async def create_run(
 ) -> dict[str, Any]:
     """Deal cards and persist a draft run."""
     service = get_service()
-    state = service.create(
-        owner_id=user,
-        thread_id=None,
-        task=body.task,
-        agents=body.agents,
-        wave=body.wave,
-        seed=body.seed,
-        baseline=body.baseline,
-        max_subagent_calls=body.max_subagent_calls,
-        max_tokens=body.max_tokens,
-        max_wall_seconds=body.max_wall_seconds,
-    )
-    return {"run_id": state["run_id"], "agents_n": state["agents_n"], "status": state["status"]}
+    try:
+        state = service.create(
+            owner_id=user,
+            thread_id=None,
+            task=body.task,
+            agents=body.agents,
+            wave=body.wave,
+            seed=body.seed,
+            baseline=body.baseline,
+            max_subagent_calls=body.max_subagent_calls,
+            max_tokens=body.max_tokens,
+            max_wall_seconds=body.max_wall_seconds,
+            profile=body.profile,
+            mode=body.mode,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return {
+        "run_id": state["run_id"],
+        "agents_n": state["agents_n"],
+        "status": state["status"],
+        "profile": state.get("profile", "custom"),
+        "route_reason": state.get("route_reason", ""),
+        "mode": state.get("mode", "decide"),
+    }
 
 
 @router.get("/runs")
@@ -134,6 +176,43 @@ async def get_run(
     return service.status(run_id, owner_id=user)
 
 
+async def _executing_service(user: str, thread_id: str | None) -> ArenaService:
+    """Bind a real sub-agent runner for HTTP execution.
+
+    Reads are served by the shared service, which needs no runner;
+    only ``start``/``resume`` execute jobs, so only they pay for tool
+    assembly — and that assembly blocks on MCP discovery and config
+    reads, so it runs off-loop through ``run_assembly`` rather than on
+    the request's event loop. The run's own ``thread_id`` rides the
+    factory so competitors share the run's sandbox/workspace.
+    """
+    from alpha.subagents.config import SubagentConfig
+    from alpha.subagents.executor import SubagentExecutor
+    from alpha.tools import get_available_tools
+    from alpha.utils.assembly_io import run_assembly
+
+    app_config = await asyncio.to_thread(get_app_config)
+    tools = await run_assembly(
+        get_available_tools,
+        model_name=None,
+        groups=None,
+        include_mcp=True,
+        # Competitors are sub-agents: no nested delegation.
+        subagent_enabled=False,
+    )
+
+    def factory(sub_config: SubagentConfig) -> SubagentExecutor:
+        return SubagentExecutor(
+            config=sub_config,
+            tools=tools,
+            app_config=app_config,
+            thread_id=thread_id,
+            user_id=user,
+        )
+
+    return ArenaService(config=arena_config(app_config), runner_factory=factory)
+
+
 @router.post("/runs/{run_id}/start")
 async def start_run(
     run_id: str,
@@ -147,7 +226,10 @@ async def start_run(
     """
     service = get_service()
     try:
-        state = await service.start(run_id, owner_id=user, confirm=body.confirm)
+        # Gate first: a refusal must cost no tool assembly.
+        state = service.check_start(run_id, owner_id=user, confirm=body.confirm)
+        executing = await _executing_service(user, state.get("thread_id"))
+        state = await executing.start(run_id, owner_id=user, confirm=body.confirm)
     except ArenaConfirmationRequired as error:
         raise HTTPException(status_code=400, detail=str(error))
     except ArenaRunError as error:
@@ -167,7 +249,10 @@ async def resume_run(
     """
     service = get_service()
     try:
-        state = await service.resume(run_id, owner_id=user)
+        # Gate first: refusing a terminal run must cost no tool assembly.
+        state = service.check_resume(run_id, owner_id=user)
+        executing = await _executing_service(user, state.get("thread_id"))
+        state = await executing.resume(run_id, owner_id=user)
     except ArenaRunError as error:
         raise HTTPException(status_code=409, detail=str(error))
     return {"run_id": run_id, "status": state["status"], "champion": state.get("champion")}

@@ -127,9 +127,7 @@ class ArenaStore:
         """Load a run, refusing a foreign owner."""
         state = self.load_any(run_id)
         if str(state.get("owner_id")) != str(owner_id):
-            raise ArenaStoreError(
-                f"run '{run_id}' belongs to another owner"
-            )
+            raise ArenaStoreError(f"run '{run_id}' belongs to another owner")
         return state
 
     def load_any(self, run_id: str) -> dict[str, Any]:
@@ -220,9 +218,7 @@ class ArenaStore:
             with lock:
                 _atomic_write_json(path, state)
         except FileLockTimeout as error:
-            raise ArenaStoreError(
-                f"run '{run_id}' is locked by another worker: {error}"
-            ) from error
+            raise ArenaStoreError(f"run '{run_id}' is locked by another worker: {error}") from error
 
     def append_log(self, run_id: str, line: str) -> None:
         """Append one line to the run's bounded event log."""

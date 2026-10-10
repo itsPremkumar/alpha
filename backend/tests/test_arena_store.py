@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import os
 import tempfile
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
 from alpha.arena.bracket import new_run
-from alpha.arena.store import ArenaStore, ArenaStoreError, store_root
+from alpha.arena.store import ArenaStore, ArenaStoreError
 
 
 class TestArenaStore:

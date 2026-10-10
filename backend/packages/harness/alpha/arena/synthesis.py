@@ -17,21 +17,20 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from alpha.arena.candidate import (
     CandidateArtifact,
-    Contribution,
     best_contributions,
     synthesis_gaps,
 )
 
 
-class MergeStatus(str, Enum):
-    APPLY = "apply"          # non-overlapping, safe to apply as-is
-    CONFLICT = "conflict"    # two contributions touch the same region
-    MANUAL = "manual"        # needs human review regardless
+class MergeStatus(StrEnum):
+    APPLY = "apply"  # non-overlapping, safe to apply as-is
+    CONFLICT = "conflict"  # two contributions touch the same region
+    MANUAL = "manual"  # needs human review regardless
 
 
 @dataclass(frozen=True)
@@ -125,10 +124,7 @@ def plan_merge(patches: list[PatchContribution]) -> MergePlan:
                 MergeItem(
                     patch=patch,
                     status=MergeStatus.CONFLICT,
-                    reason=(
-                        f"overlaps {clashing.agent_id} on {clashing.path}:"
-                        f"{clashing.start_line}-{clashing.end_line}"
-                    ),
+                    reason=(f"overlaps {clashing.agent_id} on {clashing.path}:{clashing.start_line}-{clashing.end_line}"),
                 )
             )
     # Present in file order for readability.

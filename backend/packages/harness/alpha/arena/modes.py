@@ -18,18 +18,18 @@ This module owns:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class RunMode(str, Enum):
-    DECIDE = "decide"          # single-elimination bracket to a champion
-    COMPARE = "compare"        # everyone judged, no elimination
+class RunMode(StrEnum):
+    DECIDE = "decide"  # single-elimination bracket to a champion
+    COMPARE = "compare"  # everyone judged, no elimination
     SYNTHESIZE = "synthesize"  # bracket + contribution merge
-    PLAN = "plan"              # estimate only, nothing is spent
+    PLAN = "plan"  # estimate only, nothing is spent
 
 
-class Profile(str, Enum):
+class Profile(StrEnum):
     QUICK = "quick"
     STANDARD = "standard"
     DEEP = "deep"
@@ -136,10 +136,7 @@ def route(inputs: RouteInputs) -> tuple[Profile, str]:
 
     # Budget: never route to a profile whose call count cannot fit.
     if inputs.available_budget_calls is not None:
-        affordable = [
-            p for p in (Profile.QUICK, Profile.STANDARD, Profile.DEEP)
-            if _projected_calls(PROFILES[p]) <= inputs.available_budget_calls
-        ]
+        affordable = [p for p in (Profile.QUICK, Profile.STANDARD, Profile.DEEP) if _projected_calls(PROFILES[p]) <= inputs.available_budget_calls]
         if not affordable:
             return Profile.QUICK, "budget cannot fit any profile; cheapest chosen"
         if Profile.DEEP in affordable and inputs.requirement_count > 8:
@@ -182,10 +179,7 @@ def _projected_calls(spec: ProfileSpec) -> int:
 
 
 def describe_modes() -> list[dict[str, Any]]:
-    return [
-        {"mode": m.value, "description": _MODE_DESCRIPTIONS[m]}
-        for m in RunMode
-    ]
+    return [{"mode": m.value, "description": _MODE_DESCRIPTIONS[m]} for m in RunMode]
 
 
 _MODE_DESCRIPTIONS: dict[RunMode, str] = {

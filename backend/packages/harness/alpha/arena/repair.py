@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class Disposition(str, Enum):
-    FIXED = "FIXED"        # defender changed the artifact to remove the flaw
+class Disposition(StrEnum):
+    FIXED = "FIXED"  # defender changed the artifact to remove the flaw
     CONCEDED = "CONCEDED"  # defender agrees the flaw is real and did not fix it
     REBUTTED = "REBUTTED"  # defender showed the attack does not apply
     DEFERRED = "DEFERRED"  # bounded loop ran out; recorded honestly
@@ -70,8 +70,29 @@ class RepairRound:
         )
 
 
+#: The defender prompt answers attacks with ``CONCEDE``/``REBUT``;
+#: the repair vocabulary is ``FIXED``/``CONCEDED``/``REBUTTED``/
+#: ``DEFERRED``. One parser accepts both so the executor never has
+#: to translate a disposition by hand (and never gets it wrong).
+_DISPOSITION_ALIASES: dict[str, Disposition] = {
+    "FIX": Disposition.FIXED,
+    "FIXED": Disposition.FIXED,
+    "CONCEDE": Disposition.CONCEDED,
+    "CONCEDED": Disposition.CONCEDED,
+    "REBUT": Disposition.REBUTTED,
+    "REBUTTED": Disposition.REBUTTED,
+    "DEFER": Disposition.DEFERRED,
+    "DEFERRED": Disposition.DEFERRED,
+}
+
+
 def parse_repairs(text: str | None, cycle: int = 1) -> list[RepairEntry]:
-    """Parse ``ATTACK n: FIXED|CONCEDED|REBUTTED|DEFERRED. note`` lines."""
+    """Parse ``ATTACK n: <disposition>. note`` lines.
+
+    Both vocabularies are accepted (see ``_DISPOSITION_ALIASES``);
+    a line that cannot be read is skipped rather than guessed, so a
+    malformed reply never becomes a disposition nobody wrote.
+    """
     if not text:
         return []
     entries: list[RepairEntry] = []
@@ -80,11 +101,13 @@ def parse_repairs(text: str | None, cycle: int = 1) -> list[RepairEntry]:
         if not line.upper().startswith("ATTACK"):
             continue
         try:
-            head, _, rest = line.partition(":")
+            head, sep, rest = line.partition(":")
+            if not sep:
+                continue
             index = int(head.split()[1])
             verdict_text, _, note = rest.partition(".")
-            disposition = Disposition(verdict_text.strip().upper())
-        except (IndexError, ValueError):
+            disposition = _DISPOSITION_ALIASES[verdict_text.strip().upper()]
+        except (IndexError, ValueError, KeyError):
             continue
         entries.append(RepairEntry(attack_index=index, disposition=disposition, note=note.strip(), cycle=cycle))
     return entries
@@ -98,11 +121,7 @@ def unresolved_attacks(
     resolved: dict[int, Disposition] = {}
     for entry in entries:
         resolved[entry.attack_index] = entry.disposition
-    return [
-        idx
-        for idx in attack_indexes
-        if resolved.get(idx) in (None, Disposition.DEFERRED)
-    ]
+    return [idx for idx in attack_indexes if resolved.get(idx) in (None, Disposition.DEFERRED)]
 
 
 def fatal_conceded(entries: list[RepairEntry]) -> bool:

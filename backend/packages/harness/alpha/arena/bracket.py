@@ -33,7 +33,6 @@ from alpha.arena.models import (
     ArenaPlanRow,
     ArenaStatus,
     AttackRecord,
-    CardPart,
     DefenseRecord,
     StrategyCard,
     parse_attacks,
@@ -204,11 +203,7 @@ def alive_agents(state: dict[str, Any]) -> list[str]:
     solution (spawn failure) - it is not silently
     dropped from the report.
     """
-    return [
-        agent
-        for agent in agent_ids(state["agents_n"])
-        if agent not in state["failed"] and agent in state["solutions"]
-    ]
+    return [agent for agent in agent_ids(state["agents_n"]) if agent not in state["failed"] and agent in state["solutions"]]
 
 
 def start_run(state: dict[str, Any]) -> list[str]:

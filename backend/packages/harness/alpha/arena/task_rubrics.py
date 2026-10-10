@@ -63,11 +63,7 @@ def weights_for(task_type: str | None) -> dict[str, float]:
 def weighted_total_for(task_type: str | None, scores: VerdictScores) -> float:
     weights = weights_for(task_type)
     return round(
-        scores.correctness * weights["correctness"]
-        + scores.completeness * weights["completeness"]
-        + scores.specificity * weights["specificity"]
-        + scores.robustness * weights["robustness"]
-        + scores.clarity * weights["clarity"],
+        scores.correctness * weights["correctness"] + scores.completeness * weights["completeness"] + scores.specificity * weights["specificity"] + scores.robustness * weights["robustness"] + scores.clarity * weights["clarity"],
         4,
     )
 

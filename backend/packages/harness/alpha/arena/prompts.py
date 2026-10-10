@@ -23,7 +23,8 @@ instruction the executor itself issued.
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 # One regex pass over {{placeholder}} tokens. A missing
 # placeholder is left as-is rather than blanked, so a
@@ -31,7 +32,8 @@ from typing import Any, Mapping
 # sub-agent actually sees.
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
 
-COMPETITOR_TEMPLATE = """You are a competitor in an agent arena. Several agents are solving the same task independently, each dealt a different strategy card. Your card is below; it is your identity for this run: reason and work the way it describes, even when a different way seems faster.
+COMPETITOR_TEMPLATE = """You are a competitor in an agent arena. Several agents are solving the same task independently, each dealt a different strategy card.
+Your card is below; it is your identity for this run: reason and work the way it describes, even when a different way seems faster.
 
 TASK:
 {{task}}
@@ -53,7 +55,9 @@ Rules:
 - When you finish, reply with exactly one line: `WROTE {{solution_path}}`
 """
 
-ATTACKER_TEMPLATE = """You are an attacker in an agent arena. A competitor produced a solution to a task. Your job is to find real, concrete, checkable flaws in it - not to rewrite it, not to praise it, not to nitpick style. You attack with your own strategy card, so your angle differs from every other attacker's.
+ATTACKER_TEMPLATE = """You are an attacker in an agent arena. A competitor produced a solution to a task.
+Your job is to find real, concrete, checkable flaws in it - not to rewrite it, not to praise it, not to nitpick style.
+You attack with your own strategy card, so your angle differs from every other attacker's.
 
 TASK:
 {{task}}
@@ -66,7 +70,8 @@ YOUR STRATEGY CARD:
 - Workflow: {{workflow_name}} - {{workflow_how}}
 - Strategy: {{strategy_name}} - {{strategy_how}}
 
-Attack the solution. Look for: incorrect logic, edge cases it mishandles, unstated or false assumptions, missing requirements, off-by-one and boundary errors, inputs that make it produce the wrong answer or fail entirely, claims it makes that it cannot back.
+Attack the solution. Look for: incorrect logic, edge cases it mishandles, unstated or false assumptions, missing requirements,
+off-by-one and boundary errors, inputs that make it produce the wrong answer or fail entirely, claims it makes that it cannot back.
 
 Severity: FATAL = the answer is wrong or worthless as it stands. MAJOR = a real flaw a user would hit. MINOR = a small weakness, real but not the core.
 
@@ -85,7 +90,8 @@ Rules:
 - If you genuinely cannot find a flaw, write exactly: `NO ATTACKS`. Do not invent flaws to fill the format.
 """
 
-DEFENDER_TEMPLATE = """You are a defender in an agent arena. A competitor (you) produced a solution; attackers have now found flaws in it. Your job is to answer every attack honestly - concede the ones that are real, rebut the ones that are wrong - and then revise your solution to fix every conceded flaw.
+DEFENDER_TEMPLATE = """You are a defender in an agent arena. A competitor (you) produced a solution; attackers have now found flaws in it.
+Your job is to answer every attack honestly - concede the ones that are real, rebut the ones that are wrong - and then revise your solution to fix every conceded flaw.
 
 TASK:
 {{task}}
@@ -127,17 +133,25 @@ Read both revised solutions:
 - Solution A: {{a_path}}
 - Solution B: {{b_path}}
 
+The labels A and B are assigned by the arena, not by the competitors: neither the order nor the file names tell you who wrote what, and you must not try to infer it.
 Judge each solution as it now stands - not as it was before the attacks, and not as its author intended it to be. Score both on every criterion of this rubric:
 
 {{rubric_text}}
 
 Also decide, from the attack/defense record of the match, whether either solution still carries an unresolved fatal attack. The match record is supplied by the arena; treat a surviving FATAL attack as a fatal flaw for that side.
 
+When a hard gate applies to a task - a condition that is not tradeable against the other criteria, such as "the tests pass" or "every claim carries a source" - report it per side.
+A tripped gate fails that side regardless of its other scores. Omit this block when no hard gate applies to the task.
+
 Output format - valid JSON only, nothing else:
 {
   "scores": {
     "a": {"correctness": 0-10, "completeness": 0-10, "specificity": 0-10, "robustness": 0-10, "clarity": 0-10, "fatal": true-or-false},
     "b": {"correctness": 0-10, "completeness": 0-10, "specificity": 0-10, "robustness": 0-10, "clarity": 0-10, "fatal": true-or-false}
+  },
+  "gates": {
+    "a": [{"id": "<gate id>", "tripped": true-or-false, "detail": "<why>"}],
+    "b": []
   },
   "winner": "a" or "b",
   "reason": "<which criteria decided it, in one or two sentences>"

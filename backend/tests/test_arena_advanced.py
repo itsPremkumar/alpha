@@ -26,6 +26,7 @@ from alpha.arena.evidence import (
     Verdict,
     gate_from_ledger,
 )
+from alpha.arena.models import VerdictScores
 from alpha.arena.modes import (
     PROFILES,
     Profile,
@@ -35,7 +36,6 @@ from alpha.arena.modes import (
     route,
     spec_for,
 )
-from alpha.arena.models import VerdictScores
 from alpha.arena.repair import (
     Disposition,
     RepairEntry,
@@ -64,10 +64,9 @@ from alpha.arena.task_rubrics import (
     apply_gates,
     default_gates,
     pair_order,
-    weights_for,
     weighted_total_for,
+    weights_for,
 )
-
 
 # --------------------------------------------------------------- task contract
 
@@ -470,9 +469,7 @@ class TestRouter:
         assert reason == "default"
 
     def test_budget_never_routes_beyond_what_it_can_pay_for(self) -> None:
-        quick_calls = sum(
-            spec_for(p).agents + 5 * (spec_for(p).agents - 1) for p in (Profile.QUICK,)
-        )
+        quick_calls = sum(spec_for(p).agents + 5 * (spec_for(p).agents - 1) for p in (Profile.QUICK,))
         profile, reason = route(RouteInputs(task_length=9000, available_budget_calls=quick_calls))
         assert profile is Profile.QUICK
         assert "budget" in reason

@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
     SUPPORTED = "SUPPORTED"
     CONTRADICTED = "CONTRADICTED"
     UNVERIFIED = "UNVERIFIED"  # no evidence one way or the other
@@ -84,11 +84,7 @@ class EvidenceLedger:
     def support_ratio(self) -> float | None:
         """Supported / checked. ``None`` when nothing was checked - an
         unknown ratio is not 0 and not 1."""
-        checked = [
-            c
-            for c in self.checks
-            if c.verdict in (Verdict.SUPPORTED, Verdict.CONTRADICTED)
-        ]
+        checked = [c for c in self.checks if c.verdict in (Verdict.SUPPORTED, Verdict.CONTRADICTED)]
         if not checked:
             return None
         supported = sum(1 for c in checked if c.verdict is Verdict.SUPPORTED)
@@ -126,10 +122,7 @@ def gate_from_ledger(ledger: EvidenceLedger) -> tuple[bool, str]:
         return True, f"claim contradicted: {first.claim[:120]}"
     counts = ledger.counts()
     if counts["unverified"] or counts["not_checked"]:
-        return False, (
-            f"{counts['unverified']} unverified, {counts['not_checked']} not checked "
-            f"of {counts['total']} claims"
-        )
+        return False, (f"{counts['unverified']} unverified, {counts['not_checked']} not checked of {counts['total']} claims")
     return False, ""
 
 

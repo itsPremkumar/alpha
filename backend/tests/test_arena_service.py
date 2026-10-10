@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-
 import tempfile
 
+import pytest
+
 from alpha.arena.config import ArenaConfig
+from alpha.arena.runner import ScriptedArenaRunner
 from alpha.arena.service import ArenaConfirmationRequired, ArenaRunError, ArenaService
 from alpha.arena.store import ArenaStore, ArenaStoreError
-from alpha.arena.runner import ScriptedArenaRunner
 
 
 class TestService:
@@ -33,7 +33,8 @@ class TestService:
     @pytest.fixture
     def runner(self) -> ScriptedArenaRunner:
         def script(job):
-            from alpha.arena.runner import ArenaJobResult, NO_OUTPUT
+            from alpha.arena.runner import NO_OUTPUT, ArenaJobResult
+
             if job.kind == "spawn":
                 return ArenaJobResult(ok=True, text=f"WROTE {job.reply_hint}")
             if job.kind == "attack":
@@ -43,11 +44,15 @@ class TestService:
             if job.kind == "judge":
                 return ArenaJobResult(
                     ok=True,
-                    text='{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, "b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}',
+                    text=(
+                        '{"scores": {"a": {"correctness": 8, "completeness": 7, "specificity": 6, "robustness": 7, "clarity": 8, "fatal": false}, '
+                        '"b": {"correctness": 7, "completeness": 6, "specificity": 5, "robustness": 6, "clarity": 7, "fatal": false}}, "winner": "a", "reason": "a better"}'
+                    ),
                 )
             if job.kind == "final":
                 return ArenaJobResult(ok=True, text="VERDICT: PASS\nREASON: ok")
             return ArenaJobResult(ok=False, text="", error=NO_OUTPUT)
+
         return ScriptedArenaRunner(script)
 
     @pytest.fixture

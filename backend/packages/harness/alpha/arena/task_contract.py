@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any
 import uuid
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     CODING = "coding"
     RESEARCH = "research"
     QA = "qa"
@@ -18,27 +18,27 @@ class TaskType(str, Enum):
     ACTION = "action"
 
 
-class RequirementPriority(str, Enum):
+class RequirementPriority(StrEnum):
     MUST = "must"
     SHOULD = "should"
     COULD = "could"
 
 
-class VerificationMethod(str, Enum):
+class VerificationMethod(StrEnum):
     UNIT_TEST = "unit_test"
     EVIDENCE = "evidence"
     RUBRIC = "rubric"
     USER_REVIEW = "user_review"
 
 
-class SafetyLevel(str, Enum):
+class SafetyLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
-class BudgetProfile(str, Enum):
+class BudgetProfile(StrEnum):
     QUICK = "quick"
     STANDARD = "standard"
     DEEP = "deep"
@@ -117,10 +117,7 @@ class TaskContract:
             "constraints": [{"id": c.id, "text": c.text, "category": c.category} for c in self.constraints],
             "context_snapshot_id": self.context_snapshot_id,
             "baseline_artifact_id": self.baseline_artifact_id,
-            "acceptance_checks": [
-                {"id": a.id, "description": a.description, "kind": a.kind, "command": a.command, "expected": a.expected, "blocking": a.blocking}
-                for a in self.acceptance_checks
-            ],
+            "acceptance_checks": [{"id": a.id, "description": a.description, "kind": a.kind, "command": a.command, "expected": a.expected, "blocking": a.blocking} for a in self.acceptance_checks],
             "safety_level": self.safety_level.value,
             "budget_profile": self.budget_profile.value,
             "ambiguities": self.ambiguities,
@@ -176,9 +173,7 @@ class TaskContract:
             original_request=request,
             goal=request[:200],
             task_type=ttype,
-            requirements=[
-                Requirement(id="REQ-001", text="Satisfy the user's request as stated", priority=RequirementPriority.MUST)
-            ],
+            requirements=[Requirement(id="REQ-001", text="Satisfy the user's request as stated", priority=RequirementPriority.MUST)],
             deliverable_format="answer",
         )
 

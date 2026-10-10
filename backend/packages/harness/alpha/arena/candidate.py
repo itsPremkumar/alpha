@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class CoverageStatus(str, Enum):
+class CoverageStatus(StrEnum):
     COVERED = "covered"
     PARTIAL = "partial"
     MISSING = "missing"
@@ -92,11 +92,7 @@ class CandidateArtifact:
 
     def uncovered(self, requirement_ids: list[str]) -> list[str]:
         covered = self.coverage_by_requirement()
-        return [
-            rid
-            for rid in requirement_ids
-            if covered.get(rid, CoverageStatus.MISSING) != CoverageStatus.COVERED
-        ]
+        return [rid for rid in requirement_ids if covered.get(rid, CoverageStatus.MISSING) != CoverageStatus.COVERED]
 
     def to_dict(self) -> dict[str, Any]:
         return {

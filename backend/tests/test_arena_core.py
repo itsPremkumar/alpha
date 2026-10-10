@@ -5,38 +5,33 @@ from __future__ import annotations
 import pytest
 
 from alpha.arena import (
-    CALLS_PER_MATCH,
+    WEIGHTS,
+    ArenaBudget,
+    ArenaStatus,
     AttackRecord,
     AttackSeverity,
-    ArenaBudget,
-    ArenaPlan,
-    ArenaStatus,
     DefenseRecord,
     DefenseVerdict,
     StrategyCard,
     VerdictScores,
-    WEIGHTS,
-    deal,
+    bracket,
+    bracket_sizes,
     deal_cards,
     decide,
     load_deck,
-    validate_deck,
-    weighted_total,
-    bracket_sizes,
-    new_run,
-    start_run,
-    spawn_complete,
-    start_round,
     next_actions,
     record_attack,
     record_defense,
     record_verdict,
-    bracket,
-    plan,
+    spawn_complete,
+    start_round,
+    start_run,
+    validate_deck,
+    weighted_total,
 )
 from alpha.arena.models import parse_attacks, parse_defenses
-from alpha.arena.rubric import RUBRIC_TEXT
 from alpha.arena.prompts import card_values, render
+from alpha.arena.rubric import RUBRIC_TEXT
 
 
 class TestDeck:
@@ -224,7 +219,7 @@ class TestBracket:
         assert len(state["cards"]) == 0
 
     def test_start_run(self):
-        from alpha.arena import bracket, CardPart, StrategyCard
+        from alpha.arena import CardPart, StrategyCard
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -237,7 +232,7 @@ class TestBracket:
         assert state["status"] == ArenaStatus.RUNNING.value
 
     def test_spawn_complete(self):
-        from alpha.arena import bracket, CardPart, StrategyCard
+        from alpha.arena import CardPart, StrategyCard
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -255,7 +250,7 @@ class TestBracket:
         assert spawn_complete(state)
 
     def test_start_round(self):
-        from alpha.arena import bracket, CardPart, StrategyCard
+        from alpha.arena import CardPart, StrategyCard
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -273,7 +268,7 @@ class TestBracket:
         assert round_record["matches"][0]["b"] == "agent-2"
 
     def test_next_actions_wave_bound(self):
-        from alpha.arena import bracket, CardPart, StrategyCard
+        from alpha.arena import CardPart, StrategyCard
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -290,7 +285,7 @@ class TestBracket:
         assert len(actions) >= 4  # 4 attacks (2 matches * 2 sides)
 
     def test_attack_defend_judge_flow(self):
-        from alpha.arena import bracket, CardPart, StrategyCard
+        from alpha.arena import CardPart, StrategyCard
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=2, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -319,7 +314,6 @@ class TestBracket:
 
 class TestPrompts:
     def test_render_competitor(self):
-        from alpha.arena.prompts import render, card_values
         card = StrategyCard(
             reasoning=type("R", (), {"id": "r", "name": "R", "how": "h"})(),
             workflow=type("W", (), {"id": "w", "name": "W", "how": "h"})(),
@@ -331,8 +325,6 @@ class TestPrompts:
         assert "WROTE /tmp/sol.md" in prompt
 
     def test_render_judge_contains_rubric(self):
-        from alpha.arena.prompts import render
-        from alpha.arena.rubric import RUBRIC_TEXT
         prompt = render("judge", {"task": "t", "a_path": "/a", "b_path": "/b", "rubric_text": RUBRIC_TEXT})
         assert "correctness" in prompt
         assert "robustness" in prompt

@@ -9,12 +9,12 @@ frozen dataclass with an explicit ``to_dict``/``from_dict`` pair.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 
-class ArenaPhase(str, Enum):
+class ArenaPhase(StrEnum):
     """Tournament phase marker (what kind of work is next)."""
 
     DRAFT = "draft"
@@ -26,7 +26,7 @@ class ArenaPhase(str, Enum):
     DONE = "done"
 
 
-class ArenaStatus(str, Enum):
+class ArenaStatus(StrEnum):
     """Lifecycle status of a run."""
 
     DRAFT = "draft"
@@ -43,7 +43,7 @@ class ArenaStatus(str, Enum):
 # ---------------------------------------------------------------- card parts
 
 
-class CardPartKind(str, Enum):
+class CardPartKind(StrEnum):
     """Which dimension of a strategy card a part occupies."""
 
     REASONING = "reasoning"
@@ -105,7 +105,7 @@ class StrategyCard:
 # ---------------------------------------------------------------- attacks
 
 
-class AttackSeverity(str, Enum):
+class AttackSeverity(StrEnum):
     """How badly an attack wounds a solution."""
 
     FATAL = "FATAL"
@@ -198,7 +198,7 @@ def parse_attacks(text: str | None) -> list[AttackRecord]:
 # ---------------------------------------------------------------- defenses
 
 
-class DefenseVerdict(str, Enum):
+class DefenseVerdict(StrEnum):
     """How a defender answered one attack."""
 
     CONCEDE = "CONCEDE"
