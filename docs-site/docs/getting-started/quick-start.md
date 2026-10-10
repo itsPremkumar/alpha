@@ -58,7 +58,7 @@ In the chat, try these commands:
 
 ```
 /help                    # Show all available commands
-/goal create "Build a simple REST API"  # Create an autonomous goal
+/goal create "Build a simple REST API with FastAPI"  # Create an autonomous goal
 /agent spawn researcher  # Spawn a research subagent
 /tools                   # List available tools
 /skills list             # List available skills

@@ -89,6 +89,8 @@ Key dependencies:
 - `redis` — Caching & pub/sub
 - `pydantic` — Data validation
 - `pydantic-settings` — Configuration
+- `deermem` — Persistent memory
+- `langgraph` — Agent orchestration
 
 ### Frontend Dependencies (Node.js)
 

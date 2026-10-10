@@ -1,6 +1,6 @@
 ---
 sidebar_position: 1
-title: API Overview
+title: Overview
 description: Alpha REST API overview and authentication
 slug: /api
 ---
