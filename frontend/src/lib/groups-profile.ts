@@ -189,9 +189,22 @@ export interface ThreadRoot {
   created_at?: string;
 }
 
-export async function fetchThreadRoots(room: string): Promise<ThreadRoot[]> {
-  const d = await get<Record<string, unknown>>(`/groups/${enc(room)}/threads`);
-  return (d.threads as ThreadRoot[]) ?? [];
+/** Thread roots envelope — includes count for the "Showing X of Y" disclosure. */
+export interface ThreadRoots {
+  room: string;
+  threads: ThreadRoot[];
+  count: number;
+}
+
+/**
+ * Fetch all thread roots in a room.
+ *
+ * Returns the full envelope (with `count`) so the UI can disclose when the
+ * server truncated the list. The raw `threads` array is also available for
+ * callers that only need the list.
+ */
+export async function fetchThreadRoots(room: string): Promise<ThreadRoots> {
+  return (await get<Record<string, unknown>>(`/groups/${enc(room)}/threads`)) as unknown as ThreadRoots;
 }
 
 // ── Search ─────────────────────────────────────────────────────────────────

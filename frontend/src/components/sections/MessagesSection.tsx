@@ -57,8 +57,22 @@ import {
 } from "@/components/sections/GroupTreeSidebar";
 import { GroupActivityPanel } from "@/components/sections/GroupActivityPanel";
 import { GroupProfilePanel } from "@/components/sections/GroupProfilePanel";
+import { Composer } from "@/components/Composer";
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
+import {
+  type MentionAgent,
+  type MentionRow,
+  findMentionAtCaret,
+  filterMentionRows,
+  countMentionTokens,
+  parseMentions,
+  rosterHandles,
+  departmentRoleIndex,
+  applyMention,
+  buildMentionRows,
+} from "@/lib/agent-mentions";
+import { previewMentions, type MentionPreviewResponse } from "@/lib/groups-profile";
 import { runCouncil, CouncilStrategy } from "@/lib/deliberation";
 import {
   clockTime,
@@ -109,6 +123,10 @@ import {
   FolderPlus,
   Layers,
   CornerUpRight,
+  AtSign,
+  ArrowLeftRight,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 
 type Filter = "all" | "unread" | "groups" | "direct" | "decisions" | "blockers";
@@ -180,7 +198,16 @@ export function MessagesSection(props: {
   const [dms, setDms] = useState<DmThread[]>([]);
   const [roomMsgs, setRoomMsgs] = useState<Record<string, ChatMsg[]>>({});
   const [roster, setRoster] = useState<
-    Array<{ name: string; role: string; status: string }>
+    Array<{
+      name: string;
+      role: string;
+      status: string;
+      display_name?: string | null;
+      department?: string | null;
+      avatar?: string | null;
+      model?: string | null;
+      capabilities?: string[];
+    }>
   >([]);
   /**
    * The open room's measured roster, keyed by room name.
@@ -239,6 +266,10 @@ export function MessagesSection(props: {
   const [draft, setDraft] = useState("");
   const [kind, setKind] = useState<string>("discussion");
   const [sending, setSending] = useState(false);
+  /** Caret offset for @ tag palette — tracked explicitly since @ opens mid-sentence. */
+  const [caret, setCaret] = useState<number>(0);
+  /** Dismissal state for the @ palette. */
+  const [mentionDismissed, setMentionDismissed] = useState<boolean>(false);
   /* ── Message features ── */
   /** The message being replied to; renders as a quote strip above the composer. */
   const [replyTo, setReplyTo] = useState<ChatMsg | null>(null);
@@ -673,6 +704,62 @@ export function MessagesSection(props: {
   );
 
   /**
+   * Room-specific mention agents for the @ tag palette.
+   *
+   * In a group room, the palette shows the room's members (with departments
+   * for @role:). In a DM, it shows the peer + the global roster (so you can
+   * @-tag other agents even in a direct thread).
+   *
+   * Note: Room members from `listRoomMembers` don't include department/avatar/model
+   * fields, so we use sensible defaults. The global roster (from thread-scoped
+   * `/agent-messages/roster`) does include these fields.
+   */
+  const mentionAgents = useMemo<MentionAgent[]>(() => {
+    if (!sel) return [];
+    if (sel.kind === "group") {
+      // Room members with departments for @role: resolution
+      // Note: MemberPresence doesn't include department/avatar, so we use defaults
+      const members = membersByRoom[sel.name] ?? [];
+      return members.map((m) => ({
+        handle: m.name,
+        displayName: m.displayName ?? m.name,
+        role: m.role ?? "Agent",
+        department: "general", // Room members don't have department; use default
+        status: m.state ?? null,
+        avatar: "", // Room members don't have avatar
+        model: null,
+        capabilities: [],
+      }));
+    }
+    // DM: the peer + global roster (so you can @-tag others)
+    const peer = roster.find((r) => r.name === sel.peer);
+    const peerAgent: MentionAgent = {
+      handle: sel.peer,
+      displayName: peer?.display_name ?? sel.peer,
+      role: peer?.role ?? "Agent",
+      department: peer?.department ?? "general",
+      status: peer?.status ?? null,
+      avatar: peer?.avatar ?? "",
+      model: typeof peer?.model === "string" ? peer.model : null,
+      capabilities: Array.isArray(peer?.capabilities) ? peer.capabilities : [],
+    };
+    // Also include other bots from global roster (excluding the peer)
+    const otherAgents = roster
+      .filter((b) => b.name !== sel.peer)
+      .map((b) => ({
+        handle: b.name,
+        displayName: b.display_name ?? b.name,
+        role: b.role,
+        department: b.department ?? "general",
+        status: b.status,
+        avatar: b.avatar ?? "",
+        model: typeof b.model === "string" ? b.model : null,
+        capabilities: Array.isArray(b.capabilities) ? b.capabilities : [],
+      }));
+    return [peerAgent, ...otherAgents];
+  }, [sel, membersByRoom, roster, membersError]);
+
+  /**
    * The unread badge beside the "Messages" heading.
    *
    * Summed over `allConvs` rather than the filtered rows: pressing "Groups"
@@ -710,6 +797,98 @@ export function MessagesSection(props: {
   const refreshRoom = async (name: string) => {
     await Promise.all([openRoom(name), loadMembers(name), loadActivity(name)]);
   };
+
+  // ── @ tag palette state (mirrors Composer's logic) ──
+
+  /** Convert agents to rows (includes @role:, @everyone, @bot: qualifiers). */
+  const rosterRows = useMemo(
+    () =>
+      buildMentionRows({
+        agents: mentionAgents,
+        activeHandle: null, // No "switch" mode in MessagesSection
+        allowSwitch: false,
+      }),
+    [mentionAgents],
+  );
+
+  /** The @ token the caret is in, or null. */
+  const mentionTrigger = useMemo(() => {
+    if (mentionDismissed) return null;
+    return findMentionAtCaret(draft, caret);
+  }, [draft, caret, mentionDismissed]);
+
+  const mentionFilter = useMemo(() => {
+    if (!mentionTrigger) return null;
+    return filterMentionRows(rosterRows, mentionTrigger);
+  }, [rosterRows, mentionTrigger]);
+
+  const mentionRows: MentionRow[] = mentionFilter ? mentionFilter.visible : [];
+
+  /** Rows grouped under their section heading, for the palette body. */
+  const mentionSections = useMemo(() => {
+    if (mentionRows.length === 0) return [];
+    const groups: Array<{ id: string; label: string; icon: React.ReactNode; rows: Array<{ row: MentionRow; index: number }> }> = [
+      { id: "tag", label: "Tag an agent", icon: <AtSign className="size-3.5 text-primary" />, rows: [] },
+      { id: "mode", label: "Bot mode — switch this chat's agent", icon: <ArrowLeftRight className="size-3.5 text-primary" />, rows: [] },
+      { id: "broad", label: "Broad tags", icon: <Users className="size-3.5 text-primary" />, rows: [] },
+    ];
+    mentionRows.forEach((row, index) => {
+      const bucket = row.mode === "switch" ? 1 : row.mode === "mention" ? 0 : 2;
+      groups[bucket].rows.push({ row, index });
+    });
+    return groups.filter((g) => g.rows.length > 0);
+  }, [mentionRows]);
+
+  /**
+   * The persistent strip under the input, and why it is not optional.
+   *
+   * A tag that addresses nobody is silent by construction: the server resolves
+   * an unknown handle to nothing rather than to a near match, so the message
+   * goes out and nobody is called. Previewing that before send is the only point
+   * at which the operator can still fix it.
+   */
+  const tagStatus = useMemo(() => {
+    if (countMentionTokens(draft) === 0) return null;
+    return parseMentions(draft, rosterHandles(mentionAgents), departmentRoleIndex(mentionAgents));
+  }, [draft, mentionAgents]);
+
+  /**
+   * Server-side mention preview for group rooms.
+   *
+   * In a group chat (`sel.kind === "group"`), the server owns the authoritative
+   * resolution — it has the room's roster, the member departments for `@role:`,
+   * and the fan-out ceiling. The client mirror is used only for DMs.
+   */
+  const [serverTagStatus, setServerTagStatus] = useState<MentionPreviewResponse | null>(null);
+  const [serverPreviewLoading, setServerPreviewLoading] = useState(false);
+  const [serverPreviewError, setServerPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sel || sel.kind !== "group" || serverPreviewLoading) return;
+    if (countMentionTokens(draft) === 0) {
+      setServerTagStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setServerPreviewLoading(true);
+    setServerPreviewError(null);
+    previewMentions(sel.name, draft, OPERATOR)
+      .then((res) => {
+        if (!cancelled) setServerTagStatus(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setServerPreviewError(errMsg(err));
+      })
+      .finally(() => {
+        if (!cancelled) setServerPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sel, draft, serverPreviewLoading]);
+
+  /** The authoritative status: server in a room, client mirror in a DM. */
+  const authoritativeStatus = sel?.kind === "group" ? serverTagStatus : tagStatus;
 
   const send = async () => {
     if (!draft.trim() || sending) return;
