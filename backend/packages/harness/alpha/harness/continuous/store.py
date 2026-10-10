@@ -8,6 +8,7 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 from uuid import uuid4
+from alpha.persistence.storekit.atomic import atomic_write_bytes
 
 from alpha.harness.continuous.models import (
     Goal,
@@ -94,10 +95,21 @@ class GoalStore:
                 "goals": [g.to_dict() for g in self._goals.values()],
                 "updated_at": _now(),
             }
-            tmp = self.storage_path.with_suffix(".tmp")
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            tmp.replace(self.storage_path)
+            payload = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True)
+            tmp = self.storage_path.with_name(self.storage_path.name + ".tmp")
+            try:
+                atomic_write_bytes(
+                    self.storage_path,
+                    payload.encode("utf-8"),
+                    fsync="file_and_directory",
+                )
+            except Exception:
+                # `atomic_write_bytes` already logs and leaves the previous
+                # target intact; surface it so a caller that checks
+                # `is_durable` answers honestly.
+                self.save_error = "goal store save failed; goals are NOT durable"
+                logger.exception("Continuous goal store save failed")
+                return False
         except Exception as exc:
             logger.error("Continuous goal store save failed; goals are NOT durable: %s", self.storage_path, exc_info=True)
             self.save_error = str(exc)

@@ -35,7 +35,37 @@ def visual_verify_artifact(
     base_dir = Path(root_path).resolve() if root_path else Path.cwd()
     target_file = Path(artifact_path)
     if not target_file.is_absolute():
-        target_file = base_dir / target_file
+        target_file = (base_dir / target_file).resolve()
+    else:
+        # Absolute artifact paths must still live inside the resolved workspace root.
+        target_file = target_file.resolve()
+    # Defense in depth: reject any resolution that escapes the workspace root.
+    try:
+        if os.path.commonpath([str(base_dir), str(target_file)]) != str(base_dir):
+            return json.dumps(
+                {
+                    "passed": False,
+                    "error": f"Artifact path escapes workspace root: {artifact_path}",
+                    "score": 0,
+                    "checks": {},
+                    "warnings": ["Path traversal detected."],
+                    "recommendations": ["Provide a path inside the workspace root."],
+                },
+                indent=2,
+            )
+    except ValueError:
+        # On Windows, comparing paths on different drives raises ValueError.
+        return json.dumps(
+            {
+                "passed": False,
+                "error": f"Artifact path escapes workspace root: {artifact_path}",
+                "score": 0,
+                "checks": {},
+                "warnings": ["Path traversal detected."],
+                "recommendations": ["Provide a path inside the workspace root."],
+            },
+            indent=2,
+        )
 
     if not target_file.exists():
         return json.dumps(

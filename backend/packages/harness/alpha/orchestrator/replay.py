@@ -281,6 +281,22 @@ def replay_run(
             _fold_evidence_onto_graph(target_engine, run, payload)
             _fold_iteration_counts(run, payload)
 
+        elif kind == "external_wait_parked":
+            # A node parked waiting on an external event must replay to
+            # WAITING_EVENT, never RUNNING. The engine's _handle_event_wait
+            # sets node status WAITING and run status WAITING_EVENT, so a
+            # replay that keeps the node RUNNING and the run RUNNING would
+            # dispatch into a run the scheduler never admits and the run
+            # would hang. The fold is the engine's own workflow_suspended
+            # handling mirrored for external waits.
+            nid = payload.get("node_id")
+            if isinstance(nid, str):
+                run.node_states[nid] = NodeStatus.WAITING
+                run.status = WorkflowRunStatus.WAITING_EVENT
+                if isinstance(payload.get("reason"), str):
+                    run.waiting_reason = payload["reason"]
+            _fold_node_status(run, payload)
+
         elif kind == "run_reopened":
             run.status = WorkflowRunStatus.RUNNING
             run.waiting_reason = None

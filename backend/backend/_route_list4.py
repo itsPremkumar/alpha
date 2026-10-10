@@ -11,7 +11,7 @@ for f in sorted(glob.glob(ROOT + "/backend/app/gateway/routers/*.py")):
             for d in n.decorator_list:
                 if isinstance(d, ast.Call):
                     fn = d.func
-                    if isinstance(fn, ast.Attribute) and fn.attr in ("get","post","put","patch","delete","head","options","trace"):
+                    if isinstance(fn, ast.Attribute) and fn.attr in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
                         decos.append(fn.attr)
             if decos:
                 print(os.path.basename(f).ljust(28), n.name.ljust(42), decos)

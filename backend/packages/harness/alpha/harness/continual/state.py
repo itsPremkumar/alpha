@@ -13,8 +13,9 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
 from uuid import uuid4
+from typing import Any, Literal
+from alpha.persistence.storekit.atomic import atomic_write_bytes
 
 HarnessKind = Literal["prompt", "memory", "skill", "subagent"]
 HarnessScope = Literal["local", "global"]
@@ -192,10 +193,21 @@ class HarnessState:
             "refinements": [r.to_dict() for r in self.refinements],
             "updated_at": _now(),
         }
-        temp_file = self.file_path.with_suffix(".tmp")
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        temp_file.replace(self.file_path)
+        payload = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True)
+        try:
+            atomic_write_bytes(
+                self.file_path,
+                payload.encode("utf-8"),
+                fsync="file_and_directory",
+            )
+        except Exception:
+            # `atomic_write_bytes` already logs and leaves the previous target
+            # untouched; surface the error on the store so callers (e.g.
+            # `continual_harness_tool action="refine"`) answer with UNKNOWN
+            # instead of a silent "saved" ack.
+            self.load_error = "Harness state save failed; learned directives are unavailable until the file is repaired"
+            logger.exception("Harness state save failed")
+            raise
         self._loaded_mtime = self._disk_mtime()
 
     def add_entry(

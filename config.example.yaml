@@ -4700,6 +4700,32 @@ mission_memory:
   scratch_tail: 2               # recent scratchpad notes shown in the anchor
 
 # ============================================================================
+# Arena tournament engine (alpha.arena)
+# A single-elimination bracket where N sub-agents solve the same task with
+# different strategy cards (reasoning mode + workflow + strategy), then attack,
+# defend and judge each other until one solution survives.
+# Durable: one JSON state file, atomic writes, cross-process FileLock.
+# Resumable: survives Gateway restart, continues from the last completed wave.
+# Budget-gated: exact call count projected before anything runs; large runs
+# need explicit confirm=True; measured spend charged against declared ceilings.
+# The confirmation gate is the direct answer to the upstream pattern's measured
+# failure mode: a 100-agent default run costs ~39M tokens, and that must be a
+# deliberate act, not a default.
+arena:
+  enabled: true                 # bind the arena tool; off = tool absent
+  default_agents: 4             # competitors per run when caller does not name one
+  max_agents: 64                # hard ceiling; refused, never clamped
+  default_wave: 4               # concurrent sub-agent jobs per wave
+  max_wave: 32                  # hard ceiling on wave size
+  estimate_tokens_per_call: 60000  # tokens to estimate run cost for confirmation gate
+  require_confirmation_over_calls: 100  # runs above this need confirm=True; 0 disables
+  max_subagent_calls_per_run: 1000  # default measured call budget (caller may lower)
+  max_tokens_per_run: 50000000     # default measured token budget (caller may lower)
+  max_wall_seconds_per_run: 7200.0 # default wall-clock budget (caller may lower)
+  max_judge_attempts: 2       # judge retries per match before run fails honestly
+  reasoning_bank_seed: true    # record match outcomes into alpha.reasoning_bank
+
+# ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it
 # becomes the new default. A promotion additionally requires a clean
 # evaluator-integrity report, all required gates green, a primary-metric win beyond

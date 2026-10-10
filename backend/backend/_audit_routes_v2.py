@@ -4,21 +4,24 @@
 Scope (per task write-scope): backend/app/gateway/routers/ and
 backend/app/gateway/authz + deps.py (+ app.py middleware wiring).
 """
+
 import ast, glob, os, sys
 
 ROOT = "C:/Users/PREM KUMAR/Videos/alpha"
 R = os.path.join(ROOT, "backend/app/gateway/routers")
+
 
 def decos_of(node):
     out = []
     for d in node.decorator_list:
         if isinstance(d, ast.Call):
             fn = d.func
-            if isinstance(fn, ast.Attribute) and fn.attr in ("get","post","put","patch","delete","head","options","trace"):
+            if isinstance(fn, ast.Attribute) and fn.attr in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
                 out.append(fn.attr)
-            if isinstance(fn, ast.Name) and fn.id in ("require_auth","require_permission","require_admin_user","require_session_source","require_request_context"):
-                out.append("AUTH:"+fn.id)
+            if isinstance(fn, ast.Name) and fn.id in ("require_auth", "require_permission", "require_admin_user", "require_session_source", "require_request_context"):
+                out.append("AUTH:" + fn.id)
     return out
+
 
 print("========== 1. ROUTE INVENTORY (method | handler | auth-decorators) ==========")
 missing = []
@@ -43,7 +46,7 @@ for f in sorted(glob.glob(R + "/*.py")):
         if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         decos = decos_of(n)
-        methods = [d for d in decos if d in ("post","put","patch","delete")]
+        methods = [d for d in decos if d in ("post", "put", "patch", "delete")]
         if not methods:
             continue
         if not any("AUTH:" in d for d in decos):

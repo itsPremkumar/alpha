@@ -10,6 +10,7 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+from alpha.arena.config import ArenaConfig
 from alpha.config.acp_config import ACPAgentConfig, load_acp_config_from_dict
 from alpha.config.agent_preset_config import AgentPresetConfig
 from alpha.config.agent_storage_config import AgentStorageConfig
@@ -431,6 +432,17 @@ class AppConfig(BaseModel):
         description="Durable per-thread mission memory (spec/plan/status/scratchpad); injects the objective + current-milestone anchor before each turn to stop long-horizon drift. Hot-reloadable (next run).",
     )
     capabilities: CapabilitiesConfig = Field(default_factory=CapabilitiesConfig, description="Opt-in capability subsystems (see alpha.capabilities.catalog); all off unless enabled here.")
+    arena: ArenaConfig = Field(
+        default_factory=ArenaConfig,
+        description=(
+            "Arena tournament engine (alpha.arena): N sub-agents solve one task with different "
+            "strategy cards, then attack/defend/judge each other in a single-elimination bracket. "
+            "Durable, resumable, and budget-gated: the call count is projected before anything "
+            "runs, large runs need an explicit confirm, and measured spend is charged against "
+            "declared ceilings. Ceiling fields here are the defaults a run may only lower, or "
+            "raise with confirm=True."
+        ),
+    )
     specialists: SpecialistCatalogConfig = Field(
         default_factory=SpecialistCatalogConfig,
         description=(

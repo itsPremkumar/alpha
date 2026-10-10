@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Route audit: print every router path + method + handler name,
 and flag handlers with NO auth decorator (require_auth / require_permission)."""
+
 import ast, glob, os
 
 ROOT = "/c/Users/PREM KUMAR/Videos/alpha/backend"
@@ -8,19 +9,21 @@ ROUTER_DIR = ROOT + "/app/gateway/routers"
 
 auth_names = {"require_auth", "require_permission"}
 
+
 def decos_of(node):
     out = []
     has_auth = False
     for d in node.decorator_list:
         if isinstance(d, ast.Call):
             fn = d.func
-            if isinstance(fn, ast.Attribute) and fn.attr in ("get","post","put","patch","delete","head","options","trace"):
+            if isinstance(fn, ast.Attribute) and fn.attr in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
                 out.append(fn.attr)
             if isinstance(fn, ast.Name) and fn.id in auth_names:
                 has_auth = True
             if isinstance(fn, ast.Attribute) and fn.attr in auth_names:
                 has_auth = True
     return out, has_auth
+
 
 print("=== ALL ROUTE HANDLERS, AUTH DECORATORS ===")
 missing = []

@@ -24,6 +24,35 @@ class HarnessSnapshotManager:
 
     def __init__(self, state: HarnessState):
         self.state = state
+        # Fail-closed: a corrupt snapshot index must answer as degraded, never
+        # as an empty index, because `harness_refine action="rollback"` inherits
+        # its "no snapshots" answer from `list_snapshots()` and a model told
+        # there is no rollback target is a different decision from "rollback is
+        # impossible because the index cannot be read".
+        self.load_error: str | None = None
+        self._snapshot_index: list[dict[str, Any]] = []
+        self._load_index()
+
+    def _load_index(self) -> None:
+        s_dir = self.snapshot_dir
+        if s_dir is None:
+            self.load_error = "no snapshot directory available"
+            return
+        manifest_file = s_dir / "manifest.json"
+        if not manifest_file.exists():
+            self.load_error = None
+            return
+        try:
+            with open(manifest_file, encoding="utf-8") as f:
+                self._snapshot_index = json.load(f)
+        except Exception as exc:
+            self.load_error = str(exc)
+            logger.warning(
+                "Harness snapshot index unreadable; snapshots exist on disk but cannot be enumerated: %s",
+                manifest_file,
+                exc_info=True,
+            )
+            self._snapshot_index = []
 
     @property
     def snapshot_dir(self) -> Path | None:

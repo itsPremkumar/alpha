@@ -15,7 +15,7 @@ for name in names:
             for d in n.decorator_list:
                 if isinstance(d, ast.Call):
                     fn = d.func
-                    if isinstance(fn, ast.Attribute) and fn.attr in ("get","post","put","patch","delete","head","options","trace"):
+                    if isinstance(fn, ast.Attribute) and fn.attr in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
                         decos.append(fn.attr)
             if not decos:
                 continue
@@ -23,7 +23,7 @@ for name in names:
             for d in n.decorator_list:
                 if isinstance(d, ast.Call):
                     fn = d.func
-                    if isinstance(fn, ast.Attribute) and fn.attr in ("get","post","put","patch","delete"):
+                    if isinstance(fn, ast.Attribute) and fn.attr in ("get", "post", "put", "patch", "delete"):
                         for a in d.args:
                             if isinstance(a, ast.Constant) and isinstance(a.value, str):
                                 path = a.value

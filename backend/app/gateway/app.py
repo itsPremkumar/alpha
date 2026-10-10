@@ -25,6 +25,7 @@ from app.gateway.routers import (
     agent_messages,
     agents,
     apex,
+    arena,
     artifacts,
     assistants_compat,
     auth,
@@ -1235,6 +1236,8 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # public Agent Card / pairing-token ingress surface.
     app.include_router(peer_network.router)
     app.include_router(peer_network.public_router)
+    # Arena tournament engine.
+    app.include_router(arena.router)
     app.include_router(swarms.router)
     # The team read plane. Mounted here rather than inside `create_swarm` so the
     # roster and report are reachable for a swarm that already exists; the

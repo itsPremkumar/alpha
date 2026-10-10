@@ -17,6 +17,7 @@ from alpha.tools.builtins import (
     alpha_peer_network_tool,
     analyze_semantic_git_delta,
     ask_clarification_tool,
+    arena_tool,
     ask_oracle,
     ast_grep_rewrite,
     ast_grep_search,
@@ -173,6 +174,7 @@ BUILTIN_TOOLS = [
     present_file_tool,
     propose_skill_tool,
     ask_clarification_tool,
+    arena_tool,
     review_skill_package,
     # Cross-thread recall: lead-only (denied for subagents by default, see
     # SubagentConfig/CustomSubagentConfig) because it crosses thread
