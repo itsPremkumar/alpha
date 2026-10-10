@@ -256,10 +256,19 @@ export function NavTabs(props: {
   }, [dropdownOpen, placePanel, query]);
 
   // Opening the panel focuses the finder, so the operator can type immediately
-  // rather than reaching for the mouse and hunting through 28 rows.
+  // rather than reaching for the mouse and hunting through 25 rows.
+  //
+  // The `panel` dependency is load-bearing, not tidy-up. The portalled panel
+  // renders with `visibility: hidden` on its FIRST commit, because
+  // `placePanel` has not measured it yet; it only becomes visible once
+  // `placePanel`'s `setPanel` lands in a second commit. An effect keyed on
+  // `dropdownOpen` alone runs in that first commit, so `.focus()` is called on
+  // a `visibility: hidden` element and does nothing — and because deps never
+  // changed, it never ran again. Keyed on `panel` too, it re-runs once the
+  // panel is placed and actually focusable.
   useEffect(() => {
-    if (dropdownOpen) searchRef.current?.focus();
-  }, [dropdownOpen]);
+    if (dropdownOpen && panel) searchRef.current?.focus();
+  }, [dropdownOpen, panel]);
 
   /**
    * The primary tabs, the rest, and which of the rest is active.

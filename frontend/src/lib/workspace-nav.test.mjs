@@ -208,9 +208,24 @@ test("Escape clears the query before it closes the panel", () => {
 
 test("the finder takes focus when the panel opens", () => {
   // A panel that opens and waits for a mouse move is a panel that invites
-  // scanning 28 rows instead of typing three characters.
-  assert.match(SRC, /if \(dropdownOpen\) searchRef\.current\?\.focus\(\)/, "opening focuses the finder");
+  // scanning 25 rows instead of typing three characters.
+  assert.match(
+    SRC,
+    /if \(dropdownOpen && panel\) searchRef\.current\?\.focus\(\)/,
+    "opening focuses the finder, and only once a panel exists to focus it into",
+  );
   assert.match(SRC, /ref=\{searchRef\}/, "the input holds the ref that focus targets");
+  // Keyed on `panel`, not just `dropdownOpen`. The panel is portalled with
+  // `visibility: hidden` until `placePanel` has measured it and `setPanel`
+  // lands in a second commit, so a focus effect that runs on the opening commit
+  // alone calls `.focus()` on a hidden element and never runs again. This is a
+  // BEHAVIOURAL pin: the source-line version of it passed while the finder
+  // never actually took focus.
+  assert.match(
+    SRC,
+    /\}, \[dropdownOpen, panel\]\);/,
+    "the focus effect must re-run once the panel is placed, or it focuses a still-hidden node",
+  );
 });
 
 test("closing the panel clears the query", () => {
