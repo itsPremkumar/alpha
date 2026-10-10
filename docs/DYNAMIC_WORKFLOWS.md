@@ -446,6 +446,161 @@ orphaned nodes, and only then re-materialises the projection (projecting
 response reports what was folded and what was reconciled, and never reports
 the rebuilt run as verified.
 
+## Triggers: schedules as data, fired by a host
+
+A recurring prompt no longer dead-ends at a disclosure. A schedule is a
+durable, owner-scoped record — a cron expression, an interval, or a named
+event — registered against a compiled workflow:
+
+```http
+POST /api/workflows/triggers
+{"workflow_id": "wf_1", "kind": "cron", "expression": "0 6 * * *",
+ "input_state": {"objective": "nightly audit"}, "max_fires": 100}
+```
+
+Validation happens **before** anything is stored: an unparsable expression, a
+reversed range, an out-of-bounds interval, an event trigger with no name, and
+a cron expression that matches no time inside the search horizon are each
+refused with the real reason. A schedule that could never fire is never
+stored.
+
+`GET /api/workflows/triggers/due` is the seam a scheduler rides; the
+supervised `workflow_triggers` autonomy loop (gated under
+`autonomy.loops.workflow_triggers`, **default off**) is the in-process firing
+seam, and `POST /api/workflows/triggers/{id}/fire` is the explicit one. All
+three go through the same `fire_trigger_on_engine`, so they cannot drift.
+**Starting a run is the whole of a fire** — execution stays with the host that
+claims the run, and nothing in `alpha.workflow.triggers` sleeps, polls, or
+spawns a thread. There is deliberately no second cron owner.
+
+The fire order is load-bearing: the run starts **before** the schedule
+advances, so a refused start (unregistered workflow, a `start_run` refusal)
+leaves the trigger due instead of consuming a fire on work that never
+happened. `fire_count`/`max_fires` are durable totals: a schedule that reaches
+its cap is disarmed with the reason recorded, and re-arming never resets what
+already ran — a "fresh allowance" would let an unbounded schedule dodge its
+own bound. Cron schedules advance from their **due time**, not from the fire
+moment, so a late fire does not push every subsequent fire out by the
+lateness.
+
+Day-of-month and day-of-week follow the Vixie rule — restricted both, either
+matches — because the AND misreading makes `0 9 1 * 1` ("09:00 on the 1st or
+on Mondays") fire only when the 1st is a Monday. The store, like the lease
+and event-log stores beside it, is single-Gateway: atomic and
+restart-recoverable for one process, never cross-process coordination.
+
+## Dead-letter quarantine
+
+A node whose retries are exhausted used to disappear into the event log,
+reachable only by reading JSONL. `alpha.workflow.quarantine` is the work
+queue between "the journal recorded it" and "a human re-ran it".
+
+A record is written at the exact moment the engine decides a node is out of
+road — `recovery_exhausted`, `node_stagnated`, `node_retry_refused`, or a
+budget stop — carrying the real reason, the failure class, the normalized
+error signature and the attempt count, and journalled as `node_quarantined`.
+One open record per `(run, node)`: a repeated failure updates the row an
+operator has not acted on yet, and a failure *after* a replay is a new row,
+because that decision was already made.
+
+```http
+GET  /api/workflows/quarantine                      # the queue, oldest first, owner-scoped
+POST /api/workflows/quarantine/{record_id}/replay   # a REAL retry_node patch
+POST /api/workflows/quarantine/{record_id}/discard  # requires a reason
+```
+
+Replay is not an executor. It applies a genuine `retry_node` patch through
+the engine's own apply path, so the optimistic-concurrency check, the patch
+validator and the journalling all apply exactly as they do to any operator
+patch — and the record says so, because re-running a node re-runs its side
+effects. A source run that is no longer resident, or a rejected patch, is
+recorded on the record as a refusal and the record **stays open**: a refused
+replay is not a resolution, and closing the row would lose the work.
+
+## Connectivity waits
+
+`CONNECTIVITY_WAIT` is the node kind that makes
+`WorkflowRunStatus.WAITING_CONNECTIVITY` reachable. An `EVENT_WAIT` parks
+until somebody *says* something happened; a connectivity wait parks until a
+host-bound probe *measures* that the link is usable.
+
+The probe is a callable the host installs
+(`engine.connectivity_probe = ...`), absent by default: deciding whether a
+link is up is a measurement, and a wait with no probe can only end at its
+deadline, so an unprobed node **fails with the real reason** instead of
+parking on nothing. Resolution is explicit and journalled:
+
+- the probe measures reachable — the node succeeds with `released_by: probe`
+  and evidence that says the reachability was measured;
+- `config.release_event` (default `connectivity.restored`) is signalled — the
+  node succeeds, and its evidence says the reachability was **asserted, not
+  measured**, because those are different truths;
+- `POST .../sweep-waits` finds the deadline passed — the wait **fails** with
+  the measured age. A wait nobody satisfies ends as a failure, never as a run
+  parked forever reporting no error.
+
+The sweep is kind-aware: a connectivity wait is measured before it is expired,
+and a link the probe reports reachable releases the node **and un-parks the
+run** — the scheduler refuses a parked run, so a recovered link must not
+leave the run reading as still waiting on a node that is already READY.
+
+## Goal-drift detection
+
+A workflow optimizes for its graph, not for its prompt, and a run can complete
+— real evidence, real outputs — while the work stops being about the goal.
+`alpha.workflow.drift` measures direction at the single success seam.
+
+Terms come from the declared goal (graph `metadata.goal`, else
+`run.state.objective`, else `run.state.goal`, else the definition
+description — the source is always reported) by a published stopword rule;
+each completed node's output is scored as term overlap; the verdict is the
+trailing mean over the last three measurable samples.
+
+- **Unmeasurable is not drifted.** A node whose output carries no text scores
+  `None` and is excluded — a detector that cries on hashes gets ignored.
+- **Too few samples is not a verdict.** Below three measurable nodes the
+  report says `insufficient_evidence` with the real count.
+- **A proposal, never an action.** `goal_drift_detected` is journalled and
+  `GET /api/workflows/runs/{run_id}/drift` projects the trajectory
+  (recomputed from the run's own samples on every read); nothing mutates a
+  run, a node, or a graph. A drifting run is still a valid run, and what
+  happens next belongs to the operator.
+
+The threshold is declared per workflow (`metadata.goal_drift_threshold`,
+default `0.10`) and the default alarm is deliberately low: this is an alarm
+for "the work stopped being about the goal at all", not a style critic.
+
+## Worktree isolation
+
+A node that declares `config.worktree` gets an isolated git checkout instead
+of the shared working tree:
+
+```json
+{"worktree": {"repo_root": "/srv/app", "base_ref": "HEAD"}}
+```
+
+The claim store (`alpha.workflow.worktrees`) enforces the properties that
+make isolation real:
+
+- **exclusive** — one ACTIVE claim per worktree path; a second task asking for
+  the same path is refused with the holder named, never a silent share;
+- **confined** — the path is derived from `(run, node)` under the engine's
+  `worktree_root`, sanitized so a node id carrying path syntax cannot escape
+  it;
+- **host-allowlisted** — `repo_root` is client-supplied input, so a host binds
+  `engine.worktree_repo_roots`; with nothing bound the node fails honestly
+  rather than running `git worktree add` against whatever repository a
+  request named;
+- **measured** — the claim records the head commit the worktree was created
+  at, so "what did this task actually see" is answerable later.
+
+Provisioning and removal are real, bounded, argv-only git calls.
+`GET /api/workflows/runs/{run_id}/worktrees` lists the run's claims;
+`POST /api/workflows/runs/{run_id}/worktrees/{node_id}/release` removes one —
+and a removal that fails leaves the claim ACTIVE with the real git error,
+because a worktree reported as gone while it still occupies disk would hand
+the same directory to the next task.
+
 ## Current boundaries
 
 The orchestration graph, scheduling, retries, approvals, conditional routing,

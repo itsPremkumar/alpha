@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-09T07:48:00Z",
+ "generated_at": "2026-10-09T20:08:16Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2015,6 +2015,13 @@
   {
    "id": "swarm_status",
    "module": "app.gateway.autonomy.loops:swarm_status_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "workflow_triggers",
+   "module": "app.gateway.autonomy.loops:workflow_triggers_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"

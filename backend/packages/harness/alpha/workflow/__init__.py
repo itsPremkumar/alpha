@@ -97,6 +97,17 @@ from alpha.workflow.patch_validator import (
     PatchValidationResult,
     PatchValidator,
 )
+from alpha.workflow.plan_graph import (
+    PlanGraphError,
+    PlanGraphStore,
+    PlanVersionConflict,
+)
+from alpha.workflow.quarantine import (
+    QuarantineRecord,
+    QuarantineStatus,
+    QuarantineStore,
+    QuarantineTrigger,
+)
 from alpha.workflow.replanner import (
     RuntimeReplanner,
 )
@@ -130,6 +141,15 @@ from alpha.workflow.time_travel import (
     run_history,
     run_report,
     simulate_run,
+)
+from alpha.workflow.triggers import (
+    TriggerFireResult,
+    TriggerKind,
+    TriggerStore,
+    WorkflowTrigger,
+    cron_next_after,
+    fire_trigger_on_engine,
+    parse_cron_expression,
 )
 
 __all__ = [
@@ -198,9 +218,34 @@ __all__ = [
     "evaluate_condition",
     "LeaseManager",
     "WorkerLease",
+    "PlanGraphError",
+    "PlanGraphStore",
+    "PlanVersionConflict",
     "WorkflowEvent",
     "WorkflowEventDispatcher",
     "get_event_dispatcher",
+    # Durable triggers (schedules as data; the host owns the firing)
+    "TriggerKind",
+    "TriggerStore",
+    "TriggerStoreError",
+    "TriggerFireResult",
+    "WorkflowTrigger",
+    "cron_next_after",
+    "parse_cron_expression",
+    "fire_trigger_on_engine",
+    # Dead-letter quarantine for nodes that ran out of road
+    "QuarantineStatus",
+    "QuarantineStore",
+    "QuarantineStoreError",
+    "QuarantineTrigger",
+    "QuarantineRecord",
+    # Connectivity wait policy
+    "CONNECTIVITY_WAIT_KIND",
+    "DEFAULT_RELEASE_EVENT",
+    "MAX_CONNECTIVITY_WAIT_SECONDS",
+    "connectivity_evidence",
+    "parse_deadline_seconds",
+    "release_event_for",
     # Dynamic perceive→decompose→assemble→bridge layer
     "DynamicPerceptionEngine",
     "PerceivedIntent",

@@ -270,12 +270,23 @@ class DynamicWorkflowService:
 
             # A recurring prompt is represented honestly as an automation
             # topology.  The existing scheduler remains the execution owner;
-            # this service does not silently create a second cron loop.
+            # this service does not silently create a second cron loop.  What
+            # changed is that the handoff now has a mechanism attached: a
+            # durable trigger (``alpha.workflow.triggers``) registered through
+            # ``POST /api/workflows/triggers``, fired by the supervised
+            # ``workflow_triggers`` loop (default OFF) or any host calling
+            # ``POST /api/workflows/triggers/{id}/fire``.  The refusal to
+            # *auto-schedule* is unchanged; the sentence about what to do
+            # instead is now actionable.
             if decisions[1].chosen == "automation":
                 goal = None
                 resources = None
                 definition = None
-                unavailable.append("automation: scheduler handoff is host-owned; no workflow graph was started")
+                unavailable.append(
+                    "automation: recurring execution is host-owned; no workflow graph was started. "
+                    "Register the schedule as data with POST /api/workflows/triggers (kind=cron|interval|event) against a compiled workflow, "
+                    "then let the existing scheduler or the supervised workflow_triggers loop (default OFF) fire it."
+                )
                 return DynamicPlan(
                     prompt=request.prompt,
                     mode=request.mode,

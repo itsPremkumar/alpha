@@ -1065,7 +1065,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 136 tools, 68 routers, 44 middlewares, and 10 supervisor loops. CI fails
+  pins all 136 tools, 68 routers, 44 middlewares, and 11 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

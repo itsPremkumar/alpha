@@ -21,10 +21,29 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from alpha.config.runtime_paths import runtime_home
 from alpha.recovery.policies import decide_from_reason
+from alpha.workflow.connectivity import (
+    CONNECTIVITY_WAIT_KIND,
+    connectivity_evidence,
+    parse_deadline_seconds,
+    release_event_for,
+)
+from alpha.workflow.drift import (
+    DEFAULT_DRIFT_THRESHOLD,
+    DRIFT_THRESHOLD_KEY,
+    GOAL_DRIFT_KEY,
+    GOAL_DRIFT_SAMPLES_KEY,
+    MAX_DRIFT_SAMPLES,
+    evaluate_trajectory,
+    extract_terms,
+    measure_node,
+    resolve_goal,
+    samples_from_dicts,
+)
 from alpha.workflow.events import get_event_dispatcher
 from alpha.workflow.execution import (
     ConcurrencyGovernor,
@@ -60,6 +79,11 @@ from alpha.workflow.observability import (
     now_iso,
 )
 from alpha.workflow.patch import WorkflowPatchEngine
+from alpha.workflow.quarantine import (
+    QuarantineStore,
+    QuarantineStoreError,
+    QuarantineTrigger,
+)
 from alpha.workflow.replanner import RuntimeReplanner
 from alpha.workflow.router import DynamicRouter
 from alpha.workflow.scheduler import WorkflowScheduler
@@ -68,6 +92,14 @@ from alpha.workflow.verification import (
     VerificationStatus,
     declared_command,
     run_verification,
+)
+from alpha.workflow.worktrees import (
+    WorktreeStore,
+    WorktreeStoreError,
+    confined_worktree_path,
+    provision_worktree,
+    release_worktree,
+    sanitized_repo_root,
 )
 
 # Module-level node-runner seam: the single default executor binding shared by
@@ -153,6 +185,7 @@ PARKED_RUN_STATUSES = frozenset(
         WorkflowRunStatus.WAITING_APPROVAL,
         WorkflowRunStatus.WAITING_EVENT,
         WorkflowRunStatus.SUSPENDED,
+        WorkflowRunStatus.WAITING_CONNECTIVITY,
     }
 )
 
@@ -507,6 +540,30 @@ class DynamicWorkflowEngine:
         # registered or ``alpha.``-prefixed verifier may be imported and called.
         self.verifier_registry: dict[str, Callable[[], Any]] = {}
         self.verification_executor: Callable[[str], Any] | None = None
+        # Host-bound connectivity seam for ``CONNECTIVITY_WAIT`` nodes.  Absent
+        # by default: deciding whether a link is up is a measurement, and a
+        # wait with no probe can only end at its deadline — so an unprobed
+        # connectivity wait fails the node with the real reason instead of
+        # parking on nothing.  A host binds the real monitor probe explicitly.
+        self.connectivity_probe: Callable[[], bool] | None = None
+        # Host-bound worktree isolation for per-task git checkouts.  The root
+        # confines where a worktree lands; the repo-root allowlist decides
+        # WHICH repositories a node may check out, because ``repo_root``
+        # arrives through client-supplied node config.  With no allowlist
+        # bound, a worktree node fails honestly instead of running
+        # ``git worktree add`` against whatever path a request named.
+        self.worktree_root: Path = runtime_home() / "workflow_worktrees"
+        self.worktree_repo_roots: set[str] = set()
+        self._worktrees: WorktreeStore | None = None
+        self._worktree_init_lock = threading.Lock()
+        # Dead-letter queue for nodes that ran out of road, created on first
+        # use so a throwaway engine (``simulate_run``'s dry run) can be handed a
+        # process-local store instead of writing into the real one.  Guarded
+        # for the same reason the lease manager is: a wave dispatches nodes on
+        # a bounded pool, and two threads racing an unguarded construction
+        # would each build a manager over an empty store.
+        self._quarantine: QuarantineStore | None = None
+        self._quarantine_init_lock = threading.Lock()
 
     # ---------------------------------------------------------- verification
 
@@ -574,6 +631,216 @@ class DynamicWorkflowEngine:
     def leases(self, value: LeaseManager | None) -> None:
         """Install a manager (a process-local one for throwaway engines)."""
         self._leases = value
+
+    # ------------------------------------------------------------ worktrees
+
+    @property
+    def worktrees(self) -> WorktreeStore:
+        """Durable worktree claim store, created on first use.
+
+        One store per engine for the same reason as the lease manager and the
+        quarantine queue: it is loaded at construction and written back
+        wholesale, so two racing wave threads would each hold a private view
+        and the exclusion that makes per-task isolation real would silently
+        stop being enforced.
+        """
+        store = self._worktrees
+        if store is None:
+            with self._worktree_init_lock:
+                store = self._worktrees
+                if store is None:
+                    store = WorktreeStore(runtime_home() / "workflow_store")
+                    self._worktrees = store
+        return store
+
+    @worktrees.setter
+    def worktrees(self, value: WorktreeStore | None) -> None:
+        """Install a store (a process-local one for throwaway engines)."""
+        self._worktrees = value
+
+    def _apply_node_worktree(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """Claim and provision an isolated worktree for this node.
+
+        Returns ``False`` when the node must fail — the caller stops there.
+
+        ``node.config["worktree"]`` is client-supplied input, so the repo root
+        must be one the HOST allowed (``engine.worktree_repo_roots``) and the
+        checkout path is confined under ``engine.worktree_root``. With no
+        allowlist bound the node fails honestly rather than running
+        ``git worktree add`` against whatever repository a request named.
+
+        The claim is exclusive (the store refuses a path another task holds)
+        and records the head commit the worktree was created at, so "what did
+        this task actually see" stays answerable after the fact.
+        """
+        spec = node.config.get("worktree")
+        if not isinstance(spec, dict):
+            return True
+        declared_root = spec.get("repo_root")
+        # The host binds allowlist entries as plain strings; both sides are
+        # normalized through the same function so separator and case
+        # differences cannot smuggle a repo past the check.
+        allowed = {sanitized_repo_root(root) for root in self.worktree_repo_roots}
+        if not declared_root or not isinstance(declared_root, str) or not allowed or sanitized_repo_root(declared_root) not in allowed:
+            self._fail_node(
+                run,
+                node,
+                (f"worktree node '{nid}' declares repo_root {declared_root!r}, which is not in this engine's bound worktree_repo_roots allowlist; a host must declare the repositories workflow nodes may check out"),
+            )
+            return False
+        base_ref = str(spec.get("base_ref") or "HEAD")
+        path = confined_worktree_path(self.worktree_root, run.run_id, nid)
+        try:
+            claim = self.worktrees.claim(run_id=run.run_id, node_id=nid, path=path, repo_root=declared_root, base_ref=base_ref)
+        except (WorktreeStoreError, OSError) as exc:
+            self._fail_node(run, node, f"worktree claim refused for node '{nid}': {exc}")
+            return False
+        outcome = provision_worktree(path=path, repo_root=declared_root, base_ref=base_ref)
+        if not outcome.ok:
+            try:
+                self.worktrees.mark_failed(claim.claim_id, reason=outcome.reason)
+            except KeyError:
+                pass
+            self._fail_node(run, node, f"worktree provisioning failed for node '{nid}': {outcome.reason}")
+            return False
+        self.worktrees.mark_provisioned(claim.claim_id, head_commit=outcome.head_commit)
+        with self.state():
+            run.state[f"{nid}_worktree"] = {
+                "path": str(path),
+                "claim_id": claim.claim_id,
+                "repo_root": declared_root,
+                "base_ref": base_ref,
+                "head_commit": outcome.head_commit,
+            }
+        node.evidence.append(f"worktree {path} provisioned from {declared_root}@{base_ref} at {outcome.head_commit[:12]}")
+        self.events.emit(
+            "worktree_claimed",
+            run.run_id,
+            node_id=nid,
+            claim_id=claim.claim_id,
+            path=str(path),
+            repo_root=declared_root,
+            base_ref=base_ref,
+            head_commit=outcome.head_commit,
+        )
+        return True
+
+    def release_node_worktree(self, run_id: str, node_id: str, *, reason: str = "operator release") -> dict[str, Any]:
+        """Remove one node's provisioned worktree and close its claim.
+
+        A removal that fails leaves the claim ACTIVE with the real error —
+        reporting a worktree as gone while it still occupies the path would
+        hand the same directory to the next task through the exclusion this
+        store enforces. The result therefore carries ``released``/``reason``
+        and never a fabricated success.
+        """
+        run = self.get_run(run_id)
+        if run is None:
+            raise KeyError(f"Run '{run_id}' not found.")
+        info = run.state.get(f"{node_id}_worktree")
+        if not isinstance(info, dict) or not info.get("claim_id"):
+            raise ValueError(f"run '{run_id}' node '{node_id}' has no provisioned worktree")
+        claim = self.worktrees.get(str(info["claim_id"]))
+        if claim is None:
+            raise KeyError(f"worktree claim '{info['claim_id']}' is not present in the store")
+        if claim.status.value == "removed":
+            return {"released": True, "claim_id": claim.claim_id, "path": claim.path, "reason": "already removed"}
+        ok, detail = release_worktree(path=Path(claim.path), repo_root=claim.repo_root)
+        if not ok:
+            self.worktrees.mark_release_failed(claim.claim_id, reason=detail)
+            self.events.emit("worktree_release_failed", run_id, node_id=node_id, claim_id=claim.claim_id, path=claim.path, error=detail)
+            return {"released": False, "claim_id": claim.claim_id, "path": claim.path, "reason": detail}
+        self.worktrees.mark_released(claim.claim_id, reason=reason)
+        with self.state():
+            run.state.pop(f"{node_id}_worktree", None)
+        self.events.emit("worktree_released", run_id, node_id=node_id, claim_id=claim.claim_id, path=claim.path, reason=reason)
+        return {"released": True, "claim_id": claim.claim_id, "path": claim.path, "reason": reason}
+
+    # ------------------------------------------------------------ quarantine
+
+    @property
+    def quarantine(self) -> QuarantineStore:
+        """Durable dead-letter queue for nodes that ran out of road.
+
+        Exactly one store ever exists per engine, for the same reason as the
+        lease manager: it is loaded into memory at construction and written
+        back wholesale, so two racing wave threads would each hold a private
+        view and one thread's record would be invisible to the other — a dead
+        node silently missing from the operator queue.
+        """
+        store = self._quarantine
+        if store is None:
+            with self._quarantine_init_lock:
+                store = self._quarantine
+                if store is None:
+                    store = QuarantineStore(runtime_home() / "workflow_store")
+                    self._quarantine = store
+        return store
+
+    @quarantine.setter
+    def quarantine(self, value: QuarantineStore | None) -> None:
+        """Install a store (a process-local one for throwaway engines)."""
+        self._quarantine = value
+
+    def _quarantine_node(
+        self,
+        run: WorkflowRun,
+        node: WorkflowNode,
+        *,
+        reason: str,
+        trigger: QuarantineTrigger,
+        failure_class: str = "unknown",
+        signature: str = "",
+        attempts: int = 1,
+    ) -> None:
+        """Dead-letter a node the engine has decided is out of road.
+
+        Called from the exhaustion seams only — retries exhausted, stagnation
+        detected, retry refused, budget spent — never from an ordinary failure:
+        a first failed attempt is not a dead node, and a queue that fires on
+        every retry is noise an operator learns to ignore.
+
+        The node's own failure state is never rewritten by this call. A store
+        outage is disclosed as ``quarantine_write_failed`` rather than
+        swallowed and rather than failing the node a second time: the node's
+        real failure is already journalled, and a broken queue must not become
+        a second, misleading reason.
+        """
+        graph = self._run_graphs.get(run.run_id)
+        try:
+            record = self.quarantine.admit(
+                run_id=run.run_id,
+                workflow_id=run.workflow_id,
+                node_id=node.id,
+                reason=str(reason)[:2000],
+                trigger=trigger,
+                owner_id=run.owner_id,
+                failure_class=failure_class,
+                signature=signature,
+                attempts=attempts,
+                graph_version=int(graph.version) if graph is not None else run.graph_version,
+            )
+        except (QuarantineStoreError, OSError, ValueError) as exc:
+            self.events.emit(
+                "quarantine_write_failed",
+                run.run_id,
+                node_id=node.id,
+                trigger=trigger.value,
+                error=f"{type(exc).__name__}: {exc}",
+                reason="the dead-letter record could not be written; the node's own failure is journalled separately",
+            )
+            return
+        self.events.emit(
+            "node_quarantined",
+            run.run_id,
+            node_id=node.id,
+            record_id=record.record_id,
+            trigger=trigger.value,
+            failure_class=failure_class,
+            signature=signature,
+            attempts=attempts,
+            reason=str(reason)[:2000],
+        )
 
     @staticmethod
     def _lease_key(run_id: str, node_id: str) -> str:
@@ -1327,7 +1594,7 @@ class DynamicWorkflowEngine:
         attempt_key = self._node_attempt_key(node, run)
         event_key = f"{attempt_key}:complete" if attempt_key else None
         if attempt_key:
-            self._record_idempotency_key(run, attempt_key)
+            self._record_idempotency_key(run, node.idempotency_key)
             # Remember the produced output so a deduplicated re-attempt reports
             # the ORIGINAL result.  It goes in ``metrics``, not ``state``:
             # ``_node_attempt_key`` hashes ``run.state``, so writing the result
@@ -1343,6 +1610,69 @@ class DynamicWorkflowEngine:
             idempotency_key=event_key,
             **deepcopy(event_payload),
         )
+        # Measure direction now that this node's real output exists.  The
+        # measurement is a proposal: it journals ``goal_drift_detected`` and
+        # projects into ``run.metrics``, and changes nothing about the run.
+        self._measure_goal_drift(run, node, output)
+
+    def _measure_goal_drift(self, run: WorkflowRun, node: WorkflowNode, output: Any) -> None:
+        """Compare this node's output against the run's declared goal.
+
+        Runs at the single success seam, so every kind of node — executor,
+        structural, fan-out child — is measured by the same rule or not at all.
+        An undeclared goal measures nothing: no goal, no drift claim.
+
+        The verdict is journalled and projected, never acted on. A drifting
+        run is a valid run; what happens next is the operator's (or an
+        approved replan's) decision, which is why this emits an event and
+        writes ``run.metrics`` instead of touching node or run state.
+        """
+        graph = self._run_graphs.get(run.run_id)
+        definition = self.definitions.get(run.workflow_id)
+        goal, source = resolve_goal(
+            graph_metadata=graph.metadata if graph is not None else None,
+            run_state=run.state,
+            definition_description=definition.description if definition is not None else "",
+        )
+        if not goal:
+            return
+        threshold = DEFAULT_DRIFT_THRESHOLD
+        if graph is not None:
+            declared = graph.metadata.get(DRIFT_THRESHOLD_KEY)
+            try:
+                if declared is not None:
+                    threshold = float(declared)
+            except (TypeError, ValueError):
+                threshold = DEFAULT_DRIFT_THRESHOLD
+        terms = extract_terms(goal)
+        sample = measure_node(node.id, output, terms)
+        with self.state():
+            stored = run.metrics.get(GOAL_DRIFT_SAMPLES_KEY)
+            samples = stored if isinstance(stored, list) else []
+            samples.append(sample.to_dict())
+            run.metrics[GOAL_DRIFT_SAMPLES_KEY] = samples[-MAX_DRIFT_SAMPLES:]
+        report = evaluate_trajectory(goal, source, samples_from_dicts(run.metrics[GOAL_DRIFT_SAMPLES_KEY]), threshold=threshold)
+        with self.state():
+            run.metrics[GOAL_DRIFT_KEY] = {
+                "verdict": report.verdict,
+                "trailing_score": report.trailing_score,
+                "threshold": report.threshold,
+                "goal_source": report.goal_source,
+                "measurable": report.measurable,
+                "reason": report.reason,
+            }
+        if report.verdict == "drifting":
+            self.events.emit(
+                "goal_drift_detected",
+                run.run_id,
+                node_id=node.id,
+                goal_source=report.goal_source,
+                threshold=report.threshold,
+                trailing_score=report.trailing_score,
+                measurable=report.measurable,
+                node_score=sample.score,
+                reason=report.reason,
+            )
 
     def _charge_node_tokens(self, run: WorkflowRun, node: WorkflowNode, tokens: Any) -> bool:
         """Charge real runner-reported tokens against the node budget.
@@ -1392,6 +1722,14 @@ class DynamicWorkflowEngine:
                 evidence=list(node.evidence),
                 iteration_counts=dict(run.iteration_counts),
             )
+            self._quarantine_node(
+                run,
+                node,
+                reason=f"workflow token budget exhausted ({run.tokens_consumed}/{run.budget_limit}); re-running requires a raised budget",
+                trigger=QuarantineTrigger.BUDGET_EXHAUSTED,
+                failure_class="resource_exhausted",
+                attempts=1,
+            )
             return True
         if run_exhausted and node_exhausted:
             self._exhaust_budget(run, "Node budget exhausted.")
@@ -1402,6 +1740,14 @@ class DynamicWorkflowEngine:
                 reason="Node budget exhausted.",
                 evidence=list(node.evidence),
                 iteration_counts=dict(run.iteration_counts),
+            )
+            self._quarantine_node(
+                run,
+                node,
+                reason=f"node token budget exhausted ({node.tokens_consumed}/{node.budget}); re-running requires a raised node budget",
+                trigger=QuarantineTrigger.BUDGET_EXHAUSTED,
+                failure_class="resource_exhausted",
+                attempts=1,
             )
             return True
         return False
@@ -1424,35 +1770,35 @@ class DynamicWorkflowEngine:
         recorded = run.metrics.get(COMPLETED_IDEMPOTENCY_KEYS)
         return list(recorded) if isinstance(recorded, list) else []
 
-    def _record_idempotency_key(self, run: WorkflowRun, attempt_key: str) -> None:
-        """Remember that this exact attempt already produced a verified success."""
+    def _record_idempotency_key(self, run: WorkflowRun, declared_key: str | None) -> None:
+        """Remember that this exact logical effect already produced a verified success.
+
+        Stored value is the declared idempotency_key, NOT the hash used for log
+        indexing: the two never agree, so the original dedupe short-circuit was
+        a no-op and a retry of a "charge the card" node re-ran its side effect
+        once per attempt.
+        """
         with self.state():
             completed = self._completed_idempotency_keys(run)
-            if attempt_key not in completed:
-                completed.append(attempt_key)
+            if declared_key is not None and declared_key not in completed:
+                completed.append(declared_key)
             run.metrics[COMPLETED_IDEMPOTENCY_KEYS] = completed
 
     def _deduplicated_attempt(self, node: WorkflowNode, run: WorkflowRun) -> str | None:
-        """The recorded attempt key for this node's effect, if it already ran.
+        """Return the declared key if this logical effect already ran this run.
 
         A node that declares an ``idempotency_key`` names ONE logical side
-        effect.  The key already travelled into the append-only log, but nothing
-        ever CONSUMED it, so every retry re-ran the effect: a node whose runner
-        sends mail, charges a card, or POSTs a record performed the write once
-        per attempt.  Returning the key here lets the caller skip the runner and
-        report the recorded evidence instead, which is what makes a declared
-        idempotent step actually idempotent.
-
-        The check and the later record in :meth:`_invoke_runner` are not one
-        atomic step, so the whole decision is made under the state lock: a node
-        must never pass the dedupe check and then find its key already recorded
-        by a concurrent attempt.
+        effect.  The log's attempt-key hash (which embeds the full run state)
+        never equals the record of what already completed, so the dedupe gate
+        must consult the declared key, not the hash.
         """
-        attempt_key = self._node_attempt_key(node, run)
-        if attempt_key is None:
+        declared = node.idempotency_key
+        if declared is None:
             return None
         with self.state():
-            return attempt_key if attempt_key in self._completed_idempotency_keys(run) else None
+            if declared in self._completed_idempotency_keys(run):
+                return declared
+        return None
 
     def _call_runner_bounded(
         self,
@@ -1640,6 +1986,18 @@ class DynamicWorkflowEngine:
                     reason=verdict.reason,
                     required_action="change_strategy",
                 )
+                # A stagnated node is dead until the strategy changes, which is
+                # exactly a decision an operator (or a replan) must make — so
+                # it enters the dead-letter queue, naming the change it needs.
+                self._quarantine_node(
+                    run,
+                    node,
+                    reason=f"{verdict.reason}; last failure: {failure_text}",
+                    trigger=QuarantineTrigger.STAGNATION,
+                    failure_class=classified.failure_class,
+                    signature=classified.signature,
+                    attempts=attempt,
+                )
                 return {
                     **result,
                     "stagnation": {
@@ -1679,6 +2037,18 @@ class DynamicWorkflowEngine:
                     strategy_reason=authority.reason,
                     strategy_bridged=classified.reason_code is not None,
                 )
+                # The node is out of road: the run will fail closed, and the
+                # failure would otherwise be reachable only by reading the
+                # journal.  This is the dead-letter seam.
+                self._quarantine_node(
+                    run,
+                    node,
+                    reason=str(result.get("output", "")),
+                    trigger=QuarantineTrigger.RECOVERY_EXHAUSTED,
+                    failure_class=classified.failure_class,
+                    signature=classified.signature,
+                    attempts=attempt,
+                )
                 return result
 
             text = str(result.get("output", "")).lower()
@@ -1705,6 +2075,18 @@ class DynamicWorkflowEngine:
                     class_retryable=classified.retryable,
                     matched_rule=classified.matched_rule,
                     reason=(f"retry refused: marker={'matched' if marker_ok else 'not matched'}, class={classified.failure_class} retryable={classified.retryable}"),
+                )
+                # A refusal is a decision that another attempt cannot succeed,
+                # which is as final as an exhausted ceiling: the node is dead
+                # for this run and belongs in the operator queue.
+                self._quarantine_node(
+                    run,
+                    node,
+                    reason=str(result.get("output", "")),
+                    trigger=QuarantineTrigger.RETRY_REFUSED,
+                    failure_class=classified.failure_class,
+                    signature=classified.signature,
+                    attempts=attempt,
                 )
                 if raised_exception is not None:
                     raise raised_exception
@@ -1976,6 +2358,13 @@ class DynamicWorkflowEngine:
         lease_key = self._lease_key(run.run_id, nid)
         try:
             self._in_flight.add(lease_key)
+            # Per-task worktree isolation (opt-in per node through
+            # ``config.worktree``): claim and provision the isolated checkout
+            # BEFORE the node body runs, so the work it performs happens in
+            # the checkout. A claim or provisioning refusal fails the node
+            # here rather than letting the task run in the shared tree.
+            if not self._apply_node_worktree(nid, run, node):
+                return
             # 3. Structural node types (checkpoint / goal_gate / handoff /
             #    wait / event_wait / parallel / subworkflow).  These need no
             #    executor: their completion evidence is a measurement the engine
@@ -2420,6 +2809,8 @@ class DynamicWorkflowEngine:
             return self._handle_wait(nid, run, node)
         if kind == NodeType.EVENT_WAIT:
             return self._handle_event_wait(nid, run, node)
+        if kind == NodeType.CONNECTIVITY_WAIT:
+            return self._handle_connectivity_wait(nid, run, node)
         if kind == NodeType.PARALLEL:
             return self._handle_parallel(nid, graph, run, node, node_runner, compensation_runner)
         if kind == NodeType.SUBWORKFLOW:
@@ -2651,6 +3042,132 @@ class DynamicWorkflowEngine:
         _sync_waiting_nodes(run)
         return True
 
+    def _handle_connectivity_wait(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """Park the node until the network is measurably back, or its deadline.
+
+        The node kind that makes ``WorkflowRunStatus.WAITING_CONNECTIVITY``
+        reachable. An ``EVENT_WAIT`` parks until somebody *says* something
+        happened; this parks until the host-bound probe *measures* that the
+        link is usable, which is the difference between "a signal arrived" and
+        "the world is back".
+
+        Three resolutions, all explicit:
+
+        * the probe measures reachable — the node succeeds with that as its
+          evidence (``released_by: probe``);
+        * the release signal (``config.release_event``, default
+          ``connectivity.restored``) arrives — the node succeeds, and its
+          evidence says the reachability was asserted, not measured, because
+          those are different truths;
+        * ``sweep_expired_waits`` finds the deadline passed — the wait FAILS
+          with the measured age. A wait nobody satisfies ends as a failure,
+          never as a parked-forever run.
+
+        With no probe bound the node fails immediately: the honest answer to
+        "wait for connectivity" with no way to observe connectivity is a
+        refusal, not a sleep with extra steps.
+        """
+        probe = self.connectivity_probe
+        if probe is None:
+            self._fail_node(
+                run,
+                node,
+                f"connectivity_wait node '{nid}' cannot park: no connectivity_probe is bound on this engine; a wait with no way to measure the link can only end at its deadline",
+            )
+            return True
+
+        target = str(node.config.get("target") or node.config.get("endpoint") or "the network").strip() or "the network"
+        release_event = release_event_for(node.config)
+        deadline = parse_deadline_seconds(node.config.get("timeout_seconds"), node.gate_timeout_seconds)
+        if deadline is None:
+            self._fail_node(
+                run,
+                node,
+                f"connectivity_wait node '{nid}' declares no usable positive timeout_seconds; an unbounded connectivity wait is refused rather than parked",
+            )
+            return True
+
+        with self.state():
+            waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
+            if not isinstance(waits, dict):
+                waits = {}
+            registration = waits.get(nid)
+            if isinstance(registration, dict) and registration.get("signalled"):
+                # Released by the explicit signal: an assertion, not a
+                # measurement — the evidence line says which one happened.
+                payload = registration.get("payload")
+                waits.pop(nid, None)
+                run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+                run.state[f"{nid}_event_payload"] = payload
+                node.evidence.append(connectivity_evidence(reachable=False, target=target, release=release_event))
+                self._succeed_node(
+                    run,
+                    node,
+                    {"target": target, "released_by": "signal", "event": release_event, "payload": payload, "deadline_seconds": deadline},
+                )
+                return True
+            if not isinstance(registration, dict):
+                registration = {
+                    "kind": CONNECTIVITY_WAIT_KIND,
+                    "event": release_event,
+                    "target": target,
+                    "registered_at": now_iso(),
+                    "deadline_seconds": deadline,
+                }
+                waits[nid] = registration
+                run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+                self.events.emit(
+                    "connectivity_wait_registered",
+                    run.run_id,
+                    node_id=nid,
+                    event=release_event,
+                    target=target,
+                    deadline_seconds=deadline,
+                )
+
+        # A fresh measurement on EVERY dispatch: this node never completes on
+        # a stale reading, because "the link was up a minute ago" is exactly
+        # the belief an outage punishes.
+        try:
+            reachable = bool(probe())
+        except Exception as exc:  # noqa: BLE001 - a broken probe fails the node with its real reason
+            self._fail_node(run, node, f"connectivity probe raised for node '{nid}': {type(exc).__name__}: {exc}")
+            return True
+
+        if reachable:
+            with self.state():
+                waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
+                if isinstance(waits, dict):
+                    waits.pop(nid, None)
+                    run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+            node.evidence.append(connectivity_evidence(reachable=True, target=target, release=release_event))
+            self._succeed_node(
+                run,
+                node,
+                {"target": target, "released_by": "probe", "reachable": True, "deadline_seconds": deadline},
+            )
+            return True
+
+        # Still down: park in the connectivity-specific status.
+        with self.state():
+            node.status = NodeStatus.WAITING
+            run.node_states[nid] = NodeStatus.WAITING
+        reason = f"Node '{nid}' is waiting for connectivity to {target}."
+        _set_run_status(run, WorkflowRunStatus.WAITING_CONNECTIVITY, reason=reason)
+        run.waiting_reason = reason
+        self.events.emit(
+            "connectivity_wait_parked",
+            run.run_id,
+            node_id=nid,
+            target=target,
+            event=release_event,
+            deadline_seconds=deadline,
+            node_status=NodeStatus.WAITING.value,
+            reason=reason,
+        )
+        _sync_waiting_nodes(run)
+        return True
+
     def _handle_parallel(
         self,
         nid: str,
@@ -2876,19 +3393,34 @@ class DynamicWorkflowEngine:
             unmatched=not matched,
             payload_keys=sorted(payload) if isinstance(payload, dict) else None,
         )
-        if released and run.status is WorkflowRunStatus.WAITING_EVENT:
+        # Un-park the run for BOTH park states.  A connectivity wait parks the
+        # run in WAITING_CONNECTIVITY and releases through the same signal
+        # seam (``connectivity.restored`` by default); handling only
+        # WAITING_EVENT here left that run parked on a node that was already
+        # READY, so the scheduler — which refuses a parked run — could never
+        # dispatch it and the released wait completed never.
+        if released and run.status in (WorkflowRunStatus.WAITING_EVENT, WorkflowRunStatus.WAITING_CONNECTIVITY):
             _set_run_status(run, WorkflowRunStatus.RUNNING, reason=f"external event '{event_name}' delivered")
             run.waiting_reason = None
             _sync_waiting_nodes(run)
         return run
 
     def sweep_expired_waits(self, run_id: str) -> WorkflowRun:
-        """Fail every external wait whose declared deadline has already passed.
+        """Resolve parked external waits: release connectivity the probe measures,
+        fail every wait whose declared deadline has already passed.
 
         The honest counterpart to :meth:`signal_event`: a wait nobody ever
         satisfies must end, and it must end as a FAILURE carrying the measured
         deadline. Letting it park forever would make the run permanently
         non-terminal while reporting no error at all.
+
+        The sweep is kind-aware. A ``CONNECTIVITY_WAIT`` registration is first
+        measured through the engine's bound probe: a link the probe reports
+        reachable releases the wait (the node returns to READY and the next
+        step completes it through a fresh measurement), and only a still-dead
+        link past its deadline fails. Sweeping a connectivity wait as a plain
+        timeout would fail work whose only problem was that nobody re-measured
+        the link yet.
         """
         run = self.get_run(run_id)
         if run is None:
@@ -2897,6 +3429,7 @@ class DynamicWorkflowEngine:
         now = datetime.now(UTC)
 
         expired: list[tuple[str, float]] = []
+        released: list[str] = []
         with self.state():
             waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
             waits = dict(waits) if isinstance(waits, dict) else {}
@@ -2914,26 +3447,77 @@ class DynamicWorkflowEngine:
                         age = (now - datetime.fromisoformat(registered_at)).total_seconds()
                     except ValueError:
                         age = 0.0
+                if registration.get("kind") == CONNECTIVITY_WAIT_KIND and self.connectivity_probe is not None:
+                    try:
+                        reachable = bool(self.connectivity_probe())
+                    except Exception as exc:  # noqa: BLE001 - a broken probe is not a reachable link
+                        self.events.emit(
+                            "connectivity_probe_failed",
+                            run.run_id,
+                            node_id=nid,
+                            error=f"{type(exc).__name__}: {exc}",
+                            reason="the wait is held; the next dispatch fails the node with the probe's real reason",
+                        )
+                        reachable = False
+                    if reachable:
+                        released.append(nid)
+                        continue
                 if age >= deadline:
                     expired.append((nid, age))
+            # Mutations happen AFTER the walk: popping a registration while
+            # iterating the registry is a ``dictionary changed size during
+            # iteration`` crash out of an operator-facing control route.
+            for nid in released:
+                waits.pop(nid, None)
             for nid, _age in expired:
                 waits.pop(nid, None)
-            if expired:
+            if expired or released:
                 run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+
+        for nid in released:
+            node = graph.nodes.get(nid)
+            if node is None:
+                continue
+            with self.state():
+                if run.node_states.get(nid) == NodeStatus.WAITING:
+                    node.status = NodeStatus.READY
+                    run.node_states[nid] = NodeStatus.READY
+            self.events.emit(
+                "connectivity_wait_released",
+                run.run_id,
+                node_id=nid,
+                target=str(node.config.get("target") or node.config.get("endpoint") or "the network"),
+                reason="the bound probe measured the link reachable; the next step re-measures before completing",
+            )
 
         for nid, age in expired:
             node = graph.nodes.get(nid)
             if node is None:
                 continue
+            waits_kind = node.type is NodeType.CONNECTIVITY_WAIT
             self._fail_node(
                 run,
                 node,
-                f"external wait on node '{nid}' expired after {age:.3f}s without a matching signal; the run cannot wait forever",
+                (
+                    f"connectivity wait on node '{nid}' expired after {age:.3f}s without the link becoming reachable; the run cannot wait forever"
+                    if waits_kind
+                    else f"external wait on node '{nid}' expired after {age:.3f}s without a matching signal; the run cannot wait forever"
+                ),
             )
-        if expired:
+        if expired or released:
             _sync_waiting_nodes(run)
-            if run.status is WorkflowRunStatus.WAITING_EVENT and not run.waiting_nodes:
-                _set_run_status(run, WorkflowRunStatus.RUNNING, reason="all external waits expired")
+            # A sweep never un-parks a run that still has a live wait: only
+            # when every wait resolved does the run leave its park state, and
+            # it leaves toward RUNNING — including from WAITING_CONNECTIVITY,
+            # where an expired connectivity wait must reach the fail-closed
+            # policy below instead of sitting parked on a node that is already
+            # FAILED (the scheduler would never re-enter it).
+            if not run.waiting_nodes and run.status in (WorkflowRunStatus.WAITING_EVENT, WorkflowRunStatus.WAITING_CONNECTIVITY):
+                _set_run_status(
+                    run,
+                    WorkflowRunStatus.RUNNING,
+                    reason=("connectivity measured reachable; waiting nodes released" if released and not expired else "all external waits expired or were released"),
+                )
                 run.waiting_reason = None
             # Apply the same fail-closed policy ``execute_step`` applies after a
             # wave.  Without this a swept wait left a FAILED node inside a RUNNING

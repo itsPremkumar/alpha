@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -12,16 +14,26 @@ from alpha.config.runtime_paths import runtime_home
 from alpha.orchestrator.executors import COMPENSATION_EXECUTOR, bind_default_executors, get_executor_registry
 from alpha.orchestrator.loop import ExecutionKernel, TurnContext, run_turn
 from alpha.orchestrator.replay import replay_run
+from alpha.workflow.drift import (
+    DEFAULT_DRIFT_THRESHOLD,
+    DRIFT_THRESHOLD_KEY,
+    GOAL_DRIFT_SAMPLES_KEY,
+    evaluate_trajectory,
+    resolve_goal,
+    samples_from_dicts,
+)
 from alpha.workflow.event_log import DurableEventLog, DurableEventLogError
 from alpha.workflow.events import WorkflowEvent, get_event_dispatcher
 from alpha.workflow.graph_diff import diff_plan_versions
 from alpha.workflow.models import (
+    PatchOperation,
     WorkflowDefinition,
     WorkflowGraph,
     WorkflowPatch,
     WorkflowRunStatus,
 )
 from alpha.workflow.plan_graph import PlanGraphError, PlanGraphStore, PlanVersionConflict
+from alpha.workflow.quarantine import QuarantineStatus, QuarantineStoreError
 from alpha.workflow.runtime import DynamicWorkflowEngine
 from alpha.workflow.time_travel import (
     ForkError,
@@ -30,6 +42,15 @@ from alpha.workflow.time_travel import (
     run_report,
     simulate_run,
 )
+from alpha.workflow.triggers import (
+    TriggerKind,
+    TriggerStore,
+    TriggerStoreError,
+    WorkflowTrigger,
+    cron_next_after,
+    fire_trigger_on_engine,
+)
+from alpha.workflow.worktrees import WorktreeStoreError
 from app.gateway.authz import require_permission
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -798,6 +819,417 @@ async def sweep_workflow_waits(run_id: str, request: Request) -> dict[str, Any]:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return updated.model_dump()
+
+
+# --------------------------------------------------------------------- triggers
+#
+# Schedules as data.  Nothing in this router runs a cron loop: the store owns
+# *what should fire when*, ``POST /triggers/{id}/fire`` and the supervised
+# ``workflow_triggers`` autonomy loop (default OFF) are the only firing seams,
+# and the autonomous scheduler service remains the owner of ordinary Agent
+# scheduling.  Declared BEFORE ``/{workflow_id}`` so a trigger id can never be
+# read as a workflow id, and ``/triggers/due`` before ``/triggers/{id}`` for
+# the same Starlette registration-order reason the skills routes document.
+
+_TRIGGER_STORES: dict[str, TriggerStore] = {}
+
+
+def get_workflow_trigger_store() -> TriggerStore:
+    """The process-wide trigger store, cached per runtime home.
+
+    Same per-root caching as the durable event logs, so a test (or launcher)
+    that redirects ``ALPHA_HOME`` gets its own store and can never write into
+    the real workspace's schedules.
+    """
+    root = runtime_home() / "workflow_store"
+    key = str(root)
+    store = _TRIGGER_STORES.get(key)
+    if store is None:
+        store = TriggerStore(root)
+        _TRIGGER_STORES[key] = store
+    return store
+
+
+def _trigger_store() -> TriggerStore:
+    return get_workflow_trigger_store()
+
+
+class WorkflowTriggerCreateRequest(BaseModel):
+    workflow_id: str = Field(..., min_length=1, max_length=100)
+    kind: str = Field(..., pattern="^(cron|interval|event)$")
+    expression: str | None = None
+    interval_seconds: float | None = None
+    event_name: str | None = None
+    input_state: dict[str, Any] = Field(default_factory=dict)
+    max_fires: int | None = Field(default=None, ge=1)
+    #: Optional delay before the FIRST time-based fire; interval schedules use
+    #: it instead of firing immediately, so a registered schedule does not
+    #: surprise its own creator with a run at registration time.
+    start_after_seconds: float | None = Field(default=None, ge=0)
+    note: str = ""
+
+
+@router.post("/triggers", status_code=201)
+@require_permission("runs", "create")
+async def create_workflow_trigger(body: WorkflowTriggerCreateRequest, request: Request) -> dict[str, Any]:
+    """Register a durable schedule for an existing workflow.
+
+    The schedule is validated before it is stored: an unparsable or
+    unsatisfiable cron expression, an out-of-bounds interval, and an event
+    trigger with no name are all refusals naming the real reason, so nothing
+    is stored that could never fire. Firing stays host-owned.
+    """
+    engine = get_workflow_engine()
+    owner = _workflow_owner(request)
+    definition = engine.get_definition(body.workflow_id)
+    if definition is None or (owner is not None and definition.owner_id != owner):
+        raise HTTPException(status_code=404, detail=f"Workflow '{body.workflow_id}' not found.")
+    now = time.time()
+    next_fire_at: float | None = None
+    if body.kind == "cron":
+        if not body.expression:
+            raise HTTPException(status_code=400, detail="a cron trigger requires a 5-field expression")
+        next_fire_at = cron_next_after(body.expression, now)
+        if next_fire_at is None:
+            raise HTTPException(status_code=400, detail=f"cron expression {body.expression!r} matches no time within the search horizon; it would never fire")
+    elif body.kind == "interval":
+        if body.interval_seconds is None:
+            raise HTTPException(status_code=400, detail="an interval trigger requires interval_seconds")
+        next_fire_at = now + float(body.interval_seconds) + float(body.start_after_seconds or 0.0)
+    trigger = WorkflowTrigger(
+        trigger_id=f"trg_{uuid.uuid4().hex[:12]}",
+        workflow_id=body.workflow_id,
+        owner_id=owner,
+        kind=TriggerKind(body.kind),
+        expression=body.expression,
+        interval_seconds=body.interval_seconds,
+        event_name=body.event_name,
+        input_state=dict(body.input_state),
+        max_fires=body.max_fires,
+        next_fire_at=next_fire_at,
+        note=body.note[:2000],
+    )
+    try:
+        stored = _trigger_store().add(trigger)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return stored.to_dict()
+
+
+@router.get("/triggers")
+@require_permission("runs", "read")
+async def list_workflow_triggers(request: Request) -> dict[str, Any]:
+    """This owner's schedules. ``owner_id=None`` is the unscoped administrative read."""
+    owner = _workflow_owner(request)
+    try:
+        triggers = _trigger_store().list(owner_id=owner)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"triggers": [trigger.to_dict() for trigger in triggers], "count": len(triggers), "owner_scoped": owner is not None}
+
+
+@router.get("/triggers/due")
+@require_permission("runs", "read")
+async def due_workflow_triggers(request: Request, limit: int = 50) -> dict[str, Any]:
+    """What a scheduler would fire right now — the seam the scheduler rides.
+
+    Event triggers are never returned: they have no time basis, so a caller
+    asking "what is due?" must not be handed a trigger it cannot decide about.
+    """
+    owner = _workflow_owner(request)
+    try:
+        due = _trigger_store().due_triggers(limit=limit)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    scoped = [trigger for trigger in due if owner is None or trigger.owner_id == owner]
+    return {"due": [trigger.to_dict() for trigger in scoped], "count": len(scoped), "evaluated_at": time.time()}
+
+
+@router.get("/triggers/{trigger_id}")
+@require_permission("runs", "read")
+async def get_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
+    store = _trigger_store()
+    try:
+        trigger = store.get(trigger_id)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if trigger is None:
+        raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found.")
+    _assert_workflow_owner(trigger, request)
+    return trigger.to_dict()
+
+
+@router.post("/triggers/{trigger_id}/fire")
+@require_permission("runs", "create")
+async def fire_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
+    """Start one run for a schedule, then advance it.
+
+    The run starts BEFORE the schedule advances, so a refused start (an
+    unregistered workflow, a start_run refusal) leaves the trigger due again
+    instead of consuming a fire on work that never happened. The response
+    reports the started run or the real refusal; it never claims work that
+    did not run.
+    """
+    engine = get_workflow_engine()
+    store = _trigger_store()
+    try:
+        trigger = store.get(trigger_id)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if trigger is None:
+        raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found.")
+    _assert_workflow_owner(trigger, request)
+    result = await asyncio.to_thread(fire_trigger_on_engine, engine, store, trigger_id)
+    if not result.fired and result.reason == "trigger not found":
+        raise HTTPException(status_code=404, detail=result.reason)
+    return {**result.to_dict(), "trigger": store.get(trigger_id).to_dict() if store.get(trigger_id) else None}
+
+
+@router.post("/triggers/{trigger_id}/arm")
+@require_permission("runs", "create")
+async def arm_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
+    store = _trigger_store()
+    try:
+        trigger = store.get(trigger_id)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if trigger is None:
+        raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found.")
+    _assert_workflow_owner(trigger, request)
+    try:
+        return store.set_enabled(trigger_id, True).to_dict()
+    except (TriggerStoreError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/triggers/{trigger_id}/disarm")
+@require_permission("runs", "create")
+async def disarm_workflow_trigger(trigger_id: str, request: Request, reason: str = "disarmed by operator") -> dict[str, Any]:
+    """Hold a schedule without deleting it. The reason is recorded."""
+    store = _trigger_store()
+    try:
+        trigger = store.get(trigger_id)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if trigger is None:
+        raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found.")
+    _assert_workflow_owner(trigger, request)
+    try:
+        return store.set_enabled(trigger_id, False, reason=reason[:2000]).to_dict()
+    except (TriggerStoreError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/triggers/{trigger_id}")
+@require_permission("runs", "create")
+async def delete_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
+    store = _trigger_store()
+    try:
+        trigger = store.get(trigger_id)
+    except TriggerStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if trigger is None:
+        raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found.")
+    _assert_workflow_owner(trigger, request)
+    return {"deleted": store.delete(trigger_id), "trigger_id": trigger_id}
+
+
+# ------------------------------------------------------------------ quarantine
+#
+# The operator work queue for nodes that ran out of road. Declared before
+# ``/{workflow_id}`` for the same route-order reason as the triggers above.
+
+
+@router.get("/quarantine")
+@require_permission("runs", "read")
+async def list_quarantined_nodes(request: Request, status: str | None = None, limit: int = 100) -> dict[str, Any]:
+    """The dead-letter queue, oldest first, owner-scoped.
+
+    Oldest first because the queue is worked, not admired. A record is a
+    pointer at a real failure in a run — discarding one does not un-fail
+    anything, and replaying one applies a real typed patch through the
+    engine's own optimistic-concurrency check.
+    """
+    engine = get_workflow_engine()
+    owner = _workflow_owner(request)
+    parsed: QuarantineStatus | None = None
+    if status is not None:
+        try:
+            parsed = QuarantineStatus(status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"status must be one of {[s.value for s in QuarantineStatus]}, got {status!r}") from exc
+    try:
+        records = engine.quarantine.list(owner_id=owner, status=parsed, limit=limit)
+    except QuarantineStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"records": [record.to_dict() for record in records], "count": len(records), "owner_scoped": owner is not None}
+
+
+@router.get("/quarantine/{record_id}")
+@require_permission("runs", "read")
+async def get_quarantined_node(record_id: str, request: Request) -> dict[str, Any]:
+    engine = get_workflow_engine()
+    try:
+        record = engine.quarantine.get(record_id)
+    except QuarantineStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Quarantine record '{record_id}' not found.")
+    _assert_workflow_owner(record, request)
+    return record.to_dict()
+
+
+class QuarantineReplayRequest(BaseModel):
+    note: str = ""
+
+
+@router.post("/quarantine/{record_id}/replay")
+@require_permission("runs", "create")
+async def replay_quarantined_node(record_id: str, body: QuarantineReplayRequest, request: Request) -> dict[str, Any]:
+    """Re-open the dead node through a real ``retry_node`` patch.
+
+    The patch goes through the engine's own apply path with the run's current
+    graph version, so the optimistic-concurrency check, the patch validator,
+    and the journalling all apply exactly as they do to any operator patch.
+    A source run that is no longer resident, or a rejected patch, is recorded
+    on the record as a refusal — a refused replay leaves the record open,
+    because closing it would lose the work.
+    """
+    engine = get_workflow_engine()
+    try:
+        record = engine.quarantine.get(record_id)
+    except QuarantineStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Quarantine record '{record_id}' not found.")
+    _assert_workflow_owner(record, request)
+    run = engine.get_run(record.run_id)
+    if run is None:
+        reason = f"source run '{record.run_id}' is not resident in this Gateway process; the node cannot be re-opened from here"
+        engine.quarantine.mark_replay_refused(record_id, reason=reason)
+        raise HTTPException(status_code=409, detail=reason)
+    patch = WorkflowPatch(
+        workflow_run_id=record.run_id,
+        base_graph_version=run.graph_version,
+        reason=f"quarantine replay of node '{record.node_id}' (record {record_id}): {body.note or 'operator replay'}"[:2000],
+        proposed_by="quarantine",
+        operations=[PatchOperation(op="retry_node", args={"node_id": record.node_id})],
+    )
+    try:
+        new_graph, validation = await asyncio.to_thread(engine.apply_patch, record.run_id, patch)
+    except KeyError as exc:
+        engine.quarantine.mark_replay_refused(record_id, reason=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not validation.allowed:
+        engine.quarantine.mark_replay_refused(record_id, reason=validation.reason)
+        raise HTTPException(status_code=400, detail=f"replay patch rejected: {validation.reason}")
+    engine.quarantine.mark_replayed(record_id, graph_version=int(new_graph.version), note=body.note[:2000])
+    return {
+        "record": engine.quarantine.get(record_id).to_dict(),
+        "run_id": record.run_id,
+        "graph_version": int(new_graph.version),
+        "replayed_node": record.node_id,
+        "note": "the node is READY again in the SAME run; stepping it re-executes the node and its side effects, which is the point of an explicit replay",
+    }
+
+
+class QuarantineDiscardRequest(BaseModel):
+    note: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/quarantine/{record_id}/discard")
+@require_permission("runs", "cancel")
+async def discard_quarantined_node(record_id: str, body: QuarantineDiscardRequest, request: Request) -> dict[str, Any]:
+    """Close a record as deliberately not replayed. A reason is required."""
+    engine = get_workflow_engine()
+    try:
+        record = engine.quarantine.get(record_id)
+    except QuarantineStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Quarantine record '{record_id}' not found.")
+    _assert_workflow_owner(record, request)
+    try:
+        return engine.quarantine.discard(record_id, note=body.note).to_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------- drift and worktrees
+
+
+@router.get("/runs/{run_id}/drift")
+@require_permission("runs", "read")
+async def get_workflow_run_drift(run_id: str, request: Request) -> dict[str, Any]:
+    """The goal-drift trajectory: does this run still serve its declared goal?
+
+    Recomputed from the run's own stored samples on every read, so the answer
+    can never be a stale cached verdict. A run with no declared goal reports
+    ``no_goal``; too few measurable nodes reports ``insufficient_evidence``
+    with the real count. The verdict changes nothing — it is a measurement an
+    operator (or an approved replan) acts on, never an action the engine took.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    graph = engine._run_graph_for(run)
+    definition = engine.get_definition(run.workflow_id)
+    goal, source = resolve_goal(
+        graph_metadata=graph.metadata if graph is not None else None,
+        run_state=run.state,
+        definition_description=definition.description if definition is not None else "",
+    )
+    threshold = DEFAULT_DRIFT_THRESHOLD
+    if graph is not None:
+        try:
+            threshold = float(graph.metadata.get(DRIFT_THRESHOLD_KEY, DEFAULT_DRIFT_THRESHOLD))
+        except (TypeError, ValueError):
+            threshold = DEFAULT_DRIFT_THRESHOLD
+    samples = samples_from_dicts(run.metrics.get(GOAL_DRIFT_SAMPLES_KEY, []) if isinstance(run.metrics.get(GOAL_DRIFT_SAMPLES_KEY), list) else [])
+    report = evaluate_trajectory(goal, source, samples, threshold=threshold)
+    return report.to_dict()
+
+
+@router.get("/runs/{run_id}/worktrees")
+@require_permission("runs", "read")
+async def list_run_worktrees(run_id: str, request: Request) -> dict[str, Any]:
+    """This run's worktree claims: what was checked out, where, and at what head."""
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        claims = engine.worktrees.list(run_id=run_id)
+    except WorktreeStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"claims": [claim.to_dict() for claim in claims], "count": len(claims)}
+
+
+@router.post("/runs/{run_id}/worktrees/{node_id}/release")
+@require_permission("runs", "cancel")
+async def release_run_worktree(run_id: str, node_id: str, request: Request) -> dict[str, Any]:
+    """Remove one node's worktree and close its claim.
+
+    A failed removal is reported with the real git error and leaves the claim
+    ACTIVE: a worktree reported as gone while it still occupies disk would
+    hand the same directory to the next task.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        return await asyncio.to_thread(engine.release_node_worktree, run_id, node_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/system/executors")
