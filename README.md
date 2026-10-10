@@ -830,9 +830,12 @@ exactly-once execution.
   `cua-driver 0.34.0`: 59 tools discovered through Alpha's own MCP loader, a window
   screenshot written to a real PNG, and text typed at pixel coordinates read back from
   the target's own value, with `6 x 7 = 42` computed in a Calculator that never took
-  focus. Its MCP tools default to the elevated ask-per-call governance class, and
-  SentinelGuard does not wrap MCP-delivered input. Research, licensing table, verified
-  behaviour and runbook:
+  focus. Addressing by the driver's own `element_token` works too, which is why the
+  block sets `include_structured_content`: the handles live only in MCP
+  `structuredContent`, which no model is otherwise shown, and the token path gets a
+  driver-verified result where the pixel path reports `not verified`. Its MCP tools
+  default to the elevated ask-per-call governance class, and SentinelGuard does not
+  wrap MCP-delivered input. Research, licensing table, verified behaviour and runbook:
   [docs/RESEARCH_COMPUTER_USE_CUA.md](docs/RESEARCH_COMPUTER_USE_CUA.md).
 
 → [docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md) ·
