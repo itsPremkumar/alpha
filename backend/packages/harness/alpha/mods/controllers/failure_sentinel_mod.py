@@ -20,6 +20,7 @@ from alpha.bots.failure_reasons import (
     is_auto_retryable,
 )
 from alpha.mods.context import CapabilityContext
+from alpha.mods.manifest import ModManifest
 from alpha.mods.types import (
     AlphaEvent,
     EventResult,
@@ -69,6 +70,14 @@ class FailureSentinelMod:
         "bot.failed",
         "error.occurred",
     }
+    manifest = ModManifest.create(
+        name="failure_sentinel",
+        version="1.0.0",
+        description="Detects repetitive failure loops and routes auto-repair or escalation.",
+        hooks=tuple(sorted(subscribed_events)),
+        calls=("evidence:record", "clock:schedule"),
+        gating=False,
+    )
 
     def __init__(
         self,

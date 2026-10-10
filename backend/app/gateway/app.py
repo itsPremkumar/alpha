@@ -62,6 +62,7 @@ from app.gateway.routers import (
     memory,
     missions,
     models,
+    mods,
     multimodal,
     notifications,
     openai_compat,
@@ -1262,6 +1263,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(commands.router, prefix="/api/gateway")
     app.include_router(missions.router)
     app.include_router(workflows.router)
+    # Operator surface over the mod kernel: fleet introspection, audit, holds,
+    # state and mod commands. Read-only plus hold decisions; registration and
+    # ordering stay kernel-owned.
+    app.include_router(mods.router)
     app.include_router(openai_compat.router)
     app.include_router(policy.router)
     app.include_router(council.router)

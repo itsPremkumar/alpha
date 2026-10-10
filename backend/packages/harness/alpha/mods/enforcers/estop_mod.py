@@ -6,6 +6,7 @@ import logging
 import time
 
 from alpha.mods.context import CapabilityContext
+from alpha.mods.manifest import ModManifest
 from alpha.mods.types import (
     AlphaEvent,
     EventResult,
@@ -38,6 +39,14 @@ class FleetEstopMod:
         "bot.*",
         "group.*",
     }
+    manifest = ModManifest.create(
+        name="fleet_estop",
+        version="1.0.0",
+        description="Fleet-wide emergency stop: refuses every admission while engaged.",
+        hooks=tuple(sorted(subscribed_events)),
+        calls=("estop:control", "estop:read"),
+        gating=True,
+    )
 
     async def handle(
         self,

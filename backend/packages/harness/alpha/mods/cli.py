@@ -16,7 +16,6 @@ from alpha.mods.types import (
     AlphaEvent,
     CorrelationContext,
     EventOutcome,
-    ModPriority,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,32 +36,144 @@ def _format_table(headers: list[str], rows: list[list[str]]) -> str:
 def cmd_list(args: argparse.Namespace) -> int:
     """alpha mod list — inspect registered mods."""
     kernel = get_mod_kernel()
-    mods = kernel.list_mods()
-    if not mods:
+    descriptions = kernel.describe_mods()
+    if not descriptions:
         print("No mods currently registered in Alpha Mod Kernel.")
         return 0
 
-    headers = ["Priority", "Tier", "Mod Name", "Version", "Capabilities", "Subscribed Events"]
+    headers = ["Priority", "Mod Name", "Version", "First-party", "Discrepancies", "Subscribed Events"]
     rows = []
-    for m in mods:
-        priority_val = getattr(m, "priority", 2000)
-        try:
-            tier_name = ModPriority(priority_val).name
-        except Exception:
-            tier_name = "CUSTOM"
-        caps = getattr(m, "required_capabilities", set())
-        subs = getattr(m, "subscribed_events", None)
-        sub_str = "*" if subs is None else ", ".join(sorted(subs))
+    for d in descriptions:
+        subs = d.get("subscribed_events") or []
+        sub_str = ", ".join(subs)
         rows.append(
             [
-                str(priority_val),
-                tier_name,
-                getattr(m, "name", "unknown"),
-                getattr(m, "version", "1.0.0"),
-                ", ".join(sorted(caps)) or "none",
+                str(d.get("priority", "?")),
+                str(d.get("name", "unknown")),
+                str(d.get("version", "1.0.0")),
+                "yes" if d.get("first_party") else "NO",
+                str(len(d.get("discrepancies") or [])),
                 sub_str,
             ]
         )
+    print(_format_table(headers, rows))
+    discrepancy_total = sum(len(d.get("discrepancies") or []) for d in descriptions)
+    if discrepancy_total:
+        print(f"\n{discrepancy_total} manifest discrepancy(ies) across the fleet — run 'alpha mod describe' for the names.")
+    return 0
+
+
+def cmd_describe(args: argparse.Namespace) -> int:
+    """alpha mod describe [name] — declared contract beside observed behaviour.
+
+    The review-facing answer to "what does this mod claim, what is it actually
+    wired to, and where do those differ?". Nothing here executes a mod.
+    """
+    import json
+
+    kernel = get_mod_kernel()
+    descriptions = kernel.describe_mods()
+    if args.name:
+        descriptions = [d for d in descriptions if d.get("name") == args.name]
+        if not descriptions:
+            print(f"Error: mod '{args.name}' is not registered.", file=sys.stderr)
+            return 1
+    for d in descriptions:
+        print(json.dumps(d, indent=2, sort_keys=True, default=str))
+        print()
+    return 0
+
+
+def cmd_chain(args: argparse.Namespace) -> int:
+    """alpha mod chain — the ordered chain as dispatch runs it.
+
+    Sorted by the same priority key dispatch uses, never by registration time:
+    this is the auditable answer to "who runs first, and can anything outrank
+    the safety triad?".
+    """
+    kernel = get_mod_kernel()
+    chain = kernel.control_chain()
+    if not chain:
+        print("No mods currently registered in Alpha Mod Kernel.")
+        return 0
+    headers = ["Order", "Priority", "Mod", "Version", "First-party", "Subscribed Events"]
+    rows = [
+        [
+            str(c["order"]),
+            str(c["priority"]),
+            str(c["mod"]),
+            str(c["version"]),
+            "yes" if c["first_party"] else "NO",
+            ", ".join(c["subscribed_events"]),
+        ]
+        for c in chain
+    ]
+    print(_format_table(headers, rows))
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """alpha mod audit — recent audit records and aggregate counters.
+
+    Admin/CI surface over the same ledger ``GET /api/mods/audit`` serves. An
+    absent audit mod is an error naming it, never an empty report that reads as
+    "nothing happened".
+    """
+    kernel = get_mod_kernel()
+    audit = kernel.get_mod("audit_ledger")
+    if audit is None:
+        print("Error: audit_ledger mod is not registered in this kernel; no audit records could be read.", file=sys.stderr)
+        return 1
+    entries = audit.get_entries(limit=args.limit, event_name=args.event, outcome=args.outcome)
+    stats = audit.stats()
+    print(f"--- Audit ledger: {stats['retained']}/{stats['capacity']} retained, {stats['events']} distinct events ---")
+    if args.jsonl:
+        print(audit.export_jsonl(limit=args.limit))
+        return 0
+    if not entries:
+        print("No audit records match the given filters.")
+        return 0
+    headers = ["Event", "Outcome", "Chain", "Duration (ms)"]
+    rows = [
+        [
+            str(e.get("event", "")),
+            str(e.get("outcome", "")),
+            " > ".join(str(m) for m in (e.get("chain") or [])),
+            f"{float(e.get('duration_ms', 0.0)):.1f}",
+        ]
+        for e in entries
+    ]
+    print(_format_table(headers, rows))
+    return 0
+
+
+def cmd_holds(args: argparse.Namespace) -> int:
+    """alpha mod holds — held actions awaiting (or carrying) an operator decision.
+
+    The durable approval queue behind a mod ``DEFER``. Approving or rejecting is
+    an authenticated Gateway/API act (``POST /api/mods/holds/{id}/approve``);
+    this command only reads, so it can never release an action by itself.
+    """
+    from alpha.mods.approvals import get_hold_store
+
+    store = get_hold_store()
+    records = store.list_holds(decision=args.decision, limit=args.limit)
+    print(f"--- Mod hold store: {store.store_file} ---")
+    if not records:
+        print("No held actions recorded.")
+        return 0
+    headers = ["Hold ID", "Tool", "Risk", "Decision", "Reason", "Expires (unix)"]
+    rows = [
+        [
+            r.hold_id,
+            r.tool_name,
+            r.risk_level,
+            r.decision + (" (EXPIRED)" if r.is_expired() and not r.is_terminal() else ""),
+            (r.reason[:60] + "…") if len(r.reason) > 60 else r.reason,
+            f"{r.expires_at:.0f}" if r.expires_at else "—",
+        ]
+        for r in records
+    ]
     print(_format_table(headers, rows))
     return 0
 
@@ -361,6 +472,25 @@ def build_parser() -> argparse.ArgumentParser:
     # list
     sub.add_parser("list", help="list registered mods and their priority tiers")
 
+    # describe
+    desc_p = sub.add_parser("describe", help="declared manifest beside observed behaviour, with discrepancies")
+    desc_p.add_argument("name", nargs="?", default=None, help="restrict to one mod (default: every registered mod)")
+
+    # chain
+    sub.add_parser("chain", help="the ordered control chain as dispatch runs it")
+
+    # audit
+    audit_p = sub.add_parser("audit", help="recent audit records and aggregate counters")
+    audit_p.add_argument("--limit", type=int, default=50, help="maximum records to show (default 50)")
+    audit_p.add_argument("--event", default=None, help="filter by event name")
+    audit_p.add_argument("--outcome", default=None, help="filter by outcome (continue/deny/defer/...)")
+    audit_p.add_argument("--jsonl", action="store_true", help="emit the records as JSONL instead of a table")
+
+    # holds
+    holds_p = sub.add_parser("holds", help="held actions awaiting an operator decision (read-only)")
+    holds_p.add_argument("--limit", type=int, default=50, help="maximum holds to show (default 50)")
+    holds_p.add_argument("--decision", default=None, help="filter by decision (pending/approved/rejected/expired)")
+
     # validate
     val_p = sub.add_parser("validate", help="static AST analysis of mod capabilities")
     val_p.add_argument("path", help="path to mod file or directory")
@@ -377,6 +507,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.subcommand == "list":
         return cmd_list(args)
+    elif args.subcommand == "describe":
+        return cmd_describe(args)
+    elif args.subcommand == "chain":
+        return cmd_chain(args)
+    elif args.subcommand == "audit":
+        return cmd_audit(args)
+    elif args.subcommand == "holds":
+        return cmd_holds(args)
     elif args.subcommand == "validate":
         return cmd_validate(args)
     elif args.subcommand == "test":

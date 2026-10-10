@@ -10,6 +10,8 @@ from enum import StrEnum
 from typing import Any
 
 from alpha.mods.context import CapabilityContext
+from alpha.mods.manifest import ModManifest
+from alpha.mods.preview import preview_impact
 from alpha.mods.types import (
     AlphaEvent,
     EventResult,
@@ -88,13 +90,35 @@ class BlastRadiusGuardMod:
     priority = int(ModPriority.SECURITY)
     required_capabilities = {"tools:read", "ui:render", "storage:write", "storage:read"}
     subscribed_events = {"tool.requested"}
+    manifest = ModManifest.create(
+        name="blast_radius_guard",
+        version="1.0.0",
+        description="Tool risk classifier (R0-R5) and hold-and-release gate with diff/impact preview.",
+        hooks=("tool.requested",),
+        calls=("tools:read", "ui:render", "storage:write", "storage:read"),
+        state_writes=("held_actions", "approved_ids", "rejected_ids"),
+        gating=True,
+    )
 
-    def __init__(self, *, strict_network: bool = False):
+    def __init__(self, *, strict_network: bool = False, hold_store: Any | None = None):
         self._strict_network = strict_network
+        # The durable store is the authority on whether a hold was released or
+        # rejected; the in-memory sets below remain a fast path for a decision
+        # taken in this process and are never the only record.
+        self._hold_store = hold_store
         self._held_actions: dict[str, dict[str, Any]] = {}
         self._approved_ids: set[str] = set()
         self._rejected_ids: set[str] = set()
         self._rejected_reasons: dict[str, str] = {}
+
+    @property
+    def hold_store(self) -> Any:
+        """The durable hold store, resolved lazily so tests need no runtime home."""
+        if self._hold_store is None:
+            from alpha.mods.approvals import get_hold_store
+
+            self._hold_store = get_hold_store()
+        return self._hold_store
 
     def classify_risk(
         self,
@@ -177,6 +201,26 @@ class BlastRadiusGuardMod:
         risk_level, reason, details = self.classify_risk(tool_name, tool_args)
 
         tool_call_id = event.correlation.tool_call_id or event.event_id
+        run_id = str(event.correlation.run_id or "")
+
+        # A durable decision outranks every in-memory fast path: the operator
+        # may have answered from a different process, or before a restart.
+        store_status, store_record = self._store_status(tool_name, tool_args, run_id, tool_call_id)
+        if store_status == "rejected":
+            reject_reason = (store_record.decision_reason if store_record else "") or "Rejected by operator"
+            logger.warning("Refusing rejected tool call %s: %s", tool_call_id, reject_reason)
+            return EventResult.deny(
+                event=event,
+                reason=f"ACTION_REJECTED: Operator rejected this action: {reject_reason}",
+            )
+        if store_status == "approved":
+            logger.info("Proceeding with durably approved high-risk tool call %s", tool_call_id)
+            return await next_fn(event)
+        if store_status == "expired":
+            return EventResult.deny(
+                event=event,
+                reason=("APPROVAL_EXPIRED: A hold on this action expired before an operator decided it. Re-request the action to open a fresh hold; the previous approval, if any, is void."),
+            )
 
         # If previously rejected by operator, deny immediately
         is_rejected = tool_call_id in self._rejected_ids or payload.get("hold_id") in self._rejected_ids
@@ -198,7 +242,20 @@ class BlastRadiusGuardMod:
         requires_hold = risk_level in (RiskLevel.R4, RiskLevel.R5) or (self._strict_network and risk_level == RiskLevel.R3)
 
         if requires_hold:
-            hold_id = f"hold_{uuid.uuid4().hex[:10]}"
+            impact = preview_impact(tool_name, tool_args)
+            # The durable hold is the record an operator actually decides on, so
+            # it is opened *before* the DEFER is returned: a hold that exists
+            # only in this process is a hold a Gateway restart discards.
+            durable, created = self.open_durable_hold(
+                tool_name=tool_name,
+                tool_args=tool_args,
+                run_id=run_id,
+                tool_call_id=tool_call_id,
+                risk_level=risk_level.value,
+                reason=reason,
+                impact=impact.to_dict(),
+            )
+            hold_id = durable.hold_id if durable is not None else f"hold_{uuid.uuid4().hex[:10]}"
             hold_record = {
                 "hold_id": hold_id,
                 "tool_call_id": tool_call_id,
@@ -209,6 +266,7 @@ class BlastRadiusGuardMod:
                 "reason": reason,
                 "details": details,
                 "timestamp": time.time(),
+                "durable": durable is not None,
             }
             self._held_actions[hold_id] = hold_record
 
@@ -221,13 +279,16 @@ class BlastRadiusGuardMod:
                     "preview": details.get("preview", ""),
                     "tool_name": tool_name,
                     "requires_approval": True,
+                    "impact": impact.to_dict(),
                 }
             )
 
             logger.warning(
-                "BlastRadiusGuardMod holding tool execution %s (Risk: %s): %s",
+                "BlastRadiusGuardMod holding tool execution %s (Risk: %s, hold=%s, durable=%s): %s",
                 tool_name,
                 risk_level.value,
+                hold_id,
+                durable is not None,
                 reason,
             )
 
@@ -239,12 +300,60 @@ class BlastRadiusGuardMod:
                     "card_id": card_id,
                     "risk_level": risk_level.value,
                     "preview": details.get("preview", ""),
+                    "impact": impact.to_dict(),
+                    "durable": durable is not None,
+                    "reused_existing_hold": not created,
                 },
                 metadata={"hold_record": hold_record},
             )
 
         # R0, R1, R2, normal R3 pass through
         return await next_fn(event)
+
+    def _store_status(self, tool_name: str, tool_args: dict[str, Any], run_id: str, tool_call_id: str) -> tuple[str, Any]:
+        """Resolve the durable hold state for this exact action.
+
+        Any failure to read the store returns ``"unreadable"``, which the caller
+        treats as no decision rather than as an approval: a store that cannot be
+        read has not approved anything.
+        """
+        try:
+            status, record = self.hold_store.status_for(tool_name, tool_args, run_id, tool_call_id)
+        except Exception as exc:
+            logger.error("BlastRadiusGuardMod could not read the hold store: %s", exc)
+            return "unreadable", None
+        mapping = {
+            "proceed": "approved",
+            "refuse": "rejected",
+            "wait": "pending",
+        }
+        return mapping.get(str(getattr(status, "value", status)), "pending"), record
+
+    def open_durable_hold(
+        self,
+        *,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        run_id: str,
+        tool_call_id: str,
+        risk_level: str,
+        reason: str,
+        impact: dict[str, Any] | None = None,
+    ) -> Any:
+        """Persist a hold so a decision survives a restart and another process."""
+        try:
+            return self.hold_store.open_hold(
+                tool_name=tool_name,
+                tool_args=tool_args,
+                run_id=run_id,
+                tool_call_id=tool_call_id,
+                risk_level=risk_level,
+                reason=reason,
+                impact=impact,
+            )
+        except Exception as exc:
+            logger.error("BlastRadiusGuardMod could not persist hold: %s", exc)
+            return None
 
     def approve(self, hold_id: str) -> bool:
         """Operator approves a held high-risk action."""
@@ -253,7 +362,19 @@ class BlastRadiusGuardMod:
             tool_call_id = record["tool_call_id"]
             self._approved_ids.add(tool_call_id)
             self._approved_ids.add(hold_id)
+            try:
+                self.hold_store.approve(hold_id, operator="local")
+            except Exception as exc:
+                logger.error("Approval of %s is process-local only: %s", hold_id, exc)
             logger.info("Operator approved held action %s (tool_call_id=%s)", hold_id, tool_call_id)
+            return True
+        # A hold recorded durably but not held in this memory still resolves, so
+        # an approval from another process releases the action it named.
+        durable = self.hold_store.get(hold_id)
+        if durable is not None:
+            self.hold_store.approve(hold_id, operator="local")
+            self._approved_ids.add(durable.tool_call_id)
+            self._approved_ids.add(hold_id)
             return True
         return False
 
@@ -265,7 +386,17 @@ class BlastRadiusGuardMod:
             self._rejected_ids.add(tool_call_id)
             self._rejected_ids.add(hold_id)
             self._rejected_reasons[tool_call_id] = reason
+            try:
+                self.hold_store.reject(hold_id, operator="local", reason=reason)
+            except Exception as exc:
+                logger.error("Rejection of %s is process-local only: %s", hold_id, exc)
             logger.info("Operator rejected held action %s: %s", hold_id, reason)
+            return True
+        durable = self.hold_store.get(hold_id)
+        if durable is not None:
+            self.hold_store.reject(hold_id, operator="local", reason=reason)
+            self._rejected_ids.add(durable.tool_call_id)
+            self._rejected_reasons[durable.tool_call_id] = reason
             return True
         return False
 

@@ -50,7 +50,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
   `extensions_config.json` (MCP servers + skills, API-editable at runtime),
   `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
 - Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
-  136 tools, 68 routers, 44 middlewares, 11 supervisor loops.
+  136 tools, 69 routers, 44 middlewares, 10 supervisor loops.
 - Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
   `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
 - Third-party Python extensions use the operator-controlled top-level `plugins:`
@@ -80,7 +80,8 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 - [Run recovery](https://github.com/itsPremkumar/alpha/blob/main/docs/RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
 - [APEX Autopilot](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md): goal sessions dispatched through the Gateway RunManager; registered acceptance probes can submit measured reports, while absent/inconclusive probes leave sessions awaiting owner evidence. No default probes verify arbitrary natural-language criteria. Persisted active-agent/parallel caps govern ordinary `task` delegation; every enabled profile has unlimited token, tool-call, and runtime ceilings; terminal failures can be replanned by an admin after explicit side-effect acknowledgement; delegated child calls revalidate APEX policy; durable `batch_task` concurrency has separate limits.
 APEX session, mode, and goal snapshots use same-host local file locking; this does not provide cross-host exactly-once execution. Goal decomposition now commits the child and its parent link in one snapshot.
-- [Alpha Mod Kernel](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md): ordered event middleware on lead-agent tool/model lifecycle and run admission, with explicit capability grants and fail-closed ESTOP/risk gates. Approval holds, event replay, and durable cross-worker state are not implemented.
+- [Alpha Mod Kernel](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md): ordered event middleware on lead-agent tool/model lifecycle and run admission, with explicit capability grants and fail-closed ESTOP/risk gates. Held actions are durable single-process JSON with admin approve/reject; kernel-journal replay, dead-letter processing, and cross-worker state are not implemented.
+An operator console reads it live: the **Mods** workspace view renders the ordered chain and each mod's own `describe`, runs the mod-contributed commands, and — admin-gated — the audit ledger (digests only) and the hold queue with approve/reject. `POST /api/mods/preview` bounds what a tool call would touch and never executes it; an absent list is reported as absent, not as empty.
 
 The APEX invariant endpoint checks module/symbol presence and does not prove runtime enforcement.
 

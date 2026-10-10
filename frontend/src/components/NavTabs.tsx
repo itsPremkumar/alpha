@@ -37,6 +37,7 @@ import {
   Rocket,
   Gauge,
   ScrollText,
+  ListOrdered,
 } from "lucide-react";
 
 export type WorkspaceView =
@@ -73,6 +74,16 @@ export type WorkspaceView =
   | "protocols"
   | "apex"
   | "intelligence"
+  // The Alpha Mod Kernel's operator surface. It sits *here* rather than at the
+  // end for two reasons: `reliability-view.test.mjs` pins reliability as the
+  // terminal member of this union, and `sentinel-view.test.mjs` plus
+  // `effects-view.test.mjs` pin the sentinel -> effects -> reliability triple
+  // as three *adjacent* members. So a new id goes above that pair, never
+  // between its members and never after reliability. (No quoted ids in here:
+  // `unionIds()` in `workspace-nav.test.mjs` reads every quoted token between
+  // `export type WorkspaceView` and the first semicolon, so a comment quoting
+  // an id reports it as a duplicate union member.)
+  | "mods"
   | "sentinel"
   | "effects"
   | "reliability";
@@ -132,6 +143,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "intelligence", label: "Intelligence", icon: <Gauge className="size-3.5" />, blurb: "Control plane: loop health, evidence, metrics & honesty basis", category: "system" },
   { id: "sentinel", label: "Sentinel", icon: <ShieldAlert className="size-3.5" />, blurb: "Repair loop: observed faults, verified fixes, reverts & human handoffs", category: "system" },
   { id: "effects", label: "Effects", icon: <ScrollText className="size-3.5" />, blurb: "Effect journal: external effects, digests & reconciliation verdicts", category: "system" },
+  { id: "mods", label: "Mods", icon: <ListOrdered className="size-3.5" />, blurb: "Mod kernel: ordered policy chain, commands, audit ledger, holds & impact preview", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];
 

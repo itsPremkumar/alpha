@@ -17,6 +17,7 @@ from alpha.bots.work_discovery import match_bot_for_task
 from alpha.capabilities.eligibility import eligible_candidates, infer_capability_tags
 from alpha.models.task_router import TASK_TO_CATEGORY, aroute_task
 from alpha.mods.context import CapabilityContext
+from alpha.mods.manifest import ModManifest
 from alpha.mods.types import (
     AlphaEvent,
     EventResult,
@@ -51,6 +52,14 @@ class TaskRouterMod:
         "run.admit",
         "task.admit",
     }
+    manifest = ModManifest.create(
+        name="task_router",
+        version="1.0.0",
+        description="Matches task requirements to registered bots, model tiers, and toolsets.",
+        hooks=tuple(sorted(subscribed_events)),
+        calls=(),
+        gating=False,
+    )
 
     def __init__(self, *, registry: BotRegistry | None = None, max_history: int = 100):
         self._registry = registry

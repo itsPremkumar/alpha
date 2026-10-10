@@ -7,6 +7,7 @@ import re
 import time
 
 from alpha.mods.context import CapabilityContext
+from alpha.mods.manifest import ModManifest
 from alpha.mods.types import (
     AlphaEvent,
     EventResult,
@@ -42,6 +43,14 @@ class VerificationEvidenceGateMod:
         "mission.completion_requested",
         "tool.completed",
     }
+    manifest = ModManifest.create(
+        name="verification_evidence_gate",
+        version="1.0.0",
+        description="Refuses unverified completion claims; demands measured execution receipts.",
+        hooks=tuple(sorted(subscribed_events)),
+        calls=("evidence:read", "evidence:record"),
+        gating=True,
+    )
 
     def __init__(self, *, strict_mode: bool = True):
         self._strict_mode = strict_mode

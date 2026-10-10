@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-10T07:00:37Z",
+ "generated_at": "2026-10-10T01:04:50Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1422,6 +1422,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.mods",
+   "module": "app.gateway.routers.mods",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.multimodal",
    "module": "app.gateway.routers.multimodal",
    "symbol": "router",
@@ -2015,13 +2023,6 @@
   {
    "id": "swarm_status",
    "module": "app.gateway.autonomy.loops:swarm_status_tick",
-   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
-   "wired": true,
-   "state": "wired"
-  },
-  {
-   "id": "workflow_triggers",
-   "module": "app.gateway.autonomy.loops:workflow_triggers_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
