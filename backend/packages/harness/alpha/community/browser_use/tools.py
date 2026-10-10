@@ -407,7 +407,7 @@ async def browser_use_run_tool(
         logger.error(f"browser_use_run unexpected failure: {e}")
         return _tool_message(f"Error: browser-use run failed: {e}", tool_call_id)
 
-    text = _render_envelope(envelope, version=None, model=model)
+    text = _render_envelope(envelope, version=None, model=model, verify=verify)
 
     # Publish the captured frames into the thread outputs so they open in the
     # artifacts panel and render inline. Off the event loop: this is file I/O.
@@ -429,7 +429,7 @@ async def browser_use_run_tool(
     return Command(update=update)
 
 
-def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: str | None) -> str:
+def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: str | None, verify: bool = False) -> str:
     """Turn the child's JSON envelope into the text the model reads.
 
     A failure is never dressed as a result, and **an unfinished run is not
@@ -503,6 +503,10 @@ def _render_envelope(envelope: dict[str, Any], *, version: str | None, model: st
             verdict = "\n\nIndependent check (judge): inconclusive."
         if reason:
             verdict += f"\n  {'why it failed' if passed is False else 'reasoning'}: {reason[:500]}"
+    elif verify:
+        # Asking for verification and getting no line at all is the worst outcome:
+        # it reads as though the check passed. Say plainly that none came back.
+        verdict = "\n\nIndependent check (judge): requested, but browser-use returned no verdict for this run. Treat the answer as unverified."
 
     # Visual evidence, when the run captured it. browser-use only records a frame
     # per step when vision is enabled, so an empty list is a legitimate outcome of
