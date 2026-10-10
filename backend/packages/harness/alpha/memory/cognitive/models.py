@@ -333,6 +333,16 @@ class ConsolidationReport:
     decayed_items_count: int
     insights: list[dict[str, Any]]
     summary: str
+    # Reconsolidation fields, all defaulted so every existing construction of
+    # this report stays valid. `reconsolidation_records` counts retrievals folded
+    # back into the store during the pass; `replayed_traces`/`replayed_budget`
+    # report how many successful episodes were strengthened and the cap that
+    # bound the pass; `tier_disclosure` carries the per-tier counts where a
+    # measured number exists and `None` where it does not.
+    reconsolidation_records: int = 0
+    replayed_traces: int = 0
+    replayed_budget: int = 0
+    tier_disclosure: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

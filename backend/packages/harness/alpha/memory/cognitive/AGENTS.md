@@ -55,3 +55,42 @@ exists must read `effectiveness`, which is `None` while `evidence_count` is 0.
   belong to an explicit `evaluate` + `transition` pair.
 
 Regression coverage: `backend/tests/test_cognitive_skill_lifecycle.py`.
+
+## Reconsolidation (`reconsolidation.py`)
+
+Two mechanisms this stack was missing, both from the memory literature:
+
+- **Retrieval is not read-only.** `CognitiveMemorySystem.recall()` now folds
+  each retrieved semantic fact back into the store (access count, and the
+  spacing effect that makes a retrieval after a long gap worth more than one
+  immediately after the last). `recall(..., reconsolidate=False)` is the explicit
+  read-only path for probes, previews and tests that must not mutate.
+  `record_retrieval_outcome()` / `reconsolidation_disclosure()` are the write and
+  read sides of the usefulness verdict, which only the caller can supply.
+- **Rest replays what worked.** `CognitiveConsolidationEngine` now runs
+  `replay_strengthen` inside Deep Sleep, bounded by `REPLAY_BUDGET` (8) over a
+  `REPLAY_SCAN_LIMIT` (200) trace window, most-salient first. A trace whose
+  outcome is `UNKNOWN` is skipped rather than assumed successful, and salience
+  is capped so repeated replay cannot manufacture importance.
+
+Invariants, all pinned by `tests/test_cognitive_reconsolidation.py`:
+
+- `retention_probability()` is the **single** implementation of the Ebbinghaus
+  curve that `CognitiveConsolidationEngine` already applies; reconsolidation
+  reuses it rather than growing a second decay model. It returns `None` when a
+  node has never been accessed, because there is no measured interval to decay.
+- `useful` is a caller assertion, never an inference: `None` is a third state
+  and is never coerced to `False`.
+- `ConsolidationReport` gained `reconsolidation_records`, `replayed_traces`,
+  `replayed_budget` and `tier_disclosure`, all defaulted so every existing
+  construction stays valid.
+- `tier_disclosure` sums only tiers that reported a number. A tier reporting
+  `None` keeps `None` rather than being folded in as a zero.
+- `semantic_graph.add_belief` seeds `access_count=1`, so a fresh node reports
+  one access before any retrieval. Reconsolidation does not hide that: the first
+  recall takes it to 2 and the disclosure says which accesses were retrievals.
+- **The RRSI link is deliberately a named gap, not an invented mapping.**
+  Consolidation knows which tier moved and how many items, which is not a
+  measured evolve-set score delta per component (`g_t`). `evidence_gap_reason()`
+  states that instead of producing a plausible-looking mapping. Do not "fix"
+  this by asserting one.
