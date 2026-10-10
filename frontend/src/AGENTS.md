@@ -276,6 +276,18 @@ as working.
   then the monitor's `liveness` string verbatim, then — only when no row
   arrived — the presence reading, which labels itself `presence only` in its own
   sentence. A verdict nobody produced is `working: null`, never `false`.
+- **A live run outranks the heartbeat engine, and it is the only reading that
+  names the work.** `GET /api/bots/working` (Gateway: `routers/bots.py`) joins
+  the run store on `RunRow.assistant_id`, which `ChatView` sets to the roster
+  bot's `name`, so a bot mid-run reads *"Running on thread "investigate flaky
+  timeout" · run af79cfa3 · for 42s · on union-alpha"* instead of "no heartbeat
+  recorded". Verified live against a real Gateway: a run for `tester` came back
+  attributed with its run id, thread title and elapsed seconds. A pause still
+  outranks it, but the card says *both* facts (`Paused · run finishing`) because
+  an admitted run really is finishing. The route is a third read, not a field on
+  `/health/overview`, because it needs a SQL backend: the Gateway 503s on
+  `database.backend: memory`, and folding that in would cost a memory
+  deployment its liveness strip.
 - **A liveness word from a newer Gateway renders verbatim** in a muted badge
   (`WorkingStatusBadge` carries `data-working-key` for the suite). Snapping an
   unread verdict to `healthy` would lend this build's green badge to a state it
@@ -285,6 +297,12 @@ as working.
 - **Every absent counter is `null`, never `0`.** `normalizeHealthOverview`
   reads `summary` key by key, so a payload from a Gateway that has not gained a
   state renders the states it did report and `— not reported` for the rest.
+- **A failed read is a state, not a number, on both sides.** The strip's
+  "bots with a run in flight" cell renders `still reading` while the run-store
+  read is in flight and `not reported` (with the server's reason in its
+  tooltip) when it failed — never `0`, which would claim the store measured an
+  idle fleet. `reported: false` survives the mapper precisely so a caller
+  cannot read it as "no runs".
 - **`needsAttention` is deliberately narrow** — stalled, or an operator stop. A
   resting fleet reads `dead` on the monitor, so escalating that would make the
   gallery's notice permanent and therefore ignored; the strip still *counts*

@@ -12,12 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from alpha.bots.inbox import roster_activity
 from alpha.bots.profile import _now
+from alpha.persistence.run.model import RunRow
+from alpha.persistence.thread_meta.model import ThreadMetaRow
 from app.gateway.authz import require_permission
 from app.gateway.deps import require_admin_user
 
@@ -246,6 +250,150 @@ async def get_fleet_health_overview() -> dict:
         return monitor.get_fleet_health(bots)
 
     return await asyncio.to_thread(_health)
+
+
+@router.get("/working", summary="Which bots are working right now, and on what")
+async def get_bots_working() -> dict:
+    """Live work attributed to each bot: the answer `health/overview` cannot give.
+
+    Why this is a separate route
+    ----------------------------
+    `alpha.bots.health` answers liveness from heartbeats, and a heartbeat is
+    only written by `POST /{name}/heartbeat` — which nothing in a stock
+    deployment calls. Measured on a live install: 96 bots, 73 "healthy", and
+    every single row reporting "no heartbeat recorded". A fleet view that stops
+    there says "responsive, no task reported" about a bot that is mid-run.
+
+    The run store is the source that does know: a run row records which
+    assistant the Gateway was asked to run, and `ChatView` sends
+    `assistant_id = activeBot.name` for a bot chat, so a non-terminal run whose
+    `assistant_id` names a bot *is* that bot working on that thread. This route
+    reads it, so the UI can name the run, the thread and the elapsed time
+    instead of asserting a presence it cannot see.
+
+    Attribution rules, and the one this route refuses
+    ------------------------------------------------
+    - `RunRow.assistant_id` is the only binding used. It is the value the caller
+      asked the Gateway to run, and the frontend sends the roster bot's `name`
+      there for a bot chat — the same convention `scripts/fleet_task_assign.py`
+      follows.
+    - Keys are folded to `name.strip().lower()` because
+      `alpha.bots.health.evaluate_liveness` keys its rows the same way, so the
+      two payloads can be joined on one key without a second mapping.
+    - A run with no `assistant_id` is **not** attributed to anybody. Guessing
+      from the thread's own `assistant_id` would put a run on a bot that was
+      never asked to do it, which is the failure `deps._activity_bot_name`
+      documents for the room ledger; an unattributed run is counted instead.
+    - Only `operation_kind == "run"` rows count. Checkpoint writes, artifact
+      writes and branches are internal bookkeeping, not an agent working.
+    - The report is **fleet-wide, not owner-scoped**, matching the rest of this
+      router (the registry reads and `/health/overview` are fleet-wide). A
+      caller that needs an owner-scoped view owns the filtering itself.
+
+    Failure shapes
+    --------------
+    No SQL backend (``database.backend: memory``) is a **503 naming the
+    backend**, the same refusal `routers/console` gives: there is no run
+    history to report on, and answering "0 bots working" would claim the store
+    measured an idle fleet. A store that exists but fails the read answers 200
+    with ``reported: false`` plus its reason, so a surface can keep rendering
+    the liveness it does have instead of blanking.
+    """
+    from alpha.persistence.engine import get_session_factory
+
+    # Imported rather than re-typed so this route and the console reporting layer
+    # cannot disagree about which statuses are still live work — the same rule
+    # `PublicBodyLimitMiddleware` follows for routers.peer_network's
+    # `_PUBLIC_BODY_LIMITED_PATHS`.
+    from app.gateway.routers.console import _ACTIVE_STATUSES, _as_utc
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(
+            status_code=503,
+            detail=("the run store is unavailable: database.backend is memory, which persists no run history, so which bots are working right now cannot be measured"),
+        )
+
+    try:
+        async with sf() as session:
+            result = await session.execute(
+                select(
+                    RunRow.run_id,
+                    RunRow.thread_id,
+                    RunRow.assistant_id,
+                    RunRow.status,
+                    RunRow.model_name,
+                    RunRow.created_at,
+                    ThreadMetaRow.display_name,
+                )
+                .join(ThreadMetaRow, ThreadMetaRow.thread_id == RunRow.thread_id, isouter=True)
+                .where(RunRow.operation_kind == "run", RunRow.status.in_(_ACTIVE_STATUSES))
+                .order_by(RunRow.created_at.desc(), RunRow.run_id.desc())
+            )
+            rows = list(result.all())
+    except Exception as exc:
+        # The store exists; this particular read failed. That is not evidence of
+        # an idle fleet, so it is a 200 carrying the reason rather than a zero.
+        logger.warning("bots working: run store read failed", exc_info=True)
+        return {
+            "reported": False,
+            "reason": f"the run store could not be read: {type(exc).__name__}",
+            "generated_at": None,
+            "active_runs_by_bot": {},
+            "counts": {
+                "active_runs": None,
+                "attributed_runs": None,
+                "unattributed_runs": None,
+                "bots_working": None,
+            },
+        }
+
+    now = datetime.now(UTC)
+    by_bot: dict[str, list[dict]] = {}
+    attributed = 0
+    unattributed = 0
+    for run_id, thread_id, assistant_id, status, model_name, created_at, display_name in rows:
+        binding = str(assistant_id).strip() if assistant_id else ""
+        if not binding:
+            unattributed += 1
+            continue
+        attributed += 1
+        # SQLite round-trips these naive and Postgres returns them aware, so the
+        # timestamp is normalised before it is compared to anything — the same
+        # `_as_utc` rule the console reporting layer applies. Skipping it makes
+        # every elapsed time wrong by the host's UTC offset.
+        started = _as_utc(created_at)
+        by_bot.setdefault(binding.lower(), []).append(
+            {
+                "bot_name": binding,
+                "run_id": str(run_id),
+                "thread_id": str(thread_id) if thread_id else None,
+                # Null when the thread carries no display name: the UI says
+                # "untitled thread", never invents one.
+                "thread_title": display_name,
+                # The store's own word, verbatim: a status this build does not
+                # know is shown rather than snapped to "running".
+                "status": str(status),
+                "model_name": model_name,
+                "started_at": started.isoformat() if started is not None else None,
+                # Measured here because a live run has no duration yet; null
+                # only when the row carries no start time at all.
+                "elapsed_seconds": round((now - started).total_seconds(), 1) if started is not None else None,
+            }
+        )
+
+    return {
+        "reported": True,
+        "reason": None,
+        "generated_at": now.isoformat(),
+        "active_runs_by_bot": by_bot,
+        "counts": {
+            "active_runs": len(rows),
+            "attributed_runs": attributed,
+            "unattributed_runs": unattributed,
+            "bots_working": len(by_bot),
+        },
+    }
 
 
 @router.get("/organization-chart", summary="Get organization hierarchy tree and graph")

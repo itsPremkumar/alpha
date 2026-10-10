@@ -480,13 +480,14 @@ make doctor    # verify the environment
   in the block in a single response. See
   [docs/BOT_MODEL_CONFIG.md](docs/BOT_MODEL_CONFIG.md).
 - **Bot team working status** — the Bots tab answers "is this agent working
-  right now?" from `GET /api/bots/health/overview`'s own liveness verdict
-  (healthy, stale, stalled, dead, sleeping, suspended, archived — verbatim, so
-  an unknown word is shown rather than guessed), plus the per-bot operator
-  pause from `/api/bots/kill-switch`. Each card carries its task id, heartbeat
-  age and lease state; the strip counts every liveness state and names stalled
-  workers; and a filter that could not be answered reads *not reported*, never
-  "not working".
+  right now?" from two sources instead of one roster timestamp:
+  `GET /api/bots/health/overview`'s liveness verdict (healthy, stale, stalled,
+  dead, sleeping, suspended, archived — verbatim, so an unknown word is shown
+  rather than guessed) plus `GET /api/bots/working`, which joins the run store
+  and names the work: *"Running on thread "investigate flaky timeout" · run
+  af79cfa3 · for 42s · on union-alpha"*. An operator's pause outranks both, and
+  the per-bot pause state comes from `/api/bots/kill-switch`. A filter that
+  could not be answered reads *not reported*, never "not working".
 - **Multi-agent group chat & swarms** — collaborative rooms where specialized
   bots challenge assumptions and produce unified deliverables.
 - **Swarm v2 DAG runtime** — atomic checkpoints, ordered JSONL audit events,

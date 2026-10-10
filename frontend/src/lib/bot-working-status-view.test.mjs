@@ -211,6 +211,37 @@ test("a liveness word from a newer Gateway is printed verbatim", () => {
   );
 });
 
+test("a live run is printed as the working sentence, with its run id", () => {
+  const status = verdict({
+    key: "working",
+    label: "Working",
+    detail: 'Running on thread "investigate flaky timeout" · run af79cfa3 · working · for 42s · on union-alpha.',
+    tone: "good",
+    working: true,
+  });
+  const badge = render(workingView.WorkingStatusBadge, { status });
+  assert.match(badge, /data-working-key="working"/);
+  assert.match(badge, />Working</);
+  const detail = render(workingView.WorkingStatusDetail, { status });
+  assert.match(detail, /run af79cfa3/);
+  assert.match(detail, /investigate flaky timeout/);
+});
+
+test("a paused bot finishing a run says both, not one", () => {
+  const status = verdict({
+    key: "paused",
+    label: "Paused · run finishing",
+    detail: "Running on thread \"x\" · run abc12345 · working · for 3m. Bot paused: suspicious spend — no new work is accepted.",
+    tone: "warn",
+    working: true,
+  });
+  const markup = render(workingView.WorkingStatusBadge, { status });
+  assert.match(markup, /Paused · run finishing/, "the pause is not hidden by the running work");
+  const detail = render(workingView.WorkingStatusDetail, { status });
+  assert.match(detail, /run abc12345/);
+  assert.match(detail, /suspicious spend/, "the operator's own reason survives beside the run");
+});
+
 test("no verdict means no claim, in both directions", () => {
   for (const status of [null, undefined]) {
     assert.equal(render(workingView.WorkingStatusBadge, { status }), "");
@@ -323,6 +354,7 @@ test("reported counters print, and omitted ones print a dash with words", () => 
   const markup = render(livenessStrip.BotLivenessStrip, {
     state: "ok",
     overview,
+    workingCount: 1,
   });
   assert.match(markup, />12</, "a measured 12 must render as 12");
   assert.match(markup, />3</);
@@ -340,6 +372,34 @@ test("reported counters print, and omitted ones print a dash with words", () => 
     /stalled: coder/,
     "a stalled worker is named, not just counted",
   );
+  assert.match(markup, /bots with a run in flight/);
+  assert.match(markup, /data-working-count="1"/);
+});
+
+test("the working count renders a state word, never a zero, when it cannot be read", () => {
+  const still = render(livenessStrip.BotLivenessStrip, {
+    state: "ok",
+    overview,
+    workingCount: "loading",
+  });
+  assert.match(still, /still reading/);
+  assert.doesNotMatch(still, />0</);
+  const broken = render(livenessStrip.BotLivenessStrip, {
+    state: "ok",
+    overview,
+    workingCount: "unavailable",
+    workingReason: "the run store could not be read: OperationalError",
+  });
+  assert.match(broken, /not reported/, "a failed read is a word, not an idle fleet");
+  assert.match(broken, /OperationalError/, "the server's own reason is carried");
+  assert.doesNotMatch(broken, />0</);
+  // Omitted entirely: the strip stays a liveness strip and says nothing about
+  // work rather than guessing at zero.
+  const absent = render(livenessStrip.BotLivenessStrip, {
+    state: "ok",
+    overview,
+  });
+  assert.doesNotMatch(absent, /bots with a run in flight/);
 });
 
 test("an entirely unreported summary renders dashes, never a zeroed fleet", () => {

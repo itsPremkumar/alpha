@@ -42,6 +42,15 @@ export interface BotLivenessStripProps {
   } | null;
   reason?: string;
   onRetry?: () => void;
+  /**
+   * How many bots have a run in flight right now, from the run store.
+   *
+   * `"loading"` / `"unavailable"` are states, not numbers: a read that has not
+   * landed and a read that failed are neither of them "0 bots working", which
+   * would claim the store measured an idle fleet.
+   */
+  workingCount?: number | null | "loading" | "unavailable";
+  workingReason?: string | null;
 }
 
 /** One count cell. `value === null` renders a dash plus the words, never 0. */
@@ -80,6 +89,8 @@ export function BotLivenessStrip({
   overview,
   reason,
   onRetry,
+  workingCount,
+  workingReason,
 }: BotLivenessStripProps) {
   if (state === "loading") {
     return (
@@ -173,6 +184,23 @@ export function BotLivenessStrip({
         {stalledNames.length > 0 && (
           <span className="text-destructive">
             · stalled: {stalledNames.join(", ")}
+          </span>
+        )}
+        {/* The run-store reading, in words when it is absent. A bot with a run
+            in flight is the one thing this strip can name rather than infer, so
+            its absence has to be visible too. */}
+        {workingCount !== undefined && (
+          <span data-working-count={String(workingCount)}>
+            · bots with a run in flight{" "}
+            {typeof workingCount === "number" ? (
+              <span className="font-semibold text-foreground">{workingCount}</span>
+            ) : workingCount === "loading" ? (
+              <span title="The run-store read has not landed yet">still reading</span>
+            ) : (
+              <span title={workingReason ?? "The Gateway did not report a run-store reading"}>
+                not reported
+              </span>
+            )}
           </span>
         )}
       </div>

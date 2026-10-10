@@ -12,12 +12,15 @@ import { uniqueDepartments, computeFleetHealth } from "@/lib/bots";
 import { isRecent, PRESENCE_WINDOW_SECONDS } from "@/lib/time";
 import {
   fetchBotHealthOverview,
+  fetchBotWork,
   fetchPauseState,
   healthRowFor,
   healthRowIndex,
   needsAttention,
   WORKING_FACETS,
+  workRunsFor,
   workingStatusFor,
+  type BotWorkReport,
   type FleetHealthOverview,
   type PauseState,
   type WorkingStatus,
@@ -71,6 +74,9 @@ type Read<T> =
   | { state: "ok"; value: T }
   | { state: "error"; reason: string };
 
+/** The `ReadResult` the status client returns, so `settle` stays generic. */
+type ReadResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
 /** Names to name, not to dump: a fleet of 57 with 30 in a state is a sentence, not a wall of text. */
 const NAMED_ATTENTION_BOTS = 5;
 
@@ -116,17 +122,23 @@ export function BotGallery({
   /* ---------------------------------------------------------------- health */
 
   /**
-   * The two reads that answer "is this bot working".
+   * The three reads that answer "is this bot working".
    *
    * They are settled independently on purpose: the liveness report coming back
    * while the kill-switch read fails must not blank a working status view, and
    * vice versa — "nobody is paused" and "we could not check" lead to opposite
    * actions, exactly as `lib/network.ts` documents for connectivity.
+   *
+   * The run-store read is the one that can name the work. It is a third read
+   * rather than a field on the health payload because it needs a SQL backend:
+   * the Gateway answers 503 on `database.backend: memory`, and folding that
+   * into `/health/overview` would cost a memory deployment its liveness strip.
    */
   const [liveness, setLiveness] = useState<Read<FleetHealthOverview>>({
     state: "loading",
   });
   const [pauses, setPauses] = useState<Read<PauseState>>({ state: "loading" });
+  const [work, setWork] = useState<Read<BotWorkReport>>({ state: "loading" });
   /** Guards against a slow first read landing after a refresh has started. */
   const readGeneration = useRef(0);
 
@@ -135,22 +147,21 @@ export function BotGallery({
     readGeneration.current = generation;
     setLiveness({ state: "loading" });
     setPauses({ state: "loading" });
-    void fetchBotHealthOverview().then((result) => {
+    setWork({ state: "loading" });
+    const settle = <T,>(
+      result: ReadResult<T>,
+      apply: (value: Read<T>) => void,
+    ) => {
       if (readGeneration.current !== generation) return;
-      setLiveness(
+      apply(
         result.ok
           ? { state: "ok", value: result.value }
           : { state: "error", reason: result.error },
       );
-    });
-    void fetchPauseState().then((result) => {
-      if (readGeneration.current !== generation) return;
-      setPauses(
-        result.ok
-          ? { state: "ok", value: result.value }
-          : { state: "error", reason: result.error },
-      );
-    });
+    };
+    void fetchBotHealthOverview().then((r) => settle(r, setLiveness));
+    void fetchPauseState().then((r) => settle(r, setPauses));
+    void fetchBotWork().then((r) => settle(r, setWork));
   }, []);
 
   // A roster refresh carries new `last_active` values, so the liveness read
@@ -168,6 +179,7 @@ export function BotGallery({
     const index =
       liveness.state === "ok" ? healthRowIndex(liveness.value.bots) : null;
     const paused = pauses.state === "ok" ? pauses.value.paused : null;
+    const workReport = work.state === "ok" ? work.value : null;
     // An engaged switch with no reported reason still stops every bot: the
     // absence of a sentence is a fact about the payload, not about the fleet.
     const killSwitchReason =
@@ -183,10 +195,11 @@ export function BotGallery({
           ? (paused[key] ?? null)
           : null;
       const row = index ? healthRowFor(index, bot.name) : null;
-      statuses.set(bot.name, workingStatusFor(bot, row, { pausedReason }));
+      const liveRuns = workRunsFor(workReport, bot.name);
+      statuses.set(bot.name, workingStatusFor(bot, row, { pausedReason, work: liveRuns }));
     }
     return statuses;
-  }, [bots, liveness, pauses]);
+  }, [bots, liveness, pauses, work]);
 
   const statusOf = useCallback(
     (bot: BotProfile): WorkingStatus | undefined => workingByBot.get(bot.name),
@@ -349,7 +362,39 @@ export function BotGallery({
         overview={liveness.state === "ok" ? liveness.value : null}
         reason={liveness.state === "error" ? liveness.reason : undefined}
         onRetry={reloadWorkingSources}
+        workingCount={
+          work.state === "loading"
+            ? "loading"
+            : work.state === "error"
+              ? "unavailable"
+              : work.value.reported
+                ? work.value.counts.bots_working
+                : "unavailable"
+        }
+        workingReason={
+          work.state === "error"
+            ? work.reason
+            : work.state === "ok" && !work.value.reported
+              ? (work.value.reason ?? "the Gateway reported no run-store reading")
+              : null
+        }
       />
+
+      {/* The run-store read is the one that names the work, so its failure is
+          stated rather than absorbed: without it every card falls back to a
+          reading that cannot see a run at all. */}
+      {work.state === "error" && (
+        <Notice
+          tone="neutral"
+          message={`Live run state unavailable — ${work.reason}. Cards fall back to the health report and the presence reading.`}
+        />
+      )}
+      {work.state === "ok" && !work.value.reported && (
+        <Notice
+          tone="neutral"
+          message={`Live run state unavailable — ${work.value.reason ?? "the Gateway reported no run-store reading"}. Cards fall back to the health report and the presence reading.`}
+        />
+      )}
 
       {/* The pause read failing is disclosed rather than absorbed: an operator
           who has stopped a bot cannot be told apart from one that is running,

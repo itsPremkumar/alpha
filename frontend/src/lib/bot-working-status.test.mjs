@@ -612,7 +612,153 @@ test("a dead bot holding a task says the task may be stuck", () => {
   );
 });
 
-/* ── 8. The gallery wires it, and the card renders it ────────────────────── */
+/* ── 8. Live work — the run store outranks the heartbeat engine ─────────── */
+
+const WORK_RUN = {
+  bot_name: "coder",
+  run_id: "af79cfa3-5d98-465d-99d6-852ef57b1a4d",
+  thread_id: "tester-working-demo",
+  thread_title: "investigate flaky timeout",
+  status: "running",
+  model_name: "union-alpha",
+  started_at: "2026-10-10T00:33:00+00:00",
+  elapsed_seconds: 42,
+};
+
+test("the run store's route is /bots/working", async () => {
+  withResponses({ "/bots/working": {} });
+  await status.fetchBotWork();
+  assert.ok(globalThis.__botApiCalls.includes("/bots/working"), globalThis.__botApiCalls.join());
+});
+
+test("a live run is the strongest reading, and it names the work", () => {
+  const s = status.workingStatusFor(BOT, row({ liveness: "dead", seconds_since_heartbeat: 900 }), {
+    work: [WORK_RUN],
+  });
+  assert.equal(s.key, "working");
+  assert.equal(s.working, true);
+  assert.equal(s.evidence, "run");
+  assert.match(s.detail, /Running on thread "investigate flaky timeout"/);
+  assert.match(s.detail, /run af79cfa3/);
+  assert.match(s.detail, /on union-alpha/);
+  assert.match(s.detail, /for 42s/);
+  // The heartbeat verdict is not erased — the card's own row still carries it,
+  // and this reading simply outranks it because it names the work.
+  assert.doesNotMatch(s.detail, /Dead/, "the badge sentence is the run's, not a second opinion");
+});
+
+test("an untitled thread and an unreported model are said, never invented", () => {
+  const s = status.workingStatusFor(BOT, null, {
+    work: [
+      {
+        ...WORK_RUN,
+        thread_title: null,
+        model_name: null,
+        elapsed_seconds: null,
+        status: "weird",
+      },
+    ],
+  });
+  assert.match(s.detail, /an untitled thread/);
+  assert.match(s.detail, /status weird/, "the store's own word is quoted verbatim");
+  assert.match(s.detail, /elapsed time not reported/);
+  // No `on <model>` clause at all when the store named none — the sentence
+  // would have to invent one to fill it. ("Running on an untitled thread"
+  // starts with "on" but that is the thread, not a model.)
+  assert.doesNotMatch(s.detail, /· on [A-Za-z]/);
+});
+
+test("a paused bot that already has a run says both facts", () => {
+  const s = status.workingStatusFor(BOT, row(), {
+    work: [WORK_RUN],
+    pausedReason: "Bot paused: suspicious spend",
+  });
+  assert.equal(s.key, "paused");
+  assert.equal(s.working, true, "the run is really running; only the block on new work is the pause");
+  assert.match(s.detail, /run af79cfa3/);
+  assert.match(s.detail, /suspicious spend/);
+  assert.match(s.label, /run finishing/);
+});
+
+test("workRunsFor folds the key and returns [] when the read did not land", () => {
+  const report = status.normalizeWorkReport({
+    reported: true,
+    active_runs_by_bot: { Coder: [WORK_RUN] },
+    counts: { active_runs: 1, attributed_runs: 1, unattributed_runs: 0, bots_working: 1 },
+  });
+  assert.equal(status.workRunsFor(report, "coder").length, 1);
+  assert.equal(status.workRunsFor(report, "coder ").length, 1);
+  assert.equal(status.workRunsFor(report, "nobody").length, 0);
+  const failed = status.normalizeWorkReport({ reported: false, reason: "boom", counts: {} });
+  assert.equal(status.workRunsFor(failed, "coder").length, 0,
+    "a report the Gateway marked unreported must not read as 'no runs'");
+});
+
+test("elapsedWords never renders an unmeasured age as zero", () => {
+  assert.equal(status.elapsedWords(null), "elapsed time not reported");
+  assert.equal(status.elapsedWords(0), "0s");
+  assert.equal(status.elapsedWords(42.4), "42s");
+  assert.equal(status.elapsedWords(125), "2m");
+  assert.equal(status.elapsedWords(7200), "2h");
+});
+
+test("the work mapper keeps an unreported read unreported and its counters null", () => {
+  const normalized = status.normalizeWorkReport({
+    reported: false,
+    reason: "the run store could not be read: OperationalError",
+    counts: { active_runs: null, attributed_runs: null, unattributed_runs: null, bots_working: null },
+  });
+  assert.equal(normalized.reported, false);
+  assert.match(normalized.reason ?? "", /could not be read/);
+  assert.deepEqual(normalized.counts, {
+    active_runs: null,
+    attributed_runs: null,
+    unattributed_runs: null,
+    bots_working: null,
+  });
+  assert.deepEqual(normalized.active_runs_by_bot, {});
+});
+
+test("the work mapper keeps the counts the server sent and folds the keys", () => {
+  const normalized = status.normalizeWorkReport({
+    reported: true,
+    generated_at: "2026-10-10T00:33:00+00:00",
+    active_runs_by_bot: {
+      " Coder ": [WORK_RUN],
+      "": [WORK_RUN],
+      "not-a-list": 5,
+    },
+    counts: {
+      active_runs: 1,
+      attributed_runs: 1,
+      unattributed_runs: 0,
+      bots_working: 1,
+    },
+  });
+  assert.equal(normalized.reported, true);
+  assert.equal(normalized.generated_at, "2026-10-10T00:33:00+00:00");
+  // A key that folds to nothing is dropped, a value that is not a list keeps an
+  // empty array (the server named the bot, it just listed nothing), and the
+  // one real entry survives under its folded key.
+  assert.deepEqual(Object.keys(normalized.active_runs_by_bot), [
+    "coder",
+    "not-a-list",
+  ]);
+  assert.equal(normalized.active_runs_by_bot.coder[0].bot_name, "coder");
+  assert.deepEqual(normalized.active_runs_by_bot["not-a-list"], []);
+  assert.equal(normalized.counts.bots_working, 1);
+});
+
+test("a work entry with no run id is dropped rather than rendered blank", () => {
+  const normalized = status.normalizeWorkReport({
+    reported: true,
+    active_runs_by_bot: { coder: [{ run_id: null }, { run_id: "r1" }, "x"] },
+  });
+  assert.equal(normalized.active_runs_by_bot.coder.length, 1, "only the entry the server can identify survives");
+  assert.equal(normalized.active_runs_by_bot.coder[0].status, "status not reported");
+});
+
+/* ── 9. The gallery wires it, and the card renders it ────────────────────── */
 
 test("BotGallery shares one derived verdict between cards and filters", async () => {
   const src = read("../components/bots/BotGallery.tsx");
@@ -636,14 +782,19 @@ test("BotGallery shares one derived verdict between cards and filters", async ()
     /healthRowFor\(/,
     "and the lookup folds that key rather than trusting the caller",
   );
-  // The two reads fail independently — one broken read must not blank the other.
+  // The three reads fail independently — one broken read must not blank the others.
   assert.match(src, /fetchBotHealthOverview\(\)/);
   assert.match(src, /fetchPauseState\(\)/);
+  assert.match(src, /fetchBotWork\(\)/);
   assert.match(
     src,
-    /fetchBotHealthOverview\([\s\S]{0,400}?fetchPauseState\(/,
+    /fetchBotHealthOverview\(\)[\s\S]{0,400}?fetchPauseState\(\)/,
     "they are issued separately",
   );
+  // Live work is the primary reading, so a bot with a run in flight never
+  // depends on a heartbeat nobody writes.
+  assert.match(src, /workingStatusFor\(bot, row, \{[\s\S]{0,200}work: liveRuns/, "the run rows reach the derivation");
+  assert.match(src, /workRunsFor\(workReport, bot\.name\)/);
 });
 
 test("a failed roster read is disclosed instead of reading as an empty fleet", () => {

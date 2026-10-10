@@ -216,9 +216,136 @@ export function healthRowFor(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Operator pause / kill switch                                               */
+/* Live work: which bot is running, on what                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * One in-flight run, exactly as `GET /api/bots/working` reports it.
+ *
+ * `status` and `model_name` travel verbatim (null when the store does not say),
+ * `elapsed_seconds` is measured by the server at read time because a live run
+ * has no duration yet, and `thread_title` is null for a thread that carries no
+ * display name — the UI says "untitled thread" rather than inventing one.
+ */
+export interface BotWorkRun {
+  bot_name: string | null;
+  run_id: string;
+  thread_id: string | null;
+  thread_title: string | null;
+  status: string;
+  model_name: string | null;
+  started_at: string | null;
+  elapsed_seconds: number | null;
+}
+
+export interface BotWorkCounts {
+  active_runs: number | null;
+  attributed_runs: number | null;
+  unattributed_runs: number | null;
+  bots_working: number | null;
+}
+
+export interface BotWorkReport {
+  /** `false` when the read failed — never "zero bots are working". */
+  reported: boolean;
+  reason: string | null;
+  generated_at: string | null;
+  /** Keyed on the lowercased bot name, the same key the health rows use. */
+  active_runs_by_bot: Record<string, BotWorkRun[]>;
+  counts: BotWorkCounts;
+}
+
+const WORK_COUNT_KEYS: ReadonlyArray<keyof BotWorkCounts> = [
+  "active_runs",
+  "attributed_runs",
+  "unattributed_runs",
+  "bots_working",
+];
+
+function normalizeWorkRun(raw: unknown): BotWorkRun | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const runId = asString(r.run_id);
+  if (!runId) return null;
+  return {
+    bot_name: asString(r.bot_name),
+    run_id: runId,
+    thread_id: asString(r.thread_id),
+    thread_title: asString(r.thread_title),
+    status: asString(r.status) ?? "status not reported",
+    model_name: asString(r.model_name),
+    started_at: asString(r.started_at),
+    elapsed_seconds: asCount(r.elapsed_seconds),
+  };
+}
+
+/**
+ * Map `GET /api/bots/working`.
+ *
+ * A report the Gateway marked `reported: false` keeps that flag and its reason,
+ * and its counters stay `null`: a 200 carrying "the read failed" must not be
+ * read as "nobody is working", which is the one number the whole feature turns
+ * on.
+ */
+export function normalizeWorkReport(raw: Record<string, unknown>): BotWorkReport {
+  const rawMap = raw.active_runs_by_bot;
+  const byBot: Record<string, BotWorkRun[]> = {};
+  if (rawMap && typeof rawMap === "object" && !Array.isArray(rawMap)) {
+    for (const [key, value] of Object.entries(rawMap as Record<string, unknown>)) {
+      const runs = Array.isArray(value)
+        ? value.map(normalizeWorkRun).filter((r): r is BotWorkRun => r !== null)
+        : [];
+      // An empty list is kept rather than dropped: "the server knows this bot
+      // has no live run" and "the server never mentioned this bot" are both
+      // visible to a caller that cares.
+      const folded = key.trim().toLowerCase();
+      if (folded) byBot[folded] = runs;
+    }
+  }
+  const countsRaw = (raw.counts ?? {}) as Record<string, unknown>;
+  const counts = {} as BotWorkCounts;
+  for (const key of WORK_COUNT_KEYS) counts[key] = asCount(countsRaw[key]);
+  return {
+    reported: raw.reported !== false,
+    reason: asString(raw.reason),
+    generated_at: asString(raw.generated_at),
+    active_runs_by_bot: byBot,
+    counts,
+  };
+}
+
+export async function fetchBotWork(): Promise<ReadResult<BotWorkReport>> {
+  try {
+    const res = await apiFetch("/bots/working");
+    return { ok: true, value: normalizeWorkReport(await res.json()) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * The live runs for one bot, newest first.
+ *
+ * Returns `[]` when the report is unavailable as well as when the bot genuinely
+ * has no run in flight — the caller distinguishes those by the report's own
+ * `reported` flag, which is why that flag has to survive the mapper.
+ */
+export function workRunsFor(report: BotWorkReport | null, botName: string): BotWorkRun[] {
+  if (!report || !report.reported) return [];
+  return report.active_runs_by_bot[botName.trim().toLowerCase()] ?? [];
+}
+
+/** `"3m ago"` / `"just now"` / a dash-plus-words for the elapsed column. */
+export function elapsedWords(seconds: number | null): string {
+  if (seconds === null) return "elapsed time not reported";
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Operator pause / kill switch                                               */
+/* -------------------------------------------------------------------------- */
 /**
  * `GET /api/bots/kill-switch` projected onto the bot-level question.
  *
@@ -307,12 +434,21 @@ export interface WorkingStatus {
    */
   working: boolean | null;
   /** Which server reading the verdict came from. */
-  evidence: "health" | "presence" | "pause" | "none";
+  evidence: "health" | "run" | "presence" | "pause" | "none";
 }
 
 export interface WorkingStatusOptions {
   /** A live pause reason for this bot, when the operator stopped it. */
   pausedReason?: string | null;
+  /**
+   * The bot's in-flight runs, from `GET /api/bots/working`.
+   *
+   * This is the strongest reading available and it sits *below* an operator
+   * pause only because a stopped bot finishing an admitted run is still stopped
+   * work; it outranks every heartbeat-based verdict because the monitor's own
+   * data may be missing entirely (see the module header).
+   */
+  work?: readonly BotWorkRun[];
 }
 
 /**
@@ -342,20 +478,41 @@ function responsiveWords(row: BotHealthRow): string {
 }
 
 /**
+ * The sentence for a live run: the thread it is on, the run id, its age and the
+ * model. Every part is what the server sent; a missing one is *named* rather
+ * than defaulted, so the line never fills a gap with a plausible guess.
+ */
+export function workDetail(run: BotWorkRun): string {
+  const parts: string[] = [];
+  parts.push(`Running on ${run.thread_title ? `thread "${run.thread_title}"` : "an untitled thread"}`);
+  parts.push(`run ${run.run_id.slice(0, 8)}`);
+  parts.push(run.status === "running" ? "working" : `status ${run.status}`);
+  const age = elapsedWords(run.elapsed_seconds);
+  parts.push(age === "elapsed time not reported" ? "elapsed time not reported" : `for ${age}`);
+  if (run.model_name) parts.push(`on ${run.model_name}`);
+  return `${parts.join(" · ")}.`;
+}
+
+/**
  * Derive the working status for one bot.
  *
  * Precedence, and why:
  *
  * 1. **An operator pause wins.** A stopped bot holding a fresh heartbeat would
  *    otherwise read as working; the kill switch is the strongest statement
- *    anyone has made about this bot.
- * 2. **The monitor's liveness verdict.** It is the engine that owns the
- *    question, so it wins over roster timestamps.
- * 3. **Presence** (`last_active` inside the display window) only when no health
+ *    anyone has made about this bot. A run that was already admitted still
+ *    finishes, so the pause branch reports it — as work that is *stopped*, not
+ *    as the monitor's verdict.
+ * 2. **A live run**, from the run store. It is the only reading that names the
+ *    thread and the run, and it beats the heartbeat engine because that engine
+ *    only knows about `record_heartbeat()` calls, which a stock deployment
+ *    never makes.
+ * 3. **The monitor's liveness verdict.** It owns the heartbeat question.
+ * 4. **Presence** (`last_active` inside the display window) only when no health
  *    row arrived — either the read failed or the server omitted the bot. The
  *    fallback labels itself as presence so it cannot be mistaken for the
  *    monitor's answer.
- * 4. **Unknown.** Nothing measured: an unreadable timestamp and no report.
+ * 5. **Unknown.** Nothing measured: an unreadable timestamp and no report.
  */
 export function workingStatusFor(
   bot: Pick<BotProfile, "name" | "last_active">,
@@ -363,14 +520,37 @@ export function workingStatusFor(
   options: WorkingStatusOptions = {},
 ): WorkingStatus {
   const pauseReason = options.pausedReason ?? null;
+  const work = options.work ?? [];
+  const run = work[0];
+
   if (pauseReason) {
+    return run
+      ? {
+          key: "paused",
+          label: "Paused · run finishing",
+          detail: `${workDetail(run)} ${pauseReason} — no new work is accepted.`,
+          tone: "warn",
+          working: true,
+          evidence: "run",
+        }
+      : {
+          key: "paused",
+          label: "Paused by operator",
+          detail: `${pauseReason} — no work is accepted while paused.`,
+          tone: "warn",
+          working: false,
+          evidence: "pause",
+        };
+  }
+
+  if (run) {
     return {
-      key: "paused",
-      label: "Paused by operator",
-      detail: `${pauseReason} — no work is accepted while paused.`,
-      tone: "warn",
-      working: false,
-      evidence: "pause",
+      key: "working",
+      label: "Working",
+      detail: workDetail(run),
+      tone: "good",
+      working: true,
+      evidence: "run",
     };
   }
 
