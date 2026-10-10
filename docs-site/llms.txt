@@ -1,0 +1,67 @@
+# Alpha Documentation
+
+> **Alpha** — An autonomous AI agent framework with sandboxed execution, persistent memory, subagent delegation, and extensible tooling. Built for autonomous operations at scale.
+
+## Quick Links
+
+- [Website](https://alpha.itsPremkumar.com)
+- [Documentation](https://docs.alpha.itsPremkumar.com)
+- [API Reference](https://docs.alpha.itsPremkumar.com/api/)
+- [GitHub](https://github.com/itsPremkumar/alpha)
+- [Discord](https://discord.gg/alpha)
+
+## Project Description
+
+Alpha is a LangGraph-based AI super-agent system — a backend "super agent" with sandboxed execution, persistent memory, subagent delegation, and extensible tooling (built-in, MCP, community), all per-thread isolated; a Next.js chat frontend; and IM bridges (Feishu, Slack, Telegram, Discord, DingTalk) into the same agent through the Gateway.
+
+## Key Capabilities
+
+- **Super Agent**: LangGraph-based orchestrator with tool calling, model routing, and autonomous execution
+- **Sandboxed Execution**: Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation
+- **Persistent Memory**: DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall
+- **Subagent Delegation**: Spawn specialized agents (`/subagent spawn`), manage swarms (`/swarm`), delegate with acceptance criteria
+- **Extensible Tooling**: 456+ built-in tools + MCP servers + custom skills + community extensions
+- **Per-Thread Isolation**: Every conversation gets its own sandbox, memory, and tool namespace
+- **IM Bridges**: Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway
+- **Observability**: Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts
+- **Governance**: Tool risk policies, approval gates, capability ceilings, emergency stop
+- **Durable Runtime**: Crash recovery, network partitions, graceful shutdown, session persistence
+
+## Key Commands
+
+- `/goal` - Define and orchestrate autonomous goals
+- `/plan` - Compile 8-dimensional strategic meta-plan
+- `/swarm` - Orchestrate multi-agent specialized swarms
+- `/agent` - Spawn, inspect, or manage autonomous agents
+- `/research` - Deep multi-stage web and codebase research
+- `/code` - Inspect, write, and refactor code modules
+- `/memory` - Query and store episodic and semantic memory
+- `/verify` - Verify current result against requirements
+- `/context` - Shows current context composition and usage
+- `/model` - Shows or changes active model
+- `/reasoning` - Shows or changes reasoning effort
+- `/tools` - Shows currently available tools and their status
+- `/skills` - Shows installed, available and active skills
+- `/swarm` - Orchestrate multi-agent specialized swarms
+- `/agent` - Spawn, inspect, or manage autonomous agents
+- `/verify` - Verify current result against requirements
+- `/trace` - Shows execution trace for current mission
+
+## Technology Stack
+
+- **Backend**: Python 3.12+, FastAPI, LangGraph, uv
+- **Frontend**: Next.js 15, React 18, TypeScript, Tailwind CSS
+- **Database**: PostgreSQL, SQLite, Redis
+- **Infrastructure**: Docker, nginx, Kubernetes
+- **Orchestration**: LangGraph, LangChain
+- **Memory**: DeerMem, cognitive memory
+
+## Links
+
+- **Repository**: https://github.com/itsPremkumar/alpha
+- **Documentation**: https://docs.alpha.itsPremkumar.com
+- **API Reference**: https://docs.alpha.itsPremkumar.com/api/
+- **Issues**: https://github.com/itsPremkumar/alpha/issues
+- **Discussions**: https://github.com/itsPremkumar/alpha/discussions
+- **Discord**: https://discord.gg/alpha
+- **License**: MIT
