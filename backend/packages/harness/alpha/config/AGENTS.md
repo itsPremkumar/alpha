@@ -30,6 +30,11 @@ raise, and API create/update validation remains strict.
 
 Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** directory.
 
+`config.example.yaml` has a duplicated top-level `network:` block; YAML takes the
+**last** one, so the effective section is the fuller block near the Stream Bridge
+heading, and `network_wait:` must be added beside that one. A new section placed
+next to the earlier, shorter block would parse but never take effect.
+
 **Model catalog — one file, `config.yaml`**: every model name Alpha knows about
 is configured in `config.yaml`, alongside everything else. There is no second
 model file. The keys are:
@@ -101,7 +106,19 @@ Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** direc
 
 **Config Hot-Reload Boundary**: Gateway dependencies route through `get_app_config()` on every request, so per-run fields like `models[*].max_tokens`, `summarization.*`, `title.*`, `memory.*`, `subagents.*`, `verification.*`, `tools[*]`, and the agent system prompt pick up `config.yaml` edits on the next message. `AppConfig` is intentionally **not** cached on `app.state` — `lifespan()` keeps a local `startup_config` variable for one-shot bootstrap work and passes it to `langgraph_runtime(app, startup_config)`.
 
-Infrastructure fields are **restart-required**. The authoritative list lives in `packages/harness/alpha/config/reload_boundary.py::STARTUP_ONLY_FIELDS` and is mirrored by the standardised `"startup-only:"` prefix on the corresponding `Field(description=...)` in `AppConfig` or an explicitly registered nested config model, so IDE hover on those fields surfaces the reason inline (no need to context-switch into this table). Currently registered: `plugins`, `database`, `checkpointer`, `run_events`, `agent_storage`, `stream_bridge`, `sandbox`, `skills.container_path`, `log_level`, `logging`, `channels`, `channel_connections`, `scheduler`, `mcp_tasks`, `subagent_runtime`, `subagent_batches`, `run_ownership`, `run_stall`, `dedupe_storage`, `network`, `tool_timeout`. Adding a new restart-required field requires updating the registry; drift is pinned by `tests/test_reload_boundary.py`. `scheduler.recursion_limit` is the exception inside that section: it is read from `get_app_config()` at each scheduled dispatch, so a YAML edit applies to the next run without restarting the poller. `run_ownership.auto_resume`, scan cadence, attempt/backoff bounds, and resume concurrency are startup-only because changing them while a recovery task is active would split workers across policies; the resumed graph still reads current model configuration on every new continuation.
+Infrastructure fields are **restart-required**. The authoritative list lives in `packages/harness/alpha/config/reload_boundary.py::STARTUP_ONLY_FIELDS` and is mirrored by the standardised `"startup-only:"` prefix on the corresponding `Field(description=...)` in `AppConfig` or an explicitly registered nested config model, so IDE hover on those fields surfaces the reason inline (no need to context-switch into this table). Currently registered: `plugins`, `database`, `checkpointer`, `run_events`, `agent_storage`, `stream_bridge`, `sandbox`, `skills.container_path`, `log_level`, `logging`, `channels`, `channel_connections`, `scheduler`, `mcp_tasks`, `subagent_runtime`, `subagent_batches`, `run_ownership`, `run_stall`, `dedupe_storage`, `network`, `network_wait`, `tool_timeout`. Adding a new restart-required field requires updating the registry; drift is pinned by `tests/test_reload_boundary.py`.
+
+**`network_wait` is the patience policy, and its `0` is not a bug.** `max_attempts`
+defaults to `0`, meaning **unbounded**: a network wait is a *parked task*, not a
+retry loop, so an outage that outlasts a counter must not abandon work that did
+nothing wrong. It is a sentinel rather than a large number on purpose — "unlimited
+= 100000" only moves the cliff — and a negative budget is refused. The two bounds
+that genuinely belong elsewhere are untouched: `network.backoff_*` caps how loudly
+the link is re-checked (and never stops polling), and `run_ownership.max_resume_attempts`
+bounds a continuation that keeps dying (and accepts `0` for unbounded too). Set a
+positive `network_wait.max_attempts` when an operator is expected to intervene;
+exhaustion is then reported as `gave_up` **with its reason**, never dropped.
+Tests: `tests/test_network_wait_timeline.py`. `scheduler.recursion_limit` is the exception inside that section: it is read from `get_app_config()` at each scheduled dispatch, so a YAML edit applies to the next run without restarting the poller. `run_ownership.auto_resume`, scan cadence, attempt/backoff bounds, and resume concurrency are startup-only because changing them while a recovery task is active would split workers across policies; the resumed graph still reads current model configuration on every new continuation.
 
 **Persistence backend resolution**: the unified `database` section selects the
 Gateway's LangGraph checkpointer, LangGraph Store, and Alpha SQL repositories.

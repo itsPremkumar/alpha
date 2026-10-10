@@ -66,6 +66,15 @@ class NetworkWaitRow(Base):
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: Resume lineage, mirroring ``runs.metadata`` on the recovery path.
     resumed_from_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: When this wait stopped waiting: set by ``mark_terminal`` for ``resumed``,
+    #: ``completed`` and ``gave_up`` alike.
+    #:
+    #: Deliberately NOT ``updated_at``. That column is also moved by
+    #: ``release()`` — a failed resume attempt rewrites the backoff — so reading
+    #: the connection time off it would report the moment a retry was *scheduled*
+    #: as the moment the link came back. An open row keeps ``None``, and "still
+    #: waiting" is therefore a state, not a zero timestamp.
+    terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_waited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

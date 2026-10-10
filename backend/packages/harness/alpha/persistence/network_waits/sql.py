@@ -161,12 +161,18 @@ class NetworkWaitRepository:
             return _to_dict(row) if row is not None else None
 
     async def mark_terminal(self, wait_id: str, *, state: str, resumed_from_run_id: str | None = None, last_error: str | None = None) -> dict[str, Any] | None:
-        """Settle a wait as ``resumed``, ``completed``, or ``gave_up``."""
+        """Settle a wait as ``resumed``, ``completed``, or ``gave_up``.
+
+        ``terminal_at`` is stamped here and nowhere else, so the moment a wait
+        stopped waiting is a fact rather than something a reader infers from
+        ``updated_at`` — which ``release()`` also moves, and which would
+        therefore report a scheduled retry as a recovered link.
+        """
         if state not in ("resumed", "completed", "gave_up"):
             raise ValueError(f"{state!r} is not a terminal network-wait state")
         now = datetime.now(UTC)
         async with self._sf() as session, session.begin():
-            values: dict[str, Any] = {"state": state, "lease_owner": None, "lease_expires_at": None, "updated_at": now}
+            values: dict[str, Any] = {"state": state, "lease_owner": None, "lease_expires_at": None, "updated_at": now, "terminal_at": now}
             if resumed_from_run_id is not None:
                 values["resumed_from_run_id"] = resumed_from_run_id
             if last_error is not None:
@@ -208,6 +214,20 @@ class NetworkWaitRepository:
         statement = select(NetworkWaitRow).where(NetworkWaitRow.state.in_(_OPEN_STATES)).order_by(NetworkWaitRow.next_attempt_at).limit(max(1, limit))
         if user_id is not None:
             statement = statement.where(NetworkWaitRow.user_id == user_id)
+        async with self._sf() as session:
+            return [_to_dict(row) for row in (await session.scalars(statement)).all()]
+
+    async def list_for_thread(self, thread_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Every wait this thread has ever parked on, newest first.
+
+        Settled rows are included on purpose: an outage that ended an hour ago
+        is still part of the session's story, and a UI that read only open rows
+        would show a thread as never having been parked the moment it resumed.
+
+        Owner-scoped by the caller, not here — the repository is the harness
+        layer and the route above it owns the ``user_id`` decision.
+        """
+        statement = select(NetworkWaitRow).where(NetworkWaitRow.thread_id == thread_id).order_by(NetworkWaitRow.first_waited_at.desc()).limit(max(1, limit))
         async with self._sf() as session:
             return [_to_dict(row) for row in (await session.scalars(statement)).all()]
 

@@ -30,12 +30,14 @@ from starlette.background import BackgroundTask
 from alpha.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
 from alpha.authz.sandbox_authz import safe_app_config_async
 from alpha.config.paths import get_paths, make_safe_user_id
+from alpha.persistence.network_waits.model import OPEN_NETWORK_WAIT_STATES
 from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
 from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
 from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
 from alpha.utils.thread_id import ThreadId
+from alpha.utils.time import coerce_iso
 from alpha.workspace_changes import get_workspace_changes_response
 from app.gateway.artifact_archive import ArtifactArchiveError, ArtifactArchiveResult, build_artifact_archive
 from app.gateway.authz import require_cancel_permission_if, require_permission
@@ -51,6 +53,7 @@ from app.gateway.checkpoint_lineage import (
 from app.gateway.context_usage import build_context_usage
 from app.gateway.deps import get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+from app.gateway.ops_runtime import network_snapshot
 from app.gateway.pagination import trim_run_message_page
 
 # Cost estimation has exactly one implementation: the operations console's
@@ -2546,3 +2549,208 @@ async def thread_token_usage(
         agg = await run_store.aggregate_tokens_by_thread(thread_id)
     context_usage = await build_context_usage(request, thread_id, run_store)
     return ThreadTokenUsageResponse(thread_id=thread_id, context_usage=context_usage, **agg)
+
+
+class ThreadNetworkWaitEntry(BaseModel):
+    """One outage this thread survived, in the shape a transcript bubble needs.
+
+    ``first_waited_at`` is when the link died and ``terminal_at`` is when the
+    wait ended. They are separate columns rather than one derived from the other
+    because ``updated_at`` also moves on every failed resume attempt: reading the
+    connection time off it would report a *scheduled retry* as the moment the
+    link came back. Both are nullable on purpose — a wait that is still open has
+    not finished waiting, and that is a state, not a zero timestamp.
+    """
+
+    wait_id: str
+    run_id: str | None = None
+    state: str
+    reason: str = ""
+    attempt: int = 0
+    first_waited_at: str | None = None
+    terminal_at: str | None = None
+    next_attempt_at: str | None = None
+    last_error: str | None = None
+    resumed_from_run_id: str | None = None
+
+
+class ThreadNetworkWaitsResponse(BaseModel):
+    """The thread's outage timeline, beside the live connectivity reading.
+
+    ``waits`` includes *settled* rows on purpose. An outage that ended an hour
+    ago is still part of this conversation — a UI reading only open rows would
+    show a thread as never having been parked the moment it resumed, which
+    erases exactly the event the user is asking about.
+    """
+
+    reported: bool = True
+    reason: str = ""
+    detail: str = ""
+    connectivity: dict[str, Any] = Field(default_factory=dict)
+    #: Whether a parked session may ever be given up on. False when this
+    #: deployment waits indefinitely, which is the default.
+    bounded: bool | None = None
+    max_attempts: int | None = None
+    waits: list[ThreadNetworkWaitEntry] = Field(default_factory=list)
+    open_wait: ThreadNetworkWaitEntry | None = None
+    wait_seconds: float | None = None
+    #: How many wait rows the thread has in total, which may exceed the returned
+    #: page. Never the length of the returned list.
+    total_waits: int | None = None
+    returned_waits: int | None = None
+
+
+def _patience_policy(policy: object) -> tuple[bool | None, int | None]:
+    """Project ``(bounded, max_attempts)`` from a wait service's policy.
+
+    Either half is ``None`` when the policy cannot answer it, and they are read
+    together rather than defaulted independently. ``bounded`` is the claim a UI
+    turns into a sentence — "I'll wait for as long as it takes" versus "this
+    deployment gives up after N attempts" — so a value it could not read must
+    not become either: defaulting to ``False`` would have the bubble hint at a
+    deadline nobody declared, and defaulting to ``True`` would promise patience
+    nobody promised.
+    """
+    if policy is None:
+        return None, None
+    attempts = getattr(policy, "max_attempts", None)
+    unbounded = getattr(policy, "is_unbounded", None)
+    max_attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else None
+    bounded = (not unbounded) if isinstance(unbounded, bool) else None
+    return bounded, max_attempts
+
+
+def _wait_seconds(row: Mapping[str, Any]) -> float | None:
+    """Seconds a wait has been parked, measured from its two stamps.
+
+    Returns ``None`` rather than ``0`` when either stamp is missing or
+    unparseable: "we could not measure it" and "it took no time" are opposite
+    claims, and the frontend renders the first as words rather than a dash that
+    reads as a number.
+    """
+    try:
+        start = row.get("first_waited_at")
+        end = row.get("terminal_at")
+        if start is None or end is None:
+            return None
+        if isinstance(start, str):
+            start = datetime.fromisoformat(start)
+        if isinstance(end, str):
+            end = datetime.fromisoformat(end)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=UTC)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=UTC)
+        return round((end - start).total_seconds(), 3)
+    except Exception:  # noqa: BLE001 - a thread read must not raise on a bad row
+        logger.warning("could not measure the network wait duration for wait %s", row.get("id"), exc_info=True)
+        return None
+
+
+def _project_wait_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    """One wait row as a wire object, with timestamps normalised to ISO-8601.
+
+    Timestamps cross as ISO strings because they are wall-clock stamps read by a
+    browser, and an Epoch number here would be a second, undocumented
+    convention beside every other Alpha surface. A missing stamp stays ``None``
+    — ``coerce_iso`` maps absent and empty to ``""``, which is then normalised
+    back to ``None`` so the wire never carries ``""`` for a timestamp.
+    """
+
+    def _iso(value: Any) -> str | None:
+        return coerce_iso(value) or None
+
+    return {
+        "wait_id": str(row.get("id") or ""),
+        "run_id": row.get("run_id"),
+        "state": str(row.get("state") or ""),
+        "reason": str(row.get("reason") or ""),
+        "attempt": int(row.get("attempt") or 0),
+        "first_waited_at": _iso(row.get("first_waited_at")),
+        "terminal_at": _iso(row.get("terminal_at")),
+        "next_attempt_at": _iso(row.get("next_attempt_at")),
+        "last_error": row.get("last_error"),
+        "resumed_from_run_id": row.get("resumed_from_run_id"),
+    }
+
+
+@router.get("/{thread_id}/network-waits", response_model=ThreadNetworkWaitsResponse)
+@require_permission("threads", "read", owner_check=True)
+async def thread_network_waits(thread_id: ThreadId, request: Request) -> ThreadNetworkWaitsResponse:
+    """Every internet outage this thread waited out, plus the live link reading.
+
+    The in-chat surface for the connectivity contract: the run parks on a dead
+    link, this says when it parked and when (or whether) it resumed, and the
+    transcript renders one bubble per outage with both timestamps.
+
+    Honesty rules this route enforces, because each has a plausible wrong
+    answer:
+
+    - **A memory backend reports unreported, not empty.** ``memory`` has no
+      durable place to record a park, so "no waits" would be a claim this
+      deployment cannot make. ``reported: false`` with the reason is the answer,
+      and the UI renders that instead of an empty timeline.
+    - **A store outage is 503, never an empty list.** "Could not read the
+      timeline" and "nothing was ever parked" lead to opposite decisions.
+    - **The wait duration is ``None`` until it is measured.** A settled row with
+      an unparseable stamp reports ``None``, never ``0``.
+    - **``open_wait`` is only the row that is still waiting.** A settled row is
+      history, and re-parking the UI on a resumed outage would show a live
+      "waiting for network" over work that already resumed.
+    """
+    state = request.app.state
+    monitor = getattr(state, "network_monitor", None)
+    wait_service = getattr(state, "network_waits", None)
+    network_enabled = getattr(state, "network_configured", None)
+
+    connectivity = network_snapshot(monitor, wait_service, network_enabled=network_enabled)
+
+    bounded, max_attempts = _patience_policy(getattr(wait_service, "policy", None))
+
+    store = getattr(wait_service, "store", None)
+    if wait_service is None or store is None or not hasattr(store, "list_for_thread"):
+        return ThreadNetworkWaitsResponse(
+            reported=False,
+            reason="network_wait_store_unavailable",
+            detail=(
+                "This process records no per-thread outage timeline, so this thread's waits are unavailable rather than empty. "
+                "A `database.backend: memory` deployment has nowhere durable to record a park; a `network.enabled: false` "
+                "deployment starts no recovery pass at all."
+            ),
+            connectivity=connectivity,
+            bounded=bounded,
+            max_attempts=max_attempts,
+        )
+
+    try:
+        rows = await store.list_for_thread(thread_id, limit=50)
+    except Exception as exc:  # noqa: BLE001 - a store outage is its own reported state
+        logger.warning("network wait timeline read failed for thread %s", thread_id, exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail=f"The parked-session store could not be read, so this thread's outage timeline is unavailable: {exc}",
+        ) from exc
+
+    entries: list[ThreadNetworkWaitEntry] = []
+    open_row: ThreadNetworkWaitEntry | None = None
+    open_duration: float | None = None
+    for row in rows:
+        entry = ThreadNetworkWaitEntry(**_project_wait_row(row))
+        entries.append(entry)
+        if open_row is None and entry.state in OPEN_NETWORK_WAIT_STATES:
+            open_row = entry
+            # The duration is measured from the *raw* row while both stamps are
+            # still datetimes, not from the ISO strings that cross the wire.
+            open_duration = _wait_seconds(row)
+
+    return ThreadNetworkWaitsResponse(
+        reported=True,
+        connectivity=connectivity,
+        bounded=bounded,
+        max_attempts=max_attempts,
+        waits=entries,
+        open_wait=open_row,
+        wait_seconds=open_duration,
+        total_waits=len(entries),
+        returned_waits=len(entries),
+    )

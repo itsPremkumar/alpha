@@ -57,9 +57,14 @@ class RunOwnershipConfig(BaseModel):
     )
     max_resume_attempts: int = Field(
         default=3,
-        ge=1,
+        ge=0,
         le=20,
-        description="Maximum number of automatic checkpoint continuations in one durable recovery lineage.",
+        description=(
+            "Maximum number of automatic checkpoint continuations in one durable recovery lineage. 0 means UNBOUNDED, "
+            "which is the right value for a deployment whose internet connection is unreliable: a session parked on an "
+            "outage is then never surrendered for surviving it. A positive number bounds how many times a *continuation "
+            "that keeps dying* is relaunched, and exhaustion is reported as recovery_exhausted rather than dropped."
+        ),
     )
     resume_backoff_seconds: float = Field(
         default=5.0,

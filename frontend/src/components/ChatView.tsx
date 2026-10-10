@@ -17,6 +17,7 @@ import dynamic from "next/dynamic";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { ActivityStatus } from "@/components/ActivityStatus";
+import { NetworkWaitBubbles } from "@/components/NetworkWaitBubbles";
 import { SubagentList } from "@/components/SubagentList";
 import { SwarmBoard } from "@/components/agent-ui/SwarmBoard";
 import { TranscriptSearch } from "@/components/TranscriptSearch";
@@ -1084,6 +1085,18 @@ export default function ChatView({
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) ?? null,
     [projects, activeProjectId],
+  );
+
+  // The thread the network-bubble timeline is read for. `local-*` ids are
+  // browser-only archive rows, and the outage timeline is a server-side durable
+  // record, so there is nothing to read for them and asking would be a guaranteed
+  // 404 every poll.
+  const networkWaitThreadId = useMemo(
+    () =>
+      activeThreadId && !activeThreadId.startsWith("local-") && !activeThreadId.startsWith("new-")
+        ? activeThreadId
+        : null,
+    [activeThreadId],
   );
   const activeProjectThreadCount = useMemo(
     () =>
@@ -3725,6 +3738,25 @@ export default function ChatView({
                                   : branding.assistantLabel
                               }
                             />
+                          </div>
+                        )}
+
+                        {/* The agent's own report on connectivity, in the transcript it
+                    belongs to. It is deliberately NOT gated on isLoading: a run
+                    that parked on a dead link is terminal from the run's point of
+                    view, so a loading-only mount would make the one moment the
+                    user most needs to see it — the wait that is happening now —
+                    the one moment it is hidden. A settled outage is part of this
+                    conversation's history, which is why it renders after a
+                    reload too, and why this reads a durable timeline rather than
+                    a live stream.
+
+                    `local-*` threads are browser-only archive rows with no server
+                    id, so a park could never have been recorded for them; polling
+                    one would just be a guaranteed 404 on every tick. */}
+                        {networkWaitThreadId && (
+                          <div className="max-w-4xl mx-auto">
+                            <NetworkWaitBubbles threadId={networkWaitThreadId} />
                           </div>
                         )}
 

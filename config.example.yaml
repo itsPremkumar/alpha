@@ -30,7 +30,12 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 59
+# 60: documented `network_wait` (how long a network-parked session waits). It
+# carries `max_attempts: 0` = UNBOUNDED, so a config that never declares it now
+# waits indefinitely where it previously gave up after 24 attempts. That is the
+# intended change, but it IS a behaviour change for an existing install: set
+# `network_wait.max_attempts` to your old number to keep the previous bound.
+config_version: 60
 
 # ============================================================================
 # Logging
@@ -4048,6 +4053,43 @@ network:
   #     host: proxy.corp.test
   #     port: 8443
   #     timeout_seconds: 2.0
+
+# ============================================================================
+# Connectivity Waits
+#
+# How long a network-parked session keeps waiting. `network` above measures
+# whether the link is up; this section decides what happens to work that was
+# mid-flight when it went down.
+#
+# The default is UNBOUNDED (max_attempts: 0). A wait is a parked task, not a
+# retry loop - the task did nothing wrong, the internet did. Two other bounds
+# already exist and are deliberately left where they are:
+#   * network.backoff_* caps how loudly the link is re-checked (300s ceiling)
+#     and never stops polling, so this section does not need to;
+#   * run_ownership.max_resume_attempts bounds how many times a *continuation
+#     that keeps dying* may be relaunched.
+# Charging the wait itself against a fixed count turns "the internet was gone
+# for an hour" into "gave up after N tries".
+#
+# Restart-required: the recovery pass owns a background task and an in-flight
+# backoff schedule, and a row admitted under one ceiling could be surrendered
+# under another.
+network_wait:
+  enabled: true                 # false records no park and starts no recovery pass.
+  max_attempts: 0               # Resume attempts before the wait is reported as
+                                # `gave_up`. 0 = UNBOUNDED: a parked session waits
+                                # until the link returns, however long that takes.
+                                # Set a positive number only when an operator is
+                                # expected to intervene, and exhaustion is then
+                                # reported with its reason rather than dropped.
+  backoff_initial_seconds: 15.0 # First delay before a parked session is retried.
+  backoff_max_seconds: 900.0    # Ceiling for the retry ladder.
+  backoff_multiplier: 2.0       # Growth per failed resume attempt.
+  poll_interval_seconds: 30.0   # How often the pass sweeps for due waits.
+  claim_lease_seconds: 30.0     # Lease on a wait being resumed, so two Gateway
+                                # instances cannot both launch a continuation.
+  max_claims_per_pass: 5        # Waits one pass may take, so a backlog does not
+                                # stampede the provider the moment the link returns.
 
 # ============================================================================
 # Stream Bridge Configuration

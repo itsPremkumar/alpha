@@ -25,12 +25,21 @@ supplies the durable bookkeeping and the retry bound.
 
 Bounded, and honest when it stops
 ---------------------------------
-:attr:`NetworkWaitPolicy.max_attempts` is the bound. When it is reached the row
-becomes ``gave_up`` with a reason, and that is a *reported* outcome — a parked
-task that is retried forever is the outage equivalent of the restart loop the
-supervisor refuses to write. Nothing here silently drops a wait: every path ends
-in a terminal state with a reason, and :meth:`NetworkWaitService.status` reports
-what is open.
+:attr:`NetworkWaitPolicy.max_attempts` bounds a wait, and when it is reached the
+row becomes ``gave_up`` with a reason — a *reported* outcome, never a silent
+drop. **The default is unbounded** (:data:`UNBOUNDED_ATTEMPTS`): a session that
+did nothing wrong should not die because an internet outage outlasted a counter.
+Two bounds remain, both deliberately elsewhere and both already capped:
+
+- the monitor's backoff ladder, which bounds how loudly Alpha re-checks the
+  link (5s → 300s by default, and never stops polling); and
+- ``run_ownership.max_resume_attempts``, which bounds how many times a
+  continuation that keeps dying may be relaunched.
+
+A *recovery owner that declines a checkpoint still settles the row immediately* —
+that refusal will not change on retry, so retrying it is a loop with extra steps.
+Nothing here silently drops a wait: every path ends in a terminal state with a
+reason, and :meth:`NetworkWaitService.status` reports what is open.
 
 The backoff is durable
 ----------------------
@@ -55,6 +64,7 @@ from alpha.runtime.sessions.states import SessionState, SessionStateSignal, deri
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "UNBOUNDED_ATTEMPTS",
     "NetworkWaitPolicy",
     "NetworkWaitService",
     "NetworkWaitStore",
@@ -92,13 +102,47 @@ class NetworkWaitStore(Protocol):
 
     async def list_open(self, *, user_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]: ...
 
+    async def list_for_thread(self, thread_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Every wait ever recorded for one thread, newest first.
+
+        Distinct from ``list_open`` (a fleet-wide sweep of unfinished rows): this
+        is the *timeline* a thread's UI renders — the outage that ended an hour
+        ago is exactly as much a part of that session's story as the one still
+        open, so "no open waits" must never read as "this session was never
+        parked".
+        """
+
+
+#: :attr:`NetworkWaitPolicy.max_attempts` value meaning "never give up".
+#:
+#: Deliberately ``0`` rather than a large number: a wait that must not exhaust has
+#: to be *unrepresentable as a count*, or an operator raising "unlimited" to
+#: 100000 has only moved the cliff. The probe loop beside this service has always
+#: had no attempt ceiling, and a park is only half the feature without the other
+#: half: an outage that lasts longer than the budget would otherwise strand a
+#: session that did nothing wrong.
+UNBOUNDED_ATTEMPTS = 0
+
 
 @dataclass(frozen=True, slots=True)
 class NetworkWaitPolicy:
-    """Bounds for parked-session retries."""
+    """Bounds for parked-session retries.
 
-    #: Attempts before a parked session is given up on and reported.
-    max_attempts: int = 24
+    ``max_attempts`` is the attempt budget, and :data:`UNBOUNDED_ATTEMPTS`
+    (``0``) disables it entirely. Unbounded is the default for the *durable
+    registry* because a wait is a parked task rather than a retry loop: the
+    bound on how loudly Alpha keeps re-checking the link belongs to the
+    monitor's backoff ladder, which is already capped, and the bound on how
+    long a *resumed* run may keep dying belongs to
+    ``run_ownership.max_resume_attempts``. Charging the wait itself against a
+    fixed count turns "the internet was gone for an hour" into "gave up after
+    24 tries", which is the outage equivalent of the restart loop the
+    supervisor refuses to write.
+    """
+
+    #: Attempts before a parked session is given up on and reported. ``0``
+    #: (:data:`UNBOUNDED_ATTEMPTS`) means the wait never exhausts.
+    max_attempts: int = UNBOUNDED_ATTEMPTS
     #: First backoff, doubling per attempt.
     backoff_initial_seconds: float = 15.0
     backoff_max_seconds: float = 900.0
@@ -112,8 +156,8 @@ class NetworkWaitPolicy:
     max_claims_per_pass: int = 5
 
     def __post_init__(self) -> None:
-        if self.max_attempts < 1:
-            raise ValueError("max_attempts must be >= 1: a wait that may not be retried is not a wait")
+        if self.max_attempts < 0:
+            raise ValueError(f"max_attempts must be >= 0, where {UNBOUNDED_ATTEMPTS} means unbounded: a negative budget is not a policy")
         if self.backoff_initial_seconds <= 0:
             raise ValueError("backoff_initial_seconds must be > 0")
         if self.backoff_max_seconds < self.backoff_initial_seconds:
@@ -122,6 +166,16 @@ class NetworkWaitPolicy:
             raise ValueError("backoff_multiplier must be >= 1.0")
         if self.max_claims_per_pass < 1:
             raise ValueError("max_claims_per_pass must be >= 1")
+
+    @property
+    def is_unbounded(self) -> bool:
+        """True when this policy never exhausts a wait.
+
+        Read by operator surfaces so "will this ever give up?" is answered from
+        the policy itself rather than re-derived from a number a reader has to
+        remember the sentinel for.
+        """
+        return self.max_attempts == UNBOUNDED_ATTEMPTS
 
     def backoff_for(self, attempt: int) -> float:
         """Seconds before retry *attempt* (1-based), capped."""
@@ -245,6 +299,16 @@ class NetworkWaitService:
         return self._policy
 
     @property
+    def store(self) -> NetworkWaitStore:
+        """The durable store this service records into.
+
+        Public so a read surface never has to reach into ``_store``: the route
+        projecting this thread's timeline needs the per-thread query, and a route
+        reading a private attribute is the same coupling with none of the boundary.
+        """
+        return self._store
+
+    @property
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
@@ -308,10 +372,14 @@ class NetworkWaitService:
         thread_id = str(row.get("thread_id"))
         attempt = int(row.get("attempt") or 0)
 
-        if attempt >= self._policy.max_attempts:
+        if self._policy.max_attempts != UNBOUNDED_ATTEMPTS and attempt >= self._policy.max_attempts:
             # Bounded, and reported. This is the outage equivalent of a restart
             # loop: a session retried forever against a link that never returns
             # helps nobody and hides the problem.
+            #
+            # Skipped entirely under an unbounded policy — the default. A park
+            # is not a retry loop, and the count that matters (how long the
+            # link has been gone) is already published by the monitor.
             await self._store.mark_terminal(wait_id, state="gave_up", last_error=f"gave up after {attempt} resume attempts while connectivity was unavailable")
             self._gave_up += 1
             return ResumeOutcome(wait_id=wait_id, thread_id=thread_id, state="gave_up", attempt=attempt, gave_up=True, detail="attempt budget exhausted")

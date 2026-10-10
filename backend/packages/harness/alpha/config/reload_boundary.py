@@ -102,6 +102,12 @@ STARTUP_ONLY_FIELDS: dict[str, str] = {
         "Changing probe endpoints, hysteresis thresholds, or the backoff ladder requires a Gateway restart, because a mid-flight swap would "
         "split the process across two connectivity policies."
     ),
+    "network_wait": (
+        "NetworkWaitService is constructed and its recovery pass started once during Gateway lifespan startup; max_attempts, the retry "
+        "backoff ladder, and the claim lease are captured into the service instance and the policy is not rebuilt on config.yaml edits. "
+        "Changing how long a parked session waits (or whether it ever gives up) therefore requires a Gateway restart, because a wait admitted "
+        "under one ceiling could be surrendered under another."
+    ),
 }
 
 

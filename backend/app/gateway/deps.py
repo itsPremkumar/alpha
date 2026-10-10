@@ -30,6 +30,7 @@ from langgraph.types import Checkpointer
 from alpha.community.browser_automation.session import browser_multi_worker_error
 from alpha.config.app_config import AppConfig, get_app_config
 from alpha.config.network_resilience_config import to_monitor_config
+from alpha.config.network_wait_config import NetworkWaitConfig, to_wait_policy
 from alpha.events.bus import get_event_bus
 from alpha.persistence.feedback import FeedbackRepository
 from alpha.persistence.network_waits import NetworkWaitRepository
@@ -843,9 +844,18 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             if database_backend != "memory":
                 # Reuses the one session factory every other repository took, so the registry shares the engine and its pool rather than opening another.
                 wait_store = NetworkWaitRepository(sf)
-                wait_service = NetworkWaitService(wait_store, network_state=lambda: monitor.state)
+                # The wait policy comes from ``network_wait`` in config.yaml, not
+                # from the runtime default: unbounded waiting is the whole point
+                # of a park, so the ceiling an operator actually wants has to be
+                # readable in the file rather than baked into the harness.
+                wait_policy = to_wait_policy(getattr(startup_config, "network_wait", None) or NetworkWaitConfig())
+                wait_service = NetworkWaitService(wait_store, network_state=lambda: monitor.state, policy=wait_policy)
                 app.state.network_waits = wait_service
                 set_network_wait_service(wait_service)
+                logger.info(
+                    "Durable network waits active: %s",
+                    "unbounded — a parked session keeps waiting until the link returns" if wait_policy.is_unbounded else f"at most {wait_policy.max_attempts} resume attempts before the wait is reported as gave_up",
+                )
                 # A pass that claimed a row and then died leaves it ``resuming``
                 # with no way back, so a crashed Gateway would otherwise strand
                 # its parked sessions until somebody noticed.

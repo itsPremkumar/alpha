@@ -237,6 +237,37 @@ remain process-local. Durable event replay and operator-resumed deferred actions
 are not implemented. See
 [the Mod Kernel design and production gates](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md).
 
+### 5.11 Durable runtime and unbounded network waits
+Connectivity is a first-class runtime state, not an exception. Alpha probes the
+link itself (TCP connect only, bounded, no payload), publishes a four-state
+reading where `unknown` is real and is never rounded to `offline`, and a run that
+loses its link is **parked** as `waiting_network` rather than failed. The
+durable-runtime contract is that a process, UI, network, provider or Windows
+restart never becomes a task failure.
+
+A parked session **waits indefinitely by default**: `config.yaml -> network_wait`
+defaults to `max_attempts: 0`, meaning unbounded, because a wait is a parked task
+rather than a retry loop — the task did nothing wrong and the internet did. The
+`0` is a sentinel, not a small number, so "unlimited" cannot be a count that
+merely moves the cliff. The two bounds that belong elsewhere are untouched:
+`network.backoff_*` caps how loudly the link is re-checked (and never stops
+polling), and `run_ownership.max_resume_attempts` — which also accepts `0` —
+bounds a continuation that keeps dying. A checkpoint the recovery owner declines
+is still settled immediately, because that refusal will not change on retry.
+
+Each park is recorded durably with **two** stamps: `first_waited_at` (the link
+died) and `terminal_at` (the wait ended). The second is deliberately not
+`updated_at`, which also moves when a failed resume writes its next backoff — so
+reading the recovery time off it would report a scheduled retry as the moment
+the link came back. `GET /api/threads/{id}/network-waits` returns every park for
+one thread **including settled ones**, because an outage that ended an hour ago
+is still part of that conversation, and the chat renders each one inline with
+both timestamps, the measured wait between them, and a live counter while the
+wait is open. The surface reports `bounded` so the UI can state whether a
+deployment will ever give up rather than hinting at a deadline nobody declared.
+See
+[the durable-runtime map](https://github.com/itsPremkumar/alpha/blob/main/docs/architecture/durable-runtime.md).
+
 ## 6. Harness engine map
 
 119 engine packages live under `backend/packages/harness/alpha/`:

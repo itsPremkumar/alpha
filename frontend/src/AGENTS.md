@@ -349,6 +349,79 @@ Coverage: `src/lib/network.test.mjs` (routes, verbs, envelope mapping, every
 honesty inversion), and the new entries are also subject to
 `src/lib/ui-legibility.test.mjs`'s dash-with-disclosure rule.
 
+## The in-chat network bubble (`waiting_network`, not `failed`)
+
+`components/NetworkWaitBubbles.tsx` + `lib/network-wait.ts` →
+`lib/network-wait-view.ts`, over `GET /api/threads/{id}/network-waits`. It is
+mounted in the chat transcript (`ChatView.tsx`, beside `ActivityStatus`) and it is
+the human half of the durable-runtime promise that **an internet outage must not
+become a task failure**.
+
+**It is not the workspace strip, and the two answer different questions.**
+`lib/network.ts` answers *"is the machine's link up right now"* — a property of
+the host, identical for every thread. This answers *"what happened to this
+conversation"*: when the link died, how long the work waited, whether it is
+waiting still. A thread that survived an outage an hour ago has a perfectly
+healthy link **now** and a lost half-hour of work in its history, so the live
+reading alone can never show it.
+
+The honesty rules this surface is built around, each with a plausible wrong
+reading:
+
+| Server says | Bubble shows |
+|---|---|
+| an open wait | `Connectivity lost` · `HH:MM:SS → waiting` · a **client** counter · "I'll pick this up automatically … for as long as it takes" |
+| `bounded: false` (the default) | the patience sentence above — it is a fact, not a mood |
+| `bounded: true` | "This deployment gives up after a set number of attempts", plus a `bounded by this deployment` chip |
+| `bounded: null` | neither promise — `null` is a third state and must not be read as either |
+| `state: resumed` | `Back online` · `HH:MM:SS → HH:MM:SS` · **both** stamps · the server-measured duration |
+| `state: gave_up` | `Waiting stopped`, red, naming the server's `last_error` |
+| `reported: false` | the server's own `detail`, grey — **never** "no outages" |
+| the read rejected | "could not be read … unknown rather than fine", grey, with a Retry |
+| `waits: []` | nothing at all |
+| `terminal_at: null` on a settled row | no duration, and never `0s` |
+
+Rules that must keep:
+
+- **A settled outage stays on screen.** The timeline is deliberately *not* filtered
+  to open waits: an outage that ended an hour ago is part of this conversation's
+  history, and a view that dropped it the moment it resolved would erase exactly
+  the event the user came to read.
+- **A settled row's duration is the server's, never this browser's.** It is
+  computed from `first_waited_at` → `terminal_at`. The open wait's ticking counter
+  is the opposite: explicitly *client-observed*, because the row has not ended so
+  no duration exists, and a client-computed "5m 22s" for an interval the browser
+  was not running through would be this machine's arithmetic presented as the
+  runtime's.
+- **`null` never becomes `0s`.** `formatDuration(null)` is `null` and the component
+  renders `DURATION_UNMEASURED` beside it. "We could not measure it" and "it took
+  no time" are opposite claims.
+- **`wait_seconds` is `null` by construction while a wait is open**, so the live
+  counter is derived from `first_waited_at` and the browser's own clock. The
+  tooltip says so.
+- **The mount is not gated on `isLoading`.** A run parked on a dead link is
+  terminal from the run's point of view, so a loading-only mount would hide the
+  bubble during exactly the wait the user most needs to see.
+- **`local-*` threads are never polled.** They are browser-only archive rows with
+  no server id, so no park could have been recorded and every tick would be a
+  guaranteed 404.
+- **Every sentence lives in `lib/network-wait-view.ts`.** The component renders
+  `networkWaitTimeline(...)` and must not branch on a wait state of its own; a
+  second copy of the wording is how a bubble ends up contradicting itself.
+- **A Retry re-reads the timeline and paints nothing from the click**, mirroring
+  `WorkspaceVitals`: `POST /ops/network/recheck` measures the *link*, then
+  `load()` re-reads the timeline.
+- **The poll does not stop when nothing is parked.** The obvious optimisation —
+  stop once every park is settled, because "the timeline cannot change without a
+  new run" — is wrong: the next run in this thread is exactly the thing that
+  parks, so a stopped poll means the bubble only appears after a reload, which is
+  not the live wait notice this exists to be. It is one cheap, bounded,
+  owner-scoped read per mounted thread.
+
+Coverage: `src/lib/network-wait.test.mjs` (routes, escaping, envelope mapping,
+every bubble state, the duration/stamp formatters, and source pins on the mount
+and the component's own claims).
+
 ## APEX control panel (`apex` workspace view)
 
 `lib/apex.ts` + `components/sections/ApexSection.tsx`, over `GET /api/apex/*`.

@@ -12,6 +12,40 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **network-wait-unbounded:** A network-parked session now waits **indefinitely**
+  by default. `config.yaml -> network_wait.max_attempts` defaults to `0`
+  (unbounded) rather than a finite count, because a wait is a parked task, not a
+  retry loop — the task did nothing wrong and the internet did, so an outage that
+  outlasted a constant must not abandon the work. `0` is a sentinel rather than a
+  small number, so "unlimited" cannot become a count that merely moves the cliff.
+  The bounds that belong elsewhere are untouched: `network.backoff_*` already caps
+  how loudly the link is re-checked and never stops polling, and
+  `run_ownership.max_resume_attempts` now also accepts `0` for a lineage that must
+  not be surrendered. A positive `network_wait.max_attempts` still ends a wait as
+  `gave_up` **with its reason**, and a checkpoint the recovery owner declines is
+  still settled immediately. The new section is startup-only.
+
+- **thread-network-wait-timeline:** `GET /api/threads/{id}/network-waits`
+  reports every park one thread recorded — including settled ones, because an
+  outage that ended an hour ago is still part of that conversation — beside the
+  live connectivity block, and carries `bounded`/`max_attempts` so a client can
+  state whether this deployment will ever give up rather than hinting at a
+  deadline nobody declared. New `network_waits.terminal_at` column
+  (migration `0029`) records when a wait *ended*; it is deliberately not
+  `updated_at`, which also moves when a failed resume writes its next backoff and
+  would therefore report a scheduled retry as a recovered link. A deployment with
+  no durable park store answers `reported: false` rather than an empty timeline,
+  and a store outage answers `503` rather than "no outages".
+
+- **network-wait-chat-bubble:** The chat reports connectivity in the transcript
+  it belongs to. A bubble per outage shows when the link dropped, a live counter
+  while it waits, and when it came back with the measured time lost — so
+  "waiting for the internet" is visibly different from "stuck". The mount is
+  deliberately not gated on a run being in flight, because a run parked on a dead
+  link is already terminal from the runtime's point of view and a loading-only
+  mount would hide the bubble during exactly the wait the user needs to see. The
+  row is durable, so a chat reopened later still shows the outage it survived.
+
 - **apex-goal-owner-boundaries:** Refuse cross-owner goal-tree links and
   mismatched goal-to-session links; recheck linked session ownership before
   exposing cycle decisions, including for stale snapshots created before the

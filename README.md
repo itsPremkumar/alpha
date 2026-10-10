@@ -104,7 +104,7 @@ In one sentence:
 | **Do I need a paid backend?** | No. MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
 | **Which models?** | Any provider you put in `config.yaml` — OpenRouter, OpenAI, Anthropic, Google, DeepSeek, Moonshot, Ollama, and self-hosted endpoints. |
 | **Does it run offline?** | Local models, local speech (Whisper + Piper), and local SQLite/PostgreSQL are all supported. |
-| **What happens when the internet drops?** | Alpha measures its own connectivity and says so — the workspace header shows the link state and its measured round-trip. Work that needs the link is *parked*, not lost, and the backend keeps re-probing automatically (5s → 300s backoff, no give-up) until it returns, then resumes on its own. A **Retry** button on that reading asks for an immediate measurement. See [durable runtime](./docs/architecture/durable-runtime.md). |
+| **What happens when the internet drops?** | Alpha measures its own connectivity and says so — the workspace header shows the link state and its measured round-trip. Work that needs the link is *parked*, not lost, and the backend keeps re-probing automatically (5s → 300s backoff, no give-up) until it returns, then resumes on its own — **waiting indefinitely by default**, because a session that did nothing wrong should not be abandoned for surviving an outage. The chat itself says so: a bubble records when the link dropped, a live counter while it waits, and when it came back with the time it lost. A **Retry** button on the header reading asks for an immediate measurement. See [durable runtime](./docs/architecture/durable-runtime.md). |
 | **Is it a framework or an app?** | Both. Use it as a finished app, or import `alpha-harness` (`import alpha.*`) and build your own agent runtime on the same engines. |
 
 ---
@@ -787,6 +787,13 @@ exactly-once execution.
   Windows restart never becomes a task failure: session lifecycle, connectivity as
   a first-class state, a per-effect `UNKNOWN` + reconciliation ledger, a
   crash-loop-bounded process supervisor, and an ordered, honestly reported shutdown.
+- **Unbounded network waits, told to the user** — a run that loses its link parks
+  as `waiting_network` rather than failing, and waits **indefinitely** by default
+  (`network_wait.max_attempts: 0`) instead of being surrendered for surviving an
+  outage that outlasted a counter. `GET /api/threads/{id}/network-waits` reports
+  each park's drop time, recovery time, and measured wait, and the chat renders it
+  inline as a bubble with both timestamps and a live counter — so "waiting for the
+  internet" is visibly different from "stuck".
 - **Workflow fork, dry run & templates** — fork a new run from any point in an
   event history without repeating inherited work, dry-run a graph on a throwaway
   engine (zero side effects, zero tokens, labelled `dry_run_simulation`), and gate
