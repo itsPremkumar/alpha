@@ -1,5 +1,10 @@
 """Recursive Self-Improvement (RSI) package."""
 
+# RRSI (Regularized Recursive Self-Improvement) is a subpackage of this one;
+# re-exporting it here keeps `alpha.rsi.rrsi` reachable from the package root
+# and satisfies the orphan-module gate without every caller spelling the
+# dotted path. The normative contract for it lives in `rrsi/AGENTS.md`.
+from alpha.rsi import rrsi as rrsi
 from alpha.rsi.archive import archive_candidate
 from alpha.rsi.engine import RSIEngine, get_rsi_engine
 from alpha.rsi.models import (
@@ -11,6 +16,13 @@ from alpha.rsi.models import (
     RSIStage,
 )
 from alpha.rsi.opportunity import OPPORTUNITY_CATEGORIES, Opportunity
+from alpha.rsi.rrsi import (
+    RrsiParams,
+    RrsiRoundStore,
+    build_proposal_plan,
+    election_gate_for,
+    select_round,
+)
 from alpha.rsi.state import (
     RsiCycleState,
     load_cycle_state,
@@ -43,4 +55,10 @@ __all__ = [
     "resume",
     "StrategyMemory",
     "get_strategy_memory",
+    "rrsi",
+    "RrsiParams",
+    "RrsiRoundStore",
+    "build_proposal_plan",
+    "election_gate_for",
+    "select_round",
 ]

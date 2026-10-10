@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
-class CognitiveTier(str, enum.Enum):
+class CognitiveTier(enum.StrEnum):
     """Cognitive memory tier categorization."""
 
     WORKING = "working"
@@ -26,7 +26,7 @@ class CognitiveTier(str, enum.Enum):
     ASSOCIATIVE = "associative"
 
 
-class BeliefStatus(str, enum.Enum):
+class BeliefStatus(enum.StrEnum):
     """Status of an epistemic belief or semantic fact."""
 
     ACTIVE = "active"
@@ -35,7 +35,7 @@ class BeliefStatus(str, enum.Enum):
     DEPRECATED = "deprecated"
 
 
-class TraceOutcome(str, enum.Enum):
+class TraceOutcome(enum.StrEnum):
     """Outcome classification for episodic traces."""
 
     SUCCESS = "success"
@@ -156,7 +156,20 @@ class SemanticRelationEdge:
 
 @dataclass
 class ProceduralSkill:
-    """A durable learned playbook, recipe, or reusable workflow."""
+    """A durable learned playbook, recipe, or reusable workflow.
+
+    ``lifecycle`` records where the *operator or the consolidation cycle* left
+    the skill; :class:`alpha.memory.cognitive.skill_lifecycle.SkillVerdict` is
+    the independent read of what the measurements support, and the two are
+    allowed to disagree on purpose.
+
+    ``success_rate`` is a display convenience and **reports 1.0 when nothing has
+    ever been measured** (``total > 0`` guard, else ``1.0``). It is kept only so
+    existing callers and persisted snapshots keep their meaning; it must not be
+    used for ranking, promotion, or eviction, because "no evidence" and "100%
+    success" are different claims. Use :attr:`effectiveness` (``None`` when
+    unproven) or :attr:`smoothed_effectiveness` (the ranking number).
+    """
 
     name: str
     description: str
@@ -171,15 +184,62 @@ class ProceduralSkill:
     failure_reasons: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     skill_id: str = field(default_factory=lambda: f"skill_{uuid.uuid4().hex[:8]}")
+    lifecycle: str = "proposed"
+    lifecycle_reason: str = ""
 
     @property
     def success_rate(self) -> float:
         total = self.success_count + self.failure_count
         return (self.success_count / total) if total > 0 else 1.0
 
+    @property
+    def evidence_count(self) -> int:
+        """How many times this skill has actually been run, either way.
+
+        Derived from the outcome counters rather than stored, so a snapshot
+        restored from an older file cannot drift out of step with its own counts,
+        and there is no migration to perform.
+        """
+        return self.success_count + self.failure_count
+
+    @property
+    def effectiveness(self) -> float | None:
+        """Measured success ratio, or ``None`` when nothing was ever measured.
+
+        ``None`` is the honest answer for an unproven skill: substituting ``0``
+        reads as "measured and always fails" and substituting ``1.0`` (which
+        ``success_rate`` does) reads as "measured and always wins". Both would
+        rank an unproven skill against tested ones.
+        """
+        total = self.evidence_count
+        if total == 0:
+            return None
+        return self.success_count / total
+
+    @property
+    def smoothed_effectiveness(self) -> float:
+        """Laplace-smoothed ratio — the number used for *ranking and eviction*.
+
+        The prior (1 success in 2 uses) fixes the unproven point at the middle of
+        the distribution, so a never-run skill neither leads a well-tested one
+        nor ranks below a consistently failing one.
+        """
+        return (self.success_count + 1) / (self.evidence_count + 2)
+
+    @property
+    def strength(self) -> float:
+        """Alias of :attr:`smoothed_effectiveness`, named for its use in scoring."""
+        return self.smoothed_effectiveness
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["success_rate"] = round(self.success_rate, 3)
+        # The measured facts travel beside the display convenience, so a consumer
+        # can always tell an absent measurement from a perfect one.
+        d["evidence_count"] = self.evidence_count
+        d["effectiveness"] = None if self.effectiveness is None else round(self.effectiveness, 3)
+        d["smoothed_effectiveness"] = round(self.smoothed_effectiveness, 3)
+        d["evidence_basis"] = "measured" if self.evidence_count > 0 else "unproven"
         return d
 
 
@@ -273,6 +333,16 @@ class ConsolidationReport:
     decayed_items_count: int
     insights: list[dict[str, Any]]
     summary: str
+    # Reconsolidation fields, all defaulted so every existing construction of
+    # this report stays valid. `reconsolidation_records` counts retrievals folded
+    # back into the store during the pass; `replayed_traces`/`replayed_budget`
+    # report how many successful episodes were strengthened and the cap that
+    # bound the pass; `tier_disclosure` carries the per-tier counts where a
+    # measured number exists and `None` where it does not.
+    reconsolidation_records: int = 0
+    replayed_traces: int = 0
+    replayed_budget: int = 0
+    tier_disclosure: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

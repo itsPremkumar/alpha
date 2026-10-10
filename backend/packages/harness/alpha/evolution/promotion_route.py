@@ -13,7 +13,8 @@ module itself is pinned in tests, not edited.
   call, except ``autonomous_mode`` is pinned ``False`` here: auto-promote
   stays OFF for every risk class (plan §5.4) and omission/False never grants
   autonomy. The engine's REAL ``(promoted, reason)`` tuple is returned
-  verbatim — this wrapper invents nothing and softens nothing.
+  unchanged whenever neither post-gate blocks — this wrapper invents nothing
+  and softens nothing, and a gate above it can only subtract.
 - :func:`decide_promotion` — import-ready evolution-surface entry point that
   composes ``alpha.rsi.promotion.decide()`` (the WP-C2/C2c gate composition:
   bundle integrity, measured-only evidence standard, holdout gate, human
@@ -53,6 +54,29 @@ narrow:
   caught and becomes a block, because a gate that cannot establish a verdict has
   not granted one.
 
+The RRSI selection gate (``alpha.rsi.rrsi``) wiring
+----------------------------------------------------
+:func:`rrsi_selection_gate` is a second, independent conjunct with the same
+subtractive posture and one deliberate difference — a real third state:
+
+* **It can only block.** Same rule as the evidence gate: a refused candidate
+  turns ``promoted`` into ``False``; nothing here can grant one.
+* **It is tri-state, and ``not_run`` does not block.**
+  :func:`alpha.rsi.rrsi.election_gate_for` requires a *complete* measurement
+  set (candidate and incumbent scores **and** costs, ``S*``, and an attributed
+  component set) before Algorithm 2 can decide anything. Partial measurements
+  are never interpolated. When the set is incomplete the gate answers
+  ``not_run``, which changes nothing and is logged with every quantity that
+  could not be resolved — not reported as a pass, and not as a block either.
+  Blocking on absent RRSI state would fail closed on a search that was never
+  started; the conjunct is additive, so the engine's verdict and the evidence
+  gate still decide.
+* **A gate that cannot run at all blocks**, exactly as the evidence gate does,
+  with the real exception as the reason.
+* **It has no config flag and needs none.** With no durable RRSI round state
+  it is inert; RRSI's proposal-side regularizers are default-ON at proposal
+  time and are unaffected by this gate.
+
 This is **not** a second lifecycle owner: it gates a *change promotion*, never a
 run, and touches no run state. ``RunManager`` remains the sole run lifecycle
 owner and ``SafeRunRecoveryService`` the only safe-continuation authority.
@@ -73,7 +97,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["EvidenceGateOutcome", "decide_promotion", "evidence_verdict_for", "route_evolution_gate"]
+__all__ = ["EvidenceGateOutcome", "decide_promotion", "evidence_verdict_for", "route_evolution_gate", "rrsi_selection_gate"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,32 +195,109 @@ def evidence_verdict_for(candidate_id: str, baseline: Mapping[str, Any] | None =
     )
 
 
-def route_evolution_gate(candidate_id: str, baseline: Mapping[str, Any] | None = None, *, human_approved: bool) -> tuple[bool, str]:
-    """Route one promotion decision through the landed evolution gate — the real dispatch API, verbatim result.
+def rrsi_selection_gate(
+    candidate_id: str,
+    baseline: Mapping[str, Any] | None = None,
+    *,
+    signals: Mapping[str, Any] | None = None,
+) -> tuple[bool, str]:
+    """The RRSI selection conjunct — ``(blocking, reason_text)``, never raising.
+
+    :func:`alpha.rsi.rrsi.election_gate_for` implements Algorithm 2 of the
+    RRSI paper against durable round state. It is tri-state by construction
+    (``blocked`` / ``admitted`` / ``not_run``), and this adapter collapses that
+    to the two states a *conjunct* needs:
+
+    * ``blocking=True`` with the gate's own reason — it ran and refused;
+    * ``blocking=False`` — either it ran and admitted, or it reported
+      ``not_run`` because it could not assemble a complete measurement set.
+
+    A ``not_run`` never blocks, for the same reason
+    :class:`EvidenceGateOutcome` carries ``ran`` separately from ``blocking``:
+    failing closed on a search that has never been started would punish a
+    deployment for not having begun, and the conjunct is additive — the
+    engine's own verdict and the evidence gate still decide. It is also
+    never reported as a pass; the non-event is logged with the real
+    :attr:`~alpha.rsi.rrsi.selection.RrsiGateOutcome.detail`.
+
+    Function-local import: keeps ``import alpha.evolution`` as light as before,
+    and ``alpha.rsi.rrsi`` imports nothing from ``alpha.evolution``, so it
+    cannot cycle.
+
+    A gate that could not even be constructed **blocks** with the real
+    exception, mirroring :func:`evidence_verdict_for`'s rule that an unrunnable
+    gate has not granted a verdict — it does not wave a promotion through.
+    """
+    try:
+        from alpha.rsi.rrsi import election_gate_for
+
+        outcome = election_gate_for(candidate_id, baseline, signals=signals)
+    except Exception as exc:  # noqa: BLE001 - an unrunnable gate does not wave through
+        logger.warning("RRSI selection gate could not evaluate %s: %s", candidate_id, exc, exc_info=True)
+        return True, f"RRSI selection gate: gate_error ({type(exc).__name__}: {exc})"
+    if outcome.blocking:
+        return True, outcome.reason_text()
+    if not outcome.ran:
+        # A disclosed non-event, never a clean pass: the detail names every
+        # quantity that could not be resolved and where it was looked for.
+        logger.info("RRSI selection gate did not run for %s: %s", candidate_id, outcome.detail)
+    return False, ""
+
+
+def route_evolution_gate(
+    candidate_id: str,
+    baseline: Mapping[str, Any] | None = None,
+    *,
+    human_approved: bool,
+    rrsi_signals: Mapping[str, Any] | None = None,
+) -> tuple[bool, str]:
+    """Route one promotion decision through the landed evolution gate — the real dispatch API, the engine's own result.
 
     Exactly the call shape the ``GateRequest`` HTTP handler makes
     (``get_evolution_engine().gate(candidate_id, baseline, human_approved=...,
     autonomous_mode=...)``), with ``autonomous_mode`` pinned ``False`` — the
     plan §5.4 guardrail that auto-promotion stays OFF everywhere; callers of
-    this wiring can never opt into autonomy. The returned tuple is the
-    engine's own ``(promoted, reason)`` with no post-processing: a real
-    ``"missing candidate or benchmark"`` / ``"not strictly better than
-    baseline"`` / ``"benchmark regressions vs baseline"`` travels unchanged.
+    this wiring can never opt into autonomy.
 
-    The one post-processing that *is* applied is the evidence gate above, and it
-    is strictly subtractive: it can only turn ``promoted`` into ``False``. When
-    the gate is disabled (the default) or did not run, the engine's tuple is
-    returned byte-for-byte.
+    Two post-processing gates sit above the engine, and **both are strictly
+    subtractive**: each can only turn ``promoted`` into ``False``, never the
+    other way, and neither can rewrite the engine's own finding.
+
+    - :func:`evidence_verdict_for` — off by default (operator opt-in).
+    - :func:`rrsi_selection_gate` — the RRSI regularized-selection conjunct,
+      block-only with an honest ``not_run`` third state.
+
+    When neither blocks, the engine's ``(promoted, reason)`` tuple is returned
+    byte-for-byte: a real ``"missing candidate or benchmark"`` /
+    ``"not strictly better than baseline"`` / ``"benchmark regressions vs
+    baseline"`` travels unchanged. When one or both block, every gate's own
+    finding is appended with `` + `` so the independent verdicts stay
+    separable to whoever reads the refusal.
+
+    ``rrsi_signals`` optionally supplies Algorithm 2's measurement inputs
+    (``candidate_score``, ``candidate_cost``, ``incumbent_score``,
+    ``incumbent_cost``, ``best_score``, ``components``) when the caller has
+    them. Without them the conjunct reads durable state only, and typically
+    answers ``not_run`` — it never fabricates a measurement to fill the gap.
     """
     engine = get_evolution_engine()
     promoted, engine_reason = engine.gate(candidate_id, dict(baseline or {}), human_approved=human_approved, autonomous_mode=False)
 
+    blocked: list[str] = []
+
     outcome = evidence_verdict_for(candidate_id, baseline)
-    if not outcome.blocking:
+    if outcome.blocking:
+        blocked.append(outcome.reason_text())
+
+    rrsi_blocks, rrsi_text = rrsi_selection_gate(candidate_id, baseline, signals=rrsi_signals)
+    if rrsi_blocks:
+        blocked.append(rrsi_text)
+
+    if not blocked:
         return promoted, engine_reason
-    # The engine is still consulted and its own finding is kept in the reason,
-    # so the two independent verdicts stay separable to whoever reads this.
-    return False, f"{engine_reason} + {outcome.reason_text()}"
+    # The engine is still consulted and its own finding is kept first in the
+    # reason, so every independent verdict stays separable to whoever reads it.
+    return False, " + ".join([engine_reason, *blocked])
 
 
 def decide_promotion(candidate_id: str, *, baseline: Mapping[str, Any] | None = None) -> PromotionDecision:

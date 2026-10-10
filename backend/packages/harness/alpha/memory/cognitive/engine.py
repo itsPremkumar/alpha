@@ -23,12 +23,14 @@ from alpha.memory.cognitive.consolidation import CognitiveConsolidationEngine
 from alpha.memory.cognitive.episodic_memory import EpisodicMemoryEngine
 from alpha.memory.cognitive.models import (
     BeliefStatus,
+    CognitiveTier,
     ConsolidationReport,
     HybridRecallQuery,
     ScoredMemoryItem,
     TraceOutcome,
 )
 from alpha.memory.cognitive.procedural_memory import ProceduralSkillMemory
+from alpha.memory.cognitive.reconsolidation import ReconsolidationRecord, TierActivity, evidence_gap_reason, record_retrieval, tier_activity
 from alpha.memory.cognitive.retrieval import HybridCognitiveRetriever
 from alpha.memory.cognitive.semantic_graph import SemanticBeliefGraph
 from alpha.memory.cognitive.spatio_temporal import SpatioTemporalMemory
@@ -54,21 +56,56 @@ class CognitiveMemorySystem:
         self.assoc_net = AssociativeNetwork()
         self.consolidation = CognitiveConsolidationEngine()
         self.retriever = HybridCognitiveRetriever()
+        self._last_reconsolidations: list[ReconsolidationRecord] = []
 
         # Load persisted state or bootstrap defaults
         self._load_or_bootstrap()
 
-    def recall(self, query: HybridRecallQuery) -> list[ScoredMemoryItem]:
-        """Hybrid multi-tier recall combining BM25, vector similarity, graph traversal, and temporal decay."""
-        return self.retriever.recall(
-            query=query,
-            working_mem=self.working_mem,
-            episodic_mem=self.episodic_mem,
-            semantic_graph=self.semantic_graph,
-            procedural_mem=self.procedural_mem,
-            spatio_temporal=self.spatio_temporal,
-            assoc_net=self.assoc_net,
-        )
+    def recall(self, query: HybridRecallQuery, *, reconsolidate: bool = True) -> list[ScoredMemoryItem]:
+        """Hybrid multi-tier recall combining BM25, vector similarity, graph traversal, and temporal decay.
+
+        ``reconsolidate`` (default ``True``) folds the retrieval back into the
+        store, which is the reconsolidation half of this subsystem: a recall is an
+        event that strengthens the memory it touched, so a memory used this week
+        is distinguishable from one that has sat untouched since it was written.
+        The write happens **after** scoring, so it cannot change the ordering of
+        the results being returned. Pass ``False`` for a read-only recall (a
+        probe, a UI preview, a test that must not mutate the store).
+        """
+        with self.operation():
+            results = self.retriever.recall(
+                query=query,
+                working_mem=self.working_mem,
+                episodic_mem=self.episodic_mem,
+                semantic_graph=self.semantic_graph,
+                procedural_mem=self.procedural_mem,
+                spatio_temporal=self.spatio_temporal,
+                assoc_net=self.assoc_net,
+            )
+            if reconsolidate:
+                self._reconsolidate(results)
+            return results
+
+    def _reconsolidate(self, results: list[ScoredMemoryItem]) -> list[ReconsolidationRecord]:
+        """Record the access each returned semantic fact earned.
+
+        Only the semantic tier participates, because it is the tier that already
+        carries ``access_count``/``last_accessed_at`` and therefore the only one
+        with a measurable elapsed-since-access interval. Nothing here decides
+        whether a retrieval was useful: the caller passes that verdict in via
+        :meth:`record_retrieval_outcome`, and until then ``useful`` stays ``None``.
+        """
+        records: list[ReconsolidationRecord] = []
+        for item in results:
+            if item.tier != CognitiveTier.SEMANTIC_FACT:
+                continue
+            node = next((n for n in self.semantic_graph.list_nodes(limit=5000) if n.node_id == item.item_id), None)
+            if node is None:
+                logger.debug("reconsolidation skipped %s: the node is no longer in the graph", item.item_id)
+                continue
+            records.append(record_retrieval(node))
+        self._last_reconsolidations = records
+        return records
 
     def consolidate(self) -> ConsolidationReport:
         """Run 3-phase Sleep/Dream memory consolidation cycle."""
@@ -81,6 +118,36 @@ class CognitiveMemorySystem:
         )
         self.save_to_disk()
         return report
+
+    def run_upkeep(self, *, trials: int = 5) -> dict[str, Any]:
+        """One autonomous upkeep pass over this owner's skills and memory.
+
+        Owner-scoped by construction: the system is already resolved to one
+        owner, so a loop sweeping several of them cannot cross that boundary. A
+        pass that cannot verify blocks itself rather than acting on a degraded
+        verdict; see `autonomous_upkeep`.
+        """
+        from alpha.memory.cognitive.autonomous_upkeep import run_upkeep_pass
+
+        report = run_upkeep_pass(self, trials=trials)
+        self.save_to_disk()
+        return report.to_dict()
+
+    def reconsolidation_disclosure(self) -> dict[str, Any]:
+        """What the most recent recall folded back into the store, per tier."""
+        items = [
+            TierActivity(
+                tier=record.tier.value,
+                changed=1,
+                measured=None,
+                reason="access count only; no usefulness verdict was supplied" if record.useful is None else "useful=" + str(record.useful),
+            )
+            for record in self._last_reconsolidations
+        ]
+        disclosure = tier_activity(items)
+        disclosure["records"] = [record.to_dict() for record in self._last_reconsolidations]
+        disclosure["rsi_evidence_gap"] = evidence_gap_reason()
+        return disclosure
 
     def overview(self) -> dict[str, Any]:
         """Comprehensive cognitive memory overview across all tiers."""
@@ -209,6 +276,8 @@ class CognitiveMemorySystem:
                         last_executed_at=float(s_dict.get("last_executed_at", 0.0)),
                         failure_reasons=s_dict.get("failure_reasons", []),
                         created_at=s_dict.get("created_at"),
+                        lifecycle=(s_dict.get("lifecycle") or "proposed"),
+                        lifecycle_reason=(s_dict.get("lifecycle_reason") or ""),
                     )
                 for e_dict in data.get("spatio_temporal_events", []):
                     self.spatio_temporal.record_event(

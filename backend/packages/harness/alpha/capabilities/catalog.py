@@ -201,7 +201,7 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
     "rsi_engine": CapabilitySpec(
         module="alpha.rsi.engine",
         target="RSIEngine",
-        description="Recursive Self-Improvement closed-loop autonomous engine.",
+        description="Recursive Self-Improvement closed-loop autonomous engine; its proposal side carries the RRSI regularizers (annealed edit budget, stall-triggered exploration, L1 structural pruning).",
         kind="engine",
     ),
     "adaptive_autonomy": CapabilitySpec(

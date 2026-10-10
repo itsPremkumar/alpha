@@ -68,7 +68,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from alpha.config.runtime_paths import runtime_home
 from alpha.evolution.engine import FORBIDDEN_SURFACES
@@ -76,6 +76,9 @@ from alpha.evolution.identity import atomic_write_json
 from alpha.rsi.lineage import RsiLineageStore, _canonical_payload_hash
 from alpha.rsi.strategy_memory import prior_for, stat_note
 from alpha.skills.evolution_engine import _normalize_evidence
+
+if TYPE_CHECKING:
+    from alpha.rsi.rrsi.proposal import ProposalPlan
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +207,35 @@ TEMPLATE_OPERATORS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "resilience": op_resilience,
 }
 
+#: Payload keys that record *how* a variant was produced rather than *what* it
+#: changes. Counting them as edits would make every template variant look
+#: multi-edit and would put it permanently over the annealed budget —
+#: provenance belongs to the search, not to the harness.
+_RRSI_PROVENANCE_KEYS: frozenset[str] = frozenset({"operator", "operator_choice"})
+
+
+def _rrsi_edit_count(base_payload: dict[str, Any], payload: dict[str, Any]) -> int:
+    """Independently attributable edits one variant makes — P1's ``‖z_t‖₀``.
+
+    An edit is a top-level payload field the operator changed, added or
+    removed relative to ``base_payload``, excluding provenance. Today every
+    template operator writes exactly one such field (``mutation``), so this
+    returns ``1`` and any ``b_t ≥ 1`` accepts it; the count exists so that
+    stays *checked* rather than assumed. It never scores, ranks or evaluates —
+    ``‖z_t‖₀`` is a cardinality, and a cardinality has no opinion about
+    whether the edit is good.
+    """
+    edits = 0
+    for key, value in payload.items():
+        if key in _RRSI_PROVENANCE_KEYS:
+            continue
+        if key not in base_payload or base_payload[key] != value:
+            edits += 1
+    for key in base_payload:
+        if key not in payload and key not in _RRSI_PROVENANCE_KEYS:
+            edits += 1
+    return edits
+
 
 def _prior_value(stat: Any) -> float:
     """Scalar for ordering: the recorded promotion rate, or the disclosed neutral 0.5.
@@ -231,10 +263,7 @@ def _prior_disclosure(name: str, surface: str, stat: Any) -> dict[str, Any]:
     """
     attempts = getattr(stat, "attempts", None) if stat is not None else None
     if stat is None or not attempts:
-        note = (
-            "no recorded prior for this (operator, problem_class); disclosed neutral default heuristic_value=0.5 "
-            "(unverified, never 0.0/1.0) — heuristic prior for operator choice only, not a measurement of this variant"
-        )
+        note = "no recorded prior for this (operator, problem_class); disclosed neutral default heuristic_value=0.5 (unverified, never 0.0/1.0) — heuristic prior for operator choice only, not a measurement of this variant"
         return {
             "basis": "heuristic",
             "source": _PRIOR_SOURCE,
@@ -326,6 +355,7 @@ class CandidateFactory:
         evidence_refs: list,
         operators: list[str] | None = None,
         population: int = 3,
+        plan: ProposalPlan | None = None,
     ) -> list[VariantSpec]:
         """Build up to ``population`` distinct variants of ``hypothesis_id`` (plan §3 WP-B2).
 
@@ -339,6 +369,34 @@ class CandidateFactory:
         ``skipped``; the population is never padded with fabricated
         diversity). LLM generation is out of scope: no model call exists on
         this path.
+
+        ``plan`` is an optional :class:`alpha.rsi.rrsi.ProposalPlan` — the
+        Algorithm 1 output of :func:`alpha.rsi.rrsi.build_proposal_plan`.
+        Supplying it attaches one ``payload["rrsi"]`` block per variant
+        carrying the round's component attribution and constraint set. Three
+        properties of that block are load-bearing:
+
+        * **It is attribution and constraint, never evaluation.** The block
+          carries ``component``/``component_basis`` (so the P2 credit ledger
+          can record which component this variant exercises), ``edit_budget``,
+          exploration and pruning state, and ``edit_count`` — the number of
+          top-level fields this operator actually changed. There is no score,
+          no confidence and no verdict in it, and no gate reads it as one.
+        * **P1 is satisfied by construction here, and that is checked rather
+          than assumed.** Each variant is produced by exactly one template
+          operator, so ``edit_count`` is compared against the round's
+          ``b_t``; an operator that ever exceeded the annealed budget would be
+          logged loudly rather than silently violating ``‖z_t‖₀ ≤ b_t``. For
+          multi-edit proposals the enforcement point is
+          :meth:`alpha.rsi.rrsi.ProposalPlan.apply`, which this template path
+          never needs because it never produces them.
+        * **The block is attached *before* the payload hash**, so
+          ``spec.payload_hash`` stays the hash of exactly
+          ``_canonical_payload_hash(spec.payload)`` — the block is part of
+          the record's identity, not a post-hoc annotation.
+
+        With ``plan=None`` (the default) the payload is byte-identical to what
+        this method produced before RRSI existed.
         """
         self.skipped = []
         # (1) evidence — imported, never copied (one source of truth for the caps)
@@ -362,6 +420,13 @@ class CandidateFactory:
             raise ValueError("target must be a non-empty string.")
         if isinstance(population, bool) or not isinstance(population, int) or population < 1:
             raise ValueError(f"population must be an integer >= 1, got {population!r}.")
+        if plan is not None:
+            # Function-local: keeps `import alpha.rsi.generator` free of the
+            # RRSI graph, and `alpha.rsi.rrsi` imports nothing from here.
+            from alpha.rsi.rrsi import ProposalPlan as _ProposalPlan
+
+            if not isinstance(plan, _ProposalPlan):
+                raise ValueError(f"plan must be an alpha.rsi.rrsi.ProposalPlan or None, got {type(plan).__name__}.")
         if operators is None:
             requested = list(TEMPLATE_OPERATORS)
         else:
@@ -377,10 +442,67 @@ class CandidateFactory:
         base_payload: dict[str, Any] = {"hypothesis_id": hypothesis_id, "surface": surface, "target": target}
         seen: set[str] = set()
         specs: list[VariantSpec] = []
+        rrsi_tag = None
+        if plan is not None:
+            from alpha.rsi.rrsi.components import component_for as _component_for
+
+            # `surface` was validated against EVOLVABLE_SURFACES above, so this
+            # cannot raise; attribution travels with every variant because it is
+            # what the P2 credit ledger records against.
+            rrsi_tag = _component_for(surface, target=target)
         for index in range(population):
             name = order[index % len(order)]
             payload = TEMPLATE_OPERATORS[name](base_payload)  # pure: base_payload is never mutated
             payload["operator_choice"] = dict(disclosures[name])
+            if plan is not None and rrsi_tag is not None:
+                # P1 is a hard cardinality constraint on the update: over-budget
+                # variants are discarded whole, never partially applied (dropping
+                # one edit of a coupled pair would leave a candidate the operator
+                # did not write).
+                edits = _rrsi_edit_count(base_payload, payload)
+                if edits > plan.budget.budget:
+                    self.skipped.append(
+                        {
+                            "skipped": "over_edit_budget",
+                            "payload_hash": _canonical_payload_hash(payload),
+                            "edits": edits,
+                            "budget": plan.budget.budget,
+                        }
+                    )
+                    logger.warning(
+                        "RRSI edit budget exceeded: operator %s produced %d independently attributable edit(s) against b_%d = %d (P1: ||z_t||_0 <= b_t); variant discarded, never partially applied.",
+                        name,
+                        edits,
+                        plan.round_index,
+                        plan.budget.budget,
+                    )
+                    continue
+                payload["rrsi"] = {
+                    "kind": "rrsi_proposal_constraints",
+                    "round_index": plan.round_index,
+                    "horizon": plan.horizon,
+                    "component": rrsi_tag.component,
+                    "component_basis": rrsi_tag.basis,
+                    "component_hint": rrsi_tag.matched_hint,
+                    "edit_budget": plan.budget.budget,
+                    "edit_budget_saturated": plan.budget.saturated,
+                    "edit_count": edits,
+                    "exploration_status": plan.exploration.status,
+                    "exploration_slots": plan.exploration.slots,
+                    "exploration_targets": list(plan.exploration.reserved_components),
+                    "pruning_status": plan.pruning.status,
+                    "pruning_targets": list(plan.pruning.targets),
+                    "plan_usable": plan.usable,
+                }
+                if rrsi_tag.component in plan.pruning.targets:
+                    # S4 reports a deletion target; it does not enact one. This
+                    # template generator cannot delete harness machinery, so the
+                    # fact is disclosed here rather than silently skipped — a
+                    # silent skip would look like S4 having removed the component.
+                    logger.info(
+                        "RRSI pruning target %s is also the component this variant exercises; S4 reports it to the proposer as a deletion target (a disclosure, not an automatic removal).",
+                        rrsi_tag.component,
+                    )
             payload_hash = _canonical_payload_hash(payload)
             if payload_hash in seen:
                 # spec RSI-E017: an honest string reason + the real hash — no fabricated diversity metric

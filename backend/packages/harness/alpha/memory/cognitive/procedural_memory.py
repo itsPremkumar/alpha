@@ -6,11 +6,23 @@ preconditions, code routines, and success/failure statistics.
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from typing import Any
 
+from alpha.memory.cognitive.improvement_verification import SkillImprovementReport, verify_skill_memory
 from alpha.memory.cognitive.models import ProceduralSkill
+from alpha.memory.cognitive.skill_lifecycle import (
+    SkillLifecycle,
+    SkillVerdict,
+    evaluate,
+    rank_for_recall,
+    retirement_priority,
+    transition,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ProceduralSkillMemory:
@@ -35,6 +47,8 @@ class ProceduralSkillMemory:
         last_executed_at: float = 0.0,
         failure_reasons: list[str] | None = None,
         created_at: float | None = None,
+        lifecycle: str = "proposed",
+        lifecycle_reason: str = "",
     ) -> ProceduralSkill:
         """Register or update a procedural skill."""
         now = time.time()
@@ -72,6 +86,11 @@ class ProceduralSkillMemory:
                 for r in failure_reasons:
                     if r not in existing.failure_reasons:
                         existing.failure_reasons.append(r)
+            restored_lifecycle = (lifecycle or "proposed").strip().lower()
+            if restored_lifecycle and restored_lifecycle != "retired":
+                existing.lifecycle = restored_lifecycle
+            if (lifecycle_reason or "").strip():
+                existing.lifecycle_reason = lifecycle_reason.strip()
             return existing
 
         skill = ProceduralSkill(
@@ -87,6 +106,8 @@ class ProceduralSkillMemory:
             last_executed_at=last_executed_at,
             failure_reasons=failure_reasons or [],
             created_at=created_at or now,
+            lifecycle=lifecycle or "proposed",
+            lifecycle_reason=lifecycle_reason or "",
         )
         if skill_id:
             skill.skill_id = skill_id
@@ -105,13 +126,15 @@ class ProceduralSkillMemory:
     def _enforce_capacity(self) -> None:
         if len(self._skills) <= self.max_skills:
             return
-        sorted_keys = sorted(
-            self._skills.keys(),
-            key=lambda k: (self._skills[k].success_rate, self._skills[k].success_count, self._skills[k].created_at),
-        )
+        # Weakest evidence first, and a skill that is the only one covering its
+        # own pattern is held to the end — dropping it removes a capability
+        # rather than freeing a slot. The old ascending-`success_rate` sort made
+        # an untested new skill tie with a proven one and broke the tie on
+        # `created_at`, which could evict a well-tested skill.
+        order = retirement_priority(self._skills.values(), patterns=[s.name for s in self._skills.values()])
         excess = len(self._skills) - self.max_skills
-        for k in sorted_keys[:excess]:
-            del self._skills[k]
+        for skill in order[:excess]:
+            del self._skills[skill.skill_id]
 
     def get_skill(self, skill_id: str) -> ProceduralSkill | None:
         return self._skills.get(skill_id)
@@ -129,7 +152,85 @@ class ProceduralSkillMemory:
             skill.failure_count += 1
             if reason and reason not in skill.failure_reasons:
                 skill.failure_reasons.append(reason)
+
+        # The first recorded outcome is what takes a skill out of "proposed".
+        # Promotion and demotion are NOT auto-applied here: they are decisions
+        # with a sample-size floor, and a caller that wants them should call
+        # `evaluate` + `transition` so the reason is recorded on the skill.
+        if skill.lifecycle == SkillLifecycle.PROPOSED.value:
+            try:
+                transition(skill, SkillLifecycle.VERIFIED, reason=f"first recorded outcome ({'success' if success else 'failure'})")
+            except ValueError:  # pragma: no cover - a hand-set illegal state must not break recording
+                logger.warning("skill %s carries lifecycle %r that cannot move to verified", skill_id, skill.lifecycle)
         return True
+
+    def rank_for_recall(self, context_text: str, limit: int = 5) -> list[tuple[ProceduralSkill, float]]:
+        """Recall skills scored by ``relevance * strength``.
+
+        Same relevance computation as :meth:`find_matching_skills`, but the
+        evidence weight is the smoothed effectiveness instead of
+        ``(0.5 + 0.5 * success_rate)``. The difference is what happens to a skill
+        nobody has ever run: it is recalled at the prior (middle of the
+        distribution) rather than at full weight.
+        """
+        text_lower = context_text.lower()
+        scored: list[tuple[ProceduralSkill, float]] = []
+
+        for skill in self._skills.values():
+            score = 0.0
+            try:
+                if re.search(skill.trigger_pattern, context_text, re.IGNORECASE):
+                    score = 0.85
+            except re.error:
+                pass
+
+            pattern_tokens = set(re.findall(r"\w+", skill.trigger_pattern.lower()))
+            desc_tokens = set(re.findall(r"\w+", skill.description.lower()))
+            all_tokens = pattern_tokens | desc_tokens
+            if all_tokens:
+                matched_tokens = sum(1 for t in all_tokens if t in text_lower)
+                overlap_ratio = matched_tokens / len(all_tokens)
+                score = max(score, overlap_ratio)
+
+            if score > 0.15:
+                try:
+                    scored.append((skill, rank_for_recall(skill, score)))
+                except ValueError:  # pragma: no cover - score is bounded above by construction
+                    logger.warning("skill %s produced an out-of-range relevance score %.3f", skill.skill_id, score)
+
+        scored.sort(key=lambda x: (x[1], x[0].evidence_count), reverse=True)
+        return scored[:limit]
+
+    def evaluate(self, skill_id: str, **kwargs: Any) -> SkillVerdict:
+        """The verdict the measurements support for one skill, plus its reason."""
+        skill = self._skills.get(skill_id)
+        if skill is None:
+            raise KeyError(f"no procedural skill with id {skill_id!r}")
+        return evaluate(skill, **kwargs)
+
+    def verify_self_improvement(self, *, trials: int = 5, seed: int = 20261010) -> SkillImprovementReport:
+        """Run the four proof gates over this library; see `improvement_verification`."""
+        return verify_skill_memory(self, trials=trials, seed=seed)
+
+    def lifecycle_summary(self) -> dict[str, Any]:
+        """Counts by *derived* lifecycle state, plus the unproven skill names.
+
+        Derived, not stored: a skill recorded as ``promoted`` that has since
+        failed every run is counted where its evidence puts it, and the stored
+        value stays on the skill for anyone who wants to see the disagreement.
+        """
+        counts = {state.value: 0 for state in SkillLifecycle}
+        unproven: list[str] = []
+        for skill in self._skills.values():
+            verdict = evaluate(skill)
+            counts[verdict.lifecycle.value] += 1
+            if verdict.evidence_count == 0:
+                unproven.append(skill.name)
+        return {
+            "total": len(self._skills),
+            **counts,
+            "unproven_skills": sorted(unproven),
+        }
 
     def find_matching_skills(self, context_text: str, limit: int = 5) -> list[tuple[ProceduralSkill, float]]:
         """Find matching skills using trigger regex or token overlap."""

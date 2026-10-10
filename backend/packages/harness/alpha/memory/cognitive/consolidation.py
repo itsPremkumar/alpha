@@ -19,6 +19,15 @@ from alpha.memory.cognitive.models import (
     ConsolidationReport,
     TraceOutcome,
 )
+from alpha.memory.cognitive.reconsolidation import TierActivity, replay_strengthen, tier_activity
+
+#: Hard cap on how many successful episodes one rest pass replays. Replay is
+#: offline work; an unbounded pass would turn idle time into an unbounded cost,
+#: and replaying the same episode repeatedly would manufacture importance.
+REPLAY_BUDGET = 8
+
+#: How many recent traces are considered for replay before the budget is spent.
+REPLAY_SCAN_LIMIT = 200
 
 if TYPE_CHECKING:
     from alpha.memory.cognitive.associative_memory import AssociativeNetwork
@@ -191,6 +200,18 @@ class CognitiveConsolidationEngine:
         # Epistemic Conflict Reconciliation
         conflicts_resolved = semantic_graph.reconcile_conflicts()
 
+        # =========================================================================
+        # Phase 3b: Hippocampal replay - re-strengthen the episodes that worked
+        # =========================================================================
+        # Decay alone makes a memory passively safer; replay is what makes it
+        # *consistent*. The Go-Explore+HR result (100/100 solves with zero
+        # variance) is attributed to exactly this. Bounded by a budget so an idle
+        # pass cannot become an unbounded cost, and never assuming a success: a
+        # trace whose outcome is UNKNOWN is skipped rather than replayed.
+        replay_budget = REPLAY_BUDGET
+        replay = replay_strengthen(episodic_mem.list_traces(limit=REPLAY_SCAN_LIMIT), budget=replay_budget)
+        replayed_traces = replay.replayed
+
         # Ebbinghaus forgetting curve decay over existing active semantic nodes
         decayed_count = 0
         for node in semantic_graph.list_nodes():
@@ -206,12 +227,24 @@ class CognitiveConsolidationEngine:
                 node.status = BeliefStatus.DEPRECATED
                 decayed_count += 1
 
+        # What actually changed, per tier, with a measured number only where one
+        # exists. The procedural tier reports None because this engine does not
+        # meter skill outcomes -- folding it in as a zero would claim a
+        # measurement nobody took.
+        tier_disclosure = tier_activity(
+            [
+                TierActivity(tier="semantic_fact", changed=deep_sleep_crystallized, measured=deep_sleep_crystallized),
+                TierActivity(tier="episodic_flat", changed=replayed_traces, measured=replayed_traces),
+                TierActivity(tier="procedural_skill", changed=len(failure_signals), measured=None, reason="skill outcomes are not metered by this cycle"),
+            ]
+        )
+
         summary = (
             f"Consolidation Dream Cycle [{cycle_id}] completed: "
             f"Pruned {light_sleep_pruned} noisy signals (Light Sleep), "
             f"Synthesized {rem_patterns_discovered} behavioral patterns (REM), "
             f"Crystallized {deep_sleep_crystallized} beliefs & resolved {conflicts_resolved} conflicts (Deep Sleep). "
-            f"Decayed {decayed_count} dormant items."
+            f"Replayed {replayed_traces} successful trace(s) within a budget of {replay_budget}. " + f"Decayed {decayed_count} dormant items."
         )
 
         report = ConsolidationReport(
@@ -225,6 +258,10 @@ class CognitiveConsolidationEngine:
             decayed_items_count=decayed_count,
             insights=insights,
             summary=summary,
+            reconsolidation_records=0,
+            replayed_traces=replayed_traces,
+            replayed_budget=replay_budget,
+            tier_disclosure=tier_disclosure,
         )
         self._reports.append(report)
         return report
