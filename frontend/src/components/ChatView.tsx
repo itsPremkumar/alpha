@@ -334,6 +334,13 @@ const EffectsSection = dynamic(
     })),
   { loading: () => <SectionFallback /> },
 );
+const ModsSection = dynamic(
+  () =>
+    import("@/components/sections/ModsSection").then((m) => ({
+      default: m.ModsSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 const WorkforceSection = dynamic(
   () =>
     import("@/components/sections/WorkforceSection").then((m) => ({
@@ -3340,6 +3347,10 @@ export default function ChatView({
             ) : view === "effects" ? (
               <Suspense fallback={<SectionFallback />}>
                 <EffectsSection />
+              </Suspense>
+            ) : view === "mods" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ModsSection />
               </Suspense>
             ) : view === "settings" ? (
               <Suspense fallback={<SectionFallback />}>

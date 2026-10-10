@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-09T07:48:00Z",
+ "generated_at": "2026-10-10T01:04:50Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1416,6 +1416,14 @@
   {
    "id": "app.gateway.routers.models",
    "module": "app.gateway.routers.models",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.mods",
+   "module": "app.gateway.routers.mods",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,

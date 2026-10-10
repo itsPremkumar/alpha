@@ -141,6 +141,20 @@ class SlashCommandRegistry:
         if handler:
             self._handlers[command_def.command] = handler
 
+    def unregister(self, command: str) -> bool:
+        """Drop a catalogued row and its handler; true when anything was removed.
+
+        Registration is normally a one-shot act at import, so this did not
+        exist until a projection had to *follow* a runtime source: the mod
+        kernel registers and withdraws commands while the Gateway is serving,
+        and a row left behind would keep advertising a command that no longer
+        exists. It removes the exact name only — a caller cannot sweep the
+        catalog with a prefix.
+        """
+        removed = self._commands.pop(command, None) is not None
+        self._handlers.pop(command, None)
+        return removed
+
     def get(self, command: str) -> SlashCommandDef | None:
         return self._commands.get(command)
 

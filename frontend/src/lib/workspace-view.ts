@@ -55,6 +55,11 @@ export const WORKSPACE_VIEW_IDS = [
   // without this entry `?view=effects` silently falls back to `chat` while the
   // nav still offers a tab that appears to go nowhere.
   "effects",
+  // The Alpha Mod Kernel operator surface (chain, commands, audit ledger,
+  // holds, impact preview). Declared for the same reason as the ids above:
+  // without this entry `?view=mods` silently falls back to `chat` while the
+  // nav offers a tab that appears to go nowhere.
+  "mods",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];

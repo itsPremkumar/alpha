@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 68 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 69 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -315,7 +315,7 @@ subsystem.
 | **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
 | **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, submit measured evidence for every acceptance criterion, and let an administrator request a bounded replan after reviewing a terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined. Automatic evidence collectors are not included | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
-| **Event-driven execution governance** | The Alpha Mod Kernel runs ordered policy middleware on lead-agent tool and model lifecycle events, with first-party emergency-stop, risk, evidence, routing, and failure controllers. Persistent approval holds and durable event replay are not implemented; see the [production inventory](docs/PRODUCTION_READINESS_INVENTORY.md) | [docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) |
+| **Event-driven execution governance** | The Alpha Mod Kernel runs ordered policy middleware on lead-agent tool and model lifecycle events, with first-party emergency-stop, risk, evidence, routing, and failure controllers. Held actions are persisted with an admin approve/reject flow, and a static manifest report shows what each mod declares versus what it is wired to. Kernel journal replay/dead-letter processing is not implemented; see the [production inventory](docs/PRODUCTION_READINESS_INVENTORY.md) | [docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) |
 | **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
 | **A community of agent groups** | Nest group rooms inside group rooms at any time, staff them by rule instead of by name, inherit membership from a parent, and split direct / inherited / rule-matched members in the roster | [AGENTS.md](AGENTS.md#nested-groups-the-community-shape) |
 | **Scheduled / recurring agents** | Cron scheduler with wake gates, blueprints, incident tracking, and auto-pause; GitHub webhook triggers | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
@@ -549,6 +549,20 @@ exactly-once execution.
   refuses with the ledger's own words rather than taking a second verdict. One
   effect family (durable MCP-task submit) announces to the ledger today; the
   remaining families stay named in the ratchet that keeps that gap honest.
+- **Mod kernel console** — the **Mods** view reads Alpha's ordered policy chain
+  end to end: the chain and each mod's own `describe` in one member-readable
+  read (`GET /api/mods`), the commands a mod contributed and
+  `POST /api/mods/commands/{name}` to run one with no model turn, the
+  admin-gated audit ledger (`GET /api/mods/audit`, digests only — payloads are
+  redacted server-side and never cross the API), the admin-gated durable hold
+  queue with `POST /api/mods/holds/{id}/approve|reject`, and
+  `POST /api/mods/preview` for a bounded estimate of what a tool call would
+  touch. The preview **executes nothing**, and `measurable: false` is rendered
+  as *could not be computed* rather than as *nothing at stake*. Four reads fail
+  independently, an absent list is never rendered as an empty one, a command
+  declaring `requires_approval` surfaces the route's own `409` rather than a
+  disabled button, and an expired hold still reads `approved` while the panel
+  says so beside the verdict — approval and expiry are two different facts.
 - **Sentinel repair loop** — the **Sentinel** view reads the autonomous repair
   loop end to end: the aggregate reading (`GET /api/autonomy/sentinel/analytics`)
   folds the durable journal into totals, a per-fault-kind **verdict** derived
@@ -1065,7 +1079,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 136 tools, 68 routers, 44 middlewares, and 10 supervisor loops. CI fails
+  pins all 136 tools, 69 routers, 44 middlewares, and 10 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

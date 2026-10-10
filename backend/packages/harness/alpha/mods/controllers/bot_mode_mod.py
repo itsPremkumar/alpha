@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from alpha.mods.context import CapabilityContext
+from alpha.mods.manifest import ModManifest
 from alpha.mods.types import (
     AlphaEvent,
     EventResult,
@@ -72,6 +73,14 @@ class BotModeMod:
         "autonomy.tick",
         "bot.task_claimed",
     }
+    manifest = ModManifest.create(
+        name="bot_mode_controller",
+        version="1.0.0",
+        description="Autonomous goal-driven execution controller: tracks missions, detects stalls, injects self-healing.",
+        hooks=tuple(sorted(subscribed_events)),
+        calls=("evidence:record", "estop:control", "clock:schedule"),
+        gating=True,
+    )
 
     def __init__(
         self,

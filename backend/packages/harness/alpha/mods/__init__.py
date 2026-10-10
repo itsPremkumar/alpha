@@ -6,8 +6,11 @@ from alpha.mods.cli import main as mod_cli_main
 from alpha.mods.context import (
     CapabilityContext,
     ClockCapability,
+    CommandCapability,
     EstopCapability,
     EvidenceCapability,
+    FileCapability,
+    FileSnapshot,
     ModelCapability,
     StorageCapability,
     ToolCapability,
@@ -29,6 +32,7 @@ from alpha.mods.enforcers import (
 from alpha.mods.kernel import (
     ModAdmissionError,
     ModKernel,
+    ModRegistrationError,
     get_mod_kernel,
     register_autonomous_controllers,
     require_mod_admission,
@@ -59,6 +63,7 @@ __all__ = [
     # Kernel engine
     "ModAdmissionError",
     "ModKernel",
+    "ModRegistrationError",
     "get_mod_kernel",
     "register_autonomous_controllers",
     "require_mod_admission",
@@ -68,8 +73,11 @@ __all__ = [
     # Capability context ($)
     "CapabilityContext",
     "ClockCapability",
+    "CommandCapability",
     "EstopCapability",
     "EvidenceCapability",
+    "FileCapability",
+    "FileSnapshot",
     "ModelCapability",
     "StorageCapability",
     "ToolCapability",

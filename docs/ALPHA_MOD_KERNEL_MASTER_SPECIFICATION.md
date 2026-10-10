@@ -12,7 +12,7 @@
 
 Claude Code introduces a seminal concept in agentic runtime design: **Mods**—programmable, event-driven middleware extensions that receive an ambient capability interface (`$`), typed event payloads (`e`), and an asynchronous continuation function (`next`). Handlers can **observe**, **rewrite**, or **answer/short-circuit** operations across tool execution, prompt composition, turn iterations, and subagent spawns.
 
-Alpha now has a native ordered Mod Kernel, connected to the lead-agent tool/model middleware chain, run admission, autonomy ticks, bot DMs and task claims, and channel dispatch. The first-party package includes ESTOP, tool-risk, evidence, bot-mode, task-routing, and failure-sentinel modules. This is a partial control plane, not a general or durable workflow engine. The kernel journal, held actions, UI cards, key-value storage, and timers are process-local; deferred actions have no durable operator-resume route; the synthetic harness is not a sandbox; and several external side-effect paths are governed separately. See `docs/PRODUCTION_READINESS_INVENTORY.md` before making production-readiness claims.
+Alpha now has a native ordered Mod Kernel, connected to the lead-agent tool/model middleware chain, run admission, autonomy ticks, bot DMs and task claims, and channel dispatch. The first-party package includes ESTOP, tool-risk, evidence, bot-mode, task-routing, and failure-sentinel modules. This is a partial control plane, not a general or durable workflow engine. The kernel journal, UI cards, key-value storage, and timers are process-local; held actions are durable single-process JSON with an admin approve/reject route (not a cross-worker lease protocol); the synthetic harness is not a sandbox; and several external side-effect paths are governed separately. See `docs/PRODUCTION_READINESS_INVENTORY.md` before making production-readiness claims.
 
 ---
 
@@ -82,7 +82,7 @@ it does not provide cross-process idempotency for external effects.
 - **`REWRITE`**: Mod modified the event payload (e.g. injected policy reminders or normalized paths) and passes `next(mutated_event)`.
 - **`ANSWER`**: Mod short-circuits execution and returns a terminal response immediately without invoking downstream handlers or tools.
 - **`DENY`**: Mod explicitly refuses the operation due to security/policy violations.
-- **`DEFER`**: Mod returns a hold result. Durable parking and operator resume are not implemented.
+- **`DEFER`**: Mod returns a hold result. The hold is persisted in the single-process `HoldStore` under `runtime_home()` with an idempotency key, and an admin can approve/reject it via `POST /api/mods/holds/{id}/approve|reject`. This is restart-recoverable for one Gateway, not a cross-worker parking/lease protocol; expiry voids even an approved decision.
 - **`RETRY`**: Mod returns a retry request. The lead-agent adapter currently refuses it because no Mod retry scheduler is wired.
 - **`ESCALATE`**: Mod returns an escalation result. The lead-agent adapter refuses the tool call; supervisor dispatch is not implemented here.
 
@@ -152,8 +152,8 @@ Runs a small local synthetic event harness. It is not a sandbox and does not pro
 
 ## 7. Production Gates Still Open
 
-1. Move journals, approval holds, storage, and scheduled events to durable stores with leases, idempotency, retention, and restart recovery.
-2. Add an authenticated, owner-scoped approval workflow that resumes or rejects the exact held action without replaying an unapproved side effect.
+1. Move journals, storage, and scheduled events to durable stores with leases, idempotency, retention, and restart recovery. (Approval holds are done: durable single-process JSON with idempotency, TTL expiry, retention, and merge-on-load; still not cross-worker.)
+2. The approval workflow exists as an authenticated **admin** flow that resumes or rejects the exact held action by idempotency key without replaying an unapproved side effect (`POST /api/mods/holds/{id}/approve|reject`, fail-closed on an unreadable store). Still open: an **owner-scoped** dimension (holds are fleet-wide admin, not per-owner) and a cross-worker release protocol.
 3. Run every consequential tool through existing authorization, sandbox, approval, and cancellation controls; add tests proving no alternate Mod helper bypasses them.
 4. Add per-handler deadlines, cancellation semantics, event replay, dead-letter handling, and bounded payload validation.
 5. Run the integrated event → task → tool → independent verification path against real Alpha runtime resources and supported persistence configurations.

@@ -20,11 +20,52 @@ from alpha.mods.types import AlphaEvent, CorrelationContext, EventOutcome
 logger = logging.getLogger(__name__)
 
 
+async def run_mod_command(kernel: ModKernel, command: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Run a mod-registered command against ``kernel``, or report that none owns it.
+
+    This is the path Claude Code's ``$.command.register`` needs: the handler
+    runs immediately, with no model turn and no tokens. An unknown command
+    returns ``None`` so a caller (the Gateway bridge, the CLI, a chat
+    ``/command``) can fall through to the ordinary command registry rather than
+    being told an error.
+    """
+    from alpha.mods.commands import MAX_OUTPUT_CHARS, run_command
+
+    resolved = kernel.commands.resolve(command)
+    if resolved is None:
+        return None
+    command_def, handler = resolved
+    try:
+        output = await run_command(handler, dict(payload or {}))
+    except Exception as exc:
+        logger.error("Mod command '/%s' raised: %s", command_def.name, exc, exc_info=True)
+        return {
+            "command": command_def.name,
+            "mod_name": command_def.mod_name,
+            "status": "error",
+            "output": f"Mod command '/{command_def.name}' failed: {exc}",
+        }
+    text = str(output)[:MAX_OUTPUT_CHARS]
+    return {
+        "command": command_def.name,
+        "mod_name": command_def.mod_name,
+        "status": "success",
+        "output": text,
+        "requires_approval": command_def.requires_approval,
+    }
+
+
+def list_mod_commands(kernel: ModKernel) -> list[dict[str, Any]]:
+    """Project every mod-registered command on ``kernel`` for an operator surface."""
+    return [c.to_dict() for c in kernel.commands.list_commands()]
+
+
 class ModKernelMiddleware(AgentMiddleware[AgentState]):
     """Bridges the Alpha Mod Kernel into the LangGraph AgentMiddleware pipeline.
 
-    Intercepts tool calls (`tool.requested`) and model completions (`turn.complete`),
-    enforcing deterministic mod pipeline outcomes (DENY, DEFER, REWRITE, ANSWER).
+    Intercepts tool calls (``tool.requested``), model calls (``model.requested``
+    *before* the provider sees them, and ``turn.complete`` after), enforcing
+    deterministic mod pipeline outcomes (DENY, DEFER, REWRITE, ANSWER).
     """
 
     def __init__(self, kernel: ModKernel | None = None):
@@ -36,6 +77,17 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
             "mods_count": len(self._kernel.list_mods()),
             "fail_closed": True,
         }
+
+    async def run_mod_command(self, command: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Run a mod-registered command, or report that none owns it.
+
+        Delegates to the module-level :func:`run_mod_command`, which is the
+        shared implementation the Gateway bridge and CLI also call.
+        """
+        return await run_mod_command(self._kernel, command, payload)
+
+    def list_mod_commands(self) -> list[dict[str, Any]]:
+        return list_mod_commands(self._kernel)
 
     def _extract_correlation(self, request: ToolCallRequest) -> CorrelationContext:
         runtime = getattr(request, "runtime", None)
@@ -163,6 +215,47 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
+        correlation = CorrelationContext.create(
+            run_id=str(getattr(request, "run_id", None) or uuid.uuid4().hex),
+        )
+
+        # The pre-model dispatch. Claude Code's mods can rewrite a prompt
+        # *before* it reaches the model, which is the only point at which a
+        # rewrite is still a rewrite of intent rather than a repair of output.
+        # The kernel owns this decision; this adapter only applies the verdict.
+        messages = list(getattr(request, "messages", None) or [])
+        pre_event = AlphaEvent(
+            name="model.requested",
+            payload={
+                "messages": messages,
+                "model": getattr(request, "model", None),
+                "system_prompt": getattr(request, "system_prompt", None),
+                "tool_count": len(getattr(request, "tools", None) or []),
+            },
+            correlation=correlation,
+            source="runtime:model",
+        )
+
+        try:
+            pre_result = await self._kernel.dispatch(pre_event)
+        except Exception as exc:
+            logger.warning("Mod kernel could not evaluate model.requested: %s", exc)
+            pre_result = None
+
+        if pre_result is not None and pre_result.outcome == EventOutcome.DENY:
+            logger.warning("Model call refused by mod kernel: %s", pre_result.reason)
+            raise RuntimeError(f"Model call refused by mod policy: {pre_result.reason}")
+
+        rewritten_messages = None
+        if pre_result is not None and pre_result.outcome == EventOutcome.REWRITE:
+            candidate = pre_result.event.payload.get("messages") if pre_result.event else None
+            if isinstance(candidate, list) and candidate:
+                rewritten_messages = candidate
+                logger.info("Model request rewritten by mod kernel: %s", pre_result.reason)
+
+        if rewritten_messages is not None:
+            request.messages = rewritten_messages
+
         response = await handler(request)
 
         # After model responds, verify completion claim
@@ -174,7 +267,7 @@ class ModKernelMiddleware(AgentMiddleware[AgentState]):
                 event = AlphaEvent(
                     name="turn.complete",
                     payload={"message": content, "messages": messages},
-                    correlation=CorrelationContext.create(),
+                    correlation=correlation,
                     source="runtime:model",
                 )
                 res = await self._kernel.dispatch(event)

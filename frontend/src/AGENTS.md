@@ -664,6 +664,81 @@ mappers, the clamp, the local refusals, `failureText`) and
 `src/lib/effects-view.test.mjs` (the four-place wiring and every rendering
 above).
 
+## Mod kernel panel (`mods` workspace view)
+
+`lib/mods.ts` + `components/sections/ModsSection.tsx`, over
+`GET|POST /api/mods/*`. The `mods` id follows the four-place wiring rule
+(union, `WORKSPACE_TABS` row, `WORKSPACE_VIEW_IDS`, ChatView lazy import plus
+render case). Its union entry sits **above** the sentinel/effect pair rather
+than at the end: `reliability-view.test.mjs` pins `reliability` as the terminal
+member, and `sentinel-view.test.mjs` + `effects-view.test.mjs` pin the
+sentinel → effects → reliability triple as three *adjacent* members. So the only
+legal position for a new id is before that pair. (The comment beside the entry
+must not quote an id: `unionIds()` in `workspace-nav.test.mjs` reads every
+quoted token between `export type WorkspaceView` and the first semicolon, so a
+comment quoting `| "mods"` reports a duplicate member.)
+
+The panel answers the four questions an ordered policy chain has to be
+auditable for — *what runs, in what order, with what authority* · *what did each
+of them decide* · *what is parked waiting for a human* · *what would this tool
+call touch* — so the **absence of an answer is never collapsed into the answer
+"none"**:
+
+| Server says | Panel shows |
+| --- | --- |
+| `chain: null` | "The Gateway sent no chain list" — not "no mods" |
+| `chain: []` | "No mods are registered" |
+| a describe carrying `error` | that error, and **no** blank field for anything it could not read |
+| `discrepancies: null` | *discrepancies not reported* — not *none reported* |
+| `discrepancies: []` | *no discrepancies reported — declared and observed agree* |
+| `measurable: false` | *could not compute* — never "nothing is at stake" |
+| `measurable` absent | *measurable not reported* — a third state, grey |
+| `entries: null` / `holds: null` / `commands: null` | "The Gateway sent no … list" — not an empty one |
+| `entries: []` / `holds: []` / `commands: []` | the empty state for that filter |
+| either admin read rejected | the server's own sentence, verbatim |
+| an audit read 503s | the server's "no audit ledger" sentence, verbatim — not `[]` |
+| a command declaring `requires_approval` | its badge, and the route's own `409` when it refuses |
+| `expires_at` elapsed on an `approved` hold | *expiry time passed*, beside the approval |
+| an unknown outcome / decision / risk string | rendered verbatim in a grey badge |
+
+Rules that must keep:
+
+- **Four reads, four failures.** Fleet, commands, audit and holds go through
+  `Promise.allSettled`; there is no `Promise.all` in the section. An admin-only
+  ledger that 403s must not blank a healthy chain, and each `Notice` names which
+  read failed *and* that the other three are unaffected.
+- **Authorisation is server-owned.** No client-side role check anywhere: the
+  audit and holds blocks render for every caller and a member's 403 is rendered
+  through `failureText`. `errMsg` would replace that refusal with a generic
+  sentence, and here the refusal *is* the answer.
+- **Nothing is painted from a click.** A hold decision awaits the route, shows
+  the store's own row, then re-reads the queue; a command run shows the handler's
+  response; the preview shows what the server computed. Controls disable in
+  flight, and the decision form is gated on an acknowledgement checkbox that
+  starts unchecked.
+- **The panel never executes a tool.** The preview is bounded argument parsing
+  plus a read-only walk, and the control says so beside itself.
+- **Approval and expiry are separate facts.** `holdExpiryView` reads
+  `expires_at` against the browser clock — disclosed as a local reading, and
+  **never** used to disable a control. The store decides whether a hold stands;
+  the panel only shows that the timestamp elapsed, because a hold store that
+  keeps `decision: "approved"` on a lapsed hold is exactly how an operator reads
+  a stale approval as a live release.
+- **The risk string gets no colour table.** Three unrelated `RiskLevel`
+  vocabularies exist in the harness (blast-radius `R1`–`R5`, the shell
+  analyzer's `BLOCKED/HIGH/MEDIUM`, the reasoning model's own), so the badge
+  carries the holding mod's word verbatim in grey. Colouring one against a scale
+  nobody declared is a claim the payload does not make.
+- **Durability is disclosed where the state is.** The panel states that the
+  journal behind the ledger, the mod capability store, the timers and the UI
+  cards are process-local, and that the hold store is an atomic file for one
+  Gateway process — neither is cross-worker exactly-once.
+
+Coverage: `src/lib/mods.test.mjs` (routes, verbs, the null-preserving mappers,
+the two limit clamps, the local refusals, `failureText`, `holdExpiryView`) and
+`src/lib/mods-view.test.mjs` (the four-place wiring, the union-placement rule
+above, and every rendering in the table).
+
 ## Subagent catalog panel (every field of a definition)
 
 `lib/subagents.ts` + `lib/subagent-catalog-view.ts` +
