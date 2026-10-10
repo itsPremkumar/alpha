@@ -14,6 +14,7 @@ import {
   Sparkles,
   Layers,
   Database,
+  Gauge,
   Terminal,
   Activity,
   Zap,
@@ -40,6 +41,7 @@ import { probeAll, Probe } from "@/lib/system";
 import { applyThemeMode, isThemeMode, THEME_STORAGE_KEY } from "@/lib/theme";
 import { FALLBACK_LABELS, modelEffortLadder } from "@/lib/reasoning-effort";
 import { ModelCapabilityBadges } from "@/components/ModelCapabilityBadges";
+import { ContextWindowsPanel } from "@/components/sections/ContextWindowsPanel";
 import { modelCapabilities } from "@/lib/model-capabilities";
 import { suggestionsEnabled } from "@/lib/assist";
 import { currentOperatorIdentity, writeOperatorName } from "@/lib/operator";
@@ -1072,6 +1074,21 @@ export function SettingsSection({
                 {savingCustom ? "Registering…" : "Add & Select Model"}
               </button>
             </div>
+          </div>
+
+          {/* Context windows: how much prompt each model actually accepts */}
+          <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Gauge className="size-4 text-primary" />
+                Context windows
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                How much prompt each model actually accepts. The usable figure is the declared window minus the response and
+                next-turn reserves, because both are paid for out of the same window.
+              </p>
+            </div>
+            <ContextWindowsPanel />
           </div>
 
           {/* Section 3: All Available Models Catalog */}

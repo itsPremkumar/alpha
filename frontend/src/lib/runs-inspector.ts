@@ -1123,6 +1123,32 @@ export interface ThreadContextUsage {
   maxContextTokens: number | null;
   /** The server's own percentage, or `null` when it did not compute one. */
   percentage: number | null;
+  /**
+   * The Gateway's derived pressure reading, or `null` when it reports no
+   * `context_window` policy at all. A caller must not substitute a band here:
+   * rendering `nominal` for a policy it was never sent would read as a
+   * comfortable window nobody measured.
+   */
+  pressure: ThreadContextPressure | null;
+}
+
+/**
+ * One reading of how full the **usable** window is.
+ *
+ * `usableInputWindow` is the declared window minus the response and next-turn
+ * reserves, and every fraction is taken against it rather than the declared
+ * figure — which is why a thread can be 100% of its declared window and still
+ * read as `over` rather than exactly full.
+ */
+export interface ThreadContextPressure {
+  band: string;
+  occupancyTokens: number;
+  declaredInputWindow: number | null;
+  usableInputWindow: number | null;
+  headroomTokens: number | null;
+  reservedTokens: number;
+  occupancyFraction: number | null;
+  reason: string;
 }
 
 export interface ThreadTokenUsage {
@@ -1155,6 +1181,31 @@ export async function fetchThreadTokenUsage(threadId: string): Promise<ThreadTok
           tokenCount: count(context.token_count),
           maxContextTokens: count(context.max_context_tokens),
           percentage: count(context.percentage),
+          /*
+            `pressure` is `null` in two distinct cases, and the caller must keep
+            them apart:
+
+            * the key is absent — an older Gateway that has no `context_window`
+              policy, so it computed no band. The panel says "not reported by
+              this Gateway" rather than showing a band.
+            * `band` is `"unknown"` with every derived field `null` — this
+              Gateway *does* measure pressure, but the thread's model declares
+              no window, so "how full is it" is unanswerable.
+
+            Neither may be rendered as a number or as `nominal`.
+          */
+          pressure: rec(context.pressure)
+            ? {
+                band: str(rec(context.pressure)?.band) ?? "unknown",
+                occupancyTokens: count(rec(context.pressure)?.occupancy_tokens) ?? 0,
+                declaredInputWindow: count(rec(context.pressure)?.declared_input_window),
+                usableInputWindow: count(rec(context.pressure)?.usable_input_window),
+                headroomTokens: count(rec(context.pressure)?.headroom_tokens),
+                reservedTokens: count(rec(context.pressure)?.reserved_tokens) ?? 0,
+                occupancyFraction: count(rec(context.pressure)?.occupancy_fraction),
+                reason: str(rec(context.pressure)?.reason) ?? "not_reported",
+              }
+            : null,
         }
       : null,
   };

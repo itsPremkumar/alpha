@@ -349,10 +349,34 @@ class ThreadTokenUsageCallerBreakdown(BaseModel):
     middleware: int = 0
 
 
+class ThreadContextUsagePressure(BaseModel):
+    """The derived pressure reading for a thread's context window.
+
+    Every field is nullable because every one of them is genuinely optional:
+    ``declared_input_window`` is null when the operator declared nothing, and
+    ``headroom_tokens`` is null for the same reason — there is no reading in
+    which an undeclared window reports how much room is left.
+    """
+
+    band: str = "unknown"
+    occupancy_tokens: int = 0
+    declared_input_window: int | None = None
+    usable_input_window: int | None = None
+    headroom_tokens: int | None = None
+    reserved_tokens: int = 0
+    occupancy_fraction: float | None = None
+    reason: str = "context_window_not_declared"
+
+
 class ThreadContextUsage(BaseModel):
     token_count: int = 0
     max_context_tokens: int | None = None
     percentage: float | None = None
+    #: ``None`` when the Gateway reports no ``context_window`` policy (an older
+    #: build, or ``context_window.enabled: false``). A caller must not substitute
+    #: ``nominal`` for that, which would read as a comfortable window nobody
+    #: measured.
+    pressure: ThreadContextUsagePressure | None = None
 
 
 class ThreadTokenUsageResponse(BaseModel):

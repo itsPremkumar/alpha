@@ -59,9 +59,24 @@ import {
   type WorkspaceChanges,
 } from "@/lib/runs-inspector";
 import { formatTokenCount } from "@/lib/runs";
+import { bandLabel, bandTone } from "@/lib/context-window";
 import { toolStatusView } from "@/components/ToolPill";
 import { RunInspectorTimeline } from "./RunInspectorTimeline";
 import type { ToolCall } from "@/types/chat";
+
+/** Tone -> Tailwind class, mirroring the panel's own palette. */
+function pressureToneClass(band: string): string {
+  switch (bandTone(band)) {
+    case "green":
+      return "text-emerald-600 dark:text-emerald-400";
+    case "amber":
+      return "text-amber-600 dark:text-amber-400";
+    case "red":
+      return "text-red-600 dark:text-red-400";
+    default:
+      return "text-muted-foreground";
+  }
+}
 
 /* ── presentation helpers ─────────────────────────────────────────────────── */
 
@@ -1102,6 +1117,35 @@ export function TokenPanel(props: { record: RunRecord; usage: ThreadTokenUsage |
         {usage?.contextUsage && usage.contextUsage.maxContextTokens !== null && (
           <p className="text-[10px] text-muted-foreground font-mono">
             context window {formatTokenCount(usage.contextUsage.maxContextTokens)} tokens
+          </p>
+        )}
+        {/*
+          The pressure band is the Gateway's own reading of how full the
+          *usable* window is, which is the declared window minus the response and
+          next-turn reserves. Three states, none of them a substitute for
+          another:
+
+          * `pressure === null` — this Gateway reports no `context_window`
+            policy (an older build, or `enabled: false`). Rendering a default
+            band here would read as a comfortable window nobody measured.
+          * `band === "unknown"` — the model declares no window at all, so
+            "how full is it" is unanswerable. That is not the same as "it is
+            empty", and the words say so.
+          * a real band — green for nominal, amber elevated, red
+            critical/over, with the headroom named in tokens beside it.
+
+          The words come from `lib/context-window.ts` so this panel and the
+          models panel cannot disagree about what the same band means.
+        */}
+        {usage?.contextUsage && usage.contextUsage.pressure === null && (
+          <p className="text-[10px] text-muted-foreground">context pressure not reported by this Gateway (no `context_window` policy)</p>
+        )}
+        {usage?.contextUsage?.pressure && (
+          <p className="text-[10px] text-muted-foreground">
+            pressure{" "}
+            <span className={pressureToneClass(usage.contextUsage.pressure.band)}>{bandLabel(usage.contextUsage.pressure.band)}</span>
+            {usage.contextUsage.pressure.headroomTokens !== null && ` · ${formatTokenCount(usage.contextUsage.pressure.headroomTokens)} headroom`}
+            {usage.contextUsage.pressure.reason && ` · ${usage.contextUsage.pressure.reason}`}
           </p>
         )}
       </div>
