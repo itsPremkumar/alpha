@@ -135,9 +135,10 @@ class TestService:
             service.winner(state["run_id"], "user1")
 
     def test_list_runs(self, service):
-        s1 = service.create(owner_id="user1", thread_id="t1", task="t1", agents=2)
+        service.create(owner_id="user1", thread_id="t1", task="t1", agents=2)
         s2 = service.create(owner_id="user1", thread_id="t2", task="t2", agents=2)
-        s3 = service.create(owner_id="user2", thread_id="t3", task="t3", agents=2)
+        # A second owner's run must not appear in user1's listing.
+        service.create(owner_id="user2", thread_id="t3", task="t3", agents=2)
         runs = service.list_runs("user1")
         assert len(runs) == 2
         assert runs[0]["run_id"] == s2["run_id"]  # newest first
