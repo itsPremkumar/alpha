@@ -39,6 +39,7 @@ from alpha.config.model_catalog_schema import (
 from alpha.config.model_config import ModelConfig, ProviderConfig
 from alpha.config.model_routing_config import ModelRoutingConfig
 from alpha.config.network_resilience_config import NetworkResilienceConfig
+from alpha.config.network_wait_config import NetworkWaitConfig
 from alpha.config.read_before_write_config import ReadBeforeWriteConfig
 from alpha.config.reload_boundary import format_field_description
 from alpha.config.review_guard_config import ReviewGuardConfig
@@ -537,6 +538,17 @@ class AppConfig(BaseModel):
         description=format_field_description(
             "network",
             field_doc="Internet-connectivity monitoring policy. Connectivity is a first-class runtime state: a run that needs the network parks as waiting_network instead of failing, and resumes automatically when the link returns.",
+        ),
+    )
+    network_wait: NetworkWaitConfig = Field(
+        default_factory=NetworkWaitConfig,
+        description=format_field_description(
+            "network_wait",
+            field_doc=(
+                "How long a network-parked session keeps waiting. Default is UNBOUNDED: an internet outage "
+                "that outlasts a counter must not abandon a task that did nothing wrong. Set max_attempts to a "
+                "positive number only when an operator is expected to intervene."
+            ),
         ),
     )
     dedupe_storage: DedupeStorageConfig = Field(

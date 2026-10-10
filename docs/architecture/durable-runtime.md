@@ -233,15 +233,21 @@ Four properties are load-bearing:
   on a certainty. `UNKNOWN` and `DEGRADED` still permit an attempt.
 - **The backoff is durable.** `next_attempt_at` is written when a resume
   *fails*, so a reboot cannot turn a five-minute backoff into a hot retry loop.
-- **Attempts are bounded, and exhaustion is reported** as `gave_up` with a
-  reason. A session retried forever against a link that never returns is the
-  outage equivalent of the restart loop the supervisor refuses to write. *This
-  bound applies to the registry's own resume attempts* — and the Gateway installs
-  no launcher, so in the wired deployment the table is a **record** (which
-  sessions are parked, which were refused a resume) rather than a bound. The
-  bounding there is `SafeRunRecoveryService`'s own `max_resume_attempts`. A row
-  can sit in `waiting` indefinitely; that is visible and enumerable by design, not
-  a silent cap.
+- **Attempts are bounded — and the bound is optional.** `max_attempts` ends the
+  wait as `gave_up` with a reason. **The default is `0`, meaning unbounded**: a
+  wait is a *parked task*, not a retry loop, so a session that did nothing wrong
+  must not be abandoned for surviving an outage that outlasted a constant. The
+  two bounds that belong elsewhere are untouched: `network.backoff_*` caps how
+  loudly the link is re-checked (and never stops polling), and
+  `run_ownership.max_resume_attempts` — which also accepts `0` for unbounded —
+  bounds a continuation that keeps dying. Set `network_wait.max_attempts` to a
+  positive number when an operator is expected to intervene. *When the Gateway
+  installs no launcher, none of the registry's own bounds engage at all*, so in
+  the wired deployment the table is a **record** (which sessions are parked,
+  which were refused a resume); the bounding there is
+  `SafeRunRecoveryService`'s own `max_resume_attempts`. A row can therefore sit
+  in `waiting` indefinitely; that is visible and enumerable by design, not a
+  silent cap.
 - **A declined checkpoint is settled, not retried.** If the recovery owner
   refuses — most likely a side-effect-unsafe checkpoint — that checkpoint's safety
   will not change, so retrying is a loop with extra steps.
@@ -250,6 +256,50 @@ One open wait per thread is enforced twice (a partial unique index plus a read o
 the existing row), `claim_due` is a conditional `UPDATE` so two gateway instances
 cannot both take a row, and `max_claims_per_pass` stops a backlog stampeding the
 provider the instant the link returns.
+
+### Telling the story back: the outage timeline
+
+A park that survives a restart but cannot be read back is not yet a promise a user
+can see. Two columns and one query close that, and the second is the load-bearing
+one.
+
+**`terminal_at` is not `updated_at`.** `release()` moves `updated_at` every time a
+failed resume attempt writes its next backoff, so reading the connection time off
+`updated_at` would report a *scheduled retry* as the moment the link came back. An
+open row keeps `terminal_at` `NULL` — "still waiting" is a state, not a zero
+timestamp — and the migration that adds it
+(`0029_network_waits_terminal_at`) is deliberately **un-backfilled**: a row settled
+before the revision has no measured connection time, and inventing one from
+`updated_at` would be precisely the wrong number the column prevents.
+
+**`list_for_thread` includes settled rows.** `list_open` answers "what is
+unfinished right now", which is the wrong question for a thread's history: an
+outage that ended an hour ago is still part of that conversation. A UI reading only
+open rows would show a thread as never having been parked the moment it resumed,
+erasing the exact event the user came to read.
+
+`GET /api/threads/{id}/network-waits` projects both, beside the live connectivity
+block, and reports `bounded` / `max_attempts` so a client can say whether this
+deployment will ever give up rather than hinting at a deadline nobody declared. It
+answers `reported: false` — not an empty list — when the process records no
+per-thread timeline at all (a `memory` database backend has nowhere durable to
+record a park), and `503`, never an empty list, when the store itself cannot be
+read.
+
+### In the chat, where the work happened
+
+`NetworkWaitBubbles` renders that timeline inline in the transcript: one bubble per
+outage with **both** timestamps and the measured wait between them, a live
+client-observed counter while a wait is still open, and the server's own reason
+when one was measured. It answers the one question a blank transcript cannot: *is
+this working or waiting?* — because a parked session is `waiting_network`, not
+`failed`, and a guarantee nobody can see is not a guarantee.
+
+The mount is deliberately **not** gated on a run being in flight: the run that
+parked is already terminal from the runtime's point of view, so a loading-only
+mount would hide the bubble during exactly the wait the user most needs to see it.
+Because the row is durable, a chat reopened tomorrow still shows the outage it
+survived.
 
 **The Gateway owns the lifecycle.** `langgraph_runtime()` builds the monitor from
 `config.yaml -> network`, runs the first probe *before* starting the poll loop (so
@@ -354,7 +404,7 @@ in full instead of being indistinguishable from a clean one.
 ## Configuration
 
 ```yaml
-network:
+network:                             # the MEASUREMENT policy
   enabled: true                      # no background poll task when false
   poll_interval_seconds: 15.0        # base interval while ONLINE
   offline_after_consecutive: 2       # corroborate before publishing OFFLINE
@@ -369,14 +419,33 @@ network:
       host: proxy.corp.test
       port: 8443
       timeout_seconds: 2.0
+
+network_wait:                        # the PATIENCE policy
+  enabled: true
+  max_attempts: 0                    # 0 = UNBOUNDED (the default). A parked task
+                                     # waits until the link returns, however long
+                                     # that takes; a positive number surrenders it
+                                     # as `gave_up` with its reason.
+  backoff_initial_seconds: 15.0
+  backoff_max_seconds: 900.0
+  backoff_multiplier: 2.0
+  poll_interval_seconds: 30.0        # how often due waits are swept
+  claim_lease_seconds: 30.0
+  max_claims_per_pass: 5             # a backlog must not stampede the provider
 ```
 
-`network` is **startup-only**, registered in
-`alpha.config.reload_boundary`. The monitor owns a background task, an in-flight
-backoff ladder, and a published state other subsystems have already read, so a
-mid-flight swap would split the process across two policies. Validation is
-fail-closed (`extra="forbid"`), and an empty `targets` list is refused because it
-would leave connectivity permanently `UNKNOWN`.
+Both sections are **startup-only**, registered in `alpha.config.reload_boundary`
+(`network` and `network_wait`). The monitor owns a background task, an in-flight
+backoff ladder, and a published state other subsystems have already read; the
+registry owns a recovery pass and the policy a row is admitted under, so a
+mid-flight swap would split the process across two answers to "how long do we
+wait?". Validation is fail-closed (`extra="forbid"`) on both, and an empty
+`targets` list is refused because it would leave connectivity permanently
+`UNKNOWN`.
+
+`run_ownership.max_resume_attempts` also accepts `0` for unbounded, and keeps its
+own default of `3`: that bound is about a *continuation that keeps dying*, which
+is a genuinely different question from "how long will you wait for the internet".
 
 ## What is deliberately not claimed
 
@@ -406,12 +475,16 @@ Honesty about the boundary is part of the feature.
 | Connectivity state, probe, monitor | `alpha.runtime.network` | `tests/test_network_resilience.py` |
 | Operator surface + manual re-probe | `app.gateway.routers.ops`, `app.gateway.ops_runtime` | `tests/test_ops_network_router.py` |
 | Durable parked sessions | `alpha.runtime.network.wait_registry`, `alpha.persistence.network_waits` | `tests/test_network_wait_registry.py`, `tests/test_network_wiring.py` |
+| How long a park waits (`network_wait`) | `alpha.config.network_wait_config`, `NetworkWaitPolicy` | `tests/test_network_wait_timeline.py` |
+| Per-thread outage timeline + route | `app.gateway.routers.thread_runs`, `NetworkWaitRepository.list_for_thread` | `tests/test_network_wait_timeline.py` |
+| The in-chat network bubble | `frontend/src/lib/network-wait.ts`, `network-wait-view.ts` | `frontend/src/lib/network-wait.test.mjs` |
 | Side-effect ledger (semantics) | `alpha.runtime.side_effects` | `tests/test_side_effect_ledger.py` |
 | Side-effect ledger (durable) | `alpha.persistence.side_effects` | `tests/test_side_effect_ledger_sql.py` |
 | Process supervision and crash-loop policy | `alpha.runtime.supervisor` | `tests/test_process_supervisor.py` |
 | Ordered, honestly-reported shutdown | `alpha.runtime.shutdown` | `tests/test_planned_shutdown.py` |
 | Existing safe recovery contract | `app.gateway.run_recovery` | `tests/test_safe_run_recovery.py` |
 | `config.yaml -> network` | `alpha.config.network_resilience_config` | `tests/test_network_resilience.py` |
+| `config.yaml -> network_wait` | `alpha.config.network_wait_config` | `tests/test_network_wait_timeline.py` |
 | `NETWORK_UNAVAILABLE` error code | `alpha.errors.registry` | `tests/test_error_codes.py` |
 
 Each subsystem's own `AGENTS.md` next to the code is the normative contract;

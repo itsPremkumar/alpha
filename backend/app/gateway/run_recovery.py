@@ -575,7 +575,10 @@ class SafeRunRecoveryService:
             return record.run_id, "stopped"
 
         attempt = _recovery_attempt(record)
-        if attempt >= self._config.max_resume_attempts:
+        # ``max_resume_attempts`` of 0 is unbounded, so the guard is skipped
+        # entirely. Read as a sentinel rather than a large number on purpose:
+        # raising "unlimited" to 20 only moves the cliff.
+        if self._config.max_resume_attempts > 0 and attempt >= self._config.max_resume_attempts:
             await self._transition(
                 record,
                 RECOVERY_EXHAUSTED_REASON,

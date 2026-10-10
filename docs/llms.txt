@@ -38,6 +38,7 @@ APEX session, mode, and goal snapshots use same-host local file locking; goal de
 - [Per-bot model configuration](BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling and mixture panels, named only from `config.yaml` `models[]`.
 - [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
 - [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
+- [Durable runtime](architecture/durable-runtime.md): connectivity as a first-class state, sessions parked rather than failed, and unbounded network waits (`network_wait.max_attempts: 0`).
 - [Peer network](ALPHA_PEER_NETWORK.md): Alpha-to-Alpha discovery, explicit pairing, and direct delivery.
 
 ## Reasoning and memory

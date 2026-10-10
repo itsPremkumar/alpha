@@ -134,10 +134,68 @@ link is down. It only slows: `backoff_initial_seconds` → `backoff_max_seconds`
 link re-probes forever at a bounded rate, and the only thing that can notice the
 link returning is that loop.
 
-There is deliberately **no attempt ceiling here**. The bound on *work* parked on
-an outage belongs to the durable registry (`NetworkWaitPolicy.max_attempts`), and
-a probe loop that gave up would turn a ten-minute outage into permanent silence —
-the outage equivalent of the restart loop the supervisor refuses to write.
+There is deliberately **no attempt ceiling here**, and the durable registry that
+holds *parked work* now matches it.
+
+## A parked session waits indefinitely by default
+
+`NetworkWaitPolicy.max_attempts` defaults to `UNBOUNDED_ATTEMPTS` (`0`), and the
+`gave_up` branch is skipped entirely under that policy.
+
+This is a deliberate reversal of the instinct that everything needs a ceiling. A
+**wait is a parked task, not a retry loop**: the task did nothing wrong and the
+internet did. The two bounds that genuinely belong elsewhere are still where they
+have always been:
+
+- `network.backoff_*` caps how loudly Alpha re-checks the link (300s by default)
+  and **never stops polling**, so an unbounded wait cannot mean an unbounded
+  request rate;
+- `run_ownership.max_resume_attempts` bounds how many times a *continuation that
+  keeps dying* is relaunched — and `0` is now accepted there too, meaning
+  unbounded, for the same reason.
+
+Charging the *wait* against a fixed count is what turns "the internet was gone for
+an hour" into "gave up after 24 tries": a session abandoned for surviving an
+outage that outlasted a constant. An operator who genuinely wants a ceiling sets
+`network_wait.max_attempts` to a positive number, and exhaustion is then reported
+as `gave_up` **with its reason** — never a silent drop.
+
+`UNBOUNDED_ATTEMPTS` is `0` rather than a large number deliberately: a wait that
+must not exhaust has to be *unrepresentable as a count*, or "unlimited = 100000"
+has only moved the cliff. A negative budget is refused outright.
+
+**A declined checkpoint is still settled immediately, bounded or not.** That
+refusal will not change on retry, so retrying it is a loop with extra steps.
+
+## The per-thread outage timeline (`network_waits.terminal_at`, `list_for_thread`)
+
+The park was durable but *unreadable*: a UI could learn that *something* was
+parked, never when this thread's link died or when it came back. Two additions
+close that, and the second is the load-bearing one.
+
+**`terminal_at` is not `updated_at`.** `release()` moves `updated_at` every time
+a failed resume attempt writes its next backoff, so reading the recovery time off
+it would report a *scheduled retry* as the moment the link came back. An open row
+keeps `terminal_at` `NULL`, and "still waiting" is therefore a state, not a zero
+timestamp. Migration `0029_network_waits_terminal_at`; purely additive, no
+backfill — a row settled before the revision has no measured connection time, and
+inventing one from `updated_at` would be the wrong number the column exists to
+prevent.
+
+**`list_for_thread` includes settled rows on purpose.** `list_open` answers "what
+is unfinished right now", which is the wrong question for a thread's history: an
+outage that ended an hour ago is still part of that conversation's story. A UI
+reading only open rows would show a thread as never having been parked the moment
+it resumed, erasing exactly the event the user is asking about. The method is
+owner-scoped by the *route*, not here — the repository is the harness layer.
+
+`GET /api/threads/{thread_id}/network-waits` projects both, beside the live
+connectivity block, and reports `bounded` / `max_attempts` so a client can say
+whether this deployment will ever give up rather than hinting at a deadline
+nobody declared. It answers `reported: false` (not an empty list) when the
+process records no per-thread timeline at all, and `503` — never an empty list —
+when the store itself cannot be read. The human surface is
+`frontend/src/lib/network-wait.ts` + `components/NetworkWaitBubbles.tsx`.
 
 ## Testability
 
@@ -206,8 +264,13 @@ the provider said.
   `NetworkObservation`, `NetworkWaitDecision`, `recheck()`/`pending_confirmations`,
   and the bus event names
 - `config/network_resilience_config.py` — the `config.yaml -> network` section
+- `config/network_wait_config.py` — the `config.yaml -> network_wait` section
+  (patience policy; `max_attempts: 0` = unbounded) and `to_wait_policy`
 - `app.gateway.routers.ops` — `GET /api/ops/network` (the reading, its measured
   round-trip, and the automatic re-probe schedule) and
   `POST /api/ops/network/recheck` (the manual retry), both projected by
   `app.gateway.ops_runtime.network_snapshot`
-- Tests: `tests/test_network_resilience.py`, `tests/test_ops_network_router.py`
+- `app.gateway.routers.thread_runs` — `GET /api/threads/{id}/network-waits`
+  (this thread's outage timeline beside the live reading)
+- Tests: `tests/test_network_resilience.py`, `tests/test_ops_network_router.py`,
+  `tests/test_network_wait_registry.py`, `tests/test_network_wait_timeline.py`

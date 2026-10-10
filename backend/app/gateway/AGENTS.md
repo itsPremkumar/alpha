@@ -11,7 +11,11 @@ shutdown would publish a transition into a tearing-down process, and a registry
 still claiming rows would act on services that are already going away. The first
 probe is awaited *before* the poll loop starts, so a Gateway booting on a dead
 network reports `offline` rather than `unknown` one poll later. Startup reclaims
-waits whose claim lease outlived the previous process. It also records
+waits whose claim lease outlived the previous process. The wait policy comes from
+`config.yaml -> network_wait` (`to_wait_policy`), not from the runtime default, so
+the ceiling an operator actually wants is readable in the file — the startup log
+names which of the two it resolved (`unbounded …` or `at most N resume attempts`).
+It also records
 `app.state.network_configured` *before* the branch that installs the monitor,
 because "disabled by configuration" and "enabled but absent" are different
 operator problems and an operator surface cannot tell them apart from a missing
@@ -25,6 +29,36 @@ would create a second continuation authority that bypasses the fail-closed
 side-effect gate. Owner map:
 [packages/harness/alpha/runtime/AGENTS.md](../packages/harness/alpha/runtime/AGENTS.md);
 user map: [docs/architecture/durable-runtime.md](../../../docs/architecture/durable-runtime.md).
+
+**The parked-session timeline is a thread surface.** `GET /api/threads/{id}/network-waits`
+answers *"what happened to this conversation"* — when the link died
+(`first_waited_at`), when the wait ended (`terminal_at`), how long it waited, and
+whether it is waiting still — beside the same live connectivity block
+`GET /api/ops/network` returns. It is declared on the **Thread Runs** router and
+carries `threads:read` with the standard owner check.
+
+Five rules, each a plausible wrong answer:
+
+- **`terminal_at`, never `updated_at`.** `release()` moves `updated_at` every time a
+  failed resume writes its next backoff, so reading the recovery time off it would
+  report a *scheduled retry* as the moment the link came back. An open row keeps
+  `terminal_at` `NULL`, so "still waiting" is a state and not a zero timestamp.
+- **Settled rows are returned.** `list_open` answers the wrong question for a
+  thread's history: an outage that ended an hour ago is still part of the
+  conversation, and a view reading only open rows would show a thread as never
+  having been parked the moment it resumed.
+- **`reported: false`, not an empty list**, when the process records no per-thread
+  timeline (a `database.backend: memory` deployment has nowhere durable to record a
+  park; `network.enabled: false` starts no recovery pass). "No outages" would be a
+  claim that deployment cannot make.
+- **`503`, not an empty list**, when the store itself cannot be read.
+- **`bounded` / `max_attempts` travel with it**, so a client can state whether this
+  deployment ever gives up instead of hinting at a deadline nobody declared. The
+  default (`bounded: false`) is the sentence "for as long as it takes"; `null` is a
+  third state and must be rendered as neither promise.
+
+Owner map: [the network guide](../packages/harness/alpha/runtime/network/AGENTS.md);
+human surface: `frontend/src/components/NetworkWaitBubbles.tsx`.
 
 **The monitor is read, and can be re-probed.** Until `GET /api/ops/network`
 existed, the monitor sat on `app.state.network_monitor` with **no production

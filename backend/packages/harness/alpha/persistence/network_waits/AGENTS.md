@@ -31,10 +31,16 @@ store boundary as **relative seconds**, never timestamps, so the store owns the
 conversion and the service never has to know whether it is talking to SQL or to a
 test double.
 
-**3. Attempts are bounded, and exhaustion is reported.** `max_attempts` ends the
-wait as `gave_up` with a reason. A session retried forever against a link that
-never returns is the outage equivalent of the restart loop
-`alpha.runtime.supervisor` refuses to write.
+**3. Attempts are bounded, and exhaustion is reported — but the bound is optional
+and defaults to unbounded.** `max_attempts` ends the wait as `gave_up` with a
+reason. `NetworkWaitPolicy.max_attempts = 0` (`UNBOUNDED_ATTEMPTS`) skips that
+branch entirely, and **0 is the default**, because a wait is a *parked task*, not
+a retry loop: the task did nothing wrong and the internet did. The two bounds that
+genuinely belong elsewhere are untouched — `network.backoff_*` caps how loudly the
+link is re-checked (and never stops polling), and `run_ownership.max_resume_attempts`
+bounds a continuation that keeps dying. `0` rather than a large number is
+deliberate: "unlimited = 100000" only moves the cliff. A negative budget is
+refused.
 
 > **When no launcher is installed, none of this applies.** The attempt budget is
 > charged by `claim_due`, and `resume_due` returns early when `launcher is None`
@@ -51,6 +57,25 @@ never returns is the outage equivalent of the restart loop
 refuses (most likely a side-effect-unsafe checkpoint) the wait becomes `gave_up`
 immediately: that checkpoint's safety will not change, so retrying is not
 persistence, it is a loop with extra steps.
+
+## Reading a wait back: two stamps, and the whole history
+
+**`terminal_at` is not `updated_at`.** `release()` moves `updated_at` every time a
+failed resume attempt writes its next backoff, so reading the connection time off
+`updated_at` would report a *scheduled retry* as the moment the link came back.
+`mark_terminal` is the only writer of `terminal_at`, and an open row keeps it
+`NULL` — "still waiting" is a state, not a zero timestamp. Migration
+`0029_network_waits_terminal_at`; additive and nullable, with **no backfill**: a
+row settled before the revision has no measured connection time, and inventing one
+from `updated_at` would be exactly the wrong number the column prevents.
+
+**`list_for_thread` returns settled rows too.** `list_open` answers "what is
+unfinished right now" — the wrong question for a thread's history. An outage that
+ended an hour ago is still part of that conversation, and a UI reading only open
+rows would show a thread as never having been parked the moment it resumed,
+erasing the exact event the user came to read. Ordered newest-`first_waited_at`
+first, bounded by `limit`. It is owner-scoped by the **route**, not the
+repository: the repository is the harness layer and must not decide ownership.
 
 ## Concurrency
 
@@ -83,6 +108,11 @@ question, not a convention.
 column, no data is backfilled, and an old binary that does not know the table
 keeps working.
 
+`migrations/versions/0029_network_waits_terminal_at.py` adds the nullable
+`terminal_at` column via the idempotent `safe_add_column` helper. Additive and
+nullable — the same shape the rollback-floor binary already tolerates — and
+deliberately un-backfilled.
+
 Both indexes are declared in the **ORM** `__table_args__` as well as the
 migration, because the empty-database bootstrap path runs `create_all` +
 `stamp head` and never executes the revision. `NetworkWaitRow` must stay imported
@@ -94,9 +124,12 @@ fails closed if the two paths drift.
 - `persistence/network_waits/model.py` — `NetworkWaitRow`,
   `OPEN_NETWORK_WAIT_STATES`, `TERMINAL_NETWORK_WAIT_STATES`
 - `persistence/network_waits/sql.py` — `NetworkWaitRepository` (`park`,
-  `claim_due`, `release`, `mark_terminal`, `reclaim_expired_leases`)
+  `claim_due`, `release`, `mark_terminal`, `reclaim_expired_leases`,
+  `list_for_thread`)
 - `runtime/network/wait_registry.py` — `NetworkWaitService`, `NetworkWaitPolicy`,
-  `NetworkWaitStore` protocol, `ParkOutcome`, `ResumeOutcome`, `NetworkWaitStatus`
+  `NetworkWaitStore` protocol, `UNBOUNDED_ATTEMPTS`, `ParkOutcome`,
+  `ResumeOutcome`, `NetworkWaitStatus`
 - Tests: `tests/test_network_wait_registry.py` (in-memory store double for the
   service contract, real SQLite for the repository, and the ORM/migration
-  predicate agreement)
+  predicate agreement), `tests/test_network_wait_timeline.py` (the config
+  translation, the two timeline stamps, and the route's wire projection)

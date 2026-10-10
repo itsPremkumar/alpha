@@ -18,6 +18,7 @@ import pytest
 from alpha.persistence.network_waits import NetworkWaitRepository
 from alpha.runtime.network.states import NetworkState
 from alpha.runtime.network.wait_registry import (
+    UNBOUNDED_ATTEMPTS,
     NetworkWaitPolicy,
     NetworkWaitService,
 )
@@ -307,8 +308,60 @@ class TestBoundedAttempts:
         assert await service.resume_due() == [], "a given-up wait is never claimed again"
 
     def test_a_policy_that_may_never_retry_is_not_a_policy(self) -> None:
+        """Kept from the pre-unbounded contract: a *negative* budget is still refused.
+
+        ``max_attempts`` of 0 is no longer that case. It is
+        :data:`~alpha.runtime.network.wait_registry.UNBOUNDED_ATTEMPTS`, the
+        default, because a wait is a parked task rather than a retry loop — an
+        internet outage that outlasts a counter must not abandon work that did
+        nothing wrong. A negative value is still refused, because "retry this
+        -1 times" is not a policy.
+        """
         with pytest.raises(ValueError, match="max_attempts"):
-            NetworkWaitPolicy(max_attempts=0)
+            NetworkWaitPolicy(max_attempts=-1)
+
+    def test_zero_attempts_means_unbounded_rather_than_never(self) -> None:
+        """0 is the unbounded sentinel, and it is the default.
+
+        The two facts a caller must not confuse: 0 does *not* mean "never retry"
+        (that would strand every parked session), and the default really is
+        unbounded rather than a large finite number.
+        """
+        policy = NetworkWaitPolicy()
+        assert policy.max_attempts == UNBOUNDED_ATTEMPTS == 0
+        assert policy.is_unbounded is True
+        assert NetworkWaitPolicy(max_attempts=0).is_unbounded is True
+        assert NetworkWaitPolicy(max_attempts=1).is_unbounded is False
+
+    @pytest.mark.asyncio
+    async def test_an_unbounded_wait_is_never_surrendered(self) -> None:
+        """The outage-duration invariant: the bound cannot be reached.
+
+        The launcher fails on purpose. A wait whose recovery owner keeps being
+        unable to continue is the *only* shape that ever reaches the give-up
+        branch, so this is the case where a finite budget would actually bite —
+        and an unbounded policy must keep re-arming it across a simulated
+        days-long outage rather than reporting `gave_up`.
+        """
+        service, store, launched = make_service(policy=NetworkWaitPolicy(max_attempts=0, backoff_initial_seconds=1.0, backoff_max_seconds=2.0))
+
+        async def boom(row: dict[str, Any]) -> str:
+            launched.append(row["thread_id"])
+            raise RuntimeError("checkpointer pool closed")
+
+        service._launcher = boom  # type: ignore[assignment]
+        await service.park(thread_id="t1")
+
+        for clock in (100.0, 1000.0, 5000.0, 50_000.0, 500_000.0):
+            store.clock = clock
+            outcomes = await service.resume_due()
+            assert len(outcomes) == 1
+            assert outcomes[0].gave_up is False, f"clock {clock}: an unbounded wait reported a give-up"
+            assert outcomes[0].state == "waiting", f"clock {clock}: an unbounded wait was surrendered"
+            assert store.rows[outcomes[0].wait_id]["state"] == "waiting"
+
+        assert len(launched) == 5, "every pass still hands the wait back to the recovery owner"
+        assert store.rows[outcomes[0].wait_id]["attempt"] == 5
 
     @pytest.mark.parametrize(
         "kwargs",
