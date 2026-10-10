@@ -48,7 +48,14 @@ async def _resolve_thread_model_name(run_store: Any, thread_id: str, app_config:
 
 
 def build_context_usage_payload(*, token_count: int, max_context_tokens: int | None) -> dict[str, Any]:
-    """Build the stable API payload for a message count and model capacity."""
+    """Build the stable API payload for a message count and model capacity.
+
+    ``max_context_tokens`` is ``None`` when the model declares no
+    ``context_window``. That is the honest shape and it must stay one: a
+    deployment that declared nothing must not be told its thread is 0% full, and
+    a caller that substitutes a default here turns "we do not know the size of
+    the room" into a number.
+    """
     percentage: float | None = None
     if max_context_tokens and max_context_tokens > 0:
         percentage = round(token_count / max_context_tokens * 100, 1)
@@ -57,6 +64,48 @@ def build_context_usage_payload(*, token_count: int, max_context_tokens: int | N
         "max_context_tokens": max_context_tokens,
         "percentage": percentage,
     }
+
+
+def resolve_window_config(app_config: Any) -> Any:
+    """Read the ``context_window`` section, tolerating an older ``AppConfig``.
+
+    Returns ``None`` when the section is absent, which a caller renders as
+    "the Gateway did not report a window policy" rather than assuming the
+    defaults are in force.
+    """
+    return getattr(app_config, "context_window", None)
+
+
+def build_pressure_payload(
+    *,
+    token_count: int,
+    declared_input_window: int | None,
+    window_config: Any,
+) -> dict[str, Any] | None:
+    """Project a context-pressure reading, or ``None`` when the policy is absent.
+
+    ``None`` (not a default band) is what an older Gateway or a
+    ``context_window.enabled: false`` deployment returns, so a client cannot
+    render ``nominal`` from a policy it was never sent.
+    """
+    if window_config is None or not getattr(window_config, "enabled", False):
+        return None
+    from alpha.runtime.context_window import classify_context_pressure, pressure_payload
+
+    try:
+        spec = window_config.window_spec(declared_input_window=declared_input_window)
+        pressure = classify_context_pressure(
+            token_count,
+            spec,
+            **{key: value for key, value in window_config.band_thresholds().items() if key in {"elevated_fraction", "critical_fraction", "over_fraction"}},
+        )
+    except Exception:
+        # A malformed config value must not take the usage route down; the
+        # percentage block above still answers, and the pressure block reports
+        # its own absence rather than a band nobody computed.
+        logger.warning("Failed to classify context pressure (window=%r)", declared_input_window, exc_info=True)
+        return None
+    return pressure_payload(pressure)
 
 
 async def build_context_usage(request: Request, thread_id: str, run_store: Any) -> dict[str, Any] | None:
@@ -83,4 +132,10 @@ async def build_context_usage(request: Request, thread_id: str, run_store: Any) 
     model_config = app_config.get_model_config(model_name) if model_name else None
     configured_window = getattr(model_config, "context_window", None) if model_config is not None else None
     max_context_tokens = int(configured_window) if configured_window else None
-    return build_context_usage_payload(token_count=token_count, max_context_tokens=max_context_tokens)
+    payload = build_context_usage_payload(token_count=token_count, max_context_tokens=max_context_tokens)
+    payload["pressure"] = build_pressure_payload(
+        token_count=token_count,
+        declared_input_window=max_context_tokens,
+        window_config=resolve_window_config(app_config),
+    )
+    return payload

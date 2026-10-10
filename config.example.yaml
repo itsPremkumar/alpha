@@ -30,11 +30,15 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-# 60: documented `network_wait` (how long a network-parked session waits). It
-# carries `max_attempts: 0` = UNBOUNDED, so a config that never declares it now
-# waits indefinitely where it previously gave up after 24 attempts. That is the
+# 60: two things reached 60 together. `feat/network-wait-resilience` documented
+# `network_wait` (how long a network-parked session waits); it carries
+# `max_attempts: 0` = UNBOUNDED, so a config that never declares it now waits
+# indefinitely where it previously gave up after 24 attempts. That is the
 # intended change, but it IS a behaviour change for an existing install: set
 # `network_wait.max_attempts` to your old number to keep the previous bound.
+# `feat/context-window-resilience` added the `context_window` block below
+# (pressure bands and the exhaustion ladder) at the same number, so a version 60
+# install is expected to carry both.
 config_version: 60
 
 # ============================================================================
@@ -3100,6 +3104,49 @@ summarization:
     - read
     - view
     - cat
+
+# Context-window pressure: how full a thread is, and what happens when it fills.
+#
+# `models[].context_window` is an INPUT window (the prompt a model accepts:
+# system prompt + history + tool results + tool schemas). It is NOT prompt +
+# completion — the response is paid for out of the reserve below, so the total
+# is derived, never declared twice. This section is what turns that declaration
+# into a usable number and an ordered plan.
+#
+# Hot-reloadable in full: every value is read per request, so an edit applies to
+# the next thread read without a restart.
+context_window:
+  enabled: true
+
+  # Occupancy fractions of the USABLE input window (declared minus the reserves
+  # below), not of the declared one. Every value must be in (0, 1], and the
+  # three must be strictly increasing — an inverted or duplicated set makes the
+  # middle band unreachable, so it is refused at config load rather than
+  # silently disabling the guard.
+  elevated_fraction: 0.60   # compaction is offered before the next turn
+  critical_fraction: 0.80   # a turn no longer fits the headroom; the ladder is declared
+  over_fraction: 0.95       # occupancy exceeds the usable window
+  # The over band sits below 1.0 on purpose: a window filled to capacity is a
+  # window the model reasons badly over, long before the provider refuses the
+  # request. Raising it to 1.0 buys a few percent of headroom and pays for it in
+  # degraded answers.
+
+  # Tokens held back so a request that fits now still leaves room for what comes
+  # after it. Subtract both from `models[].context_window` to get the usable
+  # window the fractions above resolve against.
+  output_reserve_tokens: 4096      # the model's own response
+  next_turn_reserve_tokens: 2048   # the turn after this one
+
+  # Floor the usable window is clamped to when the reserves would consume the
+  # declared window. Without it, a 4000-token model with 6000 reserved reads as
+  # "always over" and compacts every thread on every turn.
+  minimum_usable_input_window: 1024
+
+  # When the window is already over, may the ladder re-route the run to a model
+  # with a strictly larger declared `context_window`? This costs money and
+  # changes the serving model, so an operator may turn it off — in which case
+  # the ladder falls through to compaction, eviction, and parking.
+  escalate_to_larger_window: true
 
 # ============================================================================
 # Memory Configuration

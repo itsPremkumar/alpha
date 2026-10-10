@@ -38,6 +38,11 @@ deploy verification, dashboards, and monitoring gates beyond ``/health`` and
   publish a state the ladder has not seen twice. It deliberately does not restart
   or reschedule the loop - that loop is the only thing that can notice a recovery
   nobody asked about, and it never gives up.
+* ``GET /api/ops/context-windows`` - every configured model's declared **input**
+  context window and the usable window derived from it by subtracting the
+  response and next-turn reserves, plus the larger-window escalation target the
+  exhaustion ladder would pick. A model that declares no window reports ``null``
+  and is named in ``notes`` rather than silently reading as a small window.
 """
 
 from __future__ import annotations
@@ -396,7 +401,12 @@ class NetworkResponse(BaseModel):
     monitoring: bool = Field(default=False, description="Whether the poll loop is running right now")
     observed_age_seconds: float | None = Field(
         default=None,
-        description="Seconds since the last completed probe, asked of the monitor's own clock. Null when nothing has been measured. There is deliberately no absolute timestamp: the reading is stamped monotonic, so exposing it as a wall-clock time would be a confident wrong number",
+        description=(
+            "Seconds since the last completed probe, asked of the monitor's own clock. "
+            "Null when nothing has been measured. There is deliberately no absolute "
+            "timestamp: the reading is stamped monotonic, so exposing it as a wall-clock "
+            "time would be a confident wrong number"
+        ),
     )
     targets: list[ConnectivityTargetResponse] = Field(default_factory=list, description="Per-endpoint reachability from the last probe")
     retry: ConnectivityRetryResponse = Field(
@@ -853,3 +863,115 @@ async def ops_runtime(request: Request) -> RuntimeResponse:
         network=_network_response(snapshot, parked),
         notes=notes,
     )
+
+
+class ModelContextWindowRow(BaseModel):
+    """One configured model's context window, derived rather than declared.
+
+    ``declared_input_window`` is ``None`` when the operator declared no
+    ``context_window`` for that model. Every remaining derived field is ``None``
+    for the same reason, because "how much is usable" is unanswerable without the
+    size of the room — a caller must not render a window it was not given.
+    """
+
+    name: str
+    declared_input_window: int | None = None
+    usable_input_window: int | None = None
+    reserved_tokens: int = 0
+    clamped: bool = False
+    reason: str = "context_window_not_declared"
+    #: The model the exhaustion ladder would escalate to for this one, when a
+    #: strictly larger window exists. ``None`` when nothing larger is declared,
+    #: or when this model itself declares no window to compare against.
+    escalation_candidate: str | None = None
+
+
+class ContextWindowsResponse(BaseModel):
+    """Every model Alpha knows, with the window each one actually offers."""
+
+    reported: bool = False
+    reason: str = "context_window_policy_not_reported"
+    models: list[ModelContextWindowRow] = Field(default_factory=list)
+    #: Populated only when the ladder may escalate. ``None`` when escalation is
+    #: disabled by configuration, so an operator sees "we will not switch
+    #: models" rather than "no larger model exists".
+    escalation_enabled: bool | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+@router.get(
+    "/ops/context-windows",
+    response_model=ContextWindowsResponse,
+    summary="Per-model context windows and the escalation target",
+    description=(
+        "Report every configured model's declared input context window and the usable window derived from it by "
+        "subtracting the response and next-turn reserves. A model that declares no window reports null rather than "
+        "zero, because an undeclared window is not a small one. This is the surface an operator uses to decide "
+        "whether to declare a window at all, and whether a larger-window escalation target exists."
+    ),
+)
+async def ops_context_windows() -> ContextWindowsResponse:
+    """Project the configured model catalog onto the context-window account.
+
+    Reads ``models[]`` and the ``context_window`` section straight from the live
+    ``AppConfig`` — the same two sources the run path uses — so this surface
+    cannot drift from what a run would actually be given.
+    """
+    from alpha.config import get_app_config
+    from alpha.runtime.context_exhaustion import escalation_candidate
+    from alpha.runtime.context_window import REASON_WINDOW_NOT_DECLARED
+
+    try:
+        app_config = get_app_config()
+    except Exception as exc:  # pragma: no cover - config load failure is fatal elsewhere
+        return ContextWindowsResponse(reported=False, reason="app_config_unavailable", notes=[f"the application configuration could not be read: {exc}"])
+
+    window_config = getattr(app_config, "context_window", None)
+    if window_config is None:
+        return ContextWindowsResponse(reported=False, reason="context_window_policy_not_reported", notes=["this Gateway has no `context_window` configuration section; upgrade it or declare one in config.yaml"])
+    if not getattr(window_config, "enabled", False):
+        return ContextWindowsResponse(reported=False, reason="context_window_disabled", notes=["`context_window.enabled` is false, so no pressure reading or escalation target is computed"])
+
+    escalation_enabled = bool(getattr(window_config, "escalate_to_larger_window", False))
+    models = list(getattr(app_config, "models", None) or [])
+    if not models:
+        return ContextWindowsResponse(
+            reported=True,
+            reason="no_models_declared",
+            models=[],
+            escalation_enabled=escalation_enabled,
+            notes=["this deployment declares no models, so there is no window to report; that is not the same as every window being undeclared"],
+        )
+
+    declared_by_name: dict[str, int] = {}
+    for model in models:
+        declared = getattr(model, "context_window", None)
+        if isinstance(declared, int) and declared > 0:
+            declared_by_name[str(getattr(model, "name", ""))] = declared
+
+    rows: list[ModelContextWindowRow] = []
+    for model in models:
+        name = str(getattr(model, "name", ""))
+        declared = getattr(model, "context_window", None)
+        declared_window = declared if isinstance(declared, int) and declared > 0 else None
+        spec = window_config.window_spec(declared_input_window=declared_window)
+        candidate = escalation_candidate(declared_windows=declared_by_name, current_window=spec.declared_input_window) if escalation_enabled else None
+        rows.append(
+            ModelContextWindowRow(
+                name=name,
+                declared_input_window=spec.declared_input_window,
+                usable_input_window=spec.usable_input_window,
+                reserved_tokens=spec.reserved_tokens,
+                clamped=spec.clamped,
+                reason=spec.reason if spec.declared_input_window is not None else REASON_WINDOW_NOT_DECLARED,
+                escalation_candidate=candidate,
+            )
+        )
+
+    undeclared = [row.name for row in rows if row.declared_input_window is None]
+    notes: list[str] = []
+    if undeclared:
+        notes.append("these models declare no `context_window`, so their thread shows no occupancy percentage and no pressure band: " + ", ".join(sorted(undeclared)))
+    if escalation_enabled and len(declared_by_name) == len(rows) and len(set(declared_by_name.values())) == 1:
+        notes.append("every declared window is the same size, so the ladder has no larger-window escalation target and would fall through to compaction or parking")
+    return ContextWindowsResponse(reported=True, reason="context_windows_projected", models=rows, escalation_enabled=escalation_enabled, notes=notes)

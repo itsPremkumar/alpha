@@ -223,12 +223,18 @@ class ModelConfig(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Positive total context window size in tokens (prompt + completion). Used to compute the real-time "
-            "context usage percentage displayed in the chat UI, and attached to the model's langchain profile "
-            "(`max_input_tokens`) so fraction-based summarization triggers can resolve their thresholds for "
-            "third-party OpenAI-compatible models that carry no built-in profile. Distinct from `max_tokens`, "
-            "which is the per-call output cap passed to the provider. Leave unset if unknown; the UI will hide "
-            "the percentage and fraction summarization clauses will degrade with a warning."
+            "Positive INPUT context window size in tokens — the prompt this model accepts, counting system prompt, "
+            "history, tool results and tool schemas. It is NOT prompt + completion: the response is paid for out of "
+            "the `context_window.output_reserve_tokens` reserve below, so the total is derived "
+            "(`usable = declared - output_reserve - next_turn_reserve`), never declared twice. This field is "
+            "attached to the model's langchain profile as `max_input_tokens` so fraction-based summarization "
+            "triggers can resolve their thresholds, is the denominator of the real-time context-usage percentage "
+            "displayed in the chat UI, and is the declaration `alpha.runtime.context_exhaustion` compares when "
+            "choosing a larger-window escalation target. It was previously documented as 'total (prompt + "
+            "completion)' while every consumer read it as input-only, so an operator who declared the total "
+            "understated occupancy by exactly their output reservation. Distinct from `max_tokens`, which is the "
+            "per-call output cap passed to the provider. Leave unset if unknown; the UI will report the window as "
+            "not declared rather than showing 0%, and fraction summarization clauses will degrade with a warning."
         ),
     )
     stream_chunk_timeout: float | None = Field(
