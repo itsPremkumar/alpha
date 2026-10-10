@@ -105,6 +105,38 @@
       },
       "description": "Browser Use over MCP: real-Chromium navigate/click/type/scroll/go_back with get_state page inspection and extract/screenshot content capture, plus retry_with_browser_use_agent as a last-resort autonomous agent. Runs in its own uvx environment because its exact dependency pins conflict with Alpha's (pydantic/openai/anthropic/anyio/click/requests). Uses $OPENROUTER_API_KEY as an OpenAI-compatible endpoint, so no separate provider key is required. Long timeouts are deliberate: the first start resolves the uvx environment."
     },
+    "cua-driver": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "cua-driver",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "CUA_DRIVER_PERMISSION_MODE": "standard"
+      },
+      "tool_name_prefix": true,
+      "include_structured_content": true,
+      "session_init_timeout": 120,
+      "tool_call_timeout": 180,
+      "routing": {
+        "mode": "prefer",
+        "priority": 55,
+        "keywords": [
+          "desktop",
+          "window",
+          "mouse",
+          "keyboard",
+          "keystroke",
+          "application",
+          "foreground",
+          "clipboard",
+          "native app",
+          "launch"
+        ]
+      },
+      "description": "Cua Driver over MCP (trycua/cua, MIT): inspect and operate native desktop apps and browsers on Windows/macOS/Linux - list/launch/kill apps, per-window snapshots pairing an accessibility tree with a screenshot, background pointer and keyboard input to a chosen window without moving your cursor, element-token value setting, clipboard read/write, menu invocation and deterministic verify_state checks. The driver never calls a model: Alpha keeps the loop, and no provider key is needed. It is an operator-installed binary, not an Alpha dependency - install it separately (Windows: irm https://cua.ai/driver/install.ps1 | iex), then confirm 'cua-driver doctor' and 'cua-driver call list_apps' work before enabling, and start the daemon with 'cua-driver serve' (the MCP path proxies to it on Windows). Disabled by default because it can send input to every application in the OS user session. MCP tools arrive as untrusted-source and therefore default to the elevated governance class (ask-per-call, unknown reversibility), so nothing here grants auto-approval, and SentinelGuard does not wrap MCP-delivered input - the guards on this path are Alpha's confirmation policy, CUA_DRIVER_PERMISSION_MODE (standard = input to every app; bounded needs a capability manifest this config does not ship) and the OS permissions. Enabling through the Gateway API additionally requires ALPHA_MCP_STDIO_COMMAND_ALLOWLIST=cua-driver, since the API allowlist defaults to npx/uvx. Do not install the optional cua-perception or cua-som extensions: both are AGPL, not MIT. Verified on Windows 11 with cua-driver 0.34.0: 59 tools discovered through Alpha's own MCP loader, a real window screenshot written to a PNG, and text typed at pixel coordinates read back from the target's own value - the opt-in live suite is backend/tests/test_cua_driver_live_mcp.py (ALPHA_RUN_LIVE_TESTS=1). include_structured_content is on because the driver's preferred addressing lives only in structuredContent: element_token handles and the capture_id that admits pixel coordinates against a capture. LangChain keeps that as a ToolMessage artifact no model is shown, so without this flag the model can only act by menu path, key, or guessed pixel coordinates. The appended block is bounded by the shared per-result text budget and truncation is logged. Coordinate actions still need a screenshot taken on the same MCP session, which Alpha's persistent stdio session pool provides. See docs/RESEARCH_COMPUTER_USE_CUA.md."
+    },
     "long-running-reports": {
       "enabled": false,
       "type": "http",

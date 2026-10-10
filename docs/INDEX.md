@@ -133,6 +133,7 @@
 - [MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md) — Enhanced multi-agent project collaboration plan.
 - [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) — Live research: computer-use and browser agents, with a benchmark-trust audit.
 - [RESEARCH_CODING_AGENTS.md](RESEARCH_CODING_AGENTS.md) — Live research: terminal- and IDE-first coding agents, mapped against Alpha.
+- [RESEARCH_COMPUTER_USE_CUA.md](RESEARCH_COMPUTER_USE_CUA.md) — Research: full-desktop computer control — Alpha's native sentinel-guarded stack, the open CUA landscape, and the disabled-by-default Cua Driver MCP integration with its licensing, governance and honesty boundaries.
 - [RESEARCH_NAMED_AGENTS.md](RESEARCH_NAMED_AGENTS.md) — Live research: the Muse/Hermes/OpenClaw/Grok family, with disambiguation.
 - [RESEARCH_OCTOP.md](RESEARCH_OCTOP.md) — Live research: TencentCloud/Octop, verified against its tree rather than its README.
 - [RESEARCH_ORCHESTRATION_MEMORY_EVAL.md](RESEARCH_ORCHESTRATION_MEMORY_EVAL.md) — Live research: orchestration frameworks, agent protocols, memory, and evaluation.

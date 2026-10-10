@@ -475,6 +475,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Live research: orchestration frameworks, agent protocols, memory, and evaluation.",
     ),
+    "RESEARCH_COMPUTER_USE_CUA.md": DocumentSpec(
+        "plans",
+        "Research: full-desktop computer control — Alpha's native sentinel-guarded stack, the open CUA landscape, and the disabled-by-default Cua Driver MCP integration with its licensing, governance and honesty boundaries.",
+    ),
     "SELF_AUDIT.md": DocumentSpec(
         "plans",
         "Measured audit of this repository's own source: inventory, inert surface, divergences.",
