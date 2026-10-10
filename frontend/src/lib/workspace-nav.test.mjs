@@ -218,3 +218,40 @@ test("closing the panel clears the query", () => {
   // the views, which reads as a navigation that lost views.
   assert.match(SRC, /setPanel\(null\);\s*setQuery\(""\)/, "close resets both the panel and the query");
 });
+
+test("the finder's derivation runs after the list it reads", () => {
+  // THE REGRESSION THIS PINS. The match block was written above
+  // `const secondaryTabs = ...`, and `matchedGroups` reads it. `const` is not
+  // hoisted, so every server render threw
+  //   ReferenceError: Cannot access 'secondaryTabs' before initialization
+  // which Next answers with a 500 on the *document* — not on one view, on all
+  // 35 of them, because the nav is in the shell. It was invisible in unit
+  // tests (this file only reads source) and invisible in the dev server until
+  // the first render, and it made every route in the product return 500.
+  //
+  // Position is therefore the behaviour here: the block must sit below the
+  // declaration it reads. `useCallback`/`useEffect` are allowed above because
+  // their bodies run after render, so they can legally close over later
+  // bindings.
+  const line = (needle, fromEnd = false) => {
+    const text = SRC.split("\n");
+    const index = fromEnd ? text.length - 1 - [...text].reverse().findIndex((t) => t.includes(needle)) : text.findIndex((t) => t.includes(needle));
+    assert.notEqual(index, -1, `expected to find \`${needle}\` in NavTabs.tsx`);
+    return index;
+  };
+  const secondary = line("const secondaryTabs =");
+  const matched = line("const matchedGroups =");
+  const needleAt = line("const needle =");
+  // The render return is the LAST `return (` in the component, not the first:
+  // the component already returns early inside `placePanel` and the focus
+  // effect, and matching one of those would falsely "find" a return above the
+  // derivation and fail a correct file.
+  const ret = line("return (", true);
+  assert.ok(
+    secondary < matched,
+    `matchedGroups (line ${matched + 1}) must be declared after secondaryTabs (line ${secondary + 1}); ` +
+      "it reads it during render, so this order is what makes SSR throw a 500 on every route",
+  );
+  assert.ok(secondary < needleAt, "needle is derived from the same list and must follow it too");
+  assert.ok(matched < ret, "the derivation must still precede the return that renders it");
+});

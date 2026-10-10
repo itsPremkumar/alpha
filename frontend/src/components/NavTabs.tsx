@@ -262,12 +262,30 @@ export function NavTabs(props: {
   }, [dropdownOpen]);
 
   /**
-   * The ranked view of `secondaryTabs` for the current query.
+   * The primary tabs, the rest, and which of the rest is active.
+   *
+   * Declared here because the finder's derivation below reads `secondaryTabs`
+   * during render — see the note there.
+   */
+  const primaryTabs = WORKSPACE_TABS.filter((t) => t.isPrimary);
+  const secondaryTabs = WORKSPACE_TABS.filter((t) => !t.isPrimary);
+  const activeSecondary = secondaryTabs.find((t) => t.id === props.view);
+
+  /**
+   * The matched view of `secondaryTabs` for the current query.
    *
    * Matching is over the label and the blurb, because "where do I see what the
    * agent remembers" is a search for the blurb, not the label "Memory". An
    * empty group is never rendered — a heading with nothing under it is a claim
    * that a category is empty, which no measurement made.
+   *
+   * Declared *after* `secondaryTabs`, not beside it: the component is server
+   * rendered, and reading `secondaryTabs` from here while its `const` is still
+   * in the temporal dead zone throws `Cannot access 'secondaryTabs' before
+   * initialization` during SSR, which is a 500 on the document — not on one
+   * view, on all 35, because the nav is in the shell. That is exactly what
+   * happened when this block sat above the declaration, and the regression is
+   * pinned by line order in `src/lib/workspace-nav.test.mjs`.
    */
   const needle = query.trim().toLowerCase();
   const matchedGroups = SECONDARY_GROUPS.map((group) => ({
@@ -282,10 +300,6 @@ export function NavTabs(props: {
     ),
   })).filter((entry) => entry.tabs.length > 0);
   const matchedCount = matchedGroups.reduce((sum, entry) => sum + entry.tabs.length, 0);
-
-  const primaryTabs = WORKSPACE_TABS.filter((t) => t.isPrimary);
-  const secondaryTabs = WORKSPACE_TABS.filter((t) => !t.isPrimary);
-  const activeSecondary = secondaryTabs.find((t) => t.id === props.view);
 
   return (
     <nav aria-label="Workspace navigation" className="flex items-center gap-1.5 flex-wrap">
