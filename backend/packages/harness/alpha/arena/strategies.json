@@ -1,0 +1,203 @@
+{
+  "reasoning": [
+    {
+      "id": "first_principles",
+      "name": "First-Principles Decomposition",
+      "how": "Strip the task down to fundamental truths that cannot be doubted, then rebuild the answer upward from only those. Reject every assumption that is 'just how it is usually done'; each claim must trace to a premise you can defend. When stuck, ask: what is the simplest true statement about this, and what follows from it?"
+    },
+    {
+      "id": "analogical",
+      "name": "Analogical Transfer",
+      "how": "Solve a known cousin of the task first, then map its structure onto the real one element by element, checking each mapping holds. Prefer a well-understood source domain with the same *relational* structure, not just surface similarity. State the mapping explicitly so a broken analogy is visible."
+    },
+    {
+      "id": "causal",
+      "name": "Causal Chain Analysis",
+      "how": "Find the causal mechanisms, not correlations: ask 'why' until reaching a root cause and 'what then' until reaching the effect. Distinguish cause from mere precursor by testing whether removing it removes the effect. Prefer interventions over observations."
+    },
+    {
+      "id": "constraint_satisfaction",
+      "name": "Constraint Satisfaction",
+      "how": "Enumerate every hard constraint first, treat them as non-negotiable filters, then search for any solution in the surviving space. Track which constraint each choice satisfies; a choice satisfying none is wrong. Backtrack the moment a constraint is violated rather than patching around it."
+    },
+    {
+      "id": "case_based",
+      "name": "Case-Based Reasoning",
+      "how": "Recall the closest solved cases, adapt their solutions, and keep the differences explicit. When no case fits, say so instead of forcing one. Store the new case afterward so the next attempt starts richer."
+    },
+    {
+      "id": "bayesian",
+      "name": "Bayesian Updating",
+      "how": "Start from a prior belief with a rough strength, then update on each piece of evidence: how much more likely is this evidence if I am right than if I am wrong? Keep competing hypotheses alive in proportion to their evidence, and kill one only when its likelihood collapses."
+    },
+    {
+      "id": "systems_thinking",
+      "name": "Systems Thinking",
+      "how": "Model the task as parts, connections and feedback loops. Ask what feeds what, where delays hide, and where a fix in one place bites another. Look for the loop that keeps the problem alive; fixing a symptom while the loop runs is not a fix."
+    },
+    {
+      "id": "abductive",
+      "name": "Abductive Inference",
+      "how": "Generate the simplest explanation that accounts for *all* the observed facts, then actively try to falsify it. Rank candidate explanations by simplicity times coverage. Prefer the explanation that predicts something you can check."
+    },
+    {
+      "id": "deductive",
+      "name": "Deductive Derivation",
+      "how": "Write down premises as airtight statements and derive the answer step by step, each step a valid inference. No step may smuggle in a new assumption. If a step needs a hidden premise, promote that premise to the premise list or stop."
+    },
+    {
+      "id": "inductive",
+      "name": "Inductive Generalization",
+      "how": "Gather specific observations, find the pattern that covers them all, then state the generalization with its confidence and its boundary. Seek disconfirming cases on purpose; one clean counterexample beats ten supporting examples."
+    },
+    {
+      "id": "counterfactual",
+      "name": "Counterfactual Simulation",
+      "how": "For each candidate answer, imagine the world where it is true and ask what else would have to be true, and what would be different. Then test the cheapest of those predictions. A solution that predicts nothing checkable is not an answer."
+    },
+    {
+      "id": "statistical",
+      "name": "Statistical Estimation",
+      "how": "Quantify uncertainty: give a distribution or a range with a confidence level, never a bare number. Report the sample, the spread and the failure mode. Distinguish 'measured', 'estimated' and 'guessed' explicitly."
+    },
+    {
+      "id": "computational",
+      "name": "Computational Simulation",
+      "how": "When the reasoning is too branching to hold in the head, write a small model or script and let the machine enumerate cases. State the model's assumptions as plainly as its output, because the model is only as honest as those assumptions."
+    },
+    {
+      "id": "design_thinking",
+      "name": "Design Thinking",
+      "how": "Start from who experiences the problem and what 'done' feels like to them. Diverge: generate many candidate shapes before judging any. Converge: pick the shape that serves the user with the least machinery, prototype the cheapest version, then improve it."
+    },
+    {
+      "id": "critical_thinking",
+      "name": "Critical Thinking",
+      "how": "Attack your own reasoning before anyone else does. For each claim ask: what evidence supports it, what would disprove it, and what am I assuming? Steelman the strongest opposing view and answer it, rather than the weakest one."
+    }
+  ],
+  "workflows": [
+    {
+      "id": "plan_then_execute",
+      "name": "Plan Then Execute",
+      "how": "Write the full plan before touching the work. The plan must name every step, the order, and what 'done' means for each. Execute the plan as written; if reality forces a change, edit the plan first, then the work."
+    },
+    {
+      "id": "test_driven",
+      "name": "Test-Driven",
+      "how": "Write the acceptance check before the answer. Define what a correct result looks like in checkable form, then produce the smallest thing that passes, then harden it. No acceptance check means no work has started."
+    },
+    {
+      "id": "top_down",
+      "name": "Top-Down Decomposition",
+      "how": "Start from the whole and split it into named sub-problems, then split each again until the leaves are trivially answerable. Solve the leaves, then assemble upward. The top-level shape is decided before any leaf is touched."
+    },
+    {
+      "id": "bottom_up",
+      "name": "Bottom-Up Construction",
+      "how": "Solve the smallest concrete pieces first, verify each, then combine them into bigger verified pieces. The overall shape emerges from what the pieces can do. Never build an unverified layer on top of an unverified one."
+    },
+    {
+      "id": "divide_conquer",
+      "name": "Divide and Conquer",
+      "how": "Split the task into independent sub-problems that can be solved and verified separately, solve each fully, then merge the verified results. The split must be real: if two halves cannot be verified apart, it is not a split."
+    },
+    {
+      "id": "iterative_refinement",
+      "name": "Iterative Refinement",
+      "how": "Produce a deliberately rough complete answer first, then improve it in passes, each pass fixing the single biggest weakness. After every pass, re-check the whole thing, because a fix can break a part that was correct."
+    },
+    {
+      "id": "spiral",
+      "name": "Spiral Development",
+      "how": "Cycle through plan, risk-analyze, build, evaluate, then plan the next loop. Each loop must shrink the largest remaining risk, not just add features. Stop when the next loop's risk is smaller than the cost of the loop."
+    },
+    {
+      "id": "waterfall",
+      "name": "Waterfall Stages",
+      "how": "Move through fixed stages: requirements, design, build, verify. Each stage produces a concrete artifact and is reviewed before the next begins. A stage may only be revisited by restarting from it, which is deliberate and recorded."
+    },
+    {
+      "id": "agile_incremental",
+      "name": "Agile Incremental Delivery",
+      "how": "Deliver the smallest useful slice end to end first, get a verdict on it, then deliver the next smallest slice. Every slice must work, not just compile. Re-prioritize after each verdict; the plan is a living document."
+    },
+    {
+      "id": "proof_driven",
+      "name": "Proof-Driven Construction",
+      "how": "Build the argument before the artifact. State the theorem ('the answer must satisfy X, Y, Z'), prove it from accepted premises, then construct the answer that realizes the proof. The proof is the deliverable's backbone."
+    },
+    {
+      "id": "exploratory",
+      "name": "Exploratory Probing",
+      "how": "Probe the task's edges cheaply before committing: try the cheapest variant, read what it reveals, then choose where to dig. Keep every probe's finding, even failed ones, so the search space maps out. Commit only when a probe shows a clear direction."
+    },
+    {
+      "id": "hypothesis_driven",
+      "name": "Hypothesis-Driven Experimentation",
+      "how": "Phrase the work as a falsifiable hypothesis with a named experiment and a pass/fail criterion. Run the experiment before believing the hypothesis. One experiment, one hypothesis: a muddled test proves nothing."
+    }
+  ],
+  "strategies": [
+    {
+      "id": "brute_force",
+      "name": "Brute-Force Enumeration",
+      "how": "Enumerate every possibility in a bounded space and test each. Acceptable when the space is small or each test is trivial. State the bound and the cost first; if the bound does not hold, stop and switch strategies rather than truncating silently."
+    },
+    {
+      "id": "greedy",
+      "name": "Greedy Selection",
+      "how": "At each step take the locally best option by a stated measure, never revisiting. Greedy is fast but can be globally wrong, so name the measure and the one condition under which greedy is provably safe for this task; if that condition fails, say so."
+    },
+    {
+      "id": "dynamic_programming",
+      "name": "Dynamic Programming",
+      "how": "Define sub-problems and the recurrence between them, solve each sub-problem once and memoize it, then compose the answer from solved sub-problems. The recurrence is the whole solution: state it, prove it covers the problem, then fill the table."
+    },
+    {
+      "id": "recursive",
+      "name": "Recursive Reduction",
+      "how": "Reduce the problem to a strictly smaller instance of itself plus a base case. State the base case and the reduction. Every recursive call must shrink the input toward a base case, or the method is a loop in disguise."
+    },
+    {
+      "id": "backtracking",
+      "name": "Backtracking Search",
+      "how": "Build a solution choice by choice, abandoning a partial the moment it provably cannot complete. Prune aggressively: every pruned branch is a stated reason. Track the order of choices, because it decides whether the search finishes."
+    },
+    {
+      "id": "heuristic",
+      "name": "Heuristic Shortcut",
+      "how": "Apply a rule of thumb with a known failure mode, and state both. A heuristic is a bet: name what it bets on, what it gives up, and the cheapest check that would catch its failure. Never present a heuristic result as exact."
+    },
+    {
+      "id": "metaheuristic",
+      "name": "Metaheuristic Search",
+      "how": "When the space is too large for systematic search, use a guided stochastic search (restart, perturb, keep the best). State the neighborhood, the acceptance rule and the stop condition. Report the best found, not the optimum."
+    },
+    {
+      "id": "approximation",
+      "name": "Approximation With Bounds",
+      "how": "Give an answer with an explicit error bound, and prove the bound. 'Approximately X' is incomplete without 'plus or minus Y' and the reasoning that makes Y credible. When the bound cannot be proven, label the number an estimate."
+    },
+    {
+      "id": "randomized",
+      "name": "Randomized Method",
+      "how": "Use randomness deliberately: state the distribution, the seed and what randomness buys (speed, coverage, or escape from a local trap). Distinguish a randomized algorithm (correct with high probability) from a random guess."
+    },
+    {
+      "id": "parallel",
+      "name": "Parallel Decomposition",
+      "how": "Split the work into independent streams that run simultaneously, then define the merge. The merge is the risky part: state how streams combine and what happens if they conflict. Prefer independent streams; a stream that waits on another is serial."
+    },
+    {
+      "id": "incremental",
+      "name": "Incremental Construction",
+      "how": "Start from a working skeleton and grow it feature by feature, re-verifying the whole after each addition. Never add two features before re-verifying: when it breaks, you must know which addition broke it."
+    },
+    {
+      "id": "exhaustive",
+      "name": "Exhaustive Verification",
+      "how": "Check the answer against every requirement one by one, in order, and record the verdict for each. An answer is only done when every requirement has an explicit pass. If a requirement cannot be checked, record it as unchecked, never as passed."
+    }
+  ]
+}

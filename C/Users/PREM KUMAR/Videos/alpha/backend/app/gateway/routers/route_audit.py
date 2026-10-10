@@ -1,0 +1,82 @@
+import ast, os
+
+BASE = "backend/app/gateway/routers"
+
+def get_prefix(fn):
+    src = open(os.path.join(BASE, fn), encoding="utf-8").read()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "router":
+                    v = node.value
+                    if isinstance(v, ast.Call):
+                        for kw in v.keywords:
+                            if kw.arg == "prefix":
+                                return ast.literal_eval(kw.value)
+    return ""
+
+routes = []
+for fn in sorted(os.listdir(BASE)):
+    if not fn.endswith(".py"):
+        continue
+    src = open(os.path.join(BASE, fn), encoding="utf-8").read()
+    tree = ast.parse(src)
+    prefix = get_prefix(fn)
+    func_decs = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            decs = []
+            for d in node.decorator_list:
+                if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute):
+                    decs.append(d.func.attr)
+                else:
+                    decs.append(type(d).__name__)
+            func_decs[node.name] = decs
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for d in node.decorator_list:
+                if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in (
+                    "get", "post", "put", "patch", "delete", "websocket", "head", "options", "trace", "connect",
+                ):
+                    path = None
+                    for a in d.args:
+                        if isinstance(a, ast.Constant):
+                            path = a.value
+                            break
+                    if path:
+                        routes.append((fn, d.func.attr, prefix + path, func_decs.get(node.name, [])))
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+            if isinstance(call.func, ast.Attribute) and call.func.attr in (
+                "get", "post", "put", "patch", "delete", "websocket", "head", "options", "trace", "connect",
+            ):
+                path = None
+                if call.args and isinstance(call.args[0], ast.Constant):
+                    path = call.args[0].value
+                if path:
+                    containing = None
+                    for node2 in ast.walk(tree):
+                        if isinstance(node2, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            if node2.lineno <= node.lineno <= node2.end_lineno:
+                                containing = node2
+                                break
+                    decs = func_decs.get(containing.name, []) if containing else []
+                    routes.append((fn, call.func.attr, prefix + path, decs))
+
+seen = {}
+for fn, meth, full, decs in routes:
+    key = (fn, meth, full)
+    if key not in seen or len(decs) > len(seen[key][0]):
+        seen[key] = (decs, fn)
+
+print("TOTAL routes:", len(seen))
+print()
+print("=== MUTATING WITHOUT auth+perm ===")
+for (fn, meth, full), (decs, _) in sorted(seen.items()):
+    if meth in ("post", "put", "patch", "delete", "websocket"):
+        decs_lower = [d.lower() for d in decs]
+        if not any("require_auth" in d for d in decs_lower) and not any("require_permission" in d for d in decs_lower):
+            print(f"{fn}: {meth.upper()} {full}  [decs={decs}]")
+print()
+print("(end mutating list)")

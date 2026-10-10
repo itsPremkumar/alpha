@@ -1,0 +1,2 @@
+import alpha.apex.contract as c
+print('APEX_RUNTIME_SESSION_KEY =', repr(c.APEX_RUNTIME_SESSION_KEY))
