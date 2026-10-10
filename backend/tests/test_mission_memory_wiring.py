@@ -200,3 +200,65 @@ def test_middleware_fail_open_on_empty_and_corrupt(tmp_path, monkeypatch) -> Non
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{bad", encoding="utf-8")
     assert mw._build_override(request) is request
+
+
+# ---------------------------------------------------------------------------
+# Evidence-driven verify: reuse alpha.mission.acceptance collectors
+# ---------------------------------------------------------------------------
+
+
+def _seed_plan(tmp_path, tool_env) -> None:
+    assert tool_env.func(runtime=tool_env.runtime, action="set_spec", objective="Ship it")["success"]
+    assert tool_env.func(
+        runtime=tool_env.runtime,
+        action="set_plan",
+        milestones_json='[{"id":"m1","title":"tests","acceptance":"green","validation":"pytest -q"},{"id":"m2","title":"Ship","acceptance":"artifact","validation":"file"}]',
+    )["success"]
+
+
+def test_tool_verify_from_a_real_test_exit_report(tmp_path, tool_env) -> None:
+    _seed_plan(tmp_path, tool_env)
+    report = tmp_path / "report.json"
+    report.write_text('{"exit_code": 0, "passed": 12}', encoding="utf-8")
+    out = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m1", evidence_kind="test_exit_report", evidence_source=str(report))
+    assert out["success"] and out["verdict"] == "verified"
+    assert "exit_code=0" in out["verified_evidence"] and "test_exit_report" in out["verified_evidence"]
+
+    reloaded = MissionManager(Paths(str(tmp_path))).load("u1", "t1")
+    assert reloaded.plan.get("m1").status == "verified"
+
+
+def test_tool_verify_failing_report_marks_failed(tmp_path, tool_env) -> None:
+    _seed_plan(tmp_path, tool_env)
+    report = tmp_path / "report.json"
+    report.write_text('{"exit_code": 1, "failed": 3}', encoding="utf-8")
+    out = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m1", evidence_kind="test_exit_report", evidence_source=str(report))
+    assert out["verdict"] == "failed" and "exit_code=1" in out["verified_evidence"]
+
+
+def test_tool_verify_unmeasured_leaves_milestone_active(tmp_path, tool_env) -> None:
+    _seed_plan(tmp_path, tool_env)
+    # Missing report -> UNVERIFIED, milestone untouched, never a pass.
+    out = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m1", evidence_kind="test_exit_report", evidence_source=str(tmp_path / "nope.json"))
+    assert out["success"] and out["outcome"] == "unverified" and out["current_status"] == "active"
+    reloaded = MissionManager(Paths(str(tmp_path))).load("u1", "t1")
+    assert reloaded.plan.get("m1").status == "active"
+
+
+def test_tool_verify_artifact_digest_and_escape_refused(tmp_path, tool_env) -> None:
+    _seed_plan(tmp_path, tool_env)
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    (root / "page.html").write_text("<h1>done</h1>", encoding="utf-8")
+    out = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m2", evidence_kind="artifact_digest", evidence_source="page.html", artifact_root=str(root))
+    assert out["verdict"] == "verified" and "sha256=" in out["verified_evidence"]
+    # A path escaping the confined root is refused, not followed.
+    escaped = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m2", evidence_kind="artifact_digest", evidence_source="../../secret", artifact_root=str(root))
+    assert escaped["success"] is False
+
+
+def test_tool_verify_owner_assertion_still_records_but_is_labelled(tmp_path, tool_env) -> None:
+    _seed_plan(tmp_path, tool_env)
+    out = tool_env.func(runtime=tool_env.runtime, action="verify", milestone_id="m1", passed=True, evidence="looks good")
+    assert out["verdict"] == "verified"
+    assert "observed_fact:owner-assertion" in out["verified_evidence"]  # provenance, not a measured check

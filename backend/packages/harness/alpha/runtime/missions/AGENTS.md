@@ -55,9 +55,22 @@ WARN: losing a note is survivable, inventing content a file did not hold is not.
   spec/plan/status/scratch into the stack and advances or verifies milestones.
 - Config: `alpha/config/mission_memory_config.py` (`config.yaml -> mission_memory`).
 
+**Evidence decides, and the collectors already exist.** A milestone's `verify`
+is not "the model says so": the tool boundary collects a real
+`alpha.mission.acceptance.EvidenceRecord` through the sanctioned readers
+(`collect_test_exit_report` reads a JSON exit report the host already produced;
+`collect_artifact_digest` confirms a file inside a confined root with a SHA-256)
+and `verify_milestone` folds its boolean `measured` into the plan. A missing,
+unreadable or malformed source yields no record, which is `UNVERIFIED` — the
+milestone is left untouched, never quietly passed. This package never runs a
+command and never imports `alpha.mission.acceptance` at module scope (the caller
+imports it lazily), so the acceptance plane stays the single evidence authority and
+there is no cycle.
+
 **Where things live**:
 - `milestones.py` — `Milestone`, `MilestonePlan`, `MilestoneStatus`, `InvalidMilestonePlan`, stop-and-fix transitions.
 - `scratchpad.py` — `Scratchpad` bounded reasoning ring.
 - `manager.py` — `MissionStack` value object + `MissionManager` path-safe atomic store.
 - `anchor.py` — `render_anchor()` — the compact, bounded per-turn anchor callers project.
-- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt-file fail-open), `tests/test_mission_memory_wiring.py` (tool actions + middleware injection + honesty).
+- `verify.py` — `verify_milestone()`, `MilestoneVerdict`, `MilestoneVerification` — a measured evidence record becomes a verdict (`met`/`not_met`/`unverified`).
+- Tests: `tests/test_mission_memory.py` (plan verify/advance, stop-and-fix, scope refusal, corrupt-file fail-open, evidence→verdict), `tests/test_mission_memory_wiring.py` (tool actions + middleware injection + real test-exit/artifact evidence + honesty).

@@ -185,3 +185,62 @@ def test_manager_corrupt_file_is_fail_open_with_disclosure(tmp_path) -> None:
     assert loaded.spec_objective == ""  # no invented content
     assert loaded.load_error  # the disclosure
     assert not loaded.is_active()
+
+
+# ---------------------------------------------------------------------------
+# verify: a measured EvidenceRecord decides the milestone
+# ---------------------------------------------------------------------------
+
+
+def _record(*, measured: bool, kind: str = "test_exit_report", detail: str = "exit_code=0"):
+    from alpha.mission.acceptance import EvidenceKind, EvidenceRecord
+
+    return EvidenceRecord(criterion="check", kind=EvidenceKind(kind), measured=measured, source="/tmp/report.json", detail=detail)
+
+
+def test_verify_met_marks_verified_with_provenance() -> None:
+    from alpha.runtime.missions import MilestoneVerdict, verify_milestone
+
+    plan = _plan()
+    updated, verification = verify_milestone(plan, milestone_id="m1", record=_record(measured=True, detail="exit_code=0 passed=12"))
+    assert verification.verdict is MilestoneVerdict.MET and verification.passed
+    assert updated.get("m1").status is MilestoneStatus.VERIFIED
+    assert "passes" not in updated.get("m1").evidence  # stores the measured fact, not a verdict word
+    assert "exit_code=0" in updated.get("m1").evidence and "test_exit_report" in updated.get("m1").evidence
+
+
+def test_verify_not_met_marks_failed() -> None:
+    from alpha.runtime.missions import MilestoneVerdict, verify_milestone
+
+    updated, verification = verify_milestone(_plan(), milestone_id="m1", record=_record(measured=False, detail="exit_code=1 failed=2"))
+    assert verification.verdict is MilestoneVerdict.NOT_MET and not verification.passed
+    assert updated.get("m1").status is MilestoneStatus.FAILED
+
+
+def test_verify_no_record_leaves_milestone_untouched() -> None:
+    from alpha.runtime.missions import MilestoneVerdict, verify_milestone
+
+    plan = _plan()
+    updated, verification = verify_milestone(plan, milestone_id="m1", record=None)
+    assert verification.verdict is MilestoneVerdict.UNVERIFIED
+    assert updated.get("m1").status is MilestoneStatus.ACTIVE  # not quietly passed or failed
+    assert updated == plan
+
+
+def test_verify_unknown_milestone_raises() -> None:
+    from alpha.runtime.missions import verify_milestone
+
+    try:
+        verify_milestone(_plan(), milestone_id="nope", record=_record(measured=True))
+        raise AssertionError("expected InvalidMilestonePlan")
+    except InvalidMilestonePlan:
+        pass
+
+
+def test_evidence_verify_is_idempotent_once_verified() -> None:
+    from alpha.runtime.missions import verify_milestone
+
+    once = verify_milestone(_plan(), milestone_id="m1", record=_record(measured=True, detail="exit_code=0"))[0]
+    twice, verification = verify_milestone(once, milestone_id="m1", record=_record(measured=True, detail="exit_code=0"))
+    assert twice.get("m1").evidence == "exit_code=0 [test_exit_report:/tmp/report.json]"
+    assert verification.verdict.value == "met"

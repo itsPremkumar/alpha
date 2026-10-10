@@ -23,15 +23,18 @@ What this package is, and is not:
   path-safe, atomic storage of a :class:`~.manager.MissionStack`;
   :mod:`.milestones` segments the objective into evidence-verified checkpoints
   with a structural stop-and-fix rule; :mod:`.scratchpad` holds bounded durable
-  reasoning; :mod:`.anchor` projects it into the compact per-turn anchor.
+  reasoning; :mod:`.anchor` projects it into the compact per-turn anchor; and
+  :mod:`.verify` turns a measured :class:`EvidenceRecord` (collected by the
+  caller, normally from :mod:`alpha.mission.acceptance`) into a milestone
+  verdict -- ``UNVERIFIED`` when no record was measured.
 * It is **not** a second lifecycle owner. It does not admit, cancel, dispatch or
   recover runs -- :func:`alpha.runtime.runs.manager.RunManager` stays the sole
   lifecycle owner and :func:`alpha.runtime.sessions` the sole state vocabulary.
-* It is **not** a verifier of arbitrary natural-language criteria. A milestone's
-  ``validation`` names a surface (a command, a file, a benchmark); who *runs*
-  and *reads* that surface is the caller (the mission tool boundary, or an
-  operator), which records a measured result here. This never infers an outcome
-  from a model's summary.
+* It is **not** a verifier of arbitrary natural-language criteria, and it does
+  not run a command. A milestone's ``validation`` names a surface (a command, a
+  file, a benchmark); who *runs* and *reads* that surface is the caller (the
+  mission tool boundary, or an operator), which records a measured result here.
+  This never infers an outcome from a model's summary.
 * ``verified`` never means "the work was correct" -- only that the named check
   held. Broader correctness stays an overlay, exactly as acceptance is.
 
@@ -41,6 +44,9 @@ Deliberate non-goals:
   atomic write turns a crash into a clean prior state, never a torn one.
 * No background loop. Nothing here ticks. The durable-runtime loops and APEX own
   scheduling; this package is the memory those loops dispatch *into*.
+* No hard dependency on :mod:`alpha.mission.acceptance`. :mod:`.verify` consumes
+  an evidence record by duck-type, so the caller imports the collectors lazily at
+  its own boundary and this package never pulls in a cycle.
 """
 
 from alpha.runtime.missions.anchor import (
@@ -64,10 +70,17 @@ from alpha.runtime.missions.scratchpad import (
     DEFAULT_MAX_SCRATCH_ENTRIES,
     Scratchpad,
 )
+from alpha.runtime.missions.verify import (
+    EvidenceLike,
+    MilestoneVerdict,
+    MilestoneVerification,
+    verify_milestone,
+)
 
 __all__ = [
     "ANCHOR_HEADER",
     "DEFAULT_MAX_SCRATCH_ENTRIES",
+    "EvidenceLike",
     "InvalidMilestonePlan",
     "MAX_MILESTONES",
     "MAX_MISSION_FILE_BYTES",
@@ -76,7 +89,10 @@ __all__ = [
     "MissionManager",
     "MilestonePlan",
     "MilestoneStatus",
+    "MilestoneVerification",
+    "MilestoneVerdict",
     "MissionStack",
     "Scratchpad",
     "render_anchor",
+    "verify_milestone",
 ]
