@@ -16,6 +16,13 @@
  * command the registry holds for the token, and the caller renders them in a
  * bounded, scrolling panel. The bound moved to the *renderer*, where it can say
  * what it hid, instead of living in the filter where it could not.
+ *
+ * **New in v2: Command Families & Subcommand Expansion**
+ * - Commands are organized into families (e.g., `/goal` + `/goal create` + `/goal start`)
+ * - Parent commands can be expanded to show subcommands
+ * - Right-arrow / Enter on a parent expands its subcommands
+ * - Left-arrow / Escape collapses back to parent level
+ * - Bare `/` shows all top-level command families
  */
 
 /** One row the `/` palette can offer, in the shape the composer needs. */
@@ -135,7 +142,7 @@ export function runnableHeadline(rows: ReadonlyArray<{ hasHandler?: boolean | nu
  *
  * A bare `/` is the one prefix that means "everything".
  */
-function completes(command: string, prefix: string): boolean {
+export function completes(command: string, prefix: string): boolean {
   if (prefix === "/") return true;
   if (command === prefix) return true;
 
@@ -157,7 +164,7 @@ function completes(command: string, prefix: string): boolean {
  * the registry's own ordering, so the palette cannot reshuffle between two
  * identical reads.
  */
-function byPickOrder(a: PaletteCommand, b: PaletteCommand, prefix: string): number {
+export function byPickOrder(a: PaletteCommand, b: PaletteCommand, prefix: string): number {
   const aExact = a.command === prefix;
   const bExact = b.command === prefix;
   if (aExact !== bExact) return aExact ? -1 : 1;
@@ -226,4 +233,208 @@ export function describePalette(palette: SlashCommandPalette): string {
   }
   if (palette.matched === 1) return `1 of ${palette.total} commands matches ${palette.prefix}.`;
   return `${palette.matched} of ${palette.total} commands match ${palette.prefix}.`;
+}
+
+/**
+ * =============================================================================
+ * COMMAND FAMILIES & SUBCOMMAND EXPANSION (v2)
+ * =============================================================================
+ *
+ * Commands are organized into families (e.g., `/goal` + `/goal create` + `/goal start`).
+ * Parent commands can be expanded to show subcommands.
+ * Right-arrow / Enter on a parent expands its subcommands.
+ * Left-arrow / Escape collapses back to parent level.
+ * Bare `/` shows all top-level command families.
+ */
+
+/** Extended command row with family metadata */
+export interface FamilyCommand extends PaletteCommand {
+  /** Whether this command has subcommands (is a family parent) */
+  isFamily: boolean;
+  /** The parent command path (e.g., "/goal" for "/goal create") */
+  parentPath: string | null;
+  /** Depth in the command hierarchy (0 = top-level) */
+  depth: number;
+  /** Unique family ID for grouping */
+  familyId: string;
+}
+
+/** State for expanded command families */
+export interface FamilyExpansionState {
+  /** Set of expanded family IDs */
+  expandedFamilies: Set<string>;
+  /** Current navigation path (for breadcrumb) */
+  navigationPath: string[];
+}
+
+/**
+ * Extract the parent path from a command.
+ * e.g., "/goal create" -> "/goal", "/agent spawn researcher" -> "/agent"
+ */
+export function getParentPath(command: string): string | null {
+  const parts = command.split(" ");
+  if (parts.length <= 1) return null;
+  return parts[0];
+}
+
+/**
+ * Get the family ID for a command.
+ * All commands sharing the same first token belong to the same family.
+ * e.g., "/goal", "/goal create", "/goal start" all have familyId "/goal"
+ */
+export function getFamilyId(command: string): string {
+  return command.split(" ")[0];
+}
+
+/**
+ * Check if a command is a family parent (has subcommands).
+ */
+export function isFamilyParent(command: string, allCommands: readonly PaletteCommand[]): boolean {
+  const familyId = getFamilyId(command);
+  return allCommands.some(
+    (cmd) => getFamilyId(cmd.command) === familyId && cmd.command !== command
+  );
+}
+
+/**
+ * Get all subcommands for a family parent.
+ */
+export function getSubcommands(parentCommand: string, allCommands: readonly PaletteCommand[]): PaletteCommand[] {
+  const familyId = getFamilyId(parentCommand);
+  return allCommands
+    .filter((cmd) => getFamilyId(cmd.command) === familyId && cmd.command !== parentCommand)
+    .sort((a, b) => a.command.localeCompare(b.command));
+}
+
+/**
+ * Build the command hierarchy from flat command list.
+ * Returns commands enriched with family metadata.
+ */
+export function buildCommandHierarchy(commands: readonly PaletteCommand[]): FamilyCommand[] {
+  return commands.map((cmd) => {
+    const familyId = getFamilyId(cmd.command);
+    const parentPath = getParentPath(cmd.command);
+    const depth = parentPath ? parentPath.split(" ").length : 0;
+    const isFamily = isFamilyParent(cmd.command, commands);
+    
+    return {
+      ...cmd,
+      isFamily,
+      parentPath,
+      depth,
+      familyId,
+    };
+  });
+}
+
+/**
+ * Filter commands based on prefix, respecting family expansion state.
+ * When a family is expanded, show its subcommands at depth+1.
+ */
+export function filterCommandsWithFamilies(
+  allCommands: readonly FamilyCommand[],
+  prefix: string,
+  expandedFamilies: Set<string>,
+  navigationPath: string[]
+): FamilyCommand[] {
+  if (!prefix.startsWith("/")) return [];
+  
+  // If we're navigating within a family (e.g., "/goal "), show subcommands
+  if (navigationPath.length > 0) {
+    const currentFamily = navigationPath[navigationPath.length - 1];
+    const subcommands = allCommands.filter(
+      (cmd) => cmd.parentPath === currentFamily
+    );
+    const matched = subcommands.filter((cmd) => 
+      cmd.command.startsWith(prefix.slice(1) + " ")
+    );
+    return matched.sort((a, b) => a.command.localeCompare(b.command));
+  }
+  
+  // Top-level filtering: match against top-level commands only
+  const topLevel = allCommands.filter((cmd) => cmd.depth === 0);
+  
+  return topLevel
+    .filter((cmd) => {
+      if (prefix === "/") return true;
+      const cmdTokens = cmd.command.slice(1).split(" ");
+      const prefixTokens = prefix.slice(1).split(" ").filter(Boolean);
+      
+      // Match against command tokens
+      return cmdTokens.some((token, idx) => 
+        idx < prefixTokens.length && token.startsWith(prefixTokens[idx])
+      );
+    })
+    .sort((a, b) => {
+      // Exact match first, then prefix matches, then alphabetical
+      const aExact = a.command === prefix.slice(1);
+      const bExact = b.command === prefix.slice(1);
+      if (aExact !== bExact) return aExact ? -1 : 1;
+      return a.command.localeCompare(b.command);
+    });
+}
+
+/**
+ * Toggle family expansion.
+ */
+export function toggleFamilyExpansion(
+  expandedFamilies: Set<string>,
+  familyId: string
+): Set<string> {
+  const newSet = new Set(expandedFamilies);
+  if (newSet.has(familyId)) {
+    newSet.delete(familyId);
+  } else {
+    newSet.add(familyId);
+  }
+  return newSet;
+}
+
+/**
+ * Navigate into a family (for subcommand view).
+ */
+export function navigateIntoFamily(
+  navigationPath: string[],
+  familyId: string
+): string[] {
+  if (!navigationPath.includes(familyId)) {
+    return [...navigationPath, familyId];
+  }
+  return navigationPath;
+}
+
+/**
+ * Navigate back (pop navigation path).
+ */
+export function navigateBack(navigationPath: string[]): string[] {
+  if (navigationPath.length === 0) return [];
+  return navigationPath.slice(0, -1);
+}
+
+/**
+ * Get the display path for the current navigation context.
+ */
+export function getNavigationDisplay(navigationPath: string[]): string {
+  if (navigationPath.length === 0) return "All Commands";
+  return navigationPath.map((p) => `/${p}`).join(" > ");
+}
+
+/**
+ * Check if a command is a leaf (executable) vs a family parent.
+ */
+export function isLeafCommand(
+  command: FamilyCommand,
+  allCommands: readonly FamilyCommand[]
+): boolean {
+  return !command.isFamily;
+}
+
+/**
+ * Get keyboard hint for a command row.
+ */
+export function getCommandKeyHint(command: FamilyCommand): string {
+  if (command.isFamily) {
+    return "→ expand";
+  }
+  return "Enter";
 }

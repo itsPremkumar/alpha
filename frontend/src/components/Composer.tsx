@@ -64,6 +64,15 @@ import {
   splitRunnableRows,
   runnableHeadline,
   type PaletteCommand,
+  buildCommandHierarchy,
+  filterCommandsWithFamilies,
+  toggleFamilyExpansion,
+  navigateIntoFamily,
+  navigateBack,
+  getNavigationDisplay,
+  isLeafCommand,
+  getCommandKeyHint,
+  type FamilyCommand,
 } from "@/lib/slash-command-palette";
 
 const DEFAULT_CORE_COMMANDS: SlashCommandInfo[] = [
@@ -408,6 +417,13 @@ export function Composer({
    */
   const [caret, setCaret] = useState<number>(0);
 
+  /**
+   * Slash command family expansion state.
+   * Tracks which command families are expanded to show subcommands.
+   */
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set());
+  const [navigationPath, setNavigationPath] = useState<string[]>([]);
+
   // Quick API Key configuration popover state
   const [showKeyPopover, setShowKeyPopover] = useState(false);
   const [quickProvider, setQuickProvider] = useState("gemini");
@@ -468,16 +484,37 @@ export function Composer({
     return [...availableCommands, ...extra];
   }, [availableCommands, slashCommands]);
 
-  // Filter slash commands
-  //
-  // Every command the registry holds for the token being typed — no cap. The
-  // old `slice(0, 8)` showed eight of ~125 with nothing saying so, and closing
-  // on the first space made every multi-word subcommand (`/agent ask`,
-  // `/verify deep`) unreachable. The bound now lives in the renderer's scroll
-  // container, which can disclose what it hid.
+  // Build command hierarchy with family metadata for subcommand expansion
+  const commandHierarchy = useMemo(
+    () => buildCommandHierarchy(
+      mergedCommands.map((c) => ({
+        command: c.command,
+        category: c.category,
+        description: c.description,
+        usage: c.usage,
+        hasHandler: c.is_core ? true : null,
+      }))
+    ),
+    [mergedCommands],
+  );
+
+  // Filter commands with family-aware logic (supports subcommand expansion)
   const palette = useMemo(
-    () => buildSlashCommandPalette(mergedCommands, input),
-    [mergedCommands, input],
+    () => {
+      const prefix = input.trim();
+      if (!prefix.startsWith("/")) {
+        return { rows: [], applicable: false, prefix, matched: 0, total: commandHierarchy.length };
+      }
+      const filtered = filterCommandsWithFamilies(commandHierarchy, input.trim(), expandedFamilies, navigationPath);
+      return {
+        rows: filtered,
+        applicable: true,
+        prefix: input.trim(),
+        matched: filtered.length,
+        total: commandHierarchy.length,
+      };
+    },
+    [commandHierarchy, input, expandedFamilies, navigationPath],
   );
   const suggestions = useMemo(
     () => (isDismissed ? [] : palette.rows),
