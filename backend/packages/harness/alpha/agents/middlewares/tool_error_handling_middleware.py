@@ -450,6 +450,7 @@ def _build_runtime_middlewares(
     owns_agent_skill_projection: bool = True,
 ) -> list[AgentMiddleware]:
     """Build shared base middlewares for agent execution."""
+    from alpha.agents.middlewares.deepagent_context_middleware import DeepAgentContextMiddleware
     from alpha.agents.middlewares.input_sanitization_middleware import InputSanitizationMiddleware
     from alpha.agents.middlewares.llm_error_handling_middleware import LLMErrorHandlingMiddleware
     from alpha.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
@@ -470,6 +471,13 @@ def _build_runtime_middlewares(
         InputSanitizationMiddleware(),
         ToolOutputBudgetMiddleware.from_app_config(app_config),
         ToolResultSanitizationMiddleware(),
+        # Deep-agent working plane projection. Registered in the shared base so
+        # the lead agent and every delegated subagent see the same plane — a
+        # child that can read what its parent already established does not
+        # re-derive it in an isolated context window. It sits inner of the two
+        # result-rewriting wrappers because it only *appends* a manifest; it
+        # never rewrites a tool result, so the transform trail stays honest.
+        DeepAgentContextMiddleware(app_config=app_config),
     ]
 
     # Layer 2 — before_agent hooks that read/annotate thread-scoped data.

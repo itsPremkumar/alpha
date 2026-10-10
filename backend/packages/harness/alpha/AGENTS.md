@@ -149,6 +149,29 @@ policy, bounded worker queue, dedupe, provenance, `no_evidence` honesty,
 [backend/docs/AGENT_EYE_RESEARCH.md](../../../backend/docs/AGENT_EYE_RESEARCH.md),
 [docs/DEEP_RESEARCH.md](../../../docs/DEEP_RESEARCH.md).
 
+### Deep-agent working plane (`packages/harness/alpha/deepagent/`)
+
+Alpha's port of LangChain's [`deepagents`](https://github.com/langchain-ai/deepagents)
+state backend, and the reason a long multi-step run can keep its own work: a
+bounded, thread-scoped virtual filesystem that lives in **graph state**, not on
+disk and not in a sandbox.
+
+On a long run the agent's findings live in the message tail, and the tail is what
+compaction eats. A note written here is a state channel — it survives compaction,
+checkpoint/resume and a Gateway restart, and `DeepAgentContextMiddleware` projects
+it back as a bounded index (path, measured size, the model's own one-line
+purpose) into every model request, for the **lead agent and every delegated
+subagent** alike. A child that reads what its parent already established does not
+re-derive it in an isolated context window.
+
+The model surface is **one** tool with an `action` (`deepagent_workspace`), bound
+only while `config.yaml -> deepagent.enabled`. Contract, the four load-bearing
+invariants (order is recency; a delete is an operation not a tombstone; every
+bound is a refusal never a clamp; addresses only never source), and why the
+channel ceiling is hard while configuration may only narrow it:
+**[packages/harness/alpha/deepagent/AGENTS.md](deepagent/AGENTS.md)**. Tests:
+`backend/tests/test_deepagent_working_plane.py`.
+
 ### Embedded Client (`packages/harness/alpha/client.py`)
 
 `AlphaClient` provides in-process access without HTTP or a FastAPI dependency. It

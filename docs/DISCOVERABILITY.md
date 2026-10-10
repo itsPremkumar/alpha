@@ -138,7 +138,7 @@ registries and enforced by CI:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-`contracts/feature_manifest.json` pins 136 tools, 68 routers, 44 middlewares, and 10
+`contracts/feature_manifest.json` pins 136 tools, 68 routers, 45 middlewares, and 10
 supervisor loops, and the generated-drift gate fails the build if the docs and the
 registries disagree. A reader (or an LLM) can therefore verify any number in the
 README in one command. That verifiability *is* the authority signal.

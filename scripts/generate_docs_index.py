@@ -191,6 +191,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Operating APEX: enabling the loop, profiles and budgets, the API and SSE surface, and the honesty boundaries a status reader must know.",
     ),
+    "deep-agent-working-plane.md": DocumentSpec(
+        "architecture",
+        "Deep-agent working plane: Alpha's port of deepagents' state backend, why a long run needs a scratch space that survives compaction, the tool surface, its bounds, and where it applies.",
+    ),
     "SENTINEL.md": DocumentSpec(
         "operations",
         "Operating the Sentinel autonomous repair loop: observe vs repair, the durable journal, the aggregate reading and its verdict vocabulary, the human handoff queue, and what is deliberately not built.",

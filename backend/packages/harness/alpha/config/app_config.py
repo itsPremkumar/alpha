@@ -23,6 +23,7 @@ from alpha.config.checkpointer_config import CheckpointerConfig, load_checkpoint
 from alpha.config.context_window_config import ContextWindowConfig
 from alpha.config.database_config import DatabaseConfig
 from alpha.config.dedupe_storage_config import DedupeStorageConfig
+from alpha.config.deepagent_config import DeepAgentConfig
 from alpha.config.extensions_config import ExtensionsConfig
 from alpha.config.file_signature import ConfigSignature as _ConfigSignature
 from alpha.config.file_signature import get_config_signature as _get_config_signature
@@ -395,6 +396,7 @@ class AppConfig(BaseModel):
         description="Context-window pressure bands and reserves. `models[].context_window` is an INPUT window; the usable window is derived by subtracting the reserves below.",
     )
     task_continuity: TaskContinuityConfig = Field(default_factory=TaskContinuityConfig, description="Thread-local notes and compacted-source recall")
+    deepagent: DeepAgentConfig = Field(default_factory=DeepAgentConfig, description="Deep-agent working plane: a thread-scoped virtual filesystem in graph state (deepagents' StateBackend)")
     memory: MemoryConfig = Field(default_factory=MemoryConfig, description="Memory subsystem configuration")
     agents_api: AgentsApiConfig = Field(default_factory=AgentsApiConfig, description="Custom-agent management API configuration")
     agent_presets: dict[str, AgentPresetConfig] = Field(default_factory=dict, description="Named per-session agent presets for DeepSeek-Harness style execution modes.")
