@@ -37,14 +37,13 @@ The three tokens that make that possible
 
 Honesty rules
 -------------
-* **The store is single-Gateway, exactly like the event log beside it.**
-  It is an atomically-replaced local JSON file: restart-recoverable for one
-  Gateway process, *not* a cross-process lock service. Two processes sharing
-  one directory can lose an update in the read-modify-write window. Do not
-  describe it as a distributed lease or as cross-process exactly-once
-  coordination — the same boundary
-  [`docs/DYNAMIC_WORKFLOWS.md`](../../../../docs/DYNAMIC_WORKFLOWS.md) draws
-  for the event sink.
+* **The store uses a cross-process file lock for mutations.** When persistent
+  (``store_dir`` is set), every mutation acquires a ``FileLock`` beside the
+  data file before the read-modify-write cycle, so two Gateway processes sharing
+  one directory cannot lose an update. The lock is **advisory** and operates on
+  a local filesystem — it is not a distributed lock and does not make the store
+  cross-host exactly-once. A lock timeout raises ``LeaseStoreError`` with the
+  real reason rather than silently proceeding unlocked.
 * **An unverifiable result is never accepted.** ``check_result`` returns
   ``UNKNOWN_LEASE`` when no fence was ever issued for the key — the caller
   cannot prove the attempt was ever ours, so it is not ``ACCEPTED``.
@@ -62,12 +61,16 @@ from __future__ import annotations
 import json
 import os
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from alpha.utils.file_lock import FileLock, FileLockTimeout
 
 __all__ = [
     "DEFAULT_LEASE_TTL_SECONDS",
@@ -157,10 +160,25 @@ class LeaseManager:
         """Where leases are persisted, or ``None`` when process-local."""
         return self._path
 
-    def _load(self) -> None:
+    @property
+    def _cross_process_lock(self) -> FileLock | None:
+        """A FileLock beside the data file, or ``None`` when process-local."""
+        if self._path is None:
+            return None
+        return FileLock(self._path, timeout=5.0)
+
+    def _reload(self) -> None:
+        """Re-read leases and fences from disk. Only called under a lock.
+
+        Same validation as the constructor's load — a schema mismatch or a
+        malformed record is a ``LeaseStoreError``, never a silent reset to an
+        empty store that would drop live fences.
+        """
         path = self._path
         if path is None:
             return
+        self._leases.clear()
+        self._fences.clear()
         try:
             raw = path.read_text(encoding="utf-8")
         except FileNotFoundError:
@@ -182,6 +200,36 @@ class LeaseManager:
             except Exception as exc:  # noqa: BLE001 - a malformed record is a store error, not a crash
                 raise LeaseStoreError(f"lease store {path} has a malformed lease for {key!r}: {exc}") from exc
         self._fences = {str(k): int(v) for k, v in (payload.get("fences") or {}).items()}
+
+    @contextmanager
+    def _mutate_with_lock(self) -> Iterator[None]:
+        """Hold the threading lock + cross-process file lock for a mutation.
+
+        When persistent, the file lock is acquired before the reload and held
+        through the persist, so the read-modify-write cycle is atomic across
+        processes. When process-local, only the threading lock is used.
+        """
+        if self._path is None:
+            with _PERSIST_LOCK:
+                yield
+            return
+        with _PERSIST_LOCK:
+            fcl = self._cross_process_lock
+            if fcl is None:
+                yield
+                return
+            try:
+                fcl.acquire()
+            except FileLockTimeout as exc:
+                raise LeaseStoreError(f"cross-process lease lock unavailable: {exc}") from exc
+            try:
+                self._reload()
+                yield
+            finally:
+                fcl.release()
+
+    def _load(self) -> None:
+        self._reload()
 
     def _persist(self) -> None:
         path = self._path
@@ -213,7 +261,8 @@ class LeaseManager:
     # ---------------------------------------------------------------------- leases
 
     def get_lease(self, run_id: str, node_id: str) -> WorkerLease | None:
-        return self._leases.get(f"{run_id}:{node_id}")
+        with self._mutate_with_lock():
+            return self._leases.get(f"{run_id}:{node_id}")
 
     def acquire_lease(
         self,
@@ -238,8 +287,9 @@ class LeaseManager:
         # The whole read-modify-write (examine → bump fence → record) is one
         # unit: releasing it between the fence read and the write would let two
         # attempts mint the same fence token, and a fence that two attempts
-        # share is no fence at all.
-        with _PERSIST_LOCK:
+        # share is no fence at all.  The cross-process file lock (inside
+        # ``_mutate_with_lock``) extends that unit across processes.
+        with self._mutate_with_lock():
             existing = self._leases.get(key)
             if existing is not None and not existing.is_expired and existing.worker_id != worker_id:
                 return None
@@ -266,7 +316,7 @@ class LeaseManager:
         lease.
         """
         key = f"{run_id}:{node_id}"
-        with _PERSIST_LOCK:
+        with self._mutate_with_lock():
             lease = self._leases.get(key)
             if lease is None or lease.worker_id != worker_id:
                 return False
@@ -284,7 +334,7 @@ class LeaseManager:
         from a superseded attempt a no-op instead of a theft.
         """
         key = f"{run_id}:{node_id}"
-        with _PERSIST_LOCK:
+        with self._mutate_with_lock():
             lease = self._leases.get(key)
             if lease is None:
                 return
@@ -300,7 +350,7 @@ class LeaseManager:
 
     def get_stale_leases(self) -> list[WorkerLease]:
         """Expired leases, still recorded — an observation, not a mutation."""
-        with _PERSIST_LOCK:
+        with self._mutate_with_lock():
             return [lease for lease in self._leases.values() if lease.is_expired]
 
     def reclaim_expired(self) -> list[WorkerLease]:
@@ -312,7 +362,7 @@ class LeaseManager:
         :attr:`ResultVerdict.ACCEPTED` and write through after we already
         decided the attempt was over.
         """
-        with _PERSIST_LOCK:
+        with self._mutate_with_lock():
             expired = [lease for lease in self._leases.values() if lease.is_expired]
             if not expired:
                 return []
@@ -329,7 +379,7 @@ class LeaseManager:
         the caller has independently established that nobody is running it.
         """
         key = f"{run_id}:{node_id}"
-        with _PERSIST_LOCK:
+        with self._mutate_with_lock():
             lease = self._leases.pop(key, None)
             if lease is None:
                 return None
@@ -344,7 +394,7 @@ class LeaseManager:
         ``unknown_lease``, which is refused for the same reason a stale one
         is — an unverifiable attempt is never accepted.
         """
-        with _PERSIST_LOCK:
+        with self._mutate_with_lock():
             leases_doomed = [key for key in self._leases if key.startswith(f"{run_id}:")]
             fences_doomed = [key for key in self._fences if key.startswith(f"{run_id}:")]
             for key in leases_doomed:
@@ -375,8 +425,11 @@ class LeaseManager:
         """
         key = f"{run_id}:{node_id}"
         # One atomic observation: reading the fence and the lease under the
-        # same lock keeps a concurrent release from landing between them.
-        with _PERSIST_LOCK:
+        # same lock keeps a concurrent release from landing between them.  The
+        # reload inside ``_mutate_with_lock`` matters here more than anywhere
+        # else: a fence another process advanced must be visible, or a late
+        # result from a superseded attempt reads ACCEPTED and writes through.
+        with self._mutate_with_lock():
             current_fence = self._fences.get(key)
             if current_fence is None:
                 return ResultVerdict.UNKNOWN_LEASE

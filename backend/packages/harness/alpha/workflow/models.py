@@ -41,6 +41,7 @@ class NodeType(StrEnum):
     REDUCE = "reduce"
     RACE = "race"
     QUORUM = "quorum"
+    SWARM = "swarm"
     LOOP = "loop"
     REVIEW = "review"
     APPROVAL = "approval"
@@ -63,6 +64,7 @@ class NodeType(StrEnum):
     VALIDATION = "validation"
     SYSTEM = "system"
     HANDOFF = "handoff"
+    CONNECTIVITY_WAIT = "connectivity_wait"
 
 
 class EdgeMode(StrEnum):
@@ -86,6 +88,7 @@ class WorkflowRunStatus(StrEnum):
     MUTATING = "mutating"
     COMPENSATING = "compensating"
     ABORTED = "aborted"
+    WAITING_CONNECTIVITY = "waiting_connectivity"
 
 
 class RetryPolicy(BaseModel):

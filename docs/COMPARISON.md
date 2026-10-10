@@ -66,7 +66,7 @@ consumes that same primitive and adds:
 - **safety and budget controls** — approval gate, Estop, token ceilings, flight
   recorder;
 - **nine messaging channels** and GitHub webhook triggers;
-- **137 native tools**, 24 public skills, and MCP.
+- **136 native tools**, 24 public skills, and MCP.
 
 **Choose LangGraph when** you are embedding an agent inside a larger application,
 you want the smallest possible dependency, and you are content to build the UI,
@@ -230,7 +230,8 @@ Every Alpha figure in this document is generated, not hand-maintained:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-The manifest pins **137 tools, 68 routers, 45 middlewares, and 11 supervisor loops**, and `tests/test_feature_manifest_wiring.py` plus the generated-drift CI
+The manifest pins **136 tools, 68 routers, 44 middlewares, and 11 supervisor
+loops**, and `tests/test_feature_manifest_wiring.py` plus the generated-drift CI
 gate fail the build if the documentation and the live registries disagree.
 
 ---

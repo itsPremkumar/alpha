@@ -318,11 +318,13 @@ def workflow_dag_manage(
             if not validation.allowed:
                 return f"Patch rejected: {validation.reason}"
 
-            # update_edge_condition has no handler in the (read-only) patch
-            # engine: patch_validator allows it without simulating it and
-            # WorkflowPatchEngine.apply() drops it. Apply it here so the
-            # condition survives the round-trip; an unknown edge reference is
-            # an honest error, and the legacy workflow is left untouched.
+            # update_edge_condition is validated up front (the validator
+            # simulates accumulated edges and refuses a missing one) and
+            # applied by the patch engine itself. This loop is the
+            # cross-check between the two: if the edge is absent from the
+            # patched graph — e.g. a later op in the same batch removed it —
+            # refuse honestly here rather than sync back a patch whose
+            # condition never landed. The legacy workflow is left untouched.
             for op in patch.operations:
                 if op.op != "update_edge_condition":
                     continue

@@ -161,8 +161,11 @@ def test_remove_edge_round_trips_and_is_not_resurrected(monkeypatch):
 
     # Non-resurrection: the NEXT patch rebuilds its base graph from the legacy
     # object, which no longer carries the removed edge - asking to update its
-    # condition must be an honest error, not a silent success or a re-appearing
-    # edge.
+    # condition must be an honest rejection, not a silent success or a
+    # re-appearing edge. The validator rejects it before the engine applies
+    # anything, so the refusal is "Patch rejected:" (the same gate shape the
+    # add_edge case below asserts), not the tool-layer "Error applying patch:"
+    # fallback that only fires when an edge vanishes mid-batch.
     res2 = _apply_patch(
         key,
         [
@@ -173,7 +176,7 @@ def test_remove_edge_round_trips_and_is_not_resurrected(monkeypatch):
         ],
         base_version=2,
     )
-    assert res2.startswith("Error applying patch: update_edge_condition: edge 'n2' -> 'n3' does not exist")
+    assert res2.startswith("Patch rejected: update_edge_condition: edge 'n2' -> 'n3' not found.")
     assert len(captured) == 2
     rebuilt_base, _, _ = captured[1]
     assert ("n2", "n3") not in _edge_pairs((e.source, e.target) for e in rebuilt_base.edges)
@@ -271,13 +274,15 @@ def test_invalid_edge_ops_surface_real_errors(monkeypatch):
     )
     assert res.startswith("Patch rejected: Optimistic concurrency violation: patch base version 42")
 
-    # 3. update_edge_condition against an edge that never existed.
+    # 3. update_edge_condition against an edge that never existed -> the
+    # validator's real rejection reason, at the same gate every other edge op
+    # is refused at.
     res = _apply_patch(
         key,
         [{"op": "update_edge_condition", "args": {"source": "n1", "target": "n9", "condition": "x"}}],
         base_version=1,
     )
-    assert res.startswith("Error applying patch: update_edge_condition: edge 'n1' -> 'n9' does not exist")
+    assert res.startswith("Patch rejected: update_edge_condition: edge 'n1' -> 'n9' not found.")
 
     # 4. An operation no layer implements must not report a fake commit.
     res = _apply_patch(key, [{"op": "fan_out", "args": {"node_id": "n1"}}], base_version=1)
@@ -296,11 +301,12 @@ def test_invalid_edge_ops_surface_real_errors(monkeypatch):
     # (cases 1-3; the unsupported fan_out is rejected before apply):
     #   1. ghost edge      -> validator rejects (allowed=False)
     #   2. stale version   -> optimistic-concurrency reject (allowed=False)
-    #   3. unknown cond. edge -> the read-only validator has NO branch for
-    #      update_edge_condition, so the engine reports allowed=True; the
-    #      tool's post-apply check rejects it before any sync-back.
+    #   3. unknown cond. edge -> the validator simulates accumulated edges
+    #      and rejects it too (allowed=False); the tool's post-apply check
+    #      only still fires when an edge vanishes mid-batch, after the
+    #      validator already accepted the op against its simulated base.
     # No rejected patch reached sync-back: legacy untouched, version never
     # advanced past its initial (unset) state.
     assert len(captured) == 3
-    assert [validation.allowed for _, _, validation in captured] == [False, False, True]
+    assert [validation.allowed for _, _, validation in captured] == [False, False, False]
     assert dag_tool._GRAPH_VERSIONS.get(key) is None

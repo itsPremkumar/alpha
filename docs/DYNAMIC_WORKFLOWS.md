@@ -65,9 +65,13 @@ execution to the existing scheduler/host lifecycle.
 
 `POST /api/workflows/turns` remains the low-latency compatibility seam. By
 default it maps a known paradigm (`direct_agent`, `subagent`, `bot_profile`,
-`moa`, `deep_research`, or `deep_think`) to a bounded graph and returns a
-`TurnOutcome`. Unknown paradigms and the dynamic swarm paradigm fail before a
-run is created. Set `dynamic: true` to use the full perception/discovery service
+`moa`, `deep_research`, `deep_think`, or `swarm`) to a bounded graph and
+returns a `TurnOutcome`. `swarm` maps onto a real `SWARM` node — dynamic
+members read from node config, policy aggregation (`FIRST_SUCCESS` / `QUORUM`
+/ `ALL` / `ANY`), and a per-member cost ledger measured from runner results;
+when no member runner is bound the members fail with that honest reason rather
+than a fabricated result. Only an *unknown* paradigm name fails before a run
+is created. Set `dynamic: true` to use the full perception/discovery service
 for that turn instead.
 
 `POST /api/bots/{name}/workflow` runs the same service in `bot` mode after the
@@ -175,6 +179,17 @@ an executor for work the engine already did:
 | `EVENT_WAIT` | Parks the node until a named signal arrives, making `WAITING_EVENT` reachable. |
 | `PARALLEL` | Runs a named member set as one bounded wave. All-or-nothing: a single non-succeeded member fails the group. |
 | `SUBWORKFLOW` | Runs a registered child workflow to a terminal state through this same engine and adopts only a genuinely `completed` child. Self-recursion is refused. |
+
+`SWARM` is dispatched on that same structural path but is **not** in the table
+above — it needs a member runner. Members are read from
+`node.config["members"]` at execution time and dispatched on a bounded pool;
+aggregation is policy-driven (`FIRST_SUCCESS` / `QUORUM` / `ALL` / `ANY`)
+with the verdict **frozen once decided**; the per-member cost ledger is
+measured from real runner results (`total_cost_usd` is `None` when unpriced),
+charged through the run's budget gate, and stored in
+`run.state["<node>_ledger"]`. With no member runner bound, every member fails
+with that real reason — no member result is fabricated. Like every kind
+handled before the runner path, it does not execute a declared verifier.
 
 ## Declared verification
 
@@ -416,7 +431,15 @@ instead of argued about. The engine emits `failure_classified`,
 
 **Every attempt holds a durable, fenced lease.**
 `alpha.workflow.leases` records each attempt at
-`runtime_home()/workflow_store/leases.json` with an atomic replace. The
+`runtime_home()/workflow_store/leases.json` with an atomic replace. Every
+read-modify-write in that store — acquire, heartbeat, release, reclaim, the
+fence reads behind `check_result` — additionally runs under a cross-process
+`FileLock` beside the file (`alpha/utils/file_lock.py`: `fcntl.flock` on
+POSIX, `msvcrt.locking` on Windows), so a second Gateway process sharing the
+directory reloads what the first one just wrote instead of clobbering it. The
+lock is advisory and same-filesystem: never distributed, never
+cross-process *exactly-once*, and a timeout is a `LeaseStoreError` naming the
+real reason rather than a silently unlocked mutation. The
 lifecycle is: acquire *before* the node is marked `RUNNING`, release in
 `finally`, and **check the fence before adopting any output**. A result whose
 lease reports `STALE_LEASE`, `SUPERSEDED_REVISION` or `UNKNOWN_LEASE` is
@@ -446,6 +469,163 @@ orphaned nodes, and only then re-materialises the projection (projecting
 response reports what was folded and what was reconciled, and never reports
 the rebuilt run as verified.
 
+## Triggers: schedules as data, fired by a host
+
+A recurring prompt no longer dead-ends at a disclosure. A schedule is a
+durable, owner-scoped record — a cron expression, an interval, or a named
+event — registered against a compiled workflow:
+
+```http
+POST /api/workflows/triggers
+{"workflow_id": "wf_1", "kind": "cron", "expression": "0 6 * * *",
+ "input_state": {"objective": "nightly audit"}, "max_fires": 100}
+```
+
+Validation happens **before** anything is stored: an unparsable expression, a
+reversed range, an out-of-bounds interval, an event trigger with no name, and
+a cron expression that matches no time inside the search horizon are each
+refused with the real reason. A schedule that could never fire is never
+stored.
+
+`GET /api/workflows/triggers/due` is the seam a scheduler rides; the
+supervised `workflow_triggers` autonomy loop (gated under
+`autonomy.loops.workflow_triggers`, **default off**) is the in-process firing
+seam, and `POST /api/workflows/triggers/{id}/fire` is the explicit one. All
+three go through the same `fire_trigger_on_engine`, so they cannot drift.
+**Starting a run is the whole of a fire** — execution stays with the host that
+claims the run, and nothing in `alpha.workflow.triggers` sleeps, polls, or
+spawns a thread. There is deliberately no second cron owner.
+
+The fire order is load-bearing: the run starts **before** the schedule
+advances, so a refused start (unregistered workflow, a `start_run` refusal)
+leaves the trigger due instead of consuming a fire on work that never
+happened. `fire_count`/`max_fires` are durable totals: a schedule that reaches
+its cap is disarmed with the reason recorded, and re-arming never resets what
+already ran — a "fresh allowance" would let an unbounded schedule dodge its
+own bound. Cron schedules advance from their **due time**, not from the fire
+moment, so a late fire does not push every subsequent fire out by the
+lateness.
+
+Day-of-month and day-of-week follow the Vixie rule — restricted both, either
+matches — because the AND misreading makes `0 9 1 * 1` ("09:00 on the 1st or
+on Mondays") fire only when the 1st is a Monday. The trigger store, like the
+event-log store beside it, is single-Gateway: atomic and restart-recoverable
+for one process. (The lease store now takes a cross-process file lock — that
+is same-filesystem coordination between cooperating processes, not a shared
+multi-worker repository.)
+
+## Dead-letter quarantine
+
+A node whose retries are exhausted used to disappear into the event log,
+reachable only by reading JSONL. `alpha.workflow.quarantine` is the work
+queue between "the journal recorded it" and "a human re-ran it".
+
+A record is written at the exact moment the engine decides a node is out of
+road — `recovery_exhausted`, `node_stagnated`, `node_retry_refused`, or a
+budget stop — carrying the real reason, the failure class, the normalized
+error signature and the attempt count, and journalled as `node_quarantined`.
+One open record per `(run, node)`: a repeated failure updates the row an
+operator has not acted on yet, and a failure *after* a replay is a new row,
+because that decision was already made.
+
+```http
+GET  /api/workflows/quarantine                      # the queue, oldest first, owner-scoped
+POST /api/workflows/quarantine/{record_id}/replay   # a REAL retry_node patch
+POST /api/workflows/quarantine/{record_id}/discard  # requires a reason
+```
+
+Replay is not an executor. It applies a genuine `retry_node` patch through
+the engine's own apply path, so the optimistic-concurrency check, the patch
+validator and the journalling all apply exactly as they do to any operator
+patch — and the record says so, because re-running a node re-runs its side
+effects. A source run that is no longer resident, or a rejected patch, is
+recorded on the record as a refusal and the record **stays open**: a refused
+replay is not a resolution, and closing the row would lose the work.
+
+## Connectivity waits
+
+`CONNECTIVITY_WAIT` is the node kind that makes
+`WorkflowRunStatus.WAITING_CONNECTIVITY` reachable. An `EVENT_WAIT` parks
+until somebody *says* something happened; a connectivity wait parks until a
+host-bound probe *measures* that the link is usable.
+
+The probe is a callable the host installs
+(`engine.connectivity_probe = ...`), absent by default: deciding whether a
+link is up is a measurement, and a wait with no probe can only end at its
+deadline, so an unprobed node **fails with the real reason** instead of
+parking on nothing. Resolution is explicit and journalled:
+
+- the probe measures reachable — the node succeeds with `released_by: probe`
+  and evidence that says the reachability was measured;
+- `config.release_event` (default `connectivity.restored`) is signalled — the
+  node succeeds, and its evidence says the reachability was **asserted, not
+  measured**, because those are different truths;
+- `POST .../sweep-waits` finds the deadline passed — the wait **fails** with
+  the measured age. A wait nobody satisfies ends as a failure, never as a run
+  parked forever reporting no error.
+
+The sweep is kind-aware: a connectivity wait is measured before it is expired,
+and a link the probe reports reachable releases the node **and un-parks the
+run** — the scheduler refuses a parked run, so a recovered link must not
+leave the run reading as still waiting on a node that is already READY.
+
+## Goal-drift detection
+
+A workflow optimizes for its graph, not for its prompt, and a run can complete
+— real evidence, real outputs — while the work stops being about the goal.
+`alpha.workflow.drift` measures direction at the single success seam.
+
+Terms come from the declared goal (graph `metadata.goal`, else
+`run.state.objective`, else `run.state.goal`, else the definition
+description — the source is always reported) by a published stopword rule;
+each completed node's output is scored as term overlap; the verdict is the
+trailing mean over the last three measurable samples.
+
+- **Unmeasurable is not drifted.** A node whose output carries no text scores
+  `None` and is excluded — a detector that cries on hashes gets ignored.
+- **Too few samples is not a verdict.** Below three measurable nodes the
+  report says `insufficient_evidence` with the real count.
+- **A proposal, never an action.** `goal_drift_detected` is journalled and
+  `GET /api/workflows/runs/{run_id}/drift` projects the trajectory
+  (recomputed from the run's own samples on every read); nothing mutates a
+  run, a node, or a graph. A drifting run is still a valid run, and what
+  happens next belongs to the operator.
+
+The threshold is declared per workflow (`metadata.goal_drift_threshold`,
+default `0.10`) and the default alarm is deliberately low: this is an alarm
+for "the work stopped being about the goal at all", not a style critic.
+
+## Worktree isolation
+
+A node that declares `config.worktree` gets an isolated git checkout instead
+of the shared working tree:
+
+```json
+{"worktree": {"repo_root": "/srv/app", "base_ref": "HEAD"}}
+```
+
+The claim store (`alpha.workflow.worktrees`) enforces the properties that
+make isolation real:
+
+- **exclusive** — one ACTIVE claim per worktree path; a second task asking for
+  the same path is refused with the holder named, never a silent share;
+- **confined** — the path is derived from `(run, node)` under the engine's
+  `worktree_root`, sanitized so a node id carrying path syntax cannot escape
+  it;
+- **host-allowlisted** — `repo_root` is client-supplied input, so a host binds
+  `engine.worktree_repo_roots`; with nothing bound the node fails honestly
+  rather than running `git worktree add` against whatever repository a
+  request named;
+- **measured** — the claim records the head commit the worktree was created
+  at, so "what did this task actually see" is answerable later.
+
+Provisioning and removal are real, bounded, argv-only git calls.
+`GET /api/workflows/runs/{run_id}/worktrees` lists the run's claims;
+`POST /api/workflows/runs/{run_id}/worktrees/{node_id}/release` removes one —
+and a removal that fails leaves the claim ACTIVE with the real git error,
+because a worktree reported as gone while it still occupies disk would hand
+the same directory to the next task.
+
 ## Current boundaries
 
 The orchestration graph, scheduling, retries, approvals, conditional routing,
@@ -460,11 +640,15 @@ What remains true and must keep being said plainly:
 - A deadline is enforced by **fencing**, not by cancelling: CPython cannot kill a
   thread, so timed-out work may still be completing in the background and its
   result is discarded rather than adopted.
-- Wave concurrency, the durable event log **and the lease store** are
-  **process-local**. They are atomic and restart-recoverable for ONE Gateway
-  process; a multi-worker deployment still needs shared lease/coordination
-  before claiming cross-process exactly-once execution. The lease `worker_id`
-  is a pid for exactly that reason — as specific as the guarantee available.
+- Wave concurrency and the durable event log are **process-local** — atomic
+  and restart-recoverable for ONE Gateway process. The **lease store** now
+  coordinates across processes through an advisory `FileLock` beside its data
+  file, so two processes sharing one directory cannot lose a lease or fence
+  update; that is same-filesystem mutual exclusion, not a shared multi-worker
+  repository. A multi-worker deployment still needs a shared
+  lease/coordination backend before claiming cross-process exactly-once
+  execution, and the lease `worker_id` stays a pid for exactly that reason —
+  as specific as the guarantee available.
 - Hydration **still refuses** stale projections. `/recover` is an explicit
   route and does not relax `/hydrate`.
 - The template store is local and atomic for ONE Gateway process. It is not a
@@ -482,9 +666,67 @@ What remains true and must keep being said plainly:
 Known gaps that are not implemented (see
 [`ALPHA-WORKFLOW-CURRENT-STATE.md`](ALPHA-WORKFLOW-CURRENT-STATE.md) for the
 full list): workflow triggers still disclose the missing scheduler handoff
-rather than creating a second cron owner, and there is no failure quarantine
-store, no connectivity wait state, no goal-drift detection and no worktree
-claiming.
+rather than creating a second cron owner, and live member join/leave *during*
+a swarm run plus a supervisor topology sit beyond the `SWARM` node kind's
+execution-time member list. Cross-process coordination now covers the lease
+store on one filesystem through an advisory file lock; the event log and the
+other workflow stores are still single-process, and a shared
+lease/coordination backend is still required before a multi-worker deployment
+can claim exactly-once execution.
+
+### Recent improvements (v2)
+
+The following capabilities were added after the initial v2 release:
+
+- **Patch engine completeness** — all 19 declared patch operations are now
+  supported: `fan_out`, `fan_in`, `set_loop_limit`, `skip_node`,
+  `request_human`, `request_review`, and `update_edge_condition` all apply in
+  the core engine (previously 6 were refused and 1 was a deferred no-op).
+- **DecisionRecords journaling** — `CONDITION` and `ROUTER` nodes emit
+  `decision_recorded` events and record into `run.metrics["decisions"]`;
+  `HandoffContract` and the `HANDOFF` node surface real decisions instead of
+  reporting empty.
+- **Automatic evidence collectors** — a node declaring `evidence_test_report`
+  or `evidence_artifact` + `evidence_artifact_root` gets its evidence read by
+  the existing `collect_test_exit_report` / `collect_artifact_digest` readers
+  after a passing verification. These are readers only — they never run a
+  suite and return `None` (disclosed, never guessed) on a missing or
+  malformed source.
+- **Semantic drift detection** — `measure_semantic_similarity()` adds a
+  character n-gram Jaccard layer beside the lexical term-overlap path. It is
+  deterministic and model-free (no embedding required), catching morphological
+  variants that exact token matching misses.
+- **Worktree resource limits** — `provision_worktree()` accepts
+  `max_disk_usage_bytes` and refuses a worktree that exceeds the bound;
+  `WorktreeStore.cleanup_stale_claims()` reclaims CLAIMED records whose path
+  no longer exists on disk.
+- **Trigger cross-process fencing** — `WorkflowTrigger.fire_token` is a
+  monotonic fencing token that advances on every fire. `try_claim_fire()`
+  gives compare-and-set semantics: a stale scheduler that wakes after another
+  worker already fired loses the race and is refused with the current token
+  named, rather than double-firing.
+- **Connectivity probe implementations** — `http_probe()`, `tcp_probe()`, and
+  `dns_probe()` are ready-made probe factories a host installs via
+  `engine.connectivity_probe = ...`. Each returns a callable that never raises
+  and reports unreachable on any failure.
+- **Quarantine escalation** — `QuarantineStore.stale_records()` finds open
+  records older than a threshold; `escalate_stale()` marks them escalated
+  (keeping the record QUARANTINED — escalation is a signal, not a resolution)
+  with the measured age recorded.
+- **Swarm paradigm** — the `SWARM` node kind closes the last non-expressible
+  paradigm: members are read from node config at execution time,
+  aggregation is policy-driven (`FIRST_SUCCESS` / `QUORUM` / `ALL` / `ANY`)
+  with the verdict frozen once decided, the per-member cost ledger is measured
+  from real runner results, dispatch runs on a bounded pool, and an unbound
+  member runner fails every member with the real reason instead of fabricating
+  results. Member tokens are charged through the run's budget gate.
+- **Cross-process lease coordination** — every lease-store read-modify-write
+  runs under an advisory `FileLock` (`alpha/utils/file_lock.py`: `flock` on
+  POSIX, `msvcrt.locking` on Windows) beside the data file, so two processes
+  sharing a directory reload instead of clobbering each other's mutation. It
+  is same-filesystem mutual exclusion — never distributed, never
+  cross-process *exactly-once* — and a lock timeout raises `LeaseStoreError`
+  rather than proceeding unlocked.
 
 ## Regression coverage
 
@@ -514,6 +756,25 @@ The implementation is covered by `backend/tests/test_dynamic_workflow_service.py
   structural-vs-runtime revision diff, its endpoint, and owner scoping
 - `test_workflow_durability_router.py` — the journal, projection, the
   stale-projection refusal, and `/recover`
+- `test_workflow_patch_completeness.py` — all 19 patch operations including
+  fan_out, fan_in, set_loop_limit, skip_node, request_human, request_review,
+  and update_edge_condition
+- `test_workflow_connectivity_probes.py` — HTTP, TCP, and DNS probe factories
+- `test_workflow_quarantine_escalation.py` — stale record query and escalation
+- `test_workflow_worktree_limits.py` — disk bounds and stale claim cleanup
+- `test_workflow_drift_semantic.py` — character n-gram semantic similarity
+- `test_workflow_trigger_fencing.py` — compare-and-set fire tokens
+- `test_workflow_decision_journaling.py` — decision_recorded events and
+  handoff surfacing
+- `test_workflow_evidence_collectors.py` — declared evidence readers wired
+  into the verification gate
+- `test_workflow_swarm_node.py` — aggregation policies, the frozen verdict,
+  the measured per-member cost ledger, bounded dispatch, honest unbound
+  failure, and the engine / budget / mode-mapper integration
+- `test_workflow_cross_process_leases.py` — `FileLock` exclusivity and its
+  sidecar, two managers over one store (lease visibility, refused
+  double-claim, cross-instance fence freshness), lock-timeout
+  `LeaseStoreError`, the process-local skip, and corrupt-store refusals
 
 and the frontend `workflows.test.mjs` / `workflows-observability.test.mjs` client
 contract tests.

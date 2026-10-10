@@ -24,11 +24,13 @@ Paradigm            DWE construct          Notes
                                             folds executor results; missing inputs
                                             fail honestly inside the engine
 ``deep_think``      bounded LOOP node      ``LoopPolicy(max_iterations=...)``
-``swarm``           NOT EXPRESSIBLE YET    the DWE graph has no dynamic swarm-
-                                            topology construct (member join/leave,
-                                            supervisor hierarchy, cost ledger land
-                                            with plan P7); a static fan-out would
-                                            misrepresent a swarm
+``swarm``           SWARM node             dynamic members read from
+                                            ``config['members']`` at execution
+                                            time; policy-driven aggregation
+                                            (``first_success`` / ``quorum`` /
+                                            ``all`` / ``any``) and a per-member
+                                            cost ledger — the construct a static
+                                            fan-out was refusing to fake
 ===================  =====================  =========================================
 
 Both modes share one kernel (section 13); only the node kinds and the bound
@@ -60,7 +62,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing only; loop imports this module at
 MODES = ("normal", "bot")
 
 # Paradigms that resolve to a DWE run. The complement within
-# ExecutionParadigm is the honest non-expressible set (swarm, see module doc).
+# ExecutionParadigm is currently empty — an unknown name (not a member of the
+# enum) is still refused honestly by ``build_paradigm_definition``.
 EXPRESSIBLE_PARADIGMS: frozenset[str] = frozenset(
     {
         ExecutionParadigm.DEEP_RESEARCH.value,
@@ -69,16 +72,11 @@ EXPRESSIBLE_PARADIGMS: frozenset[str] = frozenset(
         ExecutionParadigm.BOT_PROFILE.value,
         ExecutionParadigm.SUBAGENT.value,
         ExecutionParadigm.DIRECT_AGENT.value,
+        ExecutionParadigm.SWARM.value,
     }
 )
 
-NON_EXPRESSIBLE_REASONS: dict[str, str] = {
-    ExecutionParadigm.SWARM.value: (
-        "swarm is not expressible yet: the DWE graph model has no dynamic swarm-topology "
-        "construct (member join/leave, supervisor hierarchy, and the swarm cost ledger land "
-        "with plan P7); a static MAP fan-out would misrepresent a swarm, so no run is started."
-    ),
-}
+NON_EXPRESSIBLE_REASONS: dict[str, str] = {}
 
 
 @dataclass(frozen=True)
@@ -182,6 +180,30 @@ def _build_graph(paradigm: ExecutionParadigm, mode: str, prompt: str) -> tuple[W
         reason = "bounded-loop archetype: a LOOP node re-executes through the bound node_runner until LoopPolicy.max_iterations (2) is reached — bounded, never unbounded self-reflection"
         return graph, "loop-bounded", reason
 
+    if paradigm == ExecutionParadigm.SWARM:
+        swarm_node = WorkflowNode(
+            id="swarm",
+            type=NodeType.SWARM,
+            executor=DIGEST_EXECUTOR,
+            prompt=prompt,
+            config={
+                "members": [
+                    {"id": "worker-1", "prompt": prompt, "max_attempts": 2},
+                    {"id": "worker-2", "prompt": prompt, "max_attempts": 2},
+                    {"id": "worker-3", "prompt": prompt, "max_attempts": 2},
+                ],
+                "aggregation": "quorum",
+                "quorum": 2,
+            },
+        )
+        graph = WorkflowGraph(version=1, nodes={"swarm": swarm_node}, edges=[])
+        reason = (
+            "swarm archetype: a SWARM node dispatches 3 dynamic members through the bound "
+            "node_runner with per-member retries; aggregation is quorum(2) — the node succeeds "
+            "when 2 of 3 members succeed; the cost ledger records per-member token/cost usage"
+        )
+        return graph, "swarm", reason
+
     raise ValueError(f"unmapped paradigm: {paradigm!r}")
 
 
@@ -195,7 +217,7 @@ def build_paradigm_definition(
     """Map a paradigm name to a WorkflowDefinition without starting a run.
 
     Returns a non-expressible :class:`ParadigmMapping` (``definition is None``)
-    for swarm and for unknown names — an honest refusal, never a silent graph.
+    for unknown names — an honest refusal, never a silent graph.
     """
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}, got {mode!r}")

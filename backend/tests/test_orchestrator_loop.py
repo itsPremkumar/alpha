@@ -10,8 +10,11 @@ module-level entry points that file does not exercise:
   registry plus an unbound ``alpha.workflow.runtime`` module seam must fail the
   run closed with the engine's exact ``no node_runner bound to execute node
   'direct' (kind=...)`` refusal — never a fabricated completion;
-- the swarm refusal carries the mode mapper's VERBATIM
-  ``NON_EXPRESSIBLE_REASONS['swarm']`` text and starts no run;
+- swarm runs as a real SWARM node (the old "not expressible" refusal landed as
+  the node kind): unbound it fails naming the missing swarm runner, no run is
+  refused for lacking a construct;
+- an UNKNOWN paradigm name carries the mode mapper's VERBATIM refusal text and
+  starts no run;
 - a mode outside ``MODES`` raises before any run exists (fail-closed input).
 
 Seam discipline: every test swaps ``executors._REGISTRY`` (and, for the unbound
@@ -33,7 +36,6 @@ from alpha.orchestrator.loop import (
     run_turn,
     set_default_kernel,
 )
-from alpha.orchestrator.mode_mapper import NON_EXPRESSIBLE_REASONS
 from alpha.workflow.models import WorkflowRunStatus
 from alpha.workflow.runtime import DynamicWorkflowEngine
 
@@ -143,16 +145,35 @@ def test_run_turn_unbound_fails_honestly_in_both_modes(registry, monkeypatch, mo
 # ------------------------------------------------------------ honest refusals
 
 
-def test_run_turn_swarm_refusal_is_the_literal_mapper_reason(registry):
-    """Swarm: the VERBATIM module constant, no run, no handoff, no log noise."""
+def test_run_turn_swarm_starts_a_real_run_and_fails_without_a_runner(registry):
+    """Swarm: a real run (the SWARM node kind landed), honest failure unbound."""
+    assert registry.build_runner() is None
     kernel = _bare_kernel()
 
     outcome = run_turn("spin up a self-organizing swarm", TurnContext(paradigm="swarm"), kernel=kernel)
 
+    assert outcome.status == "failed"  # a run EXISTS and failed honestly
+    assert outcome.run_id is not None
+    assert outcome.workflow_id is not None
+    assert outcome.failed_nodes == ("swarm",)
+    run = kernel.engine.get_run(outcome.run_id)
+    assert run is not None
+    graph = kernel.engine.graphs[f"{outcome.workflow_id}:v{run.graph_version}"]
+    assert graph.nodes["swarm"].type.value == "swarm"
+    assert any("no swarm member runner is bound" in e for e in graph.nodes["swarm"].evidence)
+
+
+def test_run_turn_unknown_paradigm_refusal_is_the_literal_mapper_reason(registry):
+    """Unknown name: the VERBATIM mapper refusal, no run, no handoff, no log noise."""
+    kernel = _bare_kernel()
+
+    outcome = run_turn("do something exotic", TurnContext(paradigm="teleport_through_walls"), kernel=kernel)
+
     assert outcome.status == "not_expressible"
     assert outcome.run_id is None
     assert outcome.handoff is None
-    assert outcome.reason == NON_EXPRESSIBLE_REASONS["swarm"]
+    assert "unknown execution paradigm 'teleport_through_walls'" in outcome.reason
+    assert "not expressible yet" in outcome.reason
     assert kernel.engine.runs == {}, "a refused paradigm must not start a run"
     assert kernel.engine.definitions == {}, "a refused paradigm must not register a graph"
 

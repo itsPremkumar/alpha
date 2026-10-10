@@ -326,9 +326,10 @@ class ExecutionKernel:
     ) -> HandoffContract:
         """Build the section 13 handoff contract from real run state.
 
-        ``files``/``decisions`` stay empty unless the run recorded real ones —
-        the engine journals no DecisionRecords or file artifacts yet (reported
-        gap), so they are honestly empty rather than invented.
+        ``files`` stays empty (the engine journals no file artifacts yet —
+        reported gap). ``decisions`` surfaces real ``decision_recorded`` events
+        that were replayed into ``run.metrics["decisions"]``; it is honestly
+        empty when nothing was recorded rather than invented.
 
         Runs under the run's claim so the contract is a consistent snapshot of
         run state (the ``handoff_created`` emit is a log mutation too).
@@ -354,6 +355,19 @@ class ExecutionKernel:
                         findings.append(f"{nid}: {node.output!r}")
 
             remaining = sorted(set(run.failed_nodes) | {nid for nid, status in run.node_states.items() if status.value not in ("succeeded", "skipped")})
+            # Real journalled decisions (``decision_recorded`` events replayed
+            # into ``run.metrics["decisions"]``) — surfaced rather than left
+            # empty; still honest when nothing was recorded.
+            raw_decisions = run.metrics.get("decisions", [])
+            decisions: list[str] = []
+            if isinstance(raw_decisions, list):
+                for item in raw_decisions:
+                    if isinstance(item, dict):
+                        text = item.get("decision")
+                        if isinstance(text, str) and text:
+                            decisions.append(text)
+                    elif isinstance(item, str) and item:
+                        decisions.append(item)
             contract = HandoffContract(
                 objective=resolved_objective,
                 run_id=run.run_id,
@@ -363,7 +377,7 @@ class ExecutionKernel:
                 completed=list(run.completed_nodes),
                 findings=findings,
                 files=[],
-                decisions=[],
+                decisions=decisions,
                 remaining=remaining,
             )
             if emit:

@@ -5,16 +5,17 @@ Section 14 found all seven ``ExecutionParadigm`` dispatchers in
 through the DWE") while ``orchestrator/loop.py::run_turn`` was greenfield. This
 suite pins the P1 mapping partition EXACTLY and executes the mapped runs:
 
-- EXPRESSIBLE (6) each produce a real DWE run whose graph carries the mapped
-  node kind(s) in BOTH modes (normal/bot share one kernel, section 13);
-- ``swarm`` is the ONE honest non-expressible result (dynamic swarm topology
-  lands with plan P7) — refused with its stated reason, no run started;
-- unknown paradigm names are refused honestly, never silently mapped;
+- EXPRESSIBLE (7, the whole enum) each produce a real DWE run whose graph
+  carries the mapped node kind(s) in BOTH modes (normal/bot share one kernel,
+  section 13) — ``swarm`` included, via the ``SWARM`` node kind;
+- unknown paradigm names are refused honestly, never silently mapped, and the
+  refusal dict stays the (possibly empty) complement of the expressible set;
 - execution outcomes stay honest: digest-backed runs complete with recomputable
   evidence, ``moa`` WITHOUT a bound voting executor fails naming the real
   missing piece, ``moa`` WITH a bound voting executor records
   ``vote_source=executor`` ballots; ``deep_research`` without ``sources`` fails
-  with the engine's real reason.
+  with the engine's real reason; ``swarm`` WITHOUT a bound runner fails naming
+  the missing swarm runner instead of inventing member results.
 """
 
 from __future__ import annotations
@@ -62,7 +63,12 @@ def _bare_kernel() -> ExecutionKernel:
 
 
 def test_seven_paradigms_partition_exactly_into_expressible_and_refused():
-    """The literal section-14 partition: 6 expressible + swarm refused = all 7."""
+    """The literal section-14 partition: all 7 paradigms are expressible now.
+
+    ``swarm`` landed as the ``SWARM`` node kind, so the refused complement is
+    empty; the partition assertions stay (the dict is still the complement)
+    because an unknown NAME must still land in the refusal path.
+    """
     all_paradigms = {p.value for p in ExecutionParadigm}
     assert all_paradigms == {
         "deep_research",
@@ -76,12 +82,13 @@ def test_seven_paradigms_partition_exactly_into_expressible_and_refused():
     assert EXPRESSIBLE_PARADIGMS == {
         "deep_research",
         "deep_think",
+        "swarm",
         "moa",
         "bot_profile",
         "subagent",
         "direct_agent",
     }
-    assert set(NON_EXPRESSIBLE_REASONS) == {"swarm"}
+    assert set(NON_EXPRESSIBLE_REASONS) == set()
     assert EXPRESSIBLE_PARADIGMS | set(NON_EXPRESSIBLE_REASONS) == all_paradigms
     assert EXPRESSIBLE_PARADIGMS & set(NON_EXPRESSIBLE_REASONS) == set()
     assert MODES == ("normal", "bot")
@@ -102,6 +109,8 @@ def test_seven_paradigms_partition_exactly_into_expressible_and_refused():
         ("deep_research", "bot", ("map", "reduce"), "map-reduce"),
         ("deep_think", "normal", ("loop",), "loop-bounded"),
         ("deep_think", "bot", ("loop",), "loop-bounded"),
+        ("swarm", "normal", ("swarm",), "swarm"),
+        ("swarm", "bot", ("swarm",), "swarm"),
     ],
 )
 def test_expressible_paradigms_map_to_expected_dwe_construct(paradigm, mode, expected_kinds, expected_archetype):
@@ -147,17 +156,23 @@ def test_mapped_nodes_declare_their_executors_literally():
 
 
 @pytest.mark.parametrize("mode", ["normal", "bot"])
-def test_swarm_is_honestly_not_expressible(mode):
-    """Swarm: the one explicit refusal — no run, no fake static fan-out."""
+def test_swarm_maps_to_a_real_swarm_node(mode):
+    """Swarm: expressible as a SWARM node — dynamic members, not a fake fan-out."""
     mapping = build_paradigm_definition("swarm", mode=mode, prompt="go wild")
 
-    assert mapping.expressible is False
-    assert mapping.definition is None
-    assert mapping.run is None
-    assert mapping.workflow_id is None
-    assert "not expressible yet" in mapping.reason
-    assert "P7" in mapping.reason  # names the real landing phase
-    assert "no run is started" in mapping.reason
+    assert mapping.expressible is True
+    assert mapping.definition is not None
+    assert mapping.run is None  # build only maps; runs start via map_paradigm
+    assert mapping.node_kinds == ("swarm",)
+    assert mapping.archetype == "swarm"
+
+    node = mapping.definition.graph.nodes["swarm"]
+    assert node.type == NodeType.SWARM
+    members = node.config["members"]
+    assert len(members) >= 2  # a swarm with one member is a plain node
+    assert all("id" in m and "prompt" in m for m in members)
+    assert node.config["aggregation"] in {"first_success", "quorum", "all", "any"}
+    assert "cost ledger" in mapping.reason
 
 
 def test_unknown_paradigm_is_honestly_refused():
@@ -182,7 +197,7 @@ def test_enum_and_string_parity():
 
 @pytest.mark.parametrize("mode", ["normal", "bot"])
 def test_map_paradigm_starts_a_real_run_per_expressible_paradigm(registry, mode):
-    """Each expressible paradigm yields a started DWE run; swarm yields none."""
+    """Each expressible paradigm — all seven, swarm included — starts a DWE run."""
     _bind_digest(registry)
     kernel = _bare_kernel()
 
@@ -197,13 +212,15 @@ def test_map_paradigm_starts_a_real_run_per_expressible_paradigm(registry, mode)
         assert mapping.run.metrics.get("execution_mode") == mode
         started[paradigm] = mapping.run.run_id
 
-    assert len(started) == 6
-    assert len(set(started.values())) == 6  # distinct runs, no shared identity
+    assert len(started) == 7
+    assert len(set(started.values())) == 7  # distinct runs, no shared identity
 
+    # An unknown NAME still refuses — the empty NON_EXPRESSIBLE set must not
+    # be mistaken for "everything maps" — and the refusal starts nothing.
     runs_before = dict(kernel.engine.runs)
-    swarm = map_paradigm("swarm", kernel=kernel, prompt="nope", mode=mode)
-    assert swarm.expressible is False
-    assert swarm.run is None
+    unknown = map_paradigm("teleport_through_walls", kernel=kernel, prompt="nope", mode=mode)
+    assert unknown.expressible is False
+    assert unknown.run is None
     assert kernel.engine.runs == runs_before, "the refused paradigm must not start a run"
 
 
@@ -356,10 +373,46 @@ def test_moa_with_bound_voting_executor_records_real_ballots(registry):
 
 
 @pytest.mark.parametrize("mode", ["normal", "bot"])
-def test_swarm_refusal_carries_the_literal_module_reason_verbatim(mode):
-    """Both modes refuse with EXACTLY ``NON_EXPRESSIBLE_REASONS['swarm']``."""
-    mapping = build_paradigm_definition("swarm", mode=mode, prompt="whatever")
-    assert mapping.reason == NON_EXPRESSIBLE_REASONS["swarm"]
+def test_swarm_runs_through_the_kernel(registry, mode):
+    """Both modes: the mapped SWARM graph executes — refused nowhere, faked nowhere."""
+    assert registry.build_runner() is None  # fresh EMPTY registry
+    kernel = _bare_kernel()
+    mapping = map_paradigm("swarm", kernel=kernel, mode=mode, prompt="explore the space")
+    assert mapping.expressible and mapping.run is not None
+
+    run, _waves = kernel.run_to_completion(mapping.run.run_id)
+
+    # No executor registry bound in this test: swarm members cannot run, and
+    # the node must fail with the real reason instead of inventing member
+    # results — the honest-unbound property the old refusal test pinned.
+    assert run.status == WorkflowRunStatus.FAILED
+    assert "swarm" in run.failed_nodes
+    graph = kernel.engine.graphs[f"{mapping.workflow_id}:v{run.graph_version}"]
+    node = graph.nodes["swarm"]
+    joined = " | ".join(node.evidence)
+    assert "no swarm member runner is bound" in joined
+    assert "0/3 members succeeded" in joined or "/3 members succeeded" in joined
+
+
+def test_swarm_with_a_bound_runner_completes_and_records_the_ledger(registry):
+    """Digest bound: every member runs, quorum(2) is satisfied, ledger recorded."""
+    _bind_digest(registry)
+    kernel = _bare_kernel()
+    mapping = map_paradigm("swarm", kernel=kernel, prompt="explore the space")
+
+    run, _waves = kernel.run_to_completion(mapping.run.run_id)
+
+    assert run.status == WorkflowRunStatus.COMPLETED
+    assert run.completed_nodes == ["swarm"]
+    graph = kernel.engine.graphs[f"{mapping.workflow_id}:v{run.graph_version}"]
+    node = graph.nodes["swarm"]
+    ledger = run.state["swarm_ledger"]
+    assert ledger["completed"] is True
+    assert ledger["succeeded"] is True
+    succeeded = [m for m in ledger["members"] if m["status"] == "succeeded"]
+    assert len(succeeded) >= 2  # quorum(2) of the 3 mapped members
+    assert all(m["output"] is not None for m in succeeded)
+    assert any("members succeeded" in e for e in node.evidence)
 
 
 def test_invalid_mode_is_refused_before_any_mapping():

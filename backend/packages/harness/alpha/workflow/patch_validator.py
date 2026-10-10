@@ -14,6 +14,7 @@ import copy
 from dataclasses import dataclass, field
 
 from alpha.workflow.models import (
+    LoopPolicy,
     NodeStatus,
     PatchOperation,
     WorkflowEdge,
@@ -227,25 +228,77 @@ class PatchValidator:
             edges.append(WorkflowEdge(source=src, target=tgt, condition=condition))
 
         elif kind == "update_edge_condition":
-            # The legacy DAG tool applies this operation at its call site after
-            # the core patch engine has produced the candidate graph.  Keep it
-            # a recognised/deferred operation here rather than rejecting it as
-            # unknown; the tool performs the edge lookup and reports an honest
-            # error when the referenced edge is absent.
-            return PatchValidationResult(allowed=True)
+            source = args.get("source")
+            target = args.get("target")
+            if not source or not target:
+                return PatchValidationResult(allowed=False, reason="update_edge_condition requires 'source' and 'target'.")
+            condition = args.get("condition")
+            found = False
+            for edge in edges:
+                if edge.source == source and edge.target == target:
+                    edge.condition = condition
+                    found = True
+                    break
+            if not found:
+                return PatchValidationResult(allowed=False, reason=f"update_edge_condition: edge '{source}' -> '{target}' not found.")
 
-        elif kind in {
-            "fan_out",
-            "fan_in",
-            "set_loop_limit",
-            "skip_node",
-            "request_human",
-            "request_review",
-        }:
-            return PatchValidationResult(
-                allowed=False,
-                reason=f"unsupported patch operation '{kind}' in the core patch engine",
-            )
+        elif kind == "fan_out":
+            source = args.get("source")
+            targets = args.get("targets", [])
+            if not source or source not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"fan_out: source '{source}' not found.")
+            if not targets:
+                return PatchValidationResult(allowed=False, reason="fan_out: 'targets' must be a non-empty list.")
+            for target in targets:
+                if target not in nodes:
+                    return PatchValidationResult(allowed=False, reason=f"fan_out: target '{target}' not found.")
+                if not any(e.source == source and e.target == target for e in edges):
+                    edges.append(WorkflowEdge(source=source, target=target))
+
+        elif kind == "fan_in":
+            target = args.get("target")
+            sources = args.get("sources", [])
+            if not target or target not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"fan_in: target '{target}' not found.")
+            if not sources:
+                return PatchValidationResult(allowed=False, reason="fan_in: 'sources' must be a non-empty list.")
+            for source in sources:
+                if source not in nodes:
+                    return PatchValidationResult(allowed=False, reason=f"fan_in: source '{source}' not found.")
+                if not any(e.source == source and e.target == target for e in edges):
+                    edges.append(WorkflowEdge(source=source, target=target))
+
+        elif kind == "set_loop_limit":
+            node_id = args.get("node_id")
+            if not node_id or node_id not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"set_loop_limit: node '{node_id}' not found.")
+            max_iterations = int(args.get("max_iterations", 1))
+            if max_iterations < 1:
+                return PatchValidationResult(allowed=False, reason="set_loop_limit: max_iterations must be >= 1.")
+            node = nodes[node_id]
+            if node.loop_policy is not None:
+                node.loop_policy.max_iterations = max_iterations
+            else:
+                node.loop_policy = LoopPolicy(max_iterations=max_iterations)
+
+        elif kind == "skip_node":
+            node_id = args.get("node_id")
+            if not node_id or node_id not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"skip_node: node '{node_id}' not found.")
+            if nodes[node_id].type == "goal_gate":
+                return PatchValidationResult(allowed=False, reason=f"skip_node: cannot skip protected goal gate '{node_id}'.")
+            nodes[node_id].status = NodeStatus.SKIPPED
+
+        elif kind == "request_human":
+            node_id = args.get("node_id")
+            if not node_id or node_id not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"request_human: node '{node_id}' not found.")
+            nodes[node_id].requires_approval = True
+
+        elif kind == "request_review":
+            node_id = args.get("node_id")
+            if not node_id or node_id not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"request_review: node '{node_id}' not found.")
 
         else:
             return PatchValidationResult(allowed=False, reason=f"unknown patch operation '{kind}'")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import UTC, datetime
 
 from alpha.workflow.events import get_event_dispatcher
 from alpha.workflow.models import (
@@ -144,6 +145,68 @@ class WorkflowPatchEngine:
                 # Remove prior normal outgoing edges from src and insert new conditional route
                 new_edges = [e for e in new_edges if e.source != src]
                 new_edges.append(WorkflowEdge(source=src, target=target, condition=condition))
+
+            elif kind == "fan_out":
+                source = args["source"]
+                targets = args.get("targets", [])
+                if source not in new_nodes:
+                    continue
+                for target in targets:
+                    if target in new_nodes and not any(e.source == source and e.target == target for e in new_edges):
+                        new_edges.append(WorkflowEdge(source=source, target=target))
+
+            elif kind == "fan_in":
+                target = args["target"]
+                sources = args.get("sources", [])
+                if target not in new_nodes:
+                    continue
+                for source in sources:
+                    if source in new_nodes and not any(e.source == source and e.target == target for e in new_edges):
+                        new_edges.append(WorkflowEdge(source=source, target=target))
+
+            elif kind == "set_loop_limit":
+                node_id = args["node_id"]
+                if node_id in new_nodes:
+                    node = new_nodes[node_id]
+                    max_iterations = int(args.get("max_iterations", 1))
+                    if node.loop_policy is not None:
+                        node.loop_policy.max_iterations = max(1, max_iterations)
+                    else:
+                        from alpha.workflow.models import LoopPolicy
+
+                        node.loop_policy = LoopPolicy(max_iterations=max(1, max_iterations))
+
+            elif kind == "skip_node":
+                node_id = args["node_id"]
+                if node_id in new_nodes:
+                    node = new_nodes[node_id]
+                    node.status = NodeStatus.SKIPPED
+                    node.output = None
+                    node.evidence = []
+                    run.node_states[node_id] = NodeStatus.SKIPPED
+
+            elif kind == "request_human":
+                node_id = args["node_id"]
+                if node_id in new_nodes:
+                    node = new_nodes[node_id]
+                    node.requires_approval = True
+                    node.approval_requested_at = datetime.now(UTC).isoformat()
+
+            elif kind == "request_review":
+                node_id = args["node_id"]
+                if node_id in new_nodes:
+                    node = new_nodes[node_id]
+                    node.config["reviewer"] = args.get("reviewer", "operator")
+                    node.config["review_requested_at"] = datetime.now(UTC).isoformat()
+
+            elif kind == "update_edge_condition":
+                source = args["source"]
+                target = args["target"]
+                condition = args.get("condition")
+                for edge in new_edges:
+                    if edge.source == source and edge.target == target:
+                        edge.condition = condition
+                        break
 
         new_graph = WorkflowGraph(
             version=graph.version + 1,

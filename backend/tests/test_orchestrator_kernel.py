@@ -200,9 +200,7 @@ def test_concurrent_patches_conflict_honestly_via_occ(registry):
 
     # The loser carries the patch layer's REAL optimistic-concurrency reason.
     loser_reason = outcomes[loser][1].reason
-    assert loser_reason == (
-        "Optimistic concurrency violation: patch base version 1 does not match current graph version 2."
-    )
+    assert loser_reason == ("Optimistic concurrency violation: patch base version 1 does not match current graph version 2.")
 
     # No lost update: one graph version, one recorded patch, winner's node only.
     final = kernel.engine.get_run(run.run_id)
@@ -349,15 +347,32 @@ def test_run_turn_bot_mode_shares_the_kernel_with_bot_nodes(registry):
     assert mode_events and mode_events[-1].payload["mode"] == "bot"
 
 
-def test_run_turn_refuses_non_expressible_paradigm_honestly(registry):
+def test_run_turn_swarm_executes_through_the_kernel_honestly(registry):
+    """Swarm is expressible now (SWARM node kind); unbound, it fails closed."""
+    assert registry.build_runner() is None
     kernel = _bare_kernel()
 
     outcome = run_turn("spin up a self-organizing swarm", TurnContext(paradigm="swarm"), kernel=kernel)
 
+    assert outcome.status == "failed"
+    assert outcome.run_id is not None
+    run = kernel.engine.get_run(outcome.run_id)
+    assert run is not None
+    graph = kernel.engine.graphs[f"{outcome.workflow_id}:v{run.graph_version}"]
+    assert graph.nodes["swarm"].type.value == "swarm"
+    # No member result is invented: every member failed with the real reason.
+    assert any("no swarm member runner is bound" in e for e in graph.nodes["swarm"].evidence)
+
+
+def test_run_turn_refuses_unknown_paradigm_honestly(registry):
+    kernel = _bare_kernel()
+
+    outcome = run_turn("do something unmapped", TurnContext(paradigm="teleport_through_walls"), kernel=kernel)
+
     assert outcome.status == "not_expressible"
     assert outcome.run_id is None
     assert "not expressible yet" in outcome.reason
-    assert "P7" in outcome.reason
+    assert "teleport_through_walls" in outcome.reason
     assert kernel.engine.runs == {}, "a refused paradigm must not start a run"
 
 

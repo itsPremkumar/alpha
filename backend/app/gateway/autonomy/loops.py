@@ -241,6 +241,47 @@ def swarm_status_tick() -> dict[str, Any]:
         return {"error": type(exc).__name__}
 
 
+def workflow_triggers_tick(*, max_fires: int = 5) -> dict[str, Any]:
+    """Fire due dynamic-workflow triggers: one bounded pass, never a cron loop.
+
+    The trigger STORE owns *what should fire when*; this adapter is the firing
+    seam the existing supervisor rides, which is what keeps the documented
+    "ride the scheduler, do not become a second cron owner" contract true — it
+    is a tick inside the ONE loop owner, gated under
+    ``config.yaml -> autonomy.loops.workflow_triggers`` (absent = disabled), so
+    a deployment that declares nothing spawns no task at all.
+
+    Starting the run is the WHOLE tick. Execution stays with the host that owns
+    the run (the kernel's per-run claim), so this loop can never turn into a
+    second executor, and every fire goes through the same
+    ``fire_trigger_on_engine`` seam the ``POST /api/workflows/triggers/{id}/fire``
+    route uses — the two firing paths cannot drift apart.
+
+    A refused fire (unregistered workflow, a store error) is REPORTED, not
+    retried here: the schedule stays due, and the refusal is visible in the
+    tick summary the supervisor publishes.
+    """
+    try:
+        from alpha.workflow.triggers import fire_trigger_on_engine
+        from app.gateway.routers.workflows import get_workflow_engine, get_workflow_trigger_store
+
+        engine = get_workflow_engine()
+        store = get_workflow_trigger_store()
+        due = store.due_triggers(limit=max_fires)
+        outcomes = [fire_trigger_on_engine(engine, store, trigger.trigger_id).to_dict() for trigger in due]
+        fired = [item for item in outcomes if item.get("fired")]
+        refused = [item for item in outcomes if not item.get("fired")]
+        return {
+            "due": len(due),
+            "fired": fired,
+            "refused": refused,
+            "note": "each fire starts a run through the shared engine; execution is owned by the host that claims the run",
+        }
+    except Exception as exc:  # noqa: BLE001 - one failed pass must not park the loop
+        logger.warning("workflow trigger pass failed: %s", exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def free_models_sync_tick() -> dict[str, Any]:
     """Daily sync for keyless free LLM models (safe, non-breaking)."""
     try:
