@@ -27,10 +27,13 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
+# 61: added `completion` (the Completion Engine: acceptance contracts, typed
+# gates, evidence freshness, finalization guard). Additive and opt-in per
+# request, so an existing config runs the same behaviour with defaults.
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 60
+config_version: 61
 
 # ============================================================================
 # Logging
@@ -3028,6 +3031,71 @@ task_continuity:
   max_batches: 32
   max_records_per_batch: 256
   max_record_chars: 16000
+
+# ============================================================================
+# Completion Engine (acceptance contracts + finalization guard)
+# ============================================================================
+# Opt-in per request: nothing in the normal chat/run/bot/scheduler path creates
+# a completion scope, so enabling this never taxes a turn that did not ask for
+# completion discipline. See docs/ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md.
+completion:
+  # Expose the completion API and UI. Individual scopes are still requested
+  # explicitly (POST /api/completion/scopes); this switch only decides whether
+  # the surface exists at all.
+  enabled: true
+
+  # enforce = the finalization guard may move a scope to "complete" only when
+  #           every blocker is gone.
+  # observe = the same decision is computed and recorded, but the scope's
+  #           status is never changed (FinalReport.enforced is false). Run this
+  #           alongside an existing workflow to measure what it *would* block.
+  mode: enforce
+
+  # Root every path check and every command's working directory is confined to.
+  # Empty resolves to the project root. Anything resolving outside it is
+  # refused (never normalised into place).
+  workspace_root: ""
+
+  # JSON ledger location. Empty resolves to <ALPHA_HOME>/completion_store/state.json.
+  # Single process, advisory file lock: atomic and restart-recoverable for one
+  # Gateway, never cross-process exactly-once.
+  store_path: ""
+
+  # Hard per-check wall-clock limit (seconds).
+  gate_timeout_seconds: 300
+
+  # Captured output ceiling per check. Over-limit output is *invalid evidence*,
+  # never a partially-observed match.
+  max_output_bytes: 65536
+
+  # Scope-level ceilings. A bound past the limit is refused with the number
+  # named, never clamped silently.
+  max_tasks: 40
+  max_depth: 4
+  max_concurrency: 2
+  max_gate_runs: 200
+  wall_clock_seconds: 3600
+
+  # Finalization attempts with an unchanged progress fingerprint before the
+  # engine reports handoff_required instead of looping.
+  no_progress_limit: 3
+
+  # api.request gates are off by default: an HTTP probe is an external side
+  # effect, not a read.
+  allow_network_checks: false
+
+  # Executable basenames (python, pytest, ...) pre-approved for command gates.
+  # Empty = every non-read-only command needs an approval bound to the gate's
+  # current definition digest, so re-parameterising a gate invalidates the
+  # permission that covered its previous shape.
+  preapproved_commands: []
+
+  # Path-claim lease; an expired claim is swept instead of blocking forever.
+  ownership_lease_seconds: 1800
+
+  # Retention bounds (oldest terminal scope evicted / bounded event ring).
+  max_scopes: 200
+  max_events: 2000
 
 summarization:
   enabled: true

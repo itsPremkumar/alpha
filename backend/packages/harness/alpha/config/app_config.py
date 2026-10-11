@@ -21,6 +21,7 @@ from alpha.config.autonomy_config import AutonomyConfig
 from alpha.config.capabilities_config import CapabilitiesConfig
 from alpha.config.channel_connections_config import ChannelConnectionsConfig
 from alpha.config.checkpointer_config import CheckpointerConfig, load_checkpointer_config_from_dict
+from alpha.config.completion_config import CompletionConfig
 from alpha.config.context_window_config import ContextWindowConfig
 from alpha.config.database_config import DatabaseConfig
 from alpha.config.dedupe_storage_config import DedupeStorageConfig
@@ -398,6 +399,12 @@ class AppConfig(BaseModel):
         description="Context-window pressure bands and reserves. `models[].context_window` is an INPUT window; the usable window is derived by subtracting the reserves below.",
     )
     task_continuity: TaskContinuityConfig = Field(default_factory=TaskContinuityConfig, description="Thread-local notes and compacted-source recall")
+    completion: CompletionConfig = Field(
+        default_factory=CompletionConfig,
+        description=(
+            "Alpha Completion Engine: acceptance contracts, typed gates, evidence freshness and the finalization guard. Opt-in per request — enabling this never taxes a normal chat turn. Hot-reloaded (applies on the next engine call)."
+        ),
+    )
     deepagent: DeepAgentConfig = Field(default_factory=DeepAgentConfig, description="Deep-agent working plane: a thread-scoped virtual filesystem in graph state (deepagents' StateBackend)")
     memory: MemoryConfig = Field(default_factory=MemoryConfig, description="Memory subsystem configuration")
     agents_api: AgentsApiConfig = Field(default_factory=AgentsApiConfig, description="Custom-agent management API configuration")
