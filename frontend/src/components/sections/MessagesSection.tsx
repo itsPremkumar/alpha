@@ -313,6 +313,16 @@ export function MessagesSection(props: {
   const [subgroupFor, setSubgroupFor] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
+  /**
+   * The conversation scroller, for arrow-key roving focus.
+   *
+   * Every row is already a real `<button>`, so the list is one long tab stop
+   * chain: reaching the transcript means tabbing past every conversation in the
+   * sidebar first. The rows are located by DOM order at keypress time instead of
+   * held in a ref array, so the keyboard path can never drift from the filter
+   * that actually decided what is on screen.
+   */
+  const convListRef = useRef<HTMLDivElement>(null);
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -530,9 +540,38 @@ export function MessagesSection(props: {
     markSeen(`dm:${peer}`, messages);
   };
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [sel, roomMsgs, dms]);
+  /**
+   * Keep the transcript at the newest message — but only when that is what the
+   * operator wants.
+   *
+   * This used to depend on the `roomMsgs` and `dms` OBJECT identities. With
+   * Live polling on, `load(true)` reassigns `dms` to a fresh array every ten
+   * seconds whether or not anything arrived, so the scroller was dragged back
+   * to the bottom mid-sentence: scroll up to check a link, wait ten seconds,
+   * and you were at the end again with nothing on screen saying it had moved.
+   *
+   * Two guards, both about not taking a decision away from the operator:
+   *
+   * - `atBottomRef` is false while they are parked away from the end, so a new
+   *   message never yanks them out of the history they were reading. It is
+   *   restored by their own scroll back down, not by a timeout.
+   * - The trigger is the row COUNT, so a poll that brought nothing new cannot
+   *   move the viewport at all. A poll that *did* bring something new and was
+   *   read while scrolled up leaves the position alone; the row is there when
+   *   they come back down.
+   */
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+
+  /** Track whether the operator is parked at the newest message. */
+  const onTranscriptScroll = () => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    // A tolerance rather than `=== 0`: sub-pixel layout and the smooth-scroll's
+    // own easing otherwise leave the last frame reading as "scrolled away" and
+    // the next arrival would no longer follow the transcript.
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  };
 
   /**
    * Every conversation, newest first — BEFORE the filter and the search.
@@ -645,6 +684,18 @@ export function MessagesSection(props: {
       ? roomMsgs[sel.name] || []
       : dms.find((d) => d.peer === sel.peer)?.messages || []
     : [];
+
+  // Declared here rather than beside its refs because it reads `activeMsgs`,
+  // which is the only place the open room's and the open thread's message
+  // lists have been resolved to one array.
+  useEffect(() => {
+    if (!atBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // `activeMsgs.length` is the trigger on purpose — see the note above. `sel`
+    // is what makes switching conversation jump to that room's newest message,
+    // which is right even if the operator was parked up in the previous one's
+    // history.
+  }, [sel, activeMsgs.length]);
 
   const activeTitle = sel
     ? sel.kind === "group"
@@ -1069,6 +1120,48 @@ export function MessagesSection(props: {
     return activeMsgs.find((x) => x.id === m.replyTo) ?? null;
   };
 
+  /**
+   * Arrow-key roving focus across the conversation rows.
+   *
+   * Home/End jump to the ends and ↑/↓ step one row, which is the usual listbox
+   * behaviour. It moves focus only — it never changes the selection — so the
+   * row that opens is still chosen by an explicit Enter or click, and a reader
+   * can walk the list to hear what is in the inbox without opening twelve rooms.
+   * When nothing inside the list holds focus (the pointer is elsewhere, or the
+   * scroller itself was focused) the first row is taken, so the key is useful
+   * instead of dead.
+   */
+  const onConvKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (
+      e.key !== "ArrowDown" &&
+      e.key !== "ArrowUp" &&
+      e.key !== "Home" &&
+      e.key !== "End"
+    )
+      return;
+    const rows = convListRef.current?.querySelectorAll<HTMLButtonElement>(
+      "[data-conv-row]",
+    );
+    if (!rows || rows.length === 0) return;
+    e.preventDefault();
+    const here = Array.from(rows).indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    const target =
+      here === -1
+        ? e.key === "End"
+          ? rows[rows.length - 1]
+          : rows[0]
+        : e.key === "ArrowDown"
+          ? rows[Math.min(here + 1, rows.length - 1)]
+          : e.key === "ArrowUp"
+            ? rows[Math.max(here - 1, 0)]
+            : e.key === "Home"
+              ? rows[0]
+              : rows[rows.length - 1];
+    target?.focus();
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div className="max-w-none w-full flex-1 flex min-h-0 relative">
@@ -1114,10 +1207,30 @@ export function MessagesSection(props: {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  // Escape clears rather than blurring: a search that matched
+                  // nothing is the state an operator most wants to back out of,
+                  // and reaching for the mouse to undo it is the slowest path.
+                  if (e.key === "Escape" && search) {
+                    e.preventDefault();
+                    setSearch("");
+                  }
+                }}
                 placeholder="Search chats…"
                 aria-label="Search chats"
-                className={`${inputCls} pl-8`}
+                className={`${inputCls} pl-8 ${search ? "pr-8" : ""}`}
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground"
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" aria-hidden="true" />
+                </button>
+              )}
             </div>
             {/* Each chip counts what IT would show under the current search —
                 measured from the same predicate the list renders with. A chip
@@ -1233,39 +1346,52 @@ export function MessagesSection(props: {
               />
             )}
 
-            {/* The forest. Every group, with the groups nested inside it. */}
-            {treeError ? (
-              <ErrorBox
-                message={`Group structure unavailable — subgroups could not be read, not empty. (${treeError})`}
-                onRetry={() => load()}
-              />
-            ) : tree.length > 0 ? (
-              <GroupTreeSidebar
-                nodes={tree}
-                busyByRoom={Object.fromEntries(
-                  Object.entries(membersByRoom).map(([name, list]) => [
-                    name,
-                    list.filter(
-                      (m) => m.state === "busy" || m.state === "online",
-                    ).length,
-                  ]),
-                )}
-                errorsByRoom={membersError}
-                activeRoom={sel?.kind === "group" ? sel.name : null}
-                collapsed={collapsed}
-                onToggle={(id) =>
-                  setCollapsed((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(id)) next.delete(id);
-                    else next.add(id);
-                    return next;
-                  })
-                }
-                onOpen={(name) => openRoom(name)}
-                onNewSubgroup={(name) => setSubgroupFor(name)}
-                onMerge={onMergeSubgroups}
-              />
-            ) : null}
+            {/* The forest. Every group, with the groups nested inside it.
+                Bounded on purpose: `GroupTreeSidebar` is `space-y-0.5` with no
+                height of its own, and this block sits in the sidebar's
+                non-scrolling header above the conversation list. An org with a
+                few levels of nesting therefore grew the header without limit
+                and squeezed the list — the actual inbox — down to nothing, with
+                no scrollbar anywhere to explain where the rows had gone. */}
+            {(treeError || tree.length > 0) && (
+              <div
+                className="max-h-[38vh] overflow-y-auto overscroll-contain rounded-lg border border-border/40 p-1.5"
+                aria-label="Group structure"
+              >
+                {treeError ? (
+                  <ErrorBox
+                    message={`Group structure unavailable — subgroups could not be read, not empty. (${treeError})`}
+                    onRetry={() => load()}
+                  />
+                ) : tree.length > 0 ? (
+                  <GroupTreeSidebar
+                    nodes={tree}
+                    busyByRoom={Object.fromEntries(
+                      Object.entries(membersByRoom).map(([name, list]) => [
+                        name,
+                        list.filter(
+                          (m) => m.state === "busy" || m.state === "online",
+                        ).length,
+                      ]),
+                    )}
+                    errorsByRoom={membersError}
+                    activeRoom={sel?.kind === "group" ? sel.name : null}
+                    collapsed={collapsed}
+                    onToggle={(id) =>
+                      setCollapsed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(id)) next.delete(id);
+                        else next.add(id);
+                        return next;
+                      })
+                    }
+                    onOpen={(name) => openRoom(name)}
+                    onNewSubgroup={(name) => setSubgroupFor(name)}
+                    onMerge={onMergeSubgroups}
+                  />
+                ) : null}
+              </div>
+            )}
             {showNewGroup && (
               <div className="rounded-xl border border-border/60 p-2.5 space-y-2 bg-card">
                 <Field label="Group name">
@@ -1363,7 +1489,11 @@ export function MessagesSection(props: {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div
+            ref={convListRef}
+            onKeyDown={onConvKeyDown}
+            className="flex-1 overflow-y-auto"
+          >
             {loading ? (
               <div className="p-3">
                 <SkeletonList rows={5} />
@@ -1377,6 +1507,31 @@ export function MessagesSection(props: {
                 <ErrorBox
                   message="Conversations couldn't be loaded — this is a fetch failure, not an empty inbox."
                   onRetry={() => load()}
+                />
+              </div>
+            ) : convs.length === 0 && allConvs.length > 0 ? (
+              /* A filter that hides everything is NOT an empty inbox. The
+                 `hiddenSummary` line above already says "Showing 0 of 12 — 12
+                 hidden by this filter or search"; rendering "No chats yet"
+                 under it contradicted that sentence and then prescribed a
+                 remedy — create a group — for a problem the operator does not
+                 have. The two readings ("you have none" and "you are looking at
+                 none") are opposite, so this is a separate state. */
+              <div className="p-3">
+                <EmptyState
+                  title="Nothing matches this filter"
+                  hint={`${allConvs.length} conversation${allConvs.length === 1 ? " is" : "s are"} hidden — this is the filter and search, not an empty inbox.`}
+                  action={
+                    <Btn
+                      variant="ghost"
+                      onClick={() => {
+                        setFilter("all");
+                        setSearch("");
+                      }}
+                    >
+                      Clear filter and search
+                    </Btn>
+                  }
                 />
               </div>
             ) : convs.length === 0 ? (
@@ -1417,6 +1572,7 @@ export function MessagesSection(props: {
                       <button
                         key={c.id}
                         type="button"
+                        data-conv-row
                         onClick={() =>
                           c.kind === "group"
                             ? openRoom(c.title.slice(2))
@@ -1426,7 +1582,7 @@ export function MessagesSection(props: {
                               )
                         }
                         aria-current={isActive ? "true" : undefined}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 hover:bg-muted/40 ${isActive ? "bg-primary/10" : ""}`}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60 ${isActive ? "bg-primary/10" : ""}`}
                       >
                         <span className="relative shrink-0">
                           <span
@@ -1570,7 +1726,11 @@ export function MessagesSection(props: {
                 </button>
               </header>
 
-              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-1.5">
+              <div
+                ref={transcriptRef}
+                onScroll={onTranscriptScroll}
+                className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-1.5"
+              >
                 {/* Three states. `activeMsgs` is `[]` for a FAILED read and
                     for a genuinely quiet room, so the empty state is gated on
                     the read having succeeded — otherwise a down Gateway or a
