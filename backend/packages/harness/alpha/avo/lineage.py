@@ -16,14 +16,15 @@ class VersionRecord:
     Immutable version record in the Autonomous AVO evolution lineage.
     Represents either a committed candidate x_i in P_t or an intermediate trajectory attempt.
     """
+
     version_id: str = field(default_factory=lambda: f"v_{uuid.uuid4().hex[:8]}")
     parent_id: str | None = None
     hypothesis: str = ""
     modification: str = ""
     correctness: bool = False
     performance_score: float = 0.0  # Scalar compatibility
-    quality_score: float = 0.0      # Scalar compatibility
-    composite_score: float = 0.0    # Scalar weighted score or geomean
+    quality_score: float = 0.0  # Scalar compatibility
+    composite_score: float = 0.0  # Scalar weighted score or geomean
     vector: EvaluationVector | None = None
     git_hash: str | None = None
     diff_summary: str = ""
@@ -72,11 +73,7 @@ class VersionRecord:
             self.composite_score = self.vector.geometric_mean()
             return self.composite_score
 
-        score = (
-            w_correctness * 1.0
-            + w_performance * min(1.0, self.performance_score)
-            + w_quality * min(1.0, self.quality_score)
-        )
+        score = w_correctness * 1.0 + w_performance * min(1.0, self.performance_score) + w_quality * min(1.0, self.quality_score)
         self.composite_score = round(score, 4)
         return self.composite_score
 
@@ -187,9 +184,7 @@ class AVOLineage:
         if current_head is None or current_head.task_id != candidate.task_id:
             self.head_id = candidate.version_id
         elif candidate.vector and current_head.vector:
-            if candidate.vector.dominates(current_head.vector) or (
-                candidate.vector.geometric_mean() > current_head.vector.geometric_mean()
-            ):
+            if candidate.vector.dominates(current_head.vector) or (candidate.vector.geometric_mean() > current_head.vector.geometric_mean()):
                 self.head_id = candidate.version_id
         elif candidate.composite_score > current_head.composite_score:
             self.head_id = candidate.version_id

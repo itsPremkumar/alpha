@@ -47,25 +47,31 @@ def test_browser_supervisor_lifecycle():
 
 def test_browser_tool():
     # Navigate
-    nav_out = browser_navigate_and_inspect.invoke({
-        "action": "navigate",
-        "url": "https://example.com",
-    })
+    nav_out = browser_navigate_and_inspect.invoke(
+        {
+            "action": "navigate",
+            "url": "https://example.com",
+        }
+    )
     parsed = json.loads(nav_out)
     sid = parsed["session_id"]
     assert parsed["current_url"] == "https://example.com"
 
     # DOM
-    dom_out = browser_navigate_and_inspect.invoke({
-        "action": "dom",
-        "session_id": sid,
-    })
+    dom_out = browser_navigate_and_inspect.invoke(
+        {
+            "action": "dom",
+            "session_id": sid,
+        }
+    )
     dom_parsed = json.loads(dom_out)
     assert len(dom_parsed["interactive_elements"]) >= 1
 
     # Close
-    close_out = browser_navigate_and_inspect.invoke({
-        "action": "close",
-        "session_id": sid,
-    })
+    close_out = browser_navigate_and_inspect.invoke(
+        {
+            "action": "close",
+            "session_id": sid,
+        }
+    )
     assert "closed: True" in close_out

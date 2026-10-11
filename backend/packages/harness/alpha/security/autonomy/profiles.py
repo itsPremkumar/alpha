@@ -10,10 +10,11 @@ class AutonomyProfile(enum.Enum):
     4-Tier User Autonomy Profiles from Chapter 47 of the Master Blueprint.
     Enforces dynamic human-in-the-loop policies.
     """
-    OBSERVER = "observer"        # Read-only; all state modifications require explicit human sign-off
-    ASSISTANT = "assistant"      # Routine code edits and tests auto-approved; shell commands require sign-off
-    OPERATOR = "operator"        # Standard development, testing, git branches auto-approved; destructive actions require sign-off
-    AUTONOMOUS = "autonomous"    # Full independent execution within bounded budgets, timeouts, and invariants
+
+    OBSERVER = "observer"  # Read-only; all state modifications require explicit human sign-off
+    ASSISTANT = "assistant"  # Routine code edits and tests auto-approved; shell commands require sign-off
+    OPERATOR = "operator"  # Standard development, testing, git branches auto-approved; destructive actions require sign-off
+    AUTONOMOUS = "autonomous"  # Full independent execution within bounded budgets, timeouts, and invariants
 
 
 class ActionRiskLevel(enum.Enum):

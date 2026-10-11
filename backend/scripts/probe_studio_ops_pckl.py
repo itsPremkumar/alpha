@@ -31,9 +31,7 @@ from uuid import uuid4
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
-_spec = importlib.util.spec_from_file_location(
-    "_studio_routes_for_probe", BACKEND_DIR / "tests" / "test_langgraph_studio_routes.py"
-)
+_spec = importlib.util.spec_from_file_location("_studio_routes_for_probe", BACKEND_DIR / "tests" / "test_langgraph_studio_routes.py")
 assert _spec and _spec.loader
 _studio = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_studio)
@@ -61,9 +59,7 @@ def main() -> int:
     (runtime_dir / "graph.py").write_text(_studio._GRAPH_SOURCE, encoding="utf-8")
     (runtime_dir / "auth_shim.py").write_text(_studio._LEGACY_AUTH_SHIM, encoding="utf-8")
 
-    executable = shutil.which(
-        "langgraph", path=os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")])
-    )
+    executable = shutil.which("langgraph", path=os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]))
     assert executable, "langgraph executable unavailable"
 
     env = os.environ.copy()

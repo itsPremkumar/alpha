@@ -64,10 +64,7 @@ class OracleService:
         # Domain-specific authoritative knowledge heuristics
         if "async" in q_lower or "loop" in q_lower or "coroutine" in q_lower:
             domain_triggers = ("async", "loop", "coroutine")
-            guidance = (
-                "For asynchronous Python concurrency, maintain non-blocking execution throughout the call chain. "
-                "Ensure asyncio event loops are not blocked by synchronous file or network I/O."
-            )
+            guidance = "For asynchronous Python concurrency, maintain non-blocking execution throughout the call chain. Ensure asyncio event loops are not blocked by synchronous file or network I/O."
             best_practices = [
                 "Use asyncio.to_thread() for legacy synchronous blocking I/O calls.",
                 "Wrap multiple concurrent tasks with asyncio.gather(*tasks, return_exceptions=True).",
@@ -81,10 +78,7 @@ class OracleService:
 
         elif "patch" in q_lower or "diff" in q_lower or "git" in q_lower:
             domain_triggers = ("patch", "diff", "git")
-            guidance = (
-                "Standard unified diffs should use git unified format (unified=3). "
-                "Ensure line endings (LF vs CRLF) match repository conventions and file permissions are preserved."
-            )
+            guidance = "Standard unified diffs should use git unified format (unified=3). Ensure line endings (LF vs CRLF) match repository conventions and file permissions are preserved."
             best_practices = [
                 "Verify patches with 'git apply --check <patch_file>' before applying.",
                 "Keep diffs atomic and focused on single logical changes.",
@@ -97,10 +91,7 @@ class OracleService:
 
         elif "docker" in q_lower or "container" in q_lower:
             domain_triggers = ("docker", "container")
-            guidance = (
-                "Container architectures require minimal attack surface, non-root user execution, "
-                "and deterministic build layers."
-            )
+            guidance = "Container architectures require minimal attack surface, non-root user execution, and deterministic build layers."
             best_practices = [
                 "Order Dockerfile instructions from least-frequently-changing to most-frequently-changing for optimal layer caching.",
                 "Use .dockerignore to exclude local virtual environments and secret files.",

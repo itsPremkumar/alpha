@@ -6,13 +6,12 @@ AST pre-commit syntax validation, and targeted patch synthesis.
 
 from __future__ import annotations
 
-import ast
 import difflib
 import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from alpha.safety.ast_syntax_guard import validate_syntax_precommit
 from alpha.selfrepair.assertion_guard import TestAssertionImmutabilityGuard
@@ -35,7 +34,7 @@ class PatchCandidate:
 class RepairResult:
     success: bool
     message: str
-    applied_patch: Optional[PatchCandidate] = None
+    applied_patch: PatchCandidate | None = None
     suspicious_locations: list[SuspiciousLocation] = field(default_factory=list)
     rounds_attempted: int = 0
     verification_passed: bool = False
@@ -48,7 +47,9 @@ class RepairResult:
                 "file_path": self.applied_patch.file_path,
                 "diff": self.applied_patch.diff,
                 "description": self.applied_patch.description,
-            } if self.applied_patch else None,
+            }
+            if self.applied_patch
+            else None,
             "suspicious_locations": [loc.to_dict() for loc in self.suspicious_locations[:5]],
             "rounds_attempted": self.rounds_attempted,
             "verification_passed": self.verification_passed,
@@ -104,7 +105,7 @@ class SurgicalProgramRepairEngine:
         self,
         loc: SuspiciousLocation,
         target_code: str,
-    ) -> Optional[PatchCandidate]:
+    ) -> PatchCandidate | None:
         """Synthesizes targeted surgical fixes for common fault classes (ZeroDivision, None, Off-by-one)."""
         lines = target_code.splitlines(keepends=True)
         idx = loc.line_number - 1
@@ -200,7 +201,7 @@ class SurgicalProgramRepairEngine:
 
             try:
                 original_code = abs_path.read_text(encoding="utf-8", errors="replace")
-            except Exception as e:
+            except Exception:
                 continue
 
             candidate = self.synthesize_rule_based_patch(loc, original_code)

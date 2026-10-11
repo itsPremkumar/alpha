@@ -171,9 +171,7 @@ class LifecycleGovernor:
         return profile
 
     def _ledger(self, action: str, *, actor: str, target: str, reason: str, details: dict[str, Any]) -> None:
-        record_governance_action(
-            action, actor=actor, target=target, reason=reason, details=details, store=self._event_store
-        )
+        record_governance_action(action, actor=actor, target=target, reason=reason, details=details, store=self._event_store)
 
     def can_dispatch(self, name: str) -> bool:
         """Whether this profile may be given NEW work right now.
@@ -197,14 +195,9 @@ class LifecycleGovernor:
         if profile is None:
             raise RetirementError(f"no runtime profile named {name!r}")
         if profile.status not in DISPATCHABLE_STATUSES:
-            raise RetirementError(
-                f"profile {profile.name!r} is {profile.status!r} and may not receive new work"
-            )
+            raise RetirementError(f"profile {profile.name!r} is {profile.status!r} and may not receive new work")
         if not profile.granted_capabilities:
-            raise RetirementError(
-                f"profile {profile.name!r} has an empty grant after ceiling re-validation "
-                f"and may not receive new work"
-            )
+            raise RetirementError(f"profile {profile.name!r} has an empty grant after ceiling re-validation and may not receive new work")
         return profile
 
     # -- enabling / disabling ---------------------------------------------
@@ -214,14 +207,9 @@ class LifecycleGovernor:
         kept, removed = narrow_to_ceiling(profile.granted_capabilities, ceiling=self.store.ceiling())
         if removed:
             profile.granted_capabilities = kept
-            profile.demoted_from = normalise_capabilities(
-                profile.demoted_from | (profile.declared_capabilities - kept)
-            )
+            profile.demoted_from = normalise_capabilities(profile.demoted_from | (profile.declared_capabilities - kept))
         if not profile.granted_capabilities:
-            raise RetirementError(
-                f"profile {profile.name!r} cannot be enabled: its grant is empty under the "
-                f"current authority ceiling"
-            )
+            raise RetirementError(f"profile {profile.name!r} cannot be enabled: its grant is empty under the current authority ceiling")
         profile.status = STATUS_ACTIVE
         profile.profile_version += 1
         profile.updated_at = _now()
@@ -299,9 +287,7 @@ class LifecycleGovernor:
                 "previous_capabilities": sorted(previous),
                 "new_capabilities": sorted(grant),
                 "profile_version": profile.profile_version,
-                "in_flight_versions": sorted(
-                    {c.profile_version for c in self.in_flight.get(profile.name, [])}
-                ),
+                "in_flight_versions": sorted({c.profile_version for c in self.in_flight.get(profile.name, [])}),
             },
         )
         return profile
@@ -362,10 +348,7 @@ class LifecycleGovernor:
         drained: list[InFlightClaim] = []
         abandoned: list[InFlightClaim] = []
         if claims:
-            expired = (
-                deadline is not None
-                and (datetime.now(UTC) - deadline) > timedelta(seconds=drain_deadline_seconds)
-            )
+            expired = deadline is not None and (datetime.now(UTC) - deadline) > timedelta(seconds=drain_deadline_seconds)
             for claim in claims:
                 (abandoned if expired else drained).append(claim)
         else:
@@ -418,9 +401,7 @@ class LifecycleGovernor:
         :meth:`complete_retirement` when there is a real drain window.
         """
         self.begin_retirement(name, actor=actor, reason=reason)
-        return self.complete_retirement(
-            name, actor=actor, reason=reason, drain_deadline_seconds=drain_deadline_seconds
-        )
+        return self.complete_retirement(name, actor=actor, reason=reason, drain_deadline_seconds=drain_deadline_seconds)
 
     # -- idle reaping ------------------------------------------------------
     def find_idle_profiles(

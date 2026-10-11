@@ -17,9 +17,9 @@ from fastapi.testclient import TestClient
 
 os.environ.setdefault("AUTH_JWT_SECRET", "test-secret-key-auth-me-permissions-min-32")
 
-from app.gateway.authz import Permissions  # noqa: E402
 from alpha.authz.provider import AuthzDecision, AuthzReason  # noqa: E402
 from alpha.config.authorization_config import AuthorizationConfig  # noqa: E402
+from app.gateway.authz import Permissions  # noqa: E402
 
 _TEST_SECRET = "test-secret-key-auth-me-permissions-min-32"
 
@@ -63,10 +63,10 @@ class _RecordingProvider:
 @pytest.fixture(autouse=True)
 def _setup_auth(tmp_path):
     """Fresh SQLite engine + auth config per test (test_initialize_admin pattern)."""
+    from alpha.persistence.engine import close_engine, init_engine
     from app.gateway import deps
     from app.gateway.auth.config import AuthConfig, set_auth_config
     from app.gateway.routers.auth import _SETUP_STATUS_CACHE, _SETUP_STATUS_INFLIGHT
-    from alpha.persistence.engine import close_engine, init_engine
 
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
     url = f"sqlite+aiosqlite:///{tmp_path}/auth_me.db"

@@ -481,9 +481,7 @@ def test_the_snapshot_never_reads_a_password_value():
 def test_a_secret_field_is_marked_in_the_element_table():
     from alpha.browser.jev_policy import format_element_table
 
-    state = page_state_from_cdp(
-        {"url": "https://x.test/", "elements": [{"node": 1, "role": "textbox", "label": "Password", "secret": True}]}
-    )
+    state = page_state_from_cdp({"url": "https://x.test/", "elements": [{"node": 1, "role": "textbox", "label": "Password", "secret": True}]})
     table = format_element_table(build_action_space(state["elements"]))
 
     assert "[secret]" in table, "a blank secret field must not read as an empty one"

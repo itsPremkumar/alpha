@@ -146,7 +146,12 @@ class TestClassification:
     def test_coded_error_always_wins(self):
         exc = CodedError("SANDBOX_TIMEOUT", detail="provider=x")
         assert classify(exc).code == "SANDBOX_TIMEOUT"
-        assert classify(RuntimeError("x"), ) is not None
+        assert (
+            classify(
+                RuntimeError("x"),
+            )
+            is not None
+        )
         assert classify(CodedError("NOT_IMPLEMENTED")).code == "NOT_IMPLEMENTED"
 
     def test_coded_error_survives_a_pickle_round_trip(self):

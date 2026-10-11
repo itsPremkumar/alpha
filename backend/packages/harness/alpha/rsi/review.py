@@ -182,9 +182,7 @@ class ReviewRecord:
         if missing:
             raise ValueError(f"review record missing field(s): {', '.join(missing)}")
         if payload["state"] != _RECORD_STATE:
-            raise ValueError(
-                f"review record state must be {_RECORD_STATE!r} — the only state this gate records; approvals live in the human queue, got {payload['state']!r}"
-            )
+            raise ValueError(f"review record state must be {_RECORD_STATE!r} — the only state this gate records; approvals live in the human queue, got {payload['state']!r}")
         candidate_id = payload["candidate_id"]
         if not isinstance(candidate_id, str) or not candidate_id:
             raise ValueError("review record candidate_id must be a non-empty string")
@@ -367,9 +365,7 @@ def open_review(
     except (TypeError, ValueError) as exc:
         raise ValueError(f"evidence for candidate {candidate_id!r} is not JSON-serializable: {exc}") from exc
     if len(serialized) > MAX_REVIEW_EVIDENCE_CHARS:
-        raise ValueError(
-            f"evidence for candidate {candidate_id!r} is {len(serialized)} chars, over the {MAX_REVIEW_EVIDENCE_CHARS}-char cap; refusing to record it"
-        )
+        raise ValueError(f"evidence for candidate {candidate_id!r} is {len(serialized)} chars, over the {MAX_REVIEW_EVIDENCE_CHARS}-char cap; refusing to record it")
     opened_at = clock()
     if isinstance(opened_at, bool) or not isinstance(opened_at, int | float):
         raise ValueError(f"clock must return a Unix timestamp number, got {type(opened_at).__name__}")
@@ -380,10 +376,7 @@ def open_review(
     if existing is not None and existing.request_id is not None:
         existing_request = ApprovalQueue(existing.project_id).get_request(existing.request_id)
         if existing_request is not None and existing_request.status == "pending":
-            raise ValueError(
-                f"review already open for candidate {candidate_id!r}: approval request {existing.request_id} "
-                f"is still pending in project {existing.project_id!r} (resolve it in the human channel before re-opening)"
-            )
+            raise ValueError(f"review already open for candidate {candidate_id!r}: approval request {existing.request_id} is still pending in project {existing.project_id!r} (resolve it in the human channel before re-opening)")
 
     record = ReviewRecord(
         candidate_id=candidate_id,
@@ -424,10 +417,7 @@ def open_review(
         },
     )
     record.request_id = request.request_id
-    record.reason = (
-        f"awaiting human review: approval request {request.request_id} is pending in project {project_id!r}'s approval queue "
-        "(this gate never resolves its own requests)"
-    )
+    record.reason = f"awaiting human review: approval request {request.request_id} is pending in project {project_id!r}'s approval queue (this gate never resolves its own requests)"
     _save_record(record)
     return record
 
@@ -528,10 +518,7 @@ def review_decision(candidate_id: str, *, project_id: str = DEFAULT_PROJECT_ID) 
         return _decision(
             candidate_id=candidate_id,
             state="pending",
-            reason=(
-                f"approval request {record.request_id!r} does not match this review channel "
-                f"(action_type={request.action_type!r}, candidate={details.get('candidate_id')!r} — fail-closed, never auto-approved)"
-            ),
+            reason=(f"approval request {record.request_id!r} does not match this review channel (action_type={request.action_type!r}, candidate={details.get('candidate_id')!r} — fail-closed, never auto-approved)"),
             risk=record.risk,
             project_id=record.project_id,
             request_id=record.request_id,

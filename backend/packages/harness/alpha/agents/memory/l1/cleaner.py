@@ -113,9 +113,7 @@ def sweep(
                 report.capped += 1
             report.removed_ids.append(record.id)
 
-    removed = store.delete_records(
-        report.removed_ids, user_id=user_id, agent_name=agent_name
-    )
+    removed = store.delete_records(report.removed_ids, user_id=user_id, agent_name=agent_name)
     if removed:
         logger.info(
             "L1 retention: removed %d record(s) for user=%s agent=%s (%s)",

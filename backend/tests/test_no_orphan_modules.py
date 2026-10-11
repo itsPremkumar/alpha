@@ -88,6 +88,17 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # production consumer is the bridge executor that a genuine isolated
     # runtime would provide.
     "alpha.tools.discovery.code_mode": "code-mode gate for the not-built isolated bridge; the module is the tested fail-closed boundary and its consumer is the bridge executor a real isolated runtime would provide",
+    # Standalone diagnostic scripts (reworked from the hard-coded-path scratch
+    # they were committed as in 66e4cbe). Nothing in production imports them by
+    # design — a probe that production imports would run at import time — and
+    # each is runnable via `python -m <module>` / direct path with paths
+    # derived from __file__. They stay exercised by
+    # tests/test_diagnostic_scripts.py, which pins that each still imports
+    # silently, runs against this checkout, and answers its question.
+    "alpha.orchestrator._oracle_probe": "standalone drift probe for orchestrator/replay.py (imported-vs-working-tree source check); run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
+    "alpha.workflow._probe_replay_fold": "standalone replay probe: does replay_run fold a connectivity_wait_parked park?; run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
+    "alpha.workflow._proof_external_wait": "standalone replay proof: external_wait_parked folds to WAITING_EVENT (exit 0/1); run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
+    "app.gateway.routers.route_audit_builder": "standalone AST route inventory (JSON) over app/gateway/routers — never imports the Gateway; run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by

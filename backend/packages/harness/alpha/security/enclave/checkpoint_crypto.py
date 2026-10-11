@@ -17,6 +17,7 @@ logger = logging.getLogger("alpha.security.enclave.checkpoint_crypto")
 
 class CheckpointIntegrityError(ValueError):
     """Raised when an encrypted checkpoint fails authentication or has been tampered with."""
+
     pass
 
 
@@ -39,11 +40,7 @@ class CheckpointCrypto:
             # This matches the existing convention in
             # persistence/channel_connections/sql.py, which raises rather than
             # defaulting when its encryption key is absent.
-            raise RuntimeError(
-                "ALPHA_CHECKPOINT_KEY is required to encrypt or decrypt checkpoints. "
-                "Set it to a secret passphrase, or pass master_key_or_passphrase "
-                "explicitly. There is deliberately no built-in default key."
-            )
+            raise RuntimeError("ALPHA_CHECKPOINT_KEY is required to encrypt or decrypt checkpoints. Set it to a secret passphrase, or pass master_key_or_passphrase explicitly. There is deliberately no built-in default key.")
         # Standard salt for deterministic derivation of engine master key
         salt = b"alpha_astra_salt_v1"
         kdf = PBKDF2HMAC(

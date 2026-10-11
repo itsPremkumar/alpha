@@ -35,7 +35,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 DEFAULT_HALF_LIFE_SEC: float = 900.0
 DEFAULT_STRENGTH: float = 1.0
@@ -54,7 +54,7 @@ class PheromoneType(str, Enum):
     DEPENDENCY_HOTSPOT = "DEPENDENCY_HOTSPOT"
 
     @classmethod
-    def normalize(cls, value: str) -> Optional["PheromoneType"]:
+    def normalize(cls, value: str) -> PheromoneType | None:
         """Return the enum member matching ``value`` (case-insensitive)."""
         if not value:
             return None
@@ -233,10 +233,10 @@ class StigmergicEventStore:
         ON stigmergic_events(timestamp);
     """
 
-    def __init__(self, db_path: Optional[str | Path] = None):
+    def __init__(self, db_path: str | Path | None = None):
         self.db_path = ":memory:" if db_path is None else str(db_path)
         self._lock = threading.RLock()
-        self._connection: Optional[sqlite3.Connection] = None
+        self._connection: sqlite3.Connection | None = None
         if self.db_path != ":memory:":
             parent = Path(self.db_path).parent
             if str(parent) and not parent.exists():
@@ -302,7 +302,7 @@ class StigmergicEventStore:
             )
             connection.commit()
 
-    def purge(self, entity: Optional[str] = None, pheromone: Optional[str] = None) -> int:
+    def purge(self, entity: str | None = None, pheromone: str | None = None) -> int:
         """Delete events filtered by entity and/or pheromone."""
         clauses: list[str] = []
         params: list[Any] = []
@@ -315,21 +315,17 @@ class StigmergicEventStore:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._lock:
             connection = self._connect()
-            cursor = connection.execute(
-                f"DELETE FROM stigmergic_events{where}", tuple(params)
-            )
+            cursor = connection.execute(f"DELETE FROM stigmergic_events{where}", tuple(params))
             connection.commit()
             return int(cursor.rowcount or 0)
 
-    def prune_expired(self, min_effective: float = MIN_EFFECTIVE_STRENGTH, now: Optional[float] = None) -> int:
+    def prune_expired(self, min_effective: float = MIN_EFFECTIVE_STRENGTH, now: float | None = None) -> int:
         """Delete deposit events whose decayed strength has evaporated."""
         current = time.time() if now is None else now
         removed = 0
         with self._lock:
             connection = self._connect()
-            rows = connection.execute(
-                "SELECT event_id, strength, half_life_sec, timestamp FROM stigmergic_events"
-            ).fetchall()
+            rows = connection.execute("SELECT event_id, strength, half_life_sec, timestamp FROM stigmergic_events").fetchall()
             for row in rows:
                 age = current - float(row["timestamp"])
                 if exponential_decay(float(row["strength"]), age, float(row["half_life_sec"])) < min_effective:
@@ -347,16 +343,14 @@ class StigmergicEventStore:
     def all_events(self) -> list[StigmergicEvent]:
         """Return every persisted event ordered chronologically."""
         with self._lock:
-            rows = self._connect().execute(
-                "SELECT * FROM stigmergic_events ORDER BY timestamp ASC, event_id ASC"
-            ).fetchall()
+            rows = self._connect().execute("SELECT * FROM stigmergic_events ORDER BY timestamp ASC, event_id ASC").fetchall()
         return [_row_to_event(row) for row in rows]
 
     def events_for(
         self,
-        entity: Optional[str] = None,
-        pheromone: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        entity: str | None = None,
+        pheromone: str | None = None,
+        agent_id: str | None = None,
         limit: int = 200,
     ) -> list[StigmergicEvent]:
         """Return filtered events ordered newest-first."""
@@ -376,10 +370,14 @@ class StigmergicEventStore:
         if limit_clause:
             params.append(int(limit))
         with self._lock:
-            rows = self._connect().execute(
-                f"SELECT * FROM stigmergic_events{where} ORDER BY timestamp DESC{limit_clause}",
-                tuple(params),
-            ).fetchall()
+            rows = (
+                self._connect()
+                .execute(
+                    f"SELECT * FROM stigmergic_events{where} ORDER BY timestamp DESC{limit_clause}",
+                    tuple(params),
+                )
+                .fetchall()
+            )
         return [_row_to_event(row) for row in rows]
 
 
@@ -413,7 +411,7 @@ class StigmergicEventMesh:
 
     def __init__(
         self,
-        db_path: Optional[str | Path] = None,
+        db_path: str | Path | None = None,
         default_half_life_sec: float = DEFAULT_HALF_LIFE_SEC,
         stream_capacity: int = 2048,
     ):
@@ -432,10 +430,10 @@ class StigmergicEventMesh:
         pheromone: str,
         action: str = EventAction.DEPOSIT.value,
         strength: float = DEFAULT_STRENGTH,
-        half_life_sec: Optional[float] = None,
+        half_life_sec: float | None = None,
         trace_id: str = "",
-        metadata: Optional[dict[str, Any]] = None,
-        timestamp: Optional[float] = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp: float | None = None,
     ) -> dict[str, Any]:
         """Deposit, reinforce, release or purge a pheromone on an entity.
 
@@ -460,22 +458,14 @@ class StigmergicEventMesh:
 
         pheromone_type = PheromoneType.normalize(pheromone)
         if pheromone_type is None:
-            return _failure(
-                f"unknown pheromone '{pheromone}'; expected one of "
-                + ", ".join(item.value for item in PheromoneType)
-            )
+            return _failure(f"unknown pheromone '{pheromone}'; expected one of " + ", ".join(item.value for item in PheromoneType))
 
         try:
             event_action = EventAction(str(action or "deposit").strip().lower())
         except ValueError:
-            return _failure(
-                f"unknown action '{action}'; expected one of "
-                + ", ".join(item.value for item in EventAction)
-            )
+            return _failure(f"unknown action '{action}'; expected one of " + ", ".join(item.value for item in EventAction))
 
-        resolved_half_life = (
-            self.default_half_life_sec if half_life_sec is None else float(half_life_sec)
-        )
+        resolved_half_life = self.default_half_life_sec if half_life_sec is None else float(half_life_sec)
         if resolved_half_life < 0:
             return _failure("half_life_sec must be >= 0")
 
@@ -488,9 +478,7 @@ class StigmergicEventMesh:
                 deposits = [e for e in existing if e.action in (EventAction.DEPOSIT, EventAction.REINFORCE)]
                 if deposits:
                     latest = max(deposits, key=lambda e: e.timestamp)
-                    decayed = exponential_decay(
-                        latest.strength, now - latest.timestamp, latest.half_life_sec
-                    )
+                    decayed = exponential_decay(latest.strength, now - latest.timestamp, latest.half_life_sec)
                     effective_strength = decayed + float(strength)
 
             if event_action in (EventAction.RELEASE, EventAction.PURGE):
@@ -539,9 +527,7 @@ class StigmergicEventMesh:
             "entity": entity,
             "pheromone": pheromone_type.value,
             "strength": round(event.strength, 6),
-            "effective_strength": round(
-                exponential_decay(event.strength, 0.0, event.half_life_sec), 6
-            ),
+            "effective_strength": round(exponential_decay(event.strength, 0.0, event.half_life_sec), 6),
             "half_life_sec": event.half_life_sec,
             "event": event.to_dict(),
         }
@@ -550,18 +536,14 @@ class StigmergicEventMesh:
 
     def field(
         self,
-        entity: Optional[str] = None,
-        pheromone: Optional[str] = None,
-        now: Optional[float] = None,
+        entity: str | None = None,
+        pheromone: str | None = None,
+        now: float | None = None,
         min_effective: float = MIN_EFFECTIVE_STRENGTH,
     ) -> list[PheromoneField]:
         """Return decayed pheromone aggregations grouped by entity/pheromone."""
         current = time.time() if now is None else now
-        events = [
-            event
-            for event in self.store.all_events()
-            if event.action in (EventAction.DEPOSIT, EventAction.REINFORCE)
-        ]
+        events = [event for event in self.store.all_events() if event.action in (EventAction.DEPOSIT, EventAction.REINFORCE)]
         if entity:
             events = [event for event in events if event.entity == entity]
         if pheromone:
@@ -616,17 +598,15 @@ class StigmergicEventMesh:
 
     def traces(
         self,
-        entity: Optional[str] = None,
-        pheromone: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        entity: str | None = None,
+        pheromone: str | None = None,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[StigmergicEvent]:
         """Return raw chronological traces emitted into the mesh."""
-        return self.store.events_for(
-            entity=entity, pheromone=pheromone, agent_id=agent_id, limit=limit
-        )
+        return self.store.events_for(entity=entity, pheromone=pheromone, agent_id=agent_id, limit=limit)
 
-    def locked_entities(self, now: Optional[float] = None) -> list[dict[str, Any]]:
+    def locked_entities(self, now: float | None = None) -> list[dict[str, Any]]:
         """Return entities currently held by another agent."""
         locks = self.field(pheromone=PheromoneType.UNDER_SURGICAL_REFACTOR.value, now=now)
         held: list[dict[str, Any]] = []
@@ -654,7 +634,7 @@ class StigmergicEventMesh:
     def prioritize(
         self,
         limit: int = 10,
-        now: Optional[float] = None,
+        now: float | None = None,
         avoid_locked: bool = True,
     ) -> list[dict[str, Any]]:
         """Rank entities by swarm priority (defect pressure minus lock penalty).
@@ -714,7 +694,7 @@ class StigmergicEventMesh:
         pheromone: str = "",
         agent_id: str = "",
         limit: int = 50,
-        now: Optional[float] = None,
+        now: float | None = None,
     ) -> dict[str, Any]:
         """Unified read API used by the agent tool.
 
@@ -763,13 +743,11 @@ class StigmergicEventMesh:
                     }
                 ],
             )
-        return _failure(
-            f"unknown mode '{mode}'; expected one of field, traces, locks, priorities, stats"
-        )
+        return _failure(f"unknown mode '{mode}'; expected one of field, traces, locks, priorities, stats")
 
     # -- maintenance -------------------------------------------------------
 
-    def evaporate(self, min_effective: float = MIN_EFFECTIVE_STRENGTH, now: Optional[float] = None) -> int:
+    def evaporate(self, min_effective: float = MIN_EFFECTIVE_STRENGTH, now: float | None = None) -> int:
         """Remove fully evaporated signals, returning the number pruned."""
         return self.store.prune_expired(min_effective=min_effective, now=now)
 
@@ -802,7 +780,7 @@ _MESHES: dict[str, StigmergicEventMesh] = {}
 
 
 def get_stigmergic_mesh(
-    db_path: Optional[str | Path] = None,
+    db_path: str | Path | None = None,
     default_half_life_sec: float = DEFAULT_HALF_LIFE_SEC,
 ) -> StigmergicEventMesh:
     """Return the shared mesh for ``db_path`` (``:memory:`` when omitted)."""
@@ -810,9 +788,7 @@ def get_stigmergic_mesh(
     with _MESH_LOCK:
         mesh = _MESHES.get(key)
         if mesh is None:
-            mesh = StigmergicEventMesh(
-                db_path=db_path, default_half_life_sec=default_half_life_sec
-            )
+            mesh = StigmergicEventMesh(db_path=db_path, default_half_life_sec=default_half_life_sec)
             _MESHES[key] = mesh
         return mesh
 

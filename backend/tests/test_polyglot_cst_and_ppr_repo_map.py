@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-import pytest
 
 from alpha.coding.structural_intelligence.polyglot_cst import (
     PolyglotCSTParser,
     SymbolKind,
 )
-from alpha.coding.structural_intelligence.symbol_dependency_graph import (
-    EdgeType,
-    SymbolDependencyGraph,
-)
 from alpha.coding.structural_intelligence.repo_map import (
     PersonalizedPageRank,
     RepoMapGenerator,
+)
+from alpha.coding.structural_intelligence.symbol_dependency_graph import (
+    SymbolDependencyGraph,
 )
 from alpha.tools.builtins.code_agentic_core import generate_personalized_repo_map
 
@@ -210,12 +208,14 @@ def test_generate_personalized_repo_map_tool():
         (tmp_path / "calc.py").write_text("class Calc:\n    def add(self, a, b):\n        return a + b\n", encoding="utf-8")
         (tmp_path / "main.py").write_text("from calc import Calc\ndef run():\n    c = Calc()\n", encoding="utf-8")
 
-        output = generate_personalized_repo_map.invoke({
-            "root_path": str(tmp_path),
-            "active_files": "calc.py",
-            "query": "Calc add",
-            "token_budget": 500,
-        })
+        output = generate_personalized_repo_map.invoke(
+            {
+                "root_path": str(tmp_path),
+                "active_files": "calc.py",
+                "query": "Calc add",
+                "token_budget": 500,
+            }
+        )
 
         assert "calc.py:" in output
         assert "class Calc" in output

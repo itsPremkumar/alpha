@@ -17,8 +17,8 @@ import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import require_permission
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import require_permission
 
 router = APIRouter(prefix="/api/threads/{thread_id}/agent-messages", tags=["agent-messages"])
 

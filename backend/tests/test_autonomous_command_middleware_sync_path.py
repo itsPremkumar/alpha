@@ -105,9 +105,7 @@ def test_both_seams_produce_identical_directive_messages(monkeypatch):
 def test_sync_seam_triggers_self_heal_on_a_tool_error():
     middleware = AutonomousCommandMiddleware()
     seen: list[Any] = []
-    request = _FakeRequest(
-        [HumanMessage(content="carry on"), ToolMessage(content="Traceback: boom", tool_call_id="1", name="read_file")]
-    )
+    request = _FakeRequest([HumanMessage(content="carry on"), ToolMessage(content="Traceback: boom", tool_call_id="1", name="read_file")])
 
     middleware.wrap_model_call(request, _sync_handler(seen))
 
@@ -128,9 +126,7 @@ def test_sync_seam_triggers_verification_after_a_code_edit_when_a_directive_was_
     """
     middleware = AutonomousCommandMiddleware()
     seen: list[Any] = []
-    request = _FakeRequest(
-        [HumanMessage(content="carry on"), ToolMessage(content="wrote 3 files", tool_call_id="1", name="write_file")]
-    )
+    request = _FakeRequest([HumanMessage(content="carry on"), ToolMessage(content="wrote 3 files", tool_call_id="1", name="write_file")])
 
     result = middleware.wrap_model_call(request, _sync_handler(seen))
 

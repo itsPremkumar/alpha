@@ -102,11 +102,7 @@ def test_real_middleware_stack_has_no_async_only_hooks():
         for sync_name, async_name in _LIFECYCLE_HOOK_PAIRS:
             if _overrides(cls, async_name) and not _overrides(cls, sync_name):
                 offenders.append(f"{cls.__name__}.{async_name}")
-    assert not offenders, (
-        "async-only middleware hook(s) break the synchronous stream path "
-        "(alpha --json / client.stream()): "
-        + ", ".join(sorted(offenders))
-    )
+    assert not offenders, "async-only middleware hook(s) break the synchronous stream path (alpha --json / client.stream()): " + ", ".join(sorted(offenders))
 
 
 def test_stack_audit_covers_the_two_classes_the_shipped_bug_came_from():
@@ -211,11 +207,7 @@ def test_sync_wrap_model_call_injects_the_directive_the_async_path_injects():
     request = _request("Conduct deep research into the latest consensus protocols and compare solutions")
     result = middleware.wrap_model_call(request, _handler)
 
-    injected = [
-        m
-        for m in captured["messages"]
-        if isinstance(m, SystemMessage) and "autonomous_command_lifecycle_directive" in str(m.content)
-    ]
+    injected = [m for m in captured["messages"] if isinstance(m, SystemMessage) and "autonomous_command_lifecycle_directive" in str(m.content)]
     assert injected, "sync wrap_model_call injected no autonomous directive"
     assert "COMMAND IDENTIFIED" in str(injected[0].content)
     assert result.result[0].content == "ok"

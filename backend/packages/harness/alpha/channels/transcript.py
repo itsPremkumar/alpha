@@ -78,9 +78,7 @@ def console_safe(text: str, *, encoding: str | None = None) -> str:
     try:
         raw.encode(target)
     except (LookupError, UnicodeEncodeError):
-        return raw.encode(target if target != "ascii" else "ascii", errors="replace").decode(
-            target if target != "ascii" else "ascii", errors="replace"
-        )
+        return raw.encode(target if target != "ascii" else "ascii", errors="replace").decode(target if target != "ascii" else "ascii", errors="replace")
     except Exception:
         return raw
     return raw
@@ -295,9 +293,7 @@ class TranscriptStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 # Opened through the resolved sink so a patched open applies.
-                with self._sink()(
-                    str(self.path), "a", encoding="utf-8", newline="\n"
-                ) as handle:
+                with self._sink()(str(self.path), "a", encoding="utf-8", newline="\n") as handle:
                     handle.write(json.dumps(message.to_dict(), ensure_ascii=True) + "\n")
                     handle.flush()
                     os.fsync(handle.fileno())
@@ -307,10 +303,7 @@ class TranscriptStore:
                 self._seq = assigned
             self._write_seq(self._seq)
             if not self._contains(assigned):
-                raise TranscriptError(
-                    f"transcript append for seq {assigned} could not be read back; refusing to "
-                    "report a message as delivered when it is not on disk"
-                )
+                raise TranscriptError(f"transcript append for seq {assigned} could not be read back; refusing to report a message as delivered when it is not on disk")
             return message
 
     def _contains(self, seq: int) -> bool:
@@ -357,9 +350,7 @@ class TranscriptStore:
         expected = start_seq
         for message in self.read():
             if message.seq != expected:
-                raise TranscriptError(
-                    f"transcript {self.path} is not gap-free: expected seq {expected}, found {message.seq}"
-                )
+                raise TranscriptError(f"transcript {self.path} is not gap-free: expected seq {expected}, found {message.seq}")
             expected += 1
 
     def render(self, *, width: int = 100) -> str:

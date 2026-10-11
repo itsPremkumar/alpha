@@ -63,11 +63,7 @@ def test_parse_test_log_reads_pytest_verbose_output():
 
 
 def test_parse_test_log_reads_multiple_outcomes():
-    log = (
-        "test_a.py::test_one PASSED [50%]\n"
-        "test_a.py::test_two FAILED [100%]\n"
-        "test_a.py::test_three ERROR [100%]\n"
-    )
+    log = "test_a.py::test_one PASSED [50%]\ntest_a.py::test_two FAILED [100%]\ntest_a.py::test_three ERROR [100%]\n"
     outcomes = parse_test_log(log)
     assert outcomes["test_a.py::test_one"] == "PASSED"
     assert outcomes["test_a.py::test_two"] == "FAILED"
@@ -300,9 +296,7 @@ def test_workspace_can_be_retained(tmp_path):
 
 
 def test_tool_metrics_action():
-    result = run_autonomous_benchmark_eval.invoke(
-        {"action": "metrics", "total_attempts": 5, "successful_attempts": 2, "k": 1}
-    )
+    result = run_autonomous_benchmark_eval.invoke({"action": "metrics", "total_attempts": 5, "successful_attempts": 2, "k": 1})
     assert result["success"] is True
     assert result["pass@1"] == pytest.approx(0.4)
 
@@ -332,9 +326,7 @@ def test_tool_run_action(tmp_path):
 
 
 def test_tool_rejects_invalid_json():
-    result = run_autonomous_benchmark_eval.invoke(
-        {"action": "run", "problem_specs_json": "{not json"}
-    )
+    result = run_autonomous_benchmark_eval.invoke({"action": "run", "problem_specs_json": "{not json"})
     assert result["success"] is False
     assert "not valid JSON" in result["error"]
 

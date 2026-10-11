@@ -34,12 +34,12 @@ import pytest
 from _agent_e2e_helpers import FakeToolCallingModel
 from langchain_core.messages import AIMessage, HumanMessage
 
+from alpha.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 from app.gateway.services import (
     build_run_config,
     inject_authenticated_user_context,
     merge_run_context_overrides,
 )
-from alpha.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 
 # ---------------------------------------------------------------------------
 # Helpers — real production code paths

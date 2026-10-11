@@ -54,10 +54,7 @@ def _normalize_prefix(prefix: str) -> str:
         if ":" in part:
             raise WorkspaceError(f"drive/stream components are not allowed in route prefixes: {prefix!r}")
         if "*" in part or "?" in part:
-            raise WorkspaceError(
-                f"route prefixes are literal path prefixes, not glob patterns: {prefix!r}"
-                " (route the prefix and let the backend glob)"
-            )
+            raise WorkspaceError(f"route prefixes are literal path prefixes, not glob patterns: {prefix!r} (route the prefix and let the backend glob)")
     return "/" + "/".join(parts)
 
 
@@ -141,10 +138,7 @@ class CompositeWorkspace:
         route = self.route_for(path)
         backend = route.backend
         if backend is None:
-            raise WorkspaceDenied(
-                f"{path!r} is on the denied route {route.prefix!r}"
-                + (f" ({route.name})" if route.name else "")
-            )
+            raise WorkspaceDenied(f"{path!r} is on the denied route {route.prefix!r}" + (f" ({route.name})" if route.name else ""))
         return route, route.suffix_for(path)
 
     @staticmethod
@@ -164,10 +158,7 @@ class CompositeWorkspace:
         entries = await route.backend.ls(suffix)
         if route.prefix == "/":
             return list(entries)
-        return [
-            WorkspaceEntry(path=self._refix(route, entry.path), kind=entry.kind, size_bytes=entry.size_bytes)
-            for entry in entries
-        ]
+        return [WorkspaceEntry(path=self._refix(route, entry.path), kind=entry.kind, size_bytes=entry.size_bytes) for entry in entries]
 
     async def read(self, path: str, offset: int = 0, limit: int = 1000) -> str:
         route, suffix = self._delegate(path)
@@ -200,7 +191,4 @@ class CompositeWorkspace:
         return [GrepMatch(path=self._refix(route, hit.path), line=hit.line, text=hit.text) for hit in hits]
 
     async def execute(self, command: str, cwd: str | None = None) -> str:
-        raise WorkspaceUnsupported(
-            "CompositeWorkspace does not route shell execution (not implemented by design); "
-            "shell execution lives in alpha.sandbox (the 'bash' tool / Sandbox.execute_command)"
-        )
+        raise WorkspaceUnsupported("CompositeWorkspace does not route shell execution (not implemented by design); shell execution lives in alpha.sandbox (the 'bash' tool / Sandbox.execute_command)")

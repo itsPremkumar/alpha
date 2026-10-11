@@ -36,9 +36,7 @@ from alpha.workflow.models import (
 from alpha.workflow.runtime import DynamicWorkflowEngine
 
 # The kernel's exact fail-closed reason format (single node 'n1' failed).
-FAIL_CLOSED_REASON_N1 = (
-    "fail-closed: 1 node(s) failed: ['n1']; " "see the node_failed events for the real per-node reasons"
-)
+FAIL_CLOSED_REASON_N1 = "fail-closed: 1 node(s) failed: ['n1']; see the node_failed events for the real per-node reasons"
 
 
 @pytest.fixture(autouse=True)
@@ -122,10 +120,7 @@ def test_saga_defers_fail_close_until_the_compensation_wave_finishes():
     assert run.status == WorkflowRunStatus.FAILED
     fail_close = _events_of_type(engine, run.run_id, "workflow_failed")
     assert len(fail_close) == 1, "single emission once the saga wave finished"
-    assert fail_close[0].payload["reason"] == (
-        "fail-closed: 1 node(s) failed: ['bad']; "
-        "see the node_failed events for the real per-node reasons"
-    )
+    assert fail_close[0].payload["reason"] == ("fail-closed: 1 node(s) failed: ['bad']; see the node_failed events for the real per-node reasons")
 
 
 def test_kernel_dispatch_emits_one_workflow_failed_and_the_guard_stays_silent(registry):
@@ -236,10 +231,7 @@ def test_deadlock_without_any_candidate_node_fails_with_the_disclosed_reason():
 
     engine.execute_step(run.run_id)
 
-    expected = (
-        "Deadlock: no nodes ready to execute; no PENDING/READY node exists to anchor a "
-        "stagnation-recovery patch (no recovery attempted)."
-    )
+    expected = "Deadlock: no nodes ready to execute; no PENDING/READY node exists to anchor a stagnation-recovery patch (no recovery attempted)."
     assert run.status == WorkflowRunStatus.FAILED
     fail_close = _events_of_type(engine, run.run_id, "workflow_failed")
     assert len(fail_close) == 1
@@ -270,10 +262,7 @@ def test_deadlock_remediation_patch_rejection_surfaces_the_real_reason():
 
     engine.execute_step(run.run_id)
 
-    expected = (
-        "Deadlock: no nodes ready to execute; remediation patch rejected: "
-        "Node 'gather_evidence_n1_1' already exists."
-    )
+    expected = "Deadlock: no nodes ready to execute; remediation patch rejected: Node 'gather_evidence_n1_1' already exists."
     assert run.status == WorkflowRunStatus.FAILED
     fail_close = _events_of_type(engine, run.run_id, "workflow_failed")
     assert len(fail_close) == 1

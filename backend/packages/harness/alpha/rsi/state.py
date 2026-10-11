@@ -123,10 +123,7 @@ class RsiCycleState:
             valid = ", ".join(s.value for s in RSIStage)
             raise ValueError(f"unknown RSI stage {stage!r}; valid stages: {valid}") from None
         if target.value in _GATED_STAGES and evidence_kind != "measured":
-            raise ValueError(
-                f"stage {target.value!r} requires evidence_kind='measured' (got {evidence_kind!r}); "
-                "simulated or unverified evidence cannot advance past evaluation (spec §101)"
-            )
+            raise ValueError(f"stage {target.value!r} requires evidence_kind='measured' (got {evidence_kind!r}); simulated or unverified evidence cannot advance past evaluation (spec §101)")
         self.stage = target.value
         self.updated_at = time.time()
 
@@ -252,35 +249,22 @@ def resume() -> tuple[bool, str]:
 
     current_commit = current_repo_commit()
     if state.repo_commit != current_commit:
-        return False, (
-            f"quarantine: repo commit changed for cycle {state.cycle_id} "
-            f"(recorded {state.repo_commit}, current {current_commit})"
-        )
+        return False, (f"quarantine: repo commit changed for cycle {state.cycle_id} (recorded {state.repo_commit}, current {current_commit})")
 
     fresh_sha, sha_err = fresh_manifest_sha()
     if state.evaluator_manifest_sha is not None:
         if fresh_sha is None:
             return False, f"quarantine: evaluator manifest for cycle {state.cycle_id} could not be re-verified ({sha_err})"
         if fresh_sha != state.evaluator_manifest_sha:
-            return False, (
-                f"quarantine: evaluator manifest changed for cycle {state.cycle_id} "
-                f"(recorded {state.evaluator_manifest_sha}, current {fresh_sha})"
-            )
+            return False, (f"quarantine: evaluator manifest changed for cycle {state.cycle_id} (recorded {state.evaluator_manifest_sha}, current {fresh_sha})")
         return True, f"resume ok: cycle {state.cycle_id} at stage {state.stage}; repo commit and evaluator manifest match"
 
     # No digest was recorded at save time — disclose the gap, never paper over it.
     if fresh_sha is None:
-        return True, (
-            f"resume ok: cycle {state.cycle_id} at stage {state.stage}; repo commit matches; "
-            f"evaluator manifest integrity UNVERIFIED ({sha_err})"
-        )
-    return True, (
-        f"resume ok: cycle {state.cycle_id} at stage {state.stage}; repo commit matches; "
-        f"evaluator manifest digest was not recorded at save time (current {fresh_sha} unverified against history)"
-    )
+        return True, (f"resume ok: cycle {state.cycle_id} at stage {state.stage}; repo commit matches; evaluator manifest integrity UNVERIFIED ({sha_err})")
+    return True, (f"resume ok: cycle {state.cycle_id} at stage {state.stage}; repo commit matches; evaluator manifest digest was not recorded at save time (current {fresh_sha} unverified against history)")
 
 
 # Backward-compatibility aliases
 load_cycle_state = load_state
 save_cycle_state = save_state
-

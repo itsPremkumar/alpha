@@ -43,11 +43,13 @@ def test_consequence_simulator_server_command(tmp_path):
 
 
 def test_simulate_consequences_tool(tmp_path):
-    res_str = simulate_consequences.invoke({
-        "action_name": "replace_file_content",
-        "target_file": "alembic/versions/001_migration.py",
-        "workspace_path": str(tmp_path),
-    })
+    res_str = simulate_consequences.invoke(
+        {
+            "action_name": "replace_file_content",
+            "target_file": "alembic/versions/001_migration.py",
+            "workspace_path": str(tmp_path),
+        }
+    )
     data = json.loads(res_str)
     assert "blast_radius" in data
     assert "warnings" in data

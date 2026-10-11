@@ -6,15 +6,13 @@ evaluation, and live variable scope inspection without restarting processes.
 
 from __future__ import annotations
 
-import ast
 import io
-import linecache
 import logging
 import sys
 import threading
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +21,7 @@ logger = logging.getLogger(__name__)
 class Breakpoint:
     file_path: str
     line_number: int
-    condition: Optional[str] = None
+    condition: str | None = None
     hit_count: int = 0
     enabled: bool = True
 
@@ -44,17 +42,17 @@ class DebugSession:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.breakpoints: dict[tuple[str, int], Breakpoint] = {}
-        self.current_frame: Optional[StackFrame] = None
+        self.current_frame: StackFrame | None = None
         self.is_paused = False
-        self.pause_reason: Optional[str] = None
-        self.step_mode: Optional[str] = None  # "over", "into", "out"
+        self.pause_reason: str | None = None
+        self.step_mode: str | None = None  # "over", "into", "out"
         self._execution_lock = threading.Event()
         self.stdout_capture = io.StringIO()
         self.stderr_capture = io.StringIO()
         self.call_stack: list[StackFrame] = []
         self._target_depth = 0
 
-    def add_breakpoint(self, file_path: str, line_number: int, condition: Optional[str] = None) -> Breakpoint:
+    def add_breakpoint(self, file_path: str, line_number: int, condition: str | None = None) -> Breakpoint:
         norm_path = str(Path(file_path).resolve())
         bp = Breakpoint(file_path=norm_path, line_number=line_number, condition=condition)
         self.breakpoints[(norm_path, line_number)] = bp
@@ -121,7 +119,7 @@ class InteractiveDebugEngine:
         self._sessions[session_id] = session
         return session
 
-    def get_session(self, session_id: str) -> Optional[DebugSession]:
+    def get_session(self, session_id: str) -> DebugSession | None:
         return self._sessions.get(session_id)
 
     def execute_with_breakpoints(

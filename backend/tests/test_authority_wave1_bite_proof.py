@@ -117,10 +117,7 @@ def test_bite_the_enable_attempt_refusal_is_load_bearing(monkeypatch: pytest.Mon
     #    than being refused, which is the exact shape of a silent escalation.
     resolution = compose_scopes([scope], baseline=_baseline(), agent="researcher-3")
     assert resolution.effective.permits_capability("repository_mutate")[0] is False
-    assert scope.denied_capabilities == frozenset(), (
-        "the payload's enable_capabilities was silently ignored, i.e. a caller could believe it "
-        "widened a scope when it did not"
-    )
+    assert scope.denied_capabilities == frozenset(), "the payload's enable_capabilities was silently ignored, i.e. a caller could believe it widened a scope when it did not"
 
 
 _ORIGINAL_KNOWN = {
@@ -151,10 +148,8 @@ def _from_dict_without_unknown_key_check(cls, data, *, baseline):
 def _install_pristine_from_dict():
     """Capture the real ``from_dict`` body before any test patches it."""
 
-    scopes_mod._real_from_dict = (
-        lambda payload, *, baseline: ScopePolicy.from_dict.__wrapped__(ScopePolicy, payload, baseline=baseline)
-        if hasattr(ScopePolicy.from_dict, "__wrapped__")
-        else _PRISTINE_FROM_DICT[0](payload, baseline=baseline)
+    scopes_mod._real_from_dict = lambda payload, *, baseline: (
+        ScopePolicy.from_dict.__wrapped__(ScopePolicy, payload, baseline=baseline) if hasattr(ScopePolicy.from_dict, "__wrapped__") else _PRISTINE_FROM_DICT[0](payload, baseline=baseline)
     )
     yield
 
@@ -216,10 +211,7 @@ def test_bite_composition_order_is_the_property_not_an_accident() -> None:
     # a defect -- loses one of the two denials.
     buggy = compose_scopes([a, b], baseline=_baseline(), agent="x")
     only_last = _compose_last_wins([a, b], baseline=_baseline(), agent="x")
-    assert only_last.effective.denied_capabilities != buggy.effective.denied_capabilities, (
-        "if a last-wins composition gave the same answer, the strictest-union rule would be "
-        "untested by these cases"
-    )
+    assert only_last.effective.denied_capabilities != buggy.effective.denied_capabilities, "if a last-wins composition gave the same answer, the strictest-union rule would be untested by these cases"
     assert set(buggy.effective.denied_capabilities) > set(only_last.effective.denied_capabilities)
 
 
@@ -291,13 +283,8 @@ def test_bite_the_tamper_detection_is_load_bearing() -> None:
         )
     object.__setattr__(chain.entries()[1], "policy_rule", "SOMETHING-ELSE")
     rubber_stamp = _verify_without_hashing(chain)
-    assert rubber_stamp.ok is True, (
-        "with the hash check removed the tampered receipt verifies, so a receipt that can be "
-        "edited after the fact is not evidence"
-    )
-    assert chain.entries()[1].compute_hash() != chain.entries()[1].hash, (
-        "the stored hash no longer matches the record's contents"
-    )
+    assert rubber_stamp.ok is True, "with the hash check removed the tampered receipt verifies, so a receipt that can be edited after the fact is not evidence"
+    assert chain.entries()[1].compute_hash() != chain.entries()[1].hash, "the stored hash no longer matches the record's contents"
 
 
 def _verify_without_hashing(chain: ReceiptChain):
@@ -358,9 +345,7 @@ def test_bite_the_child_identity_requirement_is_load_bearing() -> None:
 
     # Remove the control: the child collapses into a parentless identity, and
     # "who did this" is unanswerable in exactly the case that matters.
-    orphan = receipts_mod.ExecutionIdentity(
-        kind=receipts_mod.ActorKind.AGENT, principal_id="orphan"
-    )
+    orphan = receipts_mod.ExecutionIdentity(kind=receipts_mod.ActorKind.AGENT, principal_id="orphan")
     assert orphan.delegator_id == ""
     chain = ReceiptChain(chain_id="bite-g")
     chain.append(
@@ -410,9 +395,7 @@ def test_bite_the_subagent_inheritance_is_load_bearing(monkeypatch: pytest.Monke
     turn.absorb(UntrustedSource.AGENT_MESSAGE, location="peer/1")
     assert turn.spawn_child("researcher-3").tainted is True
 
-    monkeypatch.setattr(
-        TaintTurn, "spawn_child", lambda self, label, *, isolated=False, isolation_reason="": new_turn("clean-child")
-    )
+    monkeypatch.setattr(TaintTurn, "spawn_child", lambda self, label, *, isolated=False, isolation_reason="": new_turn("clean-child"))
     assert turn.spawn_child("researcher-3").tainted is False
     assert turn.tainted is True
 
@@ -451,9 +434,7 @@ def test_bite_only_a_control_clears_taint(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(taint_mod, "TRUSTED_CLEARING_CONTROLS", frozenset({*taint_mod.TRUSTED_CLEARING_CONTROLS, "model"}))
     turn.clear("model")
     assert turn.tainted is False
-    assert turn.may_record_verified_evidence()[0] is True, (
-        "with the model able to clear its own taint, a fetched page can produce VERIFIED evidence"
-    )
+    assert turn.may_record_verified_evidence()[0] is True, "with the model able to clear its own taint, a fetched page can produce VERIFIED evidence"
 
 
 def test_bite_taint_bounds_the_real_grant_chokepoint() -> None:
@@ -522,10 +503,7 @@ def test_bite_approval_fails_closed_because_only_true_approves() -> None:
     assert source.count("ApprovalOutcome.APPROVED") == 1
     assert "if verdict is True:" in source
     for forbidden in ("except", "try:", "timeout", "unavailable"):
-        assert forbidden not in source, (
-            f"_verdict_to_result must contain no {forbidden!r} branch: it converts a verdict, and a "
-            "verdict converter with an error path can approve on error"
-        )
+        assert forbidden not in source, f"_verdict_to_result must contain no {forbidden!r} branch: it converts a verdict, and a verdict converter with an error path can approve on error"
 
     # Behavioural proof for each failure mode.
     from alpha.safety.authority.boundaries import ApproverTimeout, ApproverUnavailable
@@ -559,10 +537,7 @@ def test_bite_approval_fails_closed_because_only_true_approves() -> None:
             )
 
     broken = _fail_open(lambda: (_ for _ in ()).throw(RuntimeError("db down")), subject="x")
-    assert broken.approved is True, (
-        "a fail-open gate approves a destructive action because the approver crashed; this is the "
-        "failure mode the shipped resolver exists to prevent"
-    )
+    assert broken.approved is True, "a fail-open gate approves a destructive action because the approver crashed; this is the failure mode the shipped resolver exists to prevent"
 
 
 # ===========================================================================
@@ -596,11 +571,7 @@ def test_bite_credential_isolation_is_load_bearing() -> None:
                         owner=spec.owner,
                         capability=spec.capability,
                         credential_key=spec.credential_key,
-                        status=(
-                            boundaries_mod.CredentialStatus.AVAILABLE
-                            if verdict is True
-                            else boundaries_mod.CredentialStatus.FAILED
-                        ),
+                        status=(boundaries_mod.CredentialStatus.AVAILABLE if verdict is True else boundaries_mod.CredentialStatus.FAILED),
                         reason="" if verdict is True else f"returned {verdict!r}",
                     )
                 )
@@ -621,10 +592,7 @@ def test_bite_credential_isolation_is_load_bearing() -> None:
         return boundaries_mod.CredentialIsolationReport(owners=tuple(results))
 
     shared = _shared_try(specs)
-    assert shared.owner("a").available is False, (
-        "one invalid credential took down an unrelated capability: this is the property the "
-        "per-owner try in resolve_credential_owners exists to hold"
-    )
+    assert shared.owner("a").available is False, "one invalid credential took down an unrelated capability: this is the property the per-owner try in resolve_credential_owners exists to hold"
     assert shared.owner("b").available is False
 
 
@@ -647,16 +615,10 @@ def test_bite_startup_refusal_is_load_bearing() -> None:
     # reporting "Status: Ready" for a product that cannot safely serve a request
     # looks like from the inside.
     def _lenient(config, *, baseline=None):
-        violations = [
-            f"unknown configuration keys {sorted(set(config) - {'bind_host', 'require_ingress_auth', 'auth_disabled'})}"
-            for _ in [0]
-            if set(config) - {"bind_host", "require_ingress_auth", "auth_disabled"}
-        ]
+        violations = [f"unknown configuration keys {sorted(set(config) - {'bind_host', 'require_ingress_auth', 'auth_disabled'})}" for _ in [0] if set(config) - {"bind_host", "require_ingress_auth", "auth_disabled"}]
         if violations:
             logger_warning(violations)
-        return boundaries_mod.StartupReport(
-            checks=((boundaries_mod.StartupCheck.CONFIG_PARSES, True, "ok"),)
-        )
+        return boundaries_mod.StartupReport(checks=((boundaries_mod.StartupCheck.CONFIG_PARSES, True, "ok"),))
 
     def logger_warning(_violations):
         return None
@@ -666,10 +628,7 @@ def test_bite_startup_refusal_is_load_bearing() -> None:
         {"bind_host": "127.0.0.1", "auth_disabled": True},
         {"bind_host": "127.0.0.1", "authentcation": True},
     ):
-        assert _lenient(config).ok is True, (
-            "a lenient startup gate starts an unauthenticated, exposed Gateway: the exact inverse "
-            "of the rule being defended"
-        )
+        assert _lenient(config).ok is True, "a lenient startup gate starts an unauthenticated, exposed Gateway: the exact inverse of the rule being defended"
 
 
 # ===========================================================================
@@ -699,10 +658,7 @@ def test_bite_the_scope_intersection_at_the_grant_chokepoint_is_load_bearing() -
         creator_grant={"process_exec", "workspace_write"},
         subject="hire of 'researcher-3'",
     )
-    assert granted == frozenset({"process_exec"}), (
-        "with the scope intersection removed the denied capability is granted, so the chokepoint "
-        "wiring is what makes a scope more than a configuration convention"
-    )
+    assert granted == frozenset({"process_exec"}), "with the scope intersection removed the denied capability is granted, so the chokepoint wiring is what makes a scope more than a configuration convention"
 
 
 def test_bite_scope_schemas_stay_readable() -> None:

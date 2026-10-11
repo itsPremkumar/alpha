@@ -86,13 +86,16 @@ def _record_finish_first_evidence(message: object, *, code_writes: int) -> None:
             exc_info=True,
         )
 
+
 _WRITE_TOOLS = frozenset({"write_file", "str_replace", "hashline_edit"})
-_VERIFY_TOOLS = frozenset({
-    "auto_test_and_repair",
-    "reproduce_and_verify",
-    "run_task_evaluation_benchmark",
-    "audit_finish_first_evidence",
-})
+_VERIFY_TOOLS = frozenset(
+    {
+        "auto_test_and_repair",
+        "reproduce_and_verify",
+        "run_task_evaluation_benchmark",
+        "audit_finish_first_evidence",
+    }
+)
 _TEST_KEYWORDS = ("pytest", "npm test", "pnpm test", "cargo test", "go test", "python -m unittest")
 
 _CRITIC_REJECTION_NAME = "completion_critic_rejection"
@@ -101,11 +104,7 @@ _CRITIC_UNAVAILABLE_REJECTION = (
     "Re-read this turn's own tool results -- especially the most recent action -- diagnose the error, "
     "and only declare completion once every step has succeeded."
 )
-_FINISH_FIRST_NOTICE = (
-    "\n\n> [!NOTE]\n"
-    "> **[Finish-First Notice]**: Code modifications were performed in this session without an automated test verification step. "
-    "Run `auto_test_and_repair` to verify tests before deploying."
-)
+_FINISH_FIRST_NOTICE = "\n\n> [!NOTE]\n> **[Finish-First Notice]**: Code modifications were performed in this session without an automated test verification step. Run `auto_test_and_repair` to verify tests before deploying."
 
 
 def _content_text(content: Any) -> str:

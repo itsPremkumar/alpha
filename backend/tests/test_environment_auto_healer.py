@@ -1,9 +1,6 @@
 """Unit tests for Autonomous Environment Auto-Healing and Dependency Reconciler."""
 
-import pytest
-
 from alpha.runtime.environment_auto_healer import (
-    CANONICAL_MODULE_MAP,
     DependencyConstraint,
     DependencySATSolver,
     EnvironmentAutoHealer,
@@ -84,11 +81,13 @@ def test_diagnose_and_heal_environment_tool(tmp_path):
     # Test tool invocation with simulated error log
     simulated_log = "ModuleNotFoundError: No module named 'dotenv'\n"
 
-    res = diagnose_and_heal_environment.invoke({
-        "project_root": str(tmp_path),
-        "auto_heal": True,
-        "error_logs": simulated_log,
-    })
+    res = diagnose_and_heal_environment.invoke(
+        {
+            "project_root": str(tmp_path),
+            "auto_heal": True,
+            "error_logs": simulated_log,
+        }
+    )
 
     assert isinstance(res, dict)
     assert res["success"] is True

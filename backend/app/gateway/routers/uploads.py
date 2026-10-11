@@ -11,8 +11,6 @@ from typing import BinaryIO
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
-from app.gateway.deps import get_config
 from alpha.config.app_config import AppConfig
 from alpha.config.paths import get_paths
 from alpha.runtime.user_context import get_effective_user_id
@@ -36,6 +34,8 @@ from alpha.uploads.manager import (
 from alpha.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
 from alpha.utils.file_io import run_file_io
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
+from app.gateway.deps import get_config
 
 logger = logging.getLogger(__name__)
 

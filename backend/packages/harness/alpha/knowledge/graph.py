@@ -138,11 +138,13 @@ class KnowledgeGraph:
         for e in edges:
             tgt_node = self._entities.get(e.target_id)
             if tgt_node:
-                results.append({
-                    "relation": e.relation_type.value,
-                    "target_entity": tgt_node.to_dict(),
-                    "properties": e.properties,
-                })
+                results.append(
+                    {
+                        "relation": e.relation_type.value,
+                        "target_entity": tgt_node.to_dict(),
+                        "properties": e.properties,
+                    }
+                )
         return results
 
     def query_dependencies(self, entity_id: str, max_depth: int = 4) -> dict[str, Any]:
@@ -168,12 +170,14 @@ class KnowledgeGraph:
                         visited.add(tgt_id)
                         tgt_node = self._entities.get(tgt_id)
                         if tgt_node:
-                            dependencies.append({
-                                "entity": tgt_node.to_dict(),
-                                "relation": edge.relation_type.value,
-                                "depth": depth + 1,
-                                "via": curr_id,
-                            })
+                            dependencies.append(
+                                {
+                                    "entity": tgt_node.to_dict(),
+                                    "relation": edge.relation_type.value,
+                                    "depth": depth + 1,
+                                    "via": curr_id,
+                                }
+                            )
                             queue.append((tgt_id, depth + 1))
 
         return {
@@ -203,12 +207,14 @@ class KnowledgeGraph:
                     visited.add(src_id)
                     src_node = self._entities.get(src_id)
                     if src_node:
-                        affected_entities.append({
-                            "entity": src_node.to_dict(),
-                            "relation": edge.relation_type.value,
-                            "depth": depth + 1,
-                            "impacted_by": curr_id,
-                        })
+                        affected_entities.append(
+                            {
+                                "entity": src_node.to_dict(),
+                                "relation": edge.relation_type.value,
+                                "depth": depth + 1,
+                                "impacted_by": curr_id,
+                            }
+                        )
                         queue.append((src_id, depth + 1))
 
         return {

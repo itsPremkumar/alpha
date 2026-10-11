@@ -300,9 +300,7 @@ def test_persisted_poisoned_endpoint_is_dropped_on_load(tmp_path, caplog):
                 "openrouter": {"api_key": "sk-persisted-123456", "base_url": "http://169.254.169.254/latest/meta-data/"},
                 "custom": {"api_key": "ollama", "base_url": "http://127.0.0.1:11434/v1"},
             },
-            "custom_models": [
-                {"id": "sneaky", "model": "sneaky", "provider": "openrouter", "base_url": "http://10.0.0.5/v1", "api_key": "k"}
-            ],
+            "custom_models": [{"id": "sneaky", "model": "sneaky", "provider": "openrouter", "base_url": "http://10.0.0.5/v1", "api_key": "k"}],
         },
     )
     with caplog.at_level("WARNING"):

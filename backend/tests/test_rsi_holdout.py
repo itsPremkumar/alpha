@@ -68,9 +68,7 @@ def test_register_hidden_suite_returns_unique_hidden_case_ids():
 
 def test_holdout_case_and_record_shapes_match_contract():
     assert set(asdict(HoldoutCase(case_id="c", fixture={"a": 1}, expected={"b": 2}))) == {"case_id", "fixture", "expected", "hidden"}
-    record = HoldoutResultRecord(
-        suite="s", suite_version="v1", case_id="c", passed=True, score=1.0, detail="d", evidence_kind="measured", ran_at="t"
-    )
+    record = HoldoutResultRecord(suite="s", suite_version="v1", case_id="c", passed=True, score=1.0, detail="d", evidence_kind="measured", ran_at="t")
     assert set(asdict(record)) == {"suite", "suite_version", "case_id", "passed", "score", "detail", "evidence_kind", "ran_at"}
 
 

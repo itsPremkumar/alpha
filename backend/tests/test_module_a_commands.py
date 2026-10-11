@@ -73,14 +73,9 @@ def test_boost_without_args_is_a_usage_error():
 
 def test_boost_reports_the_real_derivation_for_simple_and_complex_tasks():
     simple = handle_boost("say hi")
-    complex_task = handle_boost(
-        "architect a distributed consensus protocol, prove liveness and safety under partitions, "
-        "and migrate 40 services without downtime"
-    )
+    complex_task = handle_boost("architect a distributed consensus protocol, prove liveness and safety under partitions, and migrate 40 services without downtime")
     assert simple.status == complex_task.status == "success"
-    assert simple.data["thinking_mode"]["tier"] != complex_task.data["thinking_mode"]["tier"], (
-        "a trivially simple task and an architectural migration must not derive the same thinking tier"
-    )
+    assert simple.data["thinking_mode"]["tier"] != complex_task.data["thinking_mode"]["tier"], "a trivially simple task and an architectural migration must not derive the same thinking tier"
 
 
 def test_boost_surfaces_a_classifier_failure_instead_of_inventing_a_tier(monkeypatch):
@@ -242,6 +237,7 @@ def test_self_heal_reports_real_journal_state_and_claims_no_fix(monkeypatch, tmp
     # is the module-level name the default store actually calls.
     monkeypatch.setattr(report_store, "runtime_home", lambda *a, **k: tmp_path)
     from alpha.runtime.sentinel.report_store import SentinelReportStore
+
     store = SentinelReportStore(tmp_path / "sentinel-reports")
     store.append(
         {

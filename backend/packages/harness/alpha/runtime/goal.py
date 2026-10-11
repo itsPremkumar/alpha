@@ -318,10 +318,7 @@ async def _system_one_goal_completion(goal: GoalState, conversation: str) -> Goa
             },
             {
                 "satisfied": BooleanQuestion(
-                    instructions=(
-                        "Is the active goal fully satisfied using ONLY `visible_conversation_evidence`? "
-                        "Do not assume files, commands or tests changed unless the evidence explicitly shows it."
-                    ),
+                    instructions=("Is the active goal fully satisfied using ONLY `visible_conversation_evidence`? Do not assume files, commands or tests changed unless the evidence explicitly shows it."),
                     criteria={
                         "true": "The evidence explicitly shows the goal was achieved.",
                         "false": "The goal is not yet achieved, or the evidence is too weak to prove it.",

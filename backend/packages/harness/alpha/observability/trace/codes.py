@@ -283,9 +283,7 @@ EVENT_TYPES: Final[Mapping[str, EventTypeDef]] = MappingProxyType(_index())
 EVENT_CODES: Final[frozenset[str]] = frozenset(EVENT_TYPES)
 
 #: Layer index -> its codes, so "is any layer empty" is answerable and asserted.
-LAYER_EVENT_CODES: Final[Mapping[int, tuple[str, ...]]] = MappingProxyType(
-    {int(layer): tuple(sorted(d.code for d in EVENT_TYPES.values() if d.layer is layer)) for layer in TraceLayer}
-)
+LAYER_EVENT_CODES: Final[Mapping[int, tuple[str, ...]]] = MappingProxyType({int(layer): tuple(sorted(d.code for d in EVENT_TYPES.values() if d.layer is layer)) for layer in TraceLayer})
 
 
 class UnknownTraceEventTypeError(ValueError):

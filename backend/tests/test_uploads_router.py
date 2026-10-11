@@ -12,9 +12,9 @@ from _router_auth_helpers import call_unwrapped, make_authed_test_app
 from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
 
+from alpha.sandbox.lease import get_sandbox_lease_manager
 from app.gateway.deps import get_config
 from app.gateway.routers import uploads
-from alpha.sandbox.lease import get_sandbox_lease_manager
 
 
 class ChunkedUpload:

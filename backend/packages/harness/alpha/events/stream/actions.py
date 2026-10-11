@@ -21,6 +21,7 @@ class ActionType(str, Enum):
 @dataclass
 class Action:
     """Base class for all agent-initiated actions."""
+
     action_type: ActionType
     thought: str = ""
     action_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -36,6 +37,7 @@ class Action:
 @dataclass
 class CmdRunAction(Action):
     """Execution of a shell command."""
+
     command: str = ""
     is_background: bool = False
     cwd: str | None = None
@@ -57,6 +59,7 @@ class CmdRunAction(Action):
 @dataclass
 class FileEditAction(Action):
     """File creation, deletion, or replacement."""
+
     path: str = ""
     content: str | None = None
     old_str: str | None = None
@@ -84,6 +87,7 @@ class FileEditAction(Action):
 @dataclass
 class CriticAction(Action):
     """Evaluation by a quality or completion critic."""
+
     critic_name: str = ""
     target_action_id: str | None = None
 
@@ -102,6 +106,7 @@ class CriticAction(Action):
 @dataclass
 class AgentFinishAction(Action):
     """Agent declaration of task completion."""
+
     final_thought: str = ""
     deliverables: list[str] = field(default_factory=list)
 

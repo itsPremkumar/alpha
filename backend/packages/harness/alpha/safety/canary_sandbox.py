@@ -15,7 +15,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class SafetyViolation:
     rule_name: str
     message: str
-    line_number: Optional[int] = None
+    line_number: int | None = None
     severity: str = "FATAL"  # FATAL, WARNING
 
 
@@ -278,14 +278,13 @@ class EphemeralCanarySandbox:
                     test_command,
                     shell=True,
                     cwd=str(canary_root),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     text=True,
                     timeout=timeout_seconds,
                     env=env,
                 )
                 duration = round(time.time() - start_time, 2)
-                success = (proc.returncode == 0)
+                success = proc.returncode == 0
 
                 return CanaryExecutionResult(
                     success=success,

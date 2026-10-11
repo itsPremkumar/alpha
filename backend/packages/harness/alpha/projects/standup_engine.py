@@ -81,8 +81,8 @@ class StandupReport:
 
         lines.append("\n## 3. Active Resource Locks")
         if self.active_locks:
-            for l in self.active_locks:
-                lines.append(f"- 🔒 `{l['scope']}:{l['path']}` held by @{l['owner_bot']}")
+            for lock in self.active_locks:
+                lines.append(f"- 🔒 `{lock['scope']}:{lock['path']}` held by @{lock['owner_bot']}")
         else:
             lines.append("- _No active resource locks._")
 
@@ -121,14 +121,12 @@ class StandupEngine:
 
             # 3. Active Locks & Pending Requests
             lock_mgr = get_lock_manager()
-            locks = [l.to_dict() for l in lock_mgr.list_locks(self.project_id)]
+            locks = [lock.to_dict() for lock in lock_mgr.list_locks(self.project_id)]
             pending_requests = lock_mgr.list_requests(self.project_id, pending_only=True)
 
             blockers: list[str] = []
             for req in pending_requests:
-                blockers.append(
-                    f"@{req.requester_bot} blocked waiting for lock on {req.scope}:{req.path}"
-                )
+                blockers.append(f"@{req.requester_bot} blocked waiting for lock on {req.scope}:{req.path}")
 
             # 4. Stagnation Detection
             stagnant_alerts: list[StagnantTaskAlert] = []
@@ -151,10 +149,7 @@ class StandupEngine:
                         pass
 
             # 5. Executive Summary
-            summary = (
-                f"Team has {len(completed)} completed tasks and {len(in_progress)} active work streams. "
-                f"Detected {len(blockers)} resource lock contention(s) and {len(stagnant_alerts)} stagnant task(s)."
-            )
+            summary = f"Team has {len(completed)} completed tasks and {len(in_progress)} active work streams. Detected {len(blockers)} resource lock contention(s) and {len(stagnant_alerts)} stagnant task(s)."
 
             report = StandupReport(
                 project_id=self.project_id,

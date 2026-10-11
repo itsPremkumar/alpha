@@ -117,10 +117,7 @@ class MergeSimulation:
             )
         if self.outcome is MergeOutcome.FAILED:
             return f"Merge simulation could not be completed: {self.reason}"
-        return (
-            f"Merge of {self.head_sha or 'the candidate'} into {self.base_ref} applied with no textual conflict. "
-            "This says the trees could be joined — NOT that the result is correct, tested, or safe to ship."
-        )
+        return f"Merge of {self.head_sha or 'the candidate'} into {self.base_ref} applied with no textual conflict. This says the trees could be joined — NOT that the result is correct, tested, or safe to ship."
 
 
 def _changed_paths(worktree: Path, manager: WorktreeManager) -> list[str]:

@@ -38,6 +38,7 @@ class TaskState(str, Enum):
 
 class InvalidStateTransitionError(ValueError):
     """Raised when an illegal state machine transition is attempted."""
+
     pass
 
 
@@ -195,9 +196,7 @@ class TaskStateMachine:
 
         if not self.can_transition_to(target_state):
             raise InvalidStateTransitionError(
-                f"Illegal state transition for task '{self.task_id}': "
-                f"Cannot move from '{self._current_state.value}' to '{target_state.value}'. "
-                f"Valid next states: {[s.value for s in VALID_TRANSITIONS.get(self._current_state, set())]}"
+                f"Illegal state transition for task '{self.task_id}': Cannot move from '{self._current_state.value}' to '{target_state.value}'. Valid next states: {[s.value for s in VALID_TRANSITIONS.get(self._current_state, set())]}"
             )
 
         record = StateTransitionRecord(
@@ -214,9 +213,7 @@ class TaskStateMachine:
     def reset_for_retry(self, reason: str = "Task retried after failure", actor: str = "recovery_agent") -> TaskState:
         """Allow an explicit recovery reset from FAILED or BLOCKED back to READY."""
         if self._current_state not in (TaskState.FAILED, TaskState.BLOCKED):
-            raise InvalidStateTransitionError(
-                f"Cannot reset task '{self.task_id}' from state '{self._current_state.value}'. Only FAILED or BLOCKED can be reset."
-            )
+            raise InvalidStateTransitionError(f"Cannot reset task '{self.task_id}' from state '{self._current_state.value}'. Only FAILED or BLOCKED can be reset.")
 
         record = StateTransitionRecord(
             from_state=self._current_state,

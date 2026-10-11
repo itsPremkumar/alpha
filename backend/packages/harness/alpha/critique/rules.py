@@ -36,9 +36,7 @@ def rule_bare_except(path: str, tree: ast.AST, src: str) -> list[Finding]:
             if name in {"<bare>", "Exception", "BaseException"}:
                 swallowed = all(isinstance(s, (ast.Pass, ast.Continue)) for s in node.body)
                 if swallowed:
-                    out.append(_f("bare-except", "medium", path, node.lineno,
-                                  f"broad 'except {name}' swallows the error",
-                                  "Catch a specific exception; log and re-raise unexpected ones."))
+                    out.append(_f("bare-except", "medium", path, node.lineno, f"broad 'except {name}' swallows the error", "Catch a specific exception; log and re-raise unexpected ones."))
     return out
 
 
@@ -57,9 +55,7 @@ def rule_open_encoding(path: str, tree: ast.AST, src: str) -> list[Finding]:
             if mode and "b" in str(mode):
                 continue
             if "encoding" not in keywords:
-                out.append(_f("open-encoding", "medium", path, node.lineno,
-                              "open() without an explicit encoding",
-                              "Pass encoding='utf-8' so behaviour is locale-independent."))
+                out.append(_f("open-encoding", "medium", path, node.lineno, "open() without an explicit encoding", "Pass encoding='utf-8' so behaviour is locale-independent."))
     return out
 
 
@@ -68,8 +64,7 @@ def rule_print_in_library(path: str, tree: ast.AST, src: str) -> list[Finding]:
     out: list[Finding] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
-            out.append(_f("print-in-library", "low", path, node.lineno,
-                          "print() in library code", "Use the logging module instead."))
+            out.append(_f("print-in-library", "low", path, node.lineno, "print() in library code", "Use the logging module instead."))
     return out
 
 
@@ -96,9 +91,7 @@ def rule_mutable_default(path: str, tree: ast.AST, src: str) -> list[Finding]:
             defaults = list(node.args.defaults) + [k for k in node.args.kw_defaults if k is not None]
             for d in defaults:
                 if isinstance(d, (ast.List, ast.Dict, ast.Set)):
-                    out.append(_f("mutable-default", "high", path, node.lineno,
-                                  f"{node.name}() has a mutable default argument",
-                                  "Use None and assign inside, or dataclasses.field(default_factory=...)."))
+                    out.append(_f("mutable-default", "high", path, node.lineno, f"{node.name}() has a mutable default argument", "Use None and assign inside, or dataclasses.field(default_factory=...)."))
     return out
 
 
@@ -109,9 +102,7 @@ def rule_from_dict_unknown_check(path: str, tree: ast.AST, src: str) -> list[Fin
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "from_dict":
             uses_unknown = any(isinstance(n, ast.Name) and n.id == "unknown" for n in ast.walk(node))
             if not uses_unknown:
-                out.append(_f("from-dict-no-unknown-check", "medium", path, node.lineno,
-                              "from_dict does not reject unknown keys",
-                              "Compute unknown = sorted(set(data) - known) and raise on a non-empty set."))
+                out.append(_f("from-dict-no-unknown-check", "medium", path, node.lineno, "from_dict does not reject unknown keys", "Compute unknown = sorted(set(data) - known) and raise on a non-empty set."))
     return out
 
 
@@ -122,9 +113,7 @@ def rule_save_without_fsync(path: str, tree: ast.AST, src: str) -> list[Finding]
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "_save":
             has_fsync = any(isinstance(n, ast.Attribute) and n.attr == "fsync" for n in ast.walk(node))
             if not has_fsync:
-                out.append(_f("save-no-fsync", "medium", path, node.lineno,
-                              "durable write has no fsync before replace",
-                              "flush + os.fsync(fd) before os.replace so a crash cannot lose the write."))
+                out.append(_f("save-no-fsync", "medium", path, node.lineno, "durable write has no fsync before replace", "flush + os.fsync(fd) before os.replace so a crash cannot lose the write."))
     return out
 
 

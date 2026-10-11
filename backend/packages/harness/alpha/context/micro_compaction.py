@@ -38,7 +38,7 @@ def compact_tool_output(
     args_repr = str(tool_input)[:40]
     receipt = f"[TOOL RECEIPT: {tool_name}({args_repr}) -> {status} | {len(lines)} lines | '{first_line[:30]}...' -> '{last_line[:30]}']"
     if len(receipt) > max_chars:
-        receipt = receipt[:max_chars - 4] + "...]"
+        receipt = receipt[: max_chars - 4] + "...]"
     return receipt
 
 

@@ -281,9 +281,7 @@ def test_throttle_state_is_bounded_under_identity_flooding(clock: dict[str, floa
     assert throttle.retry_after("alpha-flood-4999") is not None
 
 
-def test_throttle_knobs_can_tighten_but_cannot_be_raised_past_the_ceiling(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_throttle_knobs_can_tighten_but_cannot_be_raised_past_the_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """An operator may set the budget, not disable it."""
 
     monkeypatch.setenv("ALPHA_PEER_NETWORK_PAIR_MAX_ATTEMPTS", "1000000")
@@ -584,9 +582,7 @@ def test_sqlite_indexes_exist_for_the_peer_table(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 # 5. Blocking resolver calls stay off the event loop
 # --------------------------------------------------------------------------- #
-def test_udp_discovery_resolution_does_not_block_the_event_loop(
-    make_service, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_udp_discovery_resolution_does_not_block_the_event_loop(make_service, monkeypatch: pytest.MonkeyPatch) -> None:
     """``getaddrinfo`` runs on a worker thread, so a slow resolver cannot stall the Gateway.
 
     The assertion is made from *inside* the blocked resolver: it reads a
@@ -697,9 +693,7 @@ def test_a_slow_resolver_degrades_one_beacon_instead_of_stalling(make_service, m
     assert finished.is_set()
 
 
-def test_the_advertised_host_is_resolved_once_and_primed_off_loop(
-    make_service, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_advertised_host_is_resolved_once_and_primed_off_loop(make_service, monkeypatch: pytest.MonkeyPatch) -> None:
     """A blocking DNS lookup must not run per Agent Card request."""
 
     calls: list[tuple[Any, ...]] = []
@@ -954,9 +948,7 @@ def test_the_public_pairing_route_refuses_the_nth_attempt(public_plane, monkeypa
     assert len(asyncio.run(service.list_peers())) == 1
 
 
-def test_the_public_pairing_route_is_closed_until_the_operator_opts_in(
-    public_plane, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_public_pairing_route_is_closed_until_the_operator_opts_in(public_plane, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALPHA_PEER_NETWORK_ENABLED", "0")
     client = _public_client()
     service = public_plane.get_peer_network_service()

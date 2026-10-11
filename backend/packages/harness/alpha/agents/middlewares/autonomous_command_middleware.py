@@ -52,9 +52,7 @@ class AutonomousCommandMiddleware(AgentMiddleware):
         latest_user_text = ""
         for msg in reversed(messages):
             if is_real_user_message(msg):
-                latest_user_text = get_original_user_content_text(
-                    getattr(msg, "content", ""), getattr(msg, "additional_kwargs", None)
-                )
+                latest_user_text = get_original_user_content_text(getattr(msg, "content", ""), getattr(msg, "additional_kwargs", None))
                 break
 
         directive_injected = False

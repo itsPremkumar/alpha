@@ -139,10 +139,10 @@ def test_parse_intent_exposes_all_dimensions() -> None:
 
 _TRIGGER_CASES = [
     # (prompt, implied command, registered in alpha.commands.catalog?)
-# P5 landed real handlers for the five Module-A spec commands, so their honest
-# `registered` flag flipped False -> True (the resolver computes it from the
-# catalog; the disclosure lives in docs/TASK_LIST.md). Resolver behaviour is
-# otherwise unchanged: same command, same confidence window, same reason shape.
+    # P5 landed real handlers for the five Module-A spec commands, so their honest
+    # `registered` flag flipped False -> True (the resolver computes it from the
+    # catalog; the disclosure lives in docs/TASK_LIST.md). Resolver behaviour is
+    # otherwise unchanged: same command, same confidence window, same reason shape.
     ("Do a deep, multi-angle analysis of this failure mode before proposing fixes.", "/boost", True),
     ("Keep working on this overnight until the whole migration is done.", "/goal create", True),
     ("Back up the database every day at 3am.", "/schedule", True),

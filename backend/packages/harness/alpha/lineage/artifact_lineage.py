@@ -27,6 +27,7 @@ class ConfidenceClass(str, Enum):
 @dataclass
 class ArtifactNode:
     """Represents an immutable artifact generated or consumed during execution."""
+
     artifact_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     task_id: str = ""
@@ -47,6 +48,7 @@ class ArtifactNode:
 @dataclass
 class LineageEdge:
     """Directed edge representing derivation of target_artifact from source_artifact."""
+
     source_id: str
     target_id: str
     derivation_action: str  # e.g., "extracted_features", "compiled_report", "verified_claims"

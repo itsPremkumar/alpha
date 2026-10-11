@@ -41,10 +41,7 @@ def _fields(model: type) -> dict[str, tuple[str | None, Any]]:
     if not (isinstance(model, type) and issubclass(model, BaseModel)):
         msg = f"{model!r} is not a pydantic model"
         raise TypeError(msg)
-    return {
-        name: (info.description, info.get_default(call_default_factory=True))
-        for name, info in model.model_fields.items()
-    }
+    return {name: (info.description, info.get_default(call_default_factory=True)) for name, info in model.model_fields.items()}
 
 
 def _normalize(value: Any) -> Any:
@@ -73,22 +70,16 @@ def test_example_matches_schema_defaults(section: str) -> None:
     example_block = _example()[section]
     schema_block = {name: default for name, (_desc, default) in _fields(type(getattr(_model_construct(), section))).items()}
     assert set(example_block) == set(schema_block), (
-        f"{section} keys differ between config.example.yaml and the schema: "
-        f"example-only={sorted(set(example_block) - set(schema_block))} "
-        f"schema-only={sorted(set(schema_block) - set(example_block))}"
+        f"{section} keys differ between config.example.yaml and the schema: example-only={sorted(set(example_block) - set(schema_block))} schema-only={sorted(set(schema_block) - set(example_block))}"
     )
     for key, expected in schema_block.items():
-        assert _normalize(example_block[key]) == _normalize(expected), (
-            f"{section}.{key}: example={example_block[key]!r} schema={expected!r}"
-        )
+        assert _normalize(example_block[key]) == _normalize(expected), f"{section}.{key}: example={example_block[key]!r} schema={expected!r}"
 
 
 def test_no_autonomy_subsystem_ships_enabled() -> None:
     """A fresh install must not run self-evolution or self-configuration."""
     for section in SECTIONS:
-        assert _example()[section]["enabled"] is False, (
-            f"{section} must ship disabled; enabling it for every operator is a product decision"
-        )
+        assert _example()[section]["enabled"] is False, f"{section} must ship disabled; enabling it for every operator is a product decision"
 
 
 def test_self_tuning_protects_its_own_authority() -> None:
@@ -119,9 +110,7 @@ def test_evolution_evidence_requires_gates_and_a_rollback() -> None:
     """A promotion must not be possible on measurements alone."""
     config = _model_construct().evolution_evidence
     required = set(config.required_gates)
-    assert {"evaluator_integrity", "reproducibility", "rollback_path"} <= required, (
-        f"integrity, reproducibility and rollback must be required gates; got {sorted(required)}"
-    )
+    assert {"evaluator_integrity", "reproducibility", "rollback_path"} <= required, f"integrity, reproducibility and rollback must be required gates; got {sorted(required)}"
     assert config.enabled is False
     # Noise floors are what make "improved" mean something.
     assert config.noise_floors, "at least the primary metric needs a declared noise floor"

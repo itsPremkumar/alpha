@@ -18,10 +18,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 
-from app.gateway.deps import _enforce_postgres_for_multi_worker, langgraph_runtime
-from app.gateway.routers.browser import _browser_tools_enabled
 from alpha.config.database_config import DatabaseConfig
 from alpha.config.run_ownership_config import RunOwnershipConfig
+from app.gateway.deps import _enforce_postgres_for_multi_worker, langgraph_runtime
+from app.gateway.routers.browser import _browser_tools_enabled
 
 
 def _config_with_backend(

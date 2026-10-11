@@ -201,9 +201,7 @@ def test_resolved_paths_and_sorted_views_are_cached(tmp_path):
 def test_forward_resolution_behavior_unchanged(tmp_path):
     sb = _make_sandbox(tmp_path)
     # Container path resolves to the mapped local path.
-    assert sb._resolve_path("/mnt/user-data/workspace/sub/foo.txt") == str(
-        (tmp_path / "workspace" / "sub" / "foo.txt").resolve()
-    )
+    assert sb._resolve_path("/mnt/user-data/workspace/sub/foo.txt") == str((tmp_path / "workspace" / "sub" / "foo.txt").resolve())
     # An unmapped path is returned unchanged.
     assert sb._resolve_path("/etc/hosts") == "/etc/hosts"
 

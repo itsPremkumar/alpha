@@ -86,8 +86,12 @@ class MissionCompiler:
 
     def _extract_constraints(self, text: str) -> dict[str, list[str]]:
         constraints: dict[str, list[str]] = {
-            "hard": [], "soft": [], "forbidden": [],
-            "legal": [], "ethical": [], "physical": [],
+            "hard": [],
+            "soft": [],
+            "forbidden": [],
+            "legal": [],
+            "ethical": [],
+            "physical": [],
         }
         sentences = re.split(r"[.;\n]", text.lower())
 

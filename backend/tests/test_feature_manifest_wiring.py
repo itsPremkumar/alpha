@@ -21,9 +21,7 @@ MANIFEST_PATH = ROOT / "contracts" / "feature_manifest.json"
 
 @pytest.fixture(scope="module")
 def manifest() -> dict:
-    assert MANIFEST_PATH.exists(), (
-        "contracts/feature_manifest.json is missing — run: cd backend && python scripts/generate_feature_manifest.py"
-    )
+    assert MANIFEST_PATH.exists(), "contracts/feature_manifest.json is missing — run: cd backend && python scripts/generate_feature_manifest.py"
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
 
@@ -47,9 +45,7 @@ def test_every_builtin_tool_is_in_the_manifest(manifest: dict) -> None:
     tree = ast.parse(source)
     registered: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and any(
-            isinstance(t, ast.Name) and t.id == "BUILTIN_TOOLS" for t in node.targets
-        ):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "BUILTIN_TOOLS" for t in node.targets):
             if isinstance(node.value, ast.List):
                 registered = {elt.id for elt in node.value.elts if isinstance(elt, ast.Name)}
             break
@@ -85,10 +81,7 @@ def test_every_middleware_module_is_in_the_manifest(manifest: dict) -> None:
 
 def test_no_middleware_is_left_unwired(manifest: dict) -> None:
     unwired = [entry["id"] for entry in manifest["middlewares"] if not entry.get("wired", False)]
-    assert not unwired, (
-        "middleware modules exist but are not referenced by any agent chain "
-        f"(wire them or mark intentionally_unwired with a reason): {unwired}"
-    )
+    assert not unwired, f"middleware modules exist but are not referenced by any agent chain (wire them or mark intentionally_unwired with a reason): {unwired}"
 
 
 def test_supervisor_loops_match_the_manifest(manifest: dict) -> None:
@@ -98,10 +91,7 @@ def test_supervisor_loops_match_the_manifest(manifest: dict) -> None:
     supervisor.register_default_loops()
     code_ids = set(supervisor.status()["loops"])
     manifest_ids = _ids(manifest, "loops")
-    assert code_ids == manifest_ids, (
-        f"AutonomySupervisor loops {sorted(code_ids)} != manifest loops {sorted(manifest_ids)} — "
-        "regenerate the manifest or update the supervisor registry"
-    )
+    assert code_ids == manifest_ids, f"AutonomySupervisor loops {sorted(code_ids)} != manifest loops {sorted(manifest_ids)} — regenerate the manifest or update the supervisor registry"
 
 
 def test_declared_modules_exist(manifest: dict) -> None:
@@ -192,9 +182,7 @@ def test_dormant_packages_are_still_dormant(manifest: dict) -> None:
     for entry in entries:
         package = entry["id"]
         package_dir = BACKEND / "packages" / "harness" / Path(*package.split("."))
-        assert package_dir.is_dir(), (
-            f"dormant_packages lists {package!r} but that package no longer exists — remove the manifest entry"
-        )
+        assert package_dir.is_dir(), f"dormant_packages lists {package!r} but that package no longer exists — remove the manifest entry"
 
         importers = []
         for path in sources:
@@ -203,10 +191,7 @@ def test_dormant_packages_are_still_dormant(manifest: dict) -> None:
             if any(name == package or name.startswith(f"{package}.") for name in _imported_module_paths(path)):
                 importers.append(str(path.relative_to(BACKEND)))
 
-        assert not importers, (
-            f"{package!r} is waived as dormant in contracts/feature_manifest.json, but it is now imported by "
-            f"{sorted(importers)} — the waiver is stale, so remove the dormant_packages entry (and wire it properly)"
-        )
+        assert not importers, f"{package!r} is waived as dormant in contracts/feature_manifest.json, but it is now imported by {sorted(importers)} — the waiver is stale, so remove the dormant_packages entry (and wire it properly)"
 
 
 def test_wired_package_is_not_listed_as_dormant(manifest: dict) -> None:
@@ -223,14 +208,10 @@ def test_wired_package_is_not_listed_as_dormant(manifest: dict) -> None:
     assert middleware.exists(), "the completion critic middleware disappeared"
     # Check the import, not a substring: the module docstring names ``alpha.critic``
     # too, so a naive text match would survive the import being deleted.
-    assert "alpha.critic" in _imported_module_paths(middleware), (
-        "FinishFirstVerifierMiddleware no longer imports alpha.critic — the critic pipeline is unwired again"
-    )
+    assert "alpha.critic" in _imported_module_paths(middleware), "FinishFirstVerifierMiddleware no longer imports alpha.critic — the critic pipeline is unwired again"
 
     lead_agent = BACKEND / "packages" / "harness" / "alpha" / "agents" / "lead_agent" / "agent.py"
-    assert "alpha.critic" in _imported_module_paths(lead_agent), (
-        "the lead agent no longer builds a critic pipeline — a terminal message would be accepted unchecked"
-    )
+    assert "alpha.critic" in _imported_module_paths(lead_agent), "the lead agent no longer builds a critic pipeline — a terminal message would be accepted unchecked"
 
 
 # Builtin tool symbols exported from ``alpha.tools.builtins`` that are
@@ -306,10 +287,7 @@ def test_unregistered_builtins_are_imported_by_their_declared_caller() -> None:
     for symbol, (rel_path, _reason) in UNREGISTERED_BUILTINS.items():
         path = BACKEND / rel_path
         assert path.exists(), f"UNREGISTERED_BUILTINS entry for {symbol!r} points at a missing file: {rel_path}"
-        assert symbol in _imported_symbols(path), (
-            f"{symbol!r} is waived as wired by {rel_path}, but that file no longer imports it — "
-            "the waiver is stale, so register the tool or correct the path"
-        )
+        assert symbol in _imported_symbols(path), f"{symbol!r} is waived as wired by {rel_path}, but that file no longer imports it — the waiver is stale, so register the tool or correct the path"
 
 
 def _referenced_names(path: Path) -> set[str]:
@@ -343,7 +321,5 @@ def test_imported_builtin_tools_are_actually_used_in_the_registry_module() -> No
     allowlisted = set(UNREGISTERED_BUILTINS)
     dead = sorted((exported & imported) - referenced - allowlisted)
     assert not dead, (
-        "builtin tools are imported by alpha.tools.tools but never referenced in it, "
-        "so they are in no registry and no agent can call them — add them to "
-        f"BUILTIN_TOOLS / SUBAGENT_TOOLS or waive them in UNREGISTERED_BUILTINS: {dead}"
+        f"builtin tools are imported by alpha.tools.tools but never referenced in it, so they are in no registry and no agent can call them — add them to BUILTIN_TOOLS / SUBAGENT_TOOLS or waive them in UNREGISTERED_BUILTINS: {dead}"
     )

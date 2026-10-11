@@ -69,9 +69,7 @@ logger = logging.getLogger(__name__)
 
 #: Operator-level actors that are enforcement machinery rather than retirable
 #: profiles. Closed set, so this cannot be used to refuse an ordinary profile.
-PROTECTED_ACTORS: frozenset[str] = frozenset(
-    {"alpha", "lead", "system", "server", "kill_switch", "governance", "supervisor"}
-)
+PROTECTED_ACTORS: frozenset[str] = frozenset({"alpha", "lead", "system", "server", "kill_switch", "governance", "supervisor"})
 
 
 class LifecycleRefused(RuntimeError):
@@ -128,13 +126,8 @@ class CloneLineage:
 
     def human_line(self) -> str:
         diff = ", ".join(f"{c.field}: {c.before!r} -> {c.after!r}" for c in self.changes) or "no field changes"
-        dropped = (
-            f"; not inherited: {','.join(self.authority_not_inherited)}" if self.authority_not_inherited else ""
-        )
-        return (
-            f"{self.child} cloned from {self.parent} at {self.created_at} by {self.created_by} "
-            f"({self.clone_mode}, generation {self.generation}): {diff}{dropped}"
-        )
+        dropped = f"; not inherited: {','.join(self.authority_not_inherited)}" if self.authority_not_inherited else ""
+        return f"{self.child} cloned from {self.parent} at {self.created_at} by {self.created_by} ({self.clone_mode}, generation {self.generation}): {diff}{dropped}"
 
 
 # ---------------------------------------------------------------------------
@@ -236,10 +229,7 @@ class BotLifecycle:
             self._refuse(
                 actor=actor,
                 target=target,
-                reason=(
-                    f"refused: {target!r} is an enforcement actor, not a retirable profile. "
-                    f"No actor may archive or re-scope the machinery that applies the ceiling."
-                ),
+                reason=(f"refused: {target!r} is an enforcement actor, not a retirable profile. No actor may archive or re-scope the machinery that applies the ceiling."),
                 violations=[f"protected_actor:{target}"],
             )
 
@@ -482,9 +472,7 @@ class BotLifecycle:
                 )
                 registry_lineage = {
                     "registry_clone": cloned.name,
-                    "engine_metadata": {
-                        k: v for k, v in (cloned.metadata or {}).items() if k in {"cloned_from", "clone_mode", "lineage"}
-                    },
+                    "engine_metadata": {k: v for k, v in (cloned.metadata or {}).items() if k in {"cloned_from", "clone_mode", "lineage"}},
                 }
             except Exception as exc:  # noqa: BLE001
                 # The registry copy is best-effort; the ceiling-enforced profile
@@ -569,9 +557,7 @@ class BotLifecycle:
                 reason=reason or f"re-scoped by @{actor}",
             )
         except AuthorityViolation as exc:
-            self._refuse(
-                actor=actor, target=name, reason=f"re-scope refused: {exc}", violations=exc.violations
-            )
+            self._refuse(actor=actor, target=name, reason=f"re-scope refused: {exc}", violations=exc.violations)
             raise  # unreachable
         # Fail closed on the ledger: a re-scope nobody can audit is not a
         # completed re-scope, so the exception propagates to the caller.
@@ -663,9 +649,7 @@ class BotLifecycle:
         if profile is None:
             self._refuse(actor=actor, target=name, reason=f"unarchive refused: no profile named {name!r}")
         try:
-            restored = self.governor.enable_profile(
-                name, actor=actor, reason=reason or f"unarchived by @{actor}"
-            )
+            restored = self.governor.enable_profile(name, actor=actor, reason=reason or f"unarchived by @{actor}")
         except RetirementError as exc:
             return LifecycleResult(
                 operation="unarchive",
@@ -685,9 +669,7 @@ class BotLifecycle:
             transcript_retained=True,
         )
 
-    def _record_rescope(
-        self, name: str, *, actor: str, reason: str, previous: Sequence[str], new: Sequence[str]
-    ) -> int | None:
+    def _record_rescope(self, name: str, *, actor: str, reason: str, previous: Sequence[str], new: Sequence[str]) -> int | None:
         """Record a re-scope in the one ordered ledger.
 
         ``lifecycle_governor`` already writes ``ACTION_PROFILE_RESCOPED`` for its
@@ -783,9 +765,7 @@ class BotLifecycle:
         """
         profile, removed = self.store.revalidate_profile(name)
         if profile is None:
-            return LifecycleResult(
-                operation="revalidate", ok=False, subject=name, actor="server", reason="no such profile"
-            )
+            return LifecycleResult(operation="revalidate", ok=False, subject=name, actor="server", reason="no such profile")
         return LifecycleResult(
             operation="revalidate",
             ok=True,
@@ -801,18 +781,14 @@ class BotLifecycle:
         return [self.revalidate(p.name) for p in self.store.list_profiles()]
 
     # -- idle retirement proposals ---------------------------------------
-    def propose_idle_retirements(
-        self, *, actor: str = "alpha", window_seconds: float = 86400.0, reason: str = ""
-    ) -> list[dict[str, Any]]:
+    def propose_idle_retirements(self, *, actor: str = "alpha", window_seconds: float = 86400.0, reason: str = "") -> list[dict[str, Any]]:
         """Idle profiles are PROPOSED for retirement, never auto-killed.
 
         Delegates to the existing :meth:`LifecycleGovernor.propose_idle_retirements`,
         which writes an ``ACTION_PROFILE_IDLE_PROPOSED`` ledger entry and returns
         proposals that still have to traverse the approval path.
         """
-        proposals = self.governor.propose_idle_retirements(
-            window_seconds=window_seconds, actor=actor, reason=reason
-        )
+        proposals = self.governor.propose_idle_retirements(window_seconds=window_seconds, actor=actor, reason=reason)
         return [p.to_dict() for p in proposals]
 
     # -- population -------------------------------------------------------

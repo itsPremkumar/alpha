@@ -40,9 +40,7 @@ def build_tracing_callbacks() -> list[Any]:
     # Monocle is not a callback provider; this per-run path is just where an
     # embedded process that skipped Gateway-lifespan setup can be told about it.
     if is_monocle_tracing_enabled() and not is_monocle_setup_completed():
-        logger.debug(
-            "MONOCLE_TRACING is set but Monocle is not initialized in this process — only the Gateway lifespan runs setup automatically; embedded/TUI callers must call alpha.tracing.setup_monocle_tracing_if_enabled() themselves."
-        )
+        logger.debug("MONOCLE_TRACING is set but Monocle is not initialized in this process — only the Gateway lifespan runs setup automatically; embedded/TUI callers must call alpha.tracing.setup_monocle_tracing_if_enabled() themselves.")
     enabled_providers = get_enabled_tracing_providers()
     if not enabled_providers:
         return []

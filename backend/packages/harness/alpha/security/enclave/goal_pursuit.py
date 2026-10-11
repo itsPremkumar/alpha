@@ -32,6 +32,7 @@ class MilestoneStatus(str, Enum):
 @dataclass
 class Milestone:
     """A concrete milestone required to achieve the high-level goal."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     title: str = ""
     description: str = ""
@@ -54,6 +55,7 @@ class Milestone:
 @dataclass
 class AgentHighlight:
     """On-screen or visual highlight to ground agent attention (Project Astra feature)."""
+
     highlight_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     label: str = ""
     bbox: BoundingBox = field(default_factory=BoundingBox)

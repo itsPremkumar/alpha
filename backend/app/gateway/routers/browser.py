@@ -7,11 +7,11 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import require_permission
-from app.gateway.browser_capability import browser_capability
 from alpha.config.paths import get_paths
 from alpha.runtime.user_context import get_effective_user_id, reset_current_user, set_current_user
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import require_permission
+from app.gateway.browser_capability import browser_capability
 
 logger = logging.getLogger(__name__)
 

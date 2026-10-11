@@ -20,9 +20,9 @@ from pathlib import Path
 
 import pytest
 
+from alpha.uploads.manager import get_uploads_dir
 from app.channels import manager as mgr
 from app.channels.message_bus import InboundMessage
-from alpha.uploads.manager import get_uploads_dir
 
 pytestmark = pytest.mark.asyncio
 

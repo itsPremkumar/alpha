@@ -121,8 +121,5 @@ def sh_argv(*args: str) -> list[str]:
     """
     shell = posix_shell()
     if shell is None:
-        pytest.skip(
-            "no working POSIX shell available on this host - install Git for Windows "
-            "(usr/bin/sh.exe) or put sh on PATH to run the .sh entrypoint tests"
-        )
+        pytest.skip("no working POSIX shell available on this host - install Git for Windows (usr/bin/sh.exe) or put sh on PATH to run the .sh entrypoint tests")
     return [shell, *args]

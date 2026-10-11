@@ -1397,6 +1397,7 @@ def test_the_ambient_binding_is_per_task_not_process_wide() -> None:
             with writer_scope(writer):
                 await asyncio.sleep(0)
                 seen[name] = current_writer()
+
         seen: dict[str, BehaviourTraceWriter | None] = {}
         with writer_scope(writer_a):
             await asyncio.gather(with_writer("a", writer_a), with_writer("b", writer_b))

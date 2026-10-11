@@ -119,9 +119,7 @@ class L1Extractor:
             "metadata": {"thread_id": thread_id, "user_id": user_id, "mode": mode},
         }
         try:
-            response = model.invoke(
-                f"{system_prompt}\n\n{user_prompt}", config=invoke_config
-            )
+            response = model.invoke(f"{system_prompt}\n\n{user_prompt}", config=invoke_config)
         except BaseException as exc:  # noqa: BLE001 - report, never crash the turn
             logger.warning("L1 extraction LLM call failed: %s", exc)
             return ExtractionOutcome(status="llm_error", error=str(exc)[:500])

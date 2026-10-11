@@ -30,9 +30,9 @@ import threading
 from collections.abc import Hashable
 from dataclasses import dataclass
 
-from app.gateway.github.triggers import _resolved_trigger
 from alpha.config.agents_config import AgentConfig, GitHubTriggerConfig
 from alpha.persistence.agents import get_agent_store
+from app.gateway.github.triggers import _resolved_trigger
 
 logger = logging.getLogger(__name__)
 

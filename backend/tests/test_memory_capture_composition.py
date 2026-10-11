@@ -103,9 +103,7 @@ def test_enabled_surface_writes_and_reports(monkeypatch: pytest.MonkeyPatch) -> 
         return len(records), "ok"
 
     monkeypatch.setitem(cc._WRITERS, "entities", writer)
-    result = cc.compose_capture(
-        _config(entities={"enabled": True}), _records(2), user_id="u1", surfaces=("entities",)
-    )
+    result = cc.compose_capture(_config(entities={"enabled": True}), _records(2), user_id="u1", surfaces=("entities",))
     assert result.status_for("entities") == cc.STATUS_WRITTEN
     assert result.wrote_anything is True
     assert seen["count"] == 2
@@ -114,9 +112,7 @@ def test_enabled_surface_writes_and_reports(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_empty_record_set_is_empty_not_written(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(cc._WRITERS, "entities", lambda *a, **k: pytest.fail("constructed"))
-    result = cc.compose_capture(
-        _config(entities={"enabled": True}), [], user_id="u1", surfaces=("entities",)
-    )
+    result = cc.compose_capture(_config(entities={"enabled": True}), [], user_id="u1", surfaces=("entities",))
     assert result.status_for("entities") == cc.STATUS_EMPTY
     assert result.wrote_anything is False
 

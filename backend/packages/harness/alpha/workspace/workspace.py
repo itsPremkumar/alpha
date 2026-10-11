@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from alpha.automations import Automation, AutomationSchedule, AutomationStore
+from alpha.automations import Automation, AutomationStore
 from alpha.connectors import ConnectorCatalog, ConnectorStore
 from alpha.egress import EgressStore
 from alpha.experts import ExpertCatalog, ExpertRegistry
@@ -112,8 +112,7 @@ class AgentWorkspace:
             "skills": [s.to_dict() for s in self.skill_registry.list()],
             "automations": [a.to_dict() for a in self.automations.list()],
             "routines": [r.to_dict() for r in self.routines.list()],
-            "egress": {"policy": self.egress.policy().to_dict(),
-                       "profiles": [p.to_dict() for p in self.egress.list_profiles()]},
+            "egress": {"policy": self.egress.policy().to_dict(), "profiles": [p.to_dict() for p in self.egress.list_profiles()]},
         }
 
     def capability_report(self, alpha_root: str | Path | None = None) -> ScorecardReport:

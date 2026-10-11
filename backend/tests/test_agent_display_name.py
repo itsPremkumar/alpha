@@ -7,7 +7,6 @@ import yaml
 from pydantic import ValidationError
 from sqlalchemy import create_engine
 
-from app.gateway.routers.agents import AgentCreateRequest, AgentUpdateRequest
 from alpha.config.agents_config import AgentConfig
 from alpha.persistence.agents.base import parse_agent_config
 from alpha.persistence.agents.file import FileAgentStore
@@ -15,6 +14,7 @@ from alpha.persistence.agents.model import AgentRow
 from alpha.persistence.agents.sql import SqlAgentStore
 from alpha.persistence.base import Base
 from alpha.tools.builtins.setup_agent_tool import setup_agent
+from app.gateway.routers.agents import AgentCreateRequest, AgentUpdateRequest
 
 
 @pytest.mark.parametrize("backend", ["file", "sql"])

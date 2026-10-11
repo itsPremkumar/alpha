@@ -6,7 +6,7 @@
 - **Implementation boundary:** Runtime orchestration, candidate execution, evaluation, selection, safe result synthesis, observability, and recovery.
 - **Core idea:** For a task where one attempt may be unreliable, Alpha creates a bounded group of meaningfully different candidate plans or execution attempts, evaluates them using evidence, compares them, then selects or carefully combines the strongest verified outcome.
 - **Working name:** **Group-Relative Orchestration (GRO)** — a GRPO-inspired orchestration pattern. This document intentionally does **not** call the runtime algorithm actual GRPO training.
-- **Status:** Architecture and staged implementation specification. Proposed module names and API contracts must be mapped to Alpha's actual package tree before implementation.
+- **Status:** **Implemented (v1)** in `backend/packages/harness/alpha/gro/`, driven by the `swarm` tool's `compete`/`compete_status` actions. Section 26 records the module map, what shipped, and the deliberate v1 boundaries.
 
 ---
 
@@ -1523,3 +1523,65 @@ Implement **Group-Relative Orchestration (GRO)** as an optional runtime policy i
 8. Compare against baseline before enabling adaptively by default.
 
 **Do not start by making Alpha spawn more agents. Start by making Alpha able to prove what each attempt did, whether it succeeded, and why the chosen result is better.** That is the core harness-level value of this concept. It can improve Alpha's task completion behavior while keeping your current LLMs, Python codebase, and deployment model unchanged.
+
+---
+
+## 26. Implementation status (v1)
+
+Implemented as the harness package
+[`backend/packages/harness/alpha/gro/`](../backend/packages/harness/alpha/gro/)
+— the full contract lives in its
+[AGENTS.md](../backend/packages/harness/alpha/gro/AGENTS.md); this section maps
+the plan to what shipped.
+
+### Module map (plan section → code)
+
+| Plan concept | Implementation |
+| --- | --- |
+| Phases A→G orchestration pipeline | `gro/runner.py::run_with_gro` — policy decision → contract → strategy deal → bounded waves → hard-gate verification → ranking → selection → bounded repair round → final re-verification → persistence |
+| Task/risk classification, single-vs-group decision | `gro/policy.py` — computed from the normalized goal + criteria with disclosed keyword rules; risk is never caller-declared |
+| Reviewable strategy catalogue (§11) | `gro/strategies.py` — versioned data (coding/research/planning+tools), distinct-deal rule; a duplicate or unknown id is refused |
+| Hard gates → absolute score → relative rank (§7) | `gro/evaluation.py` — execution/criteria/evidence gates, versioned per-task-type weights with renormalization, `R_i = Q_i − median(Q)` diagnostic only |
+| Bounded candidate coordinator | `gro/coordinator.py` — bounded lanes, per-candidate + run deadlines, late-result fencing (a fence is not a kill) |
+| Candidate execution adapters | `gro/adapters.py` — `SyncCallableAdapter` (tests/hosts) and `SubagentExecutionAdapter` (real subagents through `SubagentExecutor`) |
+| Durable run state + observability | `gro/models.py` (closed transition table, journaled), `gro/store.py` (owner-scoped JSON document + live JSONL event journal, honest degradation) |
+| Operator config | `gro/config.py` + `config.yaml -> gro` (default **disabled**), `config.example.yaml` |
+| Model-facing surface | the existing `swarm` tool's `compete` / `compete_status` **actions** — no new tool, so `BUILTIN_TOOLS`, `contracts/feature_manifest.json` and the capability counts are unchanged |
+
+### What v1 enforces (each pinned by tests)
+
+- **Absolute gates decide eligibility; relative rank only ranks the
+  eligible.** A required gate that is `unknown` is not a pass; relative rank
+  never touches `eligible`. A group where nothing passes ends as an explicit
+  `no_acceptable_candidate` — the bounded repair round (default 1) then an
+  **UNVERIFIED** `partial_result`, never "the best of a bad lot, verified".
+- **No acceptance criteria means an UNVERIFIED winner** (`GroReport.verified=False`);
+  the engine never invents criteria.
+- **Final verification demotes, never promotes** — a re-check failure moves
+  the provisional winner down with the failing gate named.
+- **Every candidate gets an outcome**: failed, timed-out, fenced-late and
+  never-started (early stop / run deadline) candidates are all recorded.
+- **External side effects park for approval** (`human_approval_first`): with
+  `require_approval_for_external_side_effects` on, nothing executes.
+- **Bounds are refused, never clamped** — goal/criteria size, candidate
+  counts, strategy counts, budgets.
+- **Store honesty** — absent ≠ corrupt; an unreadable document is disclosed,
+  a journal-tailed run without a document reads its journal, and an
+  unpersisted report says so.
+
+### Deliberate v1 boundaries (not claims)
+
+- Synchronous one-shot runner (like `task` / `arena start`): no pause/resume
+  state exists, because a synchronous runner cannot pause honestly.
+- `tests_passed:` criteria verify through the existing deterministic
+  acceptance checker over harvested bash executions; file-scoped criteria
+  degrade to `unchecked` in this path (no sandbox runtime crosses the tool
+  boundary).
+- Token spend is recorded but never enters the score (no per-task absolute
+  token scale exists).
+- `alpha.reasoning_bank` feedback (plan phase H) is not wired.
+- `alpha.events.bus` integration is future work; events use the injectable
+  callback + best-effort JSONL journal.
+
+Tests: `backend/tests/test_gro_core.py`, `test_gro_evaluation.py`,
+`test_gro_runner.py`, `test_gro_tool.py`.

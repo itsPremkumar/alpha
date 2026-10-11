@@ -23,7 +23,7 @@ def test_compute_line_hash_and_format():
     h = compute_line_hash(line)
     assert len(h) == 2
     assert h.isalnum()
-    
+
     formatted = format_hash_line(1, line)
     assert formatted == f"1#{h}| def hello():"
 
@@ -59,7 +59,7 @@ def test_apply_hashline_edit_success():
     updated = apply_hashline_edit(SAMPLE_CODE, ref_start, ref_end, replacement)
 
     assert 'message = "Updated!"' in updated
-    assert 'logger.info(message)' in updated
+    assert "logger.info(message)" in updated
     assert "def hello():" in updated
     assert "return True" in updated
 

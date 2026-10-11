@@ -45,9 +45,7 @@ class TrajectoryStore:
                 )
                 """
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_trajectory_goal ON trajectory_steps(goal_id, step_index)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_trajectory_goal ON trajectory_steps(goal_id, step_index)")
             conn.commit()
 
     def record_step(
@@ -182,6 +180,7 @@ class TrajectoryStore:
             return {"goal_id": goal_id, "replayed": False, "reason": f"Step index {from_step_index} not found"}
 
         from datetime import UTC, datetime
+
         return {
             "goal_id": goal_id,
             "replayed": True,
@@ -198,6 +197,7 @@ _PROJECT_TRAJECTORY_STORES: dict[str, TrajectoryStore] = {}
 def get_trajectory_store(project_id: str = "default") -> TrajectoryStore:
     """Project-scoped singleton accessor for TrajectoryStore."""
     import os
+
     if project_id not in _PROJECT_TRAJECTORY_STORES:
         base_dir = os.environ.get("ALPHA_PROJECTS_DIR", ".alpha_projects")
         db_file = Path(base_dir) / project_id / "trajectory" / "audit.db"

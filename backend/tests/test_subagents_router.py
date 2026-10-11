@@ -7,11 +7,11 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.gateway.routers import subagents as router
 from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
 from alpha.config.sandbox_config import SandboxConfig
 from alpha.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
 from alpha.persistence.managed_subagents.file import FileManagedSubagentStore
+from app.gateway.routers import subagents as router
 
 pytestmark = pytest.mark.asyncio
 

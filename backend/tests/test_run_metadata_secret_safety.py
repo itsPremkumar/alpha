@@ -1,7 +1,5 @@
 import pytest
 
-from app.gateway.routers.thread_runs import _record_to_response
-from app.gateway.routers.threads import HistoryEntry, ThreadResponse, ThreadStateResponse
 from alpha.runtime.runs.manager import RunRecord
 from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
 from alpha.runtime.secret_context import (
@@ -11,6 +9,8 @@ from alpha.runtime.secret_context import (
     validate_run_metadata_secrets,
 )
 from alpha.trace_context import ALPHA_TRACE_METADATA_KEY
+from app.gateway.routers.thread_runs import _record_to_response
+from app.gateway.routers.threads import HistoryEntry, ThreadResponse, ThreadStateResponse
 
 
 @pytest.mark.parametrize("value", ["secret", "", None, {"nested": True}])

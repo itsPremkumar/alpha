@@ -229,9 +229,7 @@ def test_a_wedged_input_backend_cannot_hang_the_tool(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(dispatcher, "_load_backend", lambda: (backend, None))
     monkeypatch.setattr("alpha.tools.builtins.os_computer_tool.OS_CALL_TIMEOUT_S", 0.15)
 
-    payload, elapsed = asyncio.run(
-        _timed(desktop_mouse_action_tool.coroutine(runtime=_runtime("t-hang"), action="click", x=30, y=40))
-    )
+    payload, elapsed = asyncio.run(_timed(desktop_mouse_action_tool.coroutine(runtime=_runtime("t-hang"), action="click", x=30, y=40)))
     assert payload["ok"] is False
     assert payload["status"] == "timeout"
     assert payload["dispatched"] is False
@@ -249,9 +247,7 @@ def test_a_wedged_keyboard_backend_cannot_hang_the_tool(monkeypatch: pytest.Monk
     monkeypatch.setattr(dispatcher, "_load_backend", lambda: (backend, None))
     monkeypatch.setattr("alpha.tools.builtins.os_computer_tool.OS_CALL_TIMEOUT_S", 0.15)
 
-    payload, elapsed = asyncio.run(
-        _timed(desktop_keyboard_action_tool.coroutine(runtime=_runtime("t-kb"), action="type", text="a long memo"))
-    )
+    payload, elapsed = asyncio.run(_timed(desktop_keyboard_action_tool.coroutine(runtime=_runtime("t-kb"), action="type", text="a long memo")))
     assert payload["status"] == "timeout"
     assert payload["dispatched"] is False
     assert elapsed < 5.0
@@ -266,9 +262,7 @@ def test_a_wedged_ui_tree_walk_cannot_hang_the_tool(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(accessibility, "inspect_ui_tree", _wedged)
     monkeypatch.setattr("alpha.tools.builtins.os_computer_tool.SCAN_TIMEOUT_S", 0.15)
 
-    payload, elapsed = asyncio.run(
-        _timed(desktop_inspect_ui_tree_tool.coroutine(runtime=_runtime("t-scan"), window_title="Editor"))
-    )
+    payload, elapsed = asyncio.run(_timed(desktop_inspect_ui_tree_tool.coroutine(runtime=_runtime("t-scan"), window_title="Editor")))
     assert payload["status"] == "timeout"
     assert payload["ok"] is False
     assert elapsed < 5.0
@@ -659,7 +653,7 @@ def test_stt_still_accepts_a_clip_inside_the_cap(tmp_path: Path, monkeypatch: py
 
     monkeypatch.setattr(media_stt, "stt_available", lambda: True)
     monkeypatch.setattr(media_stt, "whisper_model_assets_present", lambda _spec: True)
-    monkeypatch.setattr(media_stt, "transcribe_with_cached_whisper", lambda path, spec, language, beam_size: (seen.append((str(path), beam_size)) or ([Seg()], Info())))
+    monkeypatch.setattr(media_stt, "transcribe_with_cached_whisper", lambda path, spec, language, beam_size: seen.append((str(path), beam_size)) or ([Seg()], Info()))
     clip = _wav(tmp_path / "ok.wav", 1.0)
     result = media_stt.transcribe_file(clip, model_size="tiny", beam_size=1)
     assert result.ok is True

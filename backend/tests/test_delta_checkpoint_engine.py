@@ -1,4 +1,3 @@
-
 from alpha.runtime.checkpoint import (
     CheckpointEngine,
     CheckpointStrategy,

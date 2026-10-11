@@ -1,4 +1,3 @@
-
 from alpha.security.enclave import CredentialRedactor, ScopedCredentialVault
 
 

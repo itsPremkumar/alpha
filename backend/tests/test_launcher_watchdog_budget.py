@@ -67,9 +67,7 @@ def launcher() -> str:
         ("frontend", "FrontendHungThreshold", "FrontendPort"),
     ],
 )
-def test_supervisor_patience_exceeds_the_launcher_budget(
-    component: str, threshold_var: str, port_var: str, watchdog: str, launcher: str
-) -> None:
+def test_supervisor_patience_exceeds_the_launcher_budget(component: str, threshold_var: str, port_var: str, watchdog: str, launcher: str) -> None:
     """The watchdog must never kill a component before start.ps1 gives up on it.
 
     This is the invariant whose violation caused the permanent restart loop: the
@@ -121,20 +119,12 @@ def test_watchdog_does_not_treat_a_compiling_frontend_as_hung(watchdog: str) -> 
     is ambiguous. The watchdog must consult the build log before declaring the
     frontend hung and restarting it.
     """
-    assert "Test-FileRecentlyWritten" in watchdog, (
-        "recovery/watchdog.ps1 must use Test-FileRecentlyWritten to avoid killing a frontend "
-        "that is still compiling"
-    )
-    assert "compiling" in watchdog, (
-        "the frontend snapshot must report a distinct 'compiling' state so it is not "
-        "classified as 'hung' (which triggers a restart mid-compile)"
-    )
+    assert "Test-FileRecentlyWritten" in watchdog, "recovery/watchdog.ps1 must use Test-FileRecentlyWritten to avoid killing a frontend that is still compiling"
+    assert "compiling" in watchdog, "the frontend snapshot must report a distinct 'compiling' state so it is not classified as 'hung' (which triggers a restart mid-compile)"
 
 
 def test_watchdog_retains_its_utf8_bom() -> None:
     """PowerShell 5.1 requires the BOM on these scripts; a stripped BOM breaks them."""
     if not WATCHDOG.exists():
         pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
-    assert WATCHDOG.read_bytes().startswith(b"\xef\xbb\xbf"), (
-        "recovery/watchdog.ps1 lost its UTF-8 BOM — PowerShell 5.1 needs it"
-    )
+    assert WATCHDOG.read_bytes().startswith(b"\xef\xbb\xbf"), "recovery/watchdog.ps1 lost its UTF-8 BOM — PowerShell 5.1 needs it"

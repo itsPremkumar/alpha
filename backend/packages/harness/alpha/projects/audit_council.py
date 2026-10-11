@@ -13,7 +13,6 @@ import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Literal
 
 from alpha.projects.constitution import get_constitution

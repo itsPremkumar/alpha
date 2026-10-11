@@ -10,16 +10,12 @@ from alpha.reproduction import ReproductionEngine, ReproductionStatus
 def test_full_reproduction_and_experience_pipeline(tmp_path):
     # 1. Setup mock codebase with a real bug
     service_file = tmp_path / "pricing.py"
-    service_file.write_text(
-        "def calculate_discount(price: float, discount_pct: float) -> float:\n"
-        "    # BUG: Multiplying price directly by discount_pct instead of applying discount\n"
-        "    return price * (discount_pct / 100.0)\n"
-    )
+    service_file.write_text("def calculate_discount(price: float, discount_pct: float) -> float:\n    # BUG: Multiplying price directly by discount_pct instead of applying discount\n    return price * (discount_pct / 100.0)\n")
 
     # 2. Consult experience memory before solving
     store = ExperienceStore(load_defaults=True)
     retriever = ExperienceRetriever(store=store)
-    lessons_prompt = retriever.render_lessons_prompt("pricing calculation bug")
+    retriever.render_lessons_prompt("pricing calculation bug")
 
     # 3. Step 1: Synthesize reproduction script & verify failure pre-fix
     engine = ReproductionEngine()
@@ -42,10 +38,7 @@ assert final_price == 80.0, f"Expected 80.0, got {{final_price}}"
     assert prep_report.pre_fix_result.exit_code == 1
 
     # 4. Step 2: Apply the code fix
-    service_file.write_text(
-        "def calculate_discount(price: float, discount_pct: float) -> float:\n"
-        "    return price * (1.0 - discount_pct / 100.0)\n"
-    )
+    service_file.write_text("def calculate_discount(price: float, discount_pct: float) -> float:\n    return price * (1.0 - discount_pct / 100.0)\n")
 
     # 5. Step 3: Verify post-fix passes
     verify_report = engine.verify_solution(

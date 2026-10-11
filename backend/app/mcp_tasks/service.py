@@ -696,11 +696,7 @@ class McpTaskService:
         if exc is not None or run_id is not None:
             self._capacity_spent_keys[capacity_key] = self._capacity_spent_keys.get(capacity_key, 0) + 1
         self._prune_capacity_tracking()
-        hint = (
-            capacity_refusal_retry_after_seconds(exc, default=float(self._poll_interval_seconds))
-            if exc is not None
-            else float(self._poll_interval_seconds)
-        )
+        hint = capacity_refusal_retry_after_seconds(exc, default=float(self._poll_interval_seconds)) if exc is not None else float(self._poll_interval_seconds)
         backoff = min(
             max(float(self._poll_interval_seconds) * (2 ** min(waits - 1, 16)), hint),
             float(self._max_poll_backoff_seconds),

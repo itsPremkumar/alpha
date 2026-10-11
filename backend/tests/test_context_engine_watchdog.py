@@ -51,10 +51,7 @@ def test_context_engine_assembly_and_compaction():
     engine = ContextEngine(max_context_tokens=100, compaction_threshold=0.5, keep_recent_count=2)
 
     # Generate long conversation history exceeding threshold
-    history = [
-        {"role": "user", "content": f"Turn {i}: " + "verbose output " * 15}
-        for i in range(10)
-    ]
+    history = [{"role": "user", "content": f"Turn {i}: " + "verbose output " * 15} for i in range(10)]
 
     result = engine.assemble(
         system_prompt="System Prompt Instructions",

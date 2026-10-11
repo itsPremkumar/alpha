@@ -297,6 +297,22 @@ def replay_run(
                     run.waiting_reason = payload["reason"]
             _fold_node_status(run, payload)
 
+        elif kind == "connectivity_wait_parked":
+            # A node parked by the connectivity probe must replay to
+            # WAITING_CONNECTIVITY, never RUNNING: the engine sets the node
+            # WAITING and the run WAITING_CONNECTIVITY before emitting this
+            # event, and a replay that rebuilt the run as RUNNING would hand a
+            # parked run to a scheduler that admits it — dispatching work into
+            # an outage the original run had already measured. Same shape as
+            # external_wait_parked above, distinct terminal state.
+            nid = payload.get("node_id")
+            if isinstance(nid, str):
+                run.node_states[nid] = NodeStatus.WAITING
+                run.status = WorkflowRunStatus.WAITING_CONNECTIVITY
+                if isinstance(payload.get("reason"), str):
+                    run.waiting_reason = payload["reason"]
+            _fold_node_status(run, payload)
+
         elif kind == "run_reopened":
             run.status = WorkflowRunStatus.RUNNING
             run.waiting_reason = None

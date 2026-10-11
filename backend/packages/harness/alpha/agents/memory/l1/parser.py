@@ -34,12 +34,8 @@ _THINK_RE = re.compile(r"^[\u3000\s]*<think>.*?([\u3000\s]*)$", re.DOTALL | re.I
 _FENCE_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*|\s*```$", re.MULTILINE)
 _PRIORITY_RE = re.compile(r'"priority"\s*:\s*"?(-?\d+)"?')
 _MAX_FIELD_LEN = 4000
-_EXTRACTION_STATUSES = frozenset(
-    {"ok", "no_json", "parse_fail", "not_array", "empty_scenes", "llm_error"}
-)
-_CONFLICT_STATUSES = frozenset(
-    {"ok", "no_json", "parse_fail", "not_array", "empty", "llm_error"}
-)
+_EXTRACTION_STATUSES = frozenset({"ok", "no_json", "parse_fail", "not_array", "empty_scenes", "llm_error"})
+_CONFLICT_STATUSES = frozenset({"ok", "no_json", "parse_fail", "not_array", "empty", "llm_error"})
 
 
 def _strip_noise(text: str) -> str:
@@ -231,9 +227,7 @@ def _decision_from_obj(obj: dict[str, Any]) -> DedupDecision:
     # Field-requirement repair (prompt: merged_content/merged_type required
     # for merge/update). A malformed merge/update degrades to ``store`` —
     # never to a silent drop.
-    if decision.action in ("merge", "update") and not (
-        decision.merged_content and decision.merged_type in MEMORY_TYPES
-    ):
+    if decision.action in ("merge", "update") and not (decision.merged_content and decision.merged_type in MEMORY_TYPES):
         return DedupDecision(
             record_id=decision.record_id,
             action="store",

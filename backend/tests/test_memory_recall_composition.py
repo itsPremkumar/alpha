@@ -42,9 +42,7 @@ def test_every_type_off_produces_no_text_and_no_headings() -> None:
 
 def test_host_memory_switch_off_disables_all_surfaces() -> None:
     """The two-level gate: a type's own enabled flag cannot outrank the host."""
-    config = MemoryConfig.model_validate(
-        {"enabled": False, "affective": {"enabled": True}, "narrative": {"enabled": True}}
-    )
+    config = MemoryConfig.model_validate({"enabled": False, "affective": {"enabled": True}, "narrative": {"enabled": True}})
     result = rc.compose_typed_memory_blocks(config, user_id="u1")
     assert result.text == ""
     assert all(s.status == rc.STATUS_DISABLED for s in result.surfaces)
@@ -76,9 +74,7 @@ def test_a_broken_surface_is_isolated_and_disclosed(monkeypatch) -> None:
     monkeypatch.setitem(rc._RENDERERS, "affective", boom)
     config = _config(affective={"enabled": True}, narrative={"enabled": True})
 
-    result = rc.compose_typed_memory_blocks(
-        config, user_id="u1", surfaces=("affective", "narrative")
-    )
+    result = rc.compose_typed_memory_blocks(config, user_id="u1", surfaces=("affective", "narrative"))
     assert result.status_for("affective") == rc.STATUS_ERROR
     assert result.failed_surfaces == ("affective",)
     # The failure detail is the exception TYPE, never a rendered message that
@@ -104,9 +100,7 @@ def test_composed_block_is_bounded_and_truncation_is_disclosed(monkeypatch) -> N
     config = _config(affective={"enabled": True}, narrative={"enabled": True})
 
     cap = 900
-    result = rc.compose_typed_memory_blocks(
-        config, user_id="u1", surfaces=("affective", "narrative"), max_total_chars=cap
-    )
+    result = rc.compose_typed_memory_blocks(config, user_id="u1", surfaces=("affective", "narrative"), max_total_chars=cap)
     assert result.truncated is True
     assert "truncated at the configured cap" in result.text
     # The block opens with the data notice and closes with its reminder, both

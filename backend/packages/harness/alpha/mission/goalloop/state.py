@@ -149,9 +149,7 @@ class GoalState:
         removed = self.gates.pop(index - 1)
         # Failure counters are positional; drop this one and renumber so a
         # later gate cannot inherit a dead gate's strike count.
-        self.gate_failures = {
-            (key - 1 if key > index else key): value for key, value in self.gate_failures.items() if key != index
-        }
+        self.gate_failures = {(key - 1 if key > index else key): value for key, value in self.gate_failures.items() if key != index}
         self.touch()
         return removed
 

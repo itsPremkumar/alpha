@@ -14,7 +14,8 @@ Two responsibilities:
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from alpha.routines.models import (
     Routine,
@@ -24,9 +25,9 @@ from alpha.routines.models import (
 
 #: A string arg matching one of these is a candidate for parameterisation.
 _CANDIDATE_PATTERNS = (
-    re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$"),          # email
-    re.compile(r"^https?://", re.IGNORECASE),           # url
-    re.compile(r"^(?:[A-Za-z]:[\\/]|/)"),               # absolute path
+    re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$"),  # email
+    re.compile(r"^https?://", re.IGNORECASE),  # url
+    re.compile(r"^(?:[A-Za-z]:[\\/]|/)"),  # absolute path
     re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE),  # uuid
 )
 
@@ -93,6 +94,7 @@ class RoutineRecorder:
 
 def _substitute(value: Any, values: Mapping[str, Any], *, routine_name: str) -> Any:
     if isinstance(value, str):
+
         def replace(match: re.Match[str]) -> str:
             key = match.group(1)
             if key not in values:

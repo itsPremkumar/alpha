@@ -69,7 +69,11 @@ def enterprise_security_manage(
     """Manage enterprise security controls, enclave boundaries, spatio-temporal memory, and autonomous goal pursuit.
 
     Args:
-        action: 'check_path', 'check_network', 'encrypt_checkpoint', 'decrypt_checkpoint', 'log_telemetry', 'verify_telemetry', 'issue_credential', 'redact_text', 'audit_deception', 'ingest_frame', 'query_spatial_memory', 'init_goal_pursuit', 'pursue_goal_step', 'get_goal_status'.
+        action: 'check_path', 'check_network', 'encrypt_checkpoint',
+            'decrypt_checkpoint', 'log_telemetry', 'verify_telemetry',
+            'issue_credential', 'redact_text', 'audit_deception',
+            'ingest_frame', 'query_spatial_memory', 'init_goal_pursuit',
+            'pursue_goal_step', 'get_goal_status'.
         path: File/directory path to check against boundary enclaves.
         url_or_host: Target domain/URL to check against outbound whitelist.
         payload_json: JSON data to encrypt for checkpoint or log for telemetry.

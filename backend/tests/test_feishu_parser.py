@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from alpha.uploads.manager import PathTraversalError
 from app.channels import feishu as feishu_module
 from app.channels.commands import KNOWN_CHANNEL_COMMANDS
 from app.channels.feishu import FeishuChannel
@@ -18,7 +19,6 @@ from app.channels.message_bus import (
     OutboundMessage,
 )
 from app.channels.store import ChannelStore
-from alpha.uploads.manager import PathTraversalError
 
 
 def _pending(

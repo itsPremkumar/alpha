@@ -24,6 +24,7 @@ class ExecutionDecision(str, Enum):
 
 class ShellSecurityException(Exception):
     """Raised when a shell command is blocked by security policy."""
+
     def __init__(self, message: str, report: AnalysisReport):
         super().__init__(message)
         self.report = report

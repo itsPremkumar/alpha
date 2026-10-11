@@ -7,6 +7,9 @@ import pytest
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 
+from alpha.authz.provider import AuthzDecision, AuthzReason
+from alpha.authz.rbac import RbacAuthorizationProvider
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
 from app.gateway.auth.models import User
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.authz import (
@@ -17,9 +20,6 @@ from app.gateway.authz import (
     resolve_route_permissions,
 )
 from app.gateway.routers import runs, scheduled_tasks
-from alpha.authz.provider import AuthzDecision, AuthzReason
-from alpha.authz.rbac import RbacAuthorizationProvider
-from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
 
 
 class _RecordingProvider:

@@ -51,36 +51,15 @@ def _fake_invoke(model_name, *, system, user):
     """
     s = (system or "").lower()
     if "independent judge" in s:
-        return (
-            "WINNER: PROPONENT\n"
-            "RATIONALE: The affirmative's concrete evidence outweighed the cost concerns."
-        )
+        return "WINNER: PROPONENT\nRATIONALE: The affirmative's concrete evidence outweighed the cost concerns."
     if "peer reviewer" in s and "rubric" in s:
-        return (
-            "CORRECTNESS: 0.90\n"
-            "EVIDENCE: 0.90\n"
-            "REASONING: 0.90\n"
-            "COMPLETENESS: 0.90\n"
-            "CLARITY: 0.90\n"
-            "CRITIQUE: Sound reasoning backed by citeable evidence.\n"
-            "FLAWS: narrow scope | few failure modes covered"
-        )
+        return "CORRECTNESS: 0.90\nEVIDENCE: 0.90\nREASONING: 0.90\nCOMPLETENESS: 0.90\nCLARITY: 0.90\nCRITIQUE: Sound reasoning backed by citeable evidence.\nFLAWS: narrow scope | few failure modes covered"
     if "proponent in a structured debate" in s:
-        return (
-            "STUB-PROPONENT: event sourcing gives a complete, replayable audit trail.\n"
-            "EVIDENCE: audit benchmark | replay tooling"
-        )
+        return "STUB-PROPONENT: event sourcing gives a complete, replayable audit trail.\nEVIDENCE: audit benchmark | replay tooling"
     if "critic (opponent) in a structured debate" in s:
-        return (
-            "STUB-CRITIC: extra infrastructure cost and projection lag outweigh the audit benefits.\n"
-            "EVIDENCE: cost model | lag measurements"
-        )
+        return "STUB-CRITIC: extra infrastructure cost and projection lag outweigh the audit benefits.\nEVIDENCE: cost model | lag measurements"
     if "anonymous deliberation" in s:
-        return (
-            f"STUB-COUNCIL-{model_name}: adopt bounded contexts for the migration.\n"
-            "STATED CLAIMS: bounded blast radius | simpler ops | easier rollout\n"
-            "SELF CONFIDENCE: 0.88"
-        )
+        return f"STUB-COUNCIL-{model_name}: adopt bounded contexts for the migration.\nSTATED CLAIMS: bounded blast radius | simpler ops | easier rollout\nSELF CONFIDENCE: 0.88"
     if "parallel ensemble" in s:
         return f"STUB-ENSEMBLE-{model_name}: structured take on: {(user or '')[:60]}"
     if "direct, accurate assistant" in s:

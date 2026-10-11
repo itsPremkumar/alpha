@@ -264,7 +264,9 @@ class CostGovernor:
                     state.tripped = True
                     logger.warning(
                         "Circuit breaker tripped for scope %s: $%.4f of $%.2f limit",
-                        sid, state.spent_usd, state.limit_usd,
+                        sid,
+                        state.spent_usd,
+                        state.limit_usd,
                     )
             if changed:
                 self._save()
@@ -348,10 +350,7 @@ class CostGovernor:
         if current_daily_spend >= threshold:
             queue = get_approval_queue(project_id)
             # Check if pending approval already exists for budget extension
-            has_pending = any(
-                r.action_type == "budget_extension" and r.status == "pending"
-                for r in queue.list_pending()
-            )
+            has_pending = any(r.action_type == "budget_extension" and r.status == "pending" for r in queue.list_pending())
             if not has_pending:
                 queue.request_approval(
                     bot_name=bot_name,
@@ -361,13 +360,10 @@ class CostGovernor:
                         "current_daily_spend": current_daily_spend,
                         "daily_budget_usd": budget.daily_budget_usd,
                         "requested_extension_usd": 5.0,
-                        "reason": f"Project spend (${current_daily_spend:.2f}) exceeded {int(budget.alert_threshold_ratio*100)}% of daily limit.",
+                        "reason": f"Project spend (${current_daily_spend:.2f}) exceeded {int(budget.alert_threshold_ratio * 100)}% of daily limit.",
                     },
                 )
-                logger.warning(
-                    "Circuit breaker alert: Project %s reached $%.2f of $%.2f budget",
-                    project_id, current_daily_spend, budget.daily_budget_usd
-                )
+                logger.warning("Circuit breaker alert: Project %s reached $%.2f of $%.2f budget", project_id, current_daily_spend, budget.daily_budget_usd)
 
     def get_project_summary(self, project_id: str) -> dict[str, Any]:
         """Aggregate total token consumption and costs per bot and model."""
@@ -382,9 +378,7 @@ class CostGovernor:
                         bot_breakdown[r.bot_name] = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
                     bot_breakdown[r.bot_name]["input_tokens"] += r.input_tokens
                     bot_breakdown[r.bot_name]["output_tokens"] += r.output_tokens
-                    bot_breakdown[r.bot_name]["cost_usd"] = round(
-                        bot_breakdown[r.bot_name]["cost_usd"] + r.cost_usd, 4
-                    )
+                    bot_breakdown[r.bot_name]["cost_usd"] = round(bot_breakdown[r.bot_name]["cost_usd"] + r.cost_usd, 4)
 
         return {
             "project_id": project_id,

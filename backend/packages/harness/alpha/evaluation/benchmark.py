@@ -27,6 +27,7 @@ class BenchmarkTaskCategory(StrEnum):
 @dataclass
 class BenchmarkTaskSpec:
     """Specification of an autonomous evaluation benchmark task."""
+
     task_id: str
     name: str
     category: BenchmarkTaskCategory
@@ -49,6 +50,7 @@ class TaskEvaluationResult:
     ``tool_precision`` / ``verification_score`` default to None ("not
     measured") — an unset field must never read back as a perfect 1.0.
     """
+
     task_id: str
     success: bool
     tool_precision: float | None = None
@@ -154,9 +156,7 @@ class EvaluationRunner:
         resp_lower = agent_response.lower()
 
         # 1. Keyword check
-        matched_keywords = [
-            kw for kw in spec.expected_output_keywords if kw.lower() in resp_lower
-        ]
+        matched_keywords = [kw for kw in spec.expected_output_keywords if kw.lower() in resp_lower]
         keyword_ratio = len(matched_keywords) / len(spec.expected_output_keywords) if spec.expected_output_keywords else 1.0
 
         # 2. Tool pattern check
@@ -179,12 +179,7 @@ class EvaluationRunner:
             hallucination_score = 0.4
 
         # 5. Success gate: needs keyword coverage, tool coverage, exit code 0, and within budget/time
-        success = (
-            keyword_ratio >= 0.6
-            and exit_code == 0
-            and elapsed_time_sec <= (spec.max_time_sec * 1.25)
-            and cost_usd <= (spec.max_budget_usd * 1.5)
-        )
+        success = keyword_ratio >= 0.6 and exit_code == 0 and elapsed_time_sec <= (spec.max_time_sec * 1.25) and cost_usd <= (spec.max_budget_usd * 1.5)
 
         verification_score = (keyword_ratio * 0.6) + (tool_coverage * 0.4)
 

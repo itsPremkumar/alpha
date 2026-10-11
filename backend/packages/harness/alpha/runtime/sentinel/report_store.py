@@ -88,15 +88,11 @@ class ReportHistory:
         elif self.cap is None:
             shown_line = f"history: all {self.total} recorded pass(es) shown, oldest first"
         else:
-            shown_line = (
-                f"history: newest {len(self.entries)} of {self.total} recorded pass(es) shown, oldest first; "
-                "the journal file is append-only and is never rewritten"
-            )
+            shown_line = f"history: newest {len(self.entries)} of {self.total} recorded pass(es) shown, oldest first; the journal file is append-only and is never rewritten"
         return [
             source_line,
             shown_line,
-            "integrity: journal lines are read as-is; an unreadable line fails the whole read "
-            "with the file name and line number instead of being skipped or repaired",
+            "integrity: journal lines are read as-is; an unreadable line fails the whole read with the file name and line number instead of being skipped or repaired",
         ]
 
 
@@ -171,27 +167,17 @@ class SentinelReportStore:
             try:
                 decoded = line.decode("utf-8")
             except UnicodeDecodeError as exc:
-                raise ReportStoreCorruptError(
-                    f"corrupt sentinel report journal {path} at line {line_number}: not valid UTF-8 ({exc})"
-                ) from exc
+                raise ReportStoreCorruptError(f"corrupt sentinel report journal {path} at line {line_number}: not valid UTF-8 ({exc})") from exc
             try:
                 entry = json.loads(decoded)
             except json.JSONDecodeError as exc:
-                raise ReportStoreCorruptError(
-                    f"corrupt sentinel report journal {path} at line {line_number}: invalid JSON ({exc})"
-                ) from exc
+                raise ReportStoreCorruptError(f"corrupt sentinel report journal {path} at line {line_number}: invalid JSON ({exc})") from exc
             if not isinstance(entry, dict):
-                raise ReportStoreCorruptError(
-                    f"corrupt sentinel report journal {path} at line {line_number}: expected a JSON object, got {type(entry).__name__}"
-                )
+                raise ReportStoreCorruptError(f"corrupt sentinel report journal {path} at line {line_number}: expected a JSON object, got {type(entry).__name__}")
             if not isinstance(entry.get("recorded_at"), str) or not entry["recorded_at"]:
-                raise ReportStoreCorruptError(
-                    f"corrupt sentinel report journal {path} at line {line_number}: missing or invalid 'recorded_at' field"
-                )
+                raise ReportStoreCorruptError(f"corrupt sentinel report journal {path} at line {line_number}: missing or invalid 'recorded_at' field")
             if not isinstance(entry.get("report"), dict):
-                raise ReportStoreCorruptError(
-                    f"corrupt sentinel report journal {path} at line {line_number}: missing or invalid 'report' field"
-                )
+                raise ReportStoreCorruptError(f"corrupt sentinel report journal {path} at line {line_number}: missing or invalid 'report' field")
             entries.append(entry)
         return entries
 

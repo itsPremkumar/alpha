@@ -27,10 +27,7 @@ PACKAGE_ROOT = Path(war_room.__file__).resolve().parents[1]
 
 #: Guard: if this ever points somewhere containing a ``tests`` directory, the
 #: production-only scans in this file are scanning test code and will lie.
-assert not (PACKAGE_ROOT / "tests").exists(), (
-    f"PACKAGE_ROOT {PACKAGE_ROOT} contains a tests/ directory; the production-only "
-    f"scans in this file would be meaningless"
-)
+assert not (PACKAGE_ROOT / "tests").exists(), f"PACKAGE_ROOT {PACKAGE_ROOT} contains a tests/ directory; the production-only scans in this file would be meaningless"
 
 
 def _imported_names(path: Path) -> set[str]:
@@ -253,11 +250,7 @@ def test_no_second_war_room_engine_exists_beside_the_one_in_groups():
         (PACKAGE_ROOT / "groups" / "war_room.py").resolve(),
         (PACKAGE_ROOT / "tools" / "builtins" / "war_room_tool.py").resolve(),
     }
-    offenders = [
-        path
-        for path in PACKAGE_ROOT.rglob("*.py")
-        if "war_room" in path.stem and path.resolve() not in allowed
-    ]
+    offenders = [path for path in PACKAGE_ROOT.rglob("*.py") if "war_room" in path.stem and path.resolve() not in allowed]
     assert not offenders, f"a parallel war room exists: {offenders}"
 
     # And there is exactly one WarRoom class in the whole package.

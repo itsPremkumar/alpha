@@ -202,10 +202,7 @@ def assert_candidate_path_allowed(path: str | Path, *, reviewed: bool = False) -
     if mode == MODE_DENY:
         raise PermissionError(f"candidate path denied by protected-path policy: {path} (rule: {pattern})")
     if not reviewed:
-        raise PermissionError(
-            f"candidate path requires human review before it is allowed: {path} "
-            "(reviewed=True must be granted by a human/HITL approval channel, never by the candidate loop)"
-        )
+        raise PermissionError(f"candidate path requires human review before it is allowed: {path} (reviewed=True must be granted by a human/HITL approval channel, never by the candidate loop)")
 
 
 def redacted_paths(paths: list[str | Path]) -> list[str]:

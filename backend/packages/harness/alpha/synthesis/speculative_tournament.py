@@ -10,10 +10,10 @@ from __future__ import annotations
 import ast
 import concurrent.futures
 import time
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 
 class PatchStrategy(str, Enum):
@@ -71,12 +71,7 @@ class ParetoScorer:
         norm_speed = max(0.0, min(1.0, 1.0 / (1.0 + execution_time)))
         norm_diff = max(0.0, min(1.0, token_diff / 500.0))
 
-        score = (
-            w_pass * pass_rate
-            + w_comp * (1.0 - norm_complexity)
-            + w_speed * norm_speed
-            + w_diff * (1.0 - norm_diff)
-        )
+        score = w_pass * pass_rate + w_comp * (1.0 - norm_complexity) + w_speed * norm_speed + w_diff * (1.0 - norm_diff)
         return round(score, 4)
 
 
@@ -197,7 +192,7 @@ class SpeculativeSynthesisEngine:
         results.sort(key=lambda r: r.pareto_score, reverse=True)
         return results
 
-    def select_winner(self, bakeoff_results: list[TournamentBakeoffResult]) -> Optional[TournamentBakeoffResult]:
+    def select_winner(self, bakeoff_results: list[TournamentBakeoffResult]) -> TournamentBakeoffResult | None:
         """Select highest-scoring valid candidate patch."""
         if not bakeoff_results:
             return None
@@ -232,7 +227,6 @@ class SpeculativeSynthesisEngine:
 
     @staticmethod
     def _synthesize_idiomatic_refactor(code: str, issue_type: str) -> str:
-        lines = code.splitlines()
         return "\n".join([f"# Refactored with idiomatic type guards\n{code}"])
 
     @staticmethod

@@ -512,11 +512,7 @@ class ProviderSearchResult:
             "result_count": len(self.hits),
             "answer": self.answer,
             "predicted_cost": {"amount": self.cost.amount, "unit": self.cost.unit, "reason": self.cost.reason},
-            "reported_cost": (
-                None
-                if self.reported_cost is None
-                else {"amount": self.reported_cost, "unit": self.reported_cost_unit}
-            ),
+            "reported_cost": (None if self.reported_cost is None else {"amount": self.reported_cost, "unit": self.reported_cost_unit}),
             "latency_ms": round(self.latency_ms, 1),
             "request_id": self.request_id,
             "notes": self.notes,

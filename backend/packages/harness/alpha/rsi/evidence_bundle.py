@@ -111,10 +111,7 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 def _validate_candidate_id(candidate_id: Any) -> str:
     """Return ``candidate_id`` when it is a safe single-path-component id, else ``ValueError``."""
     if not isinstance(candidate_id, str) or not _SAFE_ID_RE.fullmatch(candidate_id) or ".." in candidate_id:
-        raise ValueError(
-            f"unsafe candidate_id for an evidence bundle: {candidate_id!r}; ids must match {_SAFE_ID_RE.pattern} "
-            "(no path separators, no traversal — a bundle directory can never escape runtime_home()/rsi/bundles/)."
-        )
+        raise ValueError(f"unsafe candidate_id for an evidence bundle: {candidate_id!r}; ids must match {_SAFE_ID_RE.pattern} (no path separators, no traversal — a bundle directory can never escape runtime_home()/rsi/bundles/).")
     return candidate_id
 
 
@@ -126,10 +123,7 @@ def _bundle_dir(candidate_id: str) -> Path:
 def _require_known_name(name: Any) -> str:
     """Allow only the plan's nine file names (unknown names cannot enter provenance)."""
     if not isinstance(name, str) or name not in BUNDLE_FILES:
-        raise ValueError(
-            f"unknown evidence bundle file {name!r}; the bundle accepts exactly the plan's nine files: "
-            f"{', '.join(BUNDLE_FILES)} (unknown names are refused — no stray files enter the provenance index)."
-        )
+        raise ValueError(f"unknown evidence bundle file {name!r}; the bundle accepts exactly the plan's nine files: {', '.join(BUNDLE_FILES)} (unknown names are refused — no stray files enter the provenance index).")
     return name
 
 
@@ -156,10 +150,7 @@ def _resolve_evidence_kind(name: str, payload: Any, declared: str | None) -> tup
         except ValueError as exc:
             raise ValueError(f"evidence payload for {name!r}: {exc}") from exc
     if declared_norm is not None and payload_norm is not None and declared_norm != payload_norm:
-        raise ValueError(
-            f"conflicting evidence_kind claims for {name!r}: declared {declared_norm!r} vs payload "
-            f"{payload_norm!r}; refusing to record two evidence labels for one item."
-        )
+        raise ValueError(f"conflicting evidence_kind claims for {name!r}: declared {declared_norm!r} vs payload {payload_norm!r}; refusing to record two evidence labels for one item.")
     if declared_norm is not None:
         return declared_norm, "declared"
     if payload_norm is not None:
@@ -308,26 +299,14 @@ class Bundle:
         no defaults, and computes no metrics.
         """
         if self.finalized:
-            raise ValueError(
-                f"bundle for {self.candidate_id!r} is already finalized; refusing to add {name!r} after "
-                f"{INDEX_FILE_NAME} was written (a finalized bundle is immutable provenance)."
-            )
+            raise ValueError(f"bundle for {self.candidate_id!r} is already finalized; refusing to add {name!r} after {INDEX_FILE_NAME} was written (a finalized bundle is immutable provenance).")
         _require_known_name(name)
         if payload is None:
-            raise ValueError(
-                f"refusing to add {name!r} to the bundle: payload is None (the evidence bundle never stores empty "
-                "evidence; an absent source must travel as an unavailable/failed marker with its real reason)."
-            )
+            raise ValueError(f"refusing to add {name!r} to the bundle: payload is None (the evidence bundle never stores empty evidence; an absent source must travel as an unavailable/failed marker with its real reason).")
         if not isinstance(payload, (dict, list)):
-            raise ValueError(
-                f"evidence payload for {name!r} must be a JSON object or array, got {type(payload).__name__} "
-                "(fail-closed: no lossy coercion of evidence)."
-            )
+            raise ValueError(f"evidence payload for {name!r} must be a JSON object or array, got {type(payload).__name__} (fail-closed: no lossy coercion of evidence).")
         if name in self.items:
-            raise ValueError(
-                f"evidence item {name!r} was already added to the bundle for {self.candidate_id!r}; "
-                "items are recorded exactly once (a second add would silently replace provenance)."
-            )
+            raise ValueError(f"evidence item {name!r} was already added to the bundle for {self.candidate_id!r}; items are recorded exactly once (a second add would silently replace provenance).")
         try:
             json.dumps(payload, ensure_ascii=False)
         except (TypeError, ValueError) as exc:
@@ -374,10 +353,7 @@ class Bundle:
         index plus ``index_path`` and the ledger disclosure.
         """
         if self.finalized:
-            raise ValueError(
-                f"bundle for {self.candidate_id!r} is already finalized; finalize() runs exactly once "
-                f"({INDEX_FILE_NAME} is immutable provenance)."
-            )
+            raise ValueError(f"bundle for {self.candidate_id!r} is already finalized; finalize() runs exactly once ({INDEX_FILE_NAME} is immutable provenance).")
         files: dict[str, Any] = {}
         for name in sorted(self.items):
             path = self.bundle_dir / name
@@ -446,10 +422,7 @@ def begin_bundle(candidate_id: str, *, clock: Callable[[], float] = time.time) -
     candidate_id = _validate_candidate_id(candidate_id)
     bundle_dir = _bundle_dir(candidate_id)
     if bundle_dir.exists() and any(bundle_dir.iterdir()):
-        raise ValueError(
-            f"bundle directory {bundle_dir} already contains evidence; refusing to overwrite an existing bundle "
-            f"for {candidate_id!r} (remove it deliberately to rebuild — provenance is never replaced silently)."
-        )
+        raise ValueError(f"bundle directory {bundle_dir} already contains evidence; refusing to overwrite an existing bundle for {candidate_id!r} (remove it deliberately to rebuild — provenance is never replaced silently).")
     bundle_dir.mkdir(parents=True, exist_ok=True)
     return Bundle(candidate_id, bundle_dir=bundle_dir, clock=clock)
 
@@ -501,10 +474,7 @@ def verify_bundle(candidate_id: str) -> tuple[bool, str]:
             return False, f"bundle file missing or unreadable: {path}: {exc}"
         actual = hashlib.sha256(blob).hexdigest()
         if actual != entry["sha256"]:
-            return False, (
-                f"sha256 mismatch for {name!r} in {bundle_dir}: index records {entry['sha256']}, "
-                f"file on disk is {actual} (bundle corrupted or modified after finalize)"
-            )
+            return False, (f"sha256 mismatch for {name!r} in {bundle_dir}: index records {entry['sha256']}, file on disk is {actual} (bundle corrupted or modified after finalize)")
         if entry.get("bytes") != len(blob):
             return False, f"size mismatch for {name!r} in {bundle_dir}: index records {entry.get('bytes')!r} bytes, file on disk is {len(blob)} bytes"
     allowed = set(indexed) | {INDEX_FILE_NAME}

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from alpha.config.paths import VIRTUAL_PATH_PREFIX
 from app.channels.commands import KNOWN_CHANNEL_COMMANDS
 from app.channels.dingtalk import (
     _CONVERSATION_TYPE_GROUP,
@@ -23,7 +24,6 @@ from app.channels.dingtalk import (
     _normalize_conversation_type,
 )
 from app.channels.message_bus import InboundMessageType, MessageBus, OutboundMessage
-from alpha.config.paths import VIRTUAL_PATH_PREFIX
 
 
 def _run(coro):

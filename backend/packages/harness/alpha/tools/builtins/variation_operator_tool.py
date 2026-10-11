@@ -42,7 +42,12 @@ def run_variation_operator_step(
     and grounded workspace candidate execution with auto-rollback.
 
     Args:
-        action: Action to perform: 'vary' (in-memory candidate step), 'workspace_run' (grounded file mutation with auto-rollback), 'inspect_frontier' (get Pareto solutions), 'knowledge_query' (query K), 'stats' (engine statistics), 'persist' (save to disk), 'restore' (load from disk), 'supervisor_status' (check intervention status).
+        action: Action to perform: 'vary' (in-memory candidate step),
+            'workspace_run' (grounded file mutation with auto-rollback),
+            'inspect_frontier' (get Pareto solutions), 'knowledge_query'
+            (query K), 'stats' (engine statistics), 'persist' (save to
+            disk), 'restore' (load from disk), 'supervisor_status'
+            (check intervention status).
         hypothesis: Testable optimization hypothesis (e.g. 'Branchless accumulator rescaling').
         modification: Description of the code / algorithmic edit.
         code_snippet: Code implementation or diff.

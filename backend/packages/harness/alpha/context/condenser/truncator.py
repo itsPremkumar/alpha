@@ -46,11 +46,7 @@ class HeadTailBudgetTruncator:
         tail = copy.deepcopy(messages[-self.keep_tail_turns :])
         middle_count = total_turns - (self.keep_head_turns + self.keep_tail_turns)
 
-        notice_content = (
-            f"[Context Condenser Notice: {middle_count} intermediate historical turns "
-            f"were truncated to conserve context window. Head ({len(head)} turns) and "
-            f"Tail ({len(tail)} turns) preserved.]"
-        )
+        notice_content = f"[Context Condenser Notice: {middle_count} intermediate historical turns were truncated to conserve context window. Head ({len(head)} turns) and Tail ({len(tail)} turns) preserved.]"
         notice_message = {
             "role": "system",
             "content": notice_content,

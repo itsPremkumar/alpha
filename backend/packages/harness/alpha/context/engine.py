@@ -45,22 +45,26 @@ class ContextEngine:
         messages: list[dict[str, Any]] = []
 
         # 1. Pinned System Prompt
-        messages.append({
-            "role": "system",
-            "content": system_prompt,
-            "pinned": True,
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": system_prompt,
+                "pinned": True,
+            }
+        )
 
         # 2. Pinned Goal & Scratchpad (if present)
         if goal_text:
             goal_content = f"### ACTIVE AUTONOMOUS GOAL ###\n{goal_text}"
             if scratchpad:
                 goal_content += f"\n\n### CURRENT SCRATCHPAD ###\n{scratchpad}"
-            messages.append({
-                "role": "system",
-                "content": goal_content,
-                "pinned": True,
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": goal_content,
+                    "pinned": True,
+                }
+            )
 
         # 3. Append history
         if history_messages:

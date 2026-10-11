@@ -61,36 +61,26 @@ def test_rubric_evaluator(tmp_path):
     test_file.write_text("success content")
 
     evaluator = RubricEvaluator()
-    evaluator.add_criterion(RubricCriterion(
-        name="output_exists",
-        description="Ensure output file exists",
-        required_file="output.txt"
-    ))
-    evaluator.add_criterion(RubricCriterion(
-        name="custom_check",
-        description="Verify custom condition",
-        custom_checker=lambda ctx: True
-    ))
+    evaluator.add_criterion(RubricCriterion(name="output_exists", description="Ensure output file exists", required_file="output.txt"))
+    evaluator.add_criterion(RubricCriterion(name="custom_check", description="Verify custom condition", custom_checker=lambda ctx: True))
 
     res = evaluator.evaluate("Generate output", workspace_dir=str(tmp_path))
     assert res.is_approved
     assert "output_exists" in res.metadata["passed"]
 
     # Now add a failing criterion
-    evaluator.add_criterion(RubricCriterion(
-        name="missing_file",
-        description="File that does not exist",
-        required_file="missing.txt"
-    ))
+    evaluator.add_criterion(RubricCriterion(name="missing_file", description="File that does not exist", required_file="missing.txt"))
     res_fail = evaluator.evaluate("Generate output", workspace_dir=str(tmp_path))
     assert res_fail.is_rejected
     assert "missing_file" in res_fail.reason
 
 
 def test_critic_pipeline():
-    pipeline = CriticPipeline(critics=[
-        AgentFinishedCritic(min_actions=0),
-    ])
+    pipeline = CriticPipeline(
+        critics=[
+            AgentFinishedCritic(min_actions=0),
+        ]
+    )
     res = pipeline.evaluate(
         task_description="Explain code",
         execution_history=[{"status": "success", "exit_code": 0}],

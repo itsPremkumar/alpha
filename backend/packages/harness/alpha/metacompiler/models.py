@@ -35,29 +35,31 @@ class AgentBlueprint:
     name: str = "Alpha-ASI-Seed"
     architecture_tag: str = "Alpha-ASI-v1"
     system_prompt_template: str = (
-        "You are an autonomous ASI agent. Observe environment state, form hypotheses, "
-        "verify evidence via epistemic belief graph, execute minimal high-leverage actions, "
-        "and continuously review outcomes for closed-loop self-improvement."
+        "You are an autonomous ASI agent. Observe environment state, form hypotheses, verify evidence via epistemic belief graph, execute minimal high-leverage actions, and continuously review outcomes for closed-loop self-improvement."
     )
     reasoning_strategy: ReasoningStrategy = ReasoningStrategy.ITERATIVE_REFLEXION
     memory_layout: MemoryLayout = MemoryLayout.HYBRID_GRAPH_VECTOR
-    tool_bindings: list[str] = field(default_factory=lambda: [
-        "code_executor",
-        "filesystem_editor",
-        "ripgrep_search",
-        "git_worktree",
-        "epistemic_belief_graph",
-        "rsi_engine",
-    ])
+    tool_bindings: list[str] = field(
+        default_factory=lambda: [
+            "code_executor",
+            "filesystem_editor",
+            "ripgrep_search",
+            "git_worktree",
+            "epistemic_belief_graph",
+            "rsi_engine",
+        ]
+    )
     reflection_frequency: int = 2
     stagnation_recovery_policy: str = "keel_perturbation_backtrack"
     model_tier: str = "reasoning_frontier"
-    hyperparameters: dict[str, Any] = field(default_factory=lambda: {
-        "temperature": 0.2,
-        "top_p": 0.95,
-        "max_reasoning_tokens": 8192,
-        "backtrack_threshold": 2,
-    })
+    hyperparameters: dict[str, Any] = field(
+        default_factory=lambda: {
+            "temperature": 0.2,
+            "top_p": 0.95,
+            "max_reasoning_tokens": 8192,
+            "backtrack_threshold": 2,
+        }
+    )
     specialization: str = "universal"
     mutation_notes: str = "Baseline seed generation"
     created_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))

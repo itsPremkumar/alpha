@@ -8,7 +8,6 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 from uuid import uuid4
-from alpha.persistence.storekit.atomic import atomic_write_bytes
 
 from alpha.harness.continuous.models import (
     Goal,
@@ -18,6 +17,7 @@ from alpha.harness.continuous.models import (
     VerificationCheck,
     _now,
 )
+from alpha.persistence.storekit.atomic import atomic_write_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,6 @@ class GoalStore:
                 "updated_at": _now(),
             }
             payload = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True)
-            tmp = self.storage_path.with_name(self.storage_path.name + ".tmp")
             try:
                 atomic_write_bytes(
                     self.storage_path,

@@ -39,7 +39,7 @@ def test_hyperplan_blocks_unverified_and_dangerous_plan():
     """
     report = pipeline.review_plan("Dangerous Cleanup", bad_plan)
     assert report.overall_status == "BLOCKED"
-    
+
     # Security reviewer rejects
     sec_verdict = next(v for v in report.verdicts if "Security" in v.reviewer_role)
     assert sec_verdict.status == "REJECTED"

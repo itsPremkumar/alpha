@@ -16,6 +16,7 @@ from typing import Any
 @dataclass
 class GapAnalysisReport:
     """Findings from pre-planning gap analysis."""
+
     task_title: str
     gaps_identified: list[str] = field(default_factory=list)
     suggested_additions: list[str] = field(default_factory=list)

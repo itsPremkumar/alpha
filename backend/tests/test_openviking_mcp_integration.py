@@ -13,10 +13,10 @@ import pytest
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
-from app.gateway.routers.mcp import McpServerConfigResponse, _mask_server_config
 from alpha.config.extensions_config import ExtensionsConfig
 from alpha.mcp.client import build_server_params
 from alpha.mcp.tools import get_mcp_tools
+from app.gateway.routers.mcp import McpServerConfigResponse, _mask_server_config
 
 _IDENTITY_HEADERS = {
     "x-openviking-account",

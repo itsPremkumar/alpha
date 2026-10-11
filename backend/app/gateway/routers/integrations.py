@@ -5,7 +5,6 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.deps import get_config, require_admin_user
 from alpha.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from alpha.config.app_config import AppConfig
 from alpha.integrations.lark_cli import (
@@ -30,6 +29,7 @@ from alpha.integrations.lark_cli import (
     start_lark_config,
 )
 from alpha.runtime.user_context import get_effective_user_id
+from app.gateway.deps import get_config, require_admin_user
 
 logger = logging.getLogger(__name__)
 

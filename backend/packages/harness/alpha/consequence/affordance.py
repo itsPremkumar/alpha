@@ -12,6 +12,7 @@ from typing import Any
 @dataclass
 class EnvironmentAffordances:
     """Snapshot of capabilities afforded by the local runtime environment."""
+
     workspace_dir: str
     is_writable: bool
     is_git_repo: bool

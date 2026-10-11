@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-import ast, glob, os
+import ast
+import glob
+import os
 
 ROOT = "/c/Users/PREM KUMAR/Videos/alpha/backend"
 for f in sorted(glob.glob(ROOT + "/app/gateway/routers/*.py")):

@@ -10,6 +10,7 @@ class RecoveryFallbackTree:
     P19 Recovery Planning: Pre-computed fallbacks generated BEFORE execution.
     Eliminates runtime panic and hallucinations on tool/subgoal failure.
     """
+
     primary_strategy: str
     fallback_a: str  # First fallback: alternate tool, library or algorithmic approach
     fallback_b: str  # Second fallback: graceful degradation, reduced scope, or simplification

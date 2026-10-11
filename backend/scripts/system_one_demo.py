@@ -177,8 +177,7 @@ async def run(client: SystemOneClient, label: str, verbose: bool) -> None:
             TraceStep(tool="bash", step_id="r2", result="1204"),
         ],
     )
-    print(f"      trace_verify       -> {v.trace_supported if v else 'no signal'} "
-          f"(problems={v.problems if v else '-'})")
+    print(f"      trace_verify       -> {v.trace_supported if v else 'no signal'} (problems={v.problems if v else '-'})")
 
     # Escalation: does this need the big model?
     for prompt in ["capital of France", "prove the migration preserves referential integrity"]:
@@ -187,9 +186,11 @@ async def run(client: SystemOneClient, label: str, verbose: bool) -> None:
     # Selection: rank candidates for a request.
     ranking = await rank_candidates(
         "make a chart of quarterly revenue",
-        [Candidate(id="data-analysis", title="data-analysis", summary="analyse tabular data"),
-         Candidate(id="podcast", title="podcast", summary="produce audio episodes"),
-         Candidate(id="deep-research", title="deep-research", summary="investigate a topic")],
+        [
+            Candidate(id="data-analysis", title="data-analysis", summary="analyse tabular data"),
+            Candidate(id="podcast", title="podcast", summary="produce audio episodes"),
+            Candidate(id="deep-research", title="deep-research", summary="investigate a topic"),
+        ],
     )
     print(f"      selection          -> {ranking.ids if ranking else 'no signal'}")
 
@@ -210,13 +211,8 @@ async def run(client: SystemOneClient, label: str, verbose: bool) -> None:
     print(f"      belief             -> posterior {ub.posterior if ub else 'no signal'}")
 
     # Browser: index a page straight from HTML, no browser process needed.
-    page = page_state_from_html(
-        '<html><head><title>Checkout</title></head><body>'
-        '<input placeholder="Email"><select id="cc"><option value="us">US</option></select>'
-        '<button id="pay">Pay now</button></body></html>'
-    )
-    print(f"      browser (html)     -> {len(page['elements'])} elements indexed, "
-          f"title={page['title']!r}")
+    page = page_state_from_html('<html><head><title>Checkout</title></head><body><input placeholder="Email"><select id="cc"><option value="us">US</option></select><button id="pay">Pay now</button></body></html>')
+    print(f"      browser (html)     -> {len(page['elements'])} elements indexed, title={page['title']!r}")
     # ---- 9. Calibration ---------------------------------------------------
     print("\n[9] CALIBRATION — what a stated 0.9 has to be worth")
     from alpha.evaluation.system_one_calibration import (
@@ -229,13 +225,9 @@ async def run(client: SystemOneClient, label: str, verbose: bool) -> None:
     # Two synthetic sites: one calibrated, one dangerously overconfident.
     demo = []
     for i in range(10):
-        demo.append(DecisionRecord(ts=i, site="guardrail", tier="read", question_id="q", type="boolean",
-                                   value=0.9, confidence=None, threshold=0.6, latency_ms=140, shadow=True,
-                                   outcome=(i < 9)))
+        demo.append(DecisionRecord(ts=i, site="guardrail", tier="read", question_id="q", type="boolean", value=0.9, confidence=None, threshold=0.6, latency_ms=140, shadow=True, outcome=(i < 9)))
     for i in range(10):
-        demo.append(DecisionRecord(ts=i, site="browser", tier="write", question_id="q", type="boolean",
-                                   value=0.9, confidence=None, threshold=0.75, latency_ms=210, shadow=True,
-                                   outcome=(i < 5)))
+        demo.append(DecisionRecord(ts=i, site="browser", tier="write", question_id="q", type="boolean", value=0.9, confidence=None, threshold=0.75, latency_ms=210, shadow=True, outcome=(i < 5)))
     print("      (synthetic: both sites state 0.9; guardrail is right 9/10, browser only 5/10)")
     print(f"        {'site':<12}{'n':>4}{'observed':>10}{'gap':>8}   verdict")
     for site in ("guardrail", "browser"):
@@ -253,8 +245,7 @@ async def run(client: SystemOneClient, label: str, verbose: bool) -> None:
     shadow_cfg = SystemOneConfig(api_key="demo-key", shadow_mode=True)
     shadow_cli = SystemOneClient(shadow_cfg)
     shadow_cli._get_client = lambda: httpx.AsyncClient(  # noqa: SLF001
-        transport=httpx.MockTransport(lambda req: httpx.Response(
-            200, json={"model": "jev", "answers": {"q": {"type": "boolean", "boolean": 0.93}}}, request=req)),
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"model": "jev", "answers": {"q": {"type": "boolean", "boolean": 0.93}}}, request=req)),
         timeout=5.0,
     )
     shadow_log = Path(tempfile.mkdtemp()) / "shadow.jsonl"

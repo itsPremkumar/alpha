@@ -7,13 +7,13 @@ import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers.company import router as company_router
 from alpha.company import (
     AutonomousCompanyEngine,
     OrgArchetype,
     OrgState,
 )
 from alpha.tools.builtins.company_tool import company_tool
+from app.gateway.routers.company import router as company_router
 
 
 def test_archetype_listing():

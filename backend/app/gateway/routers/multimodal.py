@@ -164,11 +164,7 @@ async def capabilities(request: Request) -> dict[str, Any]:
     except TimeoutError as exc:
         raise HTTPException(
             status_code=503,
-            detail=(
-                f"capability probe exceeded {CAPABILITIES_PROBE_TIMEOUT_SECONDS:g}s "
-                "while loading local speech/OCR engines; the matrix is observation-only and "
-                "can be retried once the engines are warm"
-            ),
+            detail=(f"capability probe exceeded {CAPABILITIES_PROBE_TIMEOUT_SECONDS:g}s while loading local speech/OCR engines; the matrix is observation-only and can be retried once the engines are warm"),
         ) from exc
     except Exception as exc:  # noqa: BLE001 - the disclosure IS the answer
         return {

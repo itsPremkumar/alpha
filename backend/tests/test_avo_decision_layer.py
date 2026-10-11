@@ -202,9 +202,7 @@ def test_b_bites_lineage_compares_against_best_not_parent() -> None:
     # Parent is v1 (0.5). This beats its parent but is far below the best
     # committed (v2, 0.9). The old rule would have committed it.
     v3 = VersionRecord(correctness=True, performance_score=0.7, quality_score=0.7, parent_id=v1.version_id, hypothesis="v3")
-    assert lineage.commit_candidate(v3) is False, (
-        "a candidate above its parent (0.7 > 0.5) but below the best committed (0.9) must be rejected"
-    )
+    assert lineage.commit_candidate(v3) is False, "a candidate above its parent (0.7 > 0.5) but below the best committed (0.9) must be rejected"
     assert v3.metadata["compared_against"] == v2.version_id
     assert lineage.best_committed() is v2
     assert lineage.head_id == v2.version_id, "a rejection must not move the head"
@@ -544,18 +542,19 @@ def test_h_scorer_change_is_evaluated_by_the_previous_gate_not_the_proposed_one(
     assert decision.evaluated_under_previous_gate is True
     assert decision.gate_version == 1, "the decision must be stamped with the gate that made it"
     assert decision.gate_fingerprint == previous_gate.fingerprint
-    assert decision.reason_code == RejectionReason.INVARIANT_VIOLATED.value, (
-        "the attack was caught by the PREVIOUS gate's invariant rule, not waved through by the proposed weaker one"
-    )
+    assert decision.reason_code == RejectionReason.INVARIANT_VIOLATED.value, "the attack was caught by the PREVIOUS gate's invariant rule, not waved through by the proposed weaker one"
     # And the proposed weaker gate, if consulted, would have allowed it -- which
     # is exactly why it must not be the one consulted.
-    assert proposed_gate.evaluate(
-        attack,
-        receipt=receipt(ad),
-        invariant=invariants(ad, regressions=4, consistency=0.5),
-        target_digest=ad,
-        evaluating_fingerprint=proposed_gate.fingerprint,
-    ).committed is True
+    assert (
+        proposed_gate.evaluate(
+            attack,
+            receipt=receipt(ad),
+            invariant=invariants(ad, regressions=4, consistency=0.5),
+            target_digest=ad,
+            evaluating_fingerprint=proposed_gate.fingerprint,
+        ).committed
+        is True
+    )
 
 
 # ======================================================================
@@ -691,9 +690,7 @@ def test_j_redirect_directions_are_derived_from_the_trajectory() -> None:
     for i in range(2):
         _, directive, _ = supervisor.observe_step(improved=False, signature=f"s{i}", lineage=lineage)
     assert directive is not None
-    assert any("cache-warm" in d for d in directive.recommended_directions), (
-        f"directions must reference what the lineage actually rejected; got {directive.recommended_directions}"
-    )
+    assert any("cache-warm" in d for d in directive.recommended_directions), f"directions must reference what the lineage actually rejected; got {directive.recommended_directions}"
 
 
 # ======================================================================
@@ -888,9 +885,7 @@ def test_workspace_runner_records_a_behaviour_change_as_unverified_not_as_verifi
     assert result["correctness"] is True
     assert result["committed"] is True, "the landed contract for this surface is preserved"
     assert result["invariant_regressions"] > 0, "the divergence was measured, not assumed"
-    assert result["invariant_scope"] == "behaviour_changed_by_candidate", (
-        "a behaviour change must never be recorded as invariant-verified"
-    )
+    assert result["invariant_scope"] == "behaviour_changed_by_candidate", "a behaviour change must never be recorded as invariant-verified"
     caveats = runner.honesty().to_dict()["caveats"]
     assert caveats["commits_with_declared_behaviour_change"] == 1
     assert caveats["invariant_verified_commits"] == 0

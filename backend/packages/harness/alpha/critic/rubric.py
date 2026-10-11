@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RubricCriterion:
     """A single criterion in an evaluation rubric."""
+
     name: str
     description: str
     required: bool = True
@@ -52,10 +53,7 @@ class RubricEvaluator(BaseCritic):
             return CriticResult(
                 verdict=CriticVerdict.WARNING,
                 reason="No rubric criteria defined; abstaining — nothing was evaluated, so this is not an approval.",
-                diagnostic_prompt=(
-                    "Rubric evaluation abstained: the rubric has no criteria. "
-                    "Define acceptance criteria before relying on this critic's verdict."
-                ),
+                diagnostic_prompt=("Rubric evaluation abstained: the rubric has no criteria. Define acceptance criteria before relying on this critic's verdict."),
                 critic_name=self.name,
                 metadata={"abstained": True, "reason_code": "no_rubric_criteria"},
             )
@@ -121,10 +119,7 @@ class RubricEvaluator(BaseCritic):
             return CriticResult(
                 verdict=CriticVerdict.REJECTED,
                 reason=f"Failed rubrics: {failed_str}",
-                diagnostic_prompt=(
-                    f"Critic rejection: The following acceptance criteria failed verification: {failed_str}. "
-                    f"Details: {details}"
-                ),
+                diagnostic_prompt=(f"Critic rejection: The following acceptance criteria failed verification: {failed_str}. Details: {details}"),
                 critic_name=self.name,
                 metadata={"passed": passed_criteria, "failed": failed_criteria, "details": details},
             )

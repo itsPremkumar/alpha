@@ -521,9 +521,7 @@ def test_min_score_boundary_is_inclusive_for_episodic_only_admission() -> None:
 
 
 def test_explicit_hard_rule_bypasses_score_floor() -> None:
-    decision = AdmissionEngine().evaluate(
-        candidate(content="Remember this exact note", explicit_user_request=False)
-    )
+    decision = AdmissionEngine().evaluate(candidate(content="Remember this exact note", explicit_user_request=False))
 
     assert decision.score == 0.0
     assert decision.admit is True
@@ -742,12 +740,8 @@ def test_hot_reload_applies_changed_thresholds_and_tracks_mtime_and_hash(tmp_pat
     [
         "policy: [\n",
         "policy:\n  secret_like:\n    action: reject\n  secret_like:\n    action: reject\n",
-        DEFAULT_POLICY_PATH.read_text(encoding="utf-8").replace(
-            "  secret_like:\n", "  mystery_rule:\n    action: reject\n  secret_like:\n", 1
-        ),
-        DEFAULT_POLICY_PATH.read_text(encoding="utf-8").replace(
-            "    action: reject\n", "    action: episodic_archive\n", 1
-        ),
+        DEFAULT_POLICY_PATH.read_text(encoding="utf-8").replace("  secret_like:\n", "  mystery_rule:\n    action: reject\n  secret_like:\n", 1),
+        DEFAULT_POLICY_PATH.read_text(encoding="utf-8").replace("    action: reject\n", "    action: episodic_archive\n", 1),
     ],
 )
 def test_invalid_reload_is_loud_and_keeps_last_known_good_policy(
@@ -813,9 +807,7 @@ def test_strict_false_allows_only_documented_metadata_never_unknown_rules() -> N
 def test_from_config_reads_injected_policy_path_and_strict_flag(tmp_path: Path) -> None:
     policy_file = tmp_path / "custom-policy.yaml"
     policy_file.write_text(
-        DEFAULT_POLICY_PATH.read_text(encoding="utf-8").replace(
-            "min_score_to_admit: 0.60", "min_score_to_admit: 0.25"
-        ),
+        DEFAULT_POLICY_PATH.read_text(encoding="utf-8").replace("min_score_to_admit: 0.60", "min_score_to_admit: 0.25"),
         encoding="utf-8",
     )
     config = PolicyConfig(
@@ -842,13 +834,7 @@ def test_package_root_is_lazy_and_uses_explicit_type_checking_reexports() -> Non
             sys.executable,
             "-B",
             "-c",
-            (
-                "import alpha.memory.policy as p; "
-                "assert 'AdmissionEngine' not in p.__dict__; "
-                "assert callable(p.__getattr__); "
-                "assert p.AdmissionEngine.__name__ == 'AdmissionEngine'; "
-                "print('lazy-root-ok')"
-            ),
+            ("import alpha.memory.policy as p; assert 'AdmissionEngine' not in p.__dict__; assert callable(p.__getattr__); assert p.AdmissionEngine.__name__ == 'AdmissionEngine'; print('lazy-root-ok')"),
         ],
         check=True,
         capture_output=True,

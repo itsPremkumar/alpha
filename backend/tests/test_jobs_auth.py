@@ -8,12 +8,12 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from alpha.config.authorization_config import AuthorizationConfig
+from alpha.jobs import ExternalJobRunner, JobResult, JobSpec, JobStatus, PersistentJobQueue
 from app.gateway.auth import jwt
 from app.gateway.auth.models import User
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.routers import jobs
-from alpha.config.authorization_config import AuthorizationConfig
-from alpha.jobs import ExternalJobRunner, JobResult, JobSpec, JobStatus, PersistentJobQueue
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.no_auto_user]
 

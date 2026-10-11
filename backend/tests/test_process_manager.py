@@ -11,7 +11,7 @@ def test_process_manager_lifecycle():
     pm = ProcessManager()
 
     # Launch a quick command that echoes text and sleeps shortly
-    cmd = f'"{sys.executable}" -c "import time; print(\'line1\'); print(\'line2\'); time.sleep(0.2); print(\'done\')"'
+    cmd = f"\"{sys.executable}\" -c \"import time; print('line1'); print('line2'); time.sleep(0.2); print('done')\""
     handle = pm.start_background(cmd)
 
     assert handle.handle_id.startswith("proc_")
@@ -69,10 +69,12 @@ def _wait_for_terminal_poll(handle_id: str, *, timeout: float = 30.0) -> str:
     deadline = time.monotonic() + timeout
     poll_out = ""
     while True:
-        poll_out = process_handle_tool.invoke({
-            "action": "poll",
-            "handle_id": handle_id,
-        })
+        poll_out = process_handle_tool.invoke(
+            {
+                "action": "poll",
+                "handle_id": handle_id,
+            }
+        )
         if "still RUNNING" not in poll_out or time.monotonic() >= deadline:
             return poll_out
         time.sleep(0.1)
@@ -80,10 +82,12 @@ def _wait_for_terminal_poll(handle_id: str, *, timeout: float = 30.0) -> str:
 
 def test_process_handle_tool():
     cmd = f'"{sys.executable}" -c "print(\'tool_test_ok\')"'
-    start_out = process_handle_tool.invoke({
-        "action": "start",
-        "command": cmd,
-    })
+    start_out = process_handle_tool.invoke(
+        {
+            "action": "start",
+            "command": cmd,
+        }
+    )
     # `start` no longer asserts "Process started in background" unconditionally.
     # It reports what it observed: a terminal outcome, or a spawn it verified
     # is still alive. Both shapes carry the handle id; neither may claim a
@@ -100,10 +104,12 @@ def test_process_handle_tool():
     poll_out = _wait_for_terminal_poll(hid)
     assert "TERMINATED with exit code 0" in poll_out
 
-    tail_out = process_handle_tool.invoke({
-        "action": "tail",
-        "handle_id": hid,
-    })
+    tail_out = process_handle_tool.invoke(
+        {
+            "action": "tail",
+            "handle_id": hid,
+        }
+    )
     assert "tool_test_ok" in tail_out
 
 

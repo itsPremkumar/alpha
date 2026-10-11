@@ -71,9 +71,7 @@ def test_candidate_evaluation_promotion_flow(tmp_path: Path):
     candidate = store.propose_candidate("alice", "Adopt fast router", [e1.id])
     assert candidate.evidence_ids == (e1.id,)
 
-    evaluation = store.evaluate_candidate(
-        candidate.id, owner_id="alice", score=0.8, verdict="promote", rationale="measured improvement", evaluator="lead"
-    )
+    evaluation = store.evaluate_candidate(candidate.id, owner_id="alice", score=0.8, verdict="promote", rationale="measured improvement", evaluator="lead")
     promotion = store.promote_candidate(candidate.id, evaluation.id, owner_id="alice")
     assert promotion.candidate_id == candidate.id
     assert promotion.verdict == "promote" if hasattr(promotion, "verdict") else True

@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import alpha.utils.llm_text as llm_text
-from app.gateway.authz import require_permission
-from app.gateway.deps import get_config
 from alpha.branding import DISPLAY_NAME
 from alpha.config.app_config import AppConfig
 from alpha.utils.oneshot_llm import run_oneshot_llm
+from app.gateway.authz import require_permission
+from app.gateway.deps import get_config
 
 logger = logging.getLogger(__name__)
 

@@ -75,9 +75,7 @@ def test_all_tools_agree_the_just_written_file_exists(runtime, tmp_path: Path) -
     assert "agreed.txt" in ls_out, "ls must list the file it just wrote"
 
     hashline_out = hashline_read.func(runtime=runtime, file_path=virtual)
-    assert "does not exist" not in hashline_out, (
-        f"hashline_read contradicted write_file/read_file/ls about an existing file: {hashline_out!r}"
-    )
+    assert "does not exist" not in hashline_out, f"hashline_read contradicted write_file/read_file/ls about an existing file: {hashline_out!r}"
     assert "1#" in hashline_out and "alpha = 1" in hashline_out
 
     edit_out = hashline_edit.func(

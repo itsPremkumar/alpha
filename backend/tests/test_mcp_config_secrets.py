@@ -16,6 +16,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
 from app.gateway.deps import require_admin_user
 from app.gateway.routers import mcp as mcp_router
 from app.gateway.routers.mcp import (
@@ -38,7 +39,6 @@ from app.gateway.routers.mcp import (
     update_mcp_server,
     update_mcp_server_state,
 )
-from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
 
 # ---------------------------------------------------------------------------
 # _mask_server_config

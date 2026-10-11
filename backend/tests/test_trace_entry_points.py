@@ -18,12 +18,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.trace_context import get_current_trace_id, request_trace_context
 from app.channels.manager import ChannelManager
 from app.channels.message_bus import InboundMessage, MessageBus
 from app.channels.store import ChannelStore
 from app.scheduler.service import ScheduledTaskService
-from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
-from alpha.trace_context import get_current_trace_id, request_trace_context
 
 # --------------------------------------------------------------------------
 # Scheduled tasks

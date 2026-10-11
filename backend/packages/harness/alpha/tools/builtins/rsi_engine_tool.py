@@ -46,9 +46,7 @@ def run_rsi_cycle(
         {
             "outcome": "PREVIEW_ONLY_NOT_MEASURED",
             "what_this_is": (
-                "A proposed configuration change. No benchmark, no holdout suite, and no "
-                "promotion were performed, and no runtime configuration was changed. Treat "
-                "this as a hypothesis awaiting evaluation, never as a measured result."
+                "A proposed configuration change. No benchmark, no holdout suite, and no promotion were performed, and no runtime configuration was changed. Treat this as a hypothesis awaiting evaluation, never as a measured result."
             ),
             **payload,
         },

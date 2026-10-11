@@ -85,15 +85,9 @@ class MasterDeliberationEngine:
         # strategy raises so the caller hears the truth instead of a fiction.
         if selected in (DeliberationStrategy.COUNCIL, DeliberationStrategy.DEBATE) and len(effective_roster) < 2:
             if forced:
-                raise RuntimeError(
-                    f"{selected.value} requires at least 2 configured chat models; "
-                    f"found {len(effective_roster)}. Add another model under `models:` in config.yaml."
-                )
+                raise RuntimeError(f"{selected.value} requires at least 2 configured chat models; found {len(effective_roster)}. Add another model under `models:` in config.yaml.")
             selected = DeliberationStrategy.ENSEMBLE
-            eval_result.rationale += (
-                f" Down-ranked to ensemble: {selected.value} needs >=2 configured models "
-                f"(found {len(effective_roster)})."
-            )
+            eval_result.rationale += f" Down-ranked to ensemble: {selected.value} needs >=2 configured models (found {len(effective_roster)})."
 
         # 2. Execution across Selected Strategy
         if selected == DeliberationStrategy.SINGLE:
@@ -101,9 +95,7 @@ class MasterDeliberationEngine:
         elif selected == DeliberationStrategy.ENSEMBLE:
             result = self._execute_ensemble(prompt, effective_roster, start_time)
         elif selected == DeliberationStrategy.DEBATE:
-            result = DebateEngine.run_debate(
-                prompt, roster=effective_roster, max_rounds=max_rounds
-            )
+            result = DebateEngine.run_debate(prompt, roster=effective_roster, max_rounds=max_rounds)
         else:  # COUNCIL / DEFAULT
             result = CouncilEngine.run_council(prompt, roster=effective_roster)
 
@@ -118,10 +110,7 @@ class MasterDeliberationEngine:
 
         answer = invocation.invoke_model(
             model,
-            system=(
-                "You are a direct, accurate assistant. Answer the user's query "
-                "concisely and correctly. Do not mention deliberation."
-            ),
+            system=("You are a direct, accurate assistant. Answer the user's query concisely and correctly. Do not mention deliberation."),
             user=prompt,
         )
 
@@ -139,13 +128,8 @@ class MasterDeliberationEngine:
             consensus_percentage=100.0,
             key_evidence=[],
             minority_dissent=None,
-            candidate_rankings=[
-                {"label": "Single model", "model_id": model, "score": None}
-            ],
-            verdict_rationale=(
-                f"Single-model fast path answered by {model}; no cross-check was performed, "
-                "so confidence is held at the neutral baseline until verified."
-            ),
+            candidate_rankings=[{"label": "Single model", "model_id": model, "score": None}],
+            verdict_rationale=(f"Single-model fast path answered by {model}; no cross-check was performed, so confidence is held at the neutral baseline until verified."),
             verification_status="consensus_supported",
             duration_seconds=round(time.time() - start_time, 3),
         )
@@ -169,35 +153,22 @@ class MasterDeliberationEngine:
             model = roster[i % len(roster)]
             text = invocation.invoke_model(
                 model,
-                system=(
-                    f"You are one perspective in a parallel ensemble answering the same query. "
-                    f"{focus} Give your independent take in a few sentences."
-                ),
+                system=(f"You are one perspective in a parallel ensemble answering the same query. {focus} Give your independent take in a few sentences."),
                 user=prompt,
             )
             responses.append({"label": label, "model_id": model, "response": text})
 
         # Real consensus: mean pairwise token overlap across actual responses.
         n = len(responses)
-        pairwise = [
-            invocation.response_similarity(responses[i]["response"], responses[j]["response"])
-            for i in range(n)
-            for j in range(i + 1, n)
-        ]
+        pairwise = [invocation.response_similarity(responses[i]["response"], responses[j]["response"]) for i in range(n) for j in range(i + 1, n)]
         consensus = round((sum(pairwise) / len(pairwise)) * 100.0, 1) if pairwise else 100.0
 
         # Each response's ranking score = its mean similarity to the others.
         rankings = []
         for i, r in enumerate(responses):
-            others = [
-                invocation.response_similarity(r["response"], responses[j]["response"])
-                for j in range(n)
-                if j != i
-            ]
+            others = [invocation.response_similarity(r["response"], responses[j]["response"]) for j in range(n) if j != i]
             score = round(sum(others) / len(others), 3) if others else 1.0
-            rankings.append(
-                {"label": r["label"], "model_id": r["model_id"], "score": score}
-            )
+            rankings.append({"label": r["label"], "model_id": r["model_id"], "score": score})
 
         answer_lines = ["### Parallel Ensemble Consensus"]
         for r in responses:
@@ -216,22 +187,12 @@ class MasterDeliberationEngine:
             strategy_used=DeliberationStrategy.ENSEMBLE,
             final_answer=answer,
             confidence_score=confidence,
-            confidence_level=(
-                DeliberationConfidence.HIGH_CONFIDENCE
-                if confidence >= 0.8
-                else DeliberationConfidence.MEDIUM_CONFIDENCE
-            ),
+            confidence_level=(DeliberationConfidence.HIGH_CONFIDENCE if confidence >= 0.8 else DeliberationConfidence.MEDIUM_CONFIDENCE),
             consensus_percentage=consensus,
-            key_evidence=[
-                f"{r['label']} ({r['model_id']}): {r['response'].strip()[:120]}"
-                for r in responses
-            ],
+            key_evidence=[f"{r['label']} ({r['model_id']}): {r['response'].strip()[:120]}" for r in responses],
             minority_dissent=None,
             candidate_rankings=rankings,
-            verdict_rationale=(
-                f"{n} real model responses aggregated; consensus {consensus}% computed "
-                "from mean pairwise token overlap."
-            ),
+            verdict_rationale=(f"{n} real model responses aggregated; consensus {consensus}% computed from mean pairwise token overlap."),
             verification_status="consensus_supported",
             duration_seconds=round(time.time() - start_time, 3),
         )

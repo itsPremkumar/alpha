@@ -31,10 +31,7 @@ from typing import Any
 
 #: Disclosed on every non-executing result so no caller can mistake this engine
 #: for something that actually touched the host.
-NO_EXECUTION_DISCLOSURE = (
-    "validation only: this engine classified the command against the blast-radius policy "
-    "and spawned no process, so the host is unchanged and there is no exit code"
-)
+NO_EXECUTION_DISCLOSURE = "validation only: this engine classified the command against the blast-radius policy and spawned no process, so the host is unchanged and there is no exit code"
 
 
 class ActionSafetyTier(StrEnum):

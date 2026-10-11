@@ -262,10 +262,7 @@ def test_batch_conflict_prompt_builds_unified_pool() -> None:
 
 
 def test_parser_accepts_fenced_extraction_array_and_repairs_priority() -> None:
-    raw = (
-        '```json\n[{"scene_name": "s", "message_ids": ["a"], '
-        '"memories": [{"content": "c", "type": "persona", "priority": "85"}]}]\n```'
-    )
+    raw = '```json\n[{"scene_name": "s", "message_ids": ["a"], "memories": [{"content": "c", "type": "persona", "priority": "85"}]}]\n```'
     outcome = parse_extraction_response(raw)
     assert outcome.status == "ok"
     assert extraction_status_known(outcome.status)
@@ -438,9 +435,7 @@ def test_candidates_for_dedup_returns_per_memory_recall(tmp_path) -> None:
     store = L1RecordStore(str(tmp_path))
     existing = MemoryRecord.create("Kyoto trip is booked for April", memory_type="episodic")
     store.put_records([existing], user_id="u", agent_name="a")
-    matches = store.candidates_for_dedup(
-        [{"record_id": "n1", "content": "kyoto trip booking"}], 3, user_id="u", agent_name="a"
-    )
+    matches = store.candidates_for_dedup([{"record_id": "n1", "content": "kyoto trip booking"}], 3, user_id="u", agent_name="a")
     assert matches["n1"] and matches["n1"][0].id == existing.id
 
 
@@ -463,9 +458,7 @@ def test_paths_sanitize_segments_and_keep_layout(tmp_path) -> None:
 
 
 def test_quota_blocks_and_discloses_record_limit(tmp_path) -> None:
-    quota = L1QuotaManager(
-        user_id="u", memory_limit=2, credit_limit=100.0, storage_path=str(tmp_path)
-    )
+    quota = L1QuotaManager(user_id="u", memory_limit=2, credit_limit=100.0, storage_path=str(tmp_path))
     assert quota.check_records(0, 2).allowed is True
     blocked = quota.check_records(2, 1)
     assert blocked.allowed is False
@@ -474,9 +467,7 @@ def test_quota_blocks_and_discloses_record_limit(tmp_path) -> None:
 
 
 def test_quota_blocks_and_discloses_credit_limit(tmp_path) -> None:
-    quota = L1QuotaManager(
-        user_id="u", memory_limit=10, credit_limit=10.0, storage_path=str(tmp_path)
-    )
+    quota = L1QuotaManager(user_id="u", memory_limit=10, credit_limit=10.0, storage_path=str(tmp_path))
     assert quota.check_credits().allowed is True
     quota.add_credits(12.5)
     blocked = quota.check_credits()
@@ -484,9 +475,7 @@ def test_quota_blocks_and_discloses_credit_limit(tmp_path) -> None:
     assert blocked.reason == "credit_limit_exceeded"
 
     # Usage survives a process restart (persisted under the L1 root).
-    again = L1QuotaManager(
-        user_id="u", memory_limit=10, credit_limit=10.0, storage_path=str(tmp_path)
-    )
+    again = L1QuotaManager(user_id="u", memory_limit=10, credit_limit=10.0, storage_path=str(tmp_path))
     assert again.credit_usage == pytest.approx(12.5)
     assert quota_path(tmp_path, "u").exists()
 
@@ -511,9 +500,7 @@ def test_usage_from_response_reads_langchain_usage_metadata() -> None:
 
 
 def test_provenance_appends_one_entry_per_run(tmp_path) -> None:
-    append_run_entry(
-        {"status": "succeeded", "stored": 2}, user_id="u", storage_path=str(tmp_path)
-    )
+    append_run_entry({"status": "succeeded", "stored": 2}, user_id="u", storage_path=str(tmp_path))
     append_run_entry({"status": "failed", "error": "boom"}, user_id="u", storage_path=str(tmp_path))
     from datetime import datetime
 
@@ -573,9 +560,7 @@ def test_sweep_caps_record_count_lowest_priority_oldest_first(tmp_path) -> None:
         MemoryRecord.create("lower", priority=10, now=now - 60),
     ]
     store.put_records(records, user_id="u", agent_name="a")
-    report = sweep(
-        store, user_id="u", agent_name="a", max_records=2, max_age_days=10_000, now=now
-    )
+    report = sweep(store, user_id="u", agent_name="a", max_records=2, max_age_days=10_000, now=now)
     assert report.capped == 2
     remaining = sorted(r.priority for r in store.list_records("u", "a"))
     assert remaining == [50, 90], "lowest priorities drop first"
@@ -615,9 +600,7 @@ def test_apply_decision_update_replaces_target_and_bumps_version(tmp_path) -> No
 
     from alpha.agents.memory.l1.models import DedupDecision, ExtractedMemory
 
-    candidates = candidate_records(
-        [ExtractedMemory(content="The user moved to Lyon in 2026.", memory_type="persona", priority=85)]
-    )
+    candidates = candidate_records([ExtractedMemory(content="The user moved to Lyon in 2026.", memory_type="persona", priority=85)])
     outcome = DedupOutcome(
         status="ok",
         decisions=[
@@ -659,9 +642,7 @@ def test_apply_decision_merge_unions_timestamps_and_tags(tmp_path) -> None:
 
     from alpha.agents.memory.l1.models import DedupDecision, ExtractedMemory
 
-    candidates = candidate_records(
-        [ExtractedMemory(content="New podcast detail", memory_type="persona", priority=80)]
-    )
+    candidates = candidate_records([ExtractedMemory(content="New podcast detail", memory_type="persona", priority=80)])
     outcome = DedupOutcome(
         status="ok",
         decisions=[
@@ -688,9 +669,7 @@ def test_apply_decisions_fail_open_when_outcome_empty(tmp_path) -> None:
     from alpha.agents.memory.l1.models import ExtractedMemory
 
     candidates = candidate_records([ExtractedMemory(content="must not vanish", priority=70)])
-    counts = apply_decisions(
-        store, candidates, DedupOutcome(status="llm_error"), user_id="u", agent_name="a"
-    )
+    counts = apply_decisions(store, candidates, DedupOutcome(status="llm_error"), user_id="u", agent_name="a")
     assert counts["stored"] == 1
     assert store.count("u", "a") == 1, "broken dedup must never drop content"
 
@@ -726,14 +705,10 @@ def test_l1_dedup_recall_feeds_unified_pool(tmp_path) -> None:
     from alpha.agents.memory.l1.dedup import L1Dedup
     from alpha.agents.memory.l1.models import ExtractedMemory
 
-    candidates = candidate_records(
-        [ExtractedMemory(content="kyoto trip reservation", priority=80)]
-    )
+    candidates = candidate_records([ExtractedMemory(content="kyoto trip reservation", priority=80)])
     model = FakeModel(
         extraction=EXTRACTION_OK,
-        dedup=json.dumps(
-            [{"record_id": candidates[0].id, "action": "store", "target_ids": []}]
-        ),
+        dedup=json.dumps([{"record_id": candidates[0].id, "action": "store", "target_ids": []}]),
     )
     dedup = L1Dedup(store, model, top_k=3, user_id="u", agent_name="a")
     outcome = dedup.detect(candidates, thread_id="t1")
@@ -751,9 +726,7 @@ def test_l1_dedup_recall_feeds_unified_pool(tmp_path) -> None:
 def test_extractor_returns_honest_llm_error_without_model() -> None:
     from alpha.agents.memory.l1.extractor import L1Extractor
 
-    outcome = L1Extractor(model=None, model_name="definitely-missing-model").extract(
-        [{"id": "m1", "role": "user", "content": "hi"}]
-    )
+    outcome = L1Extractor(model=None, model_name="definitely-missing-model").extract([{"id": "m1", "role": "user", "content": "hi"}])
     assert outcome.status == "llm_error"
     assert outcome.error == "no_model_configured"
     assert extraction_status_known(outcome.status)
@@ -762,9 +735,7 @@ def test_extractor_returns_honest_llm_error_without_model() -> None:
 def test_extractor_reports_llm_exception_instead_of_raising() -> None:
     from alpha.agents.memory.l1.extractor import L1Extractor
 
-    outcome = L1Extractor(model=BrokenModel()).extract(
-        [{"id": "m1", "role": "user", "content": "hi"}]
-    )
+    outcome = L1Extractor(model=BrokenModel()).extract([{"id": "m1", "role": "user", "content": "hi"}])
     assert outcome.status == "llm_error"
     assert "unreachable" in outcome.error
 
@@ -886,9 +857,7 @@ def test_pipeline_failed_extraction_does_not_advance_cursor(tmp_path) -> None:
     report = pipeline.run_job(make_job(TURNS))
     assert report.status == "failed"
     assert report.extraction_status == "llm_error"
-    assert store.processed_keys("t1", user_id="u1", agent_name="lead") == set(), (
-        "a failed run must be retried on the next turn"
-    )
+    assert store.processed_keys("t1", user_id="u1", agent_name="lead") == set(), "a failed run must be retried on the next turn"
 
     # Recovery: a healthy model retries the SAME messages and succeeds.
     recovered = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
@@ -922,9 +891,7 @@ def test_pipeline_keeps_negative_one_sentinel_below_floor(tmp_path) -> None:
             {
                 "scene_name": "s",
                 "message_ids": ["m1"],
-                "memories": [
-                    {"content": "Never auto-deploy on Fridays.", "type": "instruction", "priority": -1}
-                ],
+                "memories": [{"content": "Never auto-deploy on Fridays.", "type": "instruction", "priority": -1}],
             }
         ]
     )
@@ -936,10 +903,7 @@ def test_pipeline_keeps_negative_one_sentinel_below_floor(tmp_path) -> None:
 
 
 def test_pipeline_max_memories_per_run_cap(tmp_path) -> None:
-    memories = [
-        {"content": f"memory number {i}", "type": "episodic", "priority": 90 - i}
-        for i in range(10)
-    ]
+    memories = [{"content": f"memory number {i}", "type": "episodic", "priority": 90 - i} for i in range(10)]
     raw = json.dumps([{"scene_name": "s", "message_ids": ["m1"], "memories": memories}])
     cfg = make_config(tmp_path, max_memories_per_run=3, persona_enabled=False)
     store = L1RecordStore(cfg.l1.storage_path)
@@ -1141,9 +1105,7 @@ def test_pipeline_recall_block_lists_records_and_persona(tmp_path) -> None:
 def test_pipeline_recall_is_empty_when_disabled(tmp_path) -> None:
     cfg = make_config(tmp_path, recall_enabled=False)
     store = L1RecordStore(cfg.l1.storage_path)
-    store.put_records(
-        [MemoryRecord.create("secret", priority=90)], user_id="u1", agent_name="lead"
-    )
+    store.put_records([MemoryRecord.create("secret", priority=90)], user_id="u1", agent_name="lead")
     pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
     assert pipeline.recall(user_id="u1", agent_name="lead") == ""
 
@@ -1277,26 +1239,11 @@ def test_lead_agent_registers_l1_middleware_only_when_enabled(tmp_path) -> None:
     """The registration site reads l1_enabled() before appending."""
     import pathlib
 
-    source = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "packages"
-        / "harness"
-        / "alpha"
-        / "agents"
-        / "lead_agent"
-        / "agent.py"
-    ).read_text(encoding="utf-8")
+    source = (pathlib.Path(__file__).resolve().parents[1] / "packages" / "harness" / "alpha" / "agents" / "lead_agent" / "agent.py").read_text(encoding="utf-8")
     assert "l1_memory_enabled(" in source
     assert "L1MemoryMiddleware(" in source
 
-    factory = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "packages"
-        / "harness"
-        / "alpha"
-        / "agents"
-        / "factory.py"
-    ).read_text(encoding="utf-8")
+    factory = (pathlib.Path(__file__).resolve().parents[1] / "packages" / "harness" / "alpha" / "agents" / "factory.py").read_text(encoding="utf-8")
     assert "l1_memory_enabled(" in factory
     assert "L1MemoryMiddleware(" in factory
 
@@ -1305,15 +1252,7 @@ def test_prompt_injection_reads_l1_recall(tmp_path) -> None:
     """``_get_memory_context`` must call the L1 recall seam behind the gate."""
     import pathlib
 
-    source = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "packages"
-        / "harness"
-        / "alpha"
-        / "agents"
-        / "lead_agent"
-        / "prompt.py"
-    ).read_text(encoding="utf-8")
+    source = (pathlib.Path(__file__).resolve().parents[1] / "packages" / "harness" / "alpha" / "agents" / "lead_agent" / "prompt.py").read_text(encoding="utf-8")
     assert "l1_enabled(config)" in source
     assert "get_l1_pipeline()" in source
     assert ".recall(" in source
@@ -1340,9 +1279,7 @@ def test_prompt_injection_injects_l1_block_end_to_end(tmp_path, monkeypatch) -> 
     monkeypatch.setattr("alpha.agents.memory.get_memory_manager", lambda: _Manager())
     monkeypatch.setattr(prompt_module, "_get_memory_context", prompt_module._get_memory_context)
 
-    block = prompt_module._get_memory_context(
-        "lead", app_config=type("C", (), {"memory": cfg})(), user_id="u1"
-    )
+    block = prompt_module._get_memory_context("lead", app_config=type("C", (), {"memory": cfg})(), user_id="u1")
     assert "TypeScript" in block
     assert block.strip().startswith("<memory>")
 
@@ -1357,7 +1294,5 @@ def test_prompt_injection_stays_empty_when_l1_off(tmp_path, monkeypatch) -> None
             return "backend content"
 
     monkeypatch.setattr("alpha.agents.memory.get_memory_manager", lambda: _Manager())
-    block = prompt_module._get_memory_context(
-        "lead", app_config=type("C", (), {"memory": cfg})(), user_id="u1"
-    )
+    block = prompt_module._get_memory_context("lead", app_config=type("C", (), {"memory": cfg})(), user_id="u1")
     assert "L1 working memory" not in block

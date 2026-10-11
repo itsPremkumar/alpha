@@ -84,9 +84,7 @@ def test_real_narrative_store_persists_something(tmp_path: Path) -> None:
     written = [p for p in root.rglob("*.json") if p.is_file()]
     assert written, "narrative store created no document - the ingest wrote nothing"
     payload = "".join(p.read_text(encoding="utf-8", errors="replace") for p in written)
-    assert "rec-1" in payload or "rec-2" in payload, (
-        "the narrative store has no trace of the ingested records"
-    )
+    assert "rec-1" in payload or "rec-2" in payload, "the narrative store has no trace of the ingested records"
 
 
 def test_real_entities_store_persists_something(tmp_path: Path) -> None:
@@ -111,10 +109,7 @@ def test_records_may_be_pydantic_models(tmp_path: Path) -> None:
     """A caller holding L1 `MemoryRecord` objects must work unchanged."""
     from alpha.agents.memory.l1.models import MemoryRecord
 
-    models = [
-        MemoryRecord.create("The payments canary is owned by Priya.", memory_type="fact", priority=70)
-        for _ in range(2)
-    ]
+    models = [MemoryRecord.create("The payments canary is owned by Priya.", memory_type="fact", priority=70) for _ in range(2)]
     result = compose_capture(_config(tmp_path), models, user_id="u1", now=1.788e9)
     assert result.status_for("narrative") in {"written", "empty"}
     assert result.status_for("entities") in {"written", "empty"}
@@ -124,6 +119,4 @@ def test_missing_records_never_construct_the_real_stores(tmp_path: Path) -> None
     config = _config(tmp_path)
     result = compose_capture(config, [], user_id="u1")
     assert result.status_for("narrative") == "empty"
-    assert not (tmp_path / "narrative").exists(), (
-        "an empty capture must not create a store root"
-    )
+    assert not (tmp_path / "narrative").exists(), "an empty capture must not create a store root"

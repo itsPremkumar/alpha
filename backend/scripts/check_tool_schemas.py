@@ -12,7 +12,6 @@ every failure instead of only the first.
 from __future__ import annotations
 
 import sys
-import traceback
 
 from alpha.tools.tools import BUILTIN_TOOLS
 

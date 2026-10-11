@@ -45,9 +45,7 @@ class InboundDebouncer:
         with self._lock:
             if session_id not in self._buffers:
                 self._buffers[session_id] = []
-            self._buffers[session_id].append(
-                QueuedMessage(sender=sender, content=content, metadata=metadata or {})
-            )
+            self._buffers[session_id].append(QueuedMessage(sender=sender, content=content, metadata=metadata or {}))
             return len(self._buffers[session_id])
 
     def flush(self, session_id: str) -> BatchedTurn | None:

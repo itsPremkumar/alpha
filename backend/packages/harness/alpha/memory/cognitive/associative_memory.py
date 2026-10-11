@@ -172,5 +172,5 @@ class AssociativeNetwork:
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_links": len(self._links),
-            "links": [l.to_dict() for l in list(self._links.values())[:100]],
+            "links": [link.to_dict() for link in list(self._links.values())[:100]],
         }

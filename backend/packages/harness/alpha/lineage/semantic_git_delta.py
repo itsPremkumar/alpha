@@ -36,7 +36,7 @@ import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 MAX_FILES_PER_ANALYSIS: int = 400
 GIT_TIMEOUT_SEC: float = 60.0
@@ -172,7 +172,7 @@ class SymbolSignature:
     qualified_name: str
     kind: str
     parameters: list[str]
-    defaults: dict[str, Optional[str]]
+    defaults: dict[str, str | None]
     annotations: dict[str, str]
     return_type: str
     decorators: list[str]
@@ -199,7 +199,7 @@ class SymbolSignature:
         }
 
 
-def _unparse(node: Optional[ast.AST]) -> str:
+def _unparse(node: ast.AST | None) -> str:
     """Safely render an AST node back to source text."""
     if node is None:
         return ""
@@ -230,11 +230,7 @@ def _is_docstring(statements: list[ast.stmt]) -> bool:
     if not statements:
         return False
     first = statements[0]
-    return (
-        isinstance(first, ast.Expr)
-        and isinstance(first.value, ast.Constant)
-        and isinstance(first.value.value, str)
-    )
+    return isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str)
 
 
 def _is_privacy_variant(before: str, after: str) -> bool:
@@ -335,9 +331,7 @@ class SymbolExtractor(ast.NodeVisitor):
         self.generic_visit(node)
         self._stack.pop()
 
-    def _record_function(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef, kind: str
-    ) -> None:
+    def _record_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, kind: str) -> None:
         """Build a :class:`SymbolSignature` for a function node."""
         arguments = node.args
         positional = list(getattr(arguments, "posonlyargs", [])) + list(arguments.args)
@@ -348,7 +342,7 @@ class SymbolExtractor(ast.NodeVisitor):
         if arguments.kwarg is not None:
             parameters.append(f"**{arguments.kwarg.arg}")
 
-        defaults: dict[str, Optional[str]] = {}
+        defaults: dict[str, str | None] = {}
         default_values = list(arguments.defaults)
         if default_values:
             for arg, value in zip(positional[-len(default_values) :], default_values):
@@ -419,9 +413,7 @@ def _run_git(args: list[str], cwd: Path) -> tuple[int, str]:
 
 def changed_files(repo_path: Path, base_ref: str, head_ref: str) -> list[tuple[str, str]]:
     """Return ``(status, path)`` pairs changed between two refs."""
-    code, output = _run_git(
-        ["diff", "--name-status", f"{base_ref}..{head_ref}"], cwd=repo_path
-    )
+    code, output = _run_git(["diff", "--name-status", f"{base_ref}..{head_ref}"], cwd=repo_path)
     if code != 0:
         return []
     entries: list[tuple[str, str]] = []
@@ -488,7 +480,7 @@ class SemanticGitDeltaAnalyzer:
 
     # -- dependency graph --------------------------------------------------
 
-    def _load_dependency_graph(self) -> Optional[Any]:
+    def _load_dependency_graph(self) -> Any | None:
         """Lazily build the repository-wide symbol dependency graph."""
         if self._dependency_graph is not None:
             return self._dependency_graph
@@ -565,9 +557,7 @@ class SemanticGitDeltaAnalyzer:
 
     # -- comparison --------------------------------------------------------
 
-    def compare_sources(
-        self, file_path: str, before_source: str, after_source: str
-    ) -> list[SemanticTransformation]:
+    def compare_sources(self, file_path: str, before_source: str, after_source: str) -> list[SemanticTransformation]:
         """Diff two revisions of one Python file into transformations.
 
         Args:
@@ -590,9 +580,7 @@ class SemanticGitDeltaAnalyzer:
         added = [name for name in after if name not in before]
         removed = [name for name in before if name not in after]
 
-        removal_by_shape = {
-            f"{before[name].kind}:{before[name].body_shape}": name for name in removed
-        }
+        removal_by_shape = {f"{before[name].kind}:{before[name].body_shape}": name for name in removed}
         # Qualified names already explained by a rename must not also be
         # reported as removals.
         renamed_sources: set[str] = set()
@@ -601,9 +589,7 @@ class SemanticGitDeltaAnalyzer:
             candidate = after[name]
             shape_key = f"{candidate.kind}:{candidate.body_shape}"
             matched_removal = removal_by_shape.get(shape_key)
-            if matched_removal and _is_privacy_variant(
-                before[matched_removal].name, candidate.name
-            ):
+            if matched_removal and _is_privacy_variant(before[matched_removal].name, candidate.name):
                 # A rename that only toggles the leading-underscore privacy
                 # marker is a visibility change, not a rename: the identifier
                 # keeps its meaning and callers still resolve the same symbol
@@ -614,11 +600,7 @@ class SemanticGitDeltaAnalyzer:
                         kind=TransformationKind.VISIBILITY_CHANGED,
                         file_path=file_path,
                         symbol=candidate.qualified_name,
-                        detail=(
-                            f"visibility changed from "
-                            f"{'private' if previous.name.startswith('_') else 'public'} to "
-                            f"{'private' if candidate.name.startswith('_') else 'public'}"
-                        ),
+                        detail=(f"visibility changed from {'private' if previous.name.startswith('_') else 'public'} to {'private' if candidate.name.startswith('_') else 'public'}"),
                         before=previous.name,
                         after=candidate.name,
                         breaking=True,
@@ -635,10 +617,7 @@ class SemanticGitDeltaAnalyzer:
                         kind=TransformationKind.SYMBOL_RENAMED,
                         file_path=file_path,
                         symbol=candidate.qualified_name,
-                        detail=(
-                            f"{before[matched_removal].qualified_name} renamed to "
-                            f"{candidate.qualified_name} (identical body shape)"
-                        ),
+                        detail=(f"{before[matched_removal].qualified_name} renamed to {candidate.qualified_name} (identical body shape)"),
                         before=before[matched_removal].name,
                         after=candidate.name,
                         breaking=True,
@@ -679,15 +658,11 @@ class SemanticGitDeltaAnalyzer:
             )
 
         for name in sorted(set(before) & set(after)):
-            transformations.extend(
-                self._compare_signature(file_path, before[name], after[name])
-            )
+            transformations.extend(self._compare_signature(file_path, before[name], after[name]))
 
         return transformations
 
-    def _compare_signature(
-        self, file_path: str, before: SymbolSignature, after: SymbolSignature
-    ) -> list[SemanticTransformation]:
+    def _compare_signature(self, file_path: str, before: SymbolSignature, after: SymbolSignature) -> list[SemanticTransformation]:
         """Compare two versions of the same symbol signature."""
         results: list[SemanticTransformation] = []
         line = after.line
@@ -696,21 +671,13 @@ class SemanticGitDeltaAnalyzer:
             removed_params = [p for p in before.parameters if p not in after.parameters]
             added_params = [p for p in after.parameters if p not in before.parameters]
 
-            if (
-                len(removed_params) == 1
-                and len(added_params) == 1
-                and before.parameters.index(removed_params[0])
-                == after.parameters.index(added_params[0])
-            ):
+            if len(removed_params) == 1 and len(added_params) == 1 and before.parameters.index(removed_params[0]) == after.parameters.index(added_params[0]):
                 results.append(
                     SemanticTransformation(
                         kind=TransformationKind.PARAMETER_RENAMED,
                         file_path=file_path,
                         symbol=after.qualified_name,
-                        detail=(
-                            f"parameter '{removed_params[0]}' renamed to "
-                            f"'{added_params[0]}'"
-                        ),
+                        detail=(f"parameter '{removed_params[0]}' renamed to '{added_params[0]}'"),
                         before=removed_params[0],
                         after=added_params[0],
                         breaking=True,
@@ -742,17 +709,10 @@ class SemanticGitDeltaAnalyzer:
                         kind=TransformationKind.PARAMETER_ADDED,
                         file_path=file_path,
                         symbol=after.qualified_name,
-                        detail=(
-                            f"parameter '{param}' added"
-                            + (" with a default value" if has_default else " as required")
-                        ),
+                        detail=(f"parameter '{param}' added" + (" with a default value" if has_default else " as required")),
                         after=param,
                         breaking=not has_default,
-                        weight=(
-                            BREAKING_WEIGHTS[TransformationKind.PARAMETER_ADDED]
-                            if not has_default
-                            else 0.15
-                        ),
+                        weight=(BREAKING_WEIGHTS[TransformationKind.PARAMETER_ADDED] if not has_default else 0.15),
                         line=line,
                     )
                 )
@@ -767,10 +727,7 @@ class SemanticGitDeltaAnalyzer:
                             kind=TransformationKind.ANNOTATION_CHANGED,
                             file_path=file_path,
                             symbol=after.qualified_name,
-                            detail=(
-                                f"annotation of '{param}' changed from "
-                                f"'{old_value or 'untyped'}' to '{new_value or 'untyped'}'"
-                            ),
+                            detail=(f"annotation of '{param}' changed from '{old_value or 'untyped'}' to '{new_value or 'untyped'}'"),
                             before=old_value,
                             after=new_value,
                             breaking=True,
@@ -785,10 +742,7 @@ class SemanticGitDeltaAnalyzer:
                     kind=TransformationKind.RETURN_TYPE_CHANGED,
                     file_path=file_path,
                     symbol=after.qualified_name,
-                    detail=(
-                        f"return type changed from '{before.return_type or 'untyped'}' "
-                        f"to '{after.return_type or 'untyped'}'"
-                    ),
+                    detail=(f"return type changed from '{before.return_type or 'untyped'}' to '{after.return_type or 'untyped'}'"),
                     before=before.return_type,
                     after=after.return_type,
                     breaking=True,
@@ -803,10 +757,7 @@ class SemanticGitDeltaAnalyzer:
                     kind=TransformationKind.DECORATOR_CHANGED,
                     file_path=file_path,
                     symbol=after.qualified_name,
-                    detail=(
-                        f"decorators changed from {before.decorators or '[]'} to "
-                        f"{after.decorators or '[]'}"
-                    ),
+                    detail=(f"decorators changed from {before.decorators or '[]'} to {after.decorators or '[]'}"),
                     before=", ".join(before.decorators),
                     after=", ".join(after.decorators),
                     breaking=True,
@@ -821,10 +772,7 @@ class SemanticGitDeltaAnalyzer:
                     kind=TransformationKind.BASE_CLASS_CHANGED,
                     file_path=file_path,
                     symbol=after.qualified_name,
-                    detail=(
-                        f"base classes changed from {before.bases or '[]'} to "
-                        f"{after.bases or '[]'}"
-                    ),
+                    detail=(f"base classes changed from {before.bases or '[]'} to {after.bases or '[]'}"),
                     before=", ".join(before.bases),
                     after=", ".join(after.bases),
                     breaking=True,
@@ -839,10 +787,7 @@ class SemanticGitDeltaAnalyzer:
                     kind=TransformationKind.EXCEPTION_RAISED_CHANGED,
                     file_path=file_path,
                     symbol=after.qualified_name,
-                    detail=(
-                        f"raised exceptions changed from {before.raised or '[]'} to "
-                        f"{after.raised or '[]'}"
-                    ),
+                    detail=(f"raised exceptions changed from {before.raised or '[]'} to {after.raised or '[]'}"),
                     before=", ".join(before.raised),
                     after=", ".join(after.raised),
                     breaking=True,
@@ -857,10 +802,7 @@ class SemanticGitDeltaAnalyzer:
                     kind=TransformationKind.EXCEPTION_HANDLED_CHANGED,
                     file_path=file_path,
                     symbol=after.qualified_name,
-                    detail=(
-                        f"handled exceptions changed from {before.handled or '[]'} to "
-                        f"{after.handled or '[]'}"
-                    ),
+                    detail=(f"handled exceptions changed from {before.handled or '[]'} to {after.handled or '[]'}"),
                     before=", ".join(before.handled),
                     after=", ".join(after.handled),
                     breaking=False,
@@ -877,11 +819,7 @@ class SemanticGitDeltaAnalyzer:
                     kind=TransformationKind.VISIBILITY_CHANGED,
                     file_path=file_path,
                     symbol=after.qualified_name,
-                    detail=(
-                        f"visibility changed from "
-                        f"{'private' if before_private else 'public'} to "
-                        f"{'private' if after_private else 'public'}"
-                    ),
+                    detail=(f"visibility changed from {'private' if before_private else 'public'} to {'private' if after_private else 'public'}"),
                     before=before.name,
                     after=after.name,
                     breaking=True,
@@ -920,10 +858,7 @@ class SemanticGitDeltaAnalyzer:
         if not entries:
             code, output = _run_git(["rev-parse", "--verify", base_ref], cwd=self.repo_path)
             if code != 0:
-                report.error = (
-                    f"no changes found between {base_ref}..{head_ref}; "
-                    f"git rev-parse failed: {output.strip()[:200]}"
-                )
+                report.error = f"no changes found between {base_ref}..{head_ref}; git rev-parse failed: {output.strip()[:200]}"
             return report
 
         report.files_changed = len(entries)
@@ -933,9 +868,7 @@ class SemanticGitDeltaAnalyzer:
                 continue
             before_source = "" if status in {"A"} else file_at_ref(self.repo_path, base_ref, relative_path)
             after_source = "" if status in {"D"} else file_at_ref(self.repo_path, head_ref, relative_path)
-            transformations.extend(
-                self.compare_sources(relative_path, before_source, after_source)
-            )
+            transformations.extend(self.compare_sources(relative_path, before_source, after_source))
 
         report.transformations = transformations
         report.breaking_count = sum(1 for item in transformations if item.breaking)
@@ -988,9 +921,7 @@ class SemanticGitDeltaAnalyzer:
 
     # -- blast radius ------------------------------------------------------
 
-    def _compute_blast_radius(
-        self, transformations: list[SemanticTransformation], max_entries: int
-    ) -> list[BlastRadiusEntry]:
+    def _compute_blast_radius(self, transformations: list[SemanticTransformation], max_entries: int) -> list[BlastRadiusEntry]:
         """Resolve dependent call sites for every breaking transformation."""
         entries: list[BlastRadiusEntry] = []
         seen: set[tuple[str, str, int]] = set()
@@ -1019,73 +950,33 @@ class SemanticGitDeltaAnalyzer:
             if not transformation.breaking:
                 continue
             if transformation.kind is TransformationKind.SYMBOL_RENAMED:
-                recommendations.append(
-                    f"Rename call sites of '{transformation.before}' to "
-                    f"'{transformation.after}' in dependents of "
-                    f"{transformation.file_path}."
-                )
+                recommendations.append(f"Rename call sites of '{transformation.before}' to '{transformation.after}' in dependents of {transformation.file_path}.")
             elif transformation.kind is TransformationKind.SYMBOL_REMOVED:
-                recommendations.append(
-                    f"Remove or replace usages of removed symbol "
-                    f"'{transformation.symbol}' before merging."
-                )
+                recommendations.append(f"Remove or replace usages of removed symbol '{transformation.symbol}' before merging.")
             elif transformation.kind is TransformationKind.PARAMETER_REMOVED:
-                recommendations.append(
-                    f"Drop argument '{transformation.before}' from calls to "
-                    f"'{transformation.symbol}'."
-                )
+                recommendations.append(f"Drop argument '{transformation.before}' from calls to '{transformation.symbol}'.")
             elif transformation.kind is TransformationKind.PARAMETER_ADDED:
-                recommendations.append(
-                    f"Supply '{transformation.after}' when calling "
-                    f"'{transformation.symbol}', or give it a default value."
-                )
+                recommendations.append(f"Supply '{transformation.after}' when calling '{transformation.symbol}', or give it a default value.")
             elif transformation.kind is TransformationKind.PARAMETER_RENAMED:
-                recommendations.append(
-                    f"Update keyword argument '{transformation.before}' to "
-                    f"'{transformation.after}' at call sites of "
-                    f"'{transformation.symbol}'."
-                )
+                recommendations.append(f"Update keyword argument '{transformation.before}' to '{transformation.after}' at call sites of '{transformation.symbol}'.")
             elif transformation.kind is TransformationKind.ANNOTATION_CHANGED:
-                recommendations.append(
-                    f"Re-check typed call sites of '{transformation.symbol}' "
-                    f"after the annotation change ({transformation.detail})."
-                )
+                recommendations.append(f"Re-check typed call sites of '{transformation.symbol}' after the annotation change ({transformation.detail}).")
             elif transformation.kind is TransformationKind.RETURN_TYPE_CHANGED:
-                recommendations.append(
-                    f"Audit consumers of '{transformation.symbol}' for the new "
-                    f"return type '{transformation.after}'."
-                )
+                recommendations.append(f"Audit consumers of '{transformation.symbol}' for the new return type '{transformation.after}'.")
             elif transformation.kind is TransformationKind.EXCEPTION_RAISED_CHANGED:
-                recommendations.append(
-                    f"Update exception handling around '{transformation.symbol}': "
-                    f"{transformation.detail}."
-                )
+                recommendations.append(f"Update exception handling around '{transformation.symbol}': {transformation.detail}.")
             elif transformation.kind is TransformationKind.DECORATOR_CHANGED:
-                recommendations.append(
-                    f"Verify decorator side effects for '{transformation.symbol}' "
-                    f"({transformation.detail})."
-                )
+                recommendations.append(f"Verify decorator side effects for '{transformation.symbol}' ({transformation.detail}).")
             elif transformation.kind is TransformationKind.BASE_CLASS_CHANGED:
-                recommendations.append(
-                    f"Re-validate subclasses of '{transformation.symbol}' after "
-                    f"the base class change."
-                )
+                recommendations.append(f"Re-validate subclasses of '{transformation.symbol}' after the base class change.")
             elif transformation.kind is TransformationKind.VISIBILITY_CHANGED:
-                recommendations.append(
-                    f"'{transformation.symbol}' changed visibility; update imports "
-                    f"and public API documentation."
-                )
+                recommendations.append(f"'{transformation.symbol}' changed visibility; update imports and public API documentation.")
             elif transformation.kind is TransformationKind.SIGNATURE_ORDER_CHANGED:
-                recommendations.append(
-                    f"Positional call sites of '{transformation.symbol}' must be "
-                    f"updated: parameter order changed."
-                )
+                recommendations.append(f"Positional call sites of '{transformation.symbol}' must be updated: parameter order changed.")
 
         if blast_radius:
             affected = sorted({entry.file_path for entry in blast_radius})
-            recommendations.append(
-                "Affected dependent modules: " + ", ".join(affected[:20])
-            )
+            recommendations.append("Affected dependent modules: " + ", ".join(affected[:20]))
         return recommendations
 
 

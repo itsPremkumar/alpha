@@ -150,9 +150,7 @@ async def test_worker_exception_marks_plan_failed(tmp_path, monkeypatch):
     import asyncio
 
     def _boom(model_name, *, worker_label):
-        raise RuntimeError(
-            "No chat models configured; ephemeral worker cannot execute its task objective."
-        )
+        raise RuntimeError("No chat models configured; ephemeral worker cannot execute its task objective.")
 
     monkeypatch.setattr(worker_mod, "_resolve_model", _boom)
 

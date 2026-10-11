@@ -1,8 +1,5 @@
 """Unit tests for Introspective Language Agent Tree Search (I-MCTS / CodeTree)."""
 
-import ast
-import pytest
-
 from alpha.reasoning.introspective_tree_search import (
     CompositeRewardEvaluator,
     IntrospectiveTreeSearchEngine,
@@ -93,8 +90,8 @@ def test_introspective_failure_learning():
 
     lessons = engine.introspect_failures(parent)
     assert len(lessons) == 2
-    assert any("unexpected EOF" in l for l in lessons)
-    assert any("AssertionError" in l for l in lessons)
+    assert any("unexpected EOF" in lesson for lesson in lessons)
+    assert any("AssertionError" in lesson for lesson in lessons)
 
 
 def test_tree_search_early_termination_on_green():
@@ -171,19 +168,21 @@ def test_tree_search_prunes_syntax_error():
 
 
 def test_run_introspective_tree_search_tool():
-    res = run_introspective_tree_search.invoke({
-        "problem_statement": "ZeroDivisionError in compute_average()",
-        "files_to_modify": ["stats.py"],
-        "max_iterations": 3,
-        "candidate_actions": [
-            {
-                "action_type": "code_edit",
-                "target_file": "stats.py",
-                "edit_content": "def compute_average(nums):\n    return sum(nums) / len(nums) if nums else 0.0\n",
-                "hypothesis": "Add empty sequence guard to prevent division by zero",
-            }
-        ],
-    })
+    res = run_introspective_tree_search.invoke(
+        {
+            "problem_statement": "ZeroDivisionError in compute_average()",
+            "files_to_modify": ["stats.py"],
+            "max_iterations": 3,
+            "candidate_actions": [
+                {
+                    "action_type": "code_edit",
+                    "target_file": "stats.py",
+                    "edit_content": "def compute_average(nums):\n    return sum(nums) / len(nums) if nums else 0.0\n",
+                    "hypothesis": "Add empty sequence guard to prevent division by zero",
+                }
+            ],
+        }
+    )
 
     assert isinstance(res, dict)
     assert res["success"] is True

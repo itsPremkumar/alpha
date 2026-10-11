@@ -182,9 +182,7 @@ class ExecutiveAutopilot:
     def _estimate_difficulty(self, text: str) -> str:
         words = len(text.split())
         lines = len(text.splitlines())
-        has_multiple_requirements = (
-            text.count(" and ") + text.count("\n-") + text.count("\n1.") + text.count("also")
-        ) >= 3
+        has_multiple_requirements = (text.count(" and ") + text.count("\n-") + text.count("\n1.") + text.count("also")) >= 3
 
         if words > 100 or lines > 10 or has_multiple_requirements:
             return "complex"

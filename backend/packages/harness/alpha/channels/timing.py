@@ -223,9 +223,7 @@ class RoomIntake:
     def push(self, sender: str, content: str, **metadata: Any) -> int:
         """Queue one inbound message. Returns the current queue depth."""
         self._received += 1
-        return int(
-            self.debouncer.push(self.session_id, sender, content, dict(metadata) or None)
-        )
+        return int(self.debouncer.push(self.session_id, sender, content, dict(metadata) or None))
 
     async def flush(self, *, max_wait_seconds: float | None = None) -> BatchedTurn | None:
         """Wait one coalescing window, then take the batch.
@@ -233,18 +231,14 @@ class RoomIntake:
         Returns ``None`` when nothing arrived, which the caller must treat as an
         empty contribution rather than as an error.
         """
-        turn = await self.debouncer.wait_and_flush(
-            self.session_id, max_wait_seconds=max_wait_seconds
-        )
+        turn = await self.debouncer.wait_and_flush(self.session_id, max_wait_seconds=max_wait_seconds)
         if turn is None:
             return None
         if turn.message_count > self.max_batch_messages:
             self._dropped += turn.message_count - self.max_batch_messages
         return turn
 
-    async def gather_stage_input(
-        self, *, max_wait_seconds: float | None = None
-    ) -> tuple[list[dict[str, Any]], BatchedTurn | None]:
+    async def gather_stage_input(self, *, max_wait_seconds: float | None = None) -> tuple[list[dict[str, Any]], BatchedTurn | None]:
         """Collect one stage's worth of live traffic, in order, with attribution.
 
         The debouncer's merged blob loses per-message attribution, so this

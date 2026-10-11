@@ -7,10 +7,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.gateway.authz import require_permission
-from app.gateway.deps import get_project_repo, get_thread_store
 from alpha.runtime.secret_context import redact_metadata_secrets
 from alpha.utils.time import coerce_iso
+from app.gateway.authz import require_permission
+from app.gateway.deps import get_project_repo, get_thread_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -792,7 +792,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 3. Active Locks & Pending Requests
         lock_mgr = locks_mod.get_lock_manager()
-        active_locks = [l.to_dict() for l in lock_mgr.list_locks(project_id)]
+        active_locks = [lock.to_dict() for lock in lock_mgr.list_locks(project_id)]
         pending_requests = [r.to_dict() for r in lock_mgr.list_requests(project_id, pending_only=True)]
 
         # 4. Handoffs
@@ -809,43 +809,53 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 8. Pending Approvals
         from alpha.projects.approval_queue import get_approval_queue
+
         pending_approvals = [a.to_dict() for a in get_approval_queue(project_id).list_pending()]
 
         # 9. Task Contracts
         from alpha.projects.contracts import get_contract_gatekeeper
+
         contracts = [c.to_dict() for c in get_contract_gatekeeper(project_id).list_contracts()]
 
         # 10. Living Specification
         from alpha.projects.living_spec import get_living_spec_engine
+
         living_spec = get_living_spec_engine(project_id).get_spec().to_dict()
 
         # 11. Cost & Token Governance
         from alpha.models.cost_governor import get_cost_governor
+
         cost_summary = get_cost_governor().get_project_summary(project_id)
 
         # 12. Async Standup Briefing
         from alpha.projects.standup_engine import get_standup_engine
+
         standup_data = get_standup_engine(project_id).generate_standup().to_dict()
 
         # 13. Workspace Checkpoints
         from alpha.projects.checkpoint_engine import get_checkpoint_engine
+
         checkpoints = [c.to_dict() for c in get_checkpoint_engine(project_id).list_checkpoints()[:5]]
 
         # 14. Arena Bot Leaderboard
         from alpha.benchmarks.arena import get_benchmark_arena
-        leaderboard = [l.to_dict() for l in get_benchmark_arena(project_id).get_leaderboard()[:5]]
+
+        leaderboard = [entry.to_dict() for entry in get_benchmark_arena(project_id).get_leaderboard()[:5]]
 
         # 15. Canary Watchdog Status
         from alpha.projects.canary_watchdog import get_canary_watchdog
+
         canary_history = [c.to_dict() for c in get_canary_watchdog(project_id).get_history()[-3:]]
 
         # 16. Visual QA Receipts
         from alpha.projects.visual_verifier import get_visual_qa_engine
+
         visual_qa = [v.to_dict() for v in get_visual_qa_engine(project_id).get_history()[-3:]]
 
         # 17. AVO Genetic Optimization Lineage & Pareto Frontier
         try:
             from alpha.avo import get_avo_runner
+
             avo_runner = get_avo_runner(project_id)
             avo_lineage = {
                 "head_id": avo_runner.lineage.head_id,
@@ -859,6 +869,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
         # 18. Epistemic Belief Graph
         try:
             from alpha.epistemics import get_epistemic_engine
+
             ep_engine = get_epistemic_engine(project_id)
             epistemic_claims = [c.to_dict() for c in ep_engine.list_all()]
         except Exception:
@@ -867,6 +878,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
         # 19. Controlled RSI Closed-Loop Status
         try:
             from alpha.rsi import get_rsi_engine
+
             rsi_engine = get_rsi_engine(project_id)
             rsi_status = rsi_engine.get_status()
         except Exception:
@@ -875,6 +887,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
         # 20. Deterministic Trajectory Store
         try:
             from alpha.trajectory.store import get_trajectory_store
+
             traj_store = get_trajectory_store(project_id)
             goal_ids = traj_store.list_goal_ids()[:3]
             trajectories = [traj_store.get_trajectory(gid).to_dict() for gid in goal_ids]
@@ -1321,6 +1334,7 @@ async def replay_project_trajectory(project_id: str, goal_id: str, body: ReplayT
 # Autonomous Self-Configuration Engine Endpoints
 # ==============================================================================
 
+
 class SelfConfigInferBody(BaseModel):
     goal: str = Field(..., min_length=1, max_length=5000)
     context: dict[str, Any] = Field(default_factory=dict)
@@ -1412,6 +1426,7 @@ async def tune_project_self_config(project_id: str, body: SelfConfigTuneBody, re
 # ==============================================================================
 # Agent Meta-Compiler & Self-Replication Endpoints
 # ==============================================================================
+
 
 class MetaCompileBody(BaseModel):
     parent_id: str | None = Field(default=None, max_length=128)
@@ -1539,6 +1554,7 @@ async def rollback_agent_architecture(project_id: str, body: MetaRollbackBody, r
 # Perpetual Never-Ending Autonomous Daemon Endpoints
 # ==============================================================================
 
+
 class PerpetualGoalBody(BaseModel):
     title: str = Field(..., min_length=3, max_length=300)
     description: str = Field(default="", max_length=2000)
@@ -1645,6 +1661,3 @@ async def create_project_perpetual_goal(project_id: str, body: PerpetualGoalBody
         return goal.to_dict()
 
     return await asyncio.to_thread(_do)
-
-
-

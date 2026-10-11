@@ -6,7 +6,7 @@ from alpha.tools.repair.promoter import ToolCallPromoter
 
 def test_repair_json_payload_variations():
     # 1. Clean JSON wrapped in markdown
-    raw1 = "```json\n{\"command\": \"git status\"}\n```"
+    raw1 = '```json\n{"command": "git status"}\n```'
     res1 = repair_json_payload(raw1)
     assert res1 == {"command": "git status"}
 
@@ -41,21 +41,21 @@ def test_tool_call_normalizer_arguments():
 
 def test_tool_call_promoter_patterns():
     # 1. XML-style tag
-    text1 = "Executing now:\n<tool_call>{\"name\": \"bash\", \"arguments\": {\"command\": \"ls -l\"}}</tool_call>"
+    text1 = 'Executing now:\n<tool_call>{"name": "bash", "arguments": {"command": "ls -l"}}</tool_call>'
     promoted1 = ToolCallPromoter.detect_and_promote(text1)
     assert len(promoted1) == 1
     assert promoted1[0].name == "bash"
     assert promoted1[0].arguments == {"command": "ls -l"}
 
     # 2. Markdown block with tool name
-    text2 = "```json\n{\n  \"tool\": \"python_repl\",\n  \"arguments\": {\"code\": \"x = 10\"\n}\n}\n```"
+    text2 = '```json\n{\n  "tool": "python_repl",\n  "arguments": {"code": "x = 10"\n}\n}\n```'
     promoted2 = ToolCallPromoter.detect_and_promote(text2)
     assert len(promoted2) == 1
     assert promoted2[0].name == "python_repl"
     assert promoted2[0].arguments == {"code": "x = 10"}
 
     # 3. Action / Action Input pattern
-    text3 = "Action: bash\nAction Input: {\"command\": \"git diff\"}"
+    text3 = 'Action: bash\nAction Input: {"command": "git diff"}'
     promoted3 = ToolCallPromoter.detect_and_promote(text3)
     assert len(promoted3) == 1
     assert promoted3[0].name == "bash"

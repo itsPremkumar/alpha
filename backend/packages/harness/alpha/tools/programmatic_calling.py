@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import logging
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,8 @@ class ProgrammaticExecutionResult:
     tool_calls_count: int
     duration_seconds: float
     stdout_truncated: bool = False
-    spill_path: Optional[str] = None
-    warning: Optional[str] = None
+    spill_path: str | None = None
+    warning: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

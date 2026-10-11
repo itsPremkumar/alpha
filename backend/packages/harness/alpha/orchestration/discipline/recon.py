@@ -16,6 +16,7 @@ from typing import Any
 @dataclass
 class ReconResult:
     """Lightweight reconnaissance telemetry and discovered references."""
+
     query: str
     recon_type: str  # "explore" (codebase) or "librarian" (documentation)
     matches: list[dict[str, Any]] = field(default_factory=list)

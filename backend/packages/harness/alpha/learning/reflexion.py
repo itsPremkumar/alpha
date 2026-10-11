@@ -7,11 +7,10 @@ stored in SQLite so future agent sessions never repeat identical mistakes.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -61,9 +60,7 @@ class ReflexionEngine:
                 )
                 """
             )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_reflexions_sig ON reflexions(problem_signature)"
-            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reflexions_sig ON reflexions(problem_signature)")
             conn.commit()
 
     def record_reflection(
@@ -76,7 +73,7 @@ class ReflexionEngine:
         workspace: str = "",
     ) -> ReflexionEntry:
         """Persist a new failure reflection entry."""
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -127,10 +124,7 @@ class ReflexionEngine:
         if not terms:
             terms = [query.lower()[:20]]
 
-        conditions = " OR ".join(
-            ["LOWER(problem_signature) LIKE ? OR LOWER(observed_failure) LIKE ? OR LOWER(lesson) LIKE ?"]
-            * len(terms)
-        )
+        conditions = " OR ".join(["LOWER(problem_signature) LIKE ? OR LOWER(observed_failure) LIKE ? OR LOWER(lesson) LIKE ?"] * len(terms))
         params: list[Any] = []
         for t in terms:
             wildcard = f"%{t}%"

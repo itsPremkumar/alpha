@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 from alpha.connectors.catalog import (
-    AuthKind,
     BUILTIN_CONNECTORS,
+    AuthKind,
     ConnectorCatalog,
     ConnectorCategory,
     ConnectorSpec,

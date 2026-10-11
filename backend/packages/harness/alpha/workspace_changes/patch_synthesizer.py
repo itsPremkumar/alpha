@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PatchValidationResult:
     """Outcome of patch hygiene and applicability validation."""
+
     is_valid: bool
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -53,8 +54,7 @@ class PatchSynthesizer:
                 subprocess.run(
                     ["git", "add", "-N", "."],
                     cwd=target_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     timeout=10,
                 )
             except Exception as e:
@@ -68,8 +68,7 @@ class PatchSynthesizer:
             res = subprocess.run(
                 cmd,
                 cwd=target_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=15,
             )
@@ -122,8 +121,7 @@ class PatchSynthesizer:
             res = subprocess.run(
                 ["git", "apply", "--check", temp_patch_path],
                 cwd=os.path.abspath(target_dir),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=15,
             )

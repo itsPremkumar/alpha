@@ -116,13 +116,7 @@ class BinaryRun:
         return [frame.get("type") for frame in self.frames]
 
     def describe(self) -> str:
-        return (
-            f"\n--- exit code: {self.returncode}"
-            f"\n--- elapsed: {self.elapsed:.1f}s"
-            f"\n--- stdout lines: {len(self.lines)}"
-            f"\n--- event types: {sorted(set(self.types))}"
-            f"\n--- stderr tail:\n{self.stderr[-2000:]}"
-        )
+        return f"\n--- exit code: {self.returncode}\n--- elapsed: {self.elapsed:.1f}s\n--- stdout lines: {len(self.lines)}\n--- event types: {sorted(set(self.types))}\n--- stderr tail:\n{self.stderr[-2000:]}"
 
 
 def _run_alpha(argv: list[str], *, task: str) -> BinaryRun:
@@ -207,9 +201,7 @@ def test_successful_run_ndjson_is_100_percent_parseable(successful_run: BinaryRu
             unparseable.append(f"line {index + 1}: {line[:200]!r}")
             continue
         assert isinstance(frame, dict), f"line {index + 1} is not a JSON object: {line[:200]!r}"
-        assert frame.get("type") in KNOWN_EVENT_TYPES, (
-            f"line {index + 1} has unknown type {frame.get('type')!r}; only protocol frames may reach stdout{successful_run.describe()}"
-        )
+        assert frame.get("type") in KNOWN_EVENT_TYPES, f"line {index + 1} has unknown type {frame.get('type')!r}; only protocol frames may reach stdout{successful_run.describe()}"
         assert "data" in frame, f"line {index + 1} has no data field: {line[:200]!r}"
 
     assert not unparseable, f"stdout was not 100% parseable NDJSON: {unparseable[:5]}{successful_run.describe()}"
@@ -222,11 +214,7 @@ def test_successful_run_actually_produced_an_answer(successful_run: BinaryRun):
     never answers -- the exact shape of the shipped failure.
     """
     frames = successful_run.frames
-    ai_text = "".join(
-        frame["data"].get("content", "")
-        for frame in frames
-        if frame["type"] == "messages-tuple" and frame["data"].get("type") == "ai"
-    ).strip()
+    ai_text = "".join(frame["data"].get("content", "") for frame in frames if frame["type"] == "messages-tuple" and frame["data"].get("type") == "ai").strip()
     assert ai_text, f"the run produced no assistant text at all{successful_run.describe()}"
     assert "391" in ai_text, f"the model did not answer the question (got {ai_text[:200]!r}){successful_run.describe()}"
 

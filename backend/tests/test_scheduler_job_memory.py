@@ -208,12 +208,7 @@ def test_store_roundtrip_preserves_exact_bytes(tmp_path):
     store.append("task-1", second)
 
     path = tmp_path / "jobmem" / "job-task-1.jsonl"
-    expected = (
-        json.dumps(first, ensure_ascii=False, sort_keys=True)
-        + "\n"
-        + json.dumps(second, ensure_ascii=False, sort_keys=True)
-        + "\n"
-    ).encode("utf-8")
+    expected = (json.dumps(first, ensure_ascii=False, sort_keys=True) + "\n" + json.dumps(second, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
     assert path.read_bytes() == expected
     assert store.read("task-1") == [first, second]
 

@@ -39,9 +39,9 @@ sys.path.insert(0, str(BACKEND_DIR))
 from sqlalchemy import event, text  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
+from alpha.config.database_config import DatabaseConfig  # noqa: E402
 from app.gateway.auth.models import User  # noqa: E402
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository  # noqa: E402
-from alpha.config.database_config import DatabaseConfig  # noqa: E402
 
 # Must be the exact same absolute path run_concurrency_bench.py's
 # seed_baseline() computes (SQLITE_BENCH_DIR there) -- DatabaseConfig

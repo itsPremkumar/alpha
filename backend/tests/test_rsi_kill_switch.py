@@ -97,6 +97,7 @@ def test_local_stop_file_refuses_cycle(runtime_home):
 
 def test_switchboard_probe_error_engages_freeze_with_real_error(runtime_home, monkeypatch):
     """§5.6/§5.9: a broken switchboard refuses RSI cycles (with the real error) and never raises."""
+
     def _broken_probe():
         raise OSError("kill-switch state file unreadable (simulated)")
 
@@ -129,6 +130,7 @@ def test_guard_is_noop_when_clear(runtime_home):
 
 def test_run_holdout_gate_absent_module_is_honest_not_available(runtime_home, monkeypatch):
     """Parallel-sequencing seam stubbed as absent: honest `not_available`, never a fabricated score."""
+
     def _absent():
         return None, None, "No module named 'alpha.rsi.holdout'"
 
@@ -146,6 +148,7 @@ def test_run_holdout_gate_absent_module_is_honest_not_available(runtime_home, mo
 
 def test_run_holdout_gate_composes_stubbed_a3_api(runtime_home, monkeypatch):
     """Composition against A3's specified API: run_holdout() -> dict, holdout_gate(dict) -> (bool, str)."""
+
     def _fake_run_holdout():
         return {
             "results": [{"case_id": "hidden-1", "passed": True}],
@@ -185,6 +188,7 @@ def test_run_holdout_gate_composes_stubbed_a3_api(runtime_home, monkeypatch):
 
 def test_run_holdout_gate_run_failure_fails_closed(runtime_home, monkeypatch):
     """A holdout that raises surfaces the real error with gate_passed=False (fail-closed)."""
+
     def _explodes():
         raise RuntimeError("holdout evaluator exploded (simulated)")
 

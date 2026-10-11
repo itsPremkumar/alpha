@@ -124,9 +124,7 @@ def _proposal(name: str = "log-auditor", caps: list[str] | None = None) -> Profi
     )
 
 
-def _proposal_as_creator(
-    name: str, caps: list[str], creator_grant: list[str]
-) -> ProfileProposal:
+def _proposal_as_creator(name: str, caps: list[str], creator_grant: list[str]) -> ProfileProposal:
     """A proposal whose creator genuinely holds every requested capability.
 
     Needed whenever a test is exercising the CEILING rather than the
@@ -171,9 +169,7 @@ def test_a_fresh_install_has_alpha_as_default_leader_with_no_config(monkeypatch,
     assert bound.max_capability_rank == RANK_PROCESS_EXEC
     assert bound.max_live_profiles >= 1
     # repository_mutate / grant_authority are NOT in the default envelope.
-    assert "grant_authority" not in bound.allowed_capabilities or (
-        CAPABILITY_RANKS["grant_authority"] > bound.max_capability_rank
-    )
+    assert "grant_authority" not in bound.allowed_capabilities or (CAPABILITY_RANKS["grant_authority"] > bound.max_capability_rank)
 
 
 # ==========================================================================
@@ -181,9 +177,7 @@ def test_a_fresh_install_has_alpha_as_default_leader_with_no_config(monkeypatch,
 # ==========================================================================
 
 
-def test_b_alpha_creates_a_profile_that_receives_and_completes_real_work(
-    tmp_path, ceiling, ledger
-):
+def test_b_alpha_creates_a_profile_that_receives_and_completes_real_work(tmp_path, ceiling, ledger):
     """End to end through the REAL dispatch path, not a direct method call.
 
     The claim goes through ``claim_task`` — the function bot mode already uses —
@@ -210,9 +204,7 @@ def test_b_alpha_creates_a_profile_that_receives_and_completes_real_work(
     assert registry.get_bot("log-auditor").task_stats["completed"] == 1
 
 
-def test_b_runtime_profile_receives_work_through_the_governor(
-    tmp_path, ceiling, ledger
-):
+def test_b_runtime_profile_receives_work_through_the_governor(tmp_path, ceiling, ledger):
     """The same, through the durable runtime-profile store + governor."""
     store = DynamicProfileStore(
         tmp_path / "runtime_profiles.json",
@@ -249,9 +241,7 @@ def test_b_runtime_profile_receives_work_through_the_governor(
 def test_c_over_privileged_profile_is_refused_at_proposal_time(store, ledger):
     """Asking for authority above the ceiling fails before anything is written."""
     with pytest.raises(AuthorityViolation) as exc:
-        store.propose_profile(
-            _proposal("root-bot", ["observe", "grant_authority"])
-        )
+        store.propose_profile(_proposal("root-bot", ["observe", "grant_authority"]))
     assert any("authority ceiling" in v or "not in the authority ceiling" in v for v in exc.value.violations)
     # Nothing was created.
     assert store.get_profile("root-bot") is None
@@ -363,9 +353,7 @@ def test_d_alpha_cannot_modify_the_ceiling(tmp_path, ceiling):
         ceiling.max_capability_rank = RANK_GRANT_AUTHORITY  # type: ignore[misc]
 
 
-def test_d_alpha_cannot_hire_or_disable_the_component_that_enforces_the_ceiling(
-    tmp_path, ceiling
-):
+def test_d_alpha_cannot_hire_or_disable_the_component_that_enforces_the_ceiling(tmp_path, ceiling):
     registry = BotRegistry(tmp_path / "roster.json", ceiling=ceiling)
     for name in (
         "authority_ceiling",
@@ -430,9 +418,7 @@ def test_d_a_contradictory_ceiling_is_refused(tmp_path):
     """allowed but ranked above the ceiling is a contradiction, not a config."""
     contradictory = tmp_path / "c.json"
     contradictory.write_text(
-        json.dumps(
-            {"max_capability_rank": RANK_OBSERVE, "allowed_capabilities": ["grant_authority"]}
-        ),
+        json.dumps({"max_capability_rank": RANK_OBSERVE, "allowed_capabilities": ["grant_authority"]}),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="rank above"):
@@ -485,23 +471,14 @@ def test_e_ceiling_tightening_demotes_a_pre_existing_profile(tmp_path, ledger):
     assert governor.can_dispatch("log-auditor") is True
     assert "process_exec" not in store.get_profile("log-auditor").granted_capabilities
     # The demotion is in the ledger.
-    demotions = [
-        e for e in query_governance_actions(limit=200, store=ledger)
-        if e["event_type"] == f"{GOVERNANCE_PREFIX}profile_demoted"
-    ]
+    demotions = [e for e in query_governance_actions(limit=200, store=ledger) if e["event_type"] == f"{GOVERNANCE_PREFIX}profile_demoted"]
     assert demotions and "process_exec" in json.dumps(demotions[0]["details"])
 
 
 def test_e_ceiling_tightening_to_empty_grant_disables_the_profile(tmp_path, ledger):
     loose = AuthorityCeiling(max_capability_rank=RANK_PROCESS_EXEC, max_live_profiles=4)
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=loose, approval_gate=lambda p: True, event_store=ledger
-    )
-    store.propose_profile(
-        _proposal_as_creator(
-            "worker", ["observe", "process_exec"], ["observe", "process_exec"]
-        )
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=loose, approval_gate=lambda p: True, event_store=ledger)
+    store.propose_profile(_proposal_as_creator("worker", ["observe", "process_exec"], ["observe", "process_exec"]))
     store.approve_proposal("worker")
     store.install_approved("worker")
     governor = LifecycleGovernor(store, event_store=ledger)
@@ -571,9 +548,7 @@ def test_e_registry_authorized_bot_demotes_on_tightening(tmp_path, ledger):
 
 
 def test_f_retirement_stops_dispatch_drains_and_keeps_the_record(tmp_path, ceiling, ledger):
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     _install(store, "log-auditor")
     in_flight = {
         "log-auditor": [
@@ -593,9 +568,7 @@ def test_f_retirement_stops_dispatch_drains_and_keeps_the_record(tmp_path, ceili
         governor.assert_dispatchable("log-auditor")
 
     # Phase 2: retired, with the drain reported.
-    result = governor.complete_retirement(
-        "log-auditor", actor="alpha", reason="budget", drain_deadline_seconds=0.0
-    )
+    result = governor.complete_retirement("log-auditor", actor="alpha", reason="budget", drain_deadline_seconds=0.0)
     assert result.status == STATUS_RETIRED
     assert [c.task_id for c in result.abandoned] == ["t-1"]
     assert result.audit_record_retained is True
@@ -607,11 +580,7 @@ def test_f_retirement_stops_dispatch_drains_and_keeps_the_record(tmp_path, ceili
     assert survivor.status == STATUS_RETIRED
 
     # And the whole thing is in the ledger.
-    retirements = [
-        e
-        for e in query_governance_actions(limit=200, store=ledger)
-        if e["event_type"] == f"{GOVERNANCE_PREFIX}profile_retired"
-    ]
+    retirements = [e for e in query_governance_actions(limit=200, store=ledger) if e["event_type"] == f"{GOVERNANCE_PREFIX}profile_retired"]
     assert len(retirements) == 2
     assert all(e["actor"] == "alpha" and e["target"] == "log-auditor" for e in retirements)
     assert "t-1" in json.dumps(retirements[-1]["details"])
@@ -625,9 +594,7 @@ def test_a_self_extended_profile_must_be_enabled_before_it_dispatches(tmp_path, 
     "not yet through the lifecycle governor", and that must block dispatch. The
     two sets are deliberately different, and this test pins both halves.
     """
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     _install(store, "log-auditor")
     registry = BotRegistry(tmp_path / "roster.json", ceiling=ceiling)
     governor = LifecycleGovernor(store, event_store=ledger)
@@ -661,15 +628,9 @@ def test_f_retirement_stops_dispatch_through_the_real_claim_path(tmp_path, ceili
 
 def test_f_rescope_invalidates_in_flight_work_visibility(tmp_path, ceiling, ledger):
     """A re-scope bumps the version so no dispatch runs on a superseded grant."""
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     _install(store, "log-auditor", ["observe", "reason", "workspace_write"])
-    in_flight = {
-        "log-auditor": [
-            InFlightClaim(task_id="t-1", claimed_at="2026-01-01T00:00:00+00:00", profile_version=2)
-        ]
-    }
+    in_flight = {"log-auditor": [InFlightClaim(task_id="t-1", claimed_at="2026-01-01T00:00:00+00:00", profile_version=2)]}
     governor = LifecycleGovernor(store, event_store=ledger, in_flight=in_flight)
     governor.enable_profile("log-auditor", actor="alpha", reason="ready")
 
@@ -687,9 +648,7 @@ def test_f_rescope_invalidates_in_flight_work_visibility(tmp_path, ceiling, ledg
 
 
 def test_f_rescope_cannot_widen_beyond_the_creator_grant(tmp_path, ceiling, ledger):
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     _install(store, "log-auditor", ["observe"])
     governor = LifecycleGovernor(store, event_store=ledger)
     with pytest.raises(AuthorityViolation):
@@ -705,9 +664,7 @@ def test_f_rescope_cannot_widen_beyond_the_creator_grant(tmp_path, ceiling, ledg
 def test_f_idle_profiles_are_proposed_for_retirement_not_retired(tmp_path, ceiling, ledger):
     from datetime import UTC, datetime, timedelta
 
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     profile = _install(store, "idle-one")
     governor = LifecycleGovernor(store, event_store=ledger)
     governor.enable_profile("idle-one", actor="alpha", reason="ready")
@@ -723,27 +680,19 @@ def test_f_idle_profiles_are_proposed_for_retirement_not_retired(tmp_path, ceili
     assert [p.profile_name for p in proposals] == ["idle-one"]
     # Proposed, NOT retired.
     assert store.get_profile("idle-one").status == STATUS_ACTIVE
-    idle_events = [
-        e
-        for e in query_governance_actions(limit=200, store=ledger)
-        if e["event_type"] == f"{GOVERNANCE_PREFIX}profile_idle_retirement_proposed"
-    ]
+    idle_events = [e for e in query_governance_actions(limit=200, store=ledger) if e["event_type"] == f"{GOVERNANCE_PREFIX}profile_idle_retirement_proposed"]
     assert len(idle_events) == 1
 
 
 def test_f_a_fresh_profile_is_not_reaped_for_having_no_chance_yet(tmp_path, ceiling, ledger):
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     _install(store, "brand-new")
     governor = LifecycleGovernor(store, event_store=ledger)
     assert governor.find_idle_profiles(window_seconds=1) == []
 
 
 def test_f_population_ceiling_stops_unbounded_growth(tmp_path, ceiling, ledger):
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     for index in range(ceiling.max_live_profiles):
         _install(store, f"agent-{index}", ["observe"])
     with pytest.raises(AuthorityViolation) as exc:
@@ -845,9 +794,7 @@ def test_k_profile_names_are_validated():
 
 def test_k_creation_is_not_authorisation(tmp_path, ceiling, ledger):
     """A pending, unapproved proposal is not installable and not dispatchable."""
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: False, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: False, event_store=ledger)
     store.propose_profile(_proposal("log-auditor"))
     with pytest.raises(Exception, match="not approved"):
         store.install_approved("log-auditor")
@@ -898,7 +845,10 @@ def test_g_kill_switch_is_read_at_call_time_not_import_time(tmp_path, monkeypatc
     assert self_modification_kill_switch_engaged() is True
     outcome = guard.propose(
         SelfModificationProposal(
-            title="t", targets=["notes.md"], rationale="r", evidence="e",
+            title="t",
+            targets=["notes.md"],
+            rationale="r",
+            evidence="e",
             replacement_contents={"notes.md": "x\n"},
         )
     )
@@ -919,7 +869,10 @@ def test_g_fleet_kill_switch_also_stops_self_modification(tmp_path, monkeypatch)
         assert self_modification_kill_switch_engaged() is True
         outcome = guard.propose(
             SelfModificationProposal(
-                title="t", targets=["notes.md"], rationale="r", evidence="e",
+                title="t",
+                targets=["notes.md"],
+                rationale="r",
+                evidence="e",
                 replacement_contents={"notes.md": "x\n"},
             )
         )
@@ -954,9 +907,7 @@ def test_h_a_failed_self_modification_rolls_back(tmp_path, monkeypatch):
 
         return SentinelLoop(root, fix_fn=fix_fn, verifier=RedVerifier(root))
 
-    guard = SelfModificationGuard(
-        repo, approver=lambda p: True, loop_factory=factory, event_store=OrgEventStore(tmp_path / "e.jsonl")
-    )
+    guard = SelfModificationGuard(repo, approver=lambda p: True, loop_factory=factory, event_store=OrgEventStore(tmp_path / "e.jsonl"))
     outcome = guard.propose(
         SelfModificationProposal(
             title="break the docs",
@@ -983,9 +934,7 @@ def test_h_a_failed_self_modification_rolls_back(tmp_path, monkeypatch):
 _GREEN_CHECK = [sys.executable, "-c", "pass"]
 
 
-def test_h_a_successful_self_modification_records_before_after_and_verify(
-    tmp_path, monkeypatch
-):
+def test_h_a_successful_self_modification_records_before_after_and_verify(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "notes.md"
@@ -1090,7 +1039,10 @@ def test_self_modification_requires_an_explicit_approver(tmp_path, monkeypatch):
     guard = SelfModificationGuard(repo)
     outcome = guard.propose(
         SelfModificationProposal(
-            title="t", targets=["notes.md"], rationale="r", evidence="e",
+            title="t",
+            targets=["notes.md"],
+            rationale="r",
+            evidence="e",
         )
     )
     assert outcome.verdict == "refused"
@@ -1104,9 +1056,7 @@ def test_self_modification_without_evidence_is_refused_at_construction():
 
 def test_off_limits_list_covers_the_protected_components():
     for component in PROTECTED_COMPONENTS:
-        assert component in PERMANENTLY_OFF_LIMITS or any(
-            component.lower() in item.lower() for item in PERMANENTLY_OFF_LIMITS
-        ), component
+        assert component in PERMANENTLY_OFF_LIMITS or any(component.lower() in item.lower() for item in PERMANENTLY_OFF_LIMITS), component
 
 
 # ==========================================================================
@@ -1143,9 +1093,7 @@ def test_i_no_descendants_is_not_success():
 
 
 def test_i_unresolved_descendant_blocks_completion():
-    result = aggregate_descendants(
-        [{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "running"}]
-    )
+    result = aggregate_descendants([{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "running"}])
     assert result.succeeded is False
     assert result.state == "unresolved"
     assert result.unresolved_ids == ["b"]
@@ -1161,9 +1109,7 @@ def test_i_malformed_and_missing_records_are_counted_not_dropped():
 
 
 def test_i_all_completed_is_the_only_success():
-    result = aggregate_descendants(
-        [{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "completed"}]
-    )
+    result = aggregate_descendants([{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "completed"}])
     assert result.succeeded is True
     assert result.state == "completed"
     assert result.completed == result.total == 2
@@ -1206,9 +1152,7 @@ def test_j_fanout_ceiling_is_enforced():
 
 
 def test_j_attempt_ceiling_is_enforced():
-    guard = AutonomyGuard(
-        AutonomyBounds(max_attempts_per_task=2, max_children_per_parent=9, max_revisits_per_task=9)
-    )
+    guard = AutonomyGuard(AutonomyBounds(max_attempts_per_task=2, max_children_per_parent=9, max_revisits_per_task=9))
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="b")
     with pytest.raises(AutonomyCeilingExceeded) as exc:
@@ -1238,9 +1182,7 @@ def test_j_wall_clock_ceiling_is_enforced_and_stops_the_tree():
 
 
 def test_j_cycle_guard_stops_a_ping_pong():
-    guard = AutonomyGuard(
-        AutonomyBounds(max_revisits_per_task=2, max_children_per_parent=9, max_attempts_per_task=9)
-    )
+    guard = AutonomyGuard(AutonomyBounds(max_revisits_per_task=2, max_children_per_parent=9, max_attempts_per_task=9))
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="b")
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
@@ -1250,9 +1192,7 @@ def test_j_cycle_guard_stops_a_ping_pong():
 
 
 def test_j_cycle_guard_catches_same_agent_repetition():
-    guard = AutonomyGuard(
-        AutonomyBounds(max_revisits_per_task=2, max_children_per_parent=9, max_attempts_per_task=9)
-    )
+    guard = AutonomyGuard(AutonomyBounds(max_revisits_per_task=2, max_children_per_parent=9, max_attempts_per_task=9))
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     with pytest.raises(CycleDetected, match="ping-ponged"):
@@ -1363,9 +1303,7 @@ def test_ledger_refuses_an_unknown_action(ledger):
 
 
 def test_ledger_entry_has_actor_target_reason_and_timestamp(ledger):
-    event = record_governance_action(
-        "profile_retired", actor="Alpha", target="Log-Auditor", reason="budget", store=ledger
-    )
+    event = record_governance_action("profile_retired", actor="Alpha", target="Log-Auditor", reason="budget", store=ledger)
     assert event["actor"] == "alpha"
     assert event["target"] == "log-auditor"
     assert event["details"]["reason"] == "budget"
@@ -1382,15 +1320,11 @@ def test_assert_ledger_ordered_names_the_break():
 
 def test_the_whole_authority_surface_is_readable_from_one_ledger(tmp_path, ceiling, ledger):
     """One ordered ledger covers creation, re-scope, retirement and refusal."""
-    store = DynamicProfileStore(
-        tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger
-    )
+    store = DynamicProfileStore(tmp_path / "p.json", ceiling=ceiling, approval_gate=lambda p: True, event_store=ledger)
     _install(store, "log-auditor", ["observe", "reason", "workspace_write"])
     governor = LifecycleGovernor(store, event_store=ledger)
     governor.enable_profile("log-auditor", actor="alpha", reason="ready")
-    governor.rescope_profile(
-        "log-auditor", new_capabilities=["observe"], actor="alpha", reason="drop write"
-    )
+    governor.rescope_profile("log-auditor", new_capabilities=["observe"], actor="alpha", reason="drop write")
     governor.retire_profile("log-auditor", actor="alpha", reason="no longer needed")
     with pytest.raises(AuthorityViolation):
         governor.rescope_profile(
@@ -1442,9 +1376,7 @@ def test_ceiling_can_be_tightened_to_withhold_even_reads():
         def __init__(self, name):
             self.name = name
 
-    bound = AuthorityCeiling(
-        max_capability_rank=RANK_OBSERVE, allowed_capabilities=frozenset({"observe"})
-    )
+    bound = AuthorityCeiling(max_capability_rank=RANK_OBSERVE, allowed_capabilities=frozenset({"observe"}))
     tools = [Tool("view_file"), Tool("write_to_file")]
     kept = {t.name for t in filter_tools_by_role(tools, "coder", enabled=True, ceiling=bound)}
     assert kept == {"view_file"}

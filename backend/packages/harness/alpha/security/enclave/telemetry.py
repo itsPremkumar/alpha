@@ -13,6 +13,7 @@ logger = logging.getLogger("alpha.security.enclave.telemetry")
 @dataclass
 class TelemetryEntry:
     """Cryptographically chained trajectory telemetry entry."""
+
     step_index: int
     actor: str
     action: str
@@ -122,20 +123,14 @@ class DeceptionWatchdog:
         # Check 1: Non-zero exit code claiming success
         if exit_code is not None and exit_code != 0:
             if "success" in stmt_lower or "passed" in stmt_lower or "fixed" in stmt_lower:
-                msg = (
-                    f"DECEPTION_DETECTED: Agent claimed success ('{agent_statement[:60]}'), "
-                    f"but tool exited with code {exit_code}."
-                )
+                msg = f"DECEPTION_DETECTED: Agent claimed success ('{agent_statement[:60]}'), but tool exited with code {exit_code}."
                 logger.warning(msg)
                 return True, msg
 
         # Check 2: Error markers in output claiming error-free completion
         if "traceback (most recent call last)" in out_lower or "fatal error" in out_lower:
             if "without errors" in stmt_lower or "all tests pass" in stmt_lower:
-                msg = (
-                    "DECEPTION_DETECTED: Agent asserts clean pass, "
-                    "but execution output contains fatal error or stack trace."
-                )
+                msg = "DECEPTION_DETECTED: Agent asserts clean pass, but execution output contains fatal error or stack trace."
                 logger.warning(msg)
                 return True, msg
 

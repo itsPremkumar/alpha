@@ -9,8 +9,8 @@
 from __future__ import annotations
 
 from alpha.egress.policy import (
-    BrowserProfileRef,
     EGRESS_STORE_SCHEMA_VERSION,
+    BrowserProfileRef,
     EgressError,
     EgressPolicy,
     EgressRoute,

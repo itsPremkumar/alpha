@@ -37,14 +37,14 @@ class PaymentService:
         return amount
 '''
 
-CONSUMER_SOURCE = '''
+CONSUMER_SOURCE = """
 from service import PaymentService
 
 
 def checkout(total):
     engine = PaymentService()
     return engine.authorize(total)
-'''
+"""
 
 
 @pytest.fixture()
@@ -266,34 +266,10 @@ def _packed_int32_field(field: int, values: list[int]) -> bytes:
 
 def _scip_index() -> bytes:
     """Encode a minimal SCIP index containing one document and two symbols."""
-    symbol_info = _string_field(1, "scip-python python module service PaymentService#") + _string_field(
-        5, "PaymentService"
-    )
-    definition = (
-        _packed_int32_field(1, [4, 0, 6])
-        + _string_field(2, "scip-python python module service PaymentService#")
-        + _tag(6, 0)
-        + _varint(0x1)
-    )
-    reference = (
-        _packed_int32_field(1, [12, 4, 30])
-        + _string_field(2, "scip-python python module service PaymentService#")
-        + _tag(6, 0)
-        + _varint(0x0)
-    )
-    document = (
-        _string_field(1, "python")
-        + _string_field(2, "service.py")
-        + _tag(4, 2)
-        + _varint(len(symbol_info))
-        + symbol_info
-        + _tag(5, 2)
-        + _varint(len(definition))
-        + definition
-        + _tag(5, 2)
-        + _varint(len(reference))
-        + reference
-    )
+    symbol_info = _string_field(1, "scip-python python module service PaymentService#") + _string_field(5, "PaymentService")
+    definition = _packed_int32_field(1, [4, 0, 6]) + _string_field(2, "scip-python python module service PaymentService#") + _tag(6, 0) + _varint(0x1)
+    reference = _packed_int32_field(1, [12, 4, 30]) + _string_field(2, "scip-python python module service PaymentService#") + _tag(6, 0) + _varint(0x0)
+    document = _string_field(1, "python") + _string_field(2, "service.py") + _tag(4, 2) + _varint(len(symbol_info)) + symbol_info + _tag(5, 2) + _varint(len(definition)) + definition + _tag(5, 2) + _varint(len(reference)) + reference
     return _tag(2, 2) + _varint(len(document)) + document
 
 
@@ -399,25 +375,19 @@ def test_language_server_spec_detects_missing_binary():
 
 
 def test_tool_definition_query(workspace):
-    result = query_language_server_symbol.invoke(
-        {"symbol": "PaymentService", "workspace_root": str(workspace), "action": "definition"}
-    )
+    result = query_language_server_symbol.invoke({"symbol": "PaymentService", "workspace_root": str(workspace), "action": "definition"})
     assert result["success"] is True
     assert result["count"] >= 1
 
 
 def test_tool_servers_action(workspace):
-    result = query_language_server_symbol.invoke(
-        {"symbol": "", "workspace_root": str(workspace), "action": "servers"}
-    )
+    result = query_language_server_symbol.invoke({"symbol": "", "workspace_root": str(workspace), "action": "servers"})
     assert result["success"] is True
     assert result["count"] > 0
 
 
 def test_tool_rejects_unknown_action(workspace):
-    result = query_language_server_symbol.invoke(
-        {"symbol": "x", "workspace_root": str(workspace), "action": "teleport"}
-    )
+    result = query_language_server_symbol.invoke({"symbol": "x", "workspace_root": str(workspace), "action": "teleport"})
     assert result["success"] is False
     assert "unsupported action" in result["error"]
 
@@ -438,7 +408,5 @@ def test_tool_load_index_action(workspace, tmp_path):
 
 
 def test_tool_load_index_requires_path(workspace):
-    result = query_language_server_symbol.invoke(
-        {"symbol": "x", "workspace_root": str(workspace), "action": "load_index"}
-    )
+    result = query_language_server_symbol.invoke({"symbol": "x", "workspace_root": str(workspace), "action": "load_index"})
     assert result["success"] is False

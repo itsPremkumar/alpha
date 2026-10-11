@@ -37,11 +37,11 @@ class SkillForge:
                         required=True,
                     )
                 target_placeholder = f"{{{param_name}}}"
-                line = f"{i+1}. Call `{tool}` with target `{target_placeholder}` for action '{action}'"
+                line = f"{i + 1}. Call `{tool}` with target `{target_placeholder}` for action '{action}'"
             elif cmd:
-                line = f"{i+1}. Run command: `{cmd}`"
+                line = f"{i + 1}. Run command: `{cmd}`"
             else:
-                line = f"{i+1}. Step `{tool}`: {action}"
+                line = f"{i + 1}. Step `{tool}`: {action}"
 
             template_lines.append(line)
 

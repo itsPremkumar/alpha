@@ -64,13 +64,7 @@ MUTATIONS: tuple[tuple[str, pathlib.Path, str, str, str], ...] = (
             "            truncated=clamped.truncated,\n"
             "            truncated_count=clamped.truncated_count,"
         ),
-        (
-            "            payload_bytes=clamped.bytes_stored,\n"
-            "            payload_stored_bytes=clamped.bytes_stored,\n"
-            "            payload_sha256=clamped.sha256,\n"
-            "            truncated=False,\n"
-            "            truncated_count=0,"
-        ),
+        ("            payload_bytes=clamped.bytes_stored,\n            payload_stored_bytes=clamped.bytes_stored,\n            payload_sha256=clamped.sha256,\n            truncated=False,\n            truncated_count=0,"),
         "tests/test_behaviour_trace.py::test_oversized_payload_is_truncated_with_flag_size_and_hash",
     ),
     (
@@ -141,8 +135,8 @@ MUTATIONS: tuple[tuple[str, pathlib.Path, str, str, str], ...] = (
     (
         "required-field contract removed: a tool selection without a reason is stored",
         WRITER,
-        "        if any(field not in merged for field in definition.required_fields):\n            raise _Rejection(f\"missing_required:{definition.event_type}\")",
-        "        if False:\n            raise _Rejection(f\"missing_required:{definition.event_type}\")",
+        '        if any(field not in merged for field in definition.required_fields):\n            raise _Rejection(f"missing_required:{definition.event_type}")',
+        '        if False:\n            raise _Rejection(f"missing_required:{definition.event_type}")',
         "tests/test_behaviour_trace.py::test_a_required_field_must_be_present_or_the_event_is_refused",
     ),
     (
@@ -151,7 +145,7 @@ MUTATIONS: tuple[tuple[str, pathlib.Path, str, str, str], ...] = (
         # writer-owned-ring test exists, and this mutation points at it.
         "tail bound removed: the in-memory ring grows without limit",
         WRITER,
-        "        return InMemorySink(max_records=READERS[\"tail_maxlen\"].read(self._config))",
+        '        return InMemorySink(max_records=READERS["tail_maxlen"].read(self._config))',
         "        return InMemorySink(max_records=10_000_000)",
         "tests/test_behaviour_trace.py::test_tail_maxlen_bounds_a_writer_owned_ring",
     ),
@@ -165,8 +159,8 @@ MUTATIONS: tuple[tuple[str, pathlib.Path, str, str, str], ...] = (
     (
         "unified error taxonomy removed: a supplied code is trusted without consulting the registry",
         TAXONOMY,
-        "    if error_taxonomy_status() != \"available\":\n        return ErrorCodeResolution(\n            code=str(supplied) if supplied else TOTAL_FALLBACK_ERROR_CODE,\n            source=\"unverified_registry_unavailable\",\n        )",
-        "    return ErrorCodeResolution(code=str(supplied) if supplied else TOTAL_FALLBACK_ERROR_CODE, source=\"unverified_registry_unavailable\")",
+        '    if error_taxonomy_status() != "available":\n        return ErrorCodeResolution(\n            code=str(supplied) if supplied else TOTAL_FALLBACK_ERROR_CODE,\n            source="unverified_registry_unavailable",\n        )',
+        '    return ErrorCodeResolution(code=str(supplied) if supplied else TOTAL_FALLBACK_ERROR_CODE, source="unverified_registry_unavailable")',
         "tests/test_behaviour_trace.py::test_error_codes_come_from_the_one_registry_and_are_never_invented",
     ),
 )

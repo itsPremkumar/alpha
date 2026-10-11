@@ -9,6 +9,7 @@ from typing import Any
 
 class ActionPrimitive(str, Enum):
     """Normalized Universal Action Protocol (UAP) 15 foundational algebra primitives."""
+
     READ = "read"
     CREATE = "create"
     UPDATE = "update"
@@ -29,6 +30,7 @@ class ActionPrimitive(str, Enum):
 @dataclass
 class ActionRequest:
     """Normalized action request in accordance with UAP."""
+
     primitive: ActionPrimitive
     target: str
     action_id: str = field(default_factory=lambda: f"act_{uuid.uuid4().hex[:10]}")

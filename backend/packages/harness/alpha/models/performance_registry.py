@@ -16,6 +16,7 @@ from typing import Any
 @dataclass
 class ModelPerformanceMetrics:
     """Live empirical telemetry for a specific (model, task_type) pair."""
+
     model_id: str
     task_type: str
     sample_count: int = 0
@@ -179,15 +180,17 @@ class DynamicCostLatencyRouter:
 
             utility = (weight_quality * quality) - (weight_cost * norm_cost) - (weight_latency * norm_latency)
 
-            candidates_evaluated.append({
-                "model_id": m_id,
-                "utility": round(utility, 4),
-                "success_rate": round(s_rate, 3),
-                "verification_score": round(v_score, 3),
-                "avg_cost_usd": round(c_usd, 5),
-                "avg_latency_ms": round(l_ms, 1),
-                "sample_count": samples,
-            })
+            candidates_evaluated.append(
+                {
+                    "model_id": m_id,
+                    "utility": round(utility, 4),
+                    "success_rate": round(s_rate, 3),
+                    "verification_score": round(v_score, 3),
+                    "avg_cost_usd": round(c_usd, 5),
+                    "avg_latency_ms": round(l_ms, 1),
+                    "sample_count": samples,
+                }
+            )
 
         if not candidates_evaluated:
             # Fallback to first candidate if all filtered out

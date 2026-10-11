@@ -37,10 +37,11 @@ import threading
 import time
 import traceback
 import types
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +123,7 @@ BLOCKED_CALL_NAMES: frozenset[str] = frozenset(
     }
 )
 
-DELETION_CALL_NAMES: frozenset[str] = frozenset(
-    {"remove", "unlink", "rmdir", "rmtree", "truncate", "deletedir"}
-)
+DELETION_CALL_NAMES: frozenset[str] = frozenset({"remove", "unlink", "rmdir", "rmtree", "truncate", "deletedir"})
 
 WRITE_MODE_HINTS: frozenset[str] = frozenset({"w", "wb", "a", "ab", "x", "xb", "w+", "a+", "r+"})
 
@@ -176,10 +175,8 @@ class SecurityAstValidator(ast.NodeVisitor):
     import, and filesystem writes that resolve outside the workspace root.
     """
 
-    def __init__(self, workspace_root: Optional[str | Path] = None):
-        self.workspace_root = (
-            Path(workspace_root).resolve() if workspace_root else None
-        )
+    def __init__(self, workspace_root: str | Path | None = None):
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else None
         self.violations: list[SecurityViolation] = []
         self.warnings: list[SecurityViolation] = []
         self._imported_aliases: dict[str, str] = {}
@@ -236,9 +233,7 @@ class SecurityAstValidator(ast.NodeVisitor):
             )
         for alias in node.names:
             if alias.name == "*":
-                self._reject(
-                    "blocked-import", "wildcard imports are not permitted", node.lineno
-                )
+                self._reject("blocked-import", "wildcard imports are not permitted", node.lineno)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -298,10 +293,7 @@ class SecurityAstValidator(ast.NodeVisitor):
                     SecurityViolation(
                         rule="unverified-write-target",
                         severity="warning",
-                        message=(
-                            f"write via '{full_name or leaf}' uses a non-literal path; "
-                            "it cannot be proven to stay inside the workspace"
-                        ),
+                        message=(f"write via '{full_name or leaf}' uses a non-literal path; it cannot be proven to stay inside the workspace"),
                         line=node.lineno,
                     )
                 )
@@ -332,9 +324,7 @@ class SecurityAstValidator(ast.NodeVisitor):
 
     def _reject(self, rule: str, message: str, line: int) -> None:
         """Record a blocking violation."""
-        self.violations.append(
-            SecurityViolation(rule=rule, severity="error", message=message, line=line)
-        )
+        self.violations.append(SecurityViolation(rule=rule, severity="error", message=message, line=line))
 
     def _is_inside_workspace(self, target: str) -> bool:
         """Return True when a literal path resolves inside the workspace."""
@@ -391,9 +381,7 @@ def _open_is_write(node: ast.Call) -> bool:
 _PATH_KEYWORDS: frozenset[str] = frozenset({"file", "path", "filename", "name"})
 
 
-def _literal_path_arg(
-    node: ast.Call, *, first_positional_only: bool = False
-) -> Optional[str]:
+def _literal_path_arg(node: ast.Call, *, first_positional_only: bool = False) -> str | None:
     """Extract a literal filesystem path argument, when statically known.
 
     Args:
@@ -415,9 +403,7 @@ def _literal_path_arg(
         candidates.extend(func.value.args[:1])
 
     candidates.extend(node.args[:1] if first_positional_only else node.args)
-    candidates.extend(
-        keyword.value for keyword in node.keywords if keyword.arg in _PATH_KEYWORDS
-    )
+    candidates.extend(keyword.value for keyword in node.keywords if keyword.arg in _PATH_KEYWORDS)
 
     for candidate in candidates:
         if isinstance(candidate, ast.Constant) and isinstance(candidate.value, str):
@@ -591,9 +577,9 @@ class DynamicToolRecord:
     created_at: float
     status: SynthesisStatus
     validation_report: dict[str, Any] = field(default_factory=dict)
-    namespace: Optional[dict[str, Any]] = None
-    callable: Optional[Callable[..., Any]] = None
-    module: Optional[types.ModuleType] = None
+    namespace: dict[str, Any] | None = None
+    callable: Callable[..., Any] | None = None
+    module: types.ModuleType | None = None
     tags: list[str] = field(default_factory=list)
 
     def to_dict(self, include_source: bool = False) -> dict[str, Any]:
@@ -646,7 +632,7 @@ class DynamicToolRegistry:
             record.status = SynthesisStatus.REGISTERED
             return record
 
-    def get(self, name: str) -> Optional[DynamicToolRecord]:
+    def get(self, name: str) -> DynamicToolRecord | None:
         """Return the active record for ``name``."""
         with self._lock:
             return self._tools.get(name)
@@ -659,10 +645,7 @@ class DynamicToolRegistry:
     def inventory(self, include_source: bool = False) -> list[dict[str, Any]]:
         """Return serialized metadata for every registered tool."""
         with self._lock:
-            return [
-                self._tools[name].to_dict(include_source=include_source)
-                for name in sorted(self._tools)
-            ]
+            return [self._tools[name].to_dict(include_source=include_source) for name in sorted(self._tools)]
 
     def history(self, name: str) -> list[dict[str, Any]]:
         """Return superseded versions of ``name``."""
@@ -705,13 +688,11 @@ class DynamicToolSynthesizer:
 
     def __init__(
         self,
-        workspace_root: Optional[str | Path] = None,
-        registry: Optional[DynamicToolRegistry] = None,
+        workspace_root: str | Path | None = None,
+        registry: DynamicToolRegistry | None = None,
         max_tools: int = DEFAULT_MAX_TOOLS,
     ):
-        self.workspace_root = (
-            Path(workspace_root).resolve() if workspace_root else Path.cwd().resolve()
-        )
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else Path.cwd().resolve()
         self.registry = registry or DynamicToolRegistry(max_tools=max_tools)
         self._lock = threading.RLock()
         self._runtime_registrars: list[Callable[[DynamicToolRecord], Any]] = []
@@ -747,9 +728,9 @@ class DynamicToolSynthesizer:
         source_code: str,
         description: str = "",
         entrypoint: str = DEFAULT_ENTRYPOINT,
-        parameters: Optional[dict[str, Any]] = None,
+        parameters: dict[str, Any] | None = None,
         test_code: str = "",
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
         """Validate, compile, self-test and register a synthesized tool.
@@ -781,9 +762,7 @@ class DynamicToolSynthesizer:
         if not source_code or not source_code.strip():
             return self._report(name, False, "empty-source", "source_code is empty", started)
         if len(source_code.encode("utf-8")) > MAX_SOURCE_BYTES:
-            return self._report(
-                name, False, "source-too-large", "source_code exceeds the size limit", started
-            )
+            return self._report(name, False, "source-too-large", "source_code exceeds the size limit", started)
 
         validator = SecurityAstValidator(self.workspace_root)
         verdict = validator.validate(source_code)
@@ -825,9 +804,7 @@ class DynamicToolSynthesizer:
                     started,
                     extra={"violations": [item.to_dict() for item in test_verdict.violations]},
                 )
-            namespace, module, error = self._exec_into_namespace(
-                namespace, module, name, test_code
-            )
+            namespace, module, error = self._exec_into_namespace(namespace, module, name, test_code)
             if error is not None:
                 return self._report(name, False, "test-compile-error", error, started)
 
@@ -897,9 +874,7 @@ class DynamicToolSynthesizer:
 
     # -- compilation -------------------------------------------------------
 
-    def _compile_ephemeral(
-        self, name: str, source_code: str
-    ) -> tuple[dict[str, Any], types.ModuleType, Optional[str]]:
+    def _compile_ephemeral(self, name: str, source_code: str) -> tuple[dict[str, Any], types.ModuleType, str | None]:
         """Compile source into an isolated ephemeral module namespace."""
         module = types.ModuleType(f"alpha.dynamic_tools.{name}")
         module.__dict__["__builtins__"] = build_restricted_builtins()
@@ -917,7 +892,7 @@ class DynamicToolSynthesizer:
         module: types.ModuleType,
         name: str,
         test_code: str,
-    ) -> tuple[dict[str, Any], types.ModuleType, Optional[str]]:
+    ) -> tuple[dict[str, Any], types.ModuleType, str | None]:
         """Execute additional (test) source inside an existing namespace."""
         try:
             with SysPathGuard():
@@ -960,9 +935,7 @@ class DynamicToolSynthesizer:
                 entry = namespace.get(entrypoint)
                 try:
                     entry()
-                    checks.append(
-                        {"name": "default_invocation", "success": True, "detail": "entrypoint callable"}
-                    )
+                    checks.append({"name": "default_invocation", "success": True, "detail": "entrypoint callable"})
                 except TypeError:
                     checks.append(
                         {
@@ -991,7 +964,7 @@ class DynamicToolSynthesizer:
 
     # -- invocation --------------------------------------------------------
 
-    def invoke(self, name: str, payload: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def invoke(self, name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         """Invoke a registered synthesized tool with keyword arguments."""
         record = self.registry.get(name)
         if record is None or record.callable is None:
@@ -1029,7 +1002,7 @@ class DynamicToolSynthesizer:
         status: str,
         message: str,
         started: float,
-        extra: Optional[dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build a uniform synthesis report."""
         payload: dict[str, Any] = {
@@ -1047,7 +1020,7 @@ class DynamicToolSynthesizer:
 class SysPathGuard:
     """Context manager preventing synthesized code from mutating ``sys.path``."""
 
-    def __enter__(self) -> "SysPathGuard":
+    def __enter__(self) -> SysPathGuard:
         self._snapshot = list(sys.path)
         return self
 
@@ -1089,11 +1062,11 @@ def _infer_parameters(func: Callable[..., Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _SYNTHESIZER_LOCK = threading.Lock()
-_SYNTHESIZER: Optional[DynamicToolSynthesizer] = None
+_SYNTHESIZER: DynamicToolSynthesizer | None = None
 
 
 def get_dynamic_tool_synthesizer(
-    workspace_root: Optional[str | Path] = None,
+    workspace_root: str | Path | None = None,
 ) -> DynamicToolSynthesizer:
     """Return the process-wide synthesizer, creating it on first use."""
     global _SYNTHESIZER

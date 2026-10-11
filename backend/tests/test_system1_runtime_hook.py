@@ -62,11 +62,7 @@ def _counting_runner():
 
 
 def _considered_events(engine: DynamicWorkflowEngine, run_id: str) -> list[dict]:
-    return [
-        event.payload
-        for event in engine.events.get_events(run_id)
-        if event.event_type == "loop_termination_considered"
-    ]
+    return [event.payload for event in engine.events.get_events(run_id) if event.event_type == "loop_termination_considered"]
 
 
 @pytest.fixture(autouse=True)
@@ -102,11 +98,7 @@ def test_reflex_stops_the_loop_only_with_agreeing_evidence(monkeypatch) -> None:
     considered = _considered_events(engine, run.run_id)
     assert considered[-1]["evidence_agreement"] is True
     assert "loop1" in run.completed_nodes
-    completions = [
-        event.payload
-        for event in engine.events.get_events(run.run_id)
-        if event.event_type == "node_completed"
-    ]
+    completions = [event.payload for event in engine.events.get_events(run.run_id) if event.event_type == "node_completed"]
     assert completions[-1]["stopped_by"] == "system1_reflex_agreement"
     assert completions[-1]["evidence"]  # real evidence travels with the completion
 

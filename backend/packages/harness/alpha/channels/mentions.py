@@ -230,9 +230,7 @@ def parse_mentions(
         if key in emitted:
             return
         emitted.add(key)
-        targets.append(
-            MentionTarget(kind=kind, selector=selector, resolved=tuple(resolved), via=via)
-        )
+        targets.append(MentionTarget(kind=kind, selector=selector, resolved=tuple(resolved), via=via))
 
     for match in _MENTION_RE.finditer(body):
         kind = match.group("kind")
@@ -247,9 +245,7 @@ def parse_mentions(
             else:
                 kind = KIND_BOT
 
-        span = MentionSpan(
-            start=match.start(), end=match.end(), raw=raw, kind=kind, body=body_token
-        )
+        span = MentionSpan(start=match.start(), end=match.end(), raw=raw, kind=kind, body=body_token)
         spans.append(span)
 
         if kind == KIND_ALL:
@@ -266,10 +262,7 @@ def parse_mentions(
                 unresolved.append(
                     {
                         "raw": raw,
-                        "reason": (
-                            f"@{ALL_SELECTOR} would address {len(everyone)} handles, above the "
-                            f"{MAX_TARGETS_PER_MESSAGE} fan-out ceiling"
-                        ),
+                        "reason": (f"@{ALL_SELECTOR} would address {len(everyone)} handles, above the {MAX_TARGETS_PER_MESSAGE} fan-out ceiling"),
                     }
                 )
                 continue

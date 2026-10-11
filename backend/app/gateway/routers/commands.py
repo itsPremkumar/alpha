@@ -164,11 +164,7 @@ async def execute_command(payload: CommandExecuteRequest) -> dict[str, Any]:
         return {
             "status": "timeout",
             "command": payload.command.split()[0] if payload.command.split() else "",
-            "output": (
-                f"Command did not answer within {_execute_timeout_seconds():g}s and was abandoned; "
-                f"its outcome is unknown. Retry with a narrower command or raise "
-                f"ALPHA_SLASH_COMMAND_TIMEOUT_SECONDS."
-            ),
+            "output": (f"Command did not answer within {_execute_timeout_seconds():g}s and was abandoned; its outcome is unknown. Retry with a narrower command or raise ALPHA_SLASH_COMMAND_TIMEOUT_SECONDS."),
             "data": {"executed": False, "timed_out": True},
             "autonomous_directives": [],
             "verdict": "failed_timed_out",

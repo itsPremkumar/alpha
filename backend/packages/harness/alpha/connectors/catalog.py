@@ -13,9 +13,10 @@ credentials; a connector is a *declaration*, not a live session.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 
 
 class AuthKind(str, Enum):
@@ -82,36 +83,16 @@ class ConnectorSpec:
 #: First-party connectors shipped with Alpha. Mirrors the apps Grok Bot
 #: advertises, plus Alpha's existing strengths (devtools, crm).
 BUILTIN_CONNECTORS: tuple[ConnectorSpec, ...] = (
-    ConnectorSpec("gmail", "Gmail", "Google", ConnectorCategory.COMMUNICATION, AuthKind.OAUTH2,
-                  ("search", "read", "draft", "send", "label", "archive"),
-                  "Read, search, draft and send email."),
-    ConnectorSpec("google_calendar", "Google Calendar", "Google", ConnectorCategory.CALENDAR, AuthKind.OAUTH2,
-                  ("list_events", "find_free_slot", "create_event", "update_event", "respond_invite"),
-                  "Query availability and manage events."),
-    ConnectorSpec("outlook", "Outlook Mail & Calendar", "Microsoft", ConnectorCategory.COMMUNICATION, AuthKind.OAUTH2,
-                  ("search", "read", "draft", "send", "list_events", "create_event"),
-                  "Microsoft 365 mail and calendar."),
-    ConnectorSpec("onedrive", "OneDrive", "Microsoft", ConnectorCategory.STORAGE, AuthKind.OAUTH2,
-                  ("list", "read", "write", "share"),
-                  "Read and write files in OneDrive."),
-    ConnectorSpec("x", "X", "xAI", ConnectorCategory.SOCIAL, AuthKind.OAUTH2,
-                  ("post", "read_timeline", "search"),
-                  "Post and read on X."),
-    ConnectorSpec("slack", "Slack", "Salesforce", ConnectorCategory.COMMUNICATION, AuthKind.OAUTH2,
-                  ("post_message", "read_channel", "search"),
-                  "Team messaging."),
-    ConnectorSpec("github", "GitHub", "Microsoft", ConnectorCategory.DEVTOOLS, AuthKind.OAUTH2,
-                  ("list_repos", "read_file", "open_pr", "comment", "create_issue"),
-                  "Repositories, issues and pull requests."),
-    ConnectorSpec("notion", "Notion", "Notion", ConnectorCategory.STORAGE, AuthKind.OAUTH2,
-                  ("search", "read_page", "append_block", "create_page"),
-                  "Docs and databases."),
-    ConnectorSpec("hubspot", "HubSpot", "HubSpot", ConnectorCategory.CRM, AuthKind.OAUTH2,
-                  ("list_contacts", "read_deal", "create_note", "update_stage"),
-                  "CRM contacts, deals and notes."),
-    ConnectorSpec("composio_bridge", "Composio Bridge", "Composio", ConnectorCategory.DEVTOOLS, AuthKind.API_KEY,
-                  ("discover_tools", "invoke_tool"),
-                  "Umbrella connector exposing 1000+ third-party apps.", first_party=False),
+    ConnectorSpec("gmail", "Gmail", "Google", ConnectorCategory.COMMUNICATION, AuthKind.OAUTH2, ("search", "read", "draft", "send", "label", "archive"), "Read, search, draft and send email."),
+    ConnectorSpec("google_calendar", "Google Calendar", "Google", ConnectorCategory.CALENDAR, AuthKind.OAUTH2, ("list_events", "find_free_slot", "create_event", "update_event", "respond_invite"), "Query availability and manage events."),
+    ConnectorSpec("outlook", "Outlook Mail & Calendar", "Microsoft", ConnectorCategory.COMMUNICATION, AuthKind.OAUTH2, ("search", "read", "draft", "send", "list_events", "create_event"), "Microsoft 365 mail and calendar."),
+    ConnectorSpec("onedrive", "OneDrive", "Microsoft", ConnectorCategory.STORAGE, AuthKind.OAUTH2, ("list", "read", "write", "share"), "Read and write files in OneDrive."),
+    ConnectorSpec("x", "X", "xAI", ConnectorCategory.SOCIAL, AuthKind.OAUTH2, ("post", "read_timeline", "search"), "Post and read on X."),
+    ConnectorSpec("slack", "Slack", "Salesforce", ConnectorCategory.COMMUNICATION, AuthKind.OAUTH2, ("post_message", "read_channel", "search"), "Team messaging."),
+    ConnectorSpec("github", "GitHub", "Microsoft", ConnectorCategory.DEVTOOLS, AuthKind.OAUTH2, ("list_repos", "read_file", "open_pr", "comment", "create_issue"), "Repositories, issues and pull requests."),
+    ConnectorSpec("notion", "Notion", "Notion", ConnectorCategory.STORAGE, AuthKind.OAUTH2, ("search", "read_page", "append_block", "create_page"), "Docs and databases."),
+    ConnectorSpec("hubspot", "HubSpot", "HubSpot", ConnectorCategory.CRM, AuthKind.OAUTH2, ("list_contacts", "read_deal", "create_note", "update_stage"), "CRM contacts, deals and notes."),
+    ConnectorSpec("composio_bridge", "Composio Bridge", "Composio", ConnectorCategory.DEVTOOLS, AuthKind.API_KEY, ("discover_tools", "invoke_tool"), "Umbrella connector exposing 1000+ third-party apps.", first_party=False),
 )
 
 

@@ -18,6 +18,7 @@ class NodeType(str, Enum):
 @dataclass
 class ASTNode:
     """Base node for shell syntax tree."""
+
     node_type: NodeType
 
     def to_dict(self) -> dict[str, Any]:
@@ -27,6 +28,7 @@ class ASTNode:
 @dataclass
 class RedirectionNode(ASTNode):
     """File redirection (>, >>, <, 2>&1)."""
+
     operator: str
     target: str
 
@@ -46,6 +48,7 @@ class RedirectionNode(ASTNode):
 @dataclass
 class CommandNode(ASTNode):
     """A single command invocation with args, env vars, and redirections."""
+
     command: str
     args: list[str] = field(default_factory=list)
     env_vars: dict[str, str] = field(default_factory=dict)
@@ -81,6 +84,7 @@ class CommandNode(ASTNode):
 @dataclass
 class PipelineNode(ASTNode):
     """A piped sequence of commands: cmd1 | cmd2 | cmd3."""
+
     stages: list[ASTNode] = field(default_factory=list)
 
     def __init__(self, stages: list[ASTNode] | None = None):
@@ -97,6 +101,7 @@ class PipelineNode(ASTNode):
 @dataclass
 class SubshellNode(ASTNode):
     """A subshell command: $(cmd) or `cmd`."""
+
     body: ASTNode
 
     def __init__(self, body: ASTNode):
@@ -113,6 +118,7 @@ class SubshellNode(ASTNode):
 @dataclass
 class CompoundNode(ASTNode):
     """A compound execution sequence: cmd1 && cmd2 || cmd3 ; cmd4."""
+
     operator: str  # "&&", "||", ";"
     left: ASTNode
     right: ASTNode

@@ -426,7 +426,6 @@ class AutonomousPlanner:
         subtasks = self._fit_budget(subtasks, budget)
 
         new_profiles = self._draft_profiles(subtasks, huge, mission)
-        by_id = {s.subtask_id: s for s in subtasks}
         for sub in subtasks:
             if sub.needs_new_profile and sub.profile_name:
                 sub.assignee = sub.profile_name

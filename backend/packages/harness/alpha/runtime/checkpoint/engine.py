@@ -19,6 +19,7 @@ class CheckpointStrategy(str, Enum):
 @dataclass
 class WorkflowCheckpoint:
     """A durable, cryptographic checkpoint of workflow state."""
+
     checkpoint_id: str
     workflow_id: str
     step: int
@@ -76,10 +77,7 @@ class CheckpointEngine:
         if strategy == CheckpointStrategy.DELTA and parent_id and parent_id in self.checkpoints:
             parent_state = self.checkpoints[parent_id].state_payload
             # Store only key-value differences from parent
-            delta = {
-                k: v for k, v in payload.items()
-                if k not in parent_state or parent_state[k] != v
-            }
+            delta = {k: v for k, v in payload.items() if k not in parent_state or parent_state[k] != v}
             payload = delta
 
         cp = WorkflowCheckpoint(

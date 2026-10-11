@@ -18,9 +18,9 @@ import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import thread_runs
 from alpha.runtime import RunManager, RunStatus
 from alpha.runtime.stream_bridge import MemoryStreamBridge
+from app.gateway.routers import thread_runs
 
 THREAD_ID = "thread-get-action"
 

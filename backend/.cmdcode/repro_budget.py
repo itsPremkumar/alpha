@@ -1,16 +1,21 @@
 """Repro: budget exhaustion double-emission. Uses project interpreter via uv run."""
-import os, sys
+
+import os  # noqa: E402
+import sys  # noqa: E402
+
 os.chdir("/c/Users/PREM KUMAR/Videos/alpha")
 sys.path.insert(0, "/c/Users/PREM KUMAR/Videos/alpha/backend")
-from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode, WorkflowRun, WorkflowRunStatus
-from alpha.workflow.runtime import DynamicWorkflowEngine
-from alpha.workflow.events import get_event_dispatcher
+from alpha.workflow.events import get_event_dispatcher  # noqa: E402
+from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode  # noqa: E402
+from alpha.workflow.runtime import DynamicWorkflowEngine  # noqa: E402
+
 
 def make_def():
     g = WorkflowGraph(id="w_bud", version=1)
     n = WorkflowNode(id="n1", type=NodeType.COMPUTE, prompt="node n1", budget=100)
     g.nodes["n1"] = n
     return WorkflowDefinition(id="w_bud", name="w_bud", graph=g, variables={}, version=1)
+
 
 def main():
     engine = DynamicWorkflowEngine()
@@ -34,6 +39,7 @@ def main():
         print("  payload:", e.payload, flush=True)
     assert len(budget_events) == 1, "BUG STILL PRESENT: duplicate budget event!"
     print("PASS: exactly one workflow_budget_exhausted event", flush=True)
+
 
 if __name__ == "__main__":
     main()

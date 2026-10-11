@@ -113,12 +113,13 @@ def test_kanban_bridge_broadcast(tmp_path: Path):
     group_service = GroupChatService(storage_path=room_file)
     # Monkey-patch global group service for bridge testing
     import alpha.kanban.bridge as bridge_module
+
     old_service_getter = bridge_module.get_group_chat_service
     bridge_module.get_group_chat_service = lambda: group_service
 
     try:
         store = KanbanStore(storage_path=board_file)
-        board = store.get_or_create_board("feature-board", room_id="feature-room")
+        store.get_or_create_board("feature-board", room_id="feature-room")
 
         task = store.create_task("feature-board", "Build Web UI")
         store.claim_task("feature-board", task.task_id, "frontend_bot")

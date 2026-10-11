@@ -322,9 +322,7 @@ class TestProbeReadiness:
 
     def test_503_raised_as_httperror_is_not_ok_with_body(self) -> None:
         def opener(_url: str, _timeout: float):
-            raise urllib.error.HTTPError(
-                "http://127.0.0.1:8001/health/ready", 503, "Service Unavailable", {}, None
-            )
+            raise urllib.error.HTTPError("http://127.0.0.1:8001/health/ready", 503, "Service Unavailable", {}, None)
 
         verdict = ds.probe_readiness("http://127.0.0.1:8001", opener=opener)
 
@@ -372,9 +370,7 @@ class TestProbeHttpOk:
         assert verdict.state == ds.OK
 
     def test_500_is_not_ok(self) -> None:
-        verdict = ds.probe_http_ok(
-            "http://127.0.0.1:3000", opener=lambda _u, _t: _Response(500, b"boom")
-        )
+        verdict = ds.probe_http_ok("http://127.0.0.1:3000", opener=lambda _u, _t: _Response(500, b"boom"))
         assert verdict.state == ds.NOT_OK
         assert "500" in verdict.reason
 

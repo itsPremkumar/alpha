@@ -1,4 +1,3 @@
-
 from alpha.research.five_pass import (
     FivePassSearchCompiler,
     FivePassSearchPlan,
@@ -22,7 +21,7 @@ def test_five_pass_search_compiler():
     assert SearchPassType.STRATEGIC_SYNTHESIS in pass_types
 
     # Validate the Adversarial Contradiction query searches for bugs/issues/memory leaks
-    contra_lane = next(l for l in plan.lanes if l.pass_type == SearchPassType.ADVERSARIAL_CONTRADICTION)
+    contra_lane = next(lane for lane in plan.lanes if lane.pass_type == SearchPassType.ADVERSARIAL_CONTRADICTION)
     assert "issues" in contra_lane.query or "bugs" in contra_lane.query or "leak" in contra_lane.query
 
     d = plan.to_dict()

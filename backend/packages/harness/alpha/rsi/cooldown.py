@@ -158,10 +158,7 @@ def evaluate_cooldown(*, now_fn: Callable[[], float] | None = None) -> tuple[boo
     remaining = until - current
     context = f"source_change_id={record['source_change_id']!r}, cycle_id={record['cycle_id']!r}"
     if remaining > 0:
-        return False, (
-            f"cooldown active: {context} promoted at {promoted_at:.0f}, window ends {until:.0f} ({math.ceil(remaining)}s remaining — "
-            "spec §42 stabilization window: wait it out before the next high-risk mutation)"
-        )
+        return False, (f"cooldown active: {context} promoted at {promoted_at:.0f}, window ends {until:.0f} ({math.ceil(remaining)}s remaining — spec §42 stabilization window: wait it out before the next high-risk mutation)")
     return True, f"cooldown ok: {context} stabilization window elapsed (promoted at {promoted_at:.0f}, window ended {until:.0f}, checked at {current:.0f})"
 
 

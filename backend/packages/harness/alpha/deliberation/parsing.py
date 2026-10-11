@@ -27,9 +27,7 @@ def parse_claims_and_confidence(text: str) -> tuple[list[str], float | None]:
     if claims_match:
         claims = [c.strip() for c in claims_match.group(1).split("|") if c.strip()]
 
-    conf_match = re.search(
-        r"^SELF CONFIDENCE:\s*([0-9]*\.?[0-9]+)", text or "", re.MULTILINE | re.IGNORECASE
-    )
+    conf_match = re.search(r"^SELF CONFIDENCE:\s*([0-9]*\.?[0-9]+)", text or "", re.MULTILINE | re.IGNORECASE)
     if conf_match:
         try:
             confidence = min(1.0, max(0.0, float(conf_match.group(1))))
@@ -72,11 +70,8 @@ def parse_judge_verdict(text: str) -> tuple[str | None, str]:
     output could not be parsed — callers must then report *no ruling*
     instead of inventing one (the old code hardcoded "Proponent" wins).
     """
-    winner_match = re.search(
-        r"^WINNER:\s*(PROPONENT|CRITIC)\b", text or "", re.MULTILINE | re.IGNORECASE
-    )
-    rationale_match = re.search(r"^RATIONALE:\s*(.+)$", text or "", re.MULTILINE | re.IGNORECASE
-    )
+    winner_match = re.search(r"^WINNER:\s*(PROPONENT|CRITIC)\b", text or "", re.MULTILINE | re.IGNORECASE)
+    rationale_match = re.search(r"^RATIONALE:\s*(.+)$", text or "", re.MULTILINE | re.IGNORECASE)
     winner = winner_match.group(1).strip().lower() if winner_match else None
     rationale = rationale_match.group(1).strip() if rationale_match else ""
     return winner, rationale

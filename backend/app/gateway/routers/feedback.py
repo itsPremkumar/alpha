@@ -12,10 +12,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import require_permission
-from app.gateway.deps import get_current_user, get_feedback_repo, get_run_store
 from alpha.persistence.feedback.model import FEEDBACK_CATEGORIES
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import require_permission
+from app.gateway.deps import get_current_user, get_feedback_repo, get_run_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["feedback"])

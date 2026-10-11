@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from alpha.evolution.promptbreeder import PromptGenome, PromptbreederEngine
+from alpha.evolution.promptbreeder import PromptbreederEngine, PromptGenome
 
 
 def test_promptbreeder_population_initialization():

@@ -63,10 +63,7 @@ def stub_peer_service(monkeypatch):
 
     class _StubService:
         async def status(self, include_pairing_code: bool = False):
-            assert include_pairing_code is True, (
-                "the router must still request the pairing code; this stub "
-                "asserts the production call shape has not drifted"
-            )
+            assert include_pairing_code is True, "the router must still request the pairing code; this stub asserts the production call shape has not drifted"
             return dict(_STATUS)
 
         async def publish_github_card(self):
@@ -100,10 +97,7 @@ def test_status_refuses_a_non_admin_even_though_it_holds_threads_read(system_rol
     with client:
         response = client.get("/api/peer-network/status")
 
-    assert response.status_code == 403, (
-        f"system_role={system_role!r} was served the peer status endpoint; "
-        f"body={response.text[:200]!r}"
-    )
+    assert response.status_code == 403, f"system_role={system_role!r} was served the peer status endpoint; body={response.text[:200]!r}"
     # The whole point: the credential must not be anywhere in the body.
     assert _PAIRING_CODE not in response.text
 
@@ -131,10 +125,7 @@ def test_github_publish_passes_the_required_detail_argument():
     finally:
         peer_router._service = original
 
-    assert response.status_code == 200, (
-        f"admin publish failed: {response.status_code} {response.text[:200]!r} "
-        "(a TypeError here means the required `detail=` kwarg is missing again)"
-    )
+    assert response.status_code == 200, f"admin publish failed: {response.status_code} {response.text[:200]!r} (a TypeError here means the required `detail=` kwarg is missing again)"
     assert response.json()["published"] is True
 
 
@@ -186,8 +177,4 @@ def test_list_peers_remains_reachable_at_the_original_permission():
     with client:
         response = client.get("/api/peer-network/peers")
 
-    assert response.status_code == 200, (
-        f"/peers is no longer reachable for a plain user: {response.status_code} "
-        f"{response.text[:200]!r}. Only the credential-bearing /status route "
-        "should require admin."
-    )
+    assert response.status_code == 200, f"/peers is no longer reachable for a plain user: {response.status_code} {response.text[:200]!r}. Only the credential-bearing /status route should require admin."

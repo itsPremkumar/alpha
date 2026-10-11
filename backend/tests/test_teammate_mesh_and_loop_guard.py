@@ -1,6 +1,7 @@
 """Tests for Autonomous Teammate Mesh and BotLoopGuard."""
 
 import pytest
+
 from alpha.bots.teammate_mesh import AutonomousTeammateMesh, BotLoopGuard, LoopDetectedError
 
 

@@ -55,12 +55,12 @@ def test_astra_goal_pursuit_and_agent_highlighting():
     harness = AstraGoalHarness(goal_statement="Fix payment webhook integration bug")
 
     # Add milestones
-    m1 = harness.add_milestone(
+    harness.add_milestone(
         title="Locate Error",
         description="Find error dialog on screen",
         required_evidence_type="object_located",
     )
-    m2 = harness.add_milestone(
+    harness.add_milestone(
         title="Pass Unit Tests",
         description="Run pytest suite and ensure green exit",
         required_evidence_type="test_pass",
@@ -75,9 +75,7 @@ def test_astra_goal_pursuit_and_agent_highlighting():
     step1_res = harness.pursue_step(
         action_name="screen_perception",
         step_input={"action": "capture_screen"},
-        observed_objects=[
-            SpatialObject(label="error dialog", bbox=BoundingBox(x=0.1, y=0.1, width=0.4, height=0.3))
-        ],
+        observed_objects=[SpatialObject(label="error dialog", bbox=BoundingBox(x=0.1, y=0.1, width=0.4, height=0.3))],
         screen_context="IDE terminal with 500 error",
     )
     assert step1_res["milestone_satisfied"] is True

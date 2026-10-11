@@ -19,6 +19,10 @@ from alpha.planning.hyperplan import (
     HyperplanReport,
     ReviewerVerdict,
 )
+from alpha.planning.integrity import (
+    GoalIntegrityEngine,
+    GoalIntegrityReport,
+)
 from alpha.planning.meta_planner import (
     CognitiveMetaPlanner,
     ExecutionParadigm,
@@ -32,11 +36,6 @@ from alpha.planning.profiles import (
     profile_spec_to_subagent_config,
     profile_spec_to_system_prompt,
     sanitize_profile_name,
-)
-
-from alpha.planning.integrity import (
-    GoalIntegrityEngine,
-    GoalIntegrityReport,
 )
 
 __all__ = [
@@ -64,4 +63,3 @@ __all__ = [
     "GoalIntegrityEngine",
     "GoalIntegrityReport",
 ]
-

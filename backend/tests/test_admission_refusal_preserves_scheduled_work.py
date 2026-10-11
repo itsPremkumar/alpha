@@ -717,9 +717,7 @@ async def test_a_retry_that_resolves_to_a_refused_run_is_not_recorded_as_dispatc
         await service._notify_one(record, now=now + timedelta(seconds=300))
         await _drain_callbacks()
 
-    assert repo.notification_status == "pending", (
-        "a replay that resolved to a refused run must wait, not claim dispatch"
-    )
+    assert repo.notification_status == "pending", "a replay that resolved to a refused run must wait, not claim dispatch"
     assert repo.notification_run_id is None
     assert repo.dead_letters == []
     assert repo.notification_attempt_count == 0

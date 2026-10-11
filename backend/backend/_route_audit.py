@@ -2,7 +2,9 @@
 """Route audit: print every router path + method + handler name,
 and flag handlers with NO auth decorator (require_auth / require_permission)."""
 
-import ast, glob, os
+import ast
+import glob
+import os
 
 ROOT = "/c/Users/PREM KUMAR/Videos/alpha/backend"
 ROUTER_DIR = ROOT + "/app/gateway/routers"

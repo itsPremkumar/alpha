@@ -12,9 +12,10 @@ import logging
 import random
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 from alpha.projects.contracts import EvidenceReceipt, get_contract_gatekeeper
 from alpha.projects.events import get_event_bus
@@ -134,9 +135,7 @@ class SelfHealingTestRunner:
             run_result.attempt_index = attempt
 
             if not run_result.traceback_summary and not run_result.passed:
-                run_result.traceback_summary = extract_traceback_summary(
-                    run_result.stderr or run_result.stdout
-                )
+                run_result.traceback_summary = extract_traceback_summary(run_result.stderr or run_result.stdout)
 
             history.append(run_result.to_dict())
 
@@ -183,10 +182,7 @@ class SelfHealingTestRunner:
             # If more attempts remain and a patch synthesizer was provided, attempt repair
             if attempt < max_attempts and patch_synthesizer is not None:
                 # Find matching heuristics
-                matching_heuristics = [
-                    h for h in prior_heuristics
-                    if any(w.lower() in run_result.traceback_summary.lower() for w in re.findall(r"\w+", h)[:3])
-                ] or prior_heuristics[:3]
+                matching_heuristics = [h for h in prior_heuristics if any(w.lower() in run_result.traceback_summary.lower() for w in re.findall(r"\w+", h)[:3])] or prior_heuristics[:3]
                 applied_heuristics.extend([h for h in matching_heuristics if h not in applied_heuristics])
 
                 try:
@@ -204,7 +200,10 @@ class SelfHealingTestRunner:
                 delay *= 0.5 + random.random()
                 logger.info(
                     "Backing off %.2fs before verification attempt %d/%d for %s",
-                    delay, attempt + 1, max_attempts, task_id,
+                    delay,
+                    attempt + 1,
+                    max_attempts,
+                    task_id,
                 )
                 if history:
                     history[-1]["backoff_seconds"] = round(delay, 3)

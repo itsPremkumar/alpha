@@ -274,10 +274,7 @@ class WorktreeManager:
                 # manager owns, not permission to delete an agent's unsaved
                 # work. Refusing here is what makes a crash resumable; a caller
                 # that genuinely means to discard must say so.
-                raise RuntimeError(
-                    f"Refusing to remove worktree {branch_name!r}: it holds uncommitted or untracked work. "
-                    "Commit or stash it first, or pass discard_uncommitted=True to destroy it deliberately."
-                )
+                raise RuntimeError(f"Refusing to remove worktree {branch_name!r}: it holds uncommitted or untracked work. Commit or stash it first, or pass discard_uncommitted=True to destroy it deliberately.")
             args = ["worktree", "remove"]
             if force:
                 args.append("--force")

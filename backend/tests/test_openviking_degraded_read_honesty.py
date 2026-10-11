@@ -53,9 +53,7 @@ def _exploding_manager(tmp_path, monkeypatch, official_integration) -> OpenVikin
     return manager
 
 
-def test_degraded_context_injection_discloses_unavailability(
-    tmp_path, monkeypatch, official_integration
-) -> None:
+def test_degraded_context_injection_discloses_unavailability(tmp_path, monkeypatch, official_integration) -> None:
     manager = _exploding_manager(tmp_path, monkeypatch, official_integration)
     context = manager.get_context("alice")
     assert context != "", "a degraded read must never be an empty string"
@@ -67,9 +65,7 @@ def test_degraded_context_injection_discloses_unavailability(
     assert "ConnectionError" in manager._last_degraded_read
 
 
-def test_degraded_search_returns_an_explicit_failure_row(
-    tmp_path, monkeypatch, official_integration
-) -> None:
+def test_degraded_search_returns_an_explicit_failure_row(tmp_path, monkeypatch, official_integration) -> None:
     manager = _exploding_manager(tmp_path, monkeypatch, official_integration)
     # The single-user API key is bound to owner_user_id="alice"; the search
     # path resolves the requesting user, so pass alice explicitly.
@@ -82,9 +78,7 @@ def test_degraded_search_returns_an_explicit_failure_row(
     assert "openviking endpoint unreachable" in row["fact"]
 
 
-def test_raise_policy_still_raises_memory_read_error(
-    tmp_path, monkeypatch, official_integration
-) -> None:
+def test_raise_policy_still_raises_memory_read_error(tmp_path, monkeypatch, official_integration) -> None:
     manager = _manager(tmp_path, monkeypatch, failure_policy={"read": "raise"})
 
     class _Boom:
@@ -101,9 +95,7 @@ def test_raise_policy_still_raises_memory_read_error(
         manager.search("anything")
 
 
-def test_healthy_reads_are_unchanged_by_the_p4_fix(
-    tmp_path, monkeypatch, official_integration
-) -> None:
+def test_healthy_reads_are_unchanged_by_the_p4_fix(tmp_path, monkeypatch, official_integration) -> None:
     """The degraded markers must never appear on a healthy read/search."""
     manager = _manager(tmp_path, monkeypatch)
     context = manager.get_context("alice")

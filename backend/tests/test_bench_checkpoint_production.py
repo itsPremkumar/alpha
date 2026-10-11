@@ -163,8 +163,8 @@ def _reset_checkpoint_freezes(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize("mode,frequency", [("full", None), ("delta", 10)])
 def test_run_case_succeeds_end_to_end_small(tmp_path, monkeypatch, mode, frequency) -> None:
     _reset_checkpoint_freezes(monkeypatch)
-    from app.gateway import services as gateway_services
     from alpha.config.app_config import reset_app_config
+    from app.gateway import services as gateway_services
 
     gateway_services._state_accessor_graph_cache.clear()
     case = bench.ProductionCase(
@@ -202,8 +202,8 @@ def test_run_case_fails_when_warm_cache_is_not_hit(tmp_path, monkeypatch) -> Non
     """The cold/warm contract is structural: if the accessor cache never holds,
     warm samples silently measure the cold path — the case row must fail."""
     _reset_checkpoint_freezes(monkeypatch)
-    from app.gateway import services as gateway_services
     from alpha.config.app_config import reset_app_config
+    from app.gateway import services as gateway_services
 
     gateway_services._state_accessor_graph_cache.clear()
 

@@ -13,6 +13,7 @@ logger = logging.getLogger("alpha.security.enclave.credentials")
 @dataclass
 class CredentialLease:
     """Ephemeral, time-bounded credential lease with scoped permissions."""
+
     lease_id: str
     service_name: str
     token_value: str
@@ -81,9 +82,7 @@ class ScopedCredentialVault:
             return False
 
         if required_scope not in lease.allowed_scopes and "*" not in lease.allowed_scopes:
-            logger.warning(
-                f"CREDENTIAL_REJECTED: Lease '{lease_id}' lacks required scope '{required_scope}'."
-            )
+            logger.warning(f"CREDENTIAL_REJECTED: Lease '{lease_id}' lacks required scope '{required_scope}'.")
             return False
 
         return True

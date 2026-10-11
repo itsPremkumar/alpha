@@ -13,8 +13,8 @@ lives in :mod:`alpha.experts.registry`.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from typing import Any, Mapping
+from dataclasses import asdict, dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -77,36 +77,25 @@ class ExpertGroup:
 
 #: A small first-party set mirroring the WorkBuddy expert categories.
 BUILTIN_EXPERTS: tuple[Expert, ...] = (
-    Expert("creative-director", "Creative Director", "content", "Leads creative direction and final review.",
-           "Owns the creative vision and signs off on deliverables.", ("brainstorm", "review"), "frontier"),
-    Expert("copywriter", "Copywriter", "content", "Writes persuasive, on-brand copy.",
-           "Drafts copy for any channel.", ("writing", "seo"), "default"),
-    Expert("researcher", "Researcher", "research", "Deep research and synthesis.",
-           "Gathers and verifies facts across sources.", ("web-search", "deep-research"), "frontier"),
-    Expert("data-analyst", "Data Analyst", "data", "Analyses data and builds visualisations.",
-           "Turns spreadsheets into findings and charts.", ("data-analysis", "charting"), "default"),
-    Expert("video-generator", "Video Generator", "media", "Generates and edits video.",
-           "Produces video assets from briefs.", ("video-gen", "editing"), "default"),
-    Expert("graphic-designer", "Graphic Designer", "media", "Produces image and layout assets.",
-           "Creates visuals and layouts.", ("image-gen", "layout"), "default"),
-    Expert("frontend-expert", "Frontend Expert", "engineering", "Builds web UI.",
-           "Implements responsive, accessible frontends.", ("web-design", "coding"), "frontier"),
-    Expert("legal-researcher", "Legal Researcher", "legal", "Researches statutes and cases.",
-           "Answers legal questions from authoritative sources.", ("legal-db", "web-search"), "frontier"),
+    Expert("creative-director", "Creative Director", "content", "Leads creative direction and final review.", "Owns the creative vision and signs off on deliverables.", ("brainstorm", "review"), "frontier"),
+    Expert("copywriter", "Copywriter", "content", "Writes persuasive, on-brand copy.", "Drafts copy for any channel.", ("writing", "seo"), "default"),
+    Expert("researcher", "Researcher", "research", "Deep research and synthesis.", "Gathers and verifies facts across sources.", ("web-search", "deep-research"), "frontier"),
+    Expert("data-analyst", "Data Analyst", "data", "Analyses data and builds visualisations.", "Turns spreadsheets into findings and charts.", ("data-analysis", "charting"), "default"),
+    Expert("video-generator", "Video Generator", "media", "Generates and edits video.", "Produces video assets from briefs.", ("video-gen", "editing"), "default"),
+    Expert("graphic-designer", "Graphic Designer", "media", "Produces image and layout assets.", "Creates visuals and layouts.", ("image-gen", "layout"), "default"),
+    Expert("frontend-expert", "Frontend Expert", "engineering", "Builds web UI.", "Implements responsive, accessible frontends.", ("web-design", "coding"), "frontier"),
+    Expert("legal-researcher", "Legal Researcher", "legal", "Researches statutes and cases.", "Answers legal questions from authoritative sources.", ("legal-db", "web-search"), "frontier"),
 )
 
 
 BUILTIN_EXPERT_GROUPS: tuple[ExpertGroup, ...] = (
-    ExpertGroup("content-creation", "Content Creation Team",
-                "A full content pipeline from concept to edited video.",
-                (ExpertStep("creative-director", "direction"),
-                 ExpertStep("copywriter", "copy"),
-                 ExpertStep("graphic-designer", "visuals"),
-                 ExpertStep("video-generator", "video"))),
-    ExpertGroup("research-and-report", "Research & Report Team",
-                "Research a topic and produce an analysed report.",
-                (ExpertStep("researcher", "research"),
-                 ExpertStep("data-analyst", "analysis"))),
+    ExpertGroup(
+        "content-creation",
+        "Content Creation Team",
+        "A full content pipeline from concept to edited video.",
+        (ExpertStep("creative-director", "direction"), ExpertStep("copywriter", "copy"), ExpertStep("graphic-designer", "visuals"), ExpertStep("video-generator", "video")),
+    ),
+    ExpertGroup("research-and-report", "Research & Report Team", "Research a topic and produce an analysed report.", (ExpertStep("researcher", "research"), ExpertStep("data-analyst", "analysis"))),
 )
 
 
@@ -133,8 +122,7 @@ class ExpertCatalog:
         if not needle:
             return self.list_experts()
         return sorted(
-            (e for e in self._experts.values()
-             if needle in " ".join((e.id, e.name, e.category, e.role, e.description, *e.skills)).lower()),
+            (e for e in self._experts.values() if needle in " ".join((e.id, e.name, e.category, e.role, e.description, *e.skills)).lower()),
             key=lambda e: e.name.lower(),
         )
 

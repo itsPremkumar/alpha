@@ -89,9 +89,7 @@ class TestWhatCountsAsEager:
         record = _collect(
             gate,
             tmp_path,
-            "def build():\n    import torch\n    return torch\n"
-            "async def go():\n    import pandas\n"
-            "f = lambda: __import__('scipy')\n",
+            "def build():\n    import torch\n    return torch\nasync def go():\n    import pandas\nf = lambda: __import__('scipy')\n",
         )
         assert _targets(record) == set()
 
@@ -220,9 +218,7 @@ def _record(gate: Any, package: str, *, first_party: int = 0, third_party: tuple
     return gate.FileImports(
         path=Path(f"/checkout/{package.replace('.', '/')}.py"),
         package=package,
-        first_party=tuple(
-            gate.EagerImport(10 + index, f"alpha.other{index}", "alpha") for index in range(first_party)
-        ),
+        first_party=tuple(gate.EagerImport(10 + index, f"alpha.other{index}", "alpha") for index in range(first_party)),
         stdlib=(),
         third_party=tuple(gate.EagerImport(1 + index, name, name.split(".")[0]) for index, name in enumerate(third_party)),
     )
@@ -242,9 +238,7 @@ class TestDecision:
         result = gate._judge(records, _budget())
         assert result["status"] == "fail"
         assert list(result["third_party_root_regressions"]) == ["torch"]
-        assert result["third_party_root_regressions"]["torch"] == [
-            f"{records[0].path.as_posix()}:2 -> torch.nn"
-        ]
+        assert result["third_party_root_regressions"]["torch"] == [f"{records[0].path.as_posix()}:2 -> torch.nn"]
 
     def test_an_allowlisted_third_party_root_does_not_fail(self) -> None:
         records = [_record(gate, "alpha.config", first_party=1, third_party=("numpy", "numpy.linalg"))]
@@ -327,9 +321,7 @@ class TestFailsClosed:
     def test_a_scan_root_with_no_python_files_is_a_failure(self, tmp_path: Path) -> None:
         """A moved directory that scans nothing must not read as green."""
         (tmp_path / "empty").mkdir()
-        records, empty = gate.scan(
-            tmp_path, [gate.ScanRoot("empty", "alpha")], gate.DEFAULT_FIRST_PARTY_ROOTS
-        )
+        records, empty = gate.scan(tmp_path, [gate.ScanRoot("empty", "alpha")], gate.DEFAULT_FIRST_PARTY_ROOTS)
         assert (records, empty) == ([], ["empty"])
 
     def test_an_unparseable_file_fails_closed_instead_of_being_skipped(self, tmp_path: Path) -> None:
@@ -366,12 +358,8 @@ def _mini_repo(root: Path) -> Path:
     package = root / "backend" / "packages" / "harness" / "alpha"
     (package / "config").mkdir(parents=True)
     (package / "__init__.py").write_text('"""alpha"""\n', encoding="utf-8")
-    (package / "config" / "__init__.py").write_text(
-        '"""config"""\n\nfrom __future__ import annotations\n\nimport json\n', encoding="utf-8"
-    )
-    (package / "config" / "leaf.py").write_text(
-        "def load():\n    import yaml\n    return yaml.safe_load('x')\n", encoding="utf-8"
-    )
+    (package / "config" / "__init__.py").write_text('"""config"""\n\nfrom __future__ import annotations\n\nimport json\n', encoding="utf-8")
+    (package / "config" / "leaf.py").write_text("def load():\n    import yaml\n    return yaml.safe_load('x')\n", encoding="utf-8")
     gateway = root / "backend" / "app" / "gateway"
     gateway.mkdir(parents=True)
     (root / "backend" / "app" / "__init__.py").write_text('"""app"""\n', encoding="utf-8")
@@ -462,9 +450,7 @@ class TestEndToEnd:
     def test_a_plain_check_never_rewrites_the_budget(self, mini: tuple[Path, Path]) -> None:
         root, budget = mini
         before = budget.read_bytes()
-        (root / "backend" / "packages" / "harness" / "alpha" / "config" / "leaf.py").write_text(
-            "import numpy\n", encoding="utf-8"
-        )
+        (root / "backend" / "packages" / "harness" / "alpha" / "config" / "leaf.py").write_text("import numpy\n", encoding="utf-8")
         assert _run(root, budget).returncode == 1
         assert budget.read_bytes() == before
 
@@ -474,11 +460,7 @@ class TestEndToEnd:
         (root / "backend" / "packages" / "harness" / "alpha" / "__init__.py").write_text("", encoding="utf-8")
         budget = tmp_path / "b.json"
         budget.write_text(
-            json.dumps(
-                _budget(
-                    scan_roots=[{"path": "backend/packages/harness/gone", "module_root": "alpha"}]
-                )
-            ),
+            json.dumps(_budget(scan_roots=[{"path": "backend/packages/harness/gone", "module_root": "alpha"}])),
             encoding="utf-8",
         )
         proc = _run(root, budget, "--write-budget")
@@ -515,10 +497,7 @@ class TestEndToEnd:
 
 class TestCommittedBudget:
     def test_budget_exists_and_is_loadable(self) -> None:
-        assert BUDGET_PATH.exists(), (
-            "backend/benchmarks/cold_start/import_budget.json is the committed reference; "
-            "without it the eager-import gate cannot run and the property is not enforced"
-        )
+        assert BUDGET_PATH.exists(), "backend/benchmarks/cold_start/import_budget.json is the committed reference; without it the eager-import gate cannot run and the property is not enforced"
         budget = gate.load_budget(BUDGET_PATH)
         assert budget["scan_roots"], "no scan root: the gate would inspect nothing"
         assert budget["third_party_roots"], "no third-party roots recorded"
@@ -558,9 +537,7 @@ class TestCommittedBudget:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         exports: dict[str, str] = {}
         for node in tree.body:
-            if isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == "_EXPORTS" for target in node.targets
-            ):
+            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_EXPORTS" for target in node.targets):
                 exports = ast.literal_eval(node.value)
         assert exports, "_EXPORTS moved; this test must be updated with it"
 
@@ -568,15 +545,10 @@ class TestCommittedBudget:
         eager = {item.target for item in (*record.first_party, *record.third_party)}
         for name, submodule in exports.items():
             target = f"alpha.config.{submodule}"
-            assert target not in eager, (
-                f"alpha/config/__init__.py eagerly imports {target} to provide {name}, "
-                f"which undoes the lazy conversion it exists to protect: {sorted(eager)}"
-            )
+            assert target not in eager, f"alpha/config/__init__.py eagerly imports {target} to provide {name}, which undoes the lazy conversion it exists to protect: {sorted(eager)}"
         # The lazy mechanism itself is one tiny eager module, and that is the
         # intended cost -- pinned so it cannot be swapped for the thing it avoids.
-        assert eager == {"alpha.memory._lazy_exports.install_lazy_exports"}, (
-            f"alpha/config/__init__.py eager import surface changed: {sorted(eager)}"
-        )
+        assert eager == {"alpha.memory._lazy_exports.install_lazy_exports"}, f"alpha/config/__init__.py eager import surface changed: {sorted(eager)}"
 
     def test_the_extensions_loader_does_not_import_the_orm_at_module_scope(self) -> None:
         """The extensions -> persistence -> sqlalchemy chain stays cut."""
@@ -585,10 +557,7 @@ class TestCommittedBudget:
         record = gate.collect_file(path, "alpha.extensions", frozenset(gate.DEFAULT_FIRST_PARTY_ROOTS))
         eager = {item.target for item in (*record.first_party, *record.third_party)}
         for target in ("sqlalchemy", "alpha.persistence"):
-            assert not any(item == target or item.startswith(f"{target}.") for item in eager), (
-                f"alpha/extensions/loader.py eagerly imports {target} at module scope, "
-                f"which is the regression the conversion removed: {sorted(eager)}"
-            )
+            assert not any(item == target or item.startswith(f"{target}.") for item in eager), f"alpha/extensions/loader.py eagerly imports {target} at module scope, which is the regression the conversion removed: {sorted(eager)}"
 
 
 def test_the_gate_module_is_runnable_as_a_script() -> None:

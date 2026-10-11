@@ -1,7 +1,6 @@
 """Unit tests for Structural 3-Way AST Conflict Reconciler (SWE-EVO)."""
 
 import ast
-import pytest
 
 from alpha.editing.structural_ast_reconciler import (
     StructuralAstConflictReconciler,
@@ -168,12 +167,14 @@ def test_reconcile_structural_ast_conflicts_tool():
     ours = "x = 1\ny = 2\n"
     theirs = "x = 1\nz = 3\n"
 
-    res = reconcile_structural_ast_conflicts.invoke({
-        "base_code": base,
-        "ours_code": ours,
-        "theirs_code": theirs,
-        "file_path": "constants.py",
-    })
+    res = reconcile_structural_ast_conflicts.invoke(
+        {
+            "base_code": base,
+            "ours_code": ours,
+            "theirs_code": theirs,
+            "file_path": "constants.py",
+        }
+    )
 
     assert isinstance(res, dict)
     assert res["success"] is True

@@ -4,7 +4,6 @@ from alpha.events.stream.actions import (
     ActionType,
     AgentFinishAction,
     CmdRunAction,
-    CriticAction,
     FileEditAction,
 )
 from alpha.events.stream.ledger import EventStreamLedger
@@ -33,7 +32,6 @@ def test_typed_actions_and_observations():
     assert edit_obs.lines_added == 1
 
     # 3. CriticAction & CriticObservation
-    critic_act = CriticAction(critic_name="EmptyPatchCritic")
     critic_obs = CriticObservation(critic_name="EmptyPatchCritic", verdict="approved", reason="Patch verified")
     assert critic_obs.verdict == "approved"
 

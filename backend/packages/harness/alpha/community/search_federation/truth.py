@@ -96,10 +96,7 @@ PROVIDER_TRUTH: dict[str, ProviderStatus] = {
         name="exa",
         availability="free_tier",
         summary="Exa neural/semantic search and find-similar; $10 of credits on signup that refreshes to $10 on the 1st of each month.",
-        evidence=(
-            "https://exa.ai/pricing - 'The Free Tier gives you $10 in credits (around 1,400 searches) the day you sign up, "
-            "and your free balance resets to $10 on the first of every month.' Search base price $7/1k requests."
-        ),
+        evidence=("https://exa.ai/pricing - 'The Free Tier gives you $10 in credits (around 1,400 searches) the day you sign up, and your free balance resets to $10 on the first of every month.' Search base price $7/1k requests."),
     ),
     "serper": ProviderStatus(
         name="serper",
@@ -119,10 +116,7 @@ PROVIDER_TRUTH: dict[str, ProviderStatus] = {
     "google_custom_search": ProviderStatus(
         name="google_custom_search",
         availability="retired",
-        summary=(
-            "Google Custom Search JSON API still serves existing customers at 100 queries/day, but is CLOSED to new customers; "
-            "those who join must migrate before 1 Jan 2027."
-        ),
+        summary=("Google Custom Search JSON API still serves existing customers at 100 queries/day, but is CLOSED to new customers; those who join must migrate before 1 Jan 2027."),
         evidence="Google Custom Search documentation: 100 queries/day free tier, no new customers, migrate-by 2027-01-01.",
         verified_on="2026-09-26",
         why_not="Closed to new signups and on a 100/day cap - unusable for a new deployment and a dead end within the year.",
@@ -131,10 +125,7 @@ PROVIDER_TRUTH: dict[str, ProviderStatus] = {
     "brave_search_api": ProviderStatus(
         name="brave_search_api",
         availability="contested",
-        summary=(
-            "UNVERIFIED. Sources disagree: some document 2,000 queries/month at 1 query/sec, others say the perpetual free tier "
-            "was retired and replaced by a $5/month credit. We could not confirm which is current."
-        ),
+        summary=("UNVERIFIED. Sources disagree: some document 2,000 queries/month at 1 query/sec, others say the perpetual free tier was retired and replaced by a $5/month credit. We could not confirm which is current."),
         evidence="Conflicting third-party summaries; Brave's own pricing page did not clearly state a free allowance at check time.",
         why_not="Building on a tier that may not exist is worse than not building on it. Refused unless allow_unverified_providers is set.",
     ),
@@ -214,8 +205,4 @@ def not_wired_report() -> list[dict[str, str]]:
 
 def licensing_notes() -> list[dict[str, str]]:
     """Only the rows whose exclusion is a licensing call the owner must confirm."""
-    return [
-        {"name": row.name, "license": row.evidence, "decision": row.why_not}
-        for row in sorted(PROVIDER_TRUTH.values(), key=lambda r: r.name)
-        if not row.selectable and row.name in {"searxng", "firecrawl"}
-    ]
+    return [{"name": row.name, "license": row.evidence, "decision": row.why_not} for row in sorted(PROVIDER_TRUTH.values(), key=lambda r: r.name) if not row.selectable and row.name in {"searxng", "firecrawl"}]

@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.scheduler.service import ScheduledTaskService
 from alpha.persistence.base import Base
 from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
 from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
@@ -13,6 +12,7 @@ from alpha.persistence.scheduled_tasks.model import ScheduledTaskRow
 from alpha.runtime import RunStatus
 from alpha.runtime.runs.manager import RunRecord
 from alpha.runtime.runs.schemas import DisconnectMode
+from app.scheduler.service import ScheduledTaskService
 
 
 @asynccontextmanager

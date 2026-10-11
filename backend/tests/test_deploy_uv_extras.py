@@ -188,9 +188,7 @@ def test_deploy_uses_dotenv_without_sourcing_shell_syntax(tmp_path):
     env_file_args = [a for a in args if a.endswith("/.env") or a.endswith("\\.env")]
     assert env_file_args, f"no .env argument in {args}"
     expected_tail = f"{worktree.name}/.env"
-    assert any(
-        a.replace("\\", "/").endswith(expected_tail) for a in env_file_args
-    ), f"env-file does not point at {worktree}: {env_file_args}"
+    assert any(a.replace("\\", "/").endswith(expected_tail) for a in env_file_args), f"env-file does not point at {worktree}: {env_file_args}"
 
 
 def test_deploy_build_auto_detects_postgres_extra_with_python_fallback(tmp_path):

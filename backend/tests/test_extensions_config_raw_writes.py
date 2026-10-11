@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.gateway.routers import skills as skills_router
 from alpha.config.extensions_config import (
     ExtensionsConfig,
     McpServerConfig,
@@ -25,6 +24,7 @@ from alpha.config.extensions_config import (
     set_raw_skill_enabled,
     validate_raw_extensions_config,
 )
+from app.gateway.routers import skills as skills_router
 
 SECRET = "ghp_live_secret_value"
 

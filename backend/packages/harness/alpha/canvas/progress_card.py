@@ -59,10 +59,7 @@ class ProgressCard:
 
     def to_canvas_widget(self) -> CanvasWidget:
         """Convert into a rich responsive CanvasWidget."""
-        milestone_html = "".join(
-            f"<li><strong>{m.get('status', 'pending').upper()}:</strong> {m.get('title', '')}</li>"
-            for m in self.milestones
-        )
+        milestone_html = "".join(f"<li><strong>{m.get('status', 'pending').upper()}:</strong> {m.get('title', '')}</li>" for m in self.milestones)
         html = f"""
         <div style="font-family: sans-serif; background: #1e293b; color: #f8fafc; padding: 16px; border-radius: 8px;">
           <h2 style="margin: 0; color: #38bdf8;">[{self.phase}] {self.title}</h2>

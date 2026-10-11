@@ -12,6 +12,7 @@ class EvaluationVector:
     Tracks configuration-specific metrics (e.g. sequence lengths, batch sizes, level action efficiencies)
     with hard correctness gating and Pareto dominance verification.
     """
+
     metrics: dict[str, float] = field(default_factory=dict)
     correctness: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)

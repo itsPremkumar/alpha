@@ -8,9 +8,10 @@ from typing import Any
 
 class RiskTier(enum.Enum):
     """Risk tier determining the required quorum threshold for the Quality Council."""
-    TIER_1_CRITICAL = "tier_1_critical"    # Requires >= 4/5 or 5/5 approvals
-    TIER_2_STANDARD = "tier_2_standard"    # Requires >= 3/5 approvals
-    TIER_3_LOW = "tier_3_low"              # Requires >= 2/5 approvals
+
+    TIER_1_CRITICAL = "tier_1_critical"  # Requires >= 4/5 or 5/5 approvals
+    TIER_2_STANDARD = "tier_2_standard"  # Requires >= 3/5 approvals
+    TIER_3_LOW = "tier_3_low"  # Requires >= 2/5 approvals
 
 
 class VoteVerdict(enum.Enum):
@@ -27,14 +28,15 @@ NEUTRAL_CONFIDENCE_BASELINE = 0.5
 #: How a confidence value was produced. Always serialized next to the value so
 #: consumers can tell a disclosed heuristic from real evidence from an honest
 #: unverified baseline.
-CONFIDENCE_METHOD_EVIDENCE = "evidence"      # grounded in supplied test/exit-code evidence
-CONFIDENCE_METHOD_HEURISTIC = "heuristic"    # uncalibrated rule-based scan
+CONFIDENCE_METHOD_EVIDENCE = "evidence"  # grounded in supplied test/exit-code evidence
+CONFIDENCE_METHOD_HEURISTIC = "heuristic"  # uncalibrated rule-based scan
 CONFIDENCE_METHOD_UNVERIFIED = "unverified"  # no evidence available; neutral baseline
 
 
 @dataclass
 class DeliberatorVote:
     """Individual vote and critique from a Council deliberator."""
+
     deliberator_name: str
     role: str  # "Critic", "InvariantVerifier", "SecurityReviewer", "QualityReviewer", "PresidingJudge"
     verdict: VoteVerdict
@@ -66,6 +68,7 @@ class DeliberatorVote:
 @dataclass
 class QuorumVerdict:
     """Consolidated verdict issued by the 5-Deliberator Quality Council."""
+
     passed: bool
     risk_tier: RiskTier
     quorum_required: int
@@ -91,16 +94,9 @@ class QuorumVerdict:
             # 2dp: an uncalibrated heuristic does not warrant 4-decimal precision.
             "weighted_score": round(self.weighted_score, 2),
             "weighted_score_method": CONFIDENCE_METHOD_HEURISTIC,
-            "weighted_score_formula": (
-                "(sum of approve confidences + 0.5 * sum of conditional confidences) "
-                "/ sum of all vote confidences"
-            ),
+            "weighted_score_formula": ("(sum of approve confidences + 0.5 * sum of conditional confidences) / sum of all vote confidences"),
             "confidence_baseline_disclosed": True,
-            "confidence_note": (
-                "weighted_score aggregates disclosed rule-based vote scores (unverified "
-                "votes hold the neutral 0.5 baseline); it is an uncalibrated heuristic, "
-                "not a measured probability."
-            ),
+            "confidence_note": ("weighted_score aggregates disclosed rule-based vote scores (unverified votes hold the neutral 0.5 baseline); it is an uncalibrated heuristic, not a measured probability."),
             "dissenting_concerns": self.dissenting_concerns,
             "consensus_summary": self.consensus_summary,
             "votes": [v.to_dict() for v in self.votes],

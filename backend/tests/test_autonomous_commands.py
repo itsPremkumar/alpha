@@ -10,20 +10,17 @@ Verifies:
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.gateway.app import create_app
 from alpha.commands import (
-    AutonomousCommandEngine,
     LifecyclePhase,
     autonomous_command_engine,
-    command_registry,
 )
 from alpha.tools.builtins import (
     execute_slash_command_tool,
     identify_autonomous_command_tool,
 )
+from app.gateway.app import create_app
 
 
 def test_intent_identification_planning():
@@ -113,10 +110,12 @@ def test_autonomous_tools():
     assert "/verify deep" in tool_out
 
     # 2. identify_autonomous_command tool
-    rec = identify_autonomous_command_tool.invoke({
-        "current_intent_or_error": "Fix the broken build and handle exception",
-        "phase": "self_heal",
-    })
+    rec = identify_autonomous_command_tool.invoke(
+        {
+            "current_intent_or_error": "Fix the broken build and handle exception",
+            "phase": "self_heal",
+        }
+    )
     assert "Autonomous Recommendation" in rec
     assert "/self-heal" in rec or "execute_slash_command" in rec
 

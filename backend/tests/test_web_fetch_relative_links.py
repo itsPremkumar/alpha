@@ -26,8 +26,7 @@ def _readability_js_available() -> bool:
 
 requires_readability_js = pytest.mark.skipif(
     not _readability_js_available(),
-    reason="Readability.js unavailable (node runtime or its npm-installed deps missing); "
-    "the pure-Python fallback strips link destinations, so these assertions cannot hold",
+    reason="Readability.js unavailable (node runtime or its npm-installed deps missing); the pure-Python fallback strips link destinations, so these assertions cannot hold",
 )
 
 

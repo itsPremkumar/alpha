@@ -349,7 +349,7 @@ def test_main_configures_the_streams_before_anything_is_written(monkeypatch):
 # narrow, which is decided before any test code runs. ``PYTHONIOENCODING`` is the
 # supported way to reproduce that condition, and it is why the pre-fix bug
 # survived a green suite.
-_CHILD = r'''
+_CHILD = r"""
 import sys
 from alpha.tui import cli
 
@@ -374,7 +374,7 @@ class _Session:
 
 cli._make_session = lambda: _Session()
 raise SystemExit(cli.main(["--json", "hello"]))
-'''
+"""
 
 
 def test_real_interpreter_with_cp1252_stdio_emits_utf8_and_exits_zero(tmp_path):

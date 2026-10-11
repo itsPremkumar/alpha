@@ -130,10 +130,7 @@ def test_diamond_branch_reaches_a_terminal_state():
 
     run, steps, counts = _drive(engine, run, _ok_runner(calls), ceiling=10)
 
-    assert run.status == WorkflowRunStatus.COMPLETED, (
-        f"a branching workflow must terminate; it was still {run.status.value} after {steps} steps "
-        f"with graph sizes {counts}"
-    )
+    assert run.status == WorkflowRunStatus.COMPLETED, f"a branching workflow must terminate; it was still {run.status.value} after {steps} steps with graph sizes {counts}"
     # The losing arm is a proven skip, and the join really ran.
     assert run.node_states["c"] == NodeStatus.SKIPPED
     assert "c" not in run.completed_nodes, "a skipped arm must not be reported as executed work"
@@ -190,13 +187,10 @@ def test_stagnation_recovery_has_a_hard_ceiling():
 
     run, steps, counts = _drive(engine, run, _ok_runner(calls), ceiling=40)
 
-    assert run.status == WorkflowRunStatus.FAILED, (
-        f"an unschedulable run must terminate; it was still {run.status.value} after {steps} steps, "
-        f"graph sizes {counts}"
-    )
+    assert run.status == WorkflowRunStatus.FAILED, f"an unschedulable run must terminate; it was still {run.status.value} after {steps} steps, graph sizes {counts}"
     reason = run.history[-1]["reason"]
     assert "stagnation recovery exhausted" in reason
-    assert f"targeting node 'stuck'" in reason
+    assert "targeting node 'stuck'" in reason
     assert f"limit {STAGNATION_RECOVERY_LIMIT}" in reason
     # Bounded: exactly the ceiling of remediation patches, then an honest stop.
     # The graph grew by one node per committed patch and no further, which is
@@ -566,18 +560,10 @@ def test_a_failed_step_never_reads_as_a_completed_run(loop_policy, mode, fail_on
 
     assert run.status in TERMINAL, f"run never terminated: status={run.status.value} steps={steps} sizes={counts}"
     if run.failed_nodes:
-        assert run.status != WorkflowRunStatus.COMPLETED, (
-            f"a run with failed nodes {run.failed_nodes} reported completed (mode={mode} fail_on={fail_on} loop={loop_policy})"
-        )
+        assert run.status != WorkflowRunStatus.COMPLETED, f"a run with failed nodes {run.failed_nodes} reported completed (mode={mode} fail_on={fail_on} loop={loop_policy})"
     if run.status != WorkflowRunStatus.COMPLETED:
-        assert counts[-1] == len(graph.nodes), (
-            f"a terminal run must not leave remediation nodes behind: {counts} (mode={mode} fail_on={fail_on})"
-        )
+        assert counts[-1] == len(graph.nodes), f"a terminal run must not leave remediation nodes behind: {counts} (mode={mode} fail_on={fail_on})"
     else:
-        assert target == frozenset() or mode == "no_evidence", (
-            "a run completed despite a node that was supposed to fail"
-        )
+        assert target == frozenset() or mode == "no_evidence", "a run completed despite a node that was supposed to fail"
     # Whatever happened, the journal and the run agree.
-    assert [e.event_type for e in engine.events.get_events(run.run_id)].count("workflow_completed") == (
-        1 if run.status == WorkflowRunStatus.COMPLETED else 0
-    )
+    assert [e.event_type for e in engine.events.get_events(run.run_id)].count("workflow_completed") == (1 if run.status == WorkflowRunStatus.COMPLETED else 0)

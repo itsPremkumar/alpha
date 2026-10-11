@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class PheromoneType(str, Enum):
@@ -29,7 +29,7 @@ class PheromoneTrace:
     deposited_at: float = field(default_factory=time.time)
     decay_rate: float = 0.05  # lambda decay parameter
 
-    def current_intensity(self, now: Optional[float] = None) -> float:
+    def current_intensity(self, now: float | None = None) -> float:
         t = (now or time.time()) - self.deposited_at
         if t < 0:
             return self.initial_intensity
@@ -46,7 +46,7 @@ class ResourceLease:
     expires_at: float
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def is_expired(self, now: Optional[float] = None) -> bool:
+    def is_expired(self, now: float | None = None) -> bool:
         return (now or time.time()) >= self.expires_at
 
 
@@ -82,7 +82,7 @@ class FederatedBlackboard:
             }
             self.deposit_trace(f"{topic}:{key}", PheromoneType.ACTIVITY, intensity=1.0)
 
-    def read_entry(self, topic: str, key: str) -> Optional[Any]:
+    def read_entry(self, topic: str, key: str) -> Any | None:
         with self._lock:
             shard = self._shards.get(topic, {})
             entry = shard.get(key)
@@ -99,7 +99,7 @@ class FederatedBlackboard:
         resource_id: str,
         agent_id: str,
         duration_seconds: float = 30.0,
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Atomically acquires an optimistic concurrency lease on a resource."""
         with self._lock:
@@ -151,7 +151,7 @@ class FederatedBlackboard:
             )
             self._traces.setdefault(resource_id, []).append(trace)
 
-    def get_intensity(self, resource_id: str, trace_type: Optional[PheromoneType] = None) -> float:
+    def get_intensity(self, resource_id: str, trace_type: PheromoneType | None = None) -> float:
         """Calculates total current intensity of pheromone traces on a resource."""
         with self._lock:
             now = time.time()
@@ -169,7 +169,7 @@ class FederatedBlackboard:
             self._traces[resource_id] = active_traces
             return total
 
-    def get_stigmergic_heatmap(self, trace_type: Optional[PheromoneType] = None) -> dict[str, float]:
+    def get_stigmergic_heatmap(self, trace_type: PheromoneType | None = None) -> dict[str, float]:
         """Returns normalized heatmap of all environmental traces for swarm self-organization."""
         with self._lock:
             heatmap: dict[str, float] = {}

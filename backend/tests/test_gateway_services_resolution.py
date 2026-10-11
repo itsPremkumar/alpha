@@ -16,9 +16,7 @@ def test_services_resolves_to_the_module_not_the_namespace_dir() -> None:
     spec = importlib.util.find_spec("app.gateway.services")
     assert spec is not None
     assert spec.origin is not None, "app.gateway.services resolved to a namespace package — the services/ directory must never gain an __init__.py"
-    assert spec.origin.replace("\\", "/").endswith("app/gateway/services.py"), (
-        f"app.gateway.services resolved to {spec.origin}; expected the module app/gateway/services.py"
-    )
+    assert spec.origin.replace("\\", "/").endswith("app/gateway/services.py"), f"app.gateway.services resolved to {spec.origin}; expected the module app/gateway/services.py"
 
 
 def test_shim_reexports_the_real_service() -> None:

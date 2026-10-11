@@ -55,12 +55,7 @@ class RunReport:
         return [o for o in self.outcomes if o.status == "escalated"]
 
     def summary(self) -> str:
-        return (
-            f"scanned {self.scanned} signal(s): "
-            f"{len(self.fixed)} fixed, {len(self.reverted)} reverted, "
-            f"{len(self.escalated)} escalated"
-            + (f", {len(self.errors)} error(s)" if self.errors else "")
-        )
+        return f"scanned {self.scanned} signal(s): {len(self.fixed)} fixed, {len(self.reverted)} reverted, {len(self.escalated)} escalated" + (f", {len(self.errors)} error(s)" if self.errors else "")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -130,12 +125,7 @@ class SentinelRunner:
             fix_fn = self.fix_fns.get(kind)
             if fix_fn is None:
                 # No registered repair strategy -> escalate, never guess.
-                report.outcomes.append(
-                    record_sentinel_escalation(
-                        LoopOutcome(signal, "diagnose", "escalated",
-                                    f"no repair strategy registered for kind {kind!r}")
-                    )
-                )
+                report.outcomes.append(record_sentinel_escalation(LoopOutcome(signal, "diagnose", "escalated", f"no repair strategy registered for kind {kind!r}")))
                 continue
 
             try:
@@ -146,22 +136,14 @@ class SentinelRunner:
                     committer=self.committer,
                     tracker=self.tracker,
                 )
-                outcome = loop.handle(
-                    signal, verification_commands=self.verification_commands
-                )
+                outcome = loop.handle(signal, verification_commands=self.verification_commands)
                 report.outcomes.append(outcome)
             except Exception as exc:  # noqa: BLE001 - one bad fault must not abort the run
                 report.errors.append(f"{kind}/{signal.fingerprint}: {type(exc).__name__}: {exc}")
-                report.outcomes.append(
-                    record_sentinel_escalation(
-                        LoopOutcome(signal, "loop", "escalated",
-                                    f"loop raised {type(exc).__name__}: {exc}")
-                    )
-                )
+                report.outcomes.append(record_sentinel_escalation(LoopOutcome(signal, "loop", "escalated", f"loop raised {type(exc).__name__}: {exc}")))
 
             if len(report.fixed) >= self.max_fixes_per_run:
-                logger.info("Reached max_fixes_per_run (%d); stopping this pass",
-                            self.max_fixes_per_run)
+                logger.info("Reached max_fixes_per_run (%d); stopping this pass", self.max_fixes_per_run)
                 break
 
         report.duration_s = time.time() - started
@@ -221,4 +203,3 @@ def make_default_verification_commands() -> dict[str, list[str]]:
             "import sys; from alpha.runtime.sentinel.sources import scripts; sys.exit(0)",
         ]
     }
-

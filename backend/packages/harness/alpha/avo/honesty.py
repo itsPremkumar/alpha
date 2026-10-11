@@ -104,11 +104,7 @@ class HonestyReport:
     @property
     def inflection_points(self) -> list[dict[str, Any]]:
         """Structural discoveries. AVO found five among forty versions."""
-        return [
-            {"version_id": s.version_id, "score": s.score, "gain": s.absolute_gain, "kind": s.kind}
-            for s in self.committed_steps
-            if s.kind == ChangeKind.STRUCTURAL.value
-        ]
+        return [{"version_id": s.version_id, "score": s.score, "gain": s.absolute_gain, "kind": s.kind} for s in self.committed_steps if s.kind == ChangeKind.STRUCTURAL.value]
 
     @property
     def diminishing_returns(self) -> dict[str, Any]:
@@ -151,15 +147,9 @@ class HonestyReport:
                 f"{self.total_explored} explored directions and {self.committed_count} commits."
             )
         elif diminishing:
-            reason = (
-                f"DIMINISHING: mean marginal gain fell from {mean_first:.6g} to {mean_second:.6g}. Progress is "
-                f"real but shrinking, across {self.committed_count} commits over {self.total_explored} explored directions."
-            )
+            reason = f"DIMINISHING: mean marginal gain fell from {mean_first:.6g} to {mean_second:.6g}. Progress is real but shrinking, across {self.committed_count} commits over {self.total_explored} explored directions."
         else:
-            reason = (
-                f"STEADY: mean marginal gain held at {mean_first:.6g} -> {mean_second:.6g} across "
-                f"{self.committed_count} commits over {self.total_explored} explored directions."
-            )
+            reason = f"STEADY: mean marginal gain held at {mean_first:.6g} -> {mean_second:.6g} across {self.committed_count} commits over {self.total_explored} explored directions."
         return {
             "commits": len(gains),
             "marginal_gains": gains,
@@ -224,9 +214,7 @@ def assert_gains_carry_denominators(report: HonestyReport) -> None:
     improvement without its denominator beside it".
     """
     if report.committed_count and not report.total_explored >= report.committed_count:
-        raise AssertionError(
-            f"honesty report is inconsistent: {report.committed_count} commits claimed from only {report.total_explored} explored directions"
-        )
+        raise AssertionError(f"honesty report is inconsistent: {report.committed_count} commits claimed from only {report.total_explored} explored directions")
     for gain in report.gains_with_denominators():
         for key in ("absolute", "denominator_commits", "denominator_explored", "failed_attempts"):
             if key not in gain:

@@ -618,16 +618,10 @@ class DbRunEventStore(RunEventStore):
         async with self._sf() as session:
             dialect = self._session_dialect(session)
             if dialect == "sqlite" and await self._ensure_fts_objects(session):
-                return await self._search_sqlite_fts(
-                    session, tokens, resolved_user_id, thread_id, limit, snippet_chars, query
-                )
+                return await self._search_sqlite_fts(session, tokens, resolved_user_id, thread_id, limit, snippet_chars, query)
             if dialect == "postgresql" and await self._ensure_fts_objects(session):
-                return await self._search_postgres(
-                    session, tokens, resolved_user_id, thread_id, limit, snippet_chars, query
-                )
-            return await self._search_like(
-                session, tokens, resolved_user_id, thread_id, limit, snippet_chars, query
-            )
+                return await self._search_postgres(session, tokens, resolved_user_id, thread_id, limit, snippet_chars, query)
+            return await self._search_like(session, tokens, resolved_user_id, thread_id, limit, snippet_chars, query)
 
     async def _search_sqlite_fts(self, session, tokens, user_id, thread_id, limit, snippet_chars, raw_query):
         match = sanitize_fts_query(" ".join(tokens))
@@ -656,9 +650,7 @@ class DbRunEventStore(RunEventStore):
         hits = []
         for row in rows:
             snippet = " ".join(str(row.snippet or "").split())
-            hits.append(
-                self._hit(row.thread_id, row.run_id, row.seq, row.event_type, snippet[:snippet_chars], row.created_at)
-            )
+            hits.append(self._hit(row.thread_id, row.run_id, row.seq, row.event_type, snippet[:snippet_chars], row.created_at))
         return hits
 
     async def _search_postgres(self, session, tokens, user_id, thread_id, limit, snippet_chars, raw_query):
@@ -678,7 +670,7 @@ class DbRunEventStore(RunEventStore):
                     "SELECT thread_id, run_id, seq, event_type, created_at,"
                     f" ts_headline('english', {PG_TEXT_PROJECTION}, {plainto},"
                     " 'StartSel=, StopSel=, MaxWords=25, MinWords=10,"
-                    " MaxFragments=2, FragmentDelimiter=\" … \"') AS snippet,"
+                    ' MaxFragments=2, FragmentDelimiter=" … "\') AS snippet,'
                     f" {rank_expr} AS rank"
                     f" FROM run_events WHERE {' AND '.join(conditions)}"
                     " ORDER BY (COALESCE(content->>'type', '') IN ('human', 'ai')) DESC,"
@@ -690,9 +682,7 @@ class DbRunEventStore(RunEventStore):
         hits = []
         for row in rows:
             snippet = " ".join(str(row.snippet or "").split())
-            hits.append(
-                self._hit(row.thread_id, row.run_id, row.seq, row.event_type, snippet[:snippet_chars], row.created_at)
-            )
+            hits.append(self._hit(row.thread_id, row.run_id, row.seq, row.event_type, snippet[:snippet_chars], row.created_at))
         return hits
 
     async def _search_like(self, session, tokens, user_id, thread_id, limit, snippet_chars, raw_query):
@@ -710,11 +700,7 @@ class DbRunEventStore(RunEventStore):
             params["tid"] = thread_id
         rows = (
             await session.execute(
-                text(
-                    "SELECT thread_id, run_id, seq, event_type, created_at, content"
-                    f" FROM run_events WHERE {' AND '.join(conditions)}"
-                    " ORDER BY created_at DESC LIMIT :scan"
-                ),
+                text(f"SELECT thread_id, run_id, seq, event_type, created_at, content FROM run_events WHERE {' AND '.join(conditions)} ORDER BY created_at DESC LIMIT :scan"),
                 {**params, "scan": MAX_SEARCH_LIMIT * 5},
             )
         ).all()

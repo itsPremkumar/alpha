@@ -30,10 +30,11 @@ import threading
 import time
 import uuid
 from collections import Counter, deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
 DEFAULT_WORKING_CAPACITY: int = 64
 DEFAULT_WORKING_TTL_SEC: float = 1800.0
@@ -185,10 +186,10 @@ class WorkingMemory:
     def __init__(self, capacity: int = DEFAULT_WORKING_CAPACITY, ttl_sec: float = DEFAULT_WORKING_TTL_SEC):
         self.capacity = max(int(capacity), 1)
         self.ttl_sec = float(ttl_sec)
-        self._items: "deque[MemoryItem]" = deque()
+        self._items: deque[MemoryItem] = deque()
         self._lock = threading.RLock()
 
-    def put(self, content: str, metadata: Optional[dict[str, Any]] = None, importance: float = 0.5) -> MemoryItem:
+    def put(self, content: str, metadata: dict[str, Any] | None = None, importance: float = 0.5) -> MemoryItem:
         """Insert a scratchpad entry, evicting the oldest when full."""
         item = MemoryItem(
             memory_id=f"wm-{uuid.uuid4().hex[:12]}",
@@ -205,7 +206,7 @@ class WorkingMemory:
                 self._items.popleft()
         return item
 
-    def expire(self, now: Optional[float] = None) -> int:
+    def expire(self, now: float | None = None) -> int:
         """Drop entries older than the TTL, returning the count removed."""
         current = time.time() if now is None else now
         removed = 0
@@ -245,10 +246,10 @@ class EpisodicMemory:
         self,
         content: str,
         task: str = "",
-        tool_calls: Optional[list[dict[str, Any]]] = None,
+        tool_calls: list[dict[str, Any]] | None = None,
         outcome: str = EpisodeOutcome.UNKNOWN.value,
-        metadata: Optional[dict[str, Any]] = None,
-        timestamp: Optional[float] = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp: float | None = None,
     ) -> MemoryItem:
         """Append one trajectory episode."""
         merged = dict(metadata or {})
@@ -273,7 +274,7 @@ class EpisodicMemory:
                 self._episodes = self._episodes[overflow:]
         return episode
 
-    def episodes(self, since: Optional[float] = None) -> list[MemoryItem]:
+    def episodes(self, since: float | None = None) -> list[MemoryItem]:
         """Return episodes, optionally filtered by a lower time bound."""
         with self._lock:
             items = list(self._episodes)
@@ -333,7 +334,7 @@ class SemanticMemory:
         category: str,
         confidence: float,
         support: int,
-        evidence: Optional[Iterable[str]] = None,
+        evidence: Iterable[str] | None = None,
     ) -> SemanticRule:
         """Insert or reinforce a distilled rule.
 
@@ -445,7 +446,7 @@ class HybridRetriever:
         query: str,
         corpus: list[MemoryItem],
         limit: int = DEFAULT_RECALL_LIMIT,
-        now: Optional[float] = None,
+        now: float | None = None,
         min_score: float = 0.0,
     ) -> list[dict[str, Any]]:
         """Rank ``corpus`` against ``query`` with decay-weighted hybrid scoring.
@@ -554,7 +555,7 @@ class CognitiveMemoryConsolidator:
         self._last_activity_at: float = time.time()
         self._lock = threading.RLock()
 
-    def should_consolidate(self, force: bool = False, now: Optional[float] = None) -> tuple[bool, str]:
+    def should_consolidate(self, force: bool = False, now: float | None = None) -> tuple[bool, str]:
         """Decide whether a consolidation cycle should run.
 
         Returns:
@@ -570,11 +571,11 @@ class CognitiveMemoryConsolidator:
             return True, f"idle cycle reached ({round(current - self._last_activity_at, 1)}s idle)"
         return False, "thresholds not reached"
 
-    def note_activity(self, now: Optional[float] = None) -> None:
+    def note_activity(self, now: float | None = None) -> None:
         """Record memory activity, resetting the idle-cycle timer."""
         self._last_activity_at = time.time() if now is None else now
 
-    def consolidate(self, force: bool = False, now: Optional[float] = None) -> ConsolidationReport:
+    def consolidate(self, force: bool = False, now: float | None = None) -> ConsolidationReport:
         """Run a consolidation cycle if triggered (or forced).
 
         Distillation strategy (deterministic, no model calls):
@@ -706,7 +707,7 @@ class CognitiveMemorySystem:
 
     # -- writing -----------------------------------------------------------
 
-    def remember_working(self, content: str, metadata: Optional[dict[str, Any]] = None, importance: float = 0.5) -> MemoryItem:
+    def remember_working(self, content: str, metadata: dict[str, Any] | None = None, importance: float = 0.5) -> MemoryItem:
         """Store an intermediate plan step in working memory."""
         with self._lock:
             return self.working.put(content, metadata, importance)
@@ -715,9 +716,9 @@ class CognitiveMemorySystem:
         self,
         content: str,
         task: str = "",
-        tool_calls: Optional[list[dict[str, Any]]] = None,
+        tool_calls: list[dict[str, Any]] | None = None,
         outcome: str = EpisodeOutcome.UNKNOWN.value,
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> MemoryItem:
         """Append a trajectory episode and note consolidation activity."""
         with self._lock:
@@ -744,7 +745,7 @@ class CognitiveMemorySystem:
 
     # -- reading -----------------------------------------------------------
 
-    def _corpus(self, tiers: Optional[list[str]]) -> list[MemoryItem]:
+    def _corpus(self, tiers: list[str] | None) -> list[MemoryItem]:
         """Assemble the retrieval corpus for the requested tiers."""
         requested = {str(tier).strip().lower() for tier in tiers} if tiers else {tier.value for tier in MemoryTier}
         corpus: list[MemoryItem] = []
@@ -774,7 +775,7 @@ class CognitiveMemorySystem:
     def recall(
         self,
         query: str,
-        tiers: Optional[list[str]] = None,
+        tiers: list[str] | None = None,
         limit: int = DEFAULT_RECALL_LIMIT,
         min_score: float = 0.0,
     ) -> dict[str, Any]:
@@ -856,7 +857,7 @@ class CognitiveMemorySystem:
 # ---------------------------------------------------------------------------
 
 _SYSTEM_LOCK = threading.Lock()
-_SYSTEM: Optional[CognitiveMemorySystem] = None
+_SYSTEM: CognitiveMemorySystem | None = None
 
 
 def get_cognitive_memory_system() -> CognitiveMemorySystem:

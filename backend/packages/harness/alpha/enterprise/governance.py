@@ -84,12 +84,14 @@ class DepartmentTokenTreasury:
             alloc.burn_rate_tpm = round((alloc.burn_rate_tpm * 0.6) + (instant_tpm * 0.4), 1)
 
         # Track history
-        alloc.burn_history.append({
-            "timestamp": time.time(),
-            "burned": tokens_burned,
-            "tpm": alloc.burn_rate_tpm,
-            "tasks_completed": tasks_completed,
-        })
+        alloc.burn_history.append(
+            {
+                "timestamp": time.time(),
+                "burned": tokens_burned,
+                "tpm": alloc.burn_rate_tpm,
+                "tasks_completed": tasks_completed,
+            }
+        )
         if len(alloc.burn_history) > 20:
             alloc.burn_history = alloc.burn_history[-20:]
 
@@ -103,19 +105,11 @@ class DepartmentTokenTreasury:
         # Check circuit breaker:
         # Trip if burn rate > threshold OR instant TPM > threshold OR remaining balance <= 5% of allocation
         tripped = False
-        if (
-            alloc.burn_rate_tpm > alloc.circuit_breaker_threshold_tpm
-            or instant_tpm > alloc.circuit_breaker_threshold_tpm
-            or alloc.balance_tokens < (0.05 * alloc.allocated_tokens)
-        ):
+        if alloc.burn_rate_tpm > alloc.circuit_breaker_threshold_tpm or instant_tpm > alloc.circuit_breaker_threshold_tpm or alloc.balance_tokens < (0.05 * alloc.allocated_tokens):
             if not alloc.circuit_breaker_active:
                 alloc.circuit_breaker_active = True
                 tripped = True
-                logger.warning(
-                    f"CIRCUIT BREAKER TRIPPED for {dept_id}! "
-                    f"Burn rate: {alloc.burn_rate_tpm} TPM (instant: {instant_tpm}, max: {alloc.circuit_breaker_threshold_tpm}), "
-                    f"Balance: {alloc.balance_tokens} tokens"
-                )
+                logger.warning(f"CIRCUIT BREAKER TRIPPED for {dept_id}! Burn rate: {alloc.burn_rate_tpm} TPM (instant: {instant_tpm}, max: {alloc.circuit_breaker_threshold_tpm}), Balance: {alloc.balance_tokens} tokens")
 
         alloc.last_updated = time.time()
         return alloc, tripped

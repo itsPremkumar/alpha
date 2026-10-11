@@ -139,7 +139,7 @@ class ThreeLevelContextRouter:
         p = self._project_memory_path(project_id)
         proj_state = state_mod.get_state(project_id)
         recent_decisions = [d.to_dict() for d in decisions_mod.get_decision_log(project_id).list()[-3:]]
-        active_locks = [l.to_dict() for l in locks_mod.get_lock_manager().list_locks(project_id)]
+        active_locks = [lock.to_dict() for lock in locks_mod.get_lock_manager().list_locks(project_id)]
         const = constitution_mod.get_constitution(project_id)
 
         base_memory: dict[str, Any] = {
@@ -147,7 +147,7 @@ class ThreeLevelContextRouter:
             "goal": proj_state.goal,
             "phase": proj_state.phase,
             "recent_decisions": recent_decisions,
-            "active_locks": [f"{l['scope']}:{l['path']} (by {l['owner_bot']})" for l in active_locks],
+            "active_locks": [f"{lock['scope']}:{lock['path']} (by {lock['owner_bot']})" for lock in active_locks],
             "constitution_hash": const.sha16 if const else "none",
             "updated_at": _now(),
         }

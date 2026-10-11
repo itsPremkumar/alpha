@@ -30,11 +30,7 @@ from alpha.deliberation.models import (
 
 logger = logging.getLogger(__name__)
 
-_PROPONENT_SYSTEM = (
-    "You are the PROPONENT in a structured debate. Argue FOR the affirmative position "
-    "with concrete reasons. If you have supporting data, end your reply with a line of "
-    "the exact form: EVIDENCE: <item> | <item>"
-)
+_PROPONENT_SYSTEM = "You are the PROPONENT in a structured debate. Argue FOR the affirmative position with concrete reasons. If you have supporting data, end your reply with a line of the exact form: EVIDENCE: <item> | <item>"
 
 _CRITIC_SYSTEM = (
     "You are the CRITIC (Opponent) in a structured debate. Argue AGAINST the proponent, "
@@ -42,12 +38,7 @@ _CRITIC_SYSTEM = (
     "supporting data, end your reply with a line of the exact form: EVIDENCE: <item> | <item>"
 )
 
-_JUDGE_SYSTEM = (
-    "You are an INDEPENDENT JUDGE in a structured debate. Weigh both sides on substance. "
-    "Output EXACTLY these two lines:\n"
-    "WINNER: PROPONENT   (or WINNER: CRITIC)\n"
-    "RATIONALE: <one sentence>"
-)
+_JUDGE_SYSTEM = "You are an INDEPENDENT JUDGE in a structured debate. Weigh both sides on substance. Output EXACTLY these two lines:\nWINNER: PROPONENT   (or WINNER: CRITIC)\nRATIONALE: <one sentence>"
 
 
 class DebateEngine:
@@ -67,10 +58,7 @@ class DebateEngine:
         deliberation_id = make_deliberation_id()
         models = roster or invocation.configured_model_roster()
         if len(models) < 2:
-            raise RuntimeError(
-                f"Debate requires at least 2 configured chat models; found {len(models)}. "
-                "Add another model under `models:` in config.yaml."
-            )
+            raise RuntimeError(f"Debate requires at least 2 configured chat models; found {len(models)}. Add another model under `models:` in config.yaml.")
 
         debaters = [models[0], models[1]]
         # Judge: a third configured model when available; otherwise disclose
@@ -82,10 +70,7 @@ class DebateEngine:
             judge_note = ""
         else:
             judge_model = models[0]
-            judge_note = (
-                f" Judge fallback: no third model is configured, so {judge_model} "
-                "(a debater) served as judge."
-            )
+            judge_note = f" Judge fallback: no third model is configured, so {judge_model} (a debater) served as judge."
 
         turns: list[DebateTurn] = []
         stopped_early = False
@@ -102,14 +87,9 @@ class DebateEngine:
             # Turn 1: Proponent — later rounds rebut the critic's actual argument.
             prop_user = f"QUERY: {query}"
             if last_critic:
-                prop_user += (
-                    f"\n\nThe opponent's latest argument:\n{last_critic.strip()}\n\n"
-                    "Rebut it and advance the affirmative case."
-                )
+                prop_user += f"\n\nThe opponent's latest argument:\n{last_critic.strip()}\n\nRebut it and advance the affirmative case."
             prop_text = invocation.invoke_model(debaters[0], system=_PROPONENT_SYSTEM, user=prop_user)
-            prop_sim = (
-                invocation.response_similarity(prop_text, last_proponent) if last_proponent else 0.0
-            )
+            prop_sim = invocation.response_similarity(prop_text, last_proponent) if last_proponent else 0.0
             t1 = DebateTurn(
                 turn_id=f"turn-{uuid.uuid4().hex[:6]}",
                 round_number=r,
@@ -125,14 +105,9 @@ class DebateEngine:
             last_proponent = prop_text
 
             # Turn 2: Critic — always sees the proponent's real argument.
-            crit_user = (
-                f"QUERY: {query}\n\nThe proponent's position:\n{prop_text.strip()}\n\n"
-                "Argue AGAINST it, rebutting specifics."
-            )
+            crit_user = f"QUERY: {query}\n\nThe proponent's position:\n{prop_text.strip()}\n\nArgue AGAINST it, rebutting specifics."
             crit_text = invocation.invoke_model(debaters[1], system=_CRITIC_SYSTEM, user=crit_user)
-            crit_sim = (
-                invocation.response_similarity(crit_text, last_critic) if last_critic else 0.0
-            )
+            crit_sim = invocation.response_similarity(crit_text, last_critic) if last_critic else 0.0
             t2 = DebateTurn(
                 turn_id=f"turn-{uuid.uuid4().hex[:6]}",
                 round_number=r,
@@ -149,20 +124,14 @@ class DebateEngine:
 
             # Convergence Check: Early Stopping — both sides stuck to their
             # previous positions (real token overlap, not a constant).
-            if (
-                r > 1
-                and prop_sim >= cls.CONVERGENCE_THRESHOLD
-                and crit_sim >= cls.CONVERGENCE_THRESHOLD
-            ):
+            if r > 1 and prop_sim >= cls.CONVERGENCE_THRESHOLD and crit_sim >= cls.CONVERGENCE_THRESHOLD:
                 stopped_early = True
                 break
 
         # ---------------------------------------------------------------------
         # Independent Judge Verdict (parsed, never invented)
         # ---------------------------------------------------------------------
-        transcript = "\n\n".join(
-            f"[Round {t.round_number}] {t.speaker_label}: {t.argument}" for t in turns
-        )
+        transcript = "\n\n".join(f"[Round {t.round_number}] {t.speaker_label}: {t.argument}" for t in turns)
         judge_text = invocation.invoke_model(
             judge_model,
             system=_JUDGE_SYSTEM,
@@ -174,28 +143,17 @@ class DebateEngine:
         critic_turns = [t for t in turns if t.speaker_label == "Opponent/Critic"]
 
         if winner is None:
-            logger.warning(
-                "Debate judge output unparsable; recording NO ruling instead of inventing one."
-            )
+            logger.warning("Debate judge output unparsable; recording NO ruling instead of inventing one.")
             winner_label = "Unresolved (judge ruling unparsed)"
-            judge_ruling = (
-                "The judge's response could not be parsed into a WINNER line, so NO ruling "
-                f"is recorded. Judge output excerpt: {judge_text.strip()[:200]}"
-            )
+            judge_ruling = f"The judge's response could not be parsed into a WINNER line, so NO ruling is recorded. Judge output excerpt: {judge_text.strip()[:200]}"
             winning_turn = proponent_turns[-1]
         else:
             winner_label = "Proponent" if winner == "proponent" else "Critic"
-            judge_ruling = (
-                f"Judge ({judge_model}) Verdict: "
-                f"{judge_rationale or (winner_label + ' favoured on the merits')}."
-                + judge_note
-            )
+            judge_ruling = f"Judge ({judge_model}) Verdict: {judge_rationale or (winner_label + ' favoured on the merits')}." + judge_note
             winning_turn = proponent_turns[-1] if winner == "proponent" else critic_turns[-1]
 
         # Real consensus: positional overlap between the final opposing sides.
-        consensus_pct = round(
-            invocation.response_similarity(last_proponent, last_critic) * 100.0, 1
-        )
+        consensus_pct = round(invocation.response_similarity(last_proponent, last_critic) * 100.0, 1)
 
         # Minority report = the LOSING side's real closing argument.
         if winner == "critic":
@@ -203,10 +161,7 @@ class DebateEngine:
         else:
             # No ruling -> preserve the critic's closing (the opposition).
             minority_who, minority_turn = "Critic", critic_turns[-1]
-        minority_dissent = (
-            f"Minority report — {minority_who} closing position preserved: "
-            f"{minority_turn.argument.strip()[:400]}"
-        )
+        minority_dissent = f"Minority report — {minority_who} closing position preserved: {minority_turn.argument.strip()[:400]}"
 
         # Documented confidence model over REAL signals:
         #   base 0.5 + 0.3 * positional consensus + 0.15 for a parsed ruling
@@ -217,11 +172,7 @@ class DebateEngine:
             confidence_level = DeliberationConfidence.LOW_CONFIDENCE
         else:
             confidence = round(min(0.95, 0.5 + 0.3 * (consensus_pct / 100.0) + 0.15), 3)
-            confidence_level = (
-                DeliberationConfidence.HIGH_CONFIDENCE
-                if confidence >= 0.8
-                else DeliberationConfidence.MEDIUM_CONFIDENCE
-            )
+            confidence_level = DeliberationConfidence.HIGH_CONFIDENCE if confidence >= 0.8 else DeliberationConfidence.MEDIUM_CONFIDENCE
 
         # Evidence actually cited by the debaters (parsed), deduplicated.
         key_evidence = sorted({item for t in turns for item in t.new_evidence})
@@ -233,11 +184,7 @@ class DebateEngine:
             f"{winning_turn.argument}\n\n"
             f"**Judge Ruling**:\n"
             f"{judge_ruling}\n\n"
-            f"**Reconciled Arguments**:\n"
-            + "\n".join(
-                f"- Round {t.round_number} [{t.speaker_label}]: {t.argument[:90]}..."
-                for t in turns[-4:]
-            )
+            f"**Reconciled Arguments**:\n" + "\n".join(f"- Round {t.round_number} [{t.speaker_label}]: {t.argument[:90]}..." for t in turns[-4:])
         )
 
         def _verdict(label: str) -> str:

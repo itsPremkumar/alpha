@@ -14,11 +14,7 @@ _VOLATILE_FIELDS = {"timestamp", "time", "date", "duration", "pid", "session_id"
 def _normalize_payload(obj: Any) -> Any:
     """Recursively strip volatile fields (PIDs, timestamps, elapsed times)."""
     if isinstance(obj, dict):
-        return {
-            k: _normalize_payload(v)
-            for k, v in obj.items()
-            if k.lower() not in _VOLATILE_FIELDS
-        }
+        return {k: _normalize_payload(v) for k, v in obj.items() if k.lower() not in _VOLATILE_FIELDS}
     elif isinstance(obj, list):
         return [_normalize_payload(x) for x in obj]
     elif isinstance(obj, str):

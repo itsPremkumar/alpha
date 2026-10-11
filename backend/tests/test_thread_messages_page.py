@@ -11,11 +11,11 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.gateway.routers import thread_runs
 from alpha.runtime import RunRecord
 from alpha.runtime.events.store.memory import MemoryRunEventStore
 from alpha.runtime.journal import build_branch_history_seed_events
 from alpha.runtime.runs.manager import EditReplayVisibility
+from app.gateway.routers import thread_runs
 
 
 def _make_app(

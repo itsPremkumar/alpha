@@ -729,7 +729,7 @@ def test_html_parser_drops_a_disabled_control_entirely():
     cannot tell "absent" from "disabled" on an HTML-parsed page, and the rubric's
     WAIT rule covers both the same way. Pinned here so the drop stays a decision.
     """
-    elements = elements_from_html('<button disabled>Go</button><button>Cancel</button>')
+    elements = elements_from_html("<button disabled>Go</button><button>Cancel</button>")
     assert [e["label"] for e in elements] == ["Cancel"]
     assert all("disabled" not in e for e in elements)
 
@@ -1031,11 +1031,7 @@ def test_control_state_survives_the_whole_snapshot_to_table_path():
     """The end-to-end version: HTML in, a table the executor can act on out."""
     from alpha.browser.element_table import build_action_space
 
-    html = (
-        '<form action="/s"><input type="hidden" name="csrf" value="tok">'
-        '<input type="text" name="q" placeholder="Search">'
-        '<input type="checkbox" name="all" checked></form>'
-    )
+    html = '<form action="/s"><input type="hidden" name="csrf" value="tok"><input type="text" name="q" placeholder="Search"><input type="checkbox" name="all" checked></form>'
     state = page_state_from_html(html)
     space = build_action_space(state["elements"])
     checkbox = next(e for e in space.elements if e.role == "checkbox")

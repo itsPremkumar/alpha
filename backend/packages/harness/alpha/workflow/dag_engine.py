@@ -47,11 +47,13 @@ STATUS_PENDING = "pending"
 
 class WriteScopeCollisionError(ValueError):
     """Raised when two nodes in the same parallel execution wave share overlapping write paths."""
+
     pass
 
 
 class UnverifiedNodeCompletionError(RuntimeError):
     """Raised when an attempt is made to mark a node complete without concrete evidence."""
+
     pass
 
 
@@ -155,7 +157,7 @@ class DAGWorkflow:
 
     def get_executable_waves(self) -> list[list[str]]:
         """Compute topological execution waves (nodes that can run concurrently).
-        
+
         Raises ValueError if a cycle is detected.
         """
         # Calculate in-degrees
@@ -200,10 +202,7 @@ class DAGWorkflow:
                     norm = scope.replace("\\", "/").rstrip("/").lower()
                     if norm in seen_scopes:
                         other_nid = seen_scopes[norm]
-                        raise WriteScopeCollisionError(
-                            f"Parallel wave {wave_idx} write collision: node '{nid}' and node '{other_nid}' "
-                            f"both declare write scope '{scope}'."
-                        )
+                        raise WriteScopeCollisionError(f"Parallel wave {wave_idx} write collision: node '{nid}' and node '{other_nid}' both declare write scope '{scope}'.")
                     seen_scopes[norm] = nid
 
     def record_evidence(self, node_id: str, evidence: str) -> None:
@@ -218,10 +217,7 @@ class DAGWorkflow:
             raise KeyError(f"Node '{node_id}' not found")
         node = self.nodes[node_id]
         if not node.evidence:
-            raise UnverifiedNodeCompletionError(
-                f"Node '{node_id}' cannot be marked completed without verification evidence! "
-                f"(TREAT AS FALSE UNTIL YOU PROVE IT)"
-            )
+            raise UnverifiedNodeCompletionError(f"Node '{node_id}' cannot be marked completed without verification evidence! (TREAT AS FALSE UNTIL YOU PROVE IT)")
         node.status = "completed"
         if output:
             node.output = output

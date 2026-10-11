@@ -263,9 +263,7 @@ def test_consolidator_ignores_below_threshold():
 
 def test_consolidator_triggers_on_idle_cycle():
     episodic = EpisodicMemory()
-    consolidator = CognitiveMemoryConsolidator(
-        episodic, SemanticMemory(), episodic_threshold=100, idle_threshold_sec=1.0
-    )
+    consolidator = CognitiveMemoryConsolidator(episodic, SemanticMemory(), episodic_threshold=100, idle_threshold_sec=1.0)
     episodic.record("one", tool_calls=[{"tool": "read_file"}])
     consolidator._last_activity_at = time.time() - 10.0
     decision, reason = consolidator.should_consolidate()
@@ -340,9 +338,7 @@ def test_consolidation_is_idempotent_without_new_episodes():
 def test_consolidation_respects_minimum_support():
     episodic = EpisodicMemory()
     semantic = SemanticMemory()
-    consolidator = CognitiveMemoryConsolidator(
-        episodic, semantic, episodic_threshold=1, min_support=5
-    )
+    consolidator = CognitiveMemoryConsolidator(episodic, semantic, episodic_threshold=1, min_support=5)
     episodic.record("single", tool_calls=[{"tool": "rare_tool"}], outcome="success")
     consolidator.consolidate(force=True)
     assert len(semantic) == 0
@@ -386,9 +382,7 @@ def test_system_status_reports_tier_occupancy():
 def test_system_consolidate_returns_report():
     system = CognitiveMemorySystem(episodic_threshold=2)
     for _ in range(3):
-        system.remember_episode(
-            "cycle", tool_calls=[{"tool": "edit_file"}], outcome=EpisodeOutcome.SUCCESS.value
-        )
+        system.remember_episode("cycle", tool_calls=[{"tool": "edit_file"}], outcome=EpisodeOutcome.SUCCESS.value)
     report = system.consolidate()
     assert report.triggered is True
     assert report.elapsed_sec >= 0.0
@@ -439,17 +433,13 @@ def test_tool_remember_and_recall_roundtrip():
 
 
 def test_tool_remember_working():
-    outcome = consolidate_cognitive_memory.invoke(
-        {"action": "remember_working", "content": "step 4: update migrations"}
-    )
+    outcome = consolidate_cognitive_memory.invoke({"action": "remember_working", "content": "step 4: update migrations"})
     assert outcome["success"] is True
     assert outcome["memory"]["tier"] == "working"
 
 
 def test_tool_remember_rule():
-    outcome = consolidate_cognitive_memory.invoke(
-        {"action": "remember_rule", "statement": "Always run migrations before deploy", "confidence": 0.9}
-    )
+    outcome = consolidate_cognitive_memory.invoke({"action": "remember_rule", "statement": "Always run migrations before deploy", "confidence": 0.9})
     assert outcome["success"] is True
     assert outcome["rule"]["category"] == "manual"
 
@@ -485,13 +475,9 @@ def test_tool_clear_tier():
 
 def test_tool_save_and_load(tmp_path):
     consolidate_cognitive_memory.invoke({"action": "remember_rule", "statement": "snapshot rule"})
-    saved = consolidate_cognitive_memory.invoke(
-        {"action": "save", "path": str(tmp_path / "memory.json")}
-    )
+    saved = consolidate_cognitive_memory.invoke({"action": "save", "path": str(tmp_path / "memory.json")})
     assert saved["success"] is True
-    loaded = consolidate_cognitive_memory.invoke(
-        {"action": "load", "path": str(tmp_path / "memory.json")}
-    )
+    loaded = consolidate_cognitive_memory.invoke({"action": "load", "path": str(tmp_path / "memory.json")})
     assert loaded["success"] is True
     assert loaded["restored"] >= 1
 
@@ -507,9 +493,7 @@ def test_tool_unknown_action():
 
 
 def test_tool_recall_tier_filter():
-    consolidate_cognitive_memory.invoke(
-        {"action": "remember_rule", "statement": "deploys require a canary phase"}
-    )
+    consolidate_cognitive_memory.invoke({"action": "remember_rule", "statement": "deploys require a canary phase"})
     result = recall_agent_memory.invoke({"query": "canary deploy", "tiers": "semantic", "limit": 5})
     assert result["success"] is True
     assert all(hit["tier"] == "semantic" for hit in result["results"])

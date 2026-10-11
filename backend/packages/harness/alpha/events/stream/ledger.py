@@ -84,9 +84,7 @@ class EventStreamLedger:
         """Calculate statistics of actions, observations, errors, and critics."""
         actions_count = sum(1 for e in self._events if isinstance(e, Action))
         obs_count = sum(1 for e in self._events if isinstance(e, Observation))
-        errors_count = sum(
-            1 for e in self._events if isinstance(e, Observation) and e.observation_type.value == "error"
-        )
+        errors_count = sum(1 for e in self._events if isinstance(e, Observation) and e.observation_type.value == "error")
         return {
             "session_id": self.session_id,
             "total_events": len(self._events),

@@ -99,7 +99,6 @@ class ExecutableSkillRunner:
         return await asyncio.to_thread(func, *pos_args, **kw_args)
 
 
-
 _global_runner = ExecutableSkillRunner()
 
 

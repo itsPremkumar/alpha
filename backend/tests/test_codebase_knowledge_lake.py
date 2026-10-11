@@ -8,7 +8,7 @@ from alpha.knowledge.codebase_knowledge_lake import (
 
 def test_ast_code_chunking_and_hybrid_search():
     lake = CodebaseKnowledgeLake()
-    sample_code = '''
+    sample_code = """
 def calculate_checkpoint_hash(data: str) -> str:
     # Calculates SHA-256 hash for workspace snapshot
     import hashlib
@@ -17,7 +17,7 @@ def calculate_checkpoint_hash(data: str) -> str:
 class CheckpointStore:
     # Manages persistent storage for checkpoints
     pass
-'''
+"""
     chunks_count = lake.ingest_code("core_repo", "checkpoints.py", sample_code)
     assert chunks_count >= 2
 

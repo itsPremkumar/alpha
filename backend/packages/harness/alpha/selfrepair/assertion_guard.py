@@ -11,12 +11,11 @@ import ast
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional
 
 
 class AssertionImmutabilityViolationError(Exception):
     """Raised when a candidate patch attempts to delete or weaken a test assertion."""
+
     pass
 
 
@@ -119,11 +118,7 @@ class TestAssertionImmutabilityGuard:
         if deleted:
             return GuardDecision(
                 allowed=False,
-                reason=(
-                    f"Test assertion immutability violated: {len(deleted)} original "
-                    f"assertion(s) were deleted or weakened in '{file_path}'. "
-                    f"APR must fix the underlying implementation, not alter tests."
-                ),
+                reason=(f"Test assertion immutability violated: {len(deleted)} original assertion(s) were deleted or weakened in '{file_path}'. APR must fix the underlying implementation, not alter tests."),
                 deleted_assertions=deleted,
                 original_assertion_count=len(orig_assertions),
                 patched_assertion_count=len(patched_assertions),
@@ -132,10 +127,7 @@ class TestAssertionImmutabilityGuard:
         if len(patched_assertions) < len(orig_assertions):
             return GuardDecision(
                 allowed=False,
-                reason=(
-                    f"Test assertion count decreased from {len(orig_assertions)} to "
-                    f"{len(patched_assertions)} in '{file_path}'."
-                ),
+                reason=(f"Test assertion count decreased from {len(orig_assertions)} to {len(patched_assertions)} in '{file_path}'."),
                 original_assertion_count=len(orig_assertions),
                 patched_assertion_count=len(patched_assertions),
             )

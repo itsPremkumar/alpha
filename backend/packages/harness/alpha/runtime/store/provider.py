@@ -40,9 +40,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 SQLITE_STORE_INSTALL = "langgraph-checkpoint-sqlite is required for the SQLite store. Install it with: uv add langgraph-checkpoint-sqlite"
-POSTGRES_STORE_INSTALL = (
-    "langgraph-checkpoint-postgres is required for the PostgreSQL store. Install the package extra with: pip install 'alpha-harness[postgres]' (or use: uv sync --all-packages --extra postgres when developing locally)"
-)
+POSTGRES_STORE_INSTALL = "langgraph-checkpoint-postgres is required for the PostgreSQL store. Install the package extra with: pip install 'alpha-harness[postgres]' (or use: uv sync --all-packages --extra postgres when developing locally)"
 POSTGRES_CONN_REQUIRED = "checkpointer.connection_string is required for the postgres backend"
 
 

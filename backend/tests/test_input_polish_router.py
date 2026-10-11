@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.gateway.routers import input_polish
 from alpha.utils import oneshot_llm
+from app.gateway.routers import input_polish
 
 
 def _config(

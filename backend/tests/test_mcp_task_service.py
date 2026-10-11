@@ -7,8 +7,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 import app.mcp_tasks.service as service_module
-from app.mcp_tasks.errors import PermanentNotificationError
-from app.mcp_tasks.service import McpTaskService
 from alpha.mcp.tasks import (
     McpTaskDriverRegistry,
     TaskSnapshot,
@@ -20,6 +18,8 @@ from alpha.mcp.tasks.ordinary import McpTaskProtocolError
 from alpha.persistence.mcp_tasks import DuplicateMcpRemoteTaskError
 from alpha.runtime.runs.manager import ConflictError
 from alpha.runtime.runs.schemas import RunStatus
+from app.mcp_tasks.errors import PermanentNotificationError
+from app.mcp_tasks.service import McpTaskService
 
 
 class FakeRepository:
@@ -1108,8 +1108,10 @@ async def test_run_once_uses_exponential_backoff_and_caps_transient_errors():
     expected_task2 = poll_interval_seconds * (2 ** (4 + 1))
     assert expected_task2 > max_poll_backoff_seconds, "task-2 must actually exercise the cap, not sit below it"
 
-    assert started_at + timedelta(seconds=expected_task1) <= released["task-1"]["next_poll_at"] <= finished_at + timedelta(seconds=expected_task1), f"first attempted failure must back off one growth step (post-increment), got {released['task-1']['next_poll_at']}"
-    assert started_at + timedelta(seconds=max_poll_backoff_seconds) <= released["task-2"]["next_poll_at"] <= finished_at + timedelta(seconds=max_poll_backoff_seconds), f"transient errors must cap at {max_poll_backoff_seconds}s, got {released['task-2']['next_poll_at']}"
+    next_poll_task1 = released["task-1"]["next_poll_at"]
+    next_poll_task2 = released["task-2"]["next_poll_at"]
+    assert started_at + timedelta(seconds=expected_task1) <= next_poll_task1 <= finished_at + timedelta(seconds=expected_task1), f"first attempted failure must back off one growth step (post-increment), got {next_poll_task1}"
+    assert started_at + timedelta(seconds=max_poll_backoff_seconds) <= next_poll_task2 <= finished_at + timedelta(seconds=max_poll_backoff_seconds), f"transient errors must cap at {max_poll_backoff_seconds}s, got {next_poll_task2}"
 
 
 @pytest.mark.asyncio

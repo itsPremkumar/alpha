@@ -5,13 +5,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.scheduler.service import ScheduledTaskService
 from alpha.config.database_config import DatabaseConfig
 from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from alpha.persistence.run import RunRepository
 from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
 from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
 from alpha.runtime import ConflictError
+from app.scheduler.service import ScheduledTaskService
 
 pytestmark = pytest.mark.asyncio
 

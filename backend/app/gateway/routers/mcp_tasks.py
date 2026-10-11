@@ -6,9 +6,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_current_user, get_mcp_task_repo, get_mcp_task_service
-from alpha.utils.thread_id import ThreadId
 
 router = APIRouter(prefix="/api/threads/{thread_id}/mcp-tasks", tags=["mcp-tasks"])
 

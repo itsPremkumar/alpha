@@ -6,31 +6,25 @@
 5. Workforce Model and Cost Tier Router with Fallbacks
 """
 
-import pytest
-from pathlib import Path
-import tempfile
 import time
+from pathlib import Path
 
+from alpha.bots.ephemeral import EphemeralBotManager
+from alpha.models.workforce_router import (
+    ModelTier,
+    WorkforceModelRouter,
+)
+from alpha.projects.adr_generator import (
+    generate_markdown_adr,
+)
+from alpha.projects.context_router import ThreeLevelContextRouter
 from alpha.projects.contracts import (
     ContractGatekeeper,
     DefinitionOfDone,
     EvidenceReceipt,
-    TaskContract,
 )
-from alpha.projects.decisions import Decision, DecisionLog
-from alpha.projects.adr_generator import (
-    generate_markdown_adr,
-    sync_all_adrs,
-    read_adr_markdown,
-)
-from alpha.bots.ephemeral import EphemeralBotManager
+from alpha.projects.decisions import Decision
 from alpha.projects.postmortem import ProjectPostmortemEngine
-from alpha.models.workforce_router import (
-    WorkforceModelRouter,
-    ModelTier,
-    get_workforce_model_router,
-)
-from alpha.projects.context_router import ThreeLevelContextRouter
 
 
 def test_task_contract_gatekeeper(tmp_path: Path):

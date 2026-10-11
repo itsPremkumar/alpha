@@ -70,12 +70,14 @@ def foo():
 
     def test_resolve_role_from_context(self):
         from unittest.mock import MagicMock
+
         runtime = MagicMock()
         runtime.context = {"review_role": "planner"}
         assert _resolve_role(runtime, "coder") == "planner"
 
     def test_resolve_role_from_principal(self):
         from unittest.mock import MagicMock
+
         runtime = MagicMock()
         principal = MagicMock()
         principal.role = "coder"
@@ -84,6 +86,7 @@ def foo():
 
     def test_resolve_role_default(self):
         from unittest.mock import MagicMock
+
         runtime = MagicMock()
         runtime.context = {}
         assert _resolve_role(runtime, "coder") == "coder"
@@ -109,6 +112,7 @@ class TestReviewGuardConfig:
 
     def test_bounds(self):
         from pytest import raises
+
         with raises(ValueError):
             ReviewGuardConfig(min_comment_ratio=1.5)
         with raises(ValueError):
@@ -427,10 +431,7 @@ class TestSnapshotStability:
         # so a role set only on the runtime fixture would be ignored and every role
         # assertion would silently evaluate as the configured default role.
         request.runtime = runtime
-        request.tool_call = {"name": "write_file", "id": "call_1", "args": {
-            "path": "test.py",
-            "content": "def foo():\n    x = 1\n    y = 2\n    z = 3\n"
-        }}
+        request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "def foo():\n    x = 1\n    y = 2\n    z = 3\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
 
@@ -453,10 +454,14 @@ class TestSnapshotStability:
         # so a role set only on the runtime fixture would be ignored and every role
         # assertion would silently evaluate as the configured default role.
         request.runtime = runtime
-        request.tool_call = {"name": "write_file", "id": "call_1", "args": {
-            "path": "test.py",
-            "content": "# Initialize variables\nx = 1\ny = 2\n# Compute result\nz = x + y\n# Return result\nreturn z",
-        }}
+        request.tool_call = {
+            "name": "write_file",
+            "id": "call_1",
+            "args": {
+                "path": "test.py",
+                "content": "# Initialize variables\nx = 1\ny = 2\n# Compute result\nz = x + y\n# Return result\nreturn z",
+            },
+        }
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
 
@@ -470,9 +475,7 @@ class TestSnapshotStability:
     @pytest.mark.asyncio
     async def test_comment_density_boundary(self, config, state, runtime):
         """Test the boundary at min_comment_ratio."""
-        middleware = ReviewGuardMiddleware(
-            review_guard_config=ReviewGuardConfig(min_comment_ratio=0.3, enforce_on_extensions=[".py"])
-        )
+        middleware = ReviewGuardMiddleware(review_guard_config=ReviewGuardConfig(min_comment_ratio=0.3, enforce_on_extensions=[".py"]))
 
         # Exactly 3 comments in 10 lines = 0.3 - should pass
         request = MagicMock()
@@ -480,10 +483,7 @@ class TestSnapshotStability:
         # so a role set only on the runtime fixture would be ignored and every role
         # assertion would silently evaluate as the configured default role.
         request.runtime = runtime
-        request.tool_call = {"name": "write_file", "id": "call_1", "args": {
-            "path": "test.py",
-            "content": "# comment 1\nx = 1\n# comment 2\ny = 2\n# comment 3\nz = 3\n"
-        }}
+        request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "# comment 1\nx = 1\n# comment 2\ny = 2\n# comment 3\nz = 3\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
 
@@ -526,9 +526,7 @@ class TestIntegration:
 
         # First write with good comments
         request1 = MagicMock()
-        request1.tool_call = {"name": "write_file", "id": "call_1", "args": {
-            "path": "test.py", "content": "# comment\nx = 1\n"
-        }}
+        request1.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "# comment\nx = 1\n"}}
 
         handler1 = AsyncMock()
         handler1.return_value = MagicMock(status="success")
@@ -538,9 +536,7 @@ class TestIntegration:
 
         # Second write with bad comments
         request2 = MagicMock()
-        request2.tool_call = {"name": "write_file", "id": "call_2", "args": {
-            "path": "test2.py", "content": "x = 1\ny = 2\n"
-        }}
+        request2.tool_call = {"name": "write_file", "id": "call_2", "args": {"path": "test2.py", "content": "x = 1\ny = 2\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
 

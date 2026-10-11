@@ -344,7 +344,6 @@ async def test_research_keeps_clean_content():
     async def fake_scan(content, **kwargs):
         return injection.InjectionVerdict(is_injection=False, risk=0.0, fired=[], signals={})
 
-
     original = injection.scan_content
     injection.scan_content = fake_scan
     try:
@@ -754,9 +753,7 @@ def test_fetch_run_is_routed_from_the_tool(monkeypatch):
 
     monkeypatch.setattr(bst, "_fetch_run", fake)
 
-    out = bst.browser_navigate_and_inspect.func(
-        action="fetch_run", url="https://x.test", goal="find the docs", values='{"q": "python"}'
-    )
+    out = bst.browser_navigate_and_inspect.func(action="fetch_run", url="https://x.test", goal="find the docs", values='{"q": "python"}')
 
     assert json.loads(out)["ok"] is True
     assert seen == {"url": "https://x.test", "goal": "find the docs", "steps": 0, "values": '{"q": "python"}'}

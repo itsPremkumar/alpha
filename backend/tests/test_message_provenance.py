@@ -264,8 +264,8 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
         """Delegation entries are plain dicts without ``additional_kwargs``;
         the message-shaped stripper alone would let a forged
         ``receipt_verdict`` straight into the checkpoint (PR #5076 review)."""
-        from app.gateway.services import strip_server_owned_state_metadata
         from alpha.agents.middlewares.delegation_ledger import render_delegation_ledger
+        from app.gateway.services import strip_server_owned_state_metadata
 
         values = {
             "delegations": [

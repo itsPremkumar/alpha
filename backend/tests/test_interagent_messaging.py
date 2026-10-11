@@ -1,6 +1,5 @@
 """Unit tests for direct agent-to-agent messaging and family roster."""
 
-
 from alpha.subagents.messaging import AgentRoster, get_agent_roster
 from alpha.tools.builtins.agent_message_tool import agent_message_tool, agent_observe_tool
 
@@ -8,8 +7,8 @@ from alpha.tools.builtins.agent_message_tool import agent_message_tool, agent_ob
 def test_agent_roster_registration_and_status():
     roster = AgentRoster("thread_test_1")
 
-    a1 = roster.register_agent("coder", role="software_engineer", status="idle")
-    a2 = roster.register_agent("tester", role="qa_engineer", status="busy")
+    roster.register_agent("coder", role="software_engineer", status="idle")
+    roster.register_agent("tester", role="qa_engineer", status="busy")
 
     agents = roster.list_agents()
     assert len(agents) == 2
@@ -68,11 +67,13 @@ def test_agent_message_and_observe_tools():
     observe_out = agent_observe_tool.invoke({})
     assert "api_expert" in observe_out
 
-    msg_out = agent_message_tool.invoke({
-        "receiver_name": "api_expert",
-        "content": "Verify OpenAPI schemas",
-        "sender_name": "tester",
-        "mode": "auto",
-    })
+    msg_out = agent_message_tool.invoke(
+        {
+            "receiver_name": "api_expert",
+            "content": "Verify OpenAPI schemas",
+            "sender_name": "tester",
+            "mode": "auto",
+        }
+    )
     assert "Message sent successfully" in msg_out
     assert "delivered" in msg_out

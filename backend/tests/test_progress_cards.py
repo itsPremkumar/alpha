@@ -41,17 +41,21 @@ def test_progress_card_lifecycle():
 
 
 def test_progress_card_tool():
-    milestones = json.dumps([
-        {"title": "Deconstruct goal", "status": "completed"},
-        {"title": "Implement changes", "status": "in_progress"},
-    ])
-    res = update_progress_card.invoke({
-        "title": "Continuous Pipeline",
-        "phase": "Executing",
-        "percentage": 50,
-        "current_activity": "Compiling assets",
-        "milestones_json": milestones,
-    })
+    milestones = json.dumps(
+        [
+            {"title": "Deconstruct goal", "status": "completed"},
+            {"title": "Implement changes", "status": "in_progress"},
+        ]
+    )
+    res = update_progress_card.invoke(
+        {
+            "title": "Continuous Pipeline",
+            "phase": "Executing",
+            "percentage": 50,
+            "current_activity": "Compiling assets",
+            "milestones_json": milestones,
+        }
+    )
     assert "ProgressCard ID:" in res
     assert "[Executing] Continuous Pipeline" in res
     assert "50%" in res

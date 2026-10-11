@@ -42,12 +42,7 @@ PROBE_TARGETS = (
 #: which is a probe bug that looks exactly like an import failure.
 ENV = {**os.environ, "PYTHONPATH": "packages/harness;."}
 
-SCRIPT = (
-    "import sys\n"
-    "import {target}\n"
-    "leaked = [m for m in {new!r} if m in sys.modules]\n"
-    "print(','.join(leaked) or 'NONE')\n"
-)
+SCRIPT = "import sys\nimport {target}\nleaked = [m for m in {new!r} if m in sys.modules]\nprint(','.join(leaked) or 'NONE')\n"
 
 
 def main() -> int:

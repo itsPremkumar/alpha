@@ -12,22 +12,18 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 from alpha.avo import (
-    AVOEngine,
     AVOLineage,
     AVOSupervisor,
     DomainKnowledgeBase,
     EvaluationVector,
-    StrategicPivotDirective,
     VersionRecord,
 )
 from alpha.avo.persistence import AVOPersistenceManager
 from alpha.avo.workspace_runner import WorkspaceAVORunner
 from alpha.orchestration.problem_model import ProblemModelCompiler
-from alpha.tools.builtins.variation_operator_tool import run_variation_operator_step
 from alpha.tools.builtins.problem_model_tool import compile_problem_model
+from alpha.tools.builtins.variation_operator_tool import run_variation_operator_step
 
 
 def test_avo_persistence_roundtrip(tmp_path: Path):

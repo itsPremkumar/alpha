@@ -23,10 +23,11 @@ from __future__ import annotations
 import json
 import os
 import threading
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Mapping
+from typing import Any, Final
 
 #: Bump when the on-disk shape changes incompatibly. A store written by a newer
 #: version is REFUSED, not guessed at.
@@ -51,7 +52,7 @@ class RoutineStoreUnreadable(RoutineError):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _validate_name(name: Any) -> str:

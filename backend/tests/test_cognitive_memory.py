@@ -20,7 +20,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import memory
 from alpha.memory.cognitive.associative_memory import AssociativeNetwork
 from alpha.memory.cognitive.engine import CognitiveMemorySystem
 from alpha.memory.cognitive.episodic_memory import EpisodicMemoryEngine
@@ -34,6 +33,7 @@ from alpha.memory.cognitive.procedural_memory import ProceduralSkillMemory
 from alpha.memory.cognitive.semantic_graph import SemanticBeliefGraph
 from alpha.memory.cognitive.spatio_temporal import SpatioTemporalMemory
 from alpha.memory.cognitive.working_memory import WorkingMemoryEngine
+from app.gateway.routers import memory
 
 
 @pytest.fixture(autouse=True)

@@ -439,6 +439,68 @@ tiers), `test_swarm_deliberation.py` (SPRT, guards),
 `test_swarm_stigmergy_telemetry.py` (traces, telemetry, coordinator wiring).
 
 
+## Group-Relative Orchestration (`gro/`)
+
+`alpha.gro` implements the GRPO-inspired orchestration plan
+([`docs/ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md`](../../../docs/ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md)):
+one objective, a bounded group of candidates executed under *distinct*
+strategies, then selection by **hard gates first, absolute score second,
+relative rank third**. Full contract, module map and invariants:
+[packages/harness/alpha/gro/AGENTS.md](gro/AGENTS.md). The load-bearing rules
+in one paragraph each:
+
+- **Absolute gates decide eligibility; relative comparison only ranks the
+  eligible.** A required gate that is `unknown` is not a pass, `R_i = Q_i −
+  median(Q)` is written as a diagnostic only, and a group where nothing passes
+  ends as an explicit `no_acceptable_candidate`: one bounded repair round
+  (`gro.max_repair_rounds`, default 1) then a `partial_result` labelled
+  **UNVERIFIED** — never "the best of a bad lot, verified". No declared
+  acceptance criteria means an UNVERIFIED winner (`GroReport.verified=False`);
+  the engine never invents criteria, and final verification demotes a
+  provisional winner, never promotes one.
+- **GRO is deliberately distinct from `alpha.arena`.** Arena is a bracket
+  tournament (attack/defend/judge between pairs); GRO is a single-wave group
+  comparison with gate-first eligibility and failure-directed repair. Neither
+  may grow selection rules the other owns, and the two stores are separate.
+- **The model surface is two actions on the existing `swarm` tool** —
+  `compete` (`goal` + `items_json` whose entries are acceptance criteria;
+  task type, risk tier and group size are policy-computed, never caller-
+  declared) and `compete_status` (`swarm_id` is the GRO run id; omit it to
+  list your runs newest first). No new tool, so `BUILTIN_TOOLS`,
+  `contracts/feature_manifest.json` and the capability counts are untouched.
+  `compete` refuses while `gro.enabled` is false (default off);
+  `compete_status` stays readable because it is read-only.
+- **Candidate lanes execute as real subagents.** `SubagentExecutionAdapter`
+  runs candidates through `SubagentExecutor`, inheriting the process-wide
+  admission controller, sandbox leases, receipts and usage accounting, so GRO
+  cannot exceed the operator's subagent ceiling. The candidate tool pool is
+  assembled once per run via `run_assembly(get_available_tools, …)` with the
+  `swarm` tool stripped by name (no nested tournaments); an empty pool is a
+  refusal before any lane runs, never a silent tool-less candidate.
+- **A timeout is a fence, not a kill.** CPython cannot stop a thread: a lane
+  past its bound is declared `timeout` and its late result is *discarded* —
+  adopting it would credit work the run already declared late. Every
+  candidate gets an outcome (completed, failed, timed-out, fenced-late or
+  never-started after early stop / deadline); omission would read as success
+  to any later ranker.
+- **Store honesty.** Runs persist owner-scoped under
+  `runtime_home()/gro/<owner>/<run_id>.json` (single-process JSON, never
+  cross-process exactly-once); the JSONL event journal is appended live while
+  the document lands at completion, so `compete_status` reads a journalled
+  interrupted run's tail and says so. Absent is not corrupt: an unreadable
+  document is disclosed through `is_degraded`/`load_error` and never read as
+  "no runs", and an unpersisted report says it could not be persisted.
+- **Bounds are refused, never clamped** — goal/criteria size, candidate
+  counts (bounded by `gro.max_candidates_per_task`), duplicate or unknown
+  strategy ids, and budgets. Risk is computed from the goal, so externally
+  visible or destructive work parks as `needs_human` with nothing executed
+  while `require_approval_for_external_side_effects` is on. Token spend is
+  recorded but never enters the score.
+
+Tests: `backend/tests/test_gro_core.py`, `test_gro_evaluation.py`,
+`test_gro_runner.py`, `test_gro_tool.py`.
+
+
 ## Dynamic workflow plane
 
 `alpha.workflow.runtime.DynamicWorkflowEngine` and

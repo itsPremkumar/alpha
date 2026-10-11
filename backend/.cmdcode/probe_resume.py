@@ -1,22 +1,26 @@
 """Probe: durable-resume correctness. Run with the project venv python."""
-import sys, os, tempfile, pathlib
+
+import os  # noqa: E402
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from alpha.workflow.models import (
-    NodeStatus, NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode, WorkflowPatch, WorkflowRun, WorkflowRunStatus
-)
-from alpha.workflow.runtime import DynamicWorkflowEngine
-from alpha.workflow.events import WorkflowEvent, get_event_dispatcher
+from alpha.workflow.events import get_event_dispatcher  # noqa: E402
+from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowEdge, WorkflowGraph, WorkflowNode  # noqa: E402
+from alpha.workflow.runtime import DynamicWorkflowEngine  # noqa: E402
+
 
 def make_def():
     g = WorkflowGraph(id="w", version=1)
     for i, nid in enumerate(["a", "b", "c"]):
         n = WorkflowNode(id=nid, type=NodeType.COMPUTE, prompt=f"node {nid}")
-        n.depends_on = [g.nodes[i-1].id] if i > 0 else []
+        n.depends_on = [g.nodes[i - 1].id] if i > 0 else []
         g.nodes[nid] = n
     g.edges = [WorkflowEdge(source="a", target="b"), WorkflowEdge(source="b", target="c")]
     return WorkflowDefinition(id="w", name="w", graph=g, variables={}, version=1)
+
 
 def main():
     engine = DynamicWorkflowEngine()
@@ -37,6 +41,7 @@ def main():
     print("LOG LEN after manual events:", len(dispatcher.get_events(run.run_id)))
 
     from alpha.orchestrator.replay import replay_run
+
     events = dispatcher.get_events(run.run_id)
     fresh = DynamicWorkflowEngine()
     fresh, replayed = replay_run(events, defn)
@@ -49,7 +54,8 @@ def main():
 
     # Check idempotency: does 'a' get re-executed (double side effect)?
     events2 = dispatcher.get_events(run.run_id)
-    print("NODES COMPLETED in log:", [e.payload.get('node_id') for e in events2])
+    print("NODES COMPLETED in log:", [e.payload.get("node_id") for e in events2])
+
 
 if __name__ == "__main__":
     main()

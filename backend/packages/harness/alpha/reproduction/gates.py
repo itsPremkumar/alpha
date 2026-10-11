@@ -30,8 +30,7 @@ class PreFixFailureGate:
             res = subprocess.run(
                 [py_bin, str(script_path)],
                 cwd=str(workspace_dir),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=timeout,
             )
@@ -85,8 +84,7 @@ class PostFixVerificationGate:
             res = subprocess.run(
                 [py_bin, str(script_path)],
                 cwd=str(workspace_dir),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=timeout,
             )
@@ -138,8 +136,7 @@ class RegressionSafetyGuard:
                 test_command,
                 cwd=str(workspace_dir),
                 shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=timeout,
             )

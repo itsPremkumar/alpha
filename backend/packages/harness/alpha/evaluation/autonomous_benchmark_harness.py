@@ -40,7 +40,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 DEFAULT_TEST_COMMAND: str = "pytest"
 DEFAULT_TIMEOUT_SEC: float = 300.0
@@ -280,15 +280,9 @@ def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
 # Log parsing
 # ---------------------------------------------------------------------------
 
-_PYTEST_NODE_PATTERN = re.compile(
-    r"^(?P<node>[^\s:]+\.py::[^\s]+)\s+(?P<outcome>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)"
-)
-_UNITTEST_NODE_PATTERN = re.compile(
-    r"^(?P<node>[\w\[\]-]+)\s+\((?P<context>[\w\.]+)\)\s*\.\.\.\s*(?P<outcome>ok|FAIL|ERROR|skipped)"
-)
-_SUMMARY_PATTERN = re.compile(
-    r"(?P<count>\d+)\s+(?P<unit>passed|failed|error|errors|skipped)", re.IGNORECASE
-)
+_PYTEST_NODE_PATTERN = re.compile(r"^(?P<node>[^\s:]+\.py::[^\s]+)\s+(?P<outcome>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)")
+_UNITTEST_NODE_PATTERN = re.compile(r"^(?P<node>[\w\[\]-]+)\s+\((?P<context>[\w\.]+)\)\s*\.\.\.\s*(?P<outcome>ok|FAIL|ERROR|skipped)")
+_SUMMARY_PATTERN = re.compile(r"(?P<count>\d+)\s+(?P<unit>passed|failed|error|errors|skipped)", re.IGNORECASE)
 
 
 def parse_test_log(log: str) -> dict[str, str]:
@@ -335,12 +329,7 @@ def count_diff_lines(diff_text: str) -> int:
     """Count added and removed lines in a unified diff."""
     if not diff_text:
         return 0
-    return sum(
-        1
-        for line in diff_text.splitlines()
-        if (line.startswith("+") and not line.startswith("+++"))
-        or (line.startswith("-") and not line.startswith("---"))
-    )
+    return sum(1 for line in diff_text.splitlines() if (line.startswith("+") and not line.startswith("+++")) or (line.startswith("-") and not line.startswith("---")))
 
 
 def _match_node(node: str, expected: str) -> bool:
@@ -364,8 +353,8 @@ class AutonomousBenchmarkHarness:
 
     def __init__(
         self,
-        output_dir: Optional[str | Path] = None,
-        workdir_root: Optional[str | Path] = None,
+        output_dir: str | Path | None = None,
+        workdir_root: str | Path | None = None,
         keep_workspace: bool = False,
         default_timeout_sec: float = DEFAULT_TIMEOUT_SEC,
     ):
@@ -402,12 +391,8 @@ class AutonomousBenchmarkHarness:
     @staticmethod
     def _configure_git_identity(workspace: Path) -> None:
         """Set a deterministic commit identity for synthetic repositories."""
-        AutonomousBenchmarkHarness._run_git(
-            ["config", "user.email", "benchmark@alpha.local"], cwd=workspace
-        )
-        AutonomousBenchmarkHarness._run_git(
-            ["config", "user.name", "Autonomous Benchmark Harness"], cwd=workspace
-        )
+        AutonomousBenchmarkHarness._run_git(["config", "user.email", "benchmark@alpha.local"], cwd=workspace)
+        AutonomousBenchmarkHarness._run_git(["config", "user.name", "Autonomous Benchmark Harness"], cwd=workspace)
 
     @staticmethod
     def _run_git(args: list[str], cwd: Path, timeout: float = 60.0) -> tuple[int, str]:
@@ -441,14 +426,10 @@ class AutonomousBenchmarkHarness:
             return True, ""
         patch_file = workspace / ".benchmark_patch.diff"
         patch_file.write_text(patch_text, encoding="utf-8")
-        code, output = AutonomousBenchmarkHarness._run_git(
-            ["apply", "--whitespace=nowarn", str(patch_file)], cwd=workspace
-        )
+        code, output = AutonomousBenchmarkHarness._run_git(["apply", "--whitespace=nowarn", str(patch_file)], cwd=workspace)
         if code == 0:
             return True, output
-        code, output = AutonomousBenchmarkHarness._run_git(
-            ["apply", "--3way", "--whitespace=nowarn", str(patch_file)], cwd=workspace
-        )
+        code, output = AutonomousBenchmarkHarness._run_git(["apply", "--3way", "--whitespace=nowarn", str(patch_file)], cwd=workspace)
         return code == 0, output
 
     # -- test execution ----------------------------------------------------
@@ -490,9 +471,7 @@ class AutonomousBenchmarkHarness:
         env.pop("PYTEST_ADDOPTS", None)
         return env
 
-    def _execute_tests(
-        self, problem: BenchmarkProblem, workspace: Path
-    ) -> tuple[str, int, float]:
+    def _execute_tests(self, problem: BenchmarkProblem, workspace: Path) -> tuple[str, int, float]:
         """Run the test command, returning ``(log, returncode, duration)``."""
         command = self._build_command(problem, workspace)
         started = time.time()
@@ -535,7 +514,7 @@ class AutonomousBenchmarkHarness:
             A :class:`BenchmarkRunResult` describing the attempt.
         """
         started = time.time()
-        workspace: Optional[Path] = None
+        workspace: Path | None = None
         try:
             workspace = self._create_workspace(problem)
             self._write_files(workspace, problem.files)
@@ -545,9 +524,7 @@ class AutonomousBenchmarkHarness:
                 self._write_files(workspace, problem.test_files)
                 baseline_log, _, _ = self._execute_tests(problem, workspace)
                 baseline = parse_test_log(baseline_log)
-                baseline_failures = {
-                    node for node, outcome in baseline.items() if outcome != "PASSED"
-                }
+                baseline_failures = {node for node, outcome in baseline.items() if outcome != "PASSED"}
 
             if problem.test_patch:
                 applied, output = self._apply_patch(workspace, problem.test_patch)
@@ -576,10 +553,7 @@ class AutonomousBenchmarkHarness:
                     )
             if problem.patch_files:
                 self._write_files(workspace, problem.patch_files)
-                patch_lines += sum(
-                    max(len(content.splitlines()), 1)
-                    for content in problem.patch_files.values()
-                )
+                patch_lines += sum(max(len(content.splitlines()), 1) for content in problem.patch_files.values())
 
             log, returncode, duration = self._execute_tests(problem, workspace)
             outcomes = parse_test_log(log)
@@ -591,18 +565,14 @@ class AutonomousBenchmarkHarness:
             for expected in problem.fail_to_pass:
                 matched = [node for node in outcomes if _match_node(node, expected)]
                 if matched:
-                    fail_to_pass[expected] = all(
-                        outcomes[node] == "PASSED" for node in matched
-                    )
+                    fail_to_pass[expected] = all(outcomes[node] == "PASSED" for node in matched)
                 else:
                     fail_to_pass[expected] = False
 
             pass_to_pass: dict[str, bool] = {}
             for expected in problem.pass_to_pass:
                 matched = [node for node in outcomes if _match_node(node, expected)]
-                pass_to_pass[expected] = (
-                    all(outcomes[node] == "PASSED" for node in matched) if matched else False
-                )
+                pass_to_pass[expected] = all(outcomes[node] == "PASSED" for node in matched) if matched else False
 
             if not problem.fail_to_pass:
                 resolved = returncode == 0 and failed_total == 0 and passed_total > 0
@@ -613,13 +583,9 @@ class AutonomousBenchmarkHarness:
             if not problem.fail_to_pass:
                 resolved_count = 1 if resolved else 0
 
-            repair_efficiency = compute_repair_efficiency(
-                resolved_count, len(problem.fail_to_pass), 1
-            )
+            repair_efficiency = compute_repair_efficiency(resolved_count, len(problem.fail_to_pass), 1)
             token_economy = compute_token_economy(resolved_count, problem.tokens_used)
-            diff_minimization = compute_diff_minimization(
-                patch_lines, problem.reference_patch_lines
-            )
+            diff_minimization = compute_diff_minimization(patch_lines, problem.reference_patch_lines)
 
             return self._result(
                 problem,
@@ -656,8 +622,8 @@ class AutonomousBenchmarkHarness:
         problem: BenchmarkProblem,
         attempt: int,
         outcome: RunOutcome,
-        fail_to_pass: Optional[dict[str, bool]] = None,
-        pass_to_pass: Optional[dict[str, bool]] = None,
+        fail_to_pass: dict[str, bool] | None = None,
+        pass_to_pass: dict[str, bool] | None = None,
         tests_total: int = 0,
         tests_passed: int = 0,
         tests_failed: int = 0,
@@ -668,7 +634,7 @@ class AutonomousBenchmarkHarness:
         diff_minimization: float = 0.0,
         error: str = "",
         log_excerpt: str = "",
-        started: Optional[float] = None,
+        started: float | None = None,
         baseline_failures: int = 0,
     ) -> BenchmarkRunResult:
         """Construct and record a run result."""
@@ -682,8 +648,7 @@ class AutonomousBenchmarkHarness:
             tests_total=tests_total,
             tests_passed=tests_passed,
             tests_failed=tests_failed,
-            duration_sec=duration
-            or (max(time.time() - started, 0.0) if started is not None else 0.0),
+            duration_sec=duration or (max(time.time() - started, 0.0) if started is not None else 0.0),
             patch_lines=patch_lines,
             tokens_used=problem.tokens_used,
             repair_efficiency=repair_efficiency,
@@ -702,7 +667,7 @@ class AutonomousBenchmarkHarness:
         self,
         problems: list[BenchmarkProblem],
         attempts: int = 1,
-        k_values: Optional[list[int]] = None,
+        k_values: list[int] | None = None,
         verify_baseline: bool = True,
     ) -> dict[str, Any]:
         """Run every problem ``attempts`` times and aggregate metrics.
@@ -729,11 +694,7 @@ class AutonomousBenchmarkHarness:
                     self.run_problem(
                         problem,
                         attempt=attempt_index,
-                        capture_before=(
-                            verify_baseline
-                            and attempt_index == 1
-                            and bool(problem.fail_to_pass)
-                        ),
+                        capture_before=(verify_baseline and attempt_index == 1 and bool(problem.fail_to_pass)),
                     )
                 )
             successes = sum(1 for run in runs if run.resolved)
@@ -743,10 +704,7 @@ class AutonomousBenchmarkHarness:
                     "runs": [run.to_dict() for run in runs],
                     "successes": successes,
                     "attempts": attempts,
-                    "pass_at_k": {
-                        f"pass@{k}": compute_pass_at_k(attempts, successes, k)
-                        for k in k_values
-                    },
+                    "pass_at_k": {f"pass@{k}": compute_pass_at_k(attempts, successes, k) for k in k_values},
                 }
             )
 
@@ -757,9 +715,7 @@ class AutonomousBenchmarkHarness:
             "aggregate": aggregate.to_dict(),
         }
 
-    def aggregate(
-        self, per_problem: list[dict[str, Any]], k_values: list[int]
-    ) -> BenchmarkAggregate:
+    def aggregate(self, per_problem: list[dict[str, Any]], k_values: list[int]) -> BenchmarkAggregate:
         """Aggregate per-problem records into suite-level metrics."""
         problem_count = len(per_problem)
         resolved_count = sum(1 for entry in per_problem if entry.get("successes", 0) > 0)
@@ -767,9 +723,7 @@ class AutonomousBenchmarkHarness:
 
         pass_at_k: dict[str, float] = {}
         for k in k_values:
-            scores = [
-                entry.get("pass_at_k", {}).get(f"pass@{k}", 0.0) for entry in per_problem
-            ]
+            scores = [entry.get("pass_at_k", {}).get(f"pass@{k}", 0.0) for entry in per_problem]
             pass_at_k[f"pass@{k}"] = (sum(scores) / len(scores)) if scores else 0.0
 
         all_runs = [run for entry in per_problem for run in entry.get("runs", [])]
@@ -807,9 +761,7 @@ class AutonomousBenchmarkHarness:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         json_path = self.output_dir / f"{name}.json"
         markdown_path = self.output_dir / f"{name}.md"
-        json_path.write_text(
-            json.dumps(report, indent=2, sort_keys=False, default=str), encoding="utf-8"
-        )
+        json_path.write_text(json.dumps(report, indent=2, sort_keys=False, default=str), encoding="utf-8")
         markdown_path.write_text(self.render_markdown(report), encoding="utf-8")
         return {"json": str(json_path), "markdown": str(markdown_path)}
 
@@ -833,9 +785,7 @@ class AutonomousBenchmarkHarness:
             lines.append(f"| {key} | {value:.3f} |")
         lines.append(f"| Repair efficiency | {aggregate.get('repair_efficiency', 0):.3f} |")
         lines.append(f"| Token economy | {aggregate.get('token_economy', 0):.3f} |")
-        lines.append(
-            f"| Diff minimization | {aggregate.get('mean_diff_minimization', 0):.3f} |"
-        )
+        lines.append(f"| Diff minimization | {aggregate.get('mean_diff_minimization', 0):.3f} |")
         lines.append(f"| Mean duration (s) | {aggregate.get('mean_duration_sec', 0):.3f} |")
         lines.append("")
         lines.append("## Per-Problem Results")
@@ -895,10 +845,7 @@ def problem_from_spec(spec: dict[str, Any]) -> BenchmarkProblem:
         test_paths=list(spec.get("test_paths", []) or []),
         test_command=str(spec.get("test_command", DEFAULT_TEST_COMMAND) or DEFAULT_TEST_COMMAND),
         timeout_sec=float(spec.get("timeout_sec", DEFAULT_TIMEOUT_SEC) or DEFAULT_TIMEOUT_SEC),
-        reference_patch_lines=int(
-            spec.get("reference_patch_lines", DEFAULT_REFERENCE_PATCH_LINES)
-            or DEFAULT_REFERENCE_PATCH_LINES
-        ),
+        reference_patch_lines=int(spec.get("reference_patch_lines", DEFAULT_REFERENCE_PATCH_LINES) or DEFAULT_REFERENCE_PATCH_LINES),
         tokens_used=int(spec.get("tokens_used", 0) or 0),
         metadata=dict(spec.get("metadata", {}) or {}),
     )

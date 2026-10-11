@@ -98,16 +98,8 @@ def _ensure(client: TestClient, name: str) -> dict:
 def test_route_table_exposes_both_clone_paths_to_distinct_handlers():
     app = _build_app()
 
-    profile_routes = [
-        r
-        for r in app.routes
-        if isinstance(r, APIRoute) and "POST" in r.methods and r.path.endswith("/clone")
-    ]
-    engine_routes = [
-        r
-        for r in app.routes
-        if isinstance(r, APIRoute) and "POST" in r.methods and r.path.endswith("/clone-engine")
-    ]
+    profile_routes = [r for r in app.routes if isinstance(r, APIRoute) and "POST" in r.methods and r.path.endswith("/clone")]
+    engine_routes = [r for r in app.routes if isinstance(r, APIRoute) and "POST" in r.methods and r.path.endswith("/clone-engine")]
 
     # Exactly one profile-copy route remains on /clone — no shadow duplicate.
     assert [r.path for r in profile_routes] == ["/api/bots/{name}/clone"]

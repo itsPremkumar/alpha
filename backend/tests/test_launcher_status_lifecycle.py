@@ -74,10 +74,7 @@ def _bash() -> str:
     resolved = shutil.which("bash")
     if resolved and "system32" not in resolved.lower():
         return resolved
-    pytest.fail(
-        "no POSIX bash found (only the WSL launcher shim is on PATH): "
-        "the start.sh status contract cannot be verified"
-    )
+    pytest.fail("no POSIX bash found (only the WSL launcher shim is on PATH): the start.sh status contract cannot be verified")
     raise AssertionError("unreachable")
 
 
@@ -109,17 +106,13 @@ def _seed_stale_health(logs: Path, status: str = "starting", pid: int | None = N
 def _assert_not_a_lie(logs: Path, *, expect_status_terminal: bool) -> dict:
     """Shared assertion: no file here may claim a non-terminal live launcher."""
     health_path = logs / HEALTH_NAME
-    assert not (logs / PID_NAME).exists(), (
-        f"{PID_NAME} survived the launcher: a PID file that outlives its process is the same lie"
-    )
+    assert not (logs / PID_NAME).exists(), f"{PID_NAME} survived the launcher: a PID file that outlives its process is the same lie"
     if not health_path.exists():
         pytest.fail("the launcher exited without recording any terminal state at all")
     record = _read_health(logs)
     status = record.get("status")
     if expect_status_terminal:
-        assert status not in NON_TERMINAL, (
-            f"health file still claims status={status!r} after the launcher exited: {record}"
-        )
+        assert status not in NON_TERMINAL, f"health file still claims status={status!r} after the launcher exited: {record}"
     return record
 
 
@@ -261,9 +254,7 @@ class TestStartPs1LeavesNoStaleStatus:
         assert result.returncode == 1, f"expected a non-zero exit; stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         record = _assert_not_a_lie(isolated_repo / "logs", expect_status_terminal=True)
         assert record["status"] == "failed"
-        assert "frontend" in record["detail"].lower(), (
-            f"the recorded reason must name the actual missing dependency; got {record['detail']!r}"
-        )
+        assert "frontend" in record["detail"].lower(), f"the recorded reason must name the actual missing dependency; got {record['detail']!r}"
 
     def test_a_pre_existing_stale_starting_file_does_not_survive(self, isolated_repo: Path) -> None:
         """The reported bug, end to end: 'status: starting' from a dead launcher."""
@@ -274,9 +265,7 @@ class TestStartPs1LeavesNoStaleStatus:
 
         assert result.returncode == 1
         record = _assert_not_a_lie(isolated_repo / "logs", expect_status_terminal=True)
-        assert record["status"] != "starting", (
-            f"the stale 'starting' claim outlived the launcher: {record}"
-        )
+        assert record["status"] != "starting", f"the stale 'starting' claim outlived the launcher: {record}"
         assert record["status"] == "failed"
         assert record["detail"], "a terminal status must carry the reason it failed"
 
@@ -360,10 +349,7 @@ class TestStartPs1LeavesNoStaleStatus:
                         break
                 time.sleep(0.5)
             else:  # pragma: no cover - only if the launcher never got going
-                pytest.fail(
-                    "start.ps1 never published a non-terminal status with its prerequisites "
-                    f"satisfied. Last: {health.read_text(errors='replace') if health.exists() else '(no file)'}"
-                )
+                pytest.fail(f"start.ps1 never published a non-terminal status with its prerequisites satisfied. Last: {health.read_text(errors='replace') if health.exists() else '(no file)'}")
 
             # It claimed to be starting, on the ports we asked for...
             assert record["status"] == "starting", f"expected a non-terminal claim, got: {record}"
@@ -394,7 +380,7 @@ class TestStartPs1LeavesNoStaleStatus:
         body = source[loop:]
 
         for field in (
-            "phase              = \"boot_wait\"",
+            'phase              = "boot_wait"',
             "attempt            = $i",
             "elapsed_seconds    = [int]($i * 2)",
             "gateway_ready      = [bool]$gatewayReady",
@@ -405,10 +391,7 @@ class TestStartPs1LeavesNoStaleStatus:
 
         write_at = body.index('Write-HealthFile -Status "starting" `')
         probe_at = body.index("/health/ready")
-        assert probe_at < write_at, (
-            "the boot-wait health record is written before the readiness probe, so "
-            "gateway_last_error describes the previous iteration (empty on the first pass)"
-        )
+        assert probe_at < write_at, "the boot-wait health record is written before the readiness probe, so gateway_last_error describes the previous iteration (empty on the first pass)"
 
         # The probe must be the readiness route, never liveness: /health answers
         # 200 for a Gateway whose database is unreachable.
@@ -427,14 +410,10 @@ class TestStartPs1LeavesNoStaleStatus:
 
         assert "$script:LastHealthExtra" in source, "the launcher must retain its last observation"
         retention = source[source.index("function Write-HealthFile") : source.index("function Refresh-Heartbeat")]
-        assert "if ($Extra) {" in retention and "$script:LastHealthExtra = $Extra" in retention, (
-            "Write-HealthFile must remember the -Extra fields it was given"
-        )
+        assert "if ($Extra) {" in retention and "$script:LastHealthExtra = $Extra" in retention, "Write-HealthFile must remember the -Extra fields it was given"
         assert "$script:LastHealthExtra" in retention[retention.index("Write-StateFile") :] or True
         reapply = retention.split("$fields = ")[-1]
-        assert "else { $script:LastHealthExtra }" in reapply, (
-            "a heartbeat refresh with no -Extra must re-apply the retained fields"
-        )
+        assert "else { $script:LastHealthExtra }" in reapply, "a heartbeat refresh with no -Extra must re-apply the retained fields"
 
 
 # ===========================================================================
@@ -486,23 +465,17 @@ def unix_repo(tmp_path: Path) -> dict:
     python_exe = Path(sys.executable)
     _write_exec(
         bindir / "python3",
-        '#!/usr/bin/env bash\n'
-        'printf "%s\\n" "$*" >> "$(dirname "$0")/../rotate_calls.txt"\n'
-        f'exec "{python_exe}" "$@"\n',
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$(dirname "$0")/../rotate_calls.txt"\nexec "{python_exe}" "$@"\n',
     )
     # `uv` and `node` must answer a version query: start.sh validates
     # `node -v` (>= 22) before it starts anything and correctly refuses to run
     # without a version. A stub that just sleeps therefore makes every
     # start.sh test fail at the dependency gate instead of at the behaviour
     # under test - which is exactly what happened before this was fixed.
-    _write_exec(bindir / "uv", '#!/usr/bin/env bash\nexec sleep 60\n')
+    _write_exec(bindir / "uv", "#!/usr/bin/env bash\nexec sleep 60\n")
     _write_exec(
         bindir / "node",
-        "#!/usr/bin/env bash\n"
-        'case "${1:-}" in\n'
-        "  -v|--version) echo v24.0.0-test-stub ;;\n"
-        "  *) exec sleep 60 ;;\n"
-        "esac\n",
+        '#!/usr/bin/env bash\ncase "${1:-}" in\n  -v|--version) echo v24.0.0-test-stub ;;\n  *) exec sleep 60 ;;\nesac\n',
     )
     _write_exec(bindir / "xdg-open", "#!/usr/bin/env bash\nexit 0\n")
 
@@ -547,9 +520,7 @@ def _run_start_sh(env_repo: dict, *extra_env: str, timeout: int = 180) -> subpro
 
 class TestStartSh:
     def test_shell_syntax_is_valid(self) -> None:
-        result = subprocess.run(
-            [_bash(), "-n", str(START_SH)], capture_output=True, text=True, check=False
-        )
+        result = subprocess.run([_bash(), "-n", str(START_SH)], capture_output=True, text=True, check=False)
         assert result.returncode == 0, f"start.sh does not parse:\n{result.stderr}"
 
     def test_not_ready_exits_non_zero_with_no_stale_starting_claim(self, unix_repo: dict) -> None:
@@ -583,17 +554,13 @@ class TestStartSh:
         _run_start_sh(unix_repo)
         calls_file = unix_repo["tmp"] / "rotate_calls.txt"
 
-        assert calls_file.exists(), (
-            "start.sh never invoked scripts/rotate_logs.py; logs/gateway.log grows without bound on this path"
-        )
+        assert calls_file.exists(), "start.sh never invoked scripts/rotate_logs.py; logs/gateway.log grows without bound on this path"
         invocation = calls_file.read_text(encoding="utf-8")
         assert "rotate_logs.py" in invocation
         # Git Bash reports POSIX paths where Python has Windows ones, so compare
         # the normalised tail rather than the raw string.
         posix = invocation.replace("\\", "/")
-        assert "/scripts/rotate_logs.py" in posix, (
-            f"start.sh must rotate its own repo's rotator, not some other checkout: {invocation!r}"
-        )
+        assert "/scripts/rotate_logs.py" in posix, f"start.sh must rotate its own repo's rotator, not some other checkout: {invocation!r}"
         assert "--project-root" in invocation
         # A nonzero status budget is forwarded so the launcher cannot silently
         # fall back to an unbounded default.
@@ -612,9 +579,7 @@ class TestStartSh:
 
         assert result.returncode == 1
         assert "503" in result.stdout, f"expected the readiness 503 to be reported:\n{result.stdout}"
-        assert "unreachable" in result.stdout, (
-            f"the launcher's own reason must name the failing subsystem:\n{result.stdout}"
-        )
+        assert "unreachable" in result.stdout, f"the launcher's own reason must name the failing subsystem:\n{result.stdout}"
         record = _read_health(unix_repo["root"] / "logs")
         assert record["status"] == "failed"
         assert "unreachable" in record["detail"]
@@ -641,10 +606,8 @@ class TestStartSh:
         """
         source = START_SH.read_text(encoding="utf-8", errors="replace")
 
-        assert 'if [ "$GW_OK" = "1" ] && [ "$FE_OK" = "1" ]; then' in source, (
-            "the LIVE verdict must require both the gateway readiness probe and the "
-            "frontend probe to have succeeded.\nFound branches:\n"
-            + "\n".join(line for line in source.splitlines() if "LIVE" in line or "GW_OK" in line)
+        assert 'if [ "$GW_OK" = "1" ] && [ "$FE_OK" = "1" ]; then' in source, "the LIVE verdict must require both the gateway readiness probe and the frontend probe to have succeeded.\nFound branches:\n" + "\n".join(
+            line for line in source.splitlines() if "LIVE" in line or "GW_OK" in line
         )
         # And a failure must go through cleanup_state "failed", never fall
         # through into the LIVE branch.
@@ -654,9 +617,7 @@ class TestStartSh:
         # (which deliberately quotes the string while documenting this very
         # contract) out of the tally; a second `echo` would mean a second,
         # unguarded banner.
-        banner_lines = [
-            line for line in source.splitlines() if "Alpha is LIVE" in line and line.strip().startswith("echo")
-        ]
+        banner_lines = [line for line in source.splitlines() if "Alpha is LIVE" in line and line.strip().startswith("echo")]
         assert len(banner_lines) == 1, f"the LIVE banner must be printed once, found: {banner_lines}"
 
     def test_a_dead_gateway_process_is_named_in_the_failure(self, unix_repo: dict) -> None:

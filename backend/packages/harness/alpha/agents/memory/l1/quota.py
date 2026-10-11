@@ -67,11 +67,7 @@ def calculate_credits(
 ) -> float:
     """Credits for one LLM call (source ``CreditCalculator.calculate``)."""
     multiplier = MODEL_MULTIPLIERS.get(model or "", DEFAULT_MODEL_MULTIPLIER)
-    total = (
-        (max(0, input_tokens) / 1000.0) * DEFAULT_INPUT_RATE
-        + (max(0, cache_tokens) / 1000.0) * DEFAULT_CACHE_RATE
-        + (max(0, output_tokens) / 1000.0) * DEFAULT_OUTPUT_RATE
-    )
+    total = (max(0, input_tokens) / 1000.0) * DEFAULT_INPUT_RATE + (max(0, cache_tokens) / 1000.0) * DEFAULT_CACHE_RATE + (max(0, output_tokens) / 1000.0) * DEFAULT_OUTPUT_RATE
     return total * multiplier
 
 
@@ -90,11 +86,7 @@ def usage_from_response(response: Any, *, model: str | None = None) -> float:
         return 0.0
     input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
     output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
-    cache_tokens = int(
-        (usage.get("cache_creation_input_tokens") or 0)
-        + (usage.get("cache_read_input_tokens") or 0)
-        + (usage.get("cache_tokens") or 0)
-    )
+    cache_tokens = int((usage.get("cache_creation_input_tokens") or 0) + (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_tokens") or 0))
     if input_tokens <= 0 and output_tokens <= 0 and cache_tokens <= 0:
         return 0.0
     return calculate_credits(

@@ -19,7 +19,6 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from app.scheduler.service import ScheduledTaskService
 from alpha.persistence.base import Base
 from alpha.persistence.run import RunRepository
 from alpha.persistence.run.model import RunRow
@@ -29,6 +28,7 @@ from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
 from alpha.persistence.scheduled_tasks.model import ScheduledTaskRow
 from alpha.runtime.runs.manager import RunRecord
 from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+from app.scheduler.service import ScheduledTaskService
 
 pytestmark = pytest.mark.asyncio
 

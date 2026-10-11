@@ -69,10 +69,10 @@ async def seed_baseline(backend: str, pg_url: str, pg_schema: str, n_users: int 
     reads target these known emails (not ones the workers themselves are
     creating), so read and write paths don't depend on each other within
     the same run."""
-    from app.gateway.auth.models import User
-    from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
     from alpha.config.database_config import DatabaseConfig
     from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+    from app.gateway.auth.models import User
+    from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     if backend == "sqlite":
         sqlite_dir = Path(SQLITE_BENCH_DIR)

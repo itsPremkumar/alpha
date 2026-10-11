@@ -72,10 +72,7 @@ def _config(port: int = 0) -> BrokerConfig:
 def _windows_posix_sh() -> str | None:
     candidates = [shutil.which("sh")]
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    candidates.extend(
-        str(Path(program_files) / relative)
-        for relative in ("Git/bin/sh.exe", "Git/usr/bin/sh.exe")
-    )
+    candidates.extend(str(Path(program_files) / relative) for relative in ("Git/bin/sh.exe", "Git/usr/bin/sh.exe"))
     return next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), None)
 
 

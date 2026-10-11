@@ -2,38 +2,22 @@
 
 from __future__ import annotations
 
-import json
 import sys
-
-import pytest
-from pathlib import Path
 
 from alpha.safety.ast_syntax_guard import (
     validate_syntax_precommit,
-    _validate_python_syntax,
-    _validate_json_syntax,
-    _validate_yaml_syntax,
 )
 
 
 def test_valid_python_syntax():
-    code = (
-        "def add(a: int, b: int) -> int:\n"
-        "    return a + b\n\n"
-        "class Calculator:\n"
-        "    def multiply(self, x: float, y: float) -> float:\n"
-        "        return x * y\n"
-    )
+    code = "def add(a: int, b: int) -> int:\n    return a + b\n\nclass Calculator:\n    def multiply(self, x: float, y: float) -> float:\n        return x * y\n"
     valid, err = validate_syntax_precommit("calc.py", code)
     assert valid is True
     assert err is None
 
 
 def test_invalid_python_indentation_rejected():
-    code = (
-        "def broken():\n"
-        "return 42\n"
-    )
+    code = "def broken():\nreturn 42\n"
     valid, err = validate_syntax_precommit("broken.py", code)
     assert valid is False
     assert err is not None
@@ -42,10 +26,7 @@ def test_invalid_python_indentation_rejected():
 
 
 def test_invalid_python_syntax_rejected():
-    code = (
-        "def broken(\n"
-        "    return 42\n"
-    )
+    code = "def broken(\n    return 42\n"
     valid, err = validate_syntax_precommit("syntax_err.py", code)
     assert valid is False
     assert err is not None

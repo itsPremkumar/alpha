@@ -377,9 +377,7 @@ def test_entities_store_refuses_instead_of_quarantining_an_unknown_schema(tmp_pa
     store = EntityStore(storage_path=str(tmp_path))
     path = store._path("u1")
     path.parent.mkdir(parents=True, exist_ok=True)
-    original = json.dumps(
-        {"schema": 2, "entities": [], "mentions": [], "links": [], "evictions": [], "future_field": 1}
-    ).encode()
+    original = json.dumps({"schema": 2, "entities": [], "mentions": [], "links": [], "evictions": [], "future_field": 1}).encode()
     path.write_bytes(original)
 
     fresh = EntityStore(storage_path=str(tmp_path))
@@ -400,9 +398,7 @@ def test_utility_store_refuses_instead_of_quarantining_an_unknown_schema(tmp_pat
     seed = UtilityStore(config=config)
     path = seed._path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    original = json.dumps(
-        {"schema": 5, "records": [], "evictions": [], "corruption_events": [], "future_field": 1}
-    ).encode()
+    original = json.dumps({"schema": 5, "records": [], "evictions": [], "corruption_events": [], "future_field": 1}).encode()
     path.write_bytes(original)
 
     fresh = UtilityStore(config=UtilityConfig(storage_path=str(tmp_path / "utility"), enabled=True))

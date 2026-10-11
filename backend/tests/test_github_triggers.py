@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from alpha.config.agents_config import GitHubTriggerConfig
 from app.gateway.github.triggers import (
     DEFAULT_TRIGGERS,
     _resolved_trigger,
     event_should_fire,
 )
-from alpha.config.agents_config import GitHubTriggerConfig
 
 BOT = "coding-llm-gateway"
 

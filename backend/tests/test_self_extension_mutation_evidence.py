@@ -53,9 +53,7 @@ def mutated_module(filename: str, *replacements: tuple[str, str], prelude: str =
     mutated = source
     for old, new in replacements:
         occurrences = mutated.count(old)
-        assert occurrences == 1, (
-            f"mutation target must occur exactly once in {filename}, found {occurrences}: {old!r}"
-        )
+        assert occurrences == 1, f"mutation target must occur exactly once in {filename}, found {occurrences}: {old!r}"
         mutated = mutated.replace(old, new)
     assert mutated != source, f"mutation for {filename} was a no-op"
     _mutated_counter += 1
@@ -68,9 +66,7 @@ def mutated_module(filename: str, *replacements: tuple[str, str], prelude: str =
 
 
 def _bound(mod, rank: int, live: int = 4) -> object:
-    return mod.AuthorityCeiling(
-        max_capability_rank=rank, max_live_profiles=live, max_total_profiles=live * 4
-    )
+    return mod.AuthorityCeiling(max_capability_rank=rank, max_live_profiles=live, max_total_profiles=live * 4)
 
 
 # ==========================================================================
@@ -89,9 +85,7 @@ def test_mutation_removing_the_grant_check_breaks_the_over_privilege_refusal(tmp
     )
     # (1) The shipped guarantee: an over-ceiling request is REFUSED.
     with pytest.raises(m.AuthorityViolation):
-        m.enforce_grant(
-            ["grant_authority"], creator_grant=["observe"], subject="x", ceiling=_bound(m, 50)
-        )
+        m.enforce_grant(["grant_authority"], creator_grant=["observe"], subject="x", ceiling=_bound(m, 50))
     # (2) With the guard removed, the SAME request is granted. The test bites.
     mutated_dyn = mutated_module(
         "dynamic_profiles.py",
@@ -118,9 +112,7 @@ def test_mutation_removing_the_grant_check_breaks_the_over_privilege_refusal(tmp
     store.propose_profile(proposal)
     store.approve_proposal("root-bot")
     created = store.install_approved("root-bot")
-    assert "grant_authority" in created.granted_capabilities, (
-        "a profile above the ceiling was created: the refusal test does not bite"
-    )
+    assert "grant_authority" in created.granted_capabilities, "a profile above the ceiling was created: the refusal test does not bite"
     assert real.AuthorityCeiling is not m.AuthorityCeiling
 
 
@@ -230,9 +222,7 @@ def test_mutation_removing_the_demotion_makes_tightening_a_silent_no_op(tmp_path
     granted = ["observe", "reason", "process_exec"]
     # (1) The shipped guarantee: tightening removes what no longer fits.
     tight = _bound(m, 10, live=4)
-    tight = m.AuthorityCeiling(
-        max_capability_rank=10, allowed_capabilities=frozenset({"observe"}), max_live_profiles=4
-    )
+    tight = m.AuthorityCeiling(max_capability_rank=10, allowed_capabilities=frozenset({"observe"}), max_live_profiles=4)
     kept, removed = real.narrow_to_ceiling(granted, subject="x", ceiling=tight)
     assert kept == frozenset({"observe"})
     assert sorted(removed) == ["process_exec", "reason"]
@@ -290,9 +280,7 @@ def test_mutation_removing_the_ceiling_filter_hands_out_dangerous_tools():
     # (2) Mutated: the rank check is gone, so the dangerous tools are handed out.
     m_bound = m.AuthorityCeiling(max_capability_rank=70)
     assert "grant_authority" in m_bound.allowed_capabilities
-    kept_wide = {
-        t.name for t in filter_tools_by_role(tools, "admin", enabled=True, ceiling=m_bound)
-    }
+    kept_wide = {t.name for t in filter_tools_by_role(tools, "admin", enabled=True, ceiling=m_bound)}
     assert kept_wide == {"view_file", "git_push", "hire_bot"}
 
 
@@ -306,7 +294,7 @@ def test_mutation_of_the_failure_states_makes_failures_look_successful():
         "autonomy_guard.py",
         (
             'FAILURE_STATES: frozenset[str] = frozenset({"failed", "cancelled", "reverted"})',
-            'FAILURE_STATES: frozenset[str] = frozenset()',
+            "FAILURE_STATES: frozenset[str] = frozenset()",
         ),
     )
     real = __import__("alpha.bots.autonomy_guard", fromlist=["x"])
@@ -466,12 +454,10 @@ def test_mutation_removing_the_revert_leaves_the_broken_change(tmp_path, monkeyp
     m = mutated_module(
         "self_modification.py",
         (
-            '    if is_protected_component(normalised) or any(\n        item.lower() in normalised.lower() for item in PERMANENTLY_OFF_LIMITS\n    ):\n        return False',
+            "    if is_protected_component(normalised) or any(\n        item.lower() in normalised.lower() for item in PERMANENTLY_OFF_LIMITS\n    ):\n        return False",
             "    if False:\n        return False",
         ),
-        prelude=(
-            "def _always_true(target, repo_root=None):\n    return True\n"
-        ),
+        prelude=("def _always_true(target, repo_root=None):\n    return True\n"),
     )
     monkeypatch.delenv(m.KILL_SWITCH_ENV, raising=False)
     repo = tmp_path / "repo"
@@ -491,9 +477,7 @@ def test_mutation_removing_the_revert_leaves_the_broken_change(tmp_path, monkeyp
         return SentinelLoop(root, fix_fn=fix_fn, verifier=RedVerifier(root))
 
     real_sm = __import__("alpha.bots.self_modification", fromlist=["x"])
-    shipped = real_sm.SelfModificationGuard(
-        repo, approver=lambda p: True, loop_factory=factory
-    )
+    shipped = real_sm.SelfModificationGuard(repo, approver=lambda p: True, loop_factory=factory)
     outcome = shipped.propose(
         real_sm.SelfModificationProposal(
             title="break the docs",
@@ -513,9 +497,7 @@ def test_mutation_removing_the_revert_leaves_the_broken_change(tmp_path, monkeyp
     original_restore = cp_mod.CheckpointManager.restore
     cp_mod.CheckpointManager.restore = lambda self, checkpoint: {}  # type: ignore[assignment]
     try:
-        stuck = real_sm.SelfModificationGuard(
-            repo, approver=lambda p: True, loop_factory=factory
-        )
+        stuck = real_sm.SelfModificationGuard(repo, approver=lambda p: True, loop_factory=factory)
         result = stuck.propose(
             real_sm.SelfModificationProposal(
                 title="break the docs again",
@@ -527,10 +509,7 @@ def test_mutation_removing_the_revert_leaves_the_broken_change(tmp_path, monkeyp
             verification_commands={"lint": list(suite._GREEN_CHECK)},
         )
         assert result.verdict == "reverted"  # the loop still reports red
-        assert target.read_text(encoding="utf-8") == "hijacked\n", (
-            "with the checkpoint restore removed the broken change survived: "
-            "rollback is load-bearing"
-        )
+        assert target.read_text(encoding="utf-8") == "hijacked\n", "with the checkpoint restore removed the broken change survived: rollback is load-bearing"
     finally:
         cp_mod.CheckpointManager.restore = original_restore
     assert target.read_text(encoding="utf-8") == "hijacked\n"  # mutation persisted
@@ -546,13 +525,7 @@ def test_mutation_swallowing_store_errors_silently_loses_created_agents(tmp_path
         "dynamic_profiles.py",
         (
             "    def _load(self) -> None:",
-            "    def _load(self) -> None:\n"
-            "        try:\n"
-            "            return self._load_strict()\n"
-            "        except Exception:\n"
-            "            logger.warning('store failure swallowed')\n"
-            "            return\n\n"
-            "    def _load_strict(self) -> None:",
+            "    def _load(self) -> None:\n        try:\n            return self._load_strict()\n        except Exception:\n            logger.warning('store failure swallowed')\n            return\n\n    def _load_strict(self) -> None:",
         ),
     )
     real = __import__("alpha.bots.dynamic_profiles", fromlist=["x"])
@@ -561,9 +534,7 @@ def test_mutation_swallowing_store_errors_silently_loses_created_agents(tmp_path
     # (1) The shipped guarantee: create a profile, then corrupt the store.
     good = real.DynamicProfileStore(
         path,
-        ceiling=__import__("alpha.bots.authority_ceiling", fromlist=["x"]).AuthorityCeiling(
-            max_capability_rank=50, max_live_profiles=4
-        ),
+        ceiling=__import__("alpha.bots.authority_ceiling", fromlist=["x"]).AuthorityCeiling(max_capability_rank=50, max_live_profiles=4),
         approval_gate=lambda p: True,
     )
     good.propose_profile(
@@ -602,8 +573,7 @@ def test_mutation_tolerating_unknown_fields_would_smuggle_a_grant(tmp_path):
     real = __import__("alpha.bots.dynamic_profiles", fromlist=["x"])
     path = tmp_path / "runtime_profiles.json"
     path.write_text(
-        '{"schema_version": 1, "profiles": [{"name": "sneaky", "role": "ok",'
-        ' "granted_capabilities": ["observe"], "admin": true}], "proposals": []}',
+        '{"schema_version": 1, "profiles": [{"name": "sneaky", "role": "ok", "granted_capabilities": ["observe"], "admin": true}], "proposals": []}',
         encoding="utf-8",
     )
     # (1) The shipped guarantee: an unknown field is refused, not dropped.
@@ -628,7 +598,7 @@ def test_mutation_zeroing_the_seq_scan_reissues_sequence_numbers(tmp_path):
     m = mutated_module(
         "events.py",
         (
-            '                    if \'"seq"\' not in line:\n                        continue',
+            "                    if '\"seq\"' not in line:\n                        continue",
             "                    if False:\n                        continue",
         ),
     )
@@ -679,9 +649,7 @@ def test_mutation_dropping_the_attribution_check_stores_unattributed_actions(tmp
     with pytest.raises(m.GovernanceLedgerError):
         m.record_governance_action("delegated", actor="", target="t", reason="r", store=ledger)
     # (2) Mutated: the action is written and LOOKS like a record.
-    event = m.record_governance_action(
-        "delegated", actor="", target="", reason="", store=ledger
-    )
+    event = m.record_governance_action("delegated", actor="", target="", reason="", store=ledger)
     assert event["actor"] == ""
     assert event["target"] is None
     assert event["details"]["reason"] == ""
@@ -725,9 +693,7 @@ def test_mutation_removing_the_fanout_check_allows_unbounded_children():
     with pytest.raises(real.AutonomyCeilingExceeded):
         guard.check_dispatch(task_id="t3", parent_id="root", depth=1, assignee="c")
     # (2) Mutated.
-    mutated = m.AutonomyGuard(
-        m.AutonomyBounds(max_children_per_parent=2, max_attempts_per_task=999, max_total_tasks=999)
-    )
+    mutated = m.AutonomyGuard(m.AutonomyBounds(max_children_per_parent=2, max_attempts_per_task=999, max_total_tasks=999))
     for index in range(50):
         mutated.check_dispatch(task_id=f"t{index}", parent_id="root", depth=1, assignee="a")
     assert mutated.snapshot()["tasks_dispatched"] == 50
@@ -761,9 +727,7 @@ def test_mutation_removing_the_wall_clock_check_only_slows_the_tree():
     )
     real = __import__("alpha.bots.autonomy_guard", fromlist=["x"])
     now = {"t": 0.0}
-    guard = real.AutonomyGuard(
-        real.AutonomyBounds(max_wall_clock_seconds=10.0), clock=lambda: now["t"]
-    )
+    guard = real.AutonomyGuard(real.AutonomyBounds(max_wall_clock_seconds=10.0), clock=lambda: now["t"])
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     now["t"] = 5000.0
     # (1) The shipped guarantee: the tree is STOPPED.
@@ -772,9 +736,7 @@ def test_mutation_removing_the_wall_clock_check_only_slows_the_tree():
     assert exc.value.bound == "max_wall_clock_seconds"
     # (2) Mutated: merely slowed.
     mutated_now = {"t": 0.0}
-    mutated = m.AutonomyGuard(
-        m.AutonomyBounds(max_wall_clock_seconds=10.0), clock=lambda: mutated_now["t"]
-    )
+    mutated = m.AutonomyGuard(m.AutonomyBounds(max_wall_clock_seconds=10.0), clock=lambda: mutated_now["t"])
     mutated.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     mutated_now["t"] = 5000.0
     for index in range(2, 8):
@@ -801,9 +763,7 @@ def test_mutation_removing_the_cycle_guard_allows_a_ping_pong():
     # (2) Mutated: the task ping-pongs indefinitely.
     mutated = m.AutonomyGuard(m.AutonomyBounds(**bounds))
     for index in range(30):
-        mutated.check_dispatch(
-            task_id="t1", parent_id="root", depth=1, assignee="a" if index % 2 else "b"
-        )
+        mutated.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a" if index % 2 else "b")
     assert mutated.snapshot()["tasks_dispatched"] == 30
 
 

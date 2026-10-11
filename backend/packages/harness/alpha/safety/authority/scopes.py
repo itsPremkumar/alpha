@@ -183,8 +183,7 @@ def member(kind: str | SubjectKind, name: str) -> ScopeMember:
         resolved = SubjectKind(str(kind).strip().lower())
     except ValueError as exc:
         raise ScopeEscalationRefused(
-            f"unknown scope subject kind {kind!r}; expected one of "
-            f"{[item.value for item in SubjectKind]}",
+            f"unknown scope subject kind {kind!r}; expected one of {[item.value for item in SubjectKind]}",
             violations=[f"unknown_subject_kind:{kind}"],
         ) from exc
     return ScopeMember(kind=resolved, name=str(name).strip())
@@ -336,23 +335,20 @@ class ScopePolicy:
             raise ScopeEscalationRefused("a scope must have a non-empty name", violations=["empty_scope_name"])
         if not self.members:
             raise ScopeEscalationRefused(
-                f"scope {self.name!r} binds no subject; a scope that matches nothing is "
-                "an operator belief, not a control",
+                f"scope {self.name!r} binds no subject; a scope that matches nothing is an operator belief, not a control",
                 scope=self.name,
                 violations=["empty_scope_members"],
             )
         unknown = sorted(set(self.denied_capabilities) - _capability_names())
         if unknown:
             raise ScopeEscalationRefused(
-                f"scope {self.name!r} names unknown capabilities {unknown}; a deny of an "
-                "unknown name is not a control",
+                f"scope {self.name!r} names unknown capabilities {unknown}; a deny of an unknown name is not a control",
                 scope=self.name,
                 violations=[f"unknown_capability:{name}" for name in unknown],
             )
         if not self.deny_protected_components:
             raise ScopeEscalationRefused(
-                f"scope {self.name!r} may not set deny_protected_components=false: a scope "
-                "must not be able to reach the components that enforce it",
+                f"scope {self.name!r} may not set deny_protected_components=false: a scope must not be able to reach the components that enforce it",
                 scope=self.name,
                 violations=["scope_cannot_disable_protected_components"],
             )
@@ -403,8 +399,7 @@ class ScopePolicy:
                 hits.append(str(candidate))
         if hits:
             raise ScopeEscalationRefused(
-                f"scope {self.name!r} names enforcement machinery {sorted(set(hits))}: a scope "
-                "may not bind the component that enforces it",
+                f"scope {self.name!r} names enforcement machinery {sorted(set(hits))}: a scope may not bind the component that enforces it",
                 scope=self.name,
                 violations=[f"scope_reaches_enforcer:{hit}" for hit in sorted(set(hits))],
             )
@@ -492,14 +487,11 @@ class ScopePolicy:
             if isinstance(rank, bool) or not isinstance(rank, int):
                 violations.append(f"max_capability_rank_not_an_integer:{rank!r}")
             elif rank > baseline.max_capability_rank:
-                violations.append(
-                    f"max_capability_rank {rank} is ABOVE the baseline {baseline.max_capability_rank}"
-                )
+                violations.append(f"max_capability_rank {rank} is ABOVE the baseline {baseline.max_capability_rank}")
 
         if violations:
             raise ScopeEscalationRefused(
-                f"scope {raw.get('name', '<unnamed>')!r} refused: {len(violations)} "
-                "scope(s) may only be stricter than the baseline",
+                f"scope {raw.get('name', '<unnamed>')!r} refused: {len(violations)} scope(s) may only be stricter than the baseline",
                 scope=str(raw.get("name", "")),
                 violations=violations,
             )
@@ -706,10 +698,7 @@ class DenialExplanation:
 
     def explain(self) -> str:
         verdict = "ALLOWED" if self.allowed else "REFUSED"
-        return (
-            f"{verdict}: subject {self.subject!r} {self.capability!r} -- "
-            f"scope={self.scope!r} rule={self.rule_id!r} :: {self.reason}"
-        )
+        return f"{verdict}: subject {self.subject!r} {self.capability!r} -- scope={self.scope!r} rule={self.rule_id!r} :: {self.reason}"
 
 
 #: How overlapping scopes compose. Stated once, here, so an ambiguous
@@ -781,9 +770,7 @@ def compose_scopes(
 
         ceiling = get_ceiling()
 
-    applicable, matched_keys = matching_scopes(
-        scopes, agent=agent, channel=channel, role=role, agent_labels=agent_labels
-    )
+    applicable, matched_keys = matching_scopes(scopes, agent=agent, channel=channel, role=role, agent_labels=agent_labels)
     decisions: list[ScopeDecision] = []
 
     allowed = set(baseline.allowed_capabilities)
@@ -823,14 +810,7 @@ def compose_scopes(
             allowed -= set(scope.denied_capabilities)
             scope_denied |= set(named)
             if named:
-                decisive = (
-                    "this scope's denial removed it"
-                    if removed_now
-                    else (
-                        "a stricter scope had already removed it; this scope names it too, and the "
-                        "union of denials is what applies"
-                    )
-                )
+                decisive = "this scope's denial removed it" if removed_now else ("a stricter scope had already removed it; this scope names it too, and the union of denials is what applies")
                 decisions.append(
                     ScopeDecision(
                         rule_id=ScopeRule.SCOPE_DENIES_CAPABILITY.value,
@@ -841,8 +821,7 @@ def compose_scopes(
                         reason=(
                             f"scope {scope.name!r} matched {key!r} and denies {named}, which the "
                             f"baseline allows; a scope may deny but never enable, so the denial "
-                            f"is the whole of this scope's effect here -- {decisive}"
-                            + (f"; also names {already_gone}, which the baseline already denied" if already_gone else "")
+                            f"is the whole of this scope's effect here -- {decisive}" + (f"; also names {already_gone}, which the baseline already denied" if already_gone else "")
                         ),
                         affected=tuple(named),
                     )
@@ -860,11 +839,7 @@ def compose_scopes(
                     dimension="max_capability_rank",
                     before=str(before),
                     after=str(max_rank),
-                    reason=(
-                        f"scope {scope.name!r} matched {key!r} and caps the maximum rank at "
-                        f"{max_rank}, below the baseline {before}; the strictest bound wins, and "
-                        f"it removed {dropped}"
-                    ),
+                    reason=(f"scope {scope.name!r} matched {key!r} and caps the maximum rank at {max_rank}, below the baseline {before}; the strictest bound wins, and it removed {dropped}"),
                     affected=tuple(dropped),
                 )
             )
@@ -879,10 +854,7 @@ def compose_scopes(
                     dimension="channels",
                     before=",".join(before),
                     after=",".join(sorted(denied_channels)),
-                    reason=(
-                        f"scope {scope.name!r} matched {key!r} and denies channels "
-                        f"{sorted(scope.denied_channels)}"
-                    ),
+                    reason=(f"scope {scope.name!r} matched {key!r} and denies channels {sorted(scope.denied_channels)}"),
                 )
             )
 
@@ -896,10 +868,7 @@ def compose_scopes(
                     dimension="roles",
                     before=",".join(before),
                     after=",".join(sorted(denied_roles)),
-                    reason=(
-                        f"scope {scope.name!r} matched {key!r} and denies roles "
-                        f"{sorted(scope.denied_roles)}"
-                    ),
+                    reason=(f"scope {scope.name!r} matched {key!r} and denies roles {sorted(scope.denied_roles)}"),
                 )
             )
 
@@ -912,10 +881,7 @@ def compose_scopes(
                     dimension="require_human_review",
                     before="False",
                     after="True",
-                    reason=(
-                        f"scope {scope.name!r} matched {key!r} and requires human review; a "
-                        "stricter scope raises the bar regardless of order"
-                    ),
+                    reason=(f"scope {scope.name!r} matched {key!r} and requires human review; a stricter scope raises the bar regardless of order"),
                 )
             )
 
@@ -928,28 +894,20 @@ def compose_scopes(
                     dimension="allow_verified_evidence",
                     before="True",
                     after="False",
-                    reason=(
-                        f"scope {scope.name!r} matched {key!r} and forbids recording verified "
-                        "evidence; no other scope can re-enable it"
-                    ),
+                    reason=(f"scope {scope.name!r} matched {key!r} and forbids recording verified evidence; no other scope can re-enable it"),
                 )
             )
 
         if not scope.taint_bounds_authority:
             # Refused at construction, so unreachable. Asserted rather than
             # trusted: a future edit must not make this a silent no-op.
-            raise ScopeResolutionError(
-                f"scope {scope.name!r} was constructed with taint_bounds_authority=False, which "
-                "ScopePolicy construction refuses; refusing to compose it"
-            )
+            raise ScopeResolutionError(f"scope {scope.name!r} was constructed with taint_bounds_authority=False, which ScopePolicy construction refuses; refusing to compose it")
 
     # The ceiling is intersected LAST, unconditionally, and is not a scope field.
     ceiling_allowed = frozenset(ceiling.allowed_capabilities or ())
     ceiling_rank = int(ceiling.max_capability_rank)
     after_ceiling_allowed = {name for name in allowed if name in ceiling_allowed}
-    after_ceiling_allowed = {
-        name for name in after_ceiling_allowed if _rank_of(name) <= ceiling_rank
-    }
+    after_ceiling_allowed = {name for name in after_ceiling_allowed if _rank_of(name) <= ceiling_rank}
     if after_ceiling_allowed != allowed or ceiling_rank < max_rank:
         decisions.append(
             ScopeDecision(
@@ -959,9 +917,7 @@ def compose_scopes(
                 before=",".join(sorted(allowed)),
                 after=",".join(sorted(after_ceiling_allowed)),
                 reason=(
-                    "the server-owned authority ceiling is intersected after scope composition "
-                    f"and is not expressible as a scope field (max rank {ceiling_rank}, "
-                    f"source {ceiling.source!r}); no scope, and no ordering of scopes, can raise it"
+                    f"the server-owned authority ceiling is intersected after scope composition and is not expressible as a scope field (max rank {ceiling_rank}, source {ceiling.source!r}); no scope, and no ordering of scopes, can raise it"
                 ),
             )
         )
@@ -1047,10 +1003,7 @@ def explain_denial(
             capability=capability,
             scope=",".join(effective.applied_scopes) or "<baseline>",
             rule_id=rule_id,
-            reason=(
-                "the capability is inside the effective policy; applied scopes "
-                f"[{', '.join(effective.applied_scopes) or 'none'}] did not deny it"
-            ),
+            reason=(f"the capability is inside the effective policy; applied scopes [{', '.join(effective.applied_scopes) or 'none'}] did not deny it"),
             competing_scopes=effective.applied_scopes,
         )
 
@@ -1059,15 +1012,9 @@ def explain_denial(
     # testing only the "after" string would miss every denial, because a denial
     # is defined by what it removed.
     deciding_scope = "<baseline>"
-    reason = (
-        f"the baseline does not allow {capability!r}, so no scope could grant it; "
-        "a scope may only deny"
-    )
+    reason = f"the baseline does not allow {capability!r}, so no scope could grant it; a scope may only deny"
     if capability.strip().lower() in effective.baseline_denied_capabilities:
-        reason = (
-            f"the baseline explicitly denies {capability!r}; a scope may only deny further, so "
-            "no scope can restore it"
-        )
+        reason = f"the baseline explicitly denies {capability!r}; a scope may only deny further, so no scope can restore it"
     else:
         # Two passes, deliberately. A scope that NAMES a capability is the more
         # useful answer than a scope that removed it as a side effect of a rank
@@ -1117,16 +1064,11 @@ def assert_not_looser(scope: ScopePolicy, baseline: BaselinePolicy) -> None:
 
     violations: list[str] = []
     if scope.max_capability_rank is not None and scope.max_capability_rank > baseline.max_capability_rank:
-        violations.append(
-            f"scope {scope.name!r} max_capability_rank {scope.max_capability_rank} is above the "
-            f"baseline {baseline.max_capability_rank}"
-        )
+        violations.append(f"scope {scope.name!r} max_capability_rank {scope.max_capability_rank} is above the baseline {baseline.max_capability_rank}")
     if not scope.require_human_review and baseline.require_human_review:
         violations.append(f"scope {scope.name!r} turns off human review the baseline requires")
     if scope.allow_verified_evidence and not baseline.allow_verified_evidence:
-        violations.append(
-            f"scope {scope.name!r} re-enables verified evidence the baseline forbids"
-        )
+        violations.append(f"scope {scope.name!r} re-enables verified evidence the baseline forbids")
     if not scope.deny_protected_components:
         violations.append(f"scope {scope.name!r} disables the protected-component refusal")
     if not scope.fail_closed:

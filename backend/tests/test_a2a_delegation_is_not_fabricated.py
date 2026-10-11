@@ -60,9 +60,7 @@ def test_a_registered_but_undispatchable_agent_is_never_reported_completed() -> 
 
     response = adapter.delegate(_request())
 
-    assert response.status != "completed", (
-        "a delegation that was not dispatched must never be reported as completed"
-    )
+    assert response.status != "completed", "a delegation that was not dispatched must never be reported as completed"
     assert response.status == "not_dispatched"
     assert response.error is not None
     assert "not dispatched" in response.error.lower()
@@ -75,10 +73,7 @@ def test_no_deliverable_is_invented() -> None:
 
     response = adapter.delegate(_request(task_objective="Delete the production database"))
 
-    assert response.deliverable is None, (
-        "a deliverable must come from a transport; interpolating the caller's own "
-        "objective into a success sentence is not a deliverable"
-    )
+    assert response.deliverable is None, "a deliverable must come from a transport; interpolating the caller's own objective into a success sentence is not a deliverable"
     # And specifically: the objective must not appear back inside a success claim.
     rendered = f"{response.deliverable} {response.error}"
     assert "Successfully resolved" not in rendered

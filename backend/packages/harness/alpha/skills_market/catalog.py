@@ -8,7 +8,7 @@ listing describes a skill that *can* be installed; the registry in
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -42,30 +42,18 @@ class SkillListing:
 
 #: A small first-party catalog mirroring the WorkBuddy marketplace categories.
 BUILTIN_SKILLS: tuple[SkillListing, ...] = (
-    SkillListing("excel-processing", "Excel Processing", "content", "Clean, analyse and chart spreadsheets.",
-                 ("excel", "data"), source="builtin", recommended=True),
-    SkillListing("ppt-generator", "PPT Generator", "content", "Generate presentation decks from an outline.",
-                 ("ppt", "slides"), source="builtin", recommended=True),
-    SkillListing("doc-generator", "Document Generator", "content", "Write and format Word documents.",
-                 ("docx", "report"), source="builtin"),
-    SkillListing("web-search", "Web Search", "research", "Search the web with recency filters.",
-                 ("search", "web"), source="builtin", recommended=True),
-    SkillListing("deep-research", "Deep Research", "research", "Multi-source research and synthesis.",
-                 ("research", "report"), source="builtin"),
-    SkillListing("pdf-tools", "PDF Toolkit", "productivity", "Read, split, merge and OCR PDFs.",
-                 ("pdf", "ocr"), source="builtin"),
-    SkillListing("image-generation", "Image Generation", "media", "Generate and edit images.",
-                 ("image", "art"), source="builtin"),
-    SkillListing("video-generation", "Video Generation", "media", "Generate short videos from text or images.",
-                 ("video",), source="builtin"),
-    SkillListing("calendar", "Calendar", "productivity", "Query availability and manage events.",
-                 ("calendar", "google"), source="builtin"),
-    SkillListing("drive", "Cloud Drive", "storage", "Read and write files in cloud storage.",
-                 ("drive", "google"), source="builtin"),
-    SkillListing("frontend-design", "Frontend Design", "engineering", "Build responsive, accessible UIs.",
-                 ("web", "design"), source="builtin"),
-    SkillListing("financial-research", "Financial Research", "finance", "Company and market research.",
-                 ("finance", "research"), source="enterprise"),
+    SkillListing("excel-processing", "Excel Processing", "content", "Clean, analyse and chart spreadsheets.", ("excel", "data"), source="builtin", recommended=True),
+    SkillListing("ppt-generator", "PPT Generator", "content", "Generate presentation decks from an outline.", ("ppt", "slides"), source="builtin", recommended=True),
+    SkillListing("doc-generator", "Document Generator", "content", "Write and format Word documents.", ("docx", "report"), source="builtin"),
+    SkillListing("web-search", "Web Search", "research", "Search the web with recency filters.", ("search", "web"), source="builtin", recommended=True),
+    SkillListing("deep-research", "Deep Research", "research", "Multi-source research and synthesis.", ("research", "report"), source="builtin"),
+    SkillListing("pdf-tools", "PDF Toolkit", "productivity", "Read, split, merge and OCR PDFs.", ("pdf", "ocr"), source="builtin"),
+    SkillListing("image-generation", "Image Generation", "media", "Generate and edit images.", ("image", "art"), source="builtin"),
+    SkillListing("video-generation", "Video Generation", "media", "Generate short videos from text or images.", ("video",), source="builtin"),
+    SkillListing("calendar", "Calendar", "productivity", "Query availability and manage events.", ("calendar", "google"), source="builtin"),
+    SkillListing("drive", "Cloud Drive", "storage", "Read and write files in cloud storage.", ("drive", "google"), source="builtin"),
+    SkillListing("frontend-design", "Frontend Design", "engineering", "Build responsive, accessible UIs.", ("web", "design"), source="builtin"),
+    SkillListing("financial-research", "Financial Research", "finance", "Company and market research.", ("finance", "research"), source="enterprise"),
 )
 
 
@@ -93,8 +81,7 @@ class SkillMarketCatalog:
         if not needle:
             return self.list()
         return sorted(
-            (s for s in self._by_id.values()
-             if needle in " ".join((s.id, s.name, s.category, s.description, *s.tags)).lower()),
+            (s for s in self._by_id.values() if needle in " ".join((s.id, s.name, s.category, s.description, *s.tags)).lower()),
             key=lambda s: s.name.lower(),
         )
 

@@ -49,11 +49,7 @@ def _config() -> SimpleNamespace:
 
 
 def _app() -> FastAPI:
-    app = make_authed_test_app(
-        user_factory=lambda: User(
-            email="moa-test@example.com", password_hash="x", system_role="user", id=uuid4()
-        )
-    )
+    app = make_authed_test_app(user_factory=lambda: User(email="moa-test@example.com", password_hash="x", system_role="user", id=uuid4()))
     app.state.config = _config()
     app.dependency_overrides[get_config] = _config
     app.include_router(models_router.router)
@@ -218,14 +214,10 @@ def test_moa_run_rejects_invalid_requests_before_the_engine(monkeypatch):
         blank = client.post("/api/models/moa/run", json={"prompt": "   ", "candidate_models": ["alpha-1"]})
         assert blank.status_code == 400
 
-        duplicate = client.post(
-            "/api/models/moa/run", json={"prompt": "x", "candidate_models": ["alpha-1", "alpha-1"]}
-        )
+        duplicate = client.post("/api/models/moa/run", json={"prompt": "x", "candidate_models": ["alpha-1", "alpha-1"]})
         assert duplicate.status_code == 422
 
-        empty_name = client.post(
-            "/api/models/moa/run", json={"prompt": "x", "candidate_models": ["alpha-1", " "]}
-        )
+        empty_name = client.post("/api/models/moa/run", json={"prompt": "x", "candidate_models": ["alpha-1", " "]})
         assert empty_name.status_code == 422
 
         too_many = client.post(
@@ -235,9 +227,7 @@ def test_moa_run_rejects_invalid_requests_before_the_engine(monkeypatch):
         assert too_many.status_code == 422
         assert "MAX_ADVISORS" in (too_many.json().get("detail") or "")
 
-        unknown = client.post(
-            "/api/models/moa/run", json={"prompt": "x", "candidate_models": ["not-a-model"]}
-        )
+        unknown = client.post("/api/models/moa/run", json={"prompt": "x", "candidate_models": ["not-a-model"]})
         assert unknown.status_code == 404
         assert "not found" in (unknown.json().get("detail") or "").lower()
 

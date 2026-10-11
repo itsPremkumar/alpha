@@ -73,7 +73,6 @@ def test_work_queue_cycle_detection():
 
 def test_work_queue_budget_caps():
     budget = ExecutionBudget(max_tool_calls=5, max_retries=1, max_cost_usd=1.0)
-    wq = DurableWorkQueue(budget=budget)
 
     # Check budget recording
     budget.check_and_record(tool_calls=3, cost_usd=0.5)

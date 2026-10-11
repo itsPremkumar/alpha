@@ -10,6 +10,7 @@ from typing import Any
 
 class RiskTier(str, Enum):
     """Multi-tier risk classification."""
+
     R0 = "r0"  # Pure reasoning / analysis — auto-approve
     R1 = "r1"  # Read-only exploration (read file, search) — auto-approve
     R2 = "r2"  # Reversible local changes (source edits with git backup) — auto-approve with audit
@@ -22,6 +23,7 @@ class RiskTier(str, Enum):
 @dataclass
 class ProofObligation:
     """Formal obligation that must be verified before a mission can be completed."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     description: str = ""
     verification_type: str = "test_pass"  # "test_pass", "file_exists", "diff_non_empty", "manual_approval"
@@ -35,20 +37,23 @@ class ProofObligation:
 @dataclass
 class Mission:
     """A durable, verifiable mission contract compiled from natural language."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     raw_request: str = ""
     interpreted_intent: str = ""
     latent_needs: str = ""
     desired_outcome: str = ""
     risk_tier: RiskTier = RiskTier.R2
-    constraints: dict[str, list[str]] = field(default_factory=lambda: {
-        "hard": [],
-        "soft": [],
-        "forbidden": [],
-        "legal": [],
-        "ethical": [],
-        "physical": [],
-    })
+    constraints: dict[str, list[str]] = field(
+        default_factory=lambda: {
+            "hard": [],
+            "soft": [],
+            "forbidden": [],
+            "legal": [],
+            "ethical": [],
+            "physical": [],
+        }
+    )
     acceptance_criteria: list[str] = field(default_factory=list)
     proof_obligations: list[ProofObligation] = field(default_factory=list)
     budget: dict[str, Any] = field(default_factory=dict)

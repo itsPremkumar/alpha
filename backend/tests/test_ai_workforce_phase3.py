@@ -7,38 +7,33 @@
 6. Gateway Approvals API Endpoints
 """
 
-import pytest
 from pathlib import Path
-import tempfile
+
+import pytest
 from fastapi.testclient import TestClient
 
 from alpha.projects.approval_queue import (
     ApprovalQueue,
-    ApprovalRequest,
     get_approval_queue,
-)
-from alpha.projects.self_healing_runner import (
-    SelfHealingTestRunner,
-    TestRunResult,
-)
-from alpha.projects.living_spec import (
-    LivingSpecEngine,
-    LivingSpec,
-    LivingSpecSection,
 )
 from alpha.projects.audit_council import (
     AuditCouncil,
-    AuditVerdict,
-)
-from alpha.projects.knowledge_index import (
-    CrossProjectKnowledgeIndex,
-    sanitize_text,
 )
 from alpha.projects.contracts import (
     ContractGatekeeper,
     DefinitionOfDone,
 )
-from alpha.projects.postmortem import ProjectPostmortemEngine
+from alpha.projects.knowledge_index import (
+    CrossProjectKnowledgeIndex,
+    sanitize_text,
+)
+from alpha.projects.living_spec import (
+    LivingSpecEngine,
+)
+from alpha.projects.self_healing_runner import (
+    SelfHealingTestRunner,
+    TestRunResult,
+)
 
 
 def test_human_approval_queue_lifecycle(tmp_path: Path):

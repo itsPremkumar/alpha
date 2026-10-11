@@ -6,6 +6,7 @@ Usage (from the backend directory):
 Writes logs/alpha-welcome-speech.wav (gitignored runtime output).
 Requires the voice extra: UV_EXTRAS=voice (see docs/VOICE_CONVERSATION.md).
 """
+
 from pathlib import Path
 
 from alpha.multimodal.local_models import (

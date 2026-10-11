@@ -223,11 +223,11 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     coverage rather than config-cache API cleanup.
     """
 
-    from app.gateway import deps as deps_module
     from alpha.config import app_config as app_config_module
     from alpha.config import extensions_config as extensions_config_module
     from alpha.config import paths as paths_module
     from alpha.persistence import engine as engine_module
+    from app.gateway import deps as deps_module
 
     for module, attr, value in (
         (app_config_module, "_app_config", None),
@@ -766,8 +766,8 @@ def test_cancel_wait_false_generates_title_from_graph_input_before_checkpoint(is
 @pytest.mark.anyio
 async def test_sse_consumer_disconnect_cancels_inflight_run():
     """A disconnected SSE request should cancel an in-flight run when configured."""
-    from app.gateway.services import sse_consumer
     from alpha.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
+    from app.gateway.services import sse_consumer
 
     bridge = MemoryStreamBridge()
     run_manager = RunManager()

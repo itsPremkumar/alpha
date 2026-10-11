@@ -160,10 +160,7 @@ class CycleBudget:
         if unknown:
             names = ", ".join(sorted(repr(key) for key in unknown))
             known_names = ", ".join(sorted(known))
-            raise ValueError(
-                f"unknown budget config key(s): {names}; known keys: {known_names} "
-                "(budgets are operator-config only; candidate payload keys are never accepted)"
-            )
+            raise ValueError(f"unknown budget config key(s): {names}; known keys: {known_names} (budgets are operator-config only; candidate payload keys are never accepted)")
         return cls(**{key: mapping[key] for key in mapping})  # type: ignore[arg-type]
 
 
@@ -183,10 +180,7 @@ class BudgetTracker:
     def start(self, budget: CycleBudget) -> CycleBudget:
         """Begin a cycle under ``budget``, resetting every counter."""
         if not isinstance(budget, CycleBudget):
-            raise TypeError(
-                f"start() requires a CycleBudget built from operator config, got {type(budget).__name__} "
-                "(raw mappings/candidate payloads are not budgets)"
-            )
+            raise TypeError(f"start() requires a CycleBudget built from operator config, got {type(budget).__name__} (raw mappings/candidate payloads are not budgets)")
         self.budget = budget
         self.used = {kind: 0 for kind in _KINDS}
         self._wall_mark = monotonic_now()
@@ -243,10 +237,7 @@ class BudgetTracker:
     def remaining(self) -> dict[str, float]:
         """Remaining allowance per kind — clamped at 0, never negative."""
         budget = self._require_started()
-        return {
-            kind: max(0, getattr(budget, _KIND_FIELD[kind]) - self.used[kind])
-            for kind in _KINDS
-        }
+        return {kind: max(0, getattr(budget, _KIND_FIELD[kind]) - self.used[kind]) for kind in _KINDS}
 
     def snapshot(self) -> dict[str, dict[str, float]]:
         """Persistable per-cycle record: real ``limits``/``used``/``remaining`` only.
@@ -321,8 +312,7 @@ class BudgetTracker:
                     unreadable += 1
         if unreadable:
             logger.warning(
-                "workspace_usage(%s): %d entrie(s) unreadable — measured total excludes them "
-                "(symlinked entries are also excluded by design and not counted; no estimate substituted)",
+                "workspace_usage(%s): %d entrie(s) unreadable — measured total excludes them (symlinked entries are also excluded by design and not counted; no estimate substituted)",
                 target,
                 unreadable,
             )

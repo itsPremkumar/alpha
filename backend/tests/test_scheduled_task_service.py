@@ -3,10 +3,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.scheduler.service import ScheduledTaskService
 from alpha.runtime import ConflictError, RunStatus
 from alpha.runtime.runs.manager import RunRecord
 from alpha.runtime.runs.schemas import DisconnectMode
+from app.scheduler.service import ScheduledTaskService
 
 
 class DummyTaskRepo:

@@ -304,6 +304,7 @@ def test_a_missing_status_attribute_resolves_to_unknown_and_never_to_success():
     A message object that carries no ``status`` at all used to hand the critic
     ``"success"`` purely because the field was absent. Absence is not a verdict.
     """
+
     class StatuslessMessage:
         content = "ok"
         name = "bash"
@@ -321,9 +322,7 @@ def test_an_unreadable_status_resolves_to_unknown_and_never_to_success():
         assert _honest_tool_status(message) == "unknown"
 
     # An unrecognized vocabulary entry is reported verbatim, never upgraded.
-    message = ToolMessage(content="ok", name="bash", tool_call_id="c1").model_copy(
-        update={"additional_kwargs": {TOOL_RECEIPT_KEY: {"status": "probably_fine"}}}
-    )
+    message = ToolMessage(content="ok", name="bash", tool_call_id="c1").model_copy(update={"additional_kwargs": {TOOL_RECEIPT_KEY: {"status": "probably_fine"}}})
     assert _honest_tool_status(message) == "probably_fine"
 
 
@@ -339,9 +338,7 @@ def test_an_authoritative_error_stamp_beats_the_optimistic_default_status():
 
     assert _honest_tool_status(bare.model_copy(update={"status": "error"})) == "error"
 
-    stamped = bare.model_copy(
-        update={"additional_kwargs": {TOOL_META_KEY: {"status": "partial_success"}}}
-    )
+    stamped = bare.model_copy(update={"additional_kwargs": {TOOL_META_KEY: {"status": "partial_success"}}})
     assert _honest_tool_status(stamped) == "partial_success"
 
 

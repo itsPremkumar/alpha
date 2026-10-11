@@ -47,9 +47,7 @@ def _offline_worker_models(monkeypatch):
         def invoke(self, messages):
             return _Message(f"Offline deliverable for: {messages[-1].content}")
 
-    monkeypatch.setattr(
-        worker_mod, "_resolve_model", lambda model_name, *, worker_label: _OfflineModel()
-    )
+    monkeypatch.setattr(worker_mod, "_resolve_model", lambda model_name, *, worker_label: _OfflineModel())
     yield
 
 

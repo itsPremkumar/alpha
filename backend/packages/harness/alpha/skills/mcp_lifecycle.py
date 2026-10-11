@@ -62,12 +62,14 @@ class SkillMcpLifecycleManager:
         if isinstance(mcp_servers, dict):
             for sname, sconfig in mcp_servers.items():
                 if isinstance(sconfig, dict):
-                    specs.append(SkillMcpSpec(
-                        server_name=sname,
-                        command=sconfig.get("command", "node"),
-                        args=sconfig.get("args", []),
-                        env=sconfig.get("env", {}),
-                    ))
+                    specs.append(
+                        SkillMcpSpec(
+                            server_name=sname,
+                            command=sconfig.get("command", "node"),
+                            args=sconfig.get("args", []),
+                            env=sconfig.get("env", {}),
+                        )
+                    )
         return specs
 
     def acquire_for_skill(self, skill_name: str, skill_markdown: str) -> list[str]:

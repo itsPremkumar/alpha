@@ -16,7 +16,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import models as models_router
 from alpha.authz.provider import AuthzDecision, AuthzReason
 from alpha.authz.rbac import RbacAuthorizationProvider
 from alpha.config.app_config import AppConfig
@@ -24,6 +23,7 @@ from alpha.config.authorization_config import AuthorizationConfig
 from alpha.config.model_config import ModelConfig
 from alpha.config.sandbox_config import SandboxConfig
 from alpha.config.token_usage_config import TokenUsageConfig
+from app.gateway.routers import models as models_router
 
 # ── Helpers ────────────────────────────────────────────────────────────
 

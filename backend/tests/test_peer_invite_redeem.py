@@ -262,7 +262,6 @@ def test_a_replay_does_not_consume_throttle_budget(peer_pair):
     uri = _invite(issuer)
     asyncio.run(redeemer.redeem_invite(uri))
     epoch = parse_invite(uri).epoch
-    snapshot_before = issuer.pairing_throttle.snapshot()
     for _ in range(5):
         request = PeerPairRequest(
             card=redeemer.card(),

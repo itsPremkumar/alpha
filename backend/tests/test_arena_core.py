@@ -73,17 +73,13 @@ class TestDeal:
         deck = load_deck()
         a = deal_cards(10, "same", deck)
         b = deal_cards(10, "same", deck)
-        assert [(c.reasoning.id, c.workflow.id, c.strategy.id) for c in a] == [
-            (c.reasoning.id, c.workflow.id, c.strategy.id) for c in b
-        ]
+        assert [(c.reasoning.id, c.workflow.id, c.strategy.id) for c in a] == [(c.reasoning.id, c.workflow.id, c.strategy.id) for c in b]
 
     def test_deal_different_seeds(self):
         deck = load_deck()
         a = deal_cards(10, "seed1", deck)
         b = deal_cards(10, "seed2", deck)
-        assert [(c.reasoning.id, c.workflow.id, c.strategy.id) for c in a] != [
-            (c.reasoning.id, c.workflow.id, c.strategy.id) for c in b
-        ]
+        assert [(c.reasoning.id, c.workflow.id, c.strategy.id) for c in a] != [(c.reasoning.id, c.workflow.id, c.strategy.id) for c in b]
 
     def test_deal_max(self):
         deck = load_deck()
@@ -183,6 +179,7 @@ class TestRubric:
             DefenseRecord(attack_index=2, verdict=DefenseVerdict.REBUT, note="this is a real answer that is long enough"),
         ]
         from alpha.arena.rubric import _surviving_attacks
+
         survived = _surviving_attacks(attacks, defenses)
         assert len(survived) == 1
         assert survived[0].index == 1
@@ -197,6 +194,7 @@ class TestBracket:
 
     def test_plan(self):
         from alpha.arena import plan as plan_fn
+
         plan = plan_fn(8, 4, baseline=False)
         assert plan.agents == 8
         assert plan.rounds == 3
@@ -205,12 +203,14 @@ class TestBracket:
 
     def test_plan_wave_size(self):
         from alpha.arena import plan as plan_fn
+
         plan = plan_fn(8, 2, baseline=False)
         # wave=2: round 1 (4 matches) -> 2 waves, round 2 (2 matches) -> 1 wave, round 3 (1 match) -> 1 wave = 4
         assert plan.total_waves == 4
 
     def test_new_run(self):
         from alpha.arena.bracket import new_run
+
         state = new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2, baseline=None)
         assert state["run_id"]
         assert state["status"] == ArenaStatus.DRAFT.value
@@ -220,6 +220,7 @@ class TestBracket:
 
     def test_start_run(self):
         from alpha.arena import CardPart, StrategyCard
+
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -233,6 +234,7 @@ class TestBracket:
 
     def test_spawn_complete(self):
         from alpha.arena import CardPart, StrategyCard
+
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -251,6 +253,7 @@ class TestBracket:
 
     def test_start_round(self):
         from alpha.arena import CardPart, StrategyCard
+
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -269,6 +272,7 @@ class TestBracket:
 
     def test_next_actions_wave_bound(self):
         from alpha.arena import CardPart, StrategyCard
+
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=4, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -286,6 +290,7 @@ class TestBracket:
 
     def test_attack_defend_judge_flow(self):
         from alpha.arena import CardPart, StrategyCard
+
         state = bracket.new_run(owner_id="u1", task="test", seed=42, agents_n=2, wave=2)
         card = StrategyCard(
             reasoning=CardPart(id="r", name="R", how="h"),
@@ -306,8 +311,7 @@ class TestBracket:
         record_defense(state, match["id"], "agent-1", "ATTACK 1: CONCEDE. fixed", "rev1")
         record_defense(state, match["id"], "agent-2", "ATTACK 1: REBUT. already handled", "rev2")
         # Judge
-        verdict = record_verdict(state, match["id"], {"correctness": 8, "completeness": 8, "specificity": 7, "robustness": 7, "clarity": 8},
-                                  {"correctness": 7, "completeness": 7, "specificity": 6, "robustness": 6, "clarity": 7})
+        verdict = record_verdict(state, match["id"], {"correctness": 8, "completeness": 8, "specificity": 7, "robustness": 7, "clarity": 8}, {"correctness": 7, "completeness": 7, "specificity": 6, "robustness": 6, "clarity": 7})
         assert verdict["winner"] in ("a", "b")
         assert match["winner"] in ("agent-1", "agent-2")
 

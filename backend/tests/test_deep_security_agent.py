@@ -19,7 +19,7 @@ class TestDeepSecurityAgent:
 
     def test_credential_detection(self):
         agent = DeepSecurityAuditorAgent()
-        result = agent.scan_text("password = \"supersecret123\"")
+        result = agent.scan_text('password = "supersecret123"')
         assert any(finding["category"] == "credential" for finding in result["findings"])
 
     def test_remediation_patch(self):

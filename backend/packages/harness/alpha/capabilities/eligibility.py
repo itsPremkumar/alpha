@@ -278,8 +278,7 @@ def required_capability_tags(
     if len(surfaces) == 1:
         return (
             surfaces[0],
-            "the task text stated no capability, so the required tags are the proposed owner's declared surface; "
-            "this is a FALLBACK, not a capability match on the task",
+            "the task text stated no capability, so the required tags are the proposed owner's declared surface; this is a FALLBACK, not a capability match on the task",
         )
     shared = frozenset.intersection(*surfaces)
     if not shared:

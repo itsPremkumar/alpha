@@ -895,11 +895,7 @@ class DeepResearchEngine:
 
         # The body is in hand. Only a quarantine below can take it away again.
         source.retrieval = RETRIEVAL_PAGE
-        source.retrieval_note = (
-            f"page body retrieved and screened ({len(source.content)} characters"
-            + (f", truncated from {source.content_chars_original}" if source.content_truncated else "")
-            + ")"
-        )
+        source.retrieval_note = f"page body retrieved and screened ({len(source.content)} characters" + (f", truncated from {source.content_chars_original}" if source.content_truncated else "") + ")"
 
         # Fetched text is untrusted data. If it is trying to redirect the
         # agent, fall back to the search snippet (which came from the search
@@ -1165,10 +1161,7 @@ class DeepResearchEngine:
                 evidence_a=support_excerpt,
                 evidence_b=adversarial_excerpt,
                 adversarial_evidence=s_con.snippet or s_con.content,
-                nuance_explanation=(
-                    f"Supporting evidence excerpt: {support_excerpt} Adversarial evidence excerpt: {adversarial_excerpt} "
-                    f"These sources are juxtaposed for review; this pass does not establish a logical contradiction."
-                ),
+                nuance_explanation=(f"Supporting evidence excerpt: {support_excerpt} Adversarial evidence excerpt: {adversarial_excerpt} These sources are juxtaposed for review; this pass does not establish a logical contradiction."),
             )
         ]
 
@@ -1280,10 +1273,7 @@ class DeepResearchEngine:
             sample_metric = next(iter(s.extracted_metrics.values()), "Documented standard")
             comp_rows.append(f"| {s.domain} | [{s.source_id}: {s.title}]({s.url}) | `{s.pass_type}` | `{s.citation_status}` | `{s.retrieval}` | {sample_metric} |")
 
-        comp_table = (
-            "| Source Domain | Document / Artifact | Research Facet | Citation Status | Provenance | Key Metric / Highlight |\n"
-            "| :--- | :--- | :--- | :--- | :--- | :--- |\n" + "\n".join(comp_rows)
-        )
+        comp_table = "| Source Domain | Document / Artifact | Research Facet | Citation Status | Provenance | Key Metric / Highlight |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n" + "\n".join(comp_rows)
 
         # 4. Adversarial Findings -- same provenance rule as the key findings.
         adv_texts: list[str] = []
@@ -1368,12 +1358,7 @@ class DeepResearchEngine:
 
         for i, s in enumerate(sources, 1):
             provenance = f"*Provenance:* `{s.retrieval}` — {s.retrieval_note}"
-            md_lines.append(
-                f"{i}. **[{s.source_id}] [{s.title}]({s.url})**  \n"
-                f"   *Domain:* `{s.domain}` | *Facet:* `{s.pass_type}` | *Citation status:* `{s.citation_status}`  \n"
-                f"   {provenance}  \n"
-                f"   *{s.snippet[:140]}...*"
-            )
+            md_lines.append(f"{i}. **[{s.source_id}] [{s.title}]({s.url})**  \n   *Domain:* `{s.domain}` | *Facet:* `{s.pass_type}` | *Citation status:* `{s.citation_status}`  \n   {provenance}  \n   *{s.snippet[:140]}...*")
 
         md_lines.extend(
             [
@@ -1435,10 +1420,7 @@ class DeepResearchEngine:
         planned = bounds.get("lanes_planned")
         searched = bounds.get("lanes_searched", planned)
 
-        sentences = [
-            f"Deep research on **{topic}** had {searched} of {planned} planned search lanes return; "
-            f"the sources it gathered come from {len(facets)} research facet(s): " + ", ".join(f"`{f}`" for f in facets) + "."
-        ]
+        sentences = [f"Deep research on **{topic}** had {searched} of {planned} planned search lanes return; the sources it gathered come from {len(facets)} research facet(s): " + ", ".join(f"`{f}`" for f in facets) + "."]
         if pages:
             sentences.append(f"{pages} source page(s) were retrieved and read; their text is quoted below and each quote carries its source id.")
         if snippets:
@@ -1466,10 +1448,7 @@ class DeepResearchEngine:
         pages = sum(1 for s in sources if s.page_retrieved)
         snippets = len(sources) - pages
         lines = [f"- **Coverage:** `{coverage}` for `{topic}`."]
-        lines.append(
-            f"- **Lanes:** {bounds.get('lanes_searched', '?')} of {bounds.get('lanes_planned', '?')} planned search lanes returned; "
-            f"{bounds.get('sources_discovered', len(sources))} candidate source(s) discovered."
-        )
+        lines.append(f"- **Lanes:** {bounds.get('lanes_searched', '?')} of {bounds.get('lanes_planned', '?')} planned search lanes returned; {bounds.get('sources_discovered', len(sources))} candidate source(s) discovered.")
         lines.append(f"- **Pages read:** {pages} (content read in full) | **snippet-only:** {snippets} (discovered, page not read).")
         truncated = [s for s in sources if s.content_truncated]
         if truncated:

@@ -64,4 +64,3 @@ async def run_deliberation(payload: DeliberationRunRequest):
         # of a bare 500 (and never a fabricated deliberation).
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return result.to_dict()
-

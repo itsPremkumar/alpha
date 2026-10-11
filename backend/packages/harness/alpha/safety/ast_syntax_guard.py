@@ -11,7 +11,6 @@ import ast
 import json
 import logging
 from pathlib import Path
-from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ def validate_syntax_precommit(
     file_path: str,
     content: str,
     bypass: bool = False,
-) -> Tuple[bool, str | None]:
+) -> tuple[bool, str | None]:
     """Verify syntactic correctness of file content before writing to disk.
 
     Args:
@@ -63,7 +62,7 @@ def validate_syntax_precommit(
     return True, None
 
 
-def _validate_python_syntax(file_path: str, content: str) -> Tuple[bool, str | None]:
+def _validate_python_syntax(file_path: str, content: str) -> tuple[bool, str | None]:
     """Parse Python code using Python's native AST parser."""
     try:
         ast.parse(content, filename=file_path)
@@ -94,7 +93,7 @@ def _validate_python_syntax(file_path: str, content: str) -> Tuple[bool, str | N
         return False, msg
 
 
-def _validate_json_syntax(file_path: str, content: str) -> Tuple[bool, str | None]:
+def _validate_json_syntax(file_path: str, content: str) -> tuple[bool, str | None]:
     """Parse JSON content using Python's native json module.
 
     Empty content is NOT skipped: empty input is invalid JSON and must fail
@@ -104,15 +103,12 @@ def _validate_json_syntax(file_path: str, content: str) -> Tuple[bool, str | Non
         json.loads(content)
         return True, None
     except json.JSONDecodeError as e:
-        msg = (
-            f"Pre-commit check failed: JSONDecodeError in '{file_path}' at line {e.lineno}, column {e.colno}: {e.msg}\n"
-            f"The file was NOT modified. Please ensure valid JSON formatting (check commas, quotes, and brackets)."
-        )
+        msg = f"Pre-commit check failed: JSONDecodeError in '{file_path}' at line {e.lineno}, column {e.colno}: {e.msg}\nThe file was NOT modified. Please ensure valid JSON formatting (check commas, quotes, and brackets)."
         logger.warning(f"Rejected invalid JSON write: {msg}")
         return False, msg
 
 
-def _validate_yaml_syntax(file_path: str, content: str) -> Tuple[bool, str | None]:
+def _validate_yaml_syntax(file_path: str, content: str) -> tuple[bool, str | None]:
     """Parse YAML content using PyYAML, failing closed when it is unavailable.
 
     Empty content is parsed like any other document (an empty YAML document
@@ -123,19 +119,13 @@ def _validate_yaml_syntax(file_path: str, content: str) -> Tuple[bool, str | Non
     try:
         import yaml
     except ImportError:
-        msg = (
-            f"Pre-commit check failed: YAML validation unavailable — PyYAML not installed for '{file_path}'.\n"
-            "The file was NOT modified (fail-closed). Install PyYAML to validate YAML writes."
-        )
+        msg = f"Pre-commit check failed: YAML validation unavailable — PyYAML not installed for '{file_path}'.\nThe file was NOT modified (fail-closed). Install PyYAML to validate YAML writes."
         logger.warning(msg)
         return False, msg
     try:
         yaml.safe_load(content)
         return True, None
     except Exception as e:
-        msg = (
-            f"Pre-commit check failed: YAML parse error in '{file_path}': {e}\n"
-            f"The file was NOT modified. Please ensure valid YAML indentation and syntax."
-        )
+        msg = f"Pre-commit check failed: YAML parse error in '{file_path}': {e}\nThe file was NOT modified. Please ensure valid YAML indentation and syntax."
         logger.warning(f"Rejected invalid YAML write: {msg}")
         return False, msg

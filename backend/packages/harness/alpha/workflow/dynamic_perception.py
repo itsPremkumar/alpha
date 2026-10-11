@@ -93,14 +93,16 @@ class DynamicPerceptionEngine:
 
     # Every slash-command string this module may emit. Each key must exist in
     # alpha.commands.catalog; the static test test_dynamic_layer.py enforces it.
-    EMITTABLE_COMMANDS: frozenset[str] = frozenset({
-        "/plan",
-        "/learn",
-        "/fix",
-        "/review",
-        "/research",
-        "/swarm",
-    })
+    EMITTABLE_COMMANDS: frozenset[str] = frozenset(
+        {
+            "/plan",
+            "/learn",
+            "/fix",
+            "/review",
+            "/research",
+            "/swarm",
+        }
+    )
 
     # (Removed phantom "/boost": it does not exist in alpha.commands.catalog.
     #  "boost"/"dynamic" keywords still classify the intent as BOOST — an

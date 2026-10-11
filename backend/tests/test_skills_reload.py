@@ -11,11 +11,11 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from alpha.agents.lead_agent import prompt as prompt_module
+from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 from app.gateway.auth.models import User
 from app.gateway.deps import get_config
 from app.gateway.routers import skills as skills_router
-from alpha.agents.lead_agent import prompt as prompt_module
-from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
 _SUCCESS_RESPONSE = {
     "success": True,

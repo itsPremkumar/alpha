@@ -7,10 +7,10 @@ evolutionary cycle with multi-objective fitness scoring against evaluation bench
 from __future__ import annotations
 
 import random
-import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 
 @dataclass
@@ -89,7 +89,7 @@ class PromptbreederEngine:
         lambda_cost: float = 0.05,
         lambda_latency: float = 0.001,
         elitism_count: int = 2,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> None:
         self.population_size = population_size
         self.tournament_size = min(tournament_size, population_size)
@@ -103,7 +103,7 @@ class PromptbreederEngine:
     def initialize_population(
         self,
         seed_task_prompts: list[str],
-        seed_mutation_prompts: Optional[list[str]] = None,
+        seed_mutation_prompts: list[str] | None = None,
     ) -> list[PromptGenome]:
         """Seeds initial dual population of Task and Mutation Prompts."""
         mut_seeds = seed_mutation_prompts or self.DEFAULT_MUTATION_PROMPTS
@@ -174,7 +174,7 @@ class PromptbreederEngine:
         genome.accuracy = accuracy
         genome.token_cost = cost
         genome.latency_ms = lat
-        
+
         # Penalties
         fitness = accuracy - (self.lambda_cost * cost) - (self.lambda_latency * lat)
         genome.fitness = fitness
@@ -187,7 +187,7 @@ class PromptbreederEngine:
         self,
         generations: int,
         eval_fn: Callable[[str], tuple[float, float, float]],
-        seed_task_prompts: Optional[list[str]] = None,
+        seed_task_prompts: list[str] | None = None,
     ) -> EvolutionResult:
         """Executes the full Darwinian evolutionary optimization loop over N generations."""
         if not self.population:

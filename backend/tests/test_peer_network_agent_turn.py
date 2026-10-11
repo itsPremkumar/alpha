@@ -459,10 +459,10 @@ def test_an_existing_database_gains_the_auto_reply_column(tmp_path: Path):
 
 def test_model_facing_tool_cannot_grant_auto_reply():
     """Auto-reply is an operator decision, so no tool action exposes it."""
-    from alpha.tools.builtins import peer_network_tool
-
     import ast
     import inspect
+
+    from alpha.tools.builtins import peer_network_tool
 
     # The check is on the *call graph*, not on a substring. The tool's docstring
     # deliberately names `set_auto_reply` to explain why it is unreachable, so a

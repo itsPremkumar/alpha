@@ -1,4 +1,3 @@
-
 from alpha.metacognition import (
     BiasFlag,
     CognitiveMode,
@@ -100,9 +99,7 @@ def test_corrupt_persisted_records_are_logged_and_disclosed(caplog):
     assert len(calibrator.records) == 1
     assert calibrator.dropped_records == 2
     assert calibrator.stats()["dropped_records"] == 2
-    assert any(
-        "Dropped 2 corrupt calibration record(s)" in rec.getMessage() for rec in caplog.records
-    ), "drop count must be logged, not silent"
+    assert any("Dropped 2 corrupt calibration record(s)" in rec.getMessage() for rec in caplog.records), "drop count must be logged, not silent"
 
     # The disclosure survives a save/load round trip.
     reloaded = ConfidenceCalibrator.from_dict(calibrator.to_dict())

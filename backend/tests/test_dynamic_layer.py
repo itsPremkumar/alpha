@@ -83,8 +83,7 @@ class _RecordingBotRegistry:
 class _RecordingSkillsHub:
     """Duck-typed skills-hub seam: records every registration attempt."""
 
-    def __init__(self, packages=None, installed_skills_dir: Path | None = None,
-                 installed: list[dict] | None = None) -> None:
+    def __init__(self, packages=None, installed_skills_dir: Path | None = None, installed: list[dict] | None = None) -> None:
         self.packages = list(packages or [])
         self.added = []
         self.installed_skills_dir = installed_skills_dir
@@ -112,6 +111,7 @@ def _make_assembler(hub: _RecordingSkillsHub, mcp_manager=None) -> DynamicResour
 # ---------------------------------------------------------------------------
 # 1. Importability — proves the NodeType.TASK import-time cascade is fixed
 # ---------------------------------------------------------------------------
+
 
 def test_all_dynamic_layer_modules_import_cleanly():
     import alpha.workflow as wf
@@ -142,23 +142,20 @@ def test_all_dynamic_layer_modules_import_cleanly():
     assert "ALWAYS" not in EdgeMode.__members__
 
     # RetryPolicy real fields construct with the values the decomposer chose
-    rp = dynamic_decomposer.DynamicTaskItem(
-        task_id="t", title="t", description="t", category="coding", assigned_role="r"
-    ).retry_policy
+    rp = dynamic_decomposer.DynamicTaskItem(task_id="t", title="t", description="t", category="coding", assigned_role="r").retry_policy
     assert rp.max_attempts == 3
     assert rp.backoff == "exponential"
     assert rp.initial_delay_seconds == 1.5
 
     # Dataclass default node_type is a real member
-    item = dynamic_decomposer.DynamicTaskItem(
-        task_id="t", title="t", description="t", category="coding", assigned_role="r"
-    )
+    item = dynamic_decomposer.DynamicTaskItem(task_id="t", title="t", description="t", category="coding", assigned_role="r")
     assert item.node_type is NodeType.AGENT
 
 
 # ---------------------------------------------------------------------------
 # 2. Decomposition → real-model-valid graph
 # ---------------------------------------------------------------------------
+
 
 def test_decompose_sample_intent_graph_validates_against_real_models():
     intent, goal = _sample_goal()
@@ -250,6 +247,7 @@ def test_bot_typed_task_binds_bot_or_downgrades_honestly():
 # 3. Perception — every emitted command exists in the real catalog
 # ---------------------------------------------------------------------------
 
+
 def test_perception_emits_only_real_catalog_commands():
     engine = DynamicPerceptionEngine()
 
@@ -292,9 +290,7 @@ def test_perception_source_contains_no_phantom_command_literals():
     assert tokens, "expected slash-command literals in the perception module"
 
     def in_catalog(token: str) -> bool:
-        return any(
-            cmd == token or cmd.startswith(token + " ") for cmd in CATALOG_COMMANDS
-        )
+        return any(cmd == token or cmd.startswith(token + " ") for cmd in CATALOG_COMMANDS)
 
     phantoms = sorted(t for t in tokens if not in_catalog(t))
     assert phantoms == [], f"phantom command literals in dynamic_perception: {phantoms}"
@@ -308,9 +304,7 @@ _DISCOVERY_PROMPT = "author a skill for data analysis that uses mcp protocol"
 
 
 def test_assembler_never_registers_mock_skill_and_discloses_honestly():
-    hub = _RecordingSkillsHub(
-        packages=[SkillPackage(name="real_discovery_tool", description="real tool", source="github")]
-    )
+    hub = _RecordingSkillsHub(packages=[SkillPackage(name="real_discovery_tool", description="real tool", source="github")])
     assembler = _make_assembler(hub, mcp_manager=None)
 
     intent, goal = _sample_goal(_DISCOVERY_PROMPT)
@@ -323,12 +317,7 @@ def test_assembler_never_registers_mock_skill_and_discloses_honestly():
 
     # Static proof: the module never calls add_to_catalog at all
     tree = ast.parse(Path(dynamic_assembler.__file__).read_text(encoding="utf-8"))
-    calls = [
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "add_to_catalog"
-    ]
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "add_to_catalog"]
     assert calls == [], "dynamic_assembler must not register into the skills hub"
 
     # (2) Skills listed are only real hub discoveries
@@ -364,9 +353,7 @@ def test_assembler_mcp_disclosure_when_no_declared_specs(tmp_path):
     resources = assembler.assemble(goal, _DISCOVERY_PROMPT)
 
     assert resources.mcp_servers == []
-    assert resources.metadata["mcp_generation"] == (
-        "unavailable — no MCP server specs declared by installed skills"
-    )
+    assert resources.metadata["mcp_generation"] == ("unavailable — no MCP server specs declared by installed skills")
 
 
 def test_assembler_acquires_only_declared_mcp_specs_from_real_seam(tmp_path):
@@ -374,19 +361,10 @@ def test_assembler_acquires_only_declared_mcp_specs_from_real_seam(tmp_path):
     demo_dir = skills_root / "demo"
     demo_dir.mkdir(parents=True)
     (demo_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: demo\n"
-        "mcp-servers:\n"
-        "  demo_mcp:\n"
-        "    command: python\n"
-        "    args: [\"-m\", \"demo.gateway\"]\n"
-        "---\n"
-        "# demo skill\n",
+        '---\nname: demo\nmcp-servers:\n  demo_mcp:\n    command: python\n    args: ["-m", "demo.gateway"]\n---\n# demo skill\n',
         encoding="utf-8",
     )
-    hub = _RecordingSkillsHub(
-        installed_skills_dir=skills_root, installed=[{"name": "demo"}]
-    )
+    hub = _RecordingSkillsHub(installed_skills_dir=skills_root, installed=[{"name": "demo"}])
     assembler = _make_assembler(hub, mcp_manager=SkillMcpLifecycleManager())
 
     intent, goal = _sample_goal(_DISCOVERY_PROMPT)
@@ -411,6 +389,7 @@ def test_assembler_reports_unbound_mcp_seam_honestly():
 # ---------------------------------------------------------------------------
 # 5. Bridge — stub runner records real execution; no runner = honest failure
 # ---------------------------------------------------------------------------
+
 
 def test_bridge_with_stub_runner_records_real_execution():
     intent, goal = _sample_goal()
@@ -460,6 +439,7 @@ def test_bridge_without_runner_fails_honestly_never_fakes_success():
 # 6. Saga compensation — real seam only, honest refusal otherwise
 # ---------------------------------------------------------------------------
 
+
 def _compensation_fixture():
     intent, goal = _sample_goal()
     bridge = DynamicWorkflowBridge()
@@ -474,9 +454,7 @@ def test_saga_compensation_without_executor_refuses_honestly():
     compensated: list[str] = []
     error_parts: list[str] = []
 
-    executed, reason = bridge._execute_saga_compensation(
-        run, graph, goal, completed, compensated, error_parts
-    )
+    executed, reason = bridge._execute_saga_compensation(run, graph, goal, completed, compensated, error_parts)
 
     assert executed is False
     assert compensated == []
@@ -494,9 +472,7 @@ def test_saga_compensation_with_stub_executor_records_real_rollback():
     compensated: list[str] = []
     error_parts: list[str] = []
 
-    executed, reason = bridge._execute_saga_compensation(
-        run, graph, goal, completed, compensated, error_parts
-    )
+    executed, reason = bridge._execute_saga_compensation(run, graph, goal, completed, compensated, error_parts)
 
     assert executed is True
     comp_nodes = [n for n in graph.nodes.values() if n.type is NodeType.COMPENSATION]

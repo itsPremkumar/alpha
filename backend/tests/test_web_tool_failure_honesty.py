@@ -374,9 +374,7 @@ def test_web_fetch_allows_a_private_target_only_when_the_operator_opts_in():
 
 
 def test_web_fetch_still_fetches_a_public_url():
-    crawl = AsyncMock(
-        return_value="<html><head><title>T</title></head><body><article><p>public body text here</p></article></body></html>"
-    )
+    crawl = AsyncMock(return_value="<html><head><title>T</title></head><body><article><p>public body text here</p></article></body></html>")
     result = _fetch(PUBLIC_URL, crawl=crawl)
 
     crawl.assert_awaited_once()

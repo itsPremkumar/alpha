@@ -19,9 +19,9 @@ from __future__ import annotations
 import ast
 import logging
 from collections import defaultdict, deque
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from langchain.tools import tool
 
@@ -35,11 +35,11 @@ class StatementNode:
     line_number: int
     node_type: str
     code_snippet: str
-    defined_vars: Set[str] = field(default_factory=set)
-    used_vars: Set[str] = field(default_factory=set)
-    control_parents: Set[int] = field(default_factory=set)
+    defined_vars: set[str] = field(default_factory=set)
+    used_vars: set[str] = field(default_factory=set)
+    control_parents: set[int] = field(default_factory=set)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "line_number": self.line_number,
             "node_type": self.node_type,
@@ -54,17 +54,17 @@ class StatementNode:
 class ProgramDependenceGraph:
     """Combines Data Dependence Graph (DDG) and Control Dependence Graph (CDG)."""
 
-    statements: Dict[int, StatementNode] = field(default_factory=dict)
+    statements: dict[int, StatementNode] = field(default_factory=dict)
     # data_edges: def_line -> set of (use_line, var_name)
-    data_edges: Dict[int, Set[Tuple[int, str]]] = field(default_factory=lambda: defaultdict(set))
+    data_edges: dict[int, set[tuple[int, str]]] = field(default_factory=lambda: defaultdict(set))
     # rev_data_edges: use_line -> set of (def_line, var_name)
-    rev_data_edges: Dict[int, Set[Tuple[int, str]]] = field(default_factory=lambda: defaultdict(set))
+    rev_data_edges: dict[int, set[tuple[int, str]]] = field(default_factory=lambda: defaultdict(set))
     # control_edges: parent_line -> set of child_lines
-    control_edges: Dict[int, Set[int]] = field(default_factory=lambda: defaultdict(set))
+    control_edges: dict[int, set[int]] = field(default_factory=lambda: defaultdict(set))
     # rev_control_edges: child_line -> set of parent_lines
-    rev_control_edges: Dict[int, Set[int]] = field(default_factory=lambda: defaultdict(set))
+    rev_control_edges: dict[int, set[int]] = field(default_factory=lambda: defaultdict(set))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "statements_count": len(self.statements),
             "data_edges_count": sum(len(v) for v in self.data_edges.values()),
@@ -77,8 +77,8 @@ class ASTVariableExtractor(ast.NodeVisitor):
     """Extracts defined and used variable names strictly from the current statement header."""
 
     def __init__(self) -> None:
-        self.defined_vars: Set[str] = set()
-        self.used_vars: Set[str] = set()
+        self.defined_vars: set[str] = set()
+        self.used_vars: set[str] = set()
 
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, (ast.Store, ast.Del)):
@@ -189,7 +189,7 @@ class ProgramSlicingEngine:
                 return lines[lineno - 1].strip()
             return ""
 
-        def record_statement(node: ast.AST, parent_line: Optional[int] = None) -> None:
+        def record_statement(node: ast.AST, parent_line: int | None = None) -> None:
             lineno = getattr(node, "lineno", None)
             if lineno is None:
                 return
@@ -215,7 +215,7 @@ class ProgramSlicingEngine:
                 pdg.control_edges[parent_line].add(lineno)
                 pdg.rev_control_edges[lineno].add(parent_line)
 
-        def walk_body(body_nodes: List[ast.AST], parent_line: Optional[int]) -> None:
+        def walk_body(body_nodes: list[ast.AST], parent_line: int | None) -> None:
             for child in body_nodes:
                 record_statement(child, parent_line)
 
@@ -239,9 +239,9 @@ class ProgramSlicingEngine:
 
         # Pass 2: Reaching Definitions Analysis across Control Flow
         def compute_data_flow(
-            nodes: List[ast.AST],
-            in_defs: Dict[str, Set[int]],
-        ) -> Dict[str, Set[int]]:
+            nodes: list[ast.AST],
+            in_defs: dict[str, set[int]],
+        ) -> dict[str, set[int]]:
             curr_defs = defaultdict(set, {k: set(v) for k, v in in_defs.items()})
 
             for child in nodes:
@@ -267,7 +267,7 @@ class ProgramSlicingEngine:
                 if isinstance(child, ast.If):
                     out_if = compute_data_flow(child.body, curr_defs)
                     out_else = compute_data_flow(child.orelse, curr_defs) if child.orelse else curr_defs
-                    joined: Dict[str, Set[int]] = defaultdict(set)
+                    joined: dict[str, set[int]] = defaultdict(set)
                     for k in set(out_if.keys()) | set(out_else.keys()):
                         joined[k] = out_if.get(k, set()) | out_else.get(k, set())
                     curr_defs = joined
@@ -275,7 +275,7 @@ class ProgramSlicingEngine:
                 elif isinstance(child, (ast.For, ast.AsyncFor, ast.While)):
                     body_nodes = list(child.body)
                     out_loop = compute_data_flow(body_nodes, curr_defs)
-                    loop_joined: Dict[str, Set[int]] = defaultdict(set)
+                    loop_joined: dict[str, set[int]] = defaultdict(set)
                     for k in set(curr_defs.keys()) | set(out_loop.keys()):
                         loop_joined[k] = curr_defs.get(k, set()) | out_loop.get(k, set())
                     compute_data_flow(body_nodes, loop_joined)
@@ -299,7 +299,7 @@ class ProgramSlicingEngine:
                         handler_outs.append(h_out)
                     if child.orelse:
                         handler_outs.append(compute_data_flow(child.orelse, out_try))
-                    joined_try: Dict[str, Set[int]] = defaultdict(set)
+                    joined_try: dict[str, set[int]] = defaultdict(set)
                     for o in handler_outs:
                         for k, v in o.items():
                             joined_try[k] |= v
@@ -379,8 +379,8 @@ class ProgramSlicingEngine:
         self,
         source_code: str,
         target_line: int,
-        target_variable: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        target_variable: str | None = None,
+    ) -> dict[str, Any]:
         """Compute the minimal backward slice of statements influencing the target."""
         pdg = self.build_pdg(source_code)
         lines = source_code.splitlines()
@@ -415,8 +415,8 @@ class ProgramSlicingEngine:
                 ),
             }
 
-        visited_lines: Set[int] = set()
-        queue: deque[Tuple[int, Optional[str]]] = deque()
+        visited_lines: set[int] = set()
+        queue: deque[tuple[int, str | None]] = deque()
 
         start_stmt = pdg.statements[resolved_line]
         if target_variable:
@@ -456,13 +456,9 @@ class ProgramSlicingEngine:
                         queue.append((ctrl_parent, None))
 
         sorted_slice_lines = sorted(list(visited_lines))
-        causal_statements = [
-            pdg.statements[l].to_dict() for l in sorted_slice_lines if l in pdg.statements
-        ]
+        causal_statements = [pdg.statements[line_no].to_dict() for line_no in sorted_slice_lines if line_no in pdg.statements]
 
-        slice_code = "\n".join(
-            lines[l - 1] for l in sorted_slice_lines if 1 <= l <= len(lines)
-        )
+        slice_code = "\n".join(lines[line_no - 1] for line_no in sorted_slice_lines if 1 <= line_no <= len(lines))
 
         return {
             "slicing_mode": "backward",
@@ -480,8 +476,8 @@ class ProgramSlicingEngine:
         self,
         source_code: str,
         target_line: int,
-        target_variable: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        target_variable: str | None = None,
+    ) -> dict[str, Any]:
         """Compute the downstream blast radius and affected lines for a modified statement."""
         pdg = self.build_pdg(source_code)
         lines = source_code.splitlines()
@@ -516,8 +512,8 @@ class ProgramSlicingEngine:
                 ),
             }
 
-        visited_lines: Set[int] = set()
-        queue: deque[Tuple[int, Optional[str]]] = deque()
+        visited_lines: set[int] = set()
+        queue: deque[tuple[int, str | None]] = deque()
 
         start_stmt = pdg.statements[resolved_line]
         if target_variable:
@@ -552,13 +548,9 @@ class ProgramSlicingEngine:
                     queue.append((ctrl_child, None))
 
         sorted_impacted = sorted(list(visited_lines))
-        impacted_statements = [
-            pdg.statements[l].to_dict() for l in sorted_impacted if l in pdg.statements
-        ]
+        impacted_statements = [pdg.statements[line_no].to_dict() for line_no in sorted_impacted if line_no in pdg.statements]
 
-        impacted_code = "\n".join(
-            lines[l - 1] for l in sorted_impacted if 1 <= l <= len(lines)
-        )
+        impacted_code = "\n".join(lines[line_no - 1] for line_no in sorted_impacted if 1 <= line_no <= len(lines))
 
         # Risk scoring
         total_stmts = len(pdg.statements)
@@ -590,12 +582,12 @@ class ProgramSlicingEngine:
 
 @tool("compute_program_slice", parse_docstring=True)
 def compute_program_slice(
-    source_code: Optional[str] = None,
-    file_path: Optional[str] = None,
+    source_code: str | None = None,
+    file_path: str | None = None,
     slicing_mode: str = "backward",
     target_line: int = 1,
-    target_variable: Optional[str] = None,
-) -> Dict[str, Any]:
+    target_variable: str | None = None,
+) -> dict[str, Any]:
     """Compute backward or forward program slices across Python code using AST and PDG graphs.
 
     Enables surgical debugging and blast-radius analysis:

@@ -61,7 +61,8 @@ _SCROLL_DELTA = 560
 #: JS: resolve a node id to the live element and its current click point, or
 #: null. Every rejection here is one the reference implementation makes, and each
 #: one is a click that would otherwise land somewhere unintended.
-_RESOLVE_JS = """
+_RESOLVE_JS = (
+    """
 ((node) => {
   const c = window.__alphaNodes;
   const e = c && c.nodes.get(node);
@@ -75,12 +76,16 @@ _RESOLVE_JS = """
   if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
   if (!e.contains(document.elementFromPoint(x, y))) return null;
   return {x: x, y: y, tag: e.tagName, type: e.type || '', readOnly: e.readOnly === true};
-})(""" + _NODE_SLOT + """)
+})("""
+    + _NODE_SLOT
+    + """)
 """
+)
 
 #: JS: set a native select's value and fire the events a framework listens for.
 #: Assigning `.value` alone changes the DOM and not the application state.
-_SELECT_JS = """
+_SELECT_JS = (
+    """
 ((args) => {
   const c = window.__alphaNodes;
   const e = c && c.nodes.get(args.node);
@@ -92,8 +97,11 @@ _SELECT_JS = """
   e.dispatchEvent(new Event('input', {bubbles: true}));
   e.dispatchEvent(new Event('change', {bubbles: true}));
   return e.value;
-})(""" + _ARGS_SLOT + """)
+})("""
+    + _ARGS_SLOT
+    + """)
 """
+)
 
 #: JS: how many nodes the page is still holding. Diagnostic only — a registry
 #: that grows without bound is a leak, and this is how a caller can see it.

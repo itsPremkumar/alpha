@@ -121,10 +121,7 @@ def open_channel(
         transcript=TranscriptStore(room_dir / "transcript.jsonl"),
         commands=ChannelCommandRouter(
             CHANNEL_COMMANDS,
-            target_authorities={
-                name: frozenset(getattr(profile, "granted_capabilities", ()) or ())
-                for name, profile in _profiles(lifecycle).items()
-            },
+            target_authorities={name: frozenset(getattr(profile, "granted_capabilities", ()) or ()) for name, profile in _profiles(lifecycle).items()},
         ),
         lifecycle=lifecycle,
         supervisor=supervisor,
@@ -212,9 +209,7 @@ async def handle_channel_message(
             resolution={"command": name, "args": args},
             dispatch=None,
             command=outcome.to_dict(),
-            human_line=(
-                f"/{name} {'allowed' if outcome.decision.allowed else 'REFUSED'}: {outcome.decision.reason}"
-            ),
+            human_line=(f"/{name} {'allowed' if outcome.decision.allowed else 'REFUSED'}: {outcome.decision.reason}"),
         )
 
     roster = [name for name in _profiles(ctx.lifecycle)] or [target_hint or author]

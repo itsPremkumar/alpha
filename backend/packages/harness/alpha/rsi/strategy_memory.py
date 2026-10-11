@@ -47,10 +47,7 @@ UNATTRIBUTED_STRATEGY = "unattributed"
 UNKNOWN_PROBLEM_CLASS = "unknown"
 
 _RATE_DISCLOSURE = "plain recorded-count rates (no Laplace smoothing); counts come only from recorded ledger events"
-_ZERO_ATTEMPT_DISCLOSURE = (
-    "attempts=0 -> promotion_rate=None, rollback_rate=None (unverified: no recorded attempts). "
-    "A consumer needing a scalar must use and disclose neutral 0.5, never a fabricated 0.0/1.0."
-)
+_ZERO_ATTEMPT_DISCLOSURE = "attempts=0 -> promotion_rate=None, rollback_rate=None (unverified: no recorded attempts). A consumer needing a scalar must use and disclose neutral 0.5, never a fabricated 0.0/1.0."
 
 # Event parsing vocabulary. ``event``/``kind``/``action`` mirror the existing
 # evolution ledger writer (evolution/engine.py) and tolerate A1's lineage
@@ -143,11 +140,7 @@ def stat_note(stat: StrategyStat) -> str:
     """Disclosure note: formula + concrete counts behind this stat's rates."""
     if stat.attempts <= 0:
         return _ZERO_ATTEMPT_DISCLOSURE
-    return (
-        f"promotion_rate = promotions/attempts = {stat.promotions}/{stat.attempts} = {stat.promotion_rate}; "
-        f"rollback_rate = rollbacks/attempts = {stat.rollbacks}/{stat.attempts} = {stat.rollback_rate}; "
-        f"{_RATE_DISCLOSURE}"
-    )
+    return f"promotion_rate = promotions/attempts = {stat.promotions}/{stat.attempts} = {stat.promotion_rate}; rollback_rate = rollbacks/attempts = {stat.rollbacks}/{stat.attempts} = {stat.rollback_rate}; {_RATE_DISCLOSURE}"
 
 
 def _first_text(event: dict, keys: tuple[str, ...]) -> str | None:
@@ -524,18 +517,13 @@ def lesson_for(failure: object, *, project_id: str = "default", retrospective: o
             "proposed_instruction": proposal.proposed_instruction,
             "target_prompt_section": proposal.target_prompt_section,
             "note": (
-                f"RetrospectiveEngine pattern '{proposal.trigger_pattern}' matched the recorded failure "
-                f"symptom (proposals_emitted={len(proposals)}, matched=1); heuristic guidance "
-                f"(evidence_kind=heuristic), not a measured root cause."
+                f"RetrospectiveEngine pattern '{proposal.trigger_pattern}' matched the recorded failure symptom (proposals_emitted={len(proposals)}, matched=1); heuristic guidance (evidence_kind=heuristic), not a measured root cause."
             ),
         }
     return {
         "status": "unresolved",
         "evidence_kind": "unverified",
-        "note": (
-            f"No retrospective pattern matched the recorded failure symptom "
-            f"(proposals_emitted={len(proposals)}, matched=0); unverified — no root cause claimed."
-        ),
+        "note": (f"No retrospective pattern matched the recorded failure symptom (proposals_emitted={len(proposals)}, matched=0); unverified — no root cause claimed."),
     }
 
 
@@ -556,4 +544,3 @@ class StrategyMemory:
 
 
 get_strategy_memory = get_memory
-

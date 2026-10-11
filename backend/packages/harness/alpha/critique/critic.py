@@ -94,8 +94,7 @@ def critique_path(root: str | Path) -> CritiqueReport:
         try:
             tree = ast.parse(src)
         except SyntaxError as exc:
-            findings.append(Finding("syntax-error", "high", str(f), getattr(exc, "lineno", 0) or 0,
-                                    f"syntax error: {exc.msg}", "Fix the syntax error."))
+            findings.append(Finding("syntax-error", "high", str(f), getattr(exc, "lineno", 0) or 0, f"syntax error: {exc.msg}", "Fix the syntax error."))
             continue
         scanned += 1
         rel = str(f)

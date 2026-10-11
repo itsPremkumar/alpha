@@ -206,6 +206,7 @@ def test_replay_folds_mode_and_patch_events(registry):
 
 def test_replay_reflects_fail_closed_failed_run(registry):
     """A fail-closed run replays FAILED with its real failed nodes."""
+
     def raising_executor(node, run):
         raise KeyError("missing shard")
 

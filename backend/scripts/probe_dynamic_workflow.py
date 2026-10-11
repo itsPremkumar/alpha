@@ -26,10 +26,7 @@ import httpx
 GATEWAY = os.environ.get("ALPHA_GATEWAY_URL", "http://127.0.0.1:8001")
 
 PROMPT_NARROW = "Rename the variable `tmp` to `buffer` in backend/utils/time.py"
-PROMPT_BROAD = (
-    "Build a release: add the changelog entry, bump the version in all four "
-    "version sources, run the full test suite, then write the release notes"
-)
+PROMPT_BROAD = "Build a release: add the changelog entry, bump the version in all four version sources, run the full test suite, then write the release notes"
 
 
 def post(c: httpx.Client, path: str, body: dict) -> tuple[int, object]:
@@ -87,9 +84,7 @@ def main() -> int:
     if not ln or not lb:
         failures.append("one of the decompositions produced no node labels at all")
     elif ln == lb:
-        failures.append(
-            "both prompts produced IDENTICAL node labels, so the decomposition is a template, not a decomposition"
-        )
+        failures.append("both prompts produced IDENTICAL node labels, so the decomposition is a template, not a decomposition")
     else:
         print(f"  distinct: {len(set(ln) ^ set(lb))} label(s) differ")
 

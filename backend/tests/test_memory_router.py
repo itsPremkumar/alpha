@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import memory
 from alpha.agents.memory import MemoryConflictError, MemoryCorruptionError
 from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
+from app.gateway.routers import memory
 
 
 def _sample_memory(facts: list[dict] | None = None) -> dict:
@@ -390,8 +390,8 @@ def test_update_memory_fact_route_returns_specific_error_for_invalid_confidence(
 
 
 def _internal_owner_request(owner_user_id: str) -> SimpleNamespace:
-    from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
     from alpha.runtime.user_context import DEFAULT_USER_ID
+    from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
 
     return SimpleNamespace(
         headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},

@@ -66,10 +66,7 @@ class ActionRiskClassifier:
                 return ActionRiskLevel.HIGH_RISK_DESTRUCTIVE
 
         # Check for standard read/safe shell commands
-        safe_prefixes = [
-            "ls", "dir", "cat", "echo", "pwd", "git status", "git diff", "git log",
-            "pytest", "python -m pytest", "cargo test", "npm test", "node -v", "python --version"
-        ]
+        safe_prefixes = ["ls", "dir", "cat", "echo", "pwd", "git status", "git diff", "git log", "pytest", "python -m pytest", "cargo test", "npm test", "node -v", "python --version"]
         if any(cmd_clean.startswith(p) for p in safe_prefixes):
             return ActionRiskLevel.LOW_SAFE
 

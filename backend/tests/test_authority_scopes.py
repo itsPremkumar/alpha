@@ -314,9 +314,7 @@ def test_ceiling_is_clamped_after_composition_regardless_of_scope_order() -> Non
     base = baseline_from_ceiling(AuthorityCeiling())
     scope = _scope(denied_capabilities=[])
     resolution = compose_scopes([scope], baseline=base, agent="researcher-3")
-    ceiling_decisions = [
-        item for item in resolution.effective.decisions if item.rule_id == ScopeRule.CEILING_CLAMPS.value
-    ]
+    ceiling_decisions = [item for item in resolution.effective.decisions if item.rule_id == ScopeRule.CEILING_CLAMPS.value]
     for decision in ceiling_decisions:
         assert decision.scope == "<authority-ceiling>"
         assert "not expressible as a scope field" in decision.reason

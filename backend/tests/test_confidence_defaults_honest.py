@@ -40,6 +40,7 @@ def _isolated_workspace(tmp_path, monkeypatch):
 
 # --- 1. Request-model defaults: neutral 0.5, disclosed ----------------------
 
+
 def test_submit_rfc_review_request_defaults_to_neutral_baseline() -> None:
     req = SubmitRFCReviewRequest(
         reviewer_bot="bot-cto",
@@ -78,6 +79,7 @@ def test_semantic_belief_create_request_defaults_to_neutral_baseline() -> None:
 
 # --- 2. Stored-model defaults: value + basis label --------------------------
 
+
 def test_rfc_review_model_default_is_disclosed_neutral() -> None:
     review = RFCReview(reviewer_bot="bot-cto", department="architecture", verdict="approve", argument="ok")
     assert review.epistemic_confidence == 0.5
@@ -91,6 +93,7 @@ def test_debate_argument_model_default_is_disclosed_neutral() -> None:
 
 
 # --- 3. Protocol methods: omitted ⇒ neutral, explicit ⇒ caller_supplied -----
+
 
 def _fresh_protocol():
     protocol = EnterpriseRFCProtocol()
@@ -163,6 +166,7 @@ def test_submit_debate_argument_explicit_weight_is_labeled_caller_supplied() -> 
 
 # --- 4. Bootstrap seeds are labeled demo data, not measurements -------------
 
+
 def test_seeded_rfcs_carry_seed_demo_basis_label() -> None:
     protocol = EnterpriseRFCProtocol()
     seeded = protocol.list_rfcs()
@@ -179,6 +183,7 @@ def test_seeded_rfcs_carry_seed_demo_basis_label() -> None:
 
 
 # --- 5. GateRequest: autonomy is opt-in -------------------------------------
+
 
 def test_gate_request_autonomous_mode_is_opt_in_false() -> None:
     assert GateRequest().autonomous_mode is False

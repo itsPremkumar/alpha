@@ -6,9 +6,7 @@ from alpha.memory.active_memory import ActiveMemoryRouter
 def test_tier1_deterministic_resolution(tmp_path: Path):
     mem_file = tmp_path / "MEMORY.md"
     mem_file.write_text(
-        "# Core Memory\n"
-        "- Deploy script requires AWS_REGION=us-east-1 and credentials configured.\n"
-        "- Database connection pool max size is 25 connections.\n",
+        "# Core Memory\n- Deploy script requires AWS_REGION=us-east-1 and credentials configured.\n- Database connection pool max size is 25 connections.\n",
         encoding="utf-8",
     )
 
@@ -25,8 +23,7 @@ def test_tier1_deterministic_resolution(tmp_path: Path):
 def test_tier2_escalation_trigger(tmp_path: Path):
     mem_file = tmp_path / "MEMORY.md"
     mem_file.write_text(
-        "# Core Memory\n"
-        "- Some unrelated note about redis caching.\n",
+        "# Core Memory\n- Some unrelated note about redis caching.\n",
         encoding="utf-8",
     )
 

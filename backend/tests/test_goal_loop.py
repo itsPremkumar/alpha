@@ -118,7 +118,7 @@ class TestVerdictGrammar:
             '{"verdict": "finished", "reason": "synonym"}',
             '{"verdict": null}',
             '{"verdict": 1}',
-            "```json\n{\"verdict\": \"done\"}",  # unterminated fence
+            '```json\n{"verdict": "done"}',  # unterminated fence
             "",
             None,
         ):
@@ -162,9 +162,7 @@ class TestVerdictGrammar:
 
 class TestGoalLoopsAndTerminates:
     def test_goal_loops_across_turns_then_terminates(self):
-        engine = GoalLoopEngine(
-            judge=GoalJudge(_judge_sequence(_continue("1 of 4"), _continue("2 of 4"), _done("all 4 exist")))
-        )
+        engine = GoalLoopEngine(judge=GoalJudge(_judge_sequence(_continue("1 of 4"), _continue("2 of 4"), _done("all 4 exist"))))
         state = _state()
 
         first = _run(engine, state)
@@ -691,11 +689,7 @@ class TestPromptCacheStability:
 class TestCompletionContracts:
     def test_inline_fields_are_parsed_into_the_contract(self):
         parsed = parse_goal_text(
-            "Migrate auth to JWT\n"
-            "verify: pytest tests/auth passes\n"
-            "constraints: keep the /login response shape unchanged\n"
-            "boundaries: only touch services/auth and its tests\n"
-            "stop when: a DB schema migration is required"
+            "Migrate auth to JWT\nverify: pytest tests/auth passes\nconstraints: keep the /login response shape unchanged\nboundaries: only touch services/auth and its tests\nstop when: a DB schema migration is required"
         )
         assert parsed.objective == "Migrate auth to JWT"
         assert parsed.contract.verification == "pytest tests/auth passes"

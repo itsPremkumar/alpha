@@ -96,31 +96,37 @@ class SelfConfigProfile:
     model_tier: ModelTier = ModelTier.REASONING_FRONTIER
     primary_model: str = "claude-3-7-sonnet-thinking"
     fallback_model: str = "gpt-4o"
-    active_tools: list[str] = field(default_factory=lambda: [
-        "code_executor",
-        "filesystem_editor",
-        "ripgrep_search",
-        "web_research",
-        "epistemic_belief_graph",
-        "rsi_engine",
-    ])
+    active_tools: list[str] = field(
+        default_factory=lambda: [
+            "code_executor",
+            "filesystem_editor",
+            "ripgrep_search",
+            "web_research",
+            "epistemic_belief_graph",
+            "rsi_engine",
+        ]
+    )
     reasoning_budget_tokens: int = 8192
     thought_depth: str = "deep"
     max_turns: int = 50
     context_compaction_threshold: int = 50000
     loop_detection_limit: int = 3
     topology: TopologyType = TopologyType.HIERARCHICAL
-    swarm_roles: list[str] = field(default_factory=lambda: [
-        "lead_architect",
-        "implementation_engineer",
-        "verification_critic",
-    ])
+    swarm_roles: list[str] = field(
+        default_factory=lambda: [
+            "lead_architect",
+            "implementation_engineer",
+            "verification_critic",
+        ]
+    )
     autonomous_pivots_enabled: bool = True
-    guardrails: dict[str, Any] = field(default_factory=lambda: {
-        "max_file_deletions": 2,
-        "require_test_verification": True,
-        "allow_network_search": True,
-    })
+    guardrails: dict[str, Any] = field(
+        default_factory=lambda: {
+            "max_file_deletions": 2,
+            "require_test_verification": True,
+            "allow_network_search": True,
+        }
+    )
     updated_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
 
     def to_dict(self) -> dict[str, Any]:

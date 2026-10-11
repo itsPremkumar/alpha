@@ -382,7 +382,7 @@ class ReplSession:
         """
         resolved = self._working_dir
         if resolved is None:
-            resolved = (self._working_dir_input.resolve() if self._working_dir_input is not None else Path.cwd())
+            resolved = self._working_dir_input.resolve() if self._working_dir_input is not None else Path.cwd()
             self._working_dir = resolved
         return resolved
 

@@ -8,13 +8,13 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
 from app.gateway.deps import (
     get_current_user,
     get_subagent_batch_repo,
     get_subagent_batch_service,
 )
-from alpha.utils.thread_id import ThreadId
 
 router = APIRouter(prefix="/api/threads/{thread_id}/subagent-batches", tags=["subagent-batches"])
 _ITEM_STATUSES = {"pending", "queued", "leased", "running", "succeeded", "failed", "cancelled"}

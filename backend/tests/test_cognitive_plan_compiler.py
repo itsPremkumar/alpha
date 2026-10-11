@@ -1,4 +1,3 @@
-
 from alpha.planning.compiler import (
     CognitiveCompiler,
     ExecutionPlanIR,

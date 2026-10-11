@@ -378,10 +378,7 @@ class ToolCaller:
                 outcome=CallOutcome.UNAVAILABLE,
                 entry_id=selector,
                 tool=selector,
-                message=(
-                    f"Tool {selector!r} is not in the current policy-filtered catalog. It may have been removed, renamed, or denied by the active policy. "
-                    "Run `tool_search` to see what is available."
-                ),
+                message=(f"Tool {selector!r} is not in the current policy-filtered catalog. It may have been removed, renamed, or denied by the active policy. Run `tool_search` to see what is available."),
                 snapshot_id=self._snapshot.snapshot_id,
             )
         if self._policy_check is not None:
@@ -507,8 +504,7 @@ class ToolCaller:
             entry_id=entry.entry_id,
             tool=entry.name,
             message=(
-                f"Tool {entry.name!r} declares executionMode 'sequential' and must run exclusively, "
-                "but another catalog call is in flight. Wait for it to finish, then retry."
+                f"Tool {entry.name!r} declares executionMode 'sequential' and must run exclusively, but another catalog call is in flight. Wait for it to finish, then retry."
                 if entry.sequential_only
                 else f"Tool {entry.name!r} could not start: a sequential-only catalog call is in flight. Wait for it to finish, then retry."
             ),

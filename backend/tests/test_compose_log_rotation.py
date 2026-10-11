@@ -96,10 +96,7 @@ def test_every_service_has_a_bounded_logging_driver(compose_path: Path) -> None:
             offenders.append(f"{name}: max-file {options.get('max-file')!r} does not resolve to an integer")
             continue
         if file_count < 2:
-            offenders.append(
-                f"{name}: max-file is {file_count}; Docker cannot rotate below 2, "
-                "so this is not a bound"
-            )
+            offenders.append(f"{name}: max-file is {file_count}; Docker cannot rotate below 2, so this is not a bound")
 
     assert not offenders, f"{compose_path.name} ships unbounded container logs: {offenders}"
 
@@ -111,10 +108,7 @@ def test_logging_bounds_are_operator_tunable(compose_path: Path) -> None:
     logging_blocks = re.findall(r"^\s+logging:\s*(\*?\S+)\s*$", text, flags=re.MULTILINE)
 
     assert logging_blocks, f"{compose_path.name} has no per-service logging: key"
-    assert all(re.match(r"^\*bounded_logs$", block) for block in logging_blocks), (
-        f"{compose_path.name} must bind logging to the shared *bounded_logs anchor so the "
-        f"cap cannot drift per service; found: {logging_blocks}"
-    )
+    assert all(re.match(r"^\*bounded_logs$", block) for block in logging_blocks), f"{compose_path.name} must bind logging to the shared *bounded_logs anchor so the cap cannot drift per service; found: {logging_blocks}"
     assert "ALPHA_LOG_MAX_SIZE" in text
     assert "ALPHA_LOG_MAX_FILE" in text
 
@@ -124,13 +118,9 @@ def test_the_shared_anchor_is_declared_once_per_file() -> None:
     for compose_path in COMPOSE_FILES:
         text = compose_path.read_text(encoding="utf-8")
         declarations = re.findall(r"^x-bounded-logs:\s*&bounded_logs\s*$", text, flags=re.MULTILINE)
-        assert len(declarations) == 1, (
-            f"{compose_path.name} must declare the anchor exactly once; found {len(declarations)}"
-        )
+        assert len(declarations) == 1, f"{compose_path.name} must declare the anchor exactly once; found {len(declarations)}"
         # An anchor defined but never resolved would silently drop the cap.
-        assert re.search(r"logging:\s*\*bounded_logs", text), (
-            f"{compose_path.name} declares *bounded_logs but never references it"
-        )
+        assert re.search(r"logging:\s*\*bounded_logs", text), f"{compose_path.name} declares *bounded_logs but never references it"
 
 
 def test_log_defaults_match_the_start_ps1_budget() -> None:

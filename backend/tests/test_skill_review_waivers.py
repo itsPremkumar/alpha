@@ -149,13 +149,7 @@ def test_every_waived_subprocess_call_still_matches_its_stated_reason() -> None:
         # `evidence` is the dotted call as the analyzer reports it
         # ("subprocess.run"); the AST exposes only the attribute ("run").
         expected_attr = waiver.evidence.rsplit(".", 1)[-1]
-        calls = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}
-        ]
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}]
         covered = [c for c in calls if c.func.attr == expected_attr]
         assert covered, f"{waiver.path}: no {waiver.evidence} call found to match the waiver"
 
@@ -177,10 +171,7 @@ def test_every_waived_subprocess_call_still_matches_its_stated_reason() -> None:
             # 1. shell must be absent or literally False. A variable could be
             #    True at runtime, and the waiver's reason claims it is not.
             if "shell" in keywords:
-                assert isinstance(keywords["shell"], ast.Constant), (
-                    f"{waiver.path}:{call.lineno} shell= is not a literal; the waiver's reason "
-                    "claims shell=False, which cannot be checked statically"
-                )
+                assert isinstance(keywords["shell"], ast.Constant), f"{waiver.path}:{call.lineno} shell= is not a literal; the waiver's reason claims shell=False, which cannot be checked statically"
                 assert keywords["shell"].value is False, f"{waiver.path}:{call.lineno} shell=True"
 
             # 2. The command must be an argv list, never a shell string. It is
@@ -191,22 +182,14 @@ def test_every_waived_subprocess_call_still_matches_its_stated_reason() -> None:
             assert call.args, f"{waiver.path}:{call.lineno} no command argument"
             command = call.args[0]
             if isinstance(command, ast.Constant):
-                assert not isinstance(command.value, str), (
-                    f"{waiver.path}:{call.lineno} command is a bare string; the waiver's reason "
-                    "claims an argv list, and a string command is a shell invocation"
-                )
+                assert not isinstance(command.value, str), f"{waiver.path}:{call.lineno} command is a bare string; the waiver's reason claims an argv list, and a string command is a shell invocation"
             elif isinstance(command, ast.Name):
                 assigned = bindings(command.id)
                 assert assigned, f"{waiver.path}:{call.lineno} command variable {command.id!r} is never assigned"
                 for value in assigned:
-                    assert isinstance(value, (ast.List, ast.Call)), (
-                        f"{waiver.path}:{call.lineno} command variable {command.id!r} is bound to "
-                        f"{type(value).__name__}, not an argv list"
-                    )
+                    assert isinstance(value, (ast.List, ast.Call)), f"{waiver.path}:{call.lineno} command variable {command.id!r} is bound to {type(value).__name__}, not an argv list"
             else:
-                raise AssertionError(
-                    f"{waiver.path}:{call.lineno} unrecognised command expression {type(command).__name__}"
-                )
+                raise AssertionError(f"{waiver.path}:{call.lineno} unrecognised command expression {type(command).__name__}")
 
 
 @pytest.mark.parametrize("path", ["../run.py", "/tmp/run.py", "scripts\\run.py", "scripts/../run.py"])

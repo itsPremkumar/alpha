@@ -13,6 +13,7 @@ class ContextHandle:
     Context-as-Data handle (R_id) representing an addressable context object.
     Allows massive files, repositories, or test outputs to be passed as immutable references.
     """
+
     handle_id: str = field(default_factory=lambda: f"ctx_{uuid.uuid4().hex[:8]}")
     label: str = ""
     content_hash: str = ""

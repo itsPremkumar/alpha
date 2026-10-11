@@ -85,6 +85,7 @@ def test_get_internal_user_normalises_unsafe_owner_user_id():
 
 def test_get_trusted_internal_owner_user_id_supports_modern_and_legacy():
     from types import SimpleNamespace
+
     import app.gateway.internal_auth as internal_auth
 
     # Modern header

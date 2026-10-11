@@ -31,9 +31,7 @@ class LearningGraphCurator:
             del graph.nodes[nid]
 
         # Clean edges
-        graph.edges = [
-            (s, t) for (s, t) in graph.edges if s in graph.nodes and t in graph.nodes
-        ]
+        graph.edges = [(s, t) for (s, t) in graph.edges if s in graph.nodes and t in graph.nodes]
         return len(to_remove)
 
     def merge_duplicates(
@@ -73,7 +71,5 @@ class LearningGraphCurator:
         for r_id in removed:
             del graph.nodes[r_id]
 
-        graph.edges = [
-            (s, t) for (s, t) in graph.edges if s in graph.nodes and t in graph.nodes
-        ]
+        graph.edges = [(s, t) for (s, t) in graph.edges if s in graph.nodes and t in graph.nodes]
         return merged_count

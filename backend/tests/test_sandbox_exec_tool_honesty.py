@@ -84,13 +84,9 @@ def test_append_to_a_new_file_still_works(tmp_path, monkeypatch):
     monkeypatch.setattr(sandbox_tools, "ensure_thread_directories_exist", lambda runtime=None: None)
 
     target = tmp_path / "thread" / "workspace" / "new_append.py"
-    first = sandbox_tools.write_file_tool.func(
-        runtime=rt, path="/mnt/user-data/workspace/new_append.py", content="a = 1\n", append=True
-    )
+    first = sandbox_tools.write_file_tool.func(runtime=rt, path="/mnt/user-data/workspace/new_append.py", content="a = 1\n", append=True)
     assert first == "OK", first
-    second = sandbox_tools.write_file_tool.func(
-        runtime=rt, path="/mnt/user-data/workspace/new_append.py", content="b = 2\n", append=True
-    )
+    second = sandbox_tools.write_file_tool.func(runtime=rt, path="/mnt/user-data/workspace/new_append.py", content="b = 2\n", append=True)
     assert second == "OK", second
     assert target.read_text(encoding="utf-8") == "a = 1\nb = 2\n"
 
@@ -173,19 +169,11 @@ def test_both_command_runners_use_the_shared_exit_status_rule():
     from alpha.sandbox.local import local_sandbox
 
     tree = ast.parse(Path(local_sandbox.__file__).read_text(encoding="utf-8"))
-    runners = {
-        node.name: node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name in {"_run_windows_command", "_run_posix_command"}
-    }
+    runners = {node.name: node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {"_run_windows_command", "_run_posix_command"}}
     assert set(runners) == {"_run_windows_command", "_run_posix_command"}
 
     for name, func in runners.items():
-        calls_shared = any(
-            isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "resolve_command_exit_status"
-            for node in ast.walk(func)
-        )
+        calls_shared = any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "resolve_command_exit_status" for node in ast.walk(func))
         assert calls_shared, f"{name} must resolve its exit status through resolve_command_exit_status"
 
         # No conditional expression may map an unknown status onto 0.

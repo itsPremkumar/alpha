@@ -43,8 +43,8 @@ def _persistence_engine(tmp_path):
     """
     import asyncio
 
-    from app.gateway import deps
     from alpha.persistence.engine import close_engine, init_engine
+    from app.gateway import deps
 
     url = f"sqlite+aiosqlite:///{tmp_path}/auth_types.db"
     asyncio.run(init_engine("sqlite", url=url, sqlite_dir=str(tmp_path)))

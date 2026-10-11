@@ -22,11 +22,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.scheduler.service import ScheduledTaskService
 from alpha.config.database_config import DatabaseConfig
 from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from alpha.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskRunRepository
 from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
+from app.scheduler.service import ScheduledTaskService
 
 pytestmark = pytest.mark.asyncio
 

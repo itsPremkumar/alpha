@@ -5,9 +5,9 @@
 > `backend/packages/harness/alpha/`; `AGENTS.md` should point here rather than
 > hand-maintaining a list that drifts.
 
-- **Packages:** 120
-- **Python files:** 1992
-- **Total lines:** 523341
+- **Packages:** 121
+- **Python files:** 2002
+- **Total lines:** 526146
 - **Packages with preview/simulated markers:** 28
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -18,12 +18,12 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/memory` | 152 | 44929 | core |
 | `alpha/agents` | 137 | 43828 | preview/partial |
 | `alpha/runtime` | 118 | 34092 | preview/partial |
-| `alpha/tools` | 167 | 30109 | preview/partial |
+| `alpha/tools` | 167 | 30263 | preview/partial |
 | `alpha/community` | 89 | 27890 | preview/partial |
 | `alpha/persistence` | 105 | 18545 | preview/partial |
 | `alpha/workflow` | 52 | 18119 | preview/partial |
 | `alpha/bots` | 35 | 14869 | preview/partial |
-| `alpha/config` | 82 | 13569 | core |
+| `alpha/config` | 82 | 13582 | core |
 | `alpha/models` | 36 | 11456 | preview/partial |
 | `alpha/groups` | 22 | 11434 | core |
 | `alpha/observability` | 23 | 11371 | core |
@@ -56,6 +56,7 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/integrations` | 4 | 3458 | core |
 | `alpha/commands` | 7 | 3210 | preview/partial |
 | `alpha/multimodal` | 12 | 2706 | core |
+| `alpha/gro` | 10 | 2638 | core |
 | `alpha/learning` | 18 | 2566 | core |
 | `alpha/orchestration` | 13 | 2546 | core |
 | `alpha/tui` | 15 | 2545 | core |

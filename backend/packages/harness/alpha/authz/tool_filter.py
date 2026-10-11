@@ -79,9 +79,7 @@ def apply_tool_authorization(
         fail_closed=authz_config.fail_closed,
     )
     if authorize_mcp_servers:
-        filtered = _filter_mcp_tools_by_server(
-            filtered, provider=authorization_provider, principal=principal
-        )
+        filtered = _filter_mcp_tools_by_server(filtered, provider=authorization_provider, principal=principal)
     return filtered, authorization_provider
 
 
@@ -107,9 +105,7 @@ def _filter_mcp_tools_by_server(
         return tools
 
     try:
-        allowed_servers = set(
-            provider.filter_resources(principal, "mcp_server", sorted(server_names))
-        )
+        allowed_servers = set(provider.filter_resources(principal, "mcp_server", sorted(server_names)))
     except Exception:
         # Fault isolation: a provider that cannot answer for this resource type
         # must not remove every MCP tool. Keep them and let Layer 2 decide.
@@ -119,8 +115,4 @@ def _filter_mcp_tools_by_server(
         )
         return tools
 
-    return [
-        t
-        for t in tools
-        if mcp_server_name(t) is None or mcp_server_name(t) in allowed_servers
-    ]
+    return [t for t in tools if mcp_server_name(t) is None or mcp_server_name(t) in allowed_servers]

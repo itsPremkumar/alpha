@@ -60,9 +60,9 @@ class _BlockingRemoteProvider:
 
 
 async def test_receive_file_persist_does_not_block_event_loop(tmp_path, monkeypatch) -> None:
+    from alpha.config.paths import Paths
     from app.channels.dingtalk import DingTalkChannel
     from app.channels.message_bus import MessageBus
-    from alpha.config.paths import Paths
 
     paths = await asyncio.to_thread(Paths, str(tmp_path))
     monkeypatch.setattr("app.channels.dingtalk.get_paths", lambda: paths)
@@ -92,10 +92,10 @@ async def test_receive_file_persist_does_not_block_event_loop(tmp_path, monkeypa
 
 
 async def test_cancelled_receive_file_holds_sandbox_lease_until_remote_sync_finishes(tmp_path, monkeypatch) -> None:
-    from app.channels.dingtalk import DingTalkChannel
-    from app.channels.message_bus import MessageBus
     from alpha.config.paths import Paths
     from alpha.sandbox.lease import discard_sandbox_lease_manager, get_sandbox_lease_manager
+    from app.channels.dingtalk import DingTalkChannel
+    from app.channels.message_bus import MessageBus
 
     paths = await asyncio.to_thread(Paths, str(tmp_path))
     provider = _BlockingRemoteProvider()

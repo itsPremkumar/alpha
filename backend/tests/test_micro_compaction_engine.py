@@ -7,9 +7,7 @@ def test_compact_tool_output():
     assert res_short == short_out
 
     long_pytest = (
-        "============================= test session starts =============================\n"
-        + "\n".join(f"test_{i}.py . [ {i}%]" for i in range(1, 101))
-        + "\n============================= 100 passed in 12.5s ============================="
+        "============================= test session starts =============================\n" + "\n".join(f"test_{i}.py . [ {i}%]" for i in range(1, 101)) + "\n============================= 100 passed in 12.5s ============================="
     )
     res_long = compact_tool_output("pytest", {"cmd": "pytest"}, long_pytest)
     assert "[TOOL RECEIPT: pytest" in res_long

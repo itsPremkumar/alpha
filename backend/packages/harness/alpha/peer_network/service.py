@@ -27,7 +27,8 @@ from .agent_dispatch import (
 from .discovery import MdnsDiscovery, UdpDiscovery
 from .github import GitHubRendezvous, GitHubRendezvousError
 from .identity import LocalIdentity, prime_advertised_host
-from .invite import DEFAULT_TTL_SECONDS, InviteClaims, InviteError, build_invite as _build_invite_uri, parse_invite
+from .invite import DEFAULT_TTL_SECONDS, InviteError, parse_invite
+from .invite import build_invite as _build_invite_uri
 from .models import (
     MAX_PAYLOAD_BYTES,
     MESSAGE_KIND_VALUES,

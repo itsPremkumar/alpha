@@ -68,9 +68,7 @@ def test_the_code_default_for_the_peer_plane_is_off():
 
     assert _SERVICE_PY.is_file(), f"peer service source moved: {_SERVICE_PY}"
     assert _code_default_enabled() is False, (
-        "alpha/peer_network/service.py must default the peer plane to DISABLED. "
-        "It opens an unauthenticated inbound listener, so a new install must not "
-        "expose it without an operator setting ALPHA_PEER_NETWORK_ENABLED=1."
+        "alpha/peer_network/service.py must default the peer plane to DISABLED. It opens an unauthenticated inbound listener, so a new install must not expose it without an operator setting ALPHA_PEER_NETWORK_ENABLED=1."
     )
 
 
@@ -89,9 +87,7 @@ def test_compose_does_not_silently_re_enable_the_peer_plane():
     default = match.group(1).strip().strip("'\"")
 
     assert default in {"0", "false", "False", "no", "off"}, (
-        f"docker-compose.yaml defaults {_ENV_KEY} to {default!r}. That overrides the "
-        "code-level secure default and leaves every containerised deployment with the "
-        "inbound peer plane open. Default it to 0 and require operators to opt in."
+        f"docker-compose.yaml defaults {_ENV_KEY} to {default!r}. That overrides the code-level secure default and leaves every containerised deployment with the inbound peer plane open. Default it to 0 and require operators to opt in."
     )
 
 
@@ -117,8 +113,5 @@ def test_both_layers_agree_on_the_default():
     compose_default = match.group(1).strip().strip("'\"").lower() in {"1", "true", "yes", "on"}
 
     assert compose_default is False, (
-        f"docker-compose.yaml resolves {_ENV_KEY} to ON by default, so a "
-        "containerised install gets the inbound peer plane open even though the "
-        "code default is off. The effective default must not depend on HOW the "
-        "app was installed."
+        f"docker-compose.yaml resolves {_ENV_KEY} to ON by default, so a containerised install gets the inbound peer plane open even though the code default is off. The effective default must not depend on HOW the app was installed."
     )

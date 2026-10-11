@@ -164,12 +164,7 @@ def _refuse_near_miss(args: str) -> str | None:
         return None
     listed = close + [s for s in siblings if s not in close]
     hint = f" Did you mean: {', '.join(close)}?"
-    return (
-        f"Unknown subcommand '{wanted}' for /goal; nothing was executed.{hint}\n"
-        f"Known subcommands of /goal: {', '.join(listed)}\n"
-        "To set a goal whose text starts with those words, add more text so it is "
-        "unambiguously an objective."
-    )
+    return f"Unknown subcommand '{wanted}' for /goal; nothing was executed.{hint}\nKnown subcommands of /goal: {', '.join(listed)}\nTo set a goal whose text starts with those words, add more text so it is unambiguously an objective."
 
 
 def handle_goal(args: str, context: dict[str, Any] | None = None) -> Any:
@@ -227,9 +222,7 @@ def handle_goal_show(args: str, context: dict[str, Any] | None = None) -> Any:
     if state.contract.is_empty:
         return _result(
             "/goal show",
-            "No completion contract is set. Add field lines to /goal, e.g.\n"
-            "  verification: <the command that proves it>\n"
-            "  boundaries: <what is in scope>",
+            "No completion contract is set. Add field lines to /goal, e.g.\n  verification: <the command that proves it>\n  boundaries: <what is in scope>",
             has_goal=True,
             has_contract=False,
         )
@@ -384,8 +377,7 @@ def handle_goal_gate(args: str, context: dict[str, Any] | None = None) -> Any:
         _store().save(state)
         return _result(
             "/goal gate add",
-            f"Gate #{len(state.gates)} added: {gate.command}\n"
-            "It must exit 0 before this goal can be judged done; until then the judge is not called.",
+            f"Gate #{len(state.gates)} added: {gate.command}\nIt must exit 0 before this goal can be judged done; until then the judge is not called.",
             has_goal=True,
             gate=gate.to_dict(),
         )
@@ -393,10 +385,7 @@ def handle_goal_gate(args: str, context: dict[str, Any] | None = None) -> Any:
     if sub in {"list", ""}:
         if not state.gates:
             return _result("/goal gate list", "No gates on this goal.", has_goal=True, gates=[])
-        rows = [
-            f"{index}. {gate.command} (max {gate.max_attempts} attempts, {gate.timeout_seconds:g}s each)"
-            for index, gate in enumerate(state.gates, start=1)
-        ]
+        rows = [f"{index}. {gate.command} (max {gate.max_attempts} attempts, {gate.timeout_seconds:g}s each)" for index, gate in enumerate(state.gates, start=1)]
         return _result("/goal gate list", "\n".join(rows), has_goal=True, gates=[g.to_dict() for g in state.gates])
 
     if sub == "remove":
@@ -450,9 +439,7 @@ def handle_subgoal(args: str, context: dict[str, Any] | None = None) -> Any:
     _store().save(state)
     return _result(
         "/subgoal",
-        f"Subgoal #{len(state.subgoals)} added: {added}\n"
-        "The loop was not reset; the goal is now complete only when the original objective "
-        "AND every subgoal are satisfied.",
+        f"Subgoal #{len(state.subgoals)} added: {added}\nThe loop was not reset; the goal is now complete only when the original objective AND every subgoal are satisfied.",
         has_goal=True,
         subgoals=list(state.subgoals),
     )

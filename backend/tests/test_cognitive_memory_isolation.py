@@ -7,11 +7,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import memory
 from alpha.config.paths import Paths, make_safe_user_id
 from alpha.memory.cognitive import engine
 from alpha.runtime.user_context import reset_current_user, set_current_user
 from alpha.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
+from app.gateway.routers import memory
 
 
 @pytest.fixture(autouse=True)

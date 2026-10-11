@@ -10,6 +10,7 @@ from typing import Any
 @dataclass
 class TriggerContext:
     """Context information used to evaluate whether a MicroAgent should trigger."""
+
     query: str = ""
     file_paths: list[str] = field(default_factory=list)
     task_type: str | None = None
@@ -30,6 +31,7 @@ class BaseTrigger(ABC):
 @dataclass
 class MicroAgent:
     """A specialized domain micro-agent with triggering conditions and prompt content."""
+
     agent_id: str
     name: str
     content: str

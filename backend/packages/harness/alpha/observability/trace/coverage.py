@@ -86,9 +86,7 @@ class LayerCoverage:
         }
 
 
-EVENT_TYPES_BY_LAYER: Final[Mapping[int, tuple[str, ...]]] = MappingProxyType(
-    {int(layer): tuple(sorted(definition.code for definition in EVENT_TYPES.values() if definition.layer is layer)) for layer in TraceLayer}
-)
+EVENT_TYPES_BY_LAYER: Final[Mapping[int, tuple[str, ...]]] = MappingProxyType({int(layer): tuple(sorted(definition.code for definition in EVENT_TYPES.values() if definition.layer is layer)) for layer in TraceLayer})
 
 
 def _emitters_for(layer: TraceLayer) -> tuple[str, ...]:

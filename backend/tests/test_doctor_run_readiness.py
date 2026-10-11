@@ -236,13 +236,7 @@ def _stub_config(tmp_path: Path) -> Path:
     """A minimal config.yaml the readiness checks can load without any real model."""
     path = Path(tmp_path) / "config.yaml"
     path.write_text(
-        "models:\n"
-        "  - name: probe-model\n"
-        "    use: langchain_openai:ChatOpenAI\n"
-        "    model: probe-model-1\n"
-        "    api_key: test-key-not-a-secret\n"
-        "sandbox:\n"
-        "  use: alpha.sandbox.local:LocalSandboxProvider\n",
+        "models:\n  - name: probe-model\n    use: langchain_openai:ChatOpenAI\n    model: probe-model-1\n    api_key: test-key-not-a-secret\nsandbox:\n  use: alpha.sandbox.local:LocalSandboxProvider\n",
         encoding="utf-8",
     )
     return path
