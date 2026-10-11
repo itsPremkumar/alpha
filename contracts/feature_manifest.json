@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-10T15:57:23Z",
+ "generated_at": "2026-10-11T08:06:19Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -23,14 +23,6 @@
    "id": "ask_clarification_tool",
    "module": "alpha.tools.builtins.clarification_tool",
    "symbol": "ask_clarification_tool",
-   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
-   "wired": true,
-   "state": "wired"
-  },
-  {
-   "id": "arena_tool",
-   "module": "alpha.tools.builtins.arena_tool",
-   "symbol": "arena_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1142,14 +1134,6 @@
    "state": "wired"
   },
   {
-   "id": "app.gateway.routers.arena",
-   "module": "app.gateway.routers.arena",
-   "symbol": "router",
-   "wiring_point": "app.gateway.app:include_router",
-   "wired": true,
-   "state": "wired"
-  },
-  {
    "id": "app.gateway.routers.artifacts",
    "module": "app.gateway.routers.artifacts",
    "symbol": "router",
@@ -1356,6 +1340,14 @@
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.graph",
+   "module": "app.gateway.routers.graph",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": false,
+   "state": "intentionally_unwired"
   },
   {
    "id": "app.gateway.routers.group_coordination",
@@ -2121,11 +2113,6 @@
    "submodules": []
   },
   {
-   "id": "alpha.arena",
-   "kind": "package",
-   "submodules": []
-  },
-  {
    "id": "alpha.authz",
    "kind": "package",
    "submodules": []
@@ -2373,6 +2360,11 @@
    "submodules": [
     "council"
    ]
+  },
+  {
+   "id": "alpha.graph",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.grounding",

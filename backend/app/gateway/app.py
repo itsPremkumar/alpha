@@ -1154,6 +1154,13 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(features.router)
     app.include_router(ops_integration.router)
 
+    # Graph plane API (opt-in feature flag) is mounted at /api/graph
+    from app.gateway.routers import graph as graph_router
+
+    config = getattr(app.state, "startup_config", None)
+    if config and config.capabilities.is_graph_execution_enabled():
+        app.include_router(graph_router.router)
+
     # Console API (cross-thread observability) is mounted at /api/console
     app.include_router(console.router)
 

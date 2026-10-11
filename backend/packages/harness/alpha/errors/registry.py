@@ -938,6 +938,68 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         http_status=400,
         exception_types=("InvalidUpdateError", "PathNotAllowed", "WorkspacePathError", "ValueError", "TypeError"),
     ),
+    # -- graph plane -------------------------------------------------------
+    # The graph plane's failure taxonomy. These codes are the bridge between
+    # graph-plane failures and the registry's stable error surface. They are
+    # append-only: never repurpose or renumber an existing code.
+    _d(
+        "DEPENDENCY_CYCLE",
+        ErrorSeverity.ERROR,
+        False,
+        "The task plan contains a dependency cycle and cannot be scheduled.",
+        "alpha.errors.graph",
+        recovery=RecoveryAction.NONE,
+        http_status=400,
+        message_hints=("dependency cycle", "cycle detected", "circular dependency"),
+        notes="A cycle is unrecoverable by definition -- there is no ordering of the plan that satisfies it. The caller must break the cycle and resubmit.",
+    ),
+    _d(
+        "PLAN_VALIDATION_FAILED",
+        ErrorSeverity.ERROR,
+        False,
+        "The task plan failed validation and cannot be executed.",
+        "alpha.errors.graph",
+        recovery=RecoveryAction.NONE,
+        http_status=400,
+        message_hints=("plan validation", "invalid plan", "plan rejected"),
+        notes="Covers schema violations, missing dependencies, and capability unavailability. The caller must fix the plan and resubmit.",
+    ),
+    _d(
+        "VERIFICATION_FAILED",
+        ErrorSeverity.ERROR,
+        False,
+        "The task's acceptance checks did not all hold.",
+        "alpha.errors.graph",
+        recovery=RecoveryAction.NONE,
+        http_status=400,
+        message_hints=("verification failed", "acceptance", "checks did not pass"),
+        notes="A task cannot succeed unverified. The caller must either fix the work or report the failure with evidence.",
+    ),
+    _d(
+        "USER_APPROVAL_REQUIRED",
+        ErrorSeverity.INFO,
+        False,
+        "This operation requires operator approval before it can proceed.",
+        "alpha.errors.graph",
+        recovery=RecoveryAction.NONE,
+        http_status=409,
+        notes=(
+            "The operation is parked, not failed, but it is deliberately NOT a 2xx: the registry permits exactly one 2xx "
+            "(DEGRADED_MODE, 'the request succeeded and you should know why'), and a second one would let a real "
+            "un-completed request answer 200 because it was convenient. 409 matches how the registry already reports the "
+            "other parked state (RUN_CANCELLED) -- the caller must resolve a state, not retry a request."
+        ),
+    ),
+    _d(
+        "USER_REJECTED",
+        ErrorSeverity.WARNING,
+        False,
+        "The operator rejected this operation.",
+        "alpha.errors.graph",
+        recovery=RecoveryAction.NONE,
+        http_status=403,
+        notes="The operation was not executed. The caller must adjust the plan or report the rejection.",
+    ),
 )
 
 

@@ -877,6 +877,26 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             monitor.start()
 
         try:
+            # Initialize graph execution plane if enabled
+            config = startup_config
+            if config.capabilities.is_graph_execution_enabled():
+                from alpha.graph import GraphRuntimeConfig, build_graph_runtime
+                from alpha.graph.ledger import TaskLedger, TaskLedgerConfig
+                from alpha.runtime.checkpointer.async_provider import make_async_checkpointer
+
+                # Create a ledger for the graph plane
+                ledger = TaskLedger(TaskLedgerConfig())
+
+                # Build graph runtime
+                runtime_config = GraphRuntimeConfig(
+                    max_concurrency=config.capabilities.capabilities.get("graph_execution_max_concurrency", 2),
+                    enable_checkpoints=True,
+                    checkpointer=await make_async_checkpointer(config),
+                )
+                graph_runtime = build_graph_runtime(ledger=ledger, config=runtime_config)
+                app.state.graph_runtime = graph_runtime
+                logger.info("Graph execution plane initialized")
+
             yield
         finally:
             # Drain in-flight run tasks BEFORE the AsyncExitStack tears down the
@@ -886,6 +906,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # raises PoolClosed (issue #3373).
             run_manager = getattr(app.state, "run_manager", None)
             recovery_service = getattr(app.state, "run_recovery_service", None)
+            graph_runtime = getattr(app.state, "graph_runtime", None)
             # The drain runs through alpha.runtime.shutdown.PlannedShutdown so its
             # outcome is *reported* rather than assumed. The previous best-effort
             # sequence could leave a run undrained while the process exited
