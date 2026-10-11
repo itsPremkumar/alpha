@@ -61,7 +61,27 @@ interface MessageItemProps {
   searchHit?: boolean;
 }
 
-export function MessageItem({
+/**
+ * Wrapped in `React.memo` deliberately.
+ *
+ * ChatView renders the whole transcript with `messages.map(...)`, and the
+ * stream reducer produces a new state object on every frame — every token
+ * delta, every tool-call chunk. The reducer keeps unchanged messages
+ * referentially stable (it holds them in a `Map` and copies only the owner),
+ * and ChatView already passes stable named handlers rather than inline
+ * closures, so every prop of every non-streaming row is referentially equal
+ * between frames. Without memo React cannot see that: a parent re-render
+ * re-renders every child, so a single token re-rendered the entire
+ * transcript, each `MessageItem` re-parsing its markdown and every tool card.
+ * The memo turns "referentially equal" into "skipped", which is what makes
+ * the long transcripts this view now follows unbounded (see the history
+ * contract in frontend/AGENTS.md) stay interactive while a run streams.
+ *
+ * The streaming row itself keeps re-rendering, because its `message` and
+ * `streaming` props genuinely change — as do `searchHit`, `showRegenerate`
+ * and `regenerating`.
+ */
+export const MessageItem = React.memo(function MessageItem({
   message,
   onApprovalDecision,
   onRate,
@@ -570,4 +590,4 @@ export function MessageItem({
       </div>
     </div>
   );
-}
+});
