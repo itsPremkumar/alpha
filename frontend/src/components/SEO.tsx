@@ -52,14 +52,6 @@ export function SEO({
       availability: 'https://schema.org/InStock',
     },
     description: 'An autonomous AI agent framework with sandboxed execution, persistent memory, subagent delegation, and extensible tooling.',
-    applicationCategory: 'DeveloperApplication',
-    operatingSystem: 'Cross-platform',
-    offers: {
-      '@type': 'Offer',
-      price: '0',
-      priceCurrency: 'USD',
-      availability: 'https://schema.org/InStock',
-    },
     author: {
       '@type': 'Organization',
       name: 'Alpha',

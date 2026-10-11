@@ -56,7 +56,4 @@ ${urls}
   console.log(`Sitemap generated at ${outputPath}`);
 }
 
-const BASE_URL = 'https://alpha.itsPremkumar.com';
-const fs = require('fs');
-
 generateSitemap();
