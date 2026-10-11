@@ -376,6 +376,25 @@ ALPHA_PNPM_RUNNER="$REPO_ROOT/scripts/pnpm.py"
 export ALPHA_PNPM_PYTHON ALPHA_PNPM_RUNNER
 
 # Frontend command
+#
+# BETTER_AUTH_SECRET is resolved into its own variable BEFORE FRONTEND_CMD is
+# built, deliberately. It was previously computed inline inside the assignment
+# with the Python interpreter path unquoted:
+#
+#     FRONTEND_CMD="... $($ALPHA_PNPM_PYTHON -c 'import secrets…') …"
+#
+# A `$(...)` is a fresh quoting context, so the path needed its own quotes —
+# without them bash word-splits on whitespace and tries to *execute* the first
+# fragment. On this machine that produced
+#
+#     serve.sh: line 386: /c/Users/PREM: Is a directory
+#
+# i.e. any checkout under a directory with a space ("PREM KUMAR") cannot start
+# the frontend at all in production mode. Here the interpreter path sits in a
+# plain assignment where quoting is straightforward, and the value is baked
+# into FRONTEND_CMD exactly as before — FRONTEND_CMD is later interpolated into
+# a shell command, so the secret must already be a literal by then.
+BETTER_AUTH_SECRET_VALUE="$("$ALPHA_PNPM_PYTHON" -c 'import secrets; print(secrets.token_hex(16))')"
 if $DEV_MODE; then
     FRONTEND_CMD='env PORT=3000 "$ALPHA_PNPM_PYTHON" "$ALPHA_PNPM_RUNNER" run dev'
     if $SKIP_FRONTEND_BUILD; then
@@ -383,9 +402,9 @@ if $DEV_MODE; then
     fi
 elif $SKIP_FRONTEND_BUILD; then
     # The BUILD_ID preflight above already guarantees a reusable build exists.
-    FRONTEND_CMD="env PORT=3000 BETTER_AUTH_SECRET=$($ALPHA_PNPM_PYTHON -c 'import secrets; print(secrets.token_hex(16))') \"\$ALPHA_PNPM_PYTHON\" \"\$ALPHA_PNPM_RUNNER\" run start"
+    FRONTEND_CMD="env PORT=3000 BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET_VALUE \"\$ALPHA_PNPM_PYTHON\" \"\$ALPHA_PNPM_RUNNER\" run start"
 else
-    FRONTEND_CMD="env PORT=3000 BETTER_AUTH_SECRET=$($ALPHA_PNPM_PYTHON -c 'import secrets; print(secrets.token_hex(16))') \"\$ALPHA_PNPM_PYTHON\" \"\$ALPHA_PNPM_RUNNER\" run preview"
+    FRONTEND_CMD="env PORT=3000 BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET_VALUE \"\$ALPHA_PNPM_PYTHON\" \"\$ALPHA_PNPM_RUNNER\" run preview"
 fi
 
 # Runtime path defaults. Local `make dev` launches Gateway from `backend/`,
