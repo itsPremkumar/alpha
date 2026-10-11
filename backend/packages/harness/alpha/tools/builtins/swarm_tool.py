@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Literal
+import threading
+import uuid
+from typing import Any, Literal
 
 from langchain.tools import tool
 
@@ -12,6 +15,7 @@ from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.incidents import get_swarm_incident_manager
 from alpha.swarm.models import SwarmBudget, SwarmMode, TaskNodeState
+from alpha.utils.assembly_io import run_assembly
 
 
 @tool("swarm", parse_docstring=True)
@@ -34,6 +38,8 @@ def swarm_tool(
         "leader",
         "incidents",
         "governor",
+        "compete",
+        "compete_status",
         "pause",
         "resume",
         "cancel",
@@ -60,16 +66,27 @@ def swarm_tool(
 ) -> str:
     """Evaluate, spawn, run, communicate with, and monitor bounded agent swarms.
 
+    Also drives group-relative orchestration (GRO): `compete` runs one bounded
+    candidate group against `goal` and returns the full report (winner, gates,
+    verification line); `compete_status` reads a past GRO run back. Both refuse
+    honestly while `gro.enabled` is false in config.yaml (`compete_status`
+    stays readable — it is read-only).
+
     Args:
         action: Operation to perform. Supported values are evaluate, spawn,
             status, step, run_async, expand, replan, claim, message, observe,
             metrics, strategy, telemetry, trace, leader, incidents, governor,
-            pause, resume, and cancel.
-        goal: High-level mission for evaluation or swarm creation.
-        swarm_id: Existing swarm id for operations other than evaluate/spawn.
+            compete, compete_status, pause, resume, and cancel.
+        goal: High-level mission for evaluation, swarm creation, or a GRO
+            `compete` run.
+        swarm_id: Existing swarm id for operations other than evaluate/spawn;
+            for `compete_status` it is the GRO run id (omit it to list your
+            GRO runs, newest first). Not required by `compete`.
         mode: Swarm strategy: auto, parallel, map_reduce, scatter_gather,
             hierarchical, debate, ensemble, or coding_worktree.
-        items_json: JSON array of independent work items.
+        items_json: JSON array of independent work items; for `compete` each
+            entry is an acceptance criterion every candidate must prove
+            (declared criteria decide whether a winner can be `verified`).
         tasks_json: JSON array of task objects for expand/replan.
         parent_task_id: Optional parent task for an injected task.
         task_id: Task id for claim or a message association; for a `trace`
@@ -152,6 +169,12 @@ def swarm_tool(
             f"- **Task DAG**:\n{tasks_summary}\n\n"
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )
+
+    if action == "compete":
+        return _gro_compete(goal=goal, items=items, owner_id=owner_id)
+
+    if action == "compete_status":
+        return _gro_status(run_id=swarm_id.strip(), owner_id=owner_id, limit=limit)
 
     if action in {"status", "step", "run_async", "expand", "replan", "claim", "message", "observe", "metrics", "strategy", "telemetry", "trace", "leader", "incidents", "pause", "resume", "cancel"}:
         if not swarm_id.strip():
@@ -301,3 +324,134 @@ def swarm_tool(
         return f"Swarm '{swarm_id}' cancelled: {coordinator.cancel_swarm(swarm_id, reason=reason)}"
 
     return f"Unknown action '{action}'."
+
+
+# --- GRO (group-relative orchestration) ---------------------------------
+
+
+def _gro_assemble_tools() -> list[Any]:
+    """Assemble the GRO candidate tool pool, off any running event loop.
+
+    Assembly re-enters ``get_available_tools`` (MCP discovery, config reads)
+    and ``run_assembly`` needs a running loop, so the normal path — a sync
+    tool body in an executor thread — creates one here. If a loop *is* already
+    running on this thread (an inline caller), the work moves to a daemon
+    thread and is joined rather than nesting loops: the same fallback shape
+    ``alpha.swarm.runner`` uses, so the two cannot drift apart on it.
+    """
+
+    async def _factory() -> list[Any]:
+        from alpha.tools import get_available_tools
+
+        return await run_assembly(get_available_tools, groups=None, include_mcp=True, model_name=None, subagent_enabled=False)
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return list(asyncio.run(_factory()) or [])
+
+    box: dict[str, Any] = {}
+
+    def _worker() -> None:
+        try:
+            box["value"] = asyncio.run(_factory())
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the calling thread below
+            box["error"] = exc
+
+    thread = threading.Thread(target=_worker, name="gro-tool-assembly", daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in box:
+        raise box["error"]
+    return list(box.get("value") or [])
+
+
+def _gro_compete(*, goal: str, items: list[str], owner_id: str) -> str:
+    """Run one bounded GRO candidate group against ``goal`` (action=compete).
+
+    Runs synchronously to completion — the same posture as ``task`` and
+    ``arena start`` — because a sync tool body executes in an executor thread,
+    never on the event loop. The candidate pool excludes the ``swarm`` tool
+    itself so a candidate cannot launch a nested tournament from inside one.
+    """
+
+    if not goal.strip():
+        return "Error: 'goal' parameter is required to start a GRO competition."
+
+    from alpha.config import get_app_config
+
+    app_config = get_app_config()
+    gro_config = app_config.gro
+    if not gro_config.enabled:
+        return "Error: group-relative orchestration is disabled — set `gro.enabled: true` in config.yaml to use swarm(action='compete'). `compete_status` stays readable while disabled (it is read-only)."
+
+    from alpha.gro.adapters import SubagentExecutionAdapter
+    from alpha.gro.runner import run_with_gro
+    from alpha.gro.store import GroStore
+
+    try:
+        assembled = _gro_assemble_tools()
+    except Exception as exc:  # noqa: BLE001 - assembly failure is data for the model, not an escape
+        return f"Error: GRO candidate tool pool could not be assembled: {type(exc).__name__}: {exc}"
+    pool = [item for item in assembled if getattr(item, "name", None) != "swarm"]
+    if not pool:
+        return "Error: the candidate tool pool assembled empty; refusing to run candidates with no tools (a tool-less candidate would score worse for having fewer instruments)."
+
+    run_id = f"gro_{uuid.uuid4().hex[:12]}"
+    adapter = SubagentExecutionAdapter(thread_id="", run_id=run_id, tools=pool, app_config=app_config, user_id=owner_id or None)
+    try:
+        report = run_with_gro(
+            goal.strip(),
+            adapter=adapter,
+            acceptance_criteria=items,
+            config=gro_config,
+            owner_id=owner_id,
+            run_id=run_id,
+            store=GroStore(),
+        )
+    except ValueError as exc:
+        return f"Error: GRO run refused: {exc}"
+    return report.markdown()
+
+
+def _gro_status(*, run_id: str, owner_id: str, limit: int) -> str:
+    """Read a GRO run back (action=compete_status); omit ``run_id`` to list.
+
+    Read-only: it runs no candidates and changes no state. An unreadable store
+    is reported as exactly that — never as "no runs".
+    """
+
+    from alpha.gro.runner import report_for_run
+    from alpha.gro.store import GroStore, is_valid_run_id
+
+    store = GroStore()
+    if not run_id:
+        entries = store.list_runs(owner_id=owner_id, limit=max(1, limit))
+        if store.is_degraded:
+            return f"Error: the GRO run store could not be read: {store.load_error}"
+        if not entries:
+            return "No GRO runs recorded for this owner yet. Start one with swarm(action='compete', goal='...')."
+        lines = ["### GRO runs (newest first)", ""]
+        for entry in entries:
+            suffix = " (unreadable file)" if entry.get("unreadable") else f", selected `{entry.get('selected_candidate_id')}`"
+            lines.append(f"- `{entry['run_id']}` — state `{entry.get('state', '?')}`, {entry.get('candidate_count', '?')} candidates{suffix}")
+        lines.append("")
+        lines.append("Read one with `swarm(action='compete_status', swarm_id='<run id>')`.")
+        return "\n".join(lines)
+
+    if not is_valid_run_id(run_id):
+        return f"Error: invalid GRO run id {run_id!r}: expected 1-64 chars of [A-Za-z0-9_.-] starting alphanumeric."
+
+    run = store.load(run_id, owner_id=owner_id)
+    if run is not None:
+        return report_for_run(run).markdown()
+    if store.is_degraded:
+        return f"Error: GRO run '{run_id}' could not be read: {store.load_error}"
+
+    events = store.read_events(owner_id=owner_id, run_id=run_id, limit=8)
+    if store.is_degraded:
+        return f"Error: GRO run '{run_id}' could not be read: {store.load_error}"
+    if events:
+        tail = "\n".join(f"- `{event.get('type', 'unknown')}`" for event in events)
+        return f"No state document for GRO run '{run_id}' exists yet (a run interrupted before completion journals events but writes its document at the end). Event journal tail:\n{tail}"
+    return f"No GRO run '{run_id}' found for this owner."

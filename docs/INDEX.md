@@ -56,6 +56,7 @@
 
 - [ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) — Free Alpha-to-Alpha peer network: pairing, transport, and deployment.
 - [APEX_AUTOPILOT.md](APEX_AUTOPILOT.md) — Operating APEX: enabling the loop, profiles and budgets, the API and SSE surface, and the honesty boundaries a status reader must know.
+- [ARENA.md](ARENA.md) — Operating an arena tournament: the call arithmetic and confirmation gate, profiles and modes, judge blinding, hard gates and the repair loop, and what the engine deliberately does not claim.
 - [AUTHORITY_MODEL.md](AUTHORITY_MODEL.md) — Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.
 - [AUTONOMY_TRUTH.md](AUTONOMY_TRUTH.md) — Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure classification, and bounded recovery briefs.
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
@@ -126,8 +127,13 @@
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
+- [ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md](ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md) — Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.
+- [ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md](ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md) — Plan for group-relative orchestration: a bounded group of meaningfully different candidate attempts, evidence-based evaluation and selection or careful combination of the strongest verified outcome.
 - [ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) — Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.
+- [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN (1).md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN%20%281%29.md) — Unchanged duplicate copy of the multi-agent graph orchestration plan kept in the tree; the canonical document is ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md.
+- [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md) — Plan for cooperating multiple Alpha agents through explicit, observable, bounded, recoverable graphs, with an honesty note that the proposals are unimplemented research rather than shipped features.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
+- [ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md](ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md) — Plan selectively adapting unlazy's completion discipline to Alpha's agent, bot, subagent and swarm workflows; design only, implying no source changes by itself.
 - [FRONTEND_UX_PLAN.md](FRONTEND_UX_PLAN.md) — The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.
 - [GROK_VS_ALPHA_GAP_ANALYSIS.md](GROK_VS_ALPHA_GAP_ANALYSIS.md) — Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.
@@ -146,6 +152,9 @@
 - [TEAM_WIRING_AUDIT.md](TEAM_WIRING_AUDIT.md) — Which team and coordination mechanisms are live, partial, or inert, with caller counts.
 - [WIRING_AUDIT.md](WIRING_AUDIT.md) — Measured audit of implemented-but-uncalled capabilities: what was wired, what was not, and the remaining inert surface.
 - [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.
+- [alpha prime.md](alpha%20prime.md) — Blueprint adapting Prime Agent's ideas — recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, verification-driven task state machines — while keeping the Python runtime.
+- [alpha-arena-advanced-implementation-plan.md](alpha-arena-advanced-implementation-plan.md) — Arena+ specification: candidate artifacts, a bounded repair loop with concede/rebut dispositions, task contracts and rubrics, an evidence ledger, safe synthesis and independent verification on top of the tournament engine.
+- [alpha-arena-new-capability-mesh-features-plan.md](alpha-arena-new-capability-mesh-features-plan.md) — Capability-mesh expansion plan layered on Arena+: per-step specialist strengths, routing and mixture-of-agents ideas, adding features only rather than restating the base tournament.
 - [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
 - [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
 - [asi/03_agentic_architecture.md](asi/03_agentic_architecture.md) — Roadmaps, plans, and implementation tracking.
