@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-11T04:32:03Z",
+ "generated_at": "2026-10-11T12:59:24Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1358,6 +1358,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.graph",
+   "module": "app.gateway.routers.graph",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.group_coordination",
    "module": "app.gateway.routers.group_coordination",
    "symbol": "router",
@@ -2176,6 +2184,11 @@
    "submodules": []
   },
   {
+   "id": "alpha.capability_mesh",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.channels",
    "kind": "package",
    "submodules": [
@@ -2373,6 +2386,11 @@
    "submodules": [
     "council"
    ]
+  },
+  {
+   "id": "alpha.graph",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.gro",

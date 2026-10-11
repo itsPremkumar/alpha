@@ -117,12 +117,31 @@ def collect_routers() -> list[dict[str, object]]:
     tree = ast.parse(text)
 
     router_modules: list[str] = []
+    seen: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "app.gateway.routers":
-            router_modules = [alias.name for alias in node.names if alias.name != "*"]
-            break
+            # Accumulate across EVERY matching import, not just the first.
+            #
+            # This used to `break` after the first `from
+            # app.gateway.routers import (...)` block, so any router imported in
+            # a second statement was invisible to the manifest: the drift gate
+            # passed while the count was quietly short by those routers, and
+            # test_feature_manifest_wiring then failed naming the router it
+            # could not find. Keeping one shape — every import, deduplicated,
+            # sorted — means the manifest describes app.py rather than the
+            # first line of it.
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                if alias.name not in seen:
+                    seen.add(alias.name)
+                    router_modules.append(alias.name)
 
     include_calls = set(re.findall(r"app\.include_router\(\s*(\w+)\.router", text))
+    # A router is only "wired" when the name inside include_router matches the
+    # name it was imported under. An alias on one side and not the other is a
+    # permanent mismatch the generator cannot reconcile, which is why app.py
+    # imports and mounts every router under one name.
     entries: list[dict[str, object]] = []
     for name in sorted(router_modules):
         mounted = name in include_calls

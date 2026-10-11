@@ -1155,11 +1155,20 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(ops_integration.router)
 
     # Graph plane API (opt-in feature flag) is mounted at /api/graph
-    from app.gateway.routers import graph as graph_router
+    #
+    # Imported under its own module name rather than `as graph_router`:
+    # generate_feature_manifest.py derives a router's id from the IMPORT name
+    # (alias.name) while test_feature_manifest_wiring derives it from the name
+    # inside include_router, so aliasing the two apart makes the manifest say
+    # `app.gateway.routers.graph` and the test demand
+    # `app.gateway.routers.graph_router` — a mismatch no regeneration can
+    # reconcile. Every other router below is imported and mounted under one
+    # name; this one now is too.
+    from app.gateway.routers import graph
 
     config = getattr(app.state, "startup_config", None)
     if config and config.capabilities.is_graph_execution_enabled():
-        app.include_router(graph_router.router)
+        app.include_router(graph.router)
 
     # Console API (cross-thread observability) is mounted at /api/console
     app.include_router(console.router)
