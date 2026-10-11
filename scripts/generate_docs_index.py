@@ -175,6 +175,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Plan for cooperating multiple Alpha agents through explicit, observable, bounded, recoverable graphs, with an honesty note that the proposals are unimplemented research rather than shipped features.",
     ),
+    "ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Plan extending Alpha's Python agent runtime with ideas from Prime Agent: recursive language models, a continual harness, persistent subagents, bounded autonomous continuation and verification-driven task state machines; design only, with a scope rule requiring every item to be classified against the current implementation before coding.",
+    ),
     "ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
         "Plan selectively adapting unlazy's completion discipline to Alpha's agent, bot, subagent and swarm workflows; design only, implying no source changes by itself.",
