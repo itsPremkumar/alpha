@@ -1,0 +1,40 @@
+# Humans.txt for Alpha
+
+# Team
+Creator: Prem Kumar (@itsPremkumar)
+Maintainers: Alpha Core Team
+
+# Thanks
+Thank you to all contributors who have helped make Alpha better!
+See CONTRIBUTORS.md for a full list.
+
+# Technology Stack
+Backend: Python 3.12+, FastAPI, LangGraph, uv
+Frontend: Next.js 15, React 18, TypeScript, Tailwind CSS
+Database: PostgreSQL, SQLite, Redis
+Infrastructure: Docker, nginx, Kubernetes
+Orchestration: LangGraph, LangChain
+Memory: DeerMem, cognitive memory
+
+# Standards
+HTML5, CSS3, TypeScript, Python 3.12+
+Semantic HTML, Accessibility (WCAG 2.1 AA)
+Responsive Design, Mobile First
+Progressive Enhancement
+
+# Tools
+Editor: VS Code
+Version Control: Git
+Package Managers: uv (Python), pnpm (Node.js)
+Testing: pytest, Node.js test runner
+CI/CD: GitHub Actions
+
+# Contact
+Website: https://alpha.itsPremkumar.com
+Email: hello@itsPremkumar.com
+GitHub: https://github.com/itsPremkumar/alpha
+Discord: https://discord.gg/alpha
+Twitter: @alpha_ai
+
+# License
+MIT License - see LICENSE file for details

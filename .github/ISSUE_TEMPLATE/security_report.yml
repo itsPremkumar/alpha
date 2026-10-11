@@ -1,0 +1,79 @@
+name: Security Vulnerability
+description: Report a security vulnerability (private)
+title: "[Security]: "
+labels: ["security", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **⚠️ Do NOT report security vulnerabilities through public GitHub issues.**
+
+        Please report security vulnerabilities via email to **security@itsPremkumar.com**.
+
+        This form is for tracking purposes only. The details will be kept private.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Vulnerability Description
+      description: A clear description of the vulnerability
+      placeholder: What type of vulnerability? (RCE, SQLi, XSS, auth bypass, etc.)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Steps to reproduce the vulnerability
+      placeholder: |
+        1. Configure...
+        2. Send request...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact Assessment
+      description: What is the potential impact?
+      placeholder: |
+        - Confidentiality: High/Medium/Low
+        - Integrity: High/Medium/Low
+        - Availability: High/Medium/Low
+        - Affected components:
+    validations:
+      required: true
+
+  - type: textarea
+    id: poc
+    attributes:
+      label: Proof of Concept
+      description: Proof-of-concept code or exploit details (if available)
+      placeholder: |
+        # Proof of concept code here
+        # Or description of exploit
+      render: shell
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Estimated Severity
+      options:
+        - Critical (RCE, auth bypass, data breach)
+        - High (Privilege escalation, significant data exposure)
+        - Medium (Information disclosure, DoS)
+        - Low (Information leakage, minor issue)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Responsible Disclosure
+      options:
+        - label: I agree to follow responsible disclosure practices and not disclose publicly until a fix is released
+          required: true
+        - label: I have not publicly disclosed this vulnerability elsewhere
+          required: true

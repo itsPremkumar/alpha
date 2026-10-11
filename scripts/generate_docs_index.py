@@ -155,6 +155,42 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "ARENA.md": DocumentSpec(
+        "operations",
+        "Operating an arena tournament: the call arithmetic and confirmation gate, profiles and modes, judge blinding, hard gates and the repair loop, and what the engine deliberately does not claim.",
+    ),
+    "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.",
+    ),
+    "ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Plan for group-relative orchestration: a bounded group of meaningfully different candidate attempts, evidence-based evaluation and selection or careful combination of the strongest verified outcome.",
+    ),
+    "ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN (1).md": DocumentSpec(
+        "plans",
+        "Unchanged duplicate copy of the multi-agent graph orchestration plan kept in the tree; the canonical document is ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md.",
+    ),
+    "ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Plan for cooperating multiple Alpha agents through explicit, observable, bounded, recoverable graphs, with an honesty note that the proposals are unimplemented research rather than shipped features.",
+    ),
+    "ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Plan selectively adapting unlazy's completion discipline to Alpha's agent, bot, subagent and swarm workflows; design only, implying no source changes by itself.",
+    ),
+    "alpha prime.md": DocumentSpec(
+        "plans",
+        "Blueprint adapting Prime Agent's ideas — recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, verification-driven task state machines — while keeping the Python runtime.",
+    ),
+    "alpha-arena-advanced-implementation-plan.md": DocumentSpec(
+        "plans",
+        "Arena+ specification: candidate artifacts, a bounded repair loop with concede/rebut dispositions, task contracts and rubrics, an evidence ledger, safe synthesis and independent verification on top of the tournament engine.",
+    ),
+    "alpha-arena-new-capability-mesh-features-plan.md": DocumentSpec(
+        "plans",
+        "Capability-mesh expansion plan layered on Arena+: per-step specialist strengths, routing and mixture-of-agents ideas, adding features only rather than restating the base tournament.",
+    ),
     "ALPHA-WORKFLOW-ARCHITECTURE.md": DocumentSpec(
         "architecture",
         "Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.",

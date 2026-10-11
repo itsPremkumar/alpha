@@ -1,0 +1,46 @@
+# Alpha Frontend Robots.txt
+
+User-agent: *
+Allow: /
+
+# Disallow admin and private paths
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_next/
+Disallow: /static/
+Disallow: /*.json$
+Disallow: /*.xml$
+
+# AI Crawlers - Allow for AI training and indexing
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: FacebookBot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 10
+
+# Sitemap
+Sitemap: https://alpha.itsPremkumar.com/sitemap.xml

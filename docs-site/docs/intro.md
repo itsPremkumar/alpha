@@ -19,7 +19,7 @@ slug: /
 | 🏖️ **Sandboxed Execution** | Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation |
 | 🧠 **Persistent Memory** | DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall |
 | 👥 **Subagent Delegation** | Spawn specialized agents (`/subagent spawn`), manage swarms (`/swarm`), delegate with acceptance criteria |
-| 🔌 **Extensible Tooling** | 456+ built-in tools + MCP servers + custom skills + community extensions |
+| 🔌 **Extensible Tooling** | 138 built-in tools + MCP servers + custom skills + community extensions |
 | 💾 **Per-Thread Isolation** | Every conversation gets its own sandbox, memory, and tool namespace |
 | 🌐 **IM Bridges** | Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway |
 | 📊 **Observability** | Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts |
@@ -122,7 +122,7 @@ graph TB
 | 🏖️ **Sandboxed Execution** | Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation |
 | 🧠 **Persistent Memory** | DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall |
 | 👥 **Subagent Delegation** | Spawn specialized agents (`/subagent spawn`), manage swarms (`/swarm`), delegate with acceptance criteria |
-| 🔌 **Extensible Tooling** | 456+ built-in tools + MCP servers + custom skills + community extensions |
+| 🔌 **Extensible Tooling** | 138 built-in tools + MCP servers + custom skills + community extensions |
 | 💾 **Per-Thread Isolation** | Every conversation gets its own sandbox, memory, and tool namespace |
 | 🌐 **IM Bridges** | Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway |
 | 📊 **Observability** | Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts |

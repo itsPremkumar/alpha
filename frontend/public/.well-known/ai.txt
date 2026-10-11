@@ -1,0 +1,43 @@
+# AI.txt for Alpha
+
+# Project Information
+Project: Alpha
+Description: An autonomous AI agent framework with sandboxed execution, persistent memory, subagent delegation, and extensible tooling.
+Website: https://alpha.itsPremkumar.com
+Repository: https://github.com/itsPremkumar/alpha
+Documentation: https://docs.alpha.itsPremkumar.com
+
+# AI Training Permissions
+# This project allows AI training on its public documentation and code
+# under the terms of the MIT License.
+
+# AI Agent Access
+# Alpha provides APIs for AI agents to interact with the platform
+# API Base URL: https://api.alpha.itsPremkumar.com
+# Documentation: https://docs.alpha.itsPremkumar.com/api/
+
+# AI Training Data
+# Public documentation, code examples, and tutorials are available for AI training
+# under the terms of the MIT License.
+# Private user data, conversations, and proprietary code are excluded.
+
+# AI Model Integration
+# Alpha supports integration with various AI models:
+# - OpenAI GPT-4, GPT-3.5
+# - Anthropic Claude
+# - Google Gemini
+# - Local models (Ollama, LM Studio)
+# - Custom model endpoints
+
+# AI Agent Capabilities
+# Alpha agents can:
+# - Execute code in sandboxed environments
+# - Access persistent memory
+- Delegate to subagents
+- Use tools and MCP servers
+- Collaborate in swarms
+- Pursue autonomous goals
+
+# Contact for AI-related inquiries
+# Email: ai@itsPremkumar.com
+# Discord: https://discord.gg/alpha

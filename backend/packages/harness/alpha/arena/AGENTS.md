@@ -47,6 +47,13 @@ arena/
 ├── executor.py            # async tournament driver (waves, budgets, failure policy)
 ├── service.py             # ArenaService lifecycle, cost estimate, confirmation gate, events
 ├── config.py              # ArenaConfig pydantic model + config resolution
+├── task_contract.py       # structured task contract: requirements, constraints, acceptance, safety
+├── candidate.py           # candidate artifacts + per-requirement coverage + contribution selection
+├── repair.py              # bounded repair loop: CONCEDE/REBUT dispositions, cycles, terminality
+├── task_rubrics.py        # per-task weights, hard gates, deterministic judge bias controls
+├── evidence.py            # evidence ledger: claim checks, verdicts, gate_from_ledger()
+├── synthesis.py           # contribution synthesis: merge plan, CONFLICT, markdown render
+├── modes.py               # run modes + budget profiles + the adaptive `auto` router
 └── strategies.json        # shipped strategy deck (15 reasoning × 12 workflow × 12 strategy)
 ```
 
@@ -90,11 +97,76 @@ arena/
 ### Service (model/HTTP surface)
 
 * `ArenaService(config, runner_factory, store)` — lifecycle owner
-* `service.estimate(agents, wave, baseline)` — cost projection + confirmation flag
-* `service.create(owner_id, thread_id, task, agents, wave, seed, baseline, budgets)` — draft run
+* `service.resolve_profile(profile/task/agents/wave/safety_level)` — competitor
+  count + wave resolution with the reason it chose (see *Modes and profiles*)
+* `service.profiles()` — the declared budget profiles and the mode vocabulary,
+  listing only what this engine implements
+* `service.estimate(agents, wave, baseline, task, profile, mode)` — cost
+  projection + confirmation flag
+* `service.create(owner_id, thread_id, task, agents, wave, seed, baseline, budgets, profile, mode)` — draft run
+* `service.check_start(run_id, owner_id, confirm=False)` /
+  `service.check_resume(run_id, owner_id)` — the cheap pre-execution gates,
+  which return the loaded state and raise on any refusal (see *Cheap gates*)
 * `service.start(run_id, owner_id, confirm=False)` — drive to completion (gate)
 * `service.resume(run_id, owner_id)` — continue from mid-bracket
 * `service.status/pairings/winner/card/list_runs/stop/delete` — reads & control
+
+### Advanced primitives (task contract → candidates → repairs → synthesis)
+
+Seven sibling modules extend the engine along the plan's second phase. Three of
+them are **wired into the executor today**; four are **engine primitives with
+tests but no executor wiring yet** — that distinction is load-bearing, and the
+summary below says which is which rather than implying all seven run in a
+tournament.
+
+**Wired:**
+
+* `task_rubrics.py` — `weights_for(task_type)` /
+  `weighted_total_for(...)` pick the per-task rubric (coding 40/20/15/20/5,
+  research, creative, analysis; the 30/25/15/20/10 default otherwise).
+  `default_gates(task_type)` names the non-tradeable conditions (coding:
+  build / tests / no_critical; research: citations / no_contradiction;
+  creative: constraints; otherwise: fidelity). `apply_gates(scores, gates)`
+  **forces `correctness=0` and `fatal=True`** for a tripped gate — the caller
+  still reports *which* gate tripped — so a gated candidate can never present
+  as competitive on the weighted total. Bias controls are deterministic, never
+  random: `pair_order(seed, round_no, match_no)` decides whether the judge
+  sees the pair in its natural order, `swapped_pair()` applies it, and
+  `blind_label()` exposes position only.
+* `repair.py` — `parse_repairs(text, cycle)` reads the defender's disposition
+  lines (`CONCEDE`/`CONCEDED`, `REBUT`/`REBUTTED`, `FIX`/`FIXED`,
+  `DEFER`/`DEFERRED`; malformed lines are skipped, never guessed into a
+  disposition), `unresolved_attacks(...)` / `fatal_conceded(...)` /
+  `is_terminal(...)` bound the repair cycle. **Dispositions are data**: the
+  orchestrator records them and never uses them to pick a winner — only the
+  rubric does that.
+* `modes.py` — the run-mode and budget-profile vocabulary (see *Modes and
+  profiles*), including the `auto` router.
+
+**Primitives, not yet wired into the executor** (pure, tested, exported from
+`alpha.arena`; a tournament does not call them):
+
+* `task_contract.py` — a structured contract for a run's task:
+  `Requirement`/`Constraint`/`AcceptanceCheck`/`TaskContract`, plus the
+  `TaskType`, `RequirementPriority`, `VerificationMethod`, `SafetyLevel` and
+  `BudgetProfile` vocabularies.
+* `candidate.py` — `CandidateArtifact`, `RequirementCoverage`
+  (`CoverageStatus`), `Contribution`, `best_contributions(...)`,
+  `synthesis_gaps(...)`: what each competitor produced and which requirement
+  it covers.
+* `evidence.py` — `ClaimCheck` (`Verdict`), `EvidenceLedger`,
+  `gate_from_ledger(...)`: the claim→evidence table a research judge can be
+  scored against.
+* `synthesis.py` — `PatchContribution`/`MergeItem`/`MergePlan`/`SynthesisResult`,
+  `plan_merge(...)`, `synthesize(...)`, `render_markdown(...)`: merges the
+  surviving contributions into one document. It emits a **`plan_merge` — it
+  never executes anything**, and overlapping patches are flagged `CONFLICT`
+  rather than silently layered.
+
+Because those four are unwired, the engine will not cite a coverage number,
+an evidence verdict or a synthesis result in a live run's output. They are
+the primitives the next executor pass builds on; claiming otherwise would be
+a fabricated capability.
 
 ### Configuration (`config.yaml -> arena`)
 
@@ -121,19 +193,36 @@ arena:
 async def arena_tool(
     runtime,
     action: Literal["estimate","create","start","resume","status",
-                    "pairings","winner","card","runs","stop","delete"],
+                    "pairings","winner","card","runs","stop","delete",
+                    "profiles"],
     **kwargs
 ) -> str
 ```
 
 Actions: `estimate`, `create`, `start`, `resume`, `status`, `pairings`,
-`winner`, `card`, `runs`, `stop`, `delete`. All owner-scoped.
+`winner`, `card`, `runs`, `stop`, `delete`, `profiles`. All owner-scoped.
+`create`/`estimate` also take `profile` and `mode`; `profiles` is the
+read-only question "what can a run even be here?" and answers with the
+operator-declared profiles and the honest mode vocabulary.
+
+**Read-only costs nothing; execution pays.** Every action except
+`start`/`resume` builds `ArenaService(config=config)` with **no runner
+factory** — no tool assembly, no config snapshot beyond the arena block. Only
+`start`/`resume` call `_executing_service()`, which resolves the `AppConfig`
+off-loop (`asyncio.to_thread(get_app_config)`) and assembles the competitors'
+toolset through `alpha.utils.assembly_io.run_assembly(get_available_tools, ...
+subagent_enabled=False)` — never `loop.run_until_complete`, which raises on a
+running loop. Competitors get no delegation tools: a sub-agent cannot spawn a
+nested arena. The Gateway router (`app/gateway/routers/arena.py`) mirrors this
+with its own `_executing_service(user, thread_id)` and binds the run's
+`thread_id` so competitors share the run's workspace.
 
 ### HTTP API: `/api/arena`
 
 * `GET /config` — effective config
-* `POST /estimate` — cost projection
-* `POST /runs` — create draft run
+* `GET /profiles` — the declared budget profiles + the honest mode vocabulary
+* `POST /estimate` — cost projection (`task`/`profile`/`mode` optional)
+* `POST /runs` — create draft run (`task`/`profile`/`mode` optional)
 * `GET /runs` — list runs (owner-scoped)
 * `GET /runs/{run_id}` — full summary
 * `POST /runs/{run_id}/start` — drive to completion (`confirm` gate)
@@ -152,12 +241,89 @@ All mutations admin/owner-gated; `PAT` never qualifies as admin.
 * `arena.match.completed` (with `judge_overridden` flag)
 * `arena.final.completed` / `arena.budget.exhausted`
 
+### Modes and profiles
+
+`modes.py` owns the vocabulary. `RunMode` is `decide` (run the bracket) and
+`plan` (project cost only); `compare` and `synthesize` are **declared but not
+implemented**, and `_check_mode` refuses them **by name** at `create`/`estimate`
+rather than degrading them into `decide` — a run labelled `synthesize` that
+produced no synthesis would be a fabricated capability. `plan` refuses `start`
+with `ArenaRunError` pointing at `estimate`, so a zero-spend mode cannot be
+mistaken for an executed one.
+
+`Profile` is the operator-declared budget profile: `quick` (3 competitors),
+`standard` (5), `deep` (8) — the profile list is data, never computed from a
+model's opinion of the task. `ArenaService.resolve_profile` resolves the
+competitor count and wave with this precedence, highest first:
+
+1. an explicit `agents`/`wave` argument;
+2. a named profile;
+3. `profile="auto"` — `modes.route(RouteInputs(...))`, which reads only local
+   signals (task length, safety level, remaining budget) and always returns the
+   reason it chose;
+4. the configured defaults.
+
+An unknown profile name is refused **by name** (`spec_for` raises), and a
+profile exceeding an operator ceiling is refused, never clamped: the ceiling is
+the operator's call.
+
+### Judge presentation, hard gates, and the repair loop
+
+`ArenaExecutor._prepare_judges` runs once per match, before the judge is
+prompted, and does three things:
+
+* **Position bias** — `pair_order(seed, round_no, match_no)` decides the A/B
+  presentation deterministically, so a resume replays the identical ordering.
+* **Identity bias** — both solutions are copied to neutral paths
+  (`judge-<match>-a.md` / `judge-<match>-b.md`) through
+  `_copy_for_judge`, so a file name cannot leak which competitor wrote what.
+  The copy runs off the event loop (`asyncio.to_thread`).
+* **Honest disclosure** — if the neutral copy cannot be made, the judge runs on
+  the original paths and the match records `judge_presentation["blind"]=false`.
+  Blinding is claimed only when it actually happened.
+
+The judge template asks for `gates: {a: [...], b: [...]}` beside `winner`,
+`reason` and `scores`. `ArenaExecutor._parse_gates` reads that block,
+`_gated_scores` applies `task_rubrics.apply_gates` per side, and
+`_record_repairs` persists the defender's dispositions. Two rules are
+load-bearing:
+
+* a tripped hard gate forces `correctness=0` **and** `fatal=True` on that side;
+* an `UNVERIFIED` / `NOT_CHECKED` claim never trips a gate by itself — only a
+  `CONTRADICTED` one does. "We did not check" is not evidence of failure.
+
+The gate verdict, the bias record and the dispositions all travel in the match
+record; `rubric.decide()` is still the only thing that picks a winner, and
+`judge_overridden` is still recorded when the arithmetic disagrees with the
+judge's stated pick.
+
+### Cheap gates and the runner-binding seam
+
+`ArenaService.check_start(run_id, owner_id, *, confirm)` and
+`check_resume(run_id, owner_id)` are the pre-execution gates: they load the
+state, check ownership, refuse a terminal run, validate the mode, and fire the
+confirmation gate — and they do all of that **before** any runner or tool
+assembly exists. `start()`/`resume()` delegate to them through a shared
+`_drive(state)`, so there is exactly one code path for the refusal text; both
+the tool and the router call `check_*` first and only then build the executing
+service, so a refusal costs a state read instead of a tool assembly.
+
+The runner factory stays a seam: `ArenaService(runner_factory=...)` receives a
+`SubagentConfig` and returns something with `run_job`, which `_build_runner`
+probes once (`factory(None)`) and wraps in `SubagentArenaRunner`. A service
+with no factory can create, estimate, gate and read — and refuses to execute
+with a real reason rather than a fabricated result.
+
 ### Tests
 
 * `tests/test_arena_core.py` — deck, rubric, bracket, prompts, models
 * `tests/test_arena_store.py` — persistence, locking, ownership
 * `tests/test_arena_executor.py` — full tournament simulation (2/4/8 agents, odd, budget, failures)
 * `tests/test_arena_service.py` — service lifecycle, gates, ownership, listing
+* `tests/test_arena_advanced.py` — task contract, candidates, evidence,
+  synthesis, repair dispositions, hard gates, judge blinding, mode refusals
+* `tests/test_arena_profiles.py` — profile resolution, the `auto` router,
+  ceiling refusals, the `profiles` tool action, `check_start`/`check_resume`
 
 Run: `uv run pytest tests/test_arena_*.py -v`
 
@@ -223,6 +389,13 @@ packages/harness/alpha/arena/              # new package
 ├── executor.py
 ├── service.py
 ├── config.py
+├── task_contract.py
+├── candidate.py
+├── repair.py
+├── task_rubrics.py
+├── evidence.py
+├── synthesis.py
+└── modes.py
 tools/builtins/arena_tool.py               # model-facing tool
 app/gateway/routers/arena.py               # HTTP router
 config.example.yaml                        # arena: section
@@ -230,15 +403,21 @@ tests/test_arena_core.py
 tests/test_arena_store.py
 tests/test_arena_executor.py
 tests/test_arena_service.py
+tests/test_arena_advanced.py
+tests/test_arena_profiles.py
 ```
 
 ## Regeneration checklist
 
 After adding this package:
 
-1. Run `scripts/generate_feature_manifest.py` to regenerate
-   `contracts/feature_manifest.json`
+1. Run `python backend/scripts/generate_feature_manifest.py` (from the repo root)
+   to regenerate `contracts/feature_manifest.json`. `scripts/check_generated_drift.py`
+   regenerates it into a temp dir and compares bytes, so a hand-edited manifest
+   fails CI. `tests/test_feature_manifest_wiring.py` then pins every entry to a
+   real wiring point.
 2. Update tool count in `README.md`, `llms.txt`, `llms-full.txt`,
-   `docs/FAQ.md`, `docs/COMPARISON.md`
+   `docs/FAQ.md`, `docs/COMPARISON.md` — the counts must match the generator's
+   own `counts:` line (arena adds one tool and one router).
 3. Run `make test` and `make test-blocking-io` to verify
 4. Bump `config_version` in `config.example.yaml` if schema changed

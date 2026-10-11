@@ -36,6 +36,13 @@ personality, isolated system prompt, and private inbox. → [WORKFORCE.md](WORKF
 **Approval gate** — the risk-scoring command gate that requires explicit operator
 verification before a high-impact terminal command runs.
 
+**Arena** — a durable single-elimination tournament in which N sub-agents solve one
+task with distinct strategy cards, then attack, defend, and revise until a blinded
+judge scores both revised solutions on a rubric. The call count is projected before
+anything runs and a large run needs explicit confirmation. A champion is a judged
+winner, not an independently verified solution, and the `compare`/`synthesize` modes
+are named but refused as unimplemented. → [ARENA.md](ARENA.md)
+
 **Artifact lineage** — end-to-end hash-linked provenance of every generated file,
 code, and document, from the originating prompt: SHA-256 content digests stored
 locally, not a cryptographic attestation.
@@ -210,7 +217,7 @@ brainstorm, challenge assumptions, and produce a unified deliverable.
 multi-line edit drift and merge conflicts.
 
 **Harness (alpha-harness)** — the importable agent framework package
-(import name `alpha.*`) containing 119 engine modules. Alpha the product is built on
+(import name `alpha.*`) containing 120 engine modules. Alpha the product is built on
 top of it. → [backend/AGENTS.md](../backend/AGENTS.md)
 
 **Handoff** — a recorded transfer of work between agents, part of the workforce
