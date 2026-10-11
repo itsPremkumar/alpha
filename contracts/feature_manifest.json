@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-10T10:45:15Z",
+ "generated_at": "2026-10-10T17:01:12Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2352,6 +2352,11 @@
    "submodules": [
     "council"
    ]
+  },
+  {
+   "id": "alpha.graph",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.grounding",

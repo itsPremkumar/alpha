@@ -247,7 +247,7 @@ displayed as "could not be computed", never as "nothing at stake". See
 
 ## 6. Harness engine map
 
-119 engine packages live under `backend/packages/harness/alpha/`:
+120 engine packages live under `backend/packages/harness/alpha/`:
 
 `action` `agency` `agent` `agents` `apex` `authz` `autoconfig` `automations`
 `avo` `benchmarks` `blackboard` `bots` `browser` `canvas` `capabilities`

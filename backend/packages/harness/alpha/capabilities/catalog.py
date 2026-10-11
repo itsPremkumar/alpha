@@ -386,6 +386,41 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Alpha Mod Kernel (AMK): ordered event middleware pipeline, sandboxed capability context, and autonomous execution governance spine.",
         kind="engine",
     ),
+    # --- Graph plane -----------------------------------------------------
+    # The graph plane is opt-in. These entries give the modules a production
+    # reference so `test_no_orphan_modules` can see them wired, and surface
+    # them on `/api/ops/integration-health`. None is enabled by default: a
+    # capability id declares reachability, never that work happens.
+    "graph_execution": CapabilitySpec(
+        module="alpha.graph.runtime",
+        target="build_graph_runtime",
+        description="Top-level LangGraph execution graph: normalize → plan → validate → schedule → dispatch → capture → verify → repair → final-verify → report.",
+        kind="engine",
+    ),
+    "graph_ledger": CapabilitySpec(
+        module="alpha.graph.ledger",
+        target="TaskLedger",
+        description="SQLite-backed durable ledger for goals, tasks, attempts, artifacts, claims, events, and approvals. Process-local and restart-recoverable.",
+        kind="engine",
+    ),
+    "graph_dag_validator": CapabilitySpec(
+        module="alpha.graph.dag",
+        target="validate_tasks",
+        description="Deterministic DAG validation: cycle detection, readiness, blocked-state propagation, topological waves, critical path.",
+        kind="utility",
+    ),
+    "graph_models": CapabilitySpec(
+        module="alpha.graph.models",
+        target="Goal",
+        description="Canonical graph-plane data model: Goal, TaskNode, GraphEdge, TaskAttempt, Artifact, EvidenceClaim, RunEvent, ApprovalRequest.",
+        kind="utility",
+    ),
+    "graph_adapters": CapabilitySpec(
+        module="alpha.graph.adapter",
+        target="RunManagerAdapter",
+        description="Adapters connecting the graph plane to RunManager, DynamicWorkflowEngine, and the lead agent.",
+        kind="utility",
+    ),
 }
 
 

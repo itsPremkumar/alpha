@@ -9,7 +9,7 @@
 **Alpha is a self-hosted, local-first AI agent platform that plans and executes
 long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
-research, multi-agent swarms, sandboxed code execution, persistent memory, 136 native
+research, multi-agent swarms, sandboxed code execution, persistent memory, 137 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
 proprietary backend.
 
@@ -122,13 +122,13 @@ In one sentence:
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
 | **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
-| **Native tools** | 136 (`contracts/feature_manifest.json`, generated) |
+| **Native tools** | 137 (`contracts/feature_manifest.json`, generated) |
 | **Middleware layers** | 44 |
 | **Background supervisor loops** | 10 |
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 119 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 120 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -849,7 +849,7 @@ exactly-once execution.
 <details>
 <summary><b>Full subsystem map (119 harness engines)</b></summary>
 
-Each of the 119 engine packages under `backend/packages/harness/alpha/` (counted by
+Each of the 120 engine packages under `backend/packages/harness/alpha/` (counted by
 `backend/scripts/generate_feature_manifest.py`; `backend/` and `scratch/` sit there
 but are not engines) is a dedicated engine:
 
