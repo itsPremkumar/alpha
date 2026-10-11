@@ -40,3 +40,7 @@ class CapabilitiesConfig(BaseModel):
         if not self.enabled:
             return False
         return bool(self.capabilities.get(capability_id, default))
+
+    def is_graph_execution_enabled(self) -> bool:
+        """Shorthand for the graph execution plane feature flag."""
+        return self.is_enabled("graph_execution")

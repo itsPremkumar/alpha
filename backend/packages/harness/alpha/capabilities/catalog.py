@@ -421,6 +421,12 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Adapters connecting the graph plane to RunManager, DynamicWorkflowEngine, and the lead agent.",
         kind="utility",
     ),
+    "graph_specialist_team": CapabilitySpec(
+        module="alpha.graph.adapter",
+        target="SpecialistTeamAdapter",
+        description="Projects graph-plane tasks onto the swarm runtime's specialist team composition (hard capability filter, recorded reasons, honest capability gaps).",
+        kind="utility",
+    ),
 }
 
 

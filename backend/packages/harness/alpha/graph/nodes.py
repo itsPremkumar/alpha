@@ -66,28 +66,37 @@ from __future__ import annotations
 
 from typing import Any
 
+from alpha.graph.adapter import SpecialistTeamAdapter
 from alpha.graph.dag import (
     CycleDetected,
     UnknownDependency,
+    build_graph_id,
     ready_tasks,
     validate_tasks,
 )
 from alpha.graph.failures import GraphFailureClass, raise_graph_failure
-from alpha.graph.ids import GoalId, TaskId
+from alpha.graph.ids import GoalId, TaskId, make_id
 from alpha.graph.ledger import LedgerConflict, TaskLedger
 from alpha.graph.models import (
     AcceptanceReport,
+    ApprovalRequest,
     Artifact,
     CapabilityRequirement,
+    EdgeType,
+    EventSeverity,
+    EventType,
     Goal,
     GoalMode,
     GoalStatus,
+    GraphEdge,
     ModelValidationError,
     RiskLevel,
+    RunEvent,
     TaskNode,
     TaskStatus,
     TaskType,
 )
+from alpha.graph.redact import RedactionLevel, redact_event_message
 from alpha.graph.state import AlphaGraphState, GraphIntent, GraphStatus
 
 __all__ = [
@@ -144,11 +153,76 @@ def _get_ledger(state: AlphaGraphState) -> TaskLedger:
     ``configurable`` bag is the other option, but a field is simpler to test
     and keeps the node signature to one argument). Centralising the lookup so a
     missing ledger is a loud error, not an ``AttributeError`` five frames deep.
+
+    ``configurable`` is checked **after** state, because it is the only carrier
+    that survives checkpointing: the ledger is a live SQLite connection and
+    must never be written into a channel LangGraph serialises. A caller driving
+    nodes directly puts it in state; the runtime puts it in ``configurable``.
     """
     ledger = state.get("_ledger")
     if ledger is None:
+        from langgraph.config import get_config
+
+        ledger = get_config().get("configurable", {}).get("_ledger")
+    if ledger is None:
         raise_graph_failure(GraphFailureClass.INTERNAL_ERROR, "ledger not found in state; pass it via configurable")
     return ledger  # type: ignore[return-value]
+
+
+def _record_event(
+    state: AlphaGraphState,
+    ledger: TaskLedger,
+    event_type: EventType,
+    *,
+    task_id: str = "",
+    severity: EventSeverity = EventSeverity.INFO,
+    operation: str = "",
+    message: str = "",
+    attributes: dict[str, Any] | None = None,
+    error_code: str | None = None,
+) -> None:
+    """Append one redacted, causally-linked event. Never raises into the node.
+
+    This is the plan's Phase 1 deliverable made real: without it the ``events``
+    table is write-never, and "what actually ran" has no answer other than the
+    caller's word. Every node that changes durable state records what it did.
+
+    Three rules are load-bearing:
+
+    1. **It cannot kill the run.** An event-store failure is telemetry
+       degradation, not task failure (plan §19: "Tracing exporter is
+       unavailable -> agent should continue if the primary event store works").
+       A ``sqlite3`` error here is logged and swallowed.
+    2. **The message is redacted at FULL before construction** (plan §11's
+       redaction rule), so a secret cannot reach the store by being interpolated
+       into a human-readable field.
+    3. **Causal links are ids, never prose**: ``run_id``, ``goal_id``,
+       ``task_id`` all come from state, so two events can be ordered by id
+       rather than by reading their messages.
+    """
+    try:
+        redacted = redact_event_message(message, level=RedactionLevel.FULL)
+        event = RunEvent.create(
+            run_id=str(state.get("run_id", "")),
+            event_type=event_type,
+            goal_id=GoalId(state["goal_id"]) if state.get("goal_id") else None,
+            task_id=TaskId(task_id) if task_id else None,
+            severity=severity,
+            operation=operation or event_type.value,
+            message_safe=redacted.redacted_text,
+            attributes=dict(attributes or {}),
+            error_code=error_code,
+        )
+        ledger.append_event(event)
+    except Exception:  # pragma: no cover - telemetry must not break a run
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "graph plane: failed to record event %s for run %s",
+            event_type.value,
+            state.get("run_id", ""),
+            exc_info=True,
+        )
 
 
 def _get_goal(state: AlphaGraphState, ledger: TaskLedger) -> Goal:
@@ -208,6 +282,14 @@ def normalize_request(state: AlphaGraphState) -> NodeResult:
         )
         ledger.create_goal(goal)
         goal_id = goal.goal_id
+        _record_event(
+            state,
+            ledger,
+            EventType.NODE_COMPLETED,
+            operation="normalize_request",
+            message=f"goal {goal_id} created for run {run_id}",
+            attributes={"intent": str(intent), "mode": GoalMode(intent.value).value},
+        )
 
     return NodeResult(
         {
@@ -273,6 +355,7 @@ def plan_goal(state: AlphaGraphState) -> NodeResult:
         raise_graph_failure(GraphFailureClass.PLAN_VALIDATION_FAILED, "planner returned no tasks")
 
     task_ids: list[str] = []
+    graph_id = build_graph_id(goal.goal_id)
     for task_data in tasks:
         try:
             task = TaskNode.create(
@@ -293,9 +376,45 @@ def plan_goal(state: AlphaGraphState) -> NodeResult:
 
         ledger.create_task(task)
         task_ids.append(task.task_id)
+        _record_event(
+            state,
+            ledger,
+            EventType.TASK_CREATED,
+            task_id=task.task_id,
+            operation="plan_goal",
+            message=f"task {task.task_id} planned: {task.title}",
+            attributes={"task_type": task.task_type.value, "risk_level": task.risk_level.value, "depends_on": list(task.depends_on)},
+        )
+
+    # Persist the dependency edges, not just the inline ``depends_on`` lists.
+    # Without this the ``edges`` table is write-never and ``GraphEdge`` -- with
+    # its typed relations, ``reason`` and provenance -- is dead code: validation
+    # would only ever see the inline adjacency, and nothing could distinguish
+    # "depends on" from any other relation the plan declared.
+    edge_count = 0
+    for task in ledger.list_tasks(goal_id=goal.goal_id):
+        for dependency in task.depends_on:
+            edge = GraphEdge(
+                edge_id=make_id("edge"),
+                graph_id=graph_id,
+                source_id=dependency,
+                target_id=task.task_id,
+                edge_type=EdgeType.DEPENDS_ON,
+                reason="plan_goal: declared dependency",
+            )
+            ledger.create_edge(edge)
+            edge_count += 1
 
     goal.task_ids = [TaskId(t) for t in task_ids]
     ledger.update_goal(goal)
+    _record_event(
+        state,
+        ledger,
+        EventType.NODE_COMPLETED,
+        operation="plan_goal",
+        message=f"plan for goal {goal.goal_id}: {len(task_ids)} task(s), {edge_count} dependency edge(s)",
+        attributes={"task_ids": list(task_ids)},
+    )
 
     return NodeResult(
         {
@@ -325,16 +444,40 @@ def validate_plan(state: AlphaGraphState) -> NodeResult:
     goal = _get_goal(state, ledger)
 
     tasks = ledger.list_tasks(goal_id=goal.goal_id)
-    edges = ledger.list_edges(graph_id=GoalId(f"task-graph:{goal.goal_id}"))  # type: ignore[arg-type]
+    edges = ledger.list_edges(graph_id=build_graph_id(goal.goal_id))
 
     try:
         report = validate_tasks(tasks, goal_id=goal.goal_id, edges=edges)
     except CycleDetected as exc:
+        _record_event(
+            state,
+            ledger,
+            EventType.PLAN_REJECTED,
+            severity=EventSeverity.ERROR,
+            operation="validate_plan",
+            message=f"plan rejected: dependency cycle {list(getattr(exc, 'cycle', ()) or ())}",
+        )
         raise_graph_failure(GraphFailureClass.DEPENDENCY_CYCLE, str(exc))
     except UnknownDependency as exc:
+        _record_event(
+            state,
+            ledger,
+            EventType.PLAN_REJECTED,
+            severity=EventSeverity.ERROR,
+            operation="validate_plan",
+            message=f"plan rejected: unknown dependency {exc}",
+        )
         raise_graph_failure(GraphFailureClass.PLAN_VALIDATION_FAILED, str(exc))
 
     if not report.ok:
+        _record_event(
+            state,
+            ledger,
+            EventType.PLAN_REJECTED,
+            severity=EventSeverity.ERROR,
+            operation="validate_plan",
+            message=f"plan rejected: unknown dependencies {list(report.unknown_dependencies)}",
+        )
         raise_graph_failure(
             GraphFailureClass.PLAN_VALIDATION_FAILED,
             f"plan validation failed: {report.unknown_dependencies}",
@@ -343,6 +486,15 @@ def validate_plan(state: AlphaGraphState) -> NodeResult:
     if goal.status is GoalStatus.PLANNING:
         goal.transition_to(GoalStatus.RUNNING)
         ledger.update_goal(goal)
+
+    _record_event(
+        state,
+        ledger,
+        EventType.PLAN_VALIDATED,
+        operation="validate_plan",
+        message=f"plan for goal {goal.goal_id} validated: {report.task_count} task(s), {len(report.waves)} wave(s), critical path {len(report.critical_path)}",
+        attributes={"task_count": report.task_count, "waves": [list(w) for w in report.waves]},
+    )
 
     return NodeResult(
         {
@@ -420,7 +572,91 @@ def dispatch_worker(state: AlphaGraphState) -> NodeResult:
     # than silently dropped from the plan.
     candidates.sort(key=lambda task: (-task.priority, task.attempt_count, task.created_at, task.task_id))
 
+    # -- Resolve the multi-agent team before dispatching anything. -----------
+    # ``SpecialistTeamAdapter`` binds this graph onto Alpha's existing
+    # specialist coordination (``alpha.swarm.team.assign_specialists``), so the
+    # graph plane never grows a second agent registry. Two rules keep this
+    # from becoming a scheduler of its own:
+    #
+    # 1. It resolves over the **candidate** set only. Assigning specialists to
+    #    already-succeeded tasks would inflate their load counters and could
+    #    "cap out" a task that is perfectly assignable.
+    # 2. A gap only *blocks* when the task **declared** the requirement and a
+    #    roster is actually registered. An inferred keyword hint is a ranking
+    #    signal, not a hard conjunction -- treating it as one is the measured
+    #    failure mode recorded in ``alpha.swarm.team`` -- and with no roster
+    #    registered every task would otherwise be blocked, which reads as a
+    #    team outage rather than as "no specialists are configured".
+    team = SpecialistTeamAdapter()
+    worker_by_task: dict[str, str] = {}
+    declared_gaps: dict[str, dict[str, Any]] = {}
+    declared_missing: dict[str, str] = {}
+    if candidates:
+        assignment = team.assign(team.build_plan(goal, candidates))
+        if assignment.roster_registered:
+            team.apply_assignments(ledger, goal.goal_id, assignment)
+            for decision in assignment.decisions:
+                worker_by_task[str(decision.get("task_id") or "")] = str(decision.get("specialist") or "")
+            for gap in team.capability_gaps(assignment):
+                if gap.get("requirement_source") != "declared":
+                    continue
+                declared_gaps[str(gap.get("task_id") or "")] = gap
+                declared_missing[str(gap.get("task_id") or "")] = ", ".join(gap.get("required") or [])
+
     for task in candidates:
+        # 0. Prohibited risk is refused, not parked. Plan section 13.1: the
+        #    tier whose treatment is "deny and record a reason". Parking it
+        #    would offer an operator an approval nobody is allowed to give.
+        if task.risk_level is RiskLevel.PROHIBITED:
+            if task.status is not TaskStatus.BLOCKED:
+                ledger.mark_task_blocked(task.task_id, reason=f"prohibited risk: {task.title}")
+            _record_event(
+                state,
+                ledger,
+                EventType.TASK_BLOCKED,
+                task_id=task.task_id,
+                severity=EventSeverity.ERROR,
+                operation="dispatch_worker",
+                message=f"task {task.task_id} refused: risk is PROHIBITED, which is denied and recorded rather than parked for approval",
+            )
+            return NodeResult(
+                {
+                    "blocked_task_ids": [task.task_id],
+                    "active_task_ids": [],
+                    "status": GraphStatus.SCHEDULING,
+                    "current_node": "dispatch_worker",
+                    "next_node": "select_ready_tasks",
+                },
+            )
+
+        # 0b. A declared capability no specialist declares is a capability gap.
+        #     It is named, with the eligible pool and the rejection list, and it
+        #     blocks -- but it is not a runtime capability failure, so the
+        #     message says which of the two it is.
+        gap = declared_gaps.get(task.task_id)
+        if gap is not None:
+            if task.status is not TaskStatus.BLOCKED:
+                ledger.mark_task_blocked(task.task_id, reason="capability gap: no specialist declares " + declared_missing.get(task.task_id, ""))
+            _record_event(
+                state,
+                ledger,
+                EventType.TASK_BLOCKED,
+                task_id=task.task_id,
+                severity=EventSeverity.WARNING,
+                operation="dispatch_worker",
+                message=f"task {task.task_id} blocked: no declared specialist covers {declared_missing.get(task.task_id, '')}",
+                attributes={"required": gap.get("required"), "eligible": gap.get("eligible")},
+            )
+            return NodeResult(
+                {
+                    "blocked_task_ids": [task.task_id],
+                    "active_task_ids": [],
+                    "status": GraphStatus.SCHEDULING,
+                    "current_node": "dispatch_worker",
+                    "next_node": "select_ready_tasks",
+                },
+            )
+
         # 1. Capability availability, checked **before** readiness. A capability
         #    the graph knows is missing must become a visible block, not a silent
         #    skip: ``ready_to_dispatch`` reports it as "not yet", which would let
@@ -430,6 +666,15 @@ def dispatch_worker(state: AlphaGraphState) -> NodeResult:
         if missing:
             if task.status is not TaskStatus.BLOCKED:
                 ledger.mark_task_blocked(task.task_id, reason="unresolved capabilities: " + ", ".join(m.capability for m in missing))
+            _record_event(
+                state,
+                ledger,
+                EventType.TASK_BLOCKED,
+                task_id=task.task_id,
+                severity=EventSeverity.WARNING,
+                operation="dispatch_worker",
+                message=f"task {task.task_id} blocked: unresolved capabilities " + ", ".join(m.capability for m in missing),
+            )
             return NodeResult(
                 {
                     "blocked_task_ids": [task.task_id],
@@ -444,12 +689,36 @@ def dispatch_worker(state: AlphaGraphState) -> NodeResult:
         if not ready and task.status is not TaskStatus.BLOCKED and task.status is not TaskStatus.WAITING_APPROVAL:
             continue
 
-        # 2. Approval. Park before any attempt is recorded.
+        # 2. Approval. Park before any attempt is recorded -- and create the
+        #    approval record, bound by digest to the exact operation shown.
+        #    Without this the gate is unreachable: ``approval_gate`` reads
+        #    ``state["approval_request_id"]`` and nothing ever put it there, so
+        #    the graph could park a task and then fail with
+        #    USER_APPROVAL_REQUIRED instead of waiting for a human.
         if task.needs_approval and task.status is not TaskStatus.WAITING_APPROVAL:
+            approval = ApprovalRequest.create(
+                run_id=str(state.get("run_id", "")),
+                operation=f"graph task {task.task_id}",
+                target=task.title,
+                task_id=TaskId(task.task_id),
+                expected_side_effects=[task.description or task.title],
+            )
+            ledger.create_approval(approval)
             ledger.park_task_for_approval(task.task_id)
+            _record_event(
+                state,
+                ledger,
+                EventType.TOOL_APPROVAL_REQUIRED,
+                task_id=task.task_id,
+                severity=EventSeverity.WARNING,
+                operation="dispatch_worker",
+                message=f"task {task.task_id} parked for approval (risk {task.risk_level.value}); approval {approval.approval_id} bound to digest {approval.payload_digest[:12]}",
+                attributes={"risk_level": task.risk_level.value, "approval_id": approval.approval_id, "payload_digest": approval.payload_digest},
+            )
             return NodeResult(
                 {
                     "active_task_ids": [task.task_id],
+                    "approval_request_id": approval.approval_id,
                     "status": GraphStatus.WAITING_APPROVAL,
                     "current_node": "dispatch_worker",
                     "next_node": "approval_gate",
@@ -472,6 +741,15 @@ def dispatch_worker(state: AlphaGraphState) -> NodeResult:
         if not ready:
             continue
         _attempt, _task = ledger.begin_attempt(task.task_id)
+        _record_event(
+            state,
+            ledger,
+            EventType.TASK_ASSIGNED,
+            task_id=task.task_id,
+            operation="dispatch_worker",
+            message=f"task {task.task_id} dispatched to {worker_by_task.get(task.task_id) or task.assigned_worker or 'unassigned worker'}",
+            attributes={"attempt": _attempt.attempt_number, "worker": worker_by_task.get(task.task_id, task.assigned_worker)},
+        )
         return NodeResult(
             {
                 "active_task_ids": [task.task_id],
@@ -528,6 +806,15 @@ def capture_artifact(state: AlphaGraphState) -> NodeResult:
         mime_type=str(request.get("mime_type", "application/octet-stream")),
     )
     ledger.create_artifact(artifact)
+    _record_event(
+        state,
+        ledger,
+        EventType.ARTIFACT_CREATED,
+        task_id=TaskId(task_id),
+        operation="capture_artifact",
+        message=f"artifact {artifact.artifact_id} captured for task {task_id} ({artifact.artifact_type})",
+        attributes={"artifact_type": artifact.artifact_type, "size_bytes": artifact.size_bytes, "content_hash": artifact.content_hash},
+    )
 
     return NodeResult(
         {
@@ -589,6 +876,16 @@ def verify_task(state: AlphaGraphState) -> NodeResult:
     refusal = task.acceptance.refusal_reason()
     if refusal is not None:
         ledger.mark_task_failed(TaskId(task_id), reason=refusal, error_code="VERIFICATION_FAILED")
+        _record_event(
+            state,
+            ledger,
+            EventType.VERIFICATION_FAILED,
+            task_id=TaskId(task_id),
+            severity=EventSeverity.ERROR,
+            operation="verify_task",
+            message=f"task {task_id} verification refused: {refusal}",
+            error_code="VERIFICATION_FAILED",
+        )
         return NodeResult(
             {
                 "status": GraphStatus.REPAIRING,
@@ -598,6 +895,14 @@ def verify_task(state: AlphaGraphState) -> NodeResult:
         )
 
     ledger.mark_task_succeeded(TaskId(task_id))
+    _record_event(
+        state,
+        ledger,
+        EventType.VERIFICATION_PASSED,
+        task_id=TaskId(task_id),
+        operation="verify_task",
+        message=f"task {task_id} verified: every declared acceptance check holds",
+    )
 
     return NodeResult(
         {
@@ -613,8 +918,26 @@ def repair_task(state: AlphaGraphState) -> NodeResult:
     """Classify error, inspect trace, propose a bounded next attempt.
 
     This node does **not** retry identical work indefinitely. It checks the
-    attempt ceiling and creates a new repair task that depends on the original,
-    so the repair cannot reorder itself ahead of the failure it addresses.
+    attempt ceiling and creates a new repair task, then records the causal link
+    as a ``REPAIRS`` edge rather than a dependency.
+
+    Why the repair is **not** a dependency of the task it repairs
+    ------------------------------------------------------------
+    The first version wrote ``depends_on=[task.task_id]`` on the repair, which
+    reads as "repair after the failure" and is exactly backwards: readiness
+    requires every prerequisite to be ``SUCCEEDED`` (``SATISFIED_TASK_STATUSES``
+    is ``{SUCCEEDED}`` -- a skipped prerequisite produced nothing), so a repair
+    gated on a *failed* task could never become ready. The graph would route
+    ``repair_task -> select_ready_tasks -> final_verify`` and the repair would
+    sit in the ledger forever, unreachable: a repair branch that is
+    structurally dead, while the plan's bounded-repair loop and golden scenario
+    8 ("one task fails -> downstream blocked **or repair created**") both expect
+    it to run.
+
+    So the ordering intent ("a repair cannot be scheduled ahead of the failure
+    it addresses") moves to where it belongs -- a typed ``REPAIRS`` edge, which
+    :mod:`alpha.graph.dag` excludes from the scheduling dependency map -- and
+    the repair task itself starts from ``PENDING`` with a clean attempt count.
     """
     _check_cancellation(state)
     ledger = _get_ledger(state)
@@ -629,6 +952,15 @@ def repair_task(state: AlphaGraphState) -> NodeResult:
         raise_graph_failure(GraphFailureClass.INTERNAL_ERROR, f"task {task_id} not found")
 
     if not task.can_retry:
+        _record_event(
+            state,
+            ledger,
+            EventType.RETRY_EXHAUSTED,
+            task_id=task_id,
+            severity=EventSeverity.ERROR,
+            operation="repair_task",
+            message=f"task {task_id} has no retries left ({task.attempt_count}/{task.max_attempts})",
+        )
         raise_graph_failure(
             GraphFailureClass.RETRY_BUDGET_EXHAUSTED,
             f"task {task_id} has no retries left ({task.attempt_count}/{task.max_attempts})",
@@ -639,12 +971,33 @@ def repair_task(state: AlphaGraphState) -> NodeResult:
         title=f"Repair: {task.title}",
         description=task.failure_summary or "repair",
         task_type=task.task_type,
-        depends_on=[task.task_id],
         risk_level=task.risk_level,
         max_attempts=task.max_attempts,
         acceptance=AcceptanceReport.from_checks([f"repair of {task.title} verified"]),
     )
     ledger.create_task(repair)
+    ledger.create_edge(
+        GraphEdge(
+            edge_id=make_id("edge"),
+            graph_id=build_graph_id(goal.goal_id),
+            source_id=task.task_id,
+            target_id=repair.task_id,
+            edge_type=EdgeType.REPAIRS,
+            reason=f"bounded repair of task {task.task_id}; not a scheduling prerequisite",
+        )
+    )
+    goal.task_ids = list(goal.task_ids) + [TaskId(repair.task_id)]
+    ledger.update_goal(goal)
+
+    _record_event(
+        state,
+        ledger,
+        EventType.RETRY_SCHEDULED,
+        task_id=repair.task_id,
+        operation="repair_task",
+        message=f"repair {repair.task_id} scheduled for failed task {task_id}",
+        attributes={"repairs": task_id, "attempt": task.attempt_count},
+    )
 
     return NodeResult(
         {
@@ -677,10 +1030,20 @@ def approval_gate(state: AlphaGraphState) -> NodeResult:
     if approval is None:
         raise_graph_failure(GraphFailureClass.INTERNAL_ERROR, f"approval {approval_id} not found")
 
+    parked_task_id = _active_task_id(state)
     if not approval.is_approved:
         # Still pending or rejected: the task stays parked. The graph does not
         # self-approve, and a rejection is not a silent drop -- the caller sees
         # the state and the note.
+        _record_event(
+            state,
+            ledger,
+            EventType.NODE_COMPLETED,
+            task_id=TaskId(parked_task_id) if parked_task_id else None,
+            severity=EventSeverity.WARNING,
+            operation="approval_gate",
+            message=f"approval {approval_id} is not granted; run {state.get('run_id', '')} parked",
+        )
         return NodeResult(
             {
                 "status": GraphStatus.WAITING_APPROVAL,
@@ -688,6 +1051,15 @@ def approval_gate(state: AlphaGraphState) -> NodeResult:
                 "next_node": "__end__",
             },
         )
+
+    _record_event(
+        state,
+        ledger,
+        EventType.NODE_COMPLETED,
+        task_id=TaskId(parked_task_id) if parked_task_id else None,
+        operation="approval_gate",
+        message=f"approval {approval_id} granted; resuming task {parked_task_id or 'unknown'}",
+    )
 
     return NodeResult(
         {
@@ -738,6 +1110,16 @@ def final_verify(state: AlphaGraphState) -> NodeResult:
         goal.transition_to(target)
         ledger.update_goal(goal)
 
+    _record_event(
+        state,
+        ledger,
+        EventType.GOAL_COMPLETED if target is GoalStatus.SUCCEEDED else EventType.GOAL_PARTIAL,
+        severity=EventSeverity.INFO if target is GoalStatus.SUCCEEDED else EventSeverity.WARNING,
+        operation="final_verify",
+        message=f"goal {goal.goal_id} reached {target.value}",
+        attributes={"tasks_succeeded": sum(1 for t in tasks if t.status is TaskStatus.SUCCEEDED), "tasks_failed": any_failed, "tasks_blocked": any_blocked},
+    )
+
     return NodeResult(
         {
             "status": GraphStatus.REPORTING,
@@ -773,6 +1155,16 @@ def report_result(state: AlphaGraphState) -> NodeResult:
         status = GraphStatus.FAILED
 
     summary = f"Goal {goal.goal_id}: {len(succeeded)} succeeded, {len(failed)} failed, {len(blocked)} blocked, {len(artifacts)} artifact(s)."
+
+    _record_event(
+        state,
+        ledger,
+        EventType.NODE_COMPLETED,
+        operation="report_result",
+        severity=EventSeverity.INFO if status is GraphStatus.SUCCEEDED else EventSeverity.WARNING,
+        message=f"run {state.get('run_id', '')} reported: {summary}",
+        attributes={"succeeded": len(succeeded), "failed": len(failed), "blocked": len(blocked), "artifacts": len(artifacts)},
+    )
 
     return NodeResult(
         {

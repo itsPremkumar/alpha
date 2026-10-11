@@ -41,6 +41,13 @@ proposed tasks, per-task acceptance verdicts, and the artifact to capture --
 rides in the state via :func:`build_initial_state`. That is what lets a
 checkpointed run resume and still see what the original caller asked for,
 rather than reconstructing it from a log line.
+
+The one exception is the ledger: it rides in ``configurable``, not in state,
+because state is checkpointed and a live SQLite store is not a checkpointee --
+serialising it would either fail the first checkpoint write or bloat every
+checkpoint with a connection object. ``_get_ledger`` resolves ``configurable``
+first and falls back to ``state["_ledger"]`` only for callers that drive nodes
+directly.
 """
 
 from __future__ import annotations
@@ -225,17 +232,22 @@ class GraphRuntime:
         """Run the graph synchronously and return the final state.
 
         Synchronous because the ledger is synchronous SQLite; a caller on an
-        event loop must run this in a thread (``asyncio.to_thread``). The
-        ledger is threaded through the state under ``_ledger`` so nodes reach it
-        without a second parameter.
+        event loop must run this in a thread (``asyncio.to_thread``).
+
+        The ledger travels in ``configurable``, **not** in the state mapping.
+        State is checkpointed; a live SQLite connection is not serialisable and
+        would either crash the first checkpoint write or bloat every checkpoint
+        with a store object. ``_get_ledger`` reads ``configurable`` first and
+        falls back to ``state["_ledger"]`` only for callers that drive nodes
+        directly.
         """
         runnable = dict(config or {})
         runnable["configurable"] = {
             **runnable.get("configurable", {}),
             "_ledger": self._ledger,
         }
-        merged = {**state, "_ledger": self._ledger}
-        return self._graph.invoke(merged, config=runnable)  # type: ignore[return-value]
+        runnable_state = {key: value for key, value in state.items() if key != "_ledger"}
+        return self._graph.invoke(runnable_state, config=runnable)  # type: ignore[return-value]
 
 
 def build_graph(*, ledger: TaskLedger | None = None, config: GraphRuntimeConfig | None = None) -> Any:

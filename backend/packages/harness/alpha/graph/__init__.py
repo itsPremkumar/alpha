@@ -62,6 +62,7 @@ from alpha.graph.adapter import (
     DynamicWorkflowEngineAdapter,
     LeadAgentAdapter,
     RunManagerAdapter,
+    SpecialistTeamAdapter,
 )
 from alpha.graph.dag import (
     CycleDetected,
@@ -175,6 +176,7 @@ __all__ = [
     "DynamicWorkflowEngineAdapter",
     "LeadAgentAdapter",
     "RunManagerAdapter",
+    "SpecialistTeamAdapter",
     # DAG
     "CycleDetected",
     "DagReport",

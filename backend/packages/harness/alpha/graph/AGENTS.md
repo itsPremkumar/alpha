@@ -24,6 +24,16 @@ DynamicWorkflowEngine, or the lead agent.
   capture → verify → repair → final-verify → report.
 * **The adapters** (`adapter.py`): seams to RunManager, DynamicWorkflowEngine,
   and the lead agent.
+* **The specialist-team binding** (`adapter.py::SpecialistTeamAdapter`): the
+  graph plane's *multi-agent* coordination, which is deliberately **not** a
+  second agent registry. It projects graph-plane tasks onto the existing swarm
+  runtime's team composition — `alpha.swarm.team.assign_specialists` is the
+  capability filter (a hard filter through `alpha.capabilities.eligibility`,
+  with every rejected candidate and reason recorded), and
+  `alpha.swarm.team.build_team_report` is the report. `TEAM_RUNTIME.md` states
+  the rule: "A team is not a new lifecycle, a new plan type, or a new run
+  record. It is an ordinary SwarmPlan whose task nodes carry a declared
+  capability requirement and an assignment to a named specialist."
 * **The failure bridge** (`failures.py`): maps graph failures onto
   `alpha.errors.registry` codes. Never invents codes.
 * **The redaction policy** (`redact.py`): selects which secret families fire
@@ -79,8 +89,32 @@ DynamicWorkflowEngine, or the lead agent.
    exactly-once. The AGENTS.md honesty constraint applies: single-process
    SQLite state is never cross-process exactly-once.
 10. **Redaction is level-gated.** `RedactionLevel.FULL` for traces/logs;
-    `RedactionLevel.EDGE` for approval previews and artifact references shown
-    to users. The level is a required parameter, never a default.
+    `EDGE` for approval previews and artifact references shown to users. The
+    level is a required parameter, never a default.
+11. **A repair is caused by a failure, not gated on it.** `repair_task` starts
+    the repair from `PENDING` with a clean attempt count and records the link
+    as a `REPAIRS` edge, which `dag.SCHEDULING_EDGE_TYPES` excludes from the
+    dependency map. Gating a repair on the `FAILED` task it repairs makes it
+    permanently un-ready, because `SATISFIED_TASK_STATUSES` is `{SUCCEEDED}`.
+12. **Every node records an event, and an event failure never kills the run.**
+    `nodes._record_event` appends a redacted, causally-linked `RunEvent` and
+    swallows store errors: telemetry degradation is not task failure (plan
+    §19). Before this, `events` was write-never and "what actually ran" had no
+    answer but the caller's word.
+13. **The ledger rides in `configurable`, never in state.** State is
+    checkpointed; a live SQLite store is not a checkpointee.
+    `nodes._get_ledger` resolves `configurable` first and falls back to
+    `state["_ledger"]` only for callers that drive nodes directly.
+14. **An unbound worker reports `blocked`, never `succeeded`.**
+    `LeadAgentAdapter.execute_task` has no real worker yet (plan Phase 5) and
+    says so with a reason, so `verify_task` fails loudly instead of a stub
+    reporting success for work that never ran.
+15. **Multi-agent coordination reuses the swarm runtime; it does not fork it.**
+    `SpecialistTeamAdapter` projects onto `alpha.swarm.team.assign_specialists`
+    — the existing hard capability filter with recorded rejection reasons —
+    rather than building a second agent registry. It persists no plan, starts
+    no swarm, takes no lease, and never substitutes a generalist for a missing
+    capability: an unassignable task is a named capability gap.
 
 ## Feature flag
 
@@ -100,7 +134,10 @@ the graph plane, so the graph plane can be tested without the flag.
   path, blocked propagation.
 * `test_graph_engineering_ledger.py`: CRUD, transitions, conflicts, idempotency.
 * `test_graph_engineering_state.py`: reducer behavior, merge semantics.
-* `test_graph_engineering_nodes.py`: node behavior with a stub ledger.
+* `test_graph_engineering_nodes.py`: node behavior with a stub ledger, plus
+  the `TestDefectRegressions` class pinning the five audit defects
+  (dead repair branch, write-never events, unpersisted edges, the
+  fabricated-success adapter, the ledger in checkpointed state).
 * `test_graph_engineering_runtime.py`: graph compilation, basic execution.
 * `test_graph_engineering_failures.py`: failure classification, code mapping.
 * `test_graph_engineering_redact.py`: redaction levels, secret families.
@@ -116,6 +153,15 @@ the graph plane, so the graph plane can be tested without the flag.
   called when a goal opts into DWE execution.
 * **Lead agent**: `LeadAgentAdapter.execute_task` is called when a task opts
   into lead-agent execution.
+* **Swarm specialist team**: `SpecialistTeamAdapter` is the multi-agent
+  coordination seam. It projects a goal's tasks into a `SwarmPlan`, runs the
+  existing `assign_specialists` hard capability filter over it, and writes the
+  chosen `assigned_worker` back onto the graph-plane tasks. Three boundaries
+  are load-bearing: it persists nothing (no plan, no swarm, no lease — it
+  answers "who can take this work", it is not a second scheduler), it never
+  writes `state`/`acceptance_status`/`verification`, and it never substitutes a
+  generalist for a missing capability — an unassignable task is reported as a
+  named capability gap with the full rejection list.
 * **Error registry**: `alpha.errors.registry` is the sole owner of error codes.
   New codes are added there, not in the graph plane.
 * **Capabilities catalog**: `alpha.capabilities.catalog` registers the graph

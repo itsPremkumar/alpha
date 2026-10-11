@@ -74,6 +74,7 @@ from alpha.graph.ids import (
 from alpha.graph.models import (
     AcceptanceCheck,
     AcceptanceReport,
+    ApprovalDecision,
     ApprovalRequest,
     ApprovalState,
     Artifact,
@@ -1267,6 +1268,55 @@ class TaskLedger:
         if row is None:
             return None
         return self._approval_from_dict(json.loads(row["data"]))
+
+    def decide_approval(
+        self,
+        approval_id: ApprovalId,
+        decision: ApprovalDecision,
+        *,
+        decided_by: str,
+        operation_payload: dict[str, Any] | None = None,
+        note: str = "",
+    ) -> ApprovalRequest:
+        """Record an operator decision on a pending approval.
+
+        This is the write path the approval loop was missing: ``create_approval``
+        only inserts, so a pending approval could never become approved or
+        rejected -- the ``approval_gate`` node could park a run forever and no
+        operator action could move it.
+
+        ``ApprovalRequest.decide`` is the authority on *whether* a decision is
+        legal (one decision per approval; a payload that no longer matches its
+        digest is refused), so this method loads, delegates, and persists. The
+        digest re-check is the whole point: an approval bound to an operation
+        that changed after the operator saw it is not a grant.
+        """
+        conn = self._connect()
+        with self._lock:
+            approval = self.get_approval(approval_id)
+            if approval is None:
+                raise LedgerConflict(f"approval {approval_id} not found")
+            try:
+                approval.decide(decision, decided_by=decided_by, operation_payload=operation_payload, note=note)
+            except IllegalTransition as exc:
+                raise LedgerConflict(str(exc)) from exc
+            conn.execute(
+                """
+                UPDATE approvals
+                SET state = ?, decided_at = ?, decided_by = ?, decision_note = ?, data = ?
+                WHERE approval_id = ?
+                """,
+                (
+                    approval.state.value,
+                    approval.decided_at,
+                    approval.decided_by,
+                    approval.decision_note,
+                    json.dumps(approval.to_dict(), ensure_ascii=False),
+                    str(approval_id),
+                ),
+            )
+            conn.commit()
+            return approval
 
     def list_approvals(self, *, run_id: str | None = None, state: ApprovalState | None = None) -> list[ApprovalRequest]:
         """List approvals, optionally filtered by run or state."""

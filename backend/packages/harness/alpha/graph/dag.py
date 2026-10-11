@@ -46,7 +46,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 
 from alpha.graph.ids import GraphId, TaskId
 from alpha.graph.models import (
@@ -61,6 +61,7 @@ from alpha.graph.models import (
 )
 
 __all__ = [
+    "SCHEDULING_EDGE_TYPES",
     "CycleDetected",
     "DagReport",
     "UnknownDependency",
@@ -238,8 +239,9 @@ def execution_waves(tasks: Sequence[TaskNode], edges: Sequence[GraphEdge] | None
     between passes makes every replay and projection non-deterministic.
     """
     dependencies = dependency_map(tasks)
-    if edges:
-        dependencies = apply_edges(dependencies, edges)
+    scheduling = _scheduling_edges(edges)
+    if scheduling:
+        dependencies = apply_edges(dependencies, scheduling)
 
     cycle = find_cycle(dependencies)
     if cycle is not None:
@@ -287,8 +289,9 @@ def critical_path(tasks: Sequence[TaskNode], edges: Sequence[GraphEdge] | None =
     conflating them scores a wide graph as more parallel than it is.
     """
     dependencies = dependency_map(tasks)
-    if edges:
-        dependencies = apply_edges(dependencies, edges)
+    scheduling = _scheduling_edges(edges)
+    if scheduling:
+        dependencies = apply_edges(dependencies, scheduling)
     cycle = find_cycle(dependencies)
     if cycle is not None:
         raise CycleDetected(cycle)
@@ -325,6 +328,26 @@ def critical_path(tasks: Sequence[TaskNode], edges: Sequence[GraphEdge] | None =
     return [TaskId(item) for item in reversed(path)]
 
 
+#: Edge types that constrain **scheduling**: "may this task run yet?".
+#:
+#: Every other typed edge is *causal provenance* and must never reach the
+#: dependency map. ``REPAIRS`` is the case that forced this split: a repair task
+#: is caused by a failure, not gated on it. Feeding a ``REPAIRS`` edge into
+#: :func:`apply_edges` makes the failed original a prerequisite, and because
+#: :data:`~alpha.graph.models.SATISFIED_TASK_STATUSES` is ``{SUCCEEDED}`` only,
+#: the repair can never become ready -- a repair branch that is structurally
+#: unreachable. The plan's §5.3 rule ("keep task-dependency edge types separate
+#: from knowledge-relationship types") is the same separation, applied to edges.
+SCHEDULING_EDGE_TYPES: Final[frozenset[EdgeType]] = frozenset({EdgeType.DEPENDS_ON, EdgeType.BLOCKED_BY})
+
+
+def _scheduling_edges(edges: Sequence[GraphEdge] | None) -> list[GraphEdge]:
+    """Drop causal/provenance edges, keeping only scheduling constraints."""
+    if not edges:
+        return []
+    return [edge for edge in edges if edge.edge_type in SCHEDULING_EDGE_TYPES]
+
+
 def validate_tasks(
     tasks: Sequence[TaskNode],
     *,
@@ -342,9 +365,10 @@ def validate_tasks(
     """
     resolved_goal = goal_id or (tasks[0].goal_id if tasks else "")
     graph_id = build_graph_id(resolved_goal)
+    scheduling = _scheduling_edges(edges)
     dependencies = dependency_map(tasks)
-    if edges:
-        dependencies = apply_edges(dependencies, edges)
+    if scheduling:
+        dependencies = apply_edges(dependencies, scheduling)
 
     cycle = find_cycle(dependencies)
     if cycle is not None:
@@ -354,8 +378,8 @@ def validate_tasks(
     dependents = dependents_map(dependencies)
     isolated = tuple(TaskId(task.task_id) for task in tasks if not dependencies.get(task.task_id) and not dependents.get(task.task_id))
     try:
-        waves = execution_waves(tasks, edges)
-        path = critical_path(tasks, edges)
+        waves = execution_waves(tasks, scheduling)
+        path = critical_path(tasks, scheduling)
     except (CycleDetected, UnknownDependency):
         # A cycle or an unknown dependency already has a home in this report
         # (cycle raises; unknown is reported). If the graph is unschedulable for
