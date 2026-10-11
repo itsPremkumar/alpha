@@ -78,9 +78,7 @@ def _context(config: MemoryConfig, monkeypatch: pytest.MonkeyPatch) -> str:
     return prompt_module._get_memory_context("lead", user_id="u1")
 
 
-def test_all_types_off_leaves_the_existing_block_untouched(
-    collaborators: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_all_types_off_leaves_the_existing_block_untouched(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Default-OFF must be invisible in the real prompt, not just in isolation."""
     block = _context(_config(l1={"enabled": True}), monkeypatch)
     assert "### Backend memory" in block
@@ -91,9 +89,7 @@ def test_all_types_off_leaves_the_existing_block_untouched(
     assert block.count("<memory>") == 1
 
 
-def test_enabled_type_with_content_reaches_the_prompt(
-    collaborators: None, monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_enabled_type_with_content_reaches_the_prompt(collaborators: None, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """The seam is real: an enabled type's own text lands inside <memory>."""
     import alpha.memory.recall_composition as rc
 
@@ -111,9 +107,7 @@ def test_enabled_type_with_content_reaches_the_prompt(
     assert block.index("### Backend memory") < block.index("### Life story")
 
 
-def test_a_raising_type_does_not_break_the_memory_block(
-    collaborators: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_raising_type_does_not_break_the_memory_block(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Worst case: every type explodes. The user still gets backend + L1."""
     import alpha.memory.recall_composition as rc
 
@@ -137,27 +131,19 @@ def test_a_raising_type_does_not_break_the_memory_block(
     assert "store unavailable" not in block
 
 
-def test_host_memory_disabled_yields_no_block(
-    collaborators: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_host_memory_disabled_yields_no_block(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """The master switch still wins: no host memory, no <memory> block at all."""
     config = MemoryConfig.model_validate({"enabled": False, "narrative": {"enabled": True}})
     assert _context(config, monkeypatch) == ""
 
 
-def test_injection_disabled_yields_no_block(
-    collaborators: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_injection_disabled_yields_no_block(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """`injection_enabled: false` must stay a real off-switch, as before."""
-    config = MemoryConfig.model_validate(
-        {"enabled": True, "injection_enabled": False, "narrative": {"enabled": True}}
-    )
+    config = MemoryConfig.model_validate({"enabled": True, "injection_enabled": False, "narrative": {"enabled": True}})
     assert _context(config, monkeypatch) == ""
 
 
-def test_composition_import_failure_is_swallowed(
-    collaborators: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_composition_import_failure_is_swallowed(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Even a broken composition module must not cost the backend + L1 block."""
     import builtins
 

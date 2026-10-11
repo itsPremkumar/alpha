@@ -122,10 +122,7 @@ def _release_path(release_id: str) -> Path:
 def _require_safe_candidate_id(candidate_id: Any) -> str:
     """Return ``candidate_id`` when it is a safe single-path-component id, else ``ValueError`` with the real rule."""
     if not isinstance(candidate_id, str) or not _SAFE_ID_RE.fullmatch(candidate_id) or ".." in candidate_id:
-        raise ValueError(
-            f"unsafe candidate_id for a release: {candidate_id!r}; ids must match {_SAFE_ID_RE.pattern} "
-            "(no path separators, no traversal — releases stay inside runtime_home()/rsi/releases/)."
-        )
+        raise ValueError(f"unsafe candidate_id for a release: {candidate_id!r}; ids must match {_SAFE_ID_RE.pattern} (no path separators, no traversal — releases stay inside runtime_home()/rsi/releases/).")
     return candidate_id
 
 

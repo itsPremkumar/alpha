@@ -23,9 +23,6 @@ import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
-from app.gateway.auth.models import User
-from app.gateway.deps import get_config
-from app.gateway.routers import integrations as integrations_router
 from alpha.config import paths as paths_module
 from alpha.config.paths import Paths
 from alpha.integrations import lark_cli
@@ -33,6 +30,9 @@ from alpha.sandbox.tools import _lark_cli_env_from_runtime
 from alpha.skills.storage import reset_skill_storage
 from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
 from alpha.skills.types import SkillCategory
+from app.gateway.auth.models import User
+from app.gateway.deps import get_config
+from app.gateway.routers import integrations as integrations_router
 
 # The managed Lark CLI sandbox runtime is a Linux artifact: provisioning
 # validates the POSIX executability bit (`st_mode & 0o111`) of `bin/lark-cli`

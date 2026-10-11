@@ -40,11 +40,7 @@ class KanbanGroupBridge:
         }
         header = icons.get(event_type, f"📌 [{event_type.upper()}]")
 
-        content = (
-            f"{header} **{task.task_id}**: {task.title}\n"
-            f"- Column: `{task.column}` | Priority: `{task.priority}`\n"
-            f"- Assignee: @{task.assignee or 'unassigned'} | Reviewer: @{task.reviewer or 'none'}"
-        )
+        content = f"{header} **{task.task_id}**: {task.title}\n- Column: `{task.column}` | Priority: `{task.priority}`\n- Assignee: @{task.assignee or 'unassigned'} | Reviewer: @{task.reviewer or 'none'}"
         if detail:
             content += f"\n- Detail: {detail}"
 

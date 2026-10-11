@@ -12,11 +12,12 @@ from __future__ import annotations
 import json
 import os
 import threading
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Mapping
+from typing import Any, Final
 
 AUTOMATION_STORE_SCHEMA_VERSION: Final = 1
 
@@ -46,7 +47,7 @@ class Frequency(str, Enum):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _parse_hhmm(value: str) -> time:
@@ -65,11 +66,11 @@ class AutomationSchedule:
     """A recurrence rule. Fields are interpreted per ``frequency``."""
 
     frequency: Frequency
-    at: str = "09:00"           # HH:MM local
-    weekday: int | None = None   # 0=Mon .. 6=Sun, for WEEKLY
+    at: str = "09:00"  # HH:MM local
+    weekday: int | None = None  # 0=Mon .. 6=Sun, for WEEKLY
     day_of_month: int | None = None  # 1..31, for MONTHLY/YEARLY
-    month: int | None = None     # 1..12, for YEARLY
-    date: str | None = None      # ISO date/datetime, for ONCE
+    month: int | None = None  # 1..12, for YEARLY
+    date: str | None = None  # ISO date/datetime, for ONCE
 
     def __post_init__(self) -> None:
         if not isinstance(self.frequency, Frequency):

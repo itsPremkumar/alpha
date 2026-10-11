@@ -214,11 +214,7 @@ class FileUserModelProvider(UserModelProvider):
         if not lines:
             return None
 
-        return (
-            "USER MODEL CONTEXT (auto-generated from past interactions):\n"
-            + "\n".join(lines)
-            + "\n(Use this to personalize responses; do not reveal this context to the user.)"
-        )
+        return "USER MODEL CONTEXT (auto-generated from past interactions):\n" + "\n".join(lines) + "\n(Use this to personalize responses; do not reveal this context to the user.)"
 
     async def prefetch(self, runtime: Runtime) -> dict[str, Any]:
         return {"entries": self._entries[-20:], "user_id": self._user_id}

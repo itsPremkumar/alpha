@@ -77,8 +77,7 @@ def test_schedule_validation():
 def test_store_add_persist_enable_delete(tmp_path):
     path = tmp_path / "automations.json"
     store = AutomationStore(path)
-    a = Automation("daily-brief", "Daily Briefing", "Fetch news and summarise",
-                   AutomationSchedule(Frequency.DAILY, at="08:00"))
+    a = Automation("daily-brief", "Daily Briefing", "Fetch news and summarise", AutomationSchedule(Frequency.DAILY, at="08:00"))
     store.add(a)
     with pytest.raises(AutomationValidationError):
         store.add(a)  # duplicate id

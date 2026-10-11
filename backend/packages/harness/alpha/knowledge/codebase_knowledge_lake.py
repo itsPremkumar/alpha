@@ -9,10 +9,8 @@ from __future__ import annotations
 import ast
 import math
 import re
-from collections import Counter
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from dataclasses import asdict, dataclass
+from typing import Any
 
 
 @dataclass
@@ -40,16 +38,18 @@ class ASTCodeChunker:
         try:
             tree = ast.parse(code)
         except Exception:
-            return [CodeChunk(
-                chunk_id=f"{repo_name}:{file_path}:module",
-                repo_name=repo_name,
-                file_path=file_path,
-                start_line=1,
-                end_line=len(code.splitlines()),
-                chunk_type="module",
-                symbol_name="module",
-                content=code[:1000],
-            )]
+            return [
+                CodeChunk(
+                    chunk_id=f"{repo_name}:{file_path}:module",
+                    repo_name=repo_name,
+                    file_path=file_path,
+                    start_line=1,
+                    end_line=len(code.splitlines()),
+                    chunk_type="module",
+                    symbol_name="module",
+                    content=code[:1000],
+                )
+            ]
 
         lines = code.splitlines()
         for node in tree.body:
@@ -148,11 +148,13 @@ class CrossServiceSymbolTracer:
             # Check direct or suffix match
             for sr in server_routes:
                 if cr == sr or cr.endswith(sr) or sr.endswith(cr):
-                    matches.append({
-                        "client_endpoint": cr,
-                        "server_route": sr,
-                        "status": "linked",
-                    })
+                    matches.append(
+                        {
+                            "client_endpoint": cr,
+                            "server_route": sr,
+                            "status": "linked",
+                        }
+                    )
 
         return matches
 

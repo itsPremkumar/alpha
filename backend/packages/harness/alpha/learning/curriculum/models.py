@@ -8,10 +8,11 @@ from typing import Any
 @dataclass
 class CapabilityGap:
     """A discovered capability weakness."""
+
     capability: str
     current_score: float  # 0.0 to 1.0
     target_score: float = 0.90  # 0.0 to 1.0
-    difficulty: float = 0.5    # 0.1 to 1.0
+    difficulty: float = 0.5  # 0.1 to 1.0
     evidence: list[str] = field(default_factory=list)
 
     @property
@@ -34,6 +35,7 @@ class CapabilityGap:
 @dataclass
 class PracticeTask:
     """A single synthetic practice exercise targeting a capability gap."""
+
     task_id: str
     capability: str
     description: str
@@ -49,6 +51,7 @@ class PracticeTask:
 @dataclass
 class Curriculum:
     """Ordered sequence of practice tasks targeting agent capability gaps."""
+
     curriculum_id: str
     gaps: list[CapabilityGap] = field(default_factory=list)
     tasks: list[PracticeTask] = field(default_factory=list)

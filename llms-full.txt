@@ -269,9 +269,32 @@ store's lock is filesystem-local rather than cross-process exactly-once, and a
 champion is a judged winner, never an independently verified solution. See
 [the arena operating guide](https://github.com/itsPremkumar/alpha/blob/main/docs/ARENA.md).
 
+### 5.12 Group-relative orchestration (GRO)
+A bounded group of candidate attempts for one objective, each executed under a
+*distinct* strategy, then compared gate-first: every required acceptance gate
+must PASS for a candidate to be eligible (`unknown` is never a pass), absolute
+score decides among the eligible, and the GRPO-style relative advantage
+(`Q_i − median(Q)`) is recorded as a diagnostic only. It is deliberately
+different from an arena bracket — one wave of parallel attempts, not a
+pairwise tournament. When nothing passes, one bounded repair round
+(`gro.max_repair_rounds`, default 1) runs and the run ends as an explicit
+`partial_result` labelled **UNVERIFIED**, never "best of a bad lot, verified";
+with no declared criteria the winner is UNVERIFIED too, and final verification
+can demote a provisional winner but never promote one. The model surface is two
+actions on the existing `swarm` tool — `compete` (goal plus acceptance criteria;
+task type, risk tier and group size are policy-computed) and `compete_status` —
+so `BUILTIN_TOOLS`, the feature manifest and the capability counts are
+untouched. Candidate lanes run through the real `SubagentExecutor` (same
+admission control, sandbox leases and usage accounting) with the `swarm` tool
+stripped from the assembled pool; a lane past its deadline is declared timed
+out and any late result is discarded. Externally visible or destructive goals
+park as `needs_human` with nothing executed when approval is required. Whole
+feature is off by default behind `gro.enabled`. See
+[the orchestration plan and its v1 status](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md).
+
 ## 6. Harness engine map
 
-120 engine packages live under `backend/packages/harness/alpha/`:
+121 engine packages live under `backend/packages/harness/alpha/`:
 
 `action` `agency` `agent` `agents` `apex` `arena` `authz` `autoconfig` `automations`
 `avo` `benchmarks` `blackboard` `bots` `browser` `canvas` `capabilities`
@@ -279,7 +302,7 @@ champion is a judged winner, never an independently verified solution. See
 `config` `connectors` `consequence` `context` `council` `critic` `critique`
 `debugging` `deepagent` `deliberation` `diagnostics` `editing` `egress`
 `enterprise` `epistemics` `errors` `evaluation` `events` `evidence` `evolution`
-`experts` `extensions` `goals` `governance` `grounding` `groups` `guardrails`
+`experts` `extensions` `goals` `governance` `gro` `grounding` `groups` `guardrails`
 `harness` `integrations` `intelligence` `jobs` `kanban` `knowledge` `learning`
 `ledger` `lineage` `mcp` `media` `memory` `metacognition` `metacompiler`
 `mission` `missions` `models` `modes` `multimodal` `notifications`

@@ -14,6 +14,7 @@ class StrategicPivotDirective:
     Structured intervention directive synthesized by the AVO Supervisor
     when progress stalls or enters an unproductive cycle.
     """
+
     directive_type: str  # "STAGNATION_PIVOT", "OSCILLATION_BREAK", "CORRECTNESS_BLOCKED"
     reason: str
     recommended_directions: list[str] = field(default_factory=list)
@@ -128,11 +129,7 @@ class AVOSupervisor:
         if len(self.signature_history) >= 4:
             history_list = list(self.signature_history)
             # Detect A-B-A-B oscillation
-            if (
-                history_list[-1] == history_list[-3]
-                and history_list[-2] == history_list[-4]
-                and history_list[-1] != history_list[-2]
-            ):
+            if history_list[-1] == history_list[-3] and history_list[-2] == history_list[-4] and history_list[-1] != history_list[-2]:
                 self.total_cycle_events += 1
                 directions = self._directions_for(lineage, minimum=2, trigger="oscillation")
                 directive = StrategicPivotDirective(
@@ -164,10 +161,7 @@ class AVOSupervisor:
             self.last_directive = directive
             self._record_redirect("STAGNATION_PIVOT", reasons, directions, tuple(self.signature_history))
             self.consecutive_stagnation = 0  # reset after triggering
-            diag = (
-                f"STAGNATION_DETECTED: Search plateaued after {self.max_no_improve} "
-                "consecutive non-improving iterations. Forcing exploratory perturbation."
-            )
+            diag = f"STAGNATION_DETECTED: Search plateaued after {self.max_no_improve} consecutive non-improving iterations. Forcing exploratory perturbation."
             logger.warning(diag)
             return True, directive, diag
 
@@ -202,14 +196,10 @@ class AVOSupervisor:
                 reason = getattr(record, "rejection_reason", None)
                 summary = str(getattr(record, "modification", "") or getattr(record, "hypothesis", ""))
                 if reason:
-                    directions.append(
-                        f"'{summary[:80]}' was rejected for {reason}; approach the same surface differently rather than retrying it."
-                    )
+                    directions.append(f"'{summary[:80]}' was rejected for {reason}; approach the same surface differently rather than retrying it.")
             head = lineage.get_head() if hasattr(lineage, "get_head") else None
             if head is not None:
-                directions.append(
-                    f"Branch from the best committed version ({head.version_id}, score {getattr(head, 'composite_score', 0.0):.6g}) rather than from the head of the failed line."
-                )
+                directions.append(f"Branch from the best committed version ({head.version_id}, score {getattr(head, 'composite_score', 0.0):.6g}) rather than from the head of the failed line.")
         for generic in self._GENERIC_DIRECTIONS:
             if len(directions) >= max(minimum, 2):
                 break

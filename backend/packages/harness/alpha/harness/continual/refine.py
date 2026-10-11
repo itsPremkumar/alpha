@@ -54,21 +54,21 @@ class ContinualRefinementEngine:
             if "No such file or directory" in msg or "FileNotFoundError" in msg:
                 title = f"Path Verification Rule ({tool})"
                 content = f"Always verify directory structure or file existence with `ls` or `glob` before calling `{tool}`."
-                entry = self._upsert_memory(title, content, source="refinement_error_analysis")
+                self._upsert_memory(title, content, source="refinement_error_analysis")
                 changes.append(f"Added memory: {title}")
                 evidence_points.append(f"Tool {tool} failed with file not found: {msg[:100]}")
 
             elif "Permission denied" in msg:
                 title = f"Permission Awareness ({tool})"
                 content = f"Avoid writing to protected or read-only locations when invoking `{tool}`."
-                entry = self._upsert_memory(title, content, source="refinement_error_analysis")
+                self._upsert_memory(title, content, source="refinement_error_analysis")
                 changes.append(f"Added memory: {title}")
                 evidence_points.append(f"Permission denied observed for {tool}")
 
             elif "exceeds" in msg and "limit" in msg:
                 title = f"Size Limit Policy ({tool})"
                 content = f"Chunk large outputs or use incremental edits rather than single large writes with `{tool}`."
-                entry = self._upsert_prompt_directive(title, content, source="refinement_error_analysis")
+                self._upsert_prompt_directive(title, content, source="refinement_error_analysis")
                 changes.append(f"Added prompt directive: {title}")
                 evidence_points.append(f"Size limit exceeded on {tool}")
 

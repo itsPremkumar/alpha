@@ -103,11 +103,7 @@ _DISK_MOUNT_MAX_ERRORS = 3
 # the worker thread merely waits on a pipe (GIL released) instead of sitting
 # inside the C call (GIL held), keeping readiness and serving stall-free.
 _DISK_PARTITIONS_CHILD_TIMEOUT_SECONDS = 60.0
-_DISK_PARTITIONS_CHILD_SOURCE = (
-    "import json, psutil;"
-    "print(json.dumps([{'device': p.device, 'mountpoint': p.mountpoint, "
-    "'fstype': p.fstype, 'opts': p.opts} for p in psutil.disk_partitions(all=False)]))"
-)
+_DISK_PARTITIONS_CHILD_SOURCE = "import json, psutil;print(json.dumps([{'device': p.device, 'mountpoint': p.mountpoint, 'fstype': p.fstype, 'opts': p.opts} for p in psutil.disk_partitions(all=False)]))"
 
 # GPU readout cache TTL (utilization changes; identity does not).
 _GPU_REFRESH_TTL_SECONDS = 30.0

@@ -608,10 +608,7 @@ def test_regression_unscreened_payload_past_the_injection_screen_window() -> Non
     # The screen must be asked to judge the WHOLE retained body, not its default
     # 12,000-character window. A tail the screen never saw is a tail that must
     # be tainted, not presented as screened.
-    assert seen["max_chars"] >= seen["len"], (
-        f"injection screen was asked for {seen['max_chars']} chars of a {seen['len']}-char body: "
-        f"everything after that is unscreened content presented as screened"
-    )
+    assert seen["max_chars"] >= seen["len"], f"injection screen was asked for {seen['max_chars']} chars of a {seen['len']}-char body: everything after that is unscreened content presented as screened"
     assert "exfiltrate" in str(seen["covered"]), "the payload at offset 28,400 was not even shown to the screen"
 
 
@@ -708,10 +705,7 @@ def test_isolation_requires_a_declared_control() -> None:
 
 def test_every_isolation_control_names_the_control_that_authorises_it() -> None:
     for name, control in ISOLATION_CONTROLS.items():
-        assert control.requires_control in TRUSTED_CLEARING_CONTROLS, (
-            f"isolation control {name!r} authorises itself with {control.requires_control!r}, "
-            "which is not a trusted clearing control"
-        )
+        assert control.requires_control in TRUSTED_CLEARING_CONTROLS, f"isolation control {name!r} authorises itself with {control.requires_control!r}, which is not a trusted clearing control"
 
 
 # ===========================================================================

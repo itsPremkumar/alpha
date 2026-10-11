@@ -100,10 +100,10 @@ async def test_manager_injects_shared_store_and_dedupes_cross_pod():
     """End-to-end: two ChannelManagers wired to the *same* Postgres store drop a
     redelivery routed to the second manager, exactly as the production dispatch
     loop would (``if await self._is_duplicate_inbound(msg): continue``)."""
+    from alpha.persistence.engine import get_session_factory
     from app.channels.manager import ChannelManager
     from app.channels.message_bus import InboundMessage, MessageBus
     from app.channels.store import ChannelStore
-    from alpha.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     shared_store = PostgresInboundDedupeStore(session_factory=sf)

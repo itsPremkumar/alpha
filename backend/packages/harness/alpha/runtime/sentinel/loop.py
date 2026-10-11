@@ -58,29 +58,32 @@ def record_sentinel_escalation(outcome: LoopOutcome) -> LoopOutcome:
         logger.debug("Failed to record sentinel escalation", exc_info=True)
     return outcome
 
+
 #: Signal kind -> repair strategy. Anything not listed escalates instead of
 #: being guess-fixed.
-KNOWN_KINDS: frozenset[str] = frozenset({
-    "import_error",
-    "syntax_error",
-    "test_failure",
-    "missing_file",
-    "permission_error",
-    "connectivity",
-    # A UTF-8 .ps1 with non-ASCII content but no BOM. Windows PowerShell 5.1
-    # decodes BOM-less scripts as ANSI, corrupting string literals so the file
-    # cannot be parsed at all. Registered because the fix is purely mechanical
-    # (prepend EF BB BF), is idempotent, and is verifiable by asking PowerShell
-    # to parse the file.
-    "missing_bom",
-})
+KNOWN_KINDS: frozenset[str] = frozenset(
+    {
+        "import_error",
+        "syntax_error",
+        "test_failure",
+        "missing_file",
+        "permission_error",
+        "connectivity",
+        # A UTF-8 .ps1 with non-ASCII content but no BOM. Windows PowerShell 5.1
+        # decodes BOM-less scripts as ANSI, corrupting string literals so the file
+        # cannot be parsed at all. Registered because the fix is purely mechanical
+        # (prepend EF BB BF), is idempotent, and is verifiable by asking PowerShell
+        # to parse the file.
+        "missing_bom",
+    }
+)
 
 
 @dataclass
 class LoopOutcome:
     signal: Signal
-    stage: str                      # where it stopped
-    status: str                     # "fixed" | "reverted" | "escalated" | "skipped"
+    stage: str  # where it stopped
+    status: str  # "fixed" | "reverted" | "escalated" | "skipped"
     detail: str = ""
     commit: CommitResult | None = None
     verify: VerifyReport | None = None
@@ -138,8 +141,7 @@ class SentinelLoop:
     # -- One full pass over a single signal ---------------------------------
     def handle(self, signal: Signal, *, verification_commands: dict[str, list[str]]) -> LoopOutcome:
         if not self.tracker.should_act(signal):
-            return LoopOutcome(signal, "observe", "skipped",
-                               "attempt cap or cooldown not satisfied")
+            return LoopOutcome(signal, "observe", "skipped", "attempt cap or cooldown not satisfied")
 
         strategy = self.diagnose(signal)
         if strategy == "escalate":
@@ -147,7 +149,9 @@ class SentinelLoop:
             self.tracker.mark_outcome(signal, "escalated")
             return record_sentinel_escalation(
                 LoopOutcome(
-                    signal, "diagnose", "escalated",
+                    signal,
+                    "diagnose",
+                    "escalated",
                     f"unclassified fault kind {signal.kind!r} — not guess-fixed",
                 )
             )
@@ -177,7 +181,9 @@ class SentinelLoop:
             # with a repair we may be unable to undo.
             return record_sentinel_escalation(
                 LoopOutcome(
-                    signal, "fix", "escalated",
+                    signal,
+                    "fix",
+                    "escalated",
                     "fix did not snapshot before editing; refusing to continue without a way back",
                 )
             )
@@ -189,33 +195,31 @@ class SentinelLoop:
             restored = self.checkpoints.restore(checkpoint)
             self.tracker.mark_outcome(signal, "failed")
             return LoopOutcome(
-                signal, "verify", "reverted",
+                signal,
+                "verify",
+                "reverted",
                 f"verification failed ({report.summary()}); reverted {len(restored)} file(s)",
                 verify=report,
             )
 
         # -- COMMIT ---------------------------------------------------------
-        message = (
-            f"fix({signal.kind}): automated repair by sentinel\n\n"
-            f"Signal: {signal.message}\n"
-            f"Fingerprint: {signal.fingerprint}\n"
-            f"Source: {signal.source}\n"
-            f"Verified: {report.summary()}\n"
-        )
+        message = f"fix({signal.kind}): automated repair by sentinel\n\nSignal: {signal.message}\nFingerprint: {signal.fingerprint}\nSource: {signal.source}\nVerified: {report.summary()}\n"
         result = self.committer.commit(touched, message)
 
         if not result.ok:
             self.checkpoints.restore(checkpoint)
             self.tracker.mark_outcome(signal, "failed")
             return LoopOutcome(
-                signal, "commit", "reverted",
+                signal,
+                "commit",
+                "reverted",
                 f"commit failed ({result.error}); reverted",
-                verify=report, commit=result,
+                verify=report,
+                commit=result,
             )
 
         self.tracker.reset(signal.fingerprint)
-        return LoopOutcome(signal, "commit", "fixed", report.summary(),
-                           verify=report, commit=result)
+        return LoopOutcome(signal, "commit", "fixed", report.summary(), verify=report, commit=result)
 
     # -- Batch --------------------------------------------------------------
     def run(

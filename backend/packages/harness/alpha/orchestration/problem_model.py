@@ -8,10 +8,8 @@ before launching autonomous execution.
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -33,9 +31,7 @@ class ProblemModel:
     success_metrics: list[str] = field(default_factory=list)
     verification_methods: list[str] = field(default_factory=list)
     required_tools: list[str] = field(default_factory=list)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -81,9 +77,7 @@ class ProblemModelCompiler:
     """Analyzes raw goals and compiles structured ProblemModels."""
 
     @classmethod
-    def compile(
-        cls, goal: str, context: dict[str, Any] | None = None
-    ) -> ProblemModel:
+    def compile(cls, goal: str, context: dict[str, Any] | None = None) -> ProblemModel:
         text = goal.strip()
         text_lower = text.lower()
 

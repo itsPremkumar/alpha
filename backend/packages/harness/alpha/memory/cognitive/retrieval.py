@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import re
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from alpha.memory.cognitive.models import (

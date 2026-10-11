@@ -65,10 +65,7 @@ def main() -> int:
         panel_would_say = ", ".join(tools) if tools else "alpha.tools"
         print(f"  OLD PANEL printed    : Tools: {panel_would_say[:76]}")
         if blocked_selected:
-            print(
-                f"  HONEST DELTA         : {len(blocked_selected)} of {len(tools)} printed tools are "
-                f"listed unavailable by the same payload"
-            )
+            print(f"  HONEST DELTA         : {len(blocked_selected)} of {len(tools)} printed tools are listed unavailable by the same payload")
         if md.get("provisioned") is False:
             print("  HONEST DELTA         : provisioned=false while the heading asserted 'Assembled'")
     return 0

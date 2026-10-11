@@ -121,18 +121,12 @@ def _verification_checklist(contract: Any | None) -> list[str]:
 
     lines: list[str] = []
     if not receipts:
-        lines.append(
-            "_No evidence receipts are attached to this task. Nothing below has been "
-            "verified: this synthesizer does not run tests, linters or audits itself._"
-        )
+        lines.append("_No evidence receipts are attached to this task. Nothing below has been verified: this synthesizer does not run tests, linters or audits itself._")
     for kind in kinds:
         label = _CHECKLIST_FOR_EVIDENCE_KIND.get(kind, f"Evidence supplied: {kind}")
         matched = present.get(kind)
         if matched:
-            refs = ", ".join(
-                f"`{getattr(r, 'reference', None) or (r.get('reference', '') if isinstance(r, dict) else '')}`"
-                for r in matched
-            )
+            refs = ", ".join(f"`{getattr(r, 'reference', None) or (r.get('reference', '') if isinstance(r, dict) else '')}`" for r in matched)
             lines.append(f"- [x] {label} — evidence: {refs}")
         elif kind in required:
             lines.append(f"- [ ] {label} — **required by the task contract, no evidence attached**")
@@ -143,11 +137,7 @@ def _verification_checklist(contract: Any | None) -> list[str]:
         outstanding = [k for k in required if k not in present]
         if outstanding:
             lines.append("")
-            lines.append(
-                "> **This PR is not verified.** Missing required evidence: "
-                + ", ".join(f"`{k}`" for k in outstanding)
-                + ". It must not be merged on the basis of this document alone."
-            )
+            lines.append("> **This PR is not verified.** Missing required evidence: " + ", ".join(f"`{k}`" for k in outstanding) + ". It must not be merged on the basis of this document alone.")
     return lines
 
 
@@ -205,10 +195,7 @@ class PRSynthesizer:
         else:
             # Previously "Automated tests and verification verified in task worktree",
             # which asserted a verification that this function never performed.
-            lines.append(
-                "- _No evidence receipts attached to this task. Tests and verification "
-                "were **not** confirmed by this synthesizer; see section 4._"
-            )
+            lines.append("- _No evidence receipts attached to this task. Tests and verification were **not** confirmed by this synthesizer; see section 4._")
 
         # 5. Linked Architectural Decisions
         lines.append("\n## 3. Architectural Alignment & ADRs")

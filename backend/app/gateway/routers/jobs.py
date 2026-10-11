@@ -7,9 +7,6 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
-from app.gateway.authz import require_permission
-from app.gateway.deps import get_current_user_from_request, require_admin_user
 from alpha.jobs import (
     JobPriority,
     JobSpec,
@@ -17,6 +14,9 @@ from alpha.jobs import (
     PersistentJobQueue,
 )
 from alpha.jobs.runner import ExternalJobRunner
+from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
+from app.gateway.authz import require_permission
+from app.gateway.deps import get_current_user_from_request, require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])

@@ -48,24 +48,9 @@ from app.gateway.auth.models import User
 from app.gateway.deps import get_config
 from app.gateway.routers import skills_workshop
 
-ACTIVE_MD = (
-    "---\n"
-    "name: demo-skill\n"
-    "description: Does demo work.\n"
-    "version: 0.1.0\n"
-    "---\n\n"
-    "# demo-skill\n\n"
-    "Original procedure step.\n"
-)
+ACTIVE_MD = "---\nname: demo-skill\ndescription: Does demo work.\nversion: 0.1.0\n---\n\n# demo-skill\n\nOriginal procedure step.\n"
 
-CANDIDATE_MD = (
-    "---\n"
-    "name: demo-skill\n"
-    "description: Does demo work better.\n"
-    "---\n\n"
-    "# demo-skill\n\n"
-    "Improved procedure step.\n"
-)
+CANDIDATE_MD = "---\nname: demo-skill\ndescription: Does demo work better.\n---\n\n# demo-skill\n\nImproved procedure step.\n"
 
 EVIDENCE = [
     "usage: demo-skill failed 3 of 5 recent tasks (usage tracker)",
@@ -79,15 +64,7 @@ def _quoted_python() -> str:
 
 
 def _suite_candidate(command: str) -> str:
-    return (
-        "---\n"
-        "name: demo-skill\n"
-        "description: Does demo work better.\n"
-        f"test-command: '{command}'\n"
-        "---\n\n"
-        "# demo-skill\n\n"
-        "Improved procedure step.\n"
-    )
+    return f"---\nname: demo-skill\ndescription: Does demo work better.\ntest-command: '{command}'\n---\n\n# demo-skill\n\nImproved procedure step.\n"
 
 
 @pytest.fixture
@@ -424,9 +401,7 @@ def test_workshop_evolution_endpoints_full_flow(tmp_path, monkeypatch):
         request.state.auth_source = request.headers.get("x-auth-source")
         return await call_next(request)
 
-    app.dependency_overrides[get_config] = lambda: SimpleNamespace(
-        skill_evolution=SkillEvolutionConfig(enabled=True, moderation_model_name="unit-moderation-model", security_fail_closed=True)
-    )
+    app.dependency_overrides[get_config] = lambda: SimpleNamespace(skill_evolution=SkillEvolutionConfig(enabled=True, moderation_model_name="unit-moderation-model", security_fail_closed=True))
     app.include_router(skills_workshop.router)
 
     admin = {"x-role": "admin"}

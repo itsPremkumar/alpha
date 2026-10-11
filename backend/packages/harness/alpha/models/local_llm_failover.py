@@ -40,15 +40,17 @@ class LocalLLMFailoverRouter:
     }
 
     # Tasks suitable for local 7B-32B coder models without sacrificing accuracy
-    LOW_COMPLEXITY_TASKS = frozenset({
-        "lint_repair",
-        "docstring",
-        "formatting",
-        "unit_test_boilerplate",
-        "triage",
-        "summary",
-        "git_commit_msg",
-    })
+    LOW_COMPLEXITY_TASKS = frozenset(
+        {
+            "lint_repair",
+            "docstring",
+            "formatting",
+            "unit_test_boilerplate",
+            "triage",
+            "summary",
+            "git_commit_msg",
+        }
+    )
 
     def __init__(self, endpoints: dict[str, str] | None = None):
         self.endpoints = endpoints or dict(self.DEFAULT_ENDPOINTS)
@@ -120,11 +122,7 @@ class LocalLLMFailoverRouter:
             for p in ("ollama", "vllm", "lmstudio"):
                 stat = self.check_endpoint(p)
                 if stat.is_reachable:
-                    reason = (
-                        f"Budget constraint ({budget_ratio*100:.1f}% utilized)"
-                        if is_budget_strained
-                        else f"Task type '{task_type}' optimized for local inference"
-                    )
+                    reason = f"Budget constraint ({budget_ratio * 100:.1f}% utilized)" if is_budget_strained else f"Task type '{task_type}' optimized for local inference"
                     return True, p, stat.active_model or "local-coder", reason
 
         return False, "cloud_premium", "claude-3-7-sonnet", "Task retained on cloud reasoning model"

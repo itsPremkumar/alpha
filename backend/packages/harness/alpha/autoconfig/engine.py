@@ -142,7 +142,7 @@ class SelfConfigurationEngine:
         conjunctions = len(re.findall(r"\b(and also|furthermore|as well as|moreover|in addition|additionally)\b", g_lower))
         verbs = len(re.findall(r"\b(build|create|implement|verify|test|refactor|benchmark|optimize|deploy|replicate)\b", g_lower))
         word_count = len(goal.split())
-        
+
         frontier_keywords = ["asi", "never stop", "self-improving", "self replication", "meta-compiler", "perpetual", "world class"]
         has_frontier = any(k in g_lower for k in frontier_keywords)
 
@@ -235,7 +235,7 @@ class SelfConfigurationEngine:
         if domain in ["coding", "architecture", "autonomous_company"] or has_frontier:
             capabilities.extend(["code_synthesis", "ast_refactor", "test_verification"])
             tool_whitelist.extend(["code_executor", "git_worktree", "pytest_runner"])
-        
+
         if domain in ["deep_research", "autonomous_company"] or has_frontier:
             capabilities.extend(["web_retrieval", "document_synthesis"])
             tool_whitelist.extend(["web_research", "browser_controller"])
@@ -278,7 +278,7 @@ class SelfConfigurationEngine:
     def synthesize_profile(self, analysis: GoalAnalysis, project_id: str | None = None) -> SelfConfigProfile:
         """Derive complete runnable SelfConfigProfile from an intent analysis."""
         pid = project_id or self.project_id
-        
+
         # Primary model mapping based on tier
         model_map = {
             ModelTier.FAST_LOCAL: ("claude-3-5-haiku", "gpt-4o-mini"),

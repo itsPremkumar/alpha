@@ -123,10 +123,7 @@ class UnknownUntrustedSource(TaintError):
     """A source outside the closed enumeration. This is a hole, not a warning."""
 
     def __init__(self, value: object) -> None:
-        super().__init__(
-            f"{value!r} is not an enumerated untrusted source; an unenumerated source cannot "
-            "mark a turn tainted, so this is a gap in the taint model rather than a no-op"
-        )
+        super().__init__(f"{value!r} is not an enumerated untrusted source; an unenumerated source cannot mark a turn tainted, so this is a gap in the taint model rather than a no-op")
         self.value = value
 
 
@@ -323,11 +320,7 @@ class TaintTurn:
 
         name = str(control or "").strip()
         if name not in TRUSTED_CLEARING_CONTROLS:
-            raise TaintClearRefused(
-                f"{name!r} may not clear taint on turn {self.turn_id!r}; only a control in "
-                f"{sorted(TRUSTED_CLEARING_CONTROLS)} can, and model-authored input is never "
-                "one of them"
-            )
+            raise TaintClearRefused(f"{name!r} may not clear taint on turn {self.turn_id!r}; only a control in {sorted(TRUSTED_CLEARING_CONTROLS)} can, and model-authored input is never one of them")
         self.cleared_by = name
         self.cleared_at_turn = str(at_turn or "")
 
@@ -338,38 +331,26 @@ class TaintTurn:
         rather than an absence.
         """
 
-        raise TaintClearRefused(
-            f"the model claimed {claim!r} on turn {self.turn_id!r}; model-authored input is never "
-            f"authoritative for its own taint state. Taint cleared by: {self.cleared_by or 'nothing'}"
-        )
+        raise TaintClearRefused(f"the model claimed {claim!r} on turn {self.turn_id!r}; model-authored input is never authoritative for its own taint state. Taint cleared by: {self.cleared_by or 'nothing'}")
 
     # -- authority bounds ---------------------------------------------------
 
     def assert_clean(self, *, for_what: str) -> None:
         if self.tainted:
-            raise TaintAuthorityError(
-                f"turn {self.turn_id!r} is tainted by {list(self.sources())} and may not be used "
-                f"for {for_what}"
-            )
+            raise TaintAuthorityError(f"turn {self.turn_id!r} is tainted by {list(self.sources())} and may not be used for {for_what}")
 
     def may_satisfy_approval(self) -> tuple[bool, str]:
         """A tainted turn cannot satisfy an approval gate."""
 
         if self.tainted:
-            return False, (
-                f"approval gate refused: turn {self.turn_id!r} is tainted by {list(self.sources())}; "
-                "content the gate would be approving arrived from an untrusted source"
-            )
+            return False, (f"approval gate refused: turn {self.turn_id!r} is tainted by {list(self.sources())}; content the gate would be approving arrived from an untrusted source")
         return True, f"turn {self.turn_id!r} is clean"
 
     def may_record_verified_evidence(self) -> tuple[bool, str]:
         """A tainted turn cannot produce VERIFIED evidence."""
 
         if self.tainted:
-            return False, (
-                f"evidence refused: turn {self.turn_id!r} is tainted by {list(self.sources())}; "
-                "work computed from untrusted content cannot be recorded as verified"
-            )
+            return False, (f"evidence refused: turn {self.turn_id!r} is tainted by {list(self.sources())}; work computed from untrusted content cannot be recorded as verified")
         return True, f"turn {self.turn_id!r} is clean"
 
     def requires_human_review(self) -> bool:
@@ -457,10 +438,7 @@ def assert_current_turn_clean(*, for_what: str) -> None:
 def taint_sources_for_report() -> tuple[dict[str, str], ...]:
     """The enumeration, as data, for a report or an operator question."""
 
-    return tuple(
-        {"source": item.value, "description": (item.__doc__ or "").strip().splitlines()[0]}
-        for item in UntrustedSource
-    )
+    return tuple({"source": item.value, "description": (item.__doc__ or "").strip().splitlines()[0]} for item in UntrustedSource)
 
 
 # ---------------------------------------------------------------------------
@@ -493,10 +471,7 @@ class IsolationControl:
 ISOLATION_CONTROLS: Final[Mapping[str, IsolationControl]] = {
     "fresh_credentials_no_untrusted_input": IsolationControl(
         name="fresh_credentials_no_untrusted_input",
-        description=(
-            "The child is spawned with its own credentials and is given no content derived from "
-            "the tainted turn, so it has nothing the tainted turn could have influenced."
-        ),
+        description=("The child is spawned with its own credentials and is given no content derived from the tainted turn, so it has nothing the tainted turn could have influenced."),
         requires_control="operator_config_signed",
     ),
     "operator_declared_clean_room": IsolationControl(
@@ -506,10 +481,7 @@ ISOLATION_CONTROLS: Final[Mapping[str, IsolationControl]] = {
     ),
     "static_verified_derivation": IsolationControl(
         name="static_verified_derivation",
-        description=(
-            "The child only runs deterministic code over operator-supplied inputs; no untrusted "
-            "content reaches it."
-        ),
+        description=("The child only runs deterministic code over operator-supplied inputs; no untrusted content reaches it."),
         requires_control="static_verifier",
     ),
 }
@@ -521,11 +493,7 @@ def isolate_child(turn: TaintTurn, label: str, control: str) -> TaintTurn:
     name = str(control or "").strip()
     declared = ISOLATION_CONTROLS.get(name)
     if declared is None:
-        raise TaintAuthorityError(
-            f"{name!r} is not a declared isolation control; expected one of "
-            f"{sorted(ISOLATION_CONTROLS)}. A child of a tainted turn inherits taint unless the "
-            "isolation is explicit and named."
-        )
+        raise TaintAuthorityError(f"{name!r} is not a declared isolation control; expected one of {sorted(ISOLATION_CONTROLS)}. A child of a tainted turn inherits taint unless the isolation is explicit and named.")
     child = turn.spawn_child(label, isolated=True, isolation_reason=declared.description)
     child.cleared_by = declared.requires_control
     child.cleared_at_turn = turn.turn_id

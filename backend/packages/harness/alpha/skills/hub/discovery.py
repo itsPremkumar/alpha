@@ -60,10 +60,7 @@ class SkillsHub:
         q = query.strip().lower()
         if not q:
             return list(self._catalog.values())
-        return [
-            pkg for pkg in self._catalog.values()
-            if q in pkg.name.lower() or q in pkg.description.lower()
-        ]
+        return [pkg for pkg in self._catalog.values() if q in pkg.name.lower() or q in pkg.description.lower()]
 
     def install(self, package_name: str) -> tuple[bool, str]:
         pkg = self._catalog.get(package_name)

@@ -17,7 +17,7 @@ class AgenticVariationLoop:
     """
     Autonomous multi-turn variation agent loop for Autonomous AVO.
     Implements Vary(P_t) = Agent(P_t, K, f).
-    
+
     Rather than a single-shot generation, the agent conducts an internal iterative loop:
       1. Inspects lineage P_t and consults knowledge base K.
       2. Generates candidate variation.
@@ -121,16 +121,18 @@ class AgenticVariationLoop:
             if new_directive:
                 directive = new_directive
 
-            internal_trials.append({
-                "trial": trial_idx,
-                "hypothesis": current_hypothesis,
-                "modification": mod_summary,
-                "correctness": vector.correctness,
-                "geometric_mean": vector.geometric_mean(),
-                "committed": is_committed,
-                "stagnated": stagnated,
-                "diagnostic": diag,
-            })
+            internal_trials.append(
+                {
+                    "trial": trial_idx,
+                    "hypothesis": current_hypothesis,
+                    "modification": mod_summary,
+                    "correctness": vector.correctness,
+                    "geometric_mean": vector.geometric_mean(),
+                    "committed": is_committed,
+                    "stagnated": stagnated,
+                    "diagnostic": diag,
+                }
+            )
 
             if is_committed:
                 committed_record = candidate_record

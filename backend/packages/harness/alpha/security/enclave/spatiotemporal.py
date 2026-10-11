@@ -20,6 +20,7 @@ from typing import Any
 @dataclass
 class BoundingBox:
     """Normalized spatial coordinates (0.0 to 1.0) for visual grounding."""
+
     x: float = 0.0
     y: float = 0.0
     width: float = 0.0
@@ -33,6 +34,7 @@ class BoundingBox:
 @dataclass
 class SpatialObject:
     """A detected or recognized object in a visual frame."""
+
     object_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     label: str = ""
     confidence: float = 1.0
@@ -48,6 +50,7 @@ class SpatialObject:
 @dataclass
 class VideoKeyframe:
     """A temporal keyframe snapshot representing continuous stream perception."""
+
     frame_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
     image_hash: str = ""
@@ -137,13 +140,15 @@ class SpatioTemporalCache:
             if f_idx < len(self._frames):
                 frame = self._frames[f_idx]
                 obj = frame.objects[obj_idx]
-                matches.append({
-                    "frame_id": frame.frame_id,
-                    "timestamp": frame.timestamp,
-                    "screen_context": frame.screen_context,
-                    "ambient_text": frame.ambient_text,
-                    "object": obj.to_dict(),
-                })
+                matches.append(
+                    {
+                        "frame_id": frame.frame_id,
+                        "timestamp": frame.timestamp,
+                        "screen_context": frame.screen_context,
+                        "ambient_text": frame.ambient_text,
+                        "object": obj.to_dict(),
+                    }
+                )
 
         return matches
 

@@ -14,9 +14,9 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from alpha.commands.registry import CommandCategory, CommandExecutionResult, command_registry
+from alpha.commands.registry import CommandExecutionResult, command_registry
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +39,13 @@ class TriggerRule:
     phase: LifecyclePhase
     target_command: str
     description: str
-    keywords: List[str]
-    regex_patterns: List[str] = field(default_factory=list)
+    keywords: list[str]
+    regex_patterns: list[str] = field(default_factory=list)
     priority: int = 50  # higher = higher priority
 
 
 # Master lifecycle trigger rules mapping natural states & intents to the 418 slash commands
-DEFAULT_TRIGGER_RULES: List[TriggerRule] = [
+DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
     # 1. PLANNING & GOAL DECOMPOSITION
     TriggerRule(
         rule_id="auto_goal_create",
@@ -146,10 +146,10 @@ class AutonomousDetectionResult:
     confidence: float
     reason: str
     rule_id: str
-    execution_result: Optional[CommandExecutionResult] = None
-    autonomous_directives: List[str] = field(default_factory=list)
+    execution_result: CommandExecutionResult | None = None
+    autonomous_directives: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "matched": self.matched,
             "command": self.command,
@@ -165,8 +165,8 @@ class AutonomousDetectionResult:
 class AutonomousCommandEngine:
     """Intelligent intent detection & real-time lifecycle trigger coordinator."""
 
-    def __init__(self, rules: Optional[List[TriggerRule]] = None) -> None:
-        self.rules: List[TriggerRule] = rules or list(DEFAULT_TRIGGER_RULES)
+    def __init__(self, rules: list[TriggerRule] | None = None) -> None:
+        self.rules: list[TriggerRule] = rules or list(DEFAULT_TRIGGER_RULES)
 
     def add_rule(self, rule: TriggerRule) -> None:
         self.rules.append(rule)
@@ -175,8 +175,8 @@ class AutonomousCommandEngine:
     def identify_and_trigger(
         self,
         prompt: str,
-        phase_hint: Optional[LifecyclePhase] = None,
-        context: Optional[Dict[str, Any]] = None,
+        phase_hint: LifecyclePhase | None = None,
+        context: dict[str, Any] | None = None,
         auto_execute: bool = True,
     ) -> AutonomousDetectionResult:
         """Analyzes text or runtime signals, identifies matching slash command, and executes it."""
@@ -207,7 +207,7 @@ class AutonomousCommandEngine:
             )
 
         text_lower = text.lower()
-        best_rule: Optional[TriggerRule] = None
+        best_rule: TriggerRule | None = None
         best_score = 0.0
         best_reason = ""
 
@@ -245,7 +245,7 @@ class AutonomousCommandEngine:
             # Automatically compose command with user args
             cmd_with_args = f"{target_cmd} {text}"
             exec_res = None
-            directives: List[str] = [f"[AUTONOMOUS TRIGGER] Automatically identified '{target_cmd}' ({best_rule.phase.value}) based on: {best_reason}."]
+            directives: list[str] = [f"[AUTONOMOUS TRIGGER] Automatically identified '{target_cmd}' ({best_rule.phase.value}) based on: {best_reason}."]
 
             if auto_execute:
                 exec_res = command_registry.execute(cmd_with_args, context=context)
@@ -276,7 +276,7 @@ class AutonomousCommandEngine:
         self,
         phase: LifecyclePhase,
         details: str = "",
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> AutonomousDetectionResult:
         """Trigger phase-specific slash commands at exact lifecycle events (e.g. on error, post-code)."""
         matching_rules = [r for r in self.rules if r.phase == phase]

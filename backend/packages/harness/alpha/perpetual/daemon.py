@@ -126,6 +126,7 @@ class PerpetualDaemon:
         enterprise_heartbeat = None
         try:
             from alpha.enterprise.heartbeat import get_enterprise_heartbeat_coordinator
+
             enterprise_heartbeat = get_enterprise_heartbeat_coordinator().step_heartbeat_cycle()
         except Exception as e:
             logger.debug("Enterprise heartbeat cycle step omitted: %s", e)

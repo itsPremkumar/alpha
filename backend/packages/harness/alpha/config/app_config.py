@@ -78,6 +78,7 @@ from alpha.config.verification_config import VerificationConfig
 from alpha.config.voice_config import VoiceConfig
 from alpha.evolution.evidence.config import EvolutionEvidenceConfig
 from alpha.extensions.loader import ExtensionSpec
+from alpha.gro.config import GroConfig
 from alpha.intelligence.config import IntelligenceConfig
 
 load_dotenv()
@@ -441,6 +442,18 @@ class AppConfig(BaseModel):
             "runs, large runs need an explicit confirm, and measured spend is charged against "
             "declared ceilings. Ceiling fields here are the defaults a run may only lower, or "
             "raise with confirm=True."
+        ),
+    )
+    gro: GroConfig = Field(
+        default_factory=GroConfig,
+        description=(
+            "Group-Relative Orchestration (alpha.gro): N candidates solve one objective under distinct "
+            "strategies, then hard gates decide eligibility, an absolute score orders the eligible, and "
+            "group-relative rank stays diagnostic. Default OFF; the `swarm` tool's `compete` action refuses "
+            "with the reason named while disabled. An all-fail group yields an explicit no-winner with a "
+            "bounded failure-directed repair round, never 'the best of a bad lot, verified'. Ceilings here "
+            "are refused, never clamped, and externally-visible or destructive work resolves to human "
+            "approval before any candidate executes."
         ),
     )
     specialists: SpecialistCatalogConfig = Field(

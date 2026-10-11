@@ -88,98 +88,124 @@ def test_hashline_tools_lifecycle(tmp_path: Path, monkeypatch):
 
 
 def test_workflow_dag_tool_lifecycle():
-    res = workflow_dag_manage.invoke({
-        "action": "create",
-        "key": "test_wf",
-        "name": "Integration Workflow",
-    })
+    res = workflow_dag_manage.invoke(
+        {
+            "action": "create",
+            "key": "test_wf",
+            "name": "Integration Workflow",
+        }
+    )
     assert "Created workflow" in res
 
-    workflow_dag_manage.invoke({
-        "action": "add_node",
-        "key": "test_wf",
-        "node_id": "step1",
-        "prompt": "Run preliminary checks",
-        "category": "quick",
-    })
+    workflow_dag_manage.invoke(
+        {
+            "action": "add_node",
+            "key": "test_wf",
+            "node_id": "step1",
+            "prompt": "Run preliminary checks",
+            "category": "quick",
+        }
+    )
 
-    workflow_dag_manage.invoke({
-        "action": "add_node",
-        "key": "test_wf",
-        "node_id": "step2",
-        "prompt": "Apply changes",
-        "category": "deep",
-        "depends_on": ["step1"],
-    })
+    workflow_dag_manage.invoke(
+        {
+            "action": "add_node",
+            "key": "test_wf",
+            "node_id": "step2",
+            "prompt": "Apply changes",
+            "category": "deep",
+            "depends_on": ["step1"],
+        }
+    )
 
-    waves_res = workflow_dag_manage.invoke({
-        "action": "plan_waves",
-        "key": "test_wf",
-    })
+    waves_res = workflow_dag_manage.invoke(
+        {
+            "action": "plan_waves",
+            "key": "test_wf",
+        }
+    )
     assert "Topological execution waves" in waves_res
     assert "step1" in waves_res
 
     # Try completing without evidence -> rejected
-    reject_res = workflow_dag_manage.invoke({
-        "action": "mark_completed",
-        "key": "test_wf",
-        "node_id": "step1",
-    })
+    reject_res = workflow_dag_manage.invoke(
+        {
+            "action": "mark_completed",
+            "key": "test_wf",
+            "node_id": "step1",
+        }
+    )
     assert "Rejected" in reject_res
 
     # Record evidence and complete
-    workflow_dag_manage.invoke({
-        "action": "record_evidence",
-        "key": "test_wf",
-        "node_id": "step1",
-        "evidence": "Verification report: PASS",
-    })
-    complete_res = workflow_dag_manage.invoke({
-        "action": "mark_completed",
-        "key": "test_wf",
-        "node_id": "step1",
-    })
+    workflow_dag_manage.invoke(
+        {
+            "action": "record_evidence",
+            "key": "test_wf",
+            "node_id": "step1",
+            "evidence": "Verification report: PASS",
+        }
+    )
+    complete_res = workflow_dag_manage.invoke(
+        {
+            "action": "mark_completed",
+            "key": "test_wf",
+            "node_id": "step1",
+        }
+    )
     assert "completed" in complete_res
 
 
 def test_boulder_checkpoint_tool_lifecycle(tmp_path: Path):
     custom_path = str(tmp_path / "boulder.json")
-    create_res = boulder_checkpoint_manage.invoke({
-        "action": "create",
-        "task": "Migrate Database",
-        "checklist": ["backup", "migrate", "verify"],
-        "custom_path": custom_path,
-    })
+    create_res = boulder_checkpoint_manage.invoke(
+        {
+            "action": "create",
+            "task": "Migrate Database",
+            "checklist": ["backup", "migrate", "verify"],
+            "custom_path": custom_path,
+        }
+    )
     assert "Created Boulder checkpoint" in create_res
 
-    status_res = boulder_checkpoint_manage.invoke({
-        "action": "status",
-        "custom_path": custom_path,
-    })
+    status_res = boulder_checkpoint_manage.invoke(
+        {
+            "action": "status",
+            "custom_path": custom_path,
+        }
+    )
     status_data = json.loads(status_res)
     assert status_data["top_level_task"] == "Migrate Database"
     assert len(status_data["checklist"]) == 3
 
     # Update step
-    boulder_checkpoint_manage.invoke({
-        "action": "update_step",
-        "step_index": 0,
-        "completed": True,
-        "evidence": "Backup saved",
-        "custom_path": custom_path,
-    })
-    status_updated = json.loads(boulder_checkpoint_manage.invoke({
-        "action": "status",
-        "custom_path": custom_path,
-    }))
+    boulder_checkpoint_manage.invoke(
+        {
+            "action": "update_step",
+            "step_index": 0,
+            "completed": True,
+            "evidence": "Backup saved",
+            "custom_path": custom_path,
+        }
+    )
+    status_updated = json.loads(
+        boulder_checkpoint_manage.invoke(
+            {
+                "action": "status",
+                "custom_path": custom_path,
+            }
+        )
+    )
     assert status_updated["checklist"][0]["completed"] is True
 
 
 def test_hyperplan_review_tool():
-    res = hyperplan_review_manage.invoke({
-        "plan_title": "Database Optimization",
-        "plan_content": "Prerequisites: Postgres 16 running.\nArchitecture: Partition tables.\nSecurity: Zero plain credentials.\nVerification plan: Automated pytest tests.",
-    })
+    res = hyperplan_review_manage.invoke(
+        {
+            "plan_title": "Database Optimization",
+            "plan_content": "Prerequisites: Postgres 16 running.\nArchitecture: Partition tables.\nSecurity: Zero plain credentials.\nVerification plan: Automated pytest tests.",
+        }
+    )
     data = json.loads(res)
     assert data["overall_status"] == "APPROVED"
     assert len(data["verdicts"]) == 4

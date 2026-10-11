@@ -9,11 +9,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.message import add_messages
 from langgraph.types import Overwrite
 
-from app.gateway import services as gateway_services
 from alpha.agents.middlewares.summarization_middleware import SummaryGenerationError
 from alpha.runtime import context_compaction
 from alpha.runtime.checkpoint_state import CheckpointStateAccessor
 from alpha.runtime.context_compaction import ContextCompactionFailed, compact_thread_context
+from app.gateway import services as gateway_services
 
 
 class _FakeAccessor:

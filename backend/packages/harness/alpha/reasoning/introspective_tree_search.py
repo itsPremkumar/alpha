@@ -17,8 +17,9 @@ import logging
 import math
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from langchain.tools import tool
 
@@ -31,13 +32,13 @@ class MCTSAction:
 
     action_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     action_type: str = "code_edit"  # "code_edit", "terminal_command", "hypothesis"
-    target_file: Optional[str] = None
-    edit_content: Optional[str] = None
-    command: Optional[str] = None
-    hypothesis: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    target_file: str | None = None
+    edit_content: str | None = None
+    command: str | None = None
+    hypothesis: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -49,9 +50,9 @@ class ValidationFeedback:
     compilation_exit_code: int = 0
     tests_passed: int = 0
     tests_total: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
     diff_size: int = 0
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
     @property
     def test_pass_rate(self) -> float:
@@ -59,7 +60,7 @@ class ValidationFeedback:
             return 0.0
         return max(0.0, min(1.0, self.tests_passed / self.tests_total))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["test_pass_rate"] = self.test_pass_rate
         return data
@@ -93,12 +94,7 @@ class CompositeRewardEvaluator:
         diff_bytes = max(0, feedback.diff_size)
         r_diff = 1.0 / (1.0 + 0.0005 * diff_bytes)
 
-        score = (
-            self.weight_syntax * r_syntax
-            + self.weight_compilation * r_comp
-            + self.weight_tests * r_tests
-            + self.weight_diff * r_diff
-        )
+        score = self.weight_syntax * r_syntax + self.weight_compilation * r_comp + self.weight_tests * r_tests + self.weight_diff * r_diff
         return max(0.0, min(1.0, score))
 
 
@@ -108,29 +104,29 @@ class MCTSNode:
     def __init__(
         self,
         node_id: str,
-        parent: Optional[MCTSNode] = None,
-        action: Optional[MCTSAction] = None,
-        state_snapshot: Optional[Dict[str, Any]] = None,
-        thought_trace: Optional[List[str]] = None,
+        parent: MCTSNode | None = None,
+        action: MCTSAction | None = None,
+        state_snapshot: dict[str, Any] | None = None,
+        thought_trace: list[str] | None = None,
         depth: int = 0,
     ):
         self.node_id = node_id
         self.parent = parent
         self.action = action
-        self.state_snapshot: Dict[str, Any] = state_snapshot or {}
-        self.thought_trace: List[str] = thought_trace or []
+        self.state_snapshot: dict[str, Any] = state_snapshot or {}
+        self.thought_trace: list[str] = thought_trace or []
         self.depth = depth
 
-        self.children: List[MCTSNode] = []
+        self.children: list[MCTSNode] = []
         self.visits: int = 0
         self.total_value: float = 0.0
         self.immediate_reward: float = 0.0
-        self.validation_feedback: Optional[ValidationFeedback] = None
+        self.validation_feedback: ValidationFeedback | None = None
 
         self.is_terminal: bool = False
         self.is_pruned: bool = False
-        self.prune_reason: Optional[str] = None
-        self.introspective_lessons: List[str] = []
+        self.prune_reason: str | None = None
+        self.introspective_lessons: list[str] = []
 
     @property
     def value(self) -> float:
@@ -145,9 +141,7 @@ class MCTSNode:
         if not self.parent or self.parent.visits == 0:
             return self.value
         exploitation = self.value
-        exploration = exploration_constant * math.sqrt(
-            math.log(self.parent.visits) / self.visits
-        )
+        exploration = exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
         return exploitation + exploration
 
     def add_child(self, child: MCTSNode) -> MCTSNode:
@@ -156,7 +150,7 @@ class MCTSNode:
         self.children.append(child)
         return child
 
-    def to_dict(self, recursive: bool = False) -> Dict[str, Any]:
+    def to_dict(self, recursive: bool = False) -> dict[str, Any]:
         result = {
             "node_id": self.node_id,
             "depth": self.depth,
@@ -168,9 +162,7 @@ class MCTSNode:
             "prune_reason": self.prune_reason,
             "thought_trace": self.thought_trace,
             "action": self.action.to_dict() if self.action else None,
-            "validation_feedback": (
-                self.validation_feedback.to_dict() if self.validation_feedback else None
-            ),
+            "validation_feedback": (self.validation_feedback.to_dict() if self.validation_feedback else None),
             "introspective_lessons": self.introspective_lessons,
         }
         if recursive:
@@ -187,7 +179,7 @@ class IntrospectiveTreeSearchEngine:
         self,
         exploration_constant: float = 1.414,
         max_depth: int = 6,
-        reward_evaluator: Optional[CompositeRewardEvaluator] = None,
+        reward_evaluator: CompositeRewardEvaluator | None = None,
         prune_threshold: float = 0.15,
         green_threshold: float = 0.98,
     ):
@@ -217,31 +209,24 @@ class IntrospectiveTreeSearchEngine:
             )
         return current
 
-    def introspect_failures(self, parent: MCTSNode) -> List[str]:
+    def introspect_failures(self, parent: MCTSNode) -> list[str]:
         """Synthesize lessons from parent and failed sibling branches."""
-        lessons: List[str] = []
+        lessons: list[str] = []
         for sibling in parent.children:
             if sibling.validation_feedback and not sibling.validation_feedback.syntax_valid:
-                lessons.append(
-                    f"Avoid syntax construct from sibling {sibling.node_id}: {sibling.validation_feedback.error_message}"
-                )
+                lessons.append(f"Avoid syntax construct from sibling {sibling.node_id}: {sibling.validation_feedback.error_message}")
             if sibling.is_pruned and sibling.prune_reason:
                 lessons.append(f"Branch {sibling.node_id} failed: {sibling.prune_reason}")
-            if (
-                sibling.validation_feedback
-                and sibling.validation_feedback.tests_passed < sibling.validation_feedback.tests_total
-            ):
-                lessons.append(
-                    f"Sibling {sibling.node_id} failed {sibling.validation_feedback.tests_total - sibling.validation_feedback.tests_passed} tests: {sibling.validation_feedback.error_message}"
-                )
+            if sibling.validation_feedback and sibling.validation_feedback.tests_passed < sibling.validation_feedback.tests_total:
+                lessons.append(f"Sibling {sibling.node_id} failed {sibling.validation_feedback.tests_total - sibling.validation_feedback.tests_passed} tests: {sibling.validation_feedback.error_message}")
         return list(dict.fromkeys(lessons))  # Deduplicate
 
     def expand(
         self,
         node: MCTSNode,
-        candidate_actions: List[MCTSAction],
-        state_transition_fn: Optional[Callable[[Dict[str, Any], MCTSAction], Dict[str, Any]]] = None,
-    ) -> List[MCTSNode]:
+        candidate_actions: list[MCTSAction],
+        state_transition_fn: Callable[[dict[str, Any], MCTSAction], dict[str, Any]] | None = None,
+    ) -> list[MCTSNode]:
         """Expand node by applying candidate actions and recording introspective lessons."""
         if node.depth >= self.max_depth or node.is_terminal or node.is_pruned:
             return []
@@ -250,7 +235,7 @@ class IntrospectiveTreeSearchEngine:
         node.introspective_lessons.extend(lessons)
 
         # Filter candidate actions that repeat failed sibling hypotheses or syntax errors
-        filtered_candidates: List[MCTSAction] = []
+        filtered_candidates: list[MCTSAction] = []
         for act in candidate_actions:
             repeats_failure = False
             for lesson in node.introspective_lessons:
@@ -266,14 +251,10 @@ class IntrospectiveTreeSearchEngine:
             fallback.hypothesis = f"Refined strategy avoiding: {'; '.join(node.introspective_lessons[:1])}"
             filtered_candidates.append(fallback)
 
-        created_children: List[MCTSNode] = []
+        created_children: list[MCTSNode] = []
         for act in filtered_candidates:
             child_id = f"{node.node_id}_{len(node.children) + 1}"
-            new_state = (
-                state_transition_fn(node.state_snapshot, act)
-                if state_transition_fn
-                else copy.deepcopy(node.state_snapshot)
-            )
+            new_state = state_transition_fn(node.state_snapshot, act) if state_transition_fn else copy.deepcopy(node.state_snapshot)
 
             # Record files modified
             if act.target_file:
@@ -300,7 +281,7 @@ class IntrospectiveTreeSearchEngine:
     def evaluate_node(
         self,
         node: MCTSNode,
-        eval_fn: Optional[Callable[[MCTSNode], ValidationFeedback]] = None,
+        eval_fn: Callable[[MCTSNode], ValidationFeedback] | None = None,
     ) -> float:
         """Evaluate state snapshot, validate syntax, compute reward, and prune if regressed."""
         if eval_fn:
@@ -353,7 +334,7 @@ class IntrospectiveTreeSearchEngine:
 
     def backpropagate(self, node: MCTSNode, reward: float) -> None:
         """Backpropagate visit counts and accumulated rewards up to root."""
-        current: Optional[MCTSNode] = node
+        current: MCTSNode | None = node
         while current is not None:
             current.visits += 1
             current.total_value += reward
@@ -361,13 +342,13 @@ class IntrospectiveTreeSearchEngine:
 
     def search(
         self,
-        root_state: Dict[str, Any],
-        candidate_actions_generator: Callable[[MCTSNode], List[MCTSAction]],
-        eval_fn: Optional[Callable[[MCTSNode], ValidationFeedback]] = None,
-        state_transition_fn: Optional[Callable[[Dict[str, Any], MCTSAction], Dict[str, Any]]] = None,
+        root_state: dict[str, Any],
+        candidate_actions_generator: Callable[[MCTSNode], list[MCTSAction]],
+        eval_fn: Callable[[MCTSNode], ValidationFeedback] | None = None,
+        state_transition_fn: Callable[[dict[str, Any], MCTSAction], dict[str, Any]] | None = None,
         max_iterations: int = 15,
         timeout_seconds: float = 30.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute introspective tree search with early termination upon finding green state."""
         start_time = time.time()
         root = MCTSNode(
@@ -412,8 +393,8 @@ class IntrospectiveTreeSearchEngine:
 
                 if child.immediate_reward >= self.green_threshold:
                     # Early termination: provably valid green state discovered
-                    path_nodes: List[str] = []
-                    curr: Optional[MCTSNode] = child
+                    path_nodes: list[str] = []
+                    curr: MCTSNode | None = child
                     while curr:
                         path_nodes.append(curr.node_id)
                         curr = curr.parent
@@ -457,12 +438,12 @@ class IntrospectiveTreeSearchEngine:
 @tool("run_introspective_tree_search", parse_docstring=True)
 def run_introspective_tree_search(
     problem_statement: str,
-    files_to_modify: Optional[List[str]] = None,
+    files_to_modify: list[str] | None = None,
     max_iterations: int = 10,
     exploration_constant: float = 1.414,
     timeout_seconds: int = 60,
-    candidate_actions: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    candidate_actions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Execute tree-guided multi-path search (I-MCTS / CodeTree) to resolve complex bugs.
 
     Coordinates Monte Carlo Tree Search with introspective node expansion, pruning invalid
@@ -489,7 +470,7 @@ def run_introspective_tree_search(
         }
 
         # Default action generator if none provided
-        parsed_candidates: List[MCTSAction] = []
+        parsed_candidates: list[MCTSAction] = []
         if candidate_actions:
             for item in candidate_actions:
                 parsed_candidates.append(
@@ -515,12 +496,12 @@ def run_introspective_tree_search(
                 ),
             ]
 
-        def generate_actions_for_node(node: MCTSNode) -> List[MCTSAction]:
+        def generate_actions_for_node(node: MCTSNode) -> list[MCTSAction]:
             if node.depth == 0:
                 return parsed_candidates
             if node.depth < engine.max_depth:
                 # Synthesize refined child actions based on lessons
-                refined: List[MCTSAction] = []
+                refined: list[MCTSAction] = []
                 for base_act in parsed_candidates:
                     refined.append(
                         MCTSAction(

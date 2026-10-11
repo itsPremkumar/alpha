@@ -15,7 +15,7 @@ from alpha.lineage.semantic_git_delta import (
 )
 from alpha.tools.builtins.semantic_git_delta_tool import analyze_semantic_git_delta
 
-BEFORE = '''
+BEFORE = """
 class PaymentService:
     def charge(self, user, amount):
         raise ValueError("bad amount")
@@ -24,15 +24,15 @@ class PaymentService:
 
 def legacy_helper(x):
     return x
-'''
+"""
 
-AFTER = '''
+AFTER = """
 class PaymentService:
     @audit
     def charge(self, user, amount: float, currency: str = "USD") -> float:
         raise InvalidAmount("bad amount")
         return amount
-'''
+"""
 
 
 def _analyzer(tmp_path) -> SemanticGitDeltaAnalyzer:
@@ -65,13 +65,7 @@ def test_extract_symbols_records_parameters_and_bases():
 
 
 def test_extract_symbols_records_raised_and_handled():
-    source = (
-        "def run():\n"
-        "    try:\n"
-        "        pass\n"
-        "    except KeyError:\n"
-        "        raise ValueError('bad')\n"
-    )
+    source = "def run():\n    try:\n        pass\n    except KeyError:\n        raise ValueError('bad')\n"
     symbol = extract_symbols(source)[0]
     assert symbol.raised == ["ValueError"]
     assert symbol.handled == ["KeyError"]
@@ -96,9 +90,7 @@ def test_rename_is_detected_by_body_shape(tmp_path):
     before = {"svc.py": "def charge(x):\n    return x\n"}
     after = {"svc.py": "def bill(x):\n    return x\n"}
     report = _analyzer(tmp_path).analyze_sources(before, after)
-    rename = next(
-        item for item in report.transformations if item.kind is TransformationKind.SYMBOL_RENAMED
-    )
+    rename = next(item for item in report.transformations if item.kind is TransformationKind.SYMBOL_RENAMED)
     assert rename.before == "charge"
     assert rename.after == "bill"
     assert rename.breaking is True
@@ -130,9 +122,7 @@ def test_added_defaulted_parameter_is_not_breaking(tmp_path):
     before = {"svc.py": "def run(a):\n    return a\n"}
     after = {"svc.py": "def run(a, b=1):\n    return a\n"}
     report = _analyzer(tmp_path).analyze_sources(before, after)
-    addition = next(
-        item for item in report.transformations if item.kind is TransformationKind.PARAMETER_ADDED
-    )
+    addition = next(item for item in report.transformations if item.kind is TransformationKind.PARAMETER_ADDED)
     assert addition.breaking is False
     assert "with a default value" in addition.detail
 
@@ -141,9 +131,7 @@ def test_added_required_parameter_is_breaking(tmp_path):
     before = {"svc.py": "def run(a):\n    return a\n"}
     after = {"svc.py": "def run(a, b):\n    return a\n"}
     report = _analyzer(tmp_path).analyze_sources(before, after)
-    addition = next(
-        item for item in report.transformations if item.kind is TransformationKind.PARAMETER_ADDED
-    )
+    addition = next(item for item in report.transformations if item.kind is TransformationKind.PARAMETER_ADDED)
     assert addition.breaking is True
     assert "as required" in addition.detail
 
@@ -159,11 +147,7 @@ def test_parameter_rename_is_detected(tmp_path):
     before = {"svc.py": "def run(old_name):\n    return old_name\n"}
     after = {"svc.py": "def run(new_name):\n    return new_name\n"}
     report = _analyzer(tmp_path).analyze_sources(before, after)
-    rename = next(
-        item
-        for item in report.transformations
-        if item.kind is TransformationKind.PARAMETER_RENAMED
-    )
+    rename = next(item for item in report.transformations if item.kind is TransformationKind.PARAMETER_RENAMED)
     assert rename.before == "old_name"
     assert rename.after == "new_name"
 
@@ -195,11 +179,7 @@ def test_handled_exception_change_is_not_breaking(tmp_path):
     before = {"svc.py": "def run():\n    try:\n        pass\n    except KeyError:\n        pass\n"}
     after = {"svc.py": "def run():\n    try:\n        pass\n    except IndexError:\n        pass\n"}
     report = _analyzer(tmp_path).analyze_sources(before, after)
-    change = next(
-        item
-        for item in report.transformations
-        if item.kind is TransformationKind.EXCEPTION_HANDLED_CHANGED
-    )
+    change = next(item for item in report.transformations if item.kind is TransformationKind.EXCEPTION_HANDLED_CHANGED)
     assert change.breaking is False
 
 
@@ -282,9 +262,7 @@ def test_risk_bands(score, expected):
 
 def test_blast_radius_finds_call_sites(tmp_path):
     (tmp_path / "lib.py").write_text("def charge(x):\n    return x\n", encoding="utf-8")
-    (tmp_path / "app.py").write_text(
-        "from lib import charge\n\n\ndef run():\n    return charge(1)\n", encoding="utf-8"
-    )
+    (tmp_path / "app.py").write_text("from lib import charge\n\n\ndef run():\n    return charge(1)\n", encoding="utf-8")
     analyzer = _analyzer(tmp_path)
     report = analyzer.analyze_sources(
         {"lib.py": "def charge(x):\n    return x\n"},
@@ -343,9 +321,7 @@ def _git_repo(tmp_path):
 
 def test_analyze_reads_revision_range(tmp_path):
     repo = _git_repo(tmp_path)
-    (repo / "lib.py").write_text(
-        "def charge(x, fee):\n    return x + fee\n", encoding="utf-8"
-    )
+    (repo / "lib.py").write_text("def charge(x, fee):\n    return x + fee\n", encoding="utf-8")
     subprocess.run(["git", "add", "lib.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "add fee"], cwd=repo, check=True)
 
@@ -368,9 +344,7 @@ def test_analyze_returns_empty_report_for_identical_refs(tmp_path):
 
 
 def test_report_serialization_is_json_safe(tmp_path):
-    report = _analyzer(tmp_path).analyze_sources(
-        {"svc.py": "def a():\n    return 1\n"}, {"svc.py": "def b():\n    return 2\n"}
-    )
+    report = _analyzer(tmp_path).analyze_sources({"svc.py": "def a():\n    return 1\n"}, {"svc.py": "def b():\n    return 2\n"})
     payload = report.to_dict()
     assert payload["transformation_count"] >= 1
     assert isinstance(payload["recommendations"], list)
@@ -402,17 +376,13 @@ def test_tool_repo_action(tmp_path):
     subprocess.run(["git", "add", "lib.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "add fee"], cwd=repo, check=True)
 
-    result = analyze_semantic_git_delta.invoke(
-        {"action": "repo", "repo_path": str(repo), "base_ref": "HEAD~1", "head_ref": "HEAD"}
-    )
+    result = analyze_semantic_git_delta.invoke({"action": "repo", "repo_path": str(repo), "base_ref": "HEAD~1", "head_ref": "HEAD"})
     assert result["success"] is True
     assert result["files_changed"] >= 1
 
 
 def test_tool_rejects_invalid_json():
-    result = analyze_semantic_git_delta.invoke(
-        {"action": "sources", "before_sources_json": "{oops", "after_sources_json": "{}"}
-    )
+    result = analyze_semantic_git_delta.invoke({"action": "sources", "before_sources_json": "{oops", "after_sources_json": "{}"})
     assert result["success"] is False
 
 

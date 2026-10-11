@@ -15,8 +15,6 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Overwrite
 
-from app.gateway import services as gateway_services
-from app.gateway.routers import thread_runs, threads
 from alpha.config.paths import Paths
 from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 from alpha.persistence.projects import ProjectRepository
@@ -32,6 +30,8 @@ from alpha.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaSto
 from alpha.runtime import ConflictError, ThreadOperationKind
 from alpha.runtime.checkpoint_state import CheckpointStateAccessor
 from alpha.runtime.user_context import reset_current_user, set_current_user
+from app.gateway import services as gateway_services
+from app.gateway.routers import thread_runs, threads
 
 _ISO_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 

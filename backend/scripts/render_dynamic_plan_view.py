@@ -129,10 +129,7 @@ def main() -> int:
             print(f"  heading        : {rendered['heading']}")
             print(f"  tools          : {rendered['toolSentence']}")
             print(f"  available ({len(rendered['available'])})   : {', '.join(rendered['available']) or '(none)'}")
-            print(
-                f"  unavailable ({len(rendered['blocked'])}) : {', '.join(rendered['blocked'][:6])}"
-                f"{' …' if len(rendered['blocked']) > 6 else ''}"
-            )
+            print(f"  unavailable ({len(rendered['blocked'])}) : {', '.join(rendered['blocked'][:6])}{' …' if len(rendered['blocked']) > 6 else ''}")
             print(f"  provisioning   : {rendered['provisioning']}")
             print(f"  skills         : {rendered['skills']}")
             print(f"  mcp            : {rendered['mcp']}")
@@ -144,9 +141,7 @@ def main() -> int:
             if not rendered["reported"]:
                 failures.append(f"{name}: availability read as unreported for a payload that carries it")
             if len(rendered["blocked"]) == 0 and rendered["selectedCount"] > 3:
-                failures.append(
-                    f"{name}: 0 blocked out of {rendered['selectedCount']} contradicts the measured shortfall"
-                )
+                failures.append(f"{name}: 0 blocked out of {rendered['selectedCount']} contradicts the measured shortfall")
 
         print()
         for f in failures:

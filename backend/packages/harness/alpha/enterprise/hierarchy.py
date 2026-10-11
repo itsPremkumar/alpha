@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from alpha.enterprise.models import (
-    CSuiteRole,
     CapabilityContract,
     ClearanceLevel,
     DepartmentHierarchy,

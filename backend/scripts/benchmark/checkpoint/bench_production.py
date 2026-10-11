@@ -489,11 +489,11 @@ def _make_gateway_app(saver: Any, mode: str, store: Any) -> Any:
     from fastapi import FastAPI, Request, Response
     from starlette.middleware.base import BaseHTTPMiddleware
 
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.runtime.user_context import reset_current_user, set_current_user
     from app.gateway.auth.models import User
     from app.gateway.authz import AuthContext, Permissions
     from app.gateway.routers import threads
-    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
-    from alpha.runtime.user_context import reset_current_user, set_current_user
 
     permissions = [Permissions.THREADS_READ, Permissions.THREADS_WRITE, Permissions.THREADS_DELETE]
 

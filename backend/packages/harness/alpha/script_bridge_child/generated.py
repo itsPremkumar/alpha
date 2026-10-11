@@ -20,381 +20,147 @@ STUB_REGISTRY_SHA256 = "8ef69f7f8aa76ae45a9aaf0f7524964d1c9e8c57c1761ab9080a8eb3
 
 #: Registry snapshot the generator saw: name -> {"description": str}
 STUB_TOOL_INDEX = {
-    "a2a_protocol": {
-        "description": "Discover agents, inspect Google A2A capability cards, and delegate tasks."
-    },
-    "alpha_peer_network": {
-        "description": "Use the free Alpha-to-Alpha network. Actions:"
-    },
-    "analyze_semantic_git_delta": {
-        "description": "Convert a git line diff into structured semantic AST transformations and risk. Rather than reporting which lines changed, this tool reports what meaning"
-    },
+    "a2a_protocol": {"description": "Discover agents, inspect Google A2A capability cards, and delegate tasks."},
+    "alpha_peer_network": {"description": "Use the free Alpha-to-Alpha network. Actions:"},
+    "analyze_semantic_git_delta": {"description": "Convert a git line diff into structured semantic AST transformations and risk. Rather than reporting which lines changed, this tool reports what meaning"},
     "ask_clarification": {
         "description": "Ask the user for clarification when you need more information to proceed. Use this tool when you encounter situations where you cannot proceed without user input: - **Missing information**: Required d"
     },
-    "ask_oracle": {
-        "description": "Consult the isolated Oracle advisor on technical standards, API contracts, or architecture best practices. Uses an isolated subagent interface to retrieve authoritative guidance without polluting the "
-    },
-    "ast_grep_rewrite": {
-        "description": "Rewrite code using structural AST pattern and template."
-    },
-    "ast_grep_search": {
-        "description": "Search code using structural pattern matching."
-    },
-    "audit_finish_first_evidence": {
-        "description": "Track, corroborate, and audit physical execution proof for task claims. Implements the MYTHOS Finish-First Doctrine: tasks cannot be declared 'done'"
-    },
-    "auto_test_and_repair": {
-        "description": "Execute the project's test suite and parse failures into structured diagnostic traces. Enables tight 'Read -> Act -> Test -> Auto-Repair' feedback loops. If tests fail, returns"
-    },
-    "autonomy_control": {
-        "description": "Inspect server-observed autonomy readiness, failures, or activity. This free, offline decision layer never calls a model, provider, network, or"
-    },
-    "await_task_event": {
-        "description": "Register an event wake gate for one or more asynchronous background tasks. Instead of repeatedly checking task status in a loop and wasting context tokens,"
-    },
-    "blackboard_query": {
-        "description": "Query verified evidence and active states from the 20-Plane Shared Blackboard."
-    },
-    "blackboard_record_evidence": {
-        "description": "Record an evidence item into the 20-Plane Shared Blackboard."
-    },
-    "bot_roster": {
-        "description": "Create, configure, inspect, and monitor autonomous AI agent profiles and fleet operations."
-    },
-    "boulder_checkpoint_manage": {
-        "description": "Manage persistent multi-session task checkpoints. Actions: 'create', 'status', 'update_step', 'append_session', 'complete', 'clear'."
-    },
-    "browser_navigate_and_inspect": {
-        "description": "Automate headless browser navigation, DOM inspection, and System One driven interaction."
-    },
-    "build_autonomous_plan": {
-        "description": "Turn one raw user prompt into a fully decided autonomous execution plan. Decides research need, subagent delegation, subtask split with waves,"
-    },
-    "canvas_widget": {
-        "description": "Render and manage live, interactive HTML5/JS Canvas widgets for chat and dashboards."
-    },
-    "catalog_tool_describe": {
-        "description": "Retrieve full schema, parameter definitions, and documentation for a catalog tool. Call this once you have found a tool with `catalog_tool_search` to inspect its parameters."
-    },
-    "catalog_tool_search": {
-        "description": "Search available tools in the universal catalog by name, category, or description keywords. This provides deferred tool discovery: instead of loading dozens of tool definitions into"
-    },
-    "check_metacognitive_health": {
-        "description": "Assess metacognitive health, detect cognitive biases, and calibrate confidence. Monitors for confirmation bias, premature convergence, plan stagnation,"
-    },
-    "check_or_set_autonomy_profile": {
-        "description": "Inspect or configure the user autonomy profile and evaluate action authorization. Enforces the 4-tier autonomy governance model:"
-    },
-    "cognitive_memory_tool": {
-        "description": "Access, search, and update the agent's Multi-Tier Cognitive Memory System. Actions:"
-    },
-    "cognitive_plan": {
-        "description": "Evaluate strategic execution parameters and autonomously trigger execution across subagents, swarms, or bots."
-    },
-    "company_os": {
-        "description": "Manage autonomous AI companies, perpetual collectives, work discovery, and self-improvement."
-    },
-    "compile_cognitive_plan": {
-        "description": "Compile a mission using the P0-P21 Cognitive Compiler. Generates competing Strategy Candidates (A/B/C) with trade-off scoring,"
-    },
+    "ask_oracle": {"description": "Consult the isolated Oracle advisor on technical standards, API contracts, or architecture best practices. Uses an isolated subagent interface to retrieve authoritative guidance without polluting the "},
+    "ast_grep_rewrite": {"description": "Rewrite code using structural AST pattern and template."},
+    "ast_grep_search": {"description": "Search code using structural pattern matching."},
+    "audit_finish_first_evidence": {"description": "Track, corroborate, and audit physical execution proof for task claims. Implements the MYTHOS Finish-First Doctrine: tasks cannot be declared 'done'"},
+    "auto_test_and_repair": {"description": "Execute the project's test suite and parse failures into structured diagnostic traces. Enables tight 'Read -> Act -> Test -> Auto-Repair' feedback loops. If tests fail, returns"},
+    "autonomy_control": {"description": "Inspect server-observed autonomy readiness, failures, or activity. This free, offline decision layer never calls a model, provider, network, or"},
+    "await_task_event": {"description": "Register an event wake gate for one or more asynchronous background tasks. Instead of repeatedly checking task status in a loop and wasting context tokens,"},
+    "blackboard_query": {"description": "Query verified evidence and active states from the 20-Plane Shared Blackboard."},
+    "blackboard_record_evidence": {"description": "Record an evidence item into the 20-Plane Shared Blackboard."},
+    "bot_roster": {"description": "Create, configure, inspect, and monitor autonomous AI agent profiles and fleet operations."},
+    "boulder_checkpoint_manage": {"description": "Manage persistent multi-session task checkpoints. Actions: 'create', 'status', 'update_step', 'append_session', 'complete', 'clear'."},
+    "browser_navigate_and_inspect": {"description": "Automate headless browser navigation, DOM inspection, and System One driven interaction."},
+    "build_autonomous_plan": {"description": "Turn one raw user prompt into a fully decided autonomous execution plan. Decides research need, subagent delegation, subtask split with waves,"},
+    "canvas_widget": {"description": "Render and manage live, interactive HTML5/JS Canvas widgets for chat and dashboards."},
+    "catalog_tool_describe": {"description": "Retrieve full schema, parameter definitions, and documentation for a catalog tool. Call this once you have found a tool with `catalog_tool_search` to inspect its parameters."},
+    "catalog_tool_search": {"description": "Search available tools in the universal catalog by name, category, or description keywords. This provides deferred tool discovery: instead of loading dozens of tool definitions into"},
+    "check_metacognitive_health": {"description": "Assess metacognitive health, detect cognitive biases, and calibrate confidence. Monitors for confirmation bias, premature convergence, plan stagnation,"},
+    "check_or_set_autonomy_profile": {"description": "Inspect or configure the user autonomy profile and evaluate action authorization. Enforces the 4-tier autonomy governance model:"},
+    "cognitive_memory_tool": {"description": "Access, search, and update the agent's Multi-Tier Cognitive Memory System. Actions:"},
+    "cognitive_plan": {"description": "Evaluate strategic execution parameters and autonomously trigger execution across subagents, swarms, or bots."},
+    "company_os": {"description": "Manage autonomous AI companies, perpetual collectives, work discovery, and self-improvement."},
+    "compile_cognitive_plan": {"description": "Compile a mission using the P0-P21 Cognitive Compiler. Generates competing Strategy Candidates (A/B/C) with trade-off scoring,"},
     "compile_five_pass_search": {
         "description": "Compile a natural language question into 5 parallel search facets, including adversarial contradiction discovery. Funnels search across: Discovery, Specific Evidence, Adversarial Contradiction, Fact V"
     },
-    "compile_mission": {
-        "description": "Compile an ambiguous user prompt into a formal, structured Mission contract with R0-R6 risk classification. Extracts core intent, latent needs, hard/soft/forbidden constraints, acceptance criteria,"
-    },
-    "compile_problem_model": {
-        "description": "Compile a raw goal or user prompt into a structured 12-factor AVO Problem Model. Analyzes objective, domain, entities, explicit constraints, underlying assumptions,"
-    },
-    "compute_program_slice": {
-        "description": "Compute backward or forward program slices across Python code using AST and PDG graphs. Enables surgical debugging and blast-radius analysis:"
-    },
-    "consolidate_cognitive_memory": {
-        "description": "Manage the three-tier cognitive memory system and run the consolidation daemon. Working memory is an ephemeral capacity-bounded scratchpad for intermediate"
-    },
-    "consolidate_memory_dream": {
-        "description": "Run a 3-Phase Dreaming Memory Consolidation cycle (Light, REM, Deep Sleep). Synthesizes short-term execution notes and failure logs, extracts durable insights,"
-    },
+    "compile_mission": {"description": "Compile an ambiguous user prompt into a formal, structured Mission contract with R0-R6 risk classification. Extracts core intent, latent needs, hard/soft/forbidden constraints, acceptance criteria,"},
+    "compile_problem_model": {"description": "Compile a raw goal or user prompt into a structured 12-factor AVO Problem Model. Analyzes objective, domain, entities, explicit constraints, underlying assumptions,"},
+    "compute_program_slice": {"description": "Compute backward or forward program slices across Python code using AST and PDG graphs. Enables surgical debugging and blast-radius analysis:"},
+    "consolidate_cognitive_memory": {"description": "Manage the three-tier cognitive memory system and run the consolidation daemon. Working memory is an ephemeral capacity-bounded scratchpad for intermediate"},
+    "consolidate_memory_dream": {"description": "Run a 3-Phase Dreaming Memory Consolidation cycle (Light, REM, Deep Sleep). Synthesizes short-term execution notes and failure logs, extracts durable insights,"},
     "consult_experience": {
         "description": "Consult or update the Episodic Experience Memory to retrieve past lessons or record new ones. Action 'query': Retrieves relevant past failure modes, lessons learned, and guidelines for the current tas"
     },
-    "consult_plan_gap_analysis": {
-        "description": "Run pre-planning gap analysis (powered by Enterprise Strategic Consultant profile) to catch edge cases and UI requirements."
-    },
-    "create_workflow_checkpoint": {
-        "description": "Create a durable, cryptographic SHA256-verified workflow checkpoint. Supports 'full', 'incremental', and 'delta' snapshots with state rollback and historical verification."
-    },
-    "cronjob_manage": {
-        "description": "Manage autonomous background cron tasks and periodic health/lint checks."
-    },
-    "deep_research": {
-        "description": "Conduct bounded multi-lane deep research with explicit evidence status. Compiles a 5-pass search plan (Discovery, Specific Evidence, Adversarial Contradiction,"
-    },
-    "deep_web_search": {
-        "description": "Research a question across the keyless web-search chain and return findings with citations. Ports AgentEye's research engine: expands the question into related"
-    },
-    "deliberate": {
-        "description": "Consult multiple independent AI models via anonymous council or debate before deciding."
-    },
-    "deliberate_artifact_quality": {
-        "description": "Deliberate the quality and safety of an artifact using the 5-Deliberator Council. Applies the Agent Prime rule: 'Never let one worker both produce and certify high-risk output.'"
-    },
-    "desktop_inspect_ui_tree": {
-        "description": "Inspect a window's clickable buttons, inputs, and checkboxes via the OS accessibility tree -- zero tokens. Returns each element as {name, type, bbox: [left, top, right, bottom],"
-    },
-    "desktop_keyboard_action": {
-        "description": "Type text, press a key, or execute a keyboard hotkey -- sentinel-guard checked. Destructive hotkey combinations (Win+L, desktop Alt+F4, Shift+Delete,"
-    },
-    "desktop_mouse_action": {
-        "description": "Dispatch a guarded mouse click, move, drag, or scroll on the desktop. Every call passes the sentinel guard before any backend loads: the"
-    },
-    "desktop_screenshot": {
-        "description": "Capture a free local screenshot of the desktop or one window (PNG, base64). Uses the mss backend (target <10ms) -- no cloud vision API, no tokens. When"
-    },
-    "desktop_system_one_action": {
-        "description": "Choose and safely execute one indexed desktop action using System One/Laya. The tool observes the operating-system accessibility tree, presents only a"
-    },
-    "desktop_window_manage": {
-        "description": "List or focus windows, launch desktop software, or bind/unbind the window-boundary lock. Actions:"
-    },
-    "diagnose_and_heal_environment": {
-        "description": "Scan build manifests, error logs, and virtualenv health to automatically repair environments. Inspects pyproject.toml, requirements.txt, package.json, and Cargo.toml. Autonomously"
-    },
-    "dispatch_discipline_worker": {
-        "description": "Dispatch work by category to specialized discipline models (e.g. visual engineering, algorithmic ultrabrain, plan reviewer)."
-    },
-    "emergency_stop_manage": {
-        "description": "Manage the runtime Emergency Stop (ESTOP) global pause state. Allows operators or supervisor agents to immediately suspend all autonomous background tasks,"
-    },
-    "emit_stigmergic_event": {
-        "description": "Deposit or release a stigmergic pheromone signal on a code entity. Stigmergic coordination lets a swarm of agents coordinate without direct"
-    },
-    "enterprise_security_manage": {
-        "description": "Manage enterprise security controls, enclave boundaries, spatio-temporal memory, and autonomous goal pursuit."
-    },
-    "evaluate_agent_competence": {
-        "description": "Evaluate statistical competence using 95% Wilson confidence intervals and curiosity scoring."
-    },
+    "consult_plan_gap_analysis": {"description": "Run pre-planning gap analysis (powered by Enterprise Strategic Consultant profile) to catch edge cases and UI requirements."},
+    "create_workflow_checkpoint": {"description": "Create a durable, cryptographic SHA256-verified workflow checkpoint. Supports 'full', 'incremental', and 'delta' snapshots with state rollback and historical verification."},
+    "cronjob_manage": {"description": "Manage autonomous background cron tasks and periodic health/lint checks."},
+    "deep_research": {"description": "Conduct bounded multi-lane deep research with explicit evidence status. Compiles a 5-pass search plan (Discovery, Specific Evidence, Adversarial Contradiction,"},
+    "deep_web_search": {"description": "Research a question across the keyless web-search chain and return findings with citations. Ports AgentEye's research engine: expands the question into related"},
+    "deliberate": {"description": "Consult multiple independent AI models via anonymous council or debate before deciding."},
+    "deliberate_artifact_quality": {"description": "Deliberate the quality and safety of an artifact using the 5-Deliberator Council. Applies the Agent Prime rule: 'Never let one worker both produce and certify high-risk output.'"},
+    "desktop_inspect_ui_tree": {"description": "Inspect a window's clickable buttons, inputs, and checkboxes via the OS accessibility tree -- zero tokens. Returns each element as {name, type, bbox: [left, top, right, bottom],"},
+    "desktop_keyboard_action": {"description": "Type text, press a key, or execute a keyboard hotkey -- sentinel-guard checked. Destructive hotkey combinations (Win+L, desktop Alt+F4, Shift+Delete,"},
+    "desktop_mouse_action": {"description": "Dispatch a guarded mouse click, move, drag, or scroll on the desktop. Every call passes the sentinel guard before any backend loads: the"},
+    "desktop_screenshot": {"description": "Capture a free local screenshot of the desktop or one window (PNG, base64). Uses the mss backend (target <10ms) -- no cloud vision API, no tokens. When"},
+    "desktop_system_one_action": {"description": "Choose and safely execute one indexed desktop action using System One/Laya. The tool observes the operating-system accessibility tree, presents only a"},
+    "desktop_window_manage": {"description": "List or focus windows, launch desktop software, or bind/unbind the window-boundary lock. Actions:"},
+    "diagnose_and_heal_environment": {"description": "Scan build manifests, error logs, and virtualenv health to automatically repair environments. Inspects pyproject.toml, requirements.txt, package.json, and Cargo.toml. Autonomously"},
+    "dispatch_discipline_worker": {"description": "Dispatch work by category to specialized discipline models (e.g. visual engineering, algorithmic ultrabrain, plan reviewer)."},
+    "emergency_stop_manage": {"description": "Manage the runtime Emergency Stop (ESTOP) global pause state. Allows operators or supervisor agents to immediately suspend all autonomous background tasks,"},
+    "emit_stigmergic_event": {"description": "Deposit or release a stigmergic pheromone signal on a code entity. Stigmergic coordination lets a swarm of agents coordinate without direct"},
+    "enterprise_security_manage": {"description": "Manage enterprise security controls, enclave boundaries, spatio-temporal memory, and autonomous goal pursuit."},
+    "evaluate_agent_competence": {"description": "Evaluate statistical competence using 95% Wilson confidence intervals and curiosity scoring."},
     "evaluate_epistemic_claim": {
         "description": "Register, evaluate, or update epistemic truth claims with Bayesian calibration and falsification tests. Action 'register': Adds a new working hypothesis/assumption with an explicit falsification test."
     },
-    "execute_sandboxed_computer_action": {
-        "description": "Evaluate a desktop/terminal command against the 3-tier blast-radius safety gate. The gate classifies and validates; it never runs anything. ``SAFE`` commands"
-    },
-    "execute_slash_command": {
-        "description": "Execute a Master Slash Command from the catalog across 28 categories."
-    },
-    "execute_transactional_action": {
-        "description": "Execute a file action within an ACID-like 4-stage transaction envelope with automatic rollback. Stages: PREPARE (shadow snapshot) -> VALIDATE -> COMMIT -> VERIFY."
-    },
-    "external_job": {
-        "description": "Manage asynchronous background OS jobs decoupled from reasoning loops."
-    },
-    "forge_skill_from_trace": {
-        "description": "Forge a tested, parameterized SKILL.md tool from a sequence of successful execution steps. Extracts parameters, dedups via content hash, and registers the skill for autonomous reuse."
-    },
-    "generate_curriculum_plan": {
-        "description": "Analyze agent capability gaps and generate an autonomous training curriculum. Computes urgency priority = (Target - Current) / Difficulty and schedules targeted exercises."
-    },
-    "generate_repo_map": {
-        "description": "Generate a token-efficient structural map of the repository with AST symbol signatures. Provides high-level codebase awareness (directory layout, key classes, functions, and methods)"
-    },
-    "goal_engine": {
-        "description": "Manage continuous, goal-driven autonomous execution loops with self-healing."
-    },
-    "goal_integrity": {
-        "description": "Audit plans and proposed subtasks for goal drift, scope creep, and overengineering."
-    },
-    "group_chat": {
-        "description": "Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on bot mode with 5 speaker selection strategies (mention,"
-    },
-    "harness_refine": {
-        "description": "Manage self-improving Continual Harness state and trigger online refinement. Inspired by Prime Agent's /refine and durable harness state. Entries record"
-    },
-    "hashline_edit": {
-        "description": "Edit a file using verified content-hash line references (e.g. start_ref='12#VK', end_ref='15#MB'). Eliminates whitespace and line drift errors."
-    },
-    "hashline_read": {
-        "description": "Read a file with content-hashed lines (LINE#HASH| content). Used to get stable line references before editing."
-    },
+    "execute_sandboxed_computer_action": {"description": "Evaluate a desktop/terminal command against the 3-tier blast-radius safety gate. The gate classifies and validates; it never runs anything. ``SAFE`` commands"},
+    "execute_slash_command": {"description": "Execute a Master Slash Command from the catalog across 28 categories."},
+    "execute_transactional_action": {"description": "Execute a file action within an ACID-like 4-stage transaction envelope with automatic rollback. Stages: PREPARE (shadow snapshot) -> VALIDATE -> COMMIT -> VERIFY."},
+    "external_job": {"description": "Manage asynchronous background OS jobs decoupled from reasoning loops."},
+    "forge_skill_from_trace": {"description": "Forge a tested, parameterized SKILL.md tool from a sequence of successful execution steps. Extracts parameters, dedups via content hash, and registers the skill for autonomous reuse."},
+    "generate_curriculum_plan": {"description": "Analyze agent capability gaps and generate an autonomous training curriculum. Computes urgency priority = (Target - Current) / Difficulty and schedules targeted exercises."},
+    "generate_repo_map": {"description": "Generate a token-efficient structural map of the repository with AST symbol signatures. Provides high-level codebase awareness (directory layout, key classes, functions, and methods)"},
+    "goal_engine": {"description": "Manage continuous, goal-driven autonomous execution loops with self-healing."},
+    "goal_integrity": {"description": "Audit plans and proposed subtasks for goal drift, scope creep, and overengineering."},
+    "group_chat": {"description": "Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on bot mode with 5 speaker selection strategies (mention,"},
+    "harness_refine": {"description": "Manage self-improving Continual Harness state and trigger online refinement. Inspired by Prime Agent's /refine and durable harness state. Entries record"},
+    "hashline_edit": {"description": "Edit a file using verified content-hash line references (e.g. start_ref='12#VK', end_ref='15#MB'). Eliminates whitespace and line drift errors."},
+    "hashline_read": {"description": "Read a file with content-hashed lines (LINE#HASH| content). Used to get stable line references before editing."},
     "hyperplan_review_manage": {
         "description": "Run hostile multi-agent audit on an execution plan across 4 orthogonal dimensions (gaps, architecture, security, testability). Returns plan_hash for execution pinning; BLOCKED plans must not execute."
     },
-    "identify_autonomous_command": {
-        "description": "Identify which Master Slash Command to execute for the current task, error, or lifecycle stage."
-    },
-    "inspect_deep_agent_telemetry": {
-        "description": "Inspect bounded telemetry for an isolated deep agent session."
-    },
-    "inspect_repo_twin": {
-        "description": "Inspect repository digital twin, AST symbol dependencies, and blast radius. Discovers build systems (pip, npm, cargo), test frameworks (pytest, jest), CI/CD workflows,"
-    },
-    "kanban_board": {
-        "description": "Manage tasks on the collaborative Kanban board with review gates and DAG unblocking. Tasks progress across columns: backlog -> todo -> in_progress -> in_review -> done."
-    },
-    "keyless_web_search": {
-        "description": "Search the web without any API key by falling back across keyless engines until one answers. Ports AgentEye's keyless chain (DuckDuckGo HTML, DuckDuckGo via Jina Reader,"
-    },
-    "kibitzer_nudge_manage": {
-        "description": "Manage resident memory hints (Kibitzer sidecar). Actions: 'add_memory', 'observe', 'reset'."
-    },
-    "learning_graph_manage": {
-        "description": "Manage and query the self-evolving Knowledge & Learning Graph. Maintains topological connections across learned user preferences, codebase invariants,"
-    },
-    "list_available_deep_agents": {
-        "description": "List available deep specialist agents and their capabilities. Returns compact descriptors for every autonomous deep specialist without"
-    },
-    "list_dynamic_tools": {
-        "description": "Inspect the registry of runtime-synthesized agent tools."
-    },
-    "manage_code_checkpoint": {
-        "description": "Create a lightweight rollback checkpoint or restore the repository to a previous clean state. Allows safe refactoring with instant rollback guarantees before risky code mutations."
-    },
-    "manage_context_data": {
-        "description": "Manage and transform massive context variables programmatically without prompt bloat. Implements the Prime Agent Context-as-Data pattern: contexts are stored as immutable"
-    },
-    "manage_durable_orchestration": {
-        "description": "Manage durable event journals, task checkpointing, and crash-resilient replay."
-    },
-    "manage_mission_hierarchy": {
-        "description": "Manage the 6-level Goal -> Mission -> Task -> Subtask -> Action -> ToolCall execution hierarchy."
-    },
-    "manage_model_performance_registry": {
-        "description": "Manage empirical model benchmarks and dynamically route tasks to Pareto-optimal models."
-    },
-    "manage_reflexion_memory": {
-        "description": "Manage Reflexion failure memory."
-    },
-    "moa_multi_model_reasoning": {
-        "description": "Execute a Mixture-of-Agents (MoA) parallel multi-LLM reasoning round. Dispatches complex questions to multiple candidate models simultaneously, redacts"
-    },
-    "present_files": {
-        "description": "Make files visible to the user for viewing and rendering in the client interface. When to use the present_files tool: - Making any file available for the user to view, download, or interact with"
-    },
-    "process_handle": {
-        "description": "Manage asynchronous background processes, check handles, and tail output. Inspired by Prime Agent's rlm/bash.py background execution model. Allows long-running"
-    },
-    "propose_skill": {
-        "description": "Propose a new skill for human review and installation. Use this when repeated work deserves a reusable skill, or the user asks"
-    },
-    "query_contrastive_memory": {
-        "description": "Retrieve negative constraints and failed reasoning paths from episodic memory. Searches past task executions to find similar failure signatures, erroneous hypotheses,"
-    },
-    "query_knowledge_graph": {
-        "description": "Manage and query the cross-enterprise Knowledge Graph for multi-hop dependencies and blast radius."
-    },
-    "query_language_server_symbol": {
-        "description": "Query compiler-grade symbol intelligence for a workspace via LSP, LSIF or SCIP. Use this tool to jump to definitions, enumerate references, read document"
-    },
-    "query_stigmergic_traces": {
-        "description": "Read the shared stigmergic pheromone field of the agent swarm."
-    },
-    "ralph_loop": {
-        "description": "Run a task through bounded self-improvement rounds until a promise holds. Use when an outcome is objectively checkable and a first attempt often"
-    },
-    "recall_agent_memory": {
-        "description": "Recall memories across working, episodic and semantic tiers with hybrid ranking. Retrieval blends Okapi BM25 lexical relevance with cosine vector similarity"
-    },
-    "reconcile_structural_ast_conflicts": {
-        "description": "Reconcile multi-agent concurrent modifications via semantic 3-way AST node merging. Replaces line-based git conflict markers with structural AST reconciliation. Merges"
-    },
-    "record_trajectory_outcome": {
-        "description": "Record an episodic trajectory outcome into contrastive memory. Stores tuples of (Failure Signature, Erroneous Hypothesis, Failed Patch, Winning Resolution)"
-    },
-    "reproduce_and_verify": {
-        "description": "Execute test-driven autonomous bug reproduction and verification. Phase 'prepare': Synthesizes reproduction script and verifies that it FAILS before code modification."
-    },
-    "reversible_delete": {
-        "description": "Plan, request approval for, execute, or restore reversible file quarantine. This free, local safety boundary never hard-deletes data. ``plan`` creates a"
-    },
-    "review_plan_invariant_gate": {
-        "description": "Rigorous plan invariant review (powered by Enterprise Invariant Gatekeeper profile) to prevent rubber-stamping and defects."
-    },
-    "review_skill_package": {
-        "description": "Inspect a skill package without activating, installing, executing, or editing it. Use this tool only for skill review workflows. The target package is"
-    },
-    "run_autonomous_benchmark_eval": {
-        "description": "Evaluate agent code patches against coding benchmarks and compute pass@k. Each problem is executed in an isolated git workspace: the repository is"
-    },
-    "run_avo_variation": {
-        "description": "Run an Autonomous Value Optimization (AVO) variation step. Applies the strict matches-or-improves commit policy against the lineage tree."
-    },
-    "run_differential_regression_oracle": {
-        "description": "Execute differential invariant validation and regression testing between code revisions. Synthesizes property-based fuzz tests and executes dual shadow sandboxes with randomized"
-    },
-    "run_introspective_tree_search": {
-        "description": "Execute tree-guided multi-path search (I-MCTS / CodeTree) to resolve complex bugs. Coordinates Monte Carlo Tree Search with introspective node expansion, pruning invalid"
-    },
+    "identify_autonomous_command": {"description": "Identify which Master Slash Command to execute for the current task, error, or lifecycle stage."},
+    "inspect_deep_agent_telemetry": {"description": "Inspect bounded telemetry for an isolated deep agent session."},
+    "inspect_repo_twin": {"description": "Inspect repository digital twin, AST symbol dependencies, and blast radius. Discovers build systems (pip, npm, cargo), test frameworks (pytest, jest), CI/CD workflows,"},
+    "kanban_board": {"description": "Manage tasks on the collaborative Kanban board with review gates and DAG unblocking. Tasks progress across columns: backlog -> todo -> in_progress -> in_review -> done."},
+    "keyless_web_search": {"description": "Search the web without any API key by falling back across keyless engines until one answers. Ports AgentEye's keyless chain (DuckDuckGo HTML, DuckDuckGo via Jina Reader,"},
+    "kibitzer_nudge_manage": {"description": "Manage resident memory hints (Kibitzer sidecar). Actions: 'add_memory', 'observe', 'reset'."},
+    "learning_graph_manage": {"description": "Manage and query the self-evolving Knowledge & Learning Graph. Maintains topological connections across learned user preferences, codebase invariants,"},
+    "list_available_deep_agents": {"description": "List available deep specialist agents and their capabilities. Returns compact descriptors for every autonomous deep specialist without"},
+    "list_dynamic_tools": {"description": "Inspect the registry of runtime-synthesized agent tools."},
+    "manage_code_checkpoint": {"description": "Create a lightweight rollback checkpoint or restore the repository to a previous clean state. Allows safe refactoring with instant rollback guarantees before risky code mutations."},
+    "manage_context_data": {"description": "Manage and transform massive context variables programmatically without prompt bloat. Implements the Prime Agent Context-as-Data pattern: contexts are stored as immutable"},
+    "manage_durable_orchestration": {"description": "Manage durable event journals, task checkpointing, and crash-resilient replay."},
+    "manage_mission_hierarchy": {"description": "Manage the 6-level Goal -> Mission -> Task -> Subtask -> Action -> ToolCall execution hierarchy."},
+    "manage_model_performance_registry": {"description": "Manage empirical model benchmarks and dynamically route tasks to Pareto-optimal models."},
+    "manage_reflexion_memory": {"description": "Manage Reflexion failure memory."},
+    "moa_multi_model_reasoning": {"description": "Execute a Mixture-of-Agents (MoA) parallel multi-LLM reasoning round. Dispatches complex questions to multiple candidate models simultaneously, redacts"},
+    "present_files": {"description": "Make files visible to the user for viewing and rendering in the client interface. When to use the present_files tool: - Making any file available for the user to view, download, or interact with"},
+    "process_handle": {"description": "Manage asynchronous background processes, check handles, and tail output. Inspired by Prime Agent's rlm/bash.py background execution model. Allows long-running"},
+    "propose_skill": {"description": "Propose a new skill for human review and installation. Use this when repeated work deserves a reusable skill, or the user asks"},
+    "query_contrastive_memory": {"description": "Retrieve negative constraints and failed reasoning paths from episodic memory. Searches past task executions to find similar failure signatures, erroneous hypotheses,"},
+    "query_knowledge_graph": {"description": "Manage and query the cross-enterprise Knowledge Graph for multi-hop dependencies and blast radius."},
+    "query_language_server_symbol": {"description": "Query compiler-grade symbol intelligence for a workspace via LSP, LSIF or SCIP. Use this tool to jump to definitions, enumerate references, read document"},
+    "query_stigmergic_traces": {"description": "Read the shared stigmergic pheromone field of the agent swarm."},
+    "ralph_loop": {"description": "Run a task through bounded self-improvement rounds until a promise holds. Use when an outcome is objectively checkable and a first attempt often"},
+    "recall_agent_memory": {"description": "Recall memories across working, episodic and semantic tiers with hybrid ranking. Retrieval blends Okapi BM25 lexical relevance with cosine vector similarity"},
+    "reconcile_structural_ast_conflicts": {"description": "Reconcile multi-agent concurrent modifications via semantic 3-way AST node merging. Replaces line-based git conflict markers with structural AST reconciliation. Merges"},
+    "record_trajectory_outcome": {"description": "Record an episodic trajectory outcome into contrastive memory. Stores tuples of (Failure Signature, Erroneous Hypothesis, Failed Patch, Winning Resolution)"},
+    "reproduce_and_verify": {"description": "Execute test-driven autonomous bug reproduction and verification. Phase 'prepare': Synthesizes reproduction script and verifies that it FAILS before code modification."},
+    "reversible_delete": {"description": "Plan, request approval for, execute, or restore reversible file quarantine. This free, local safety boundary never hard-deletes data. ``plan`` creates a"},
+    "review_plan_invariant_gate": {"description": "Rigorous plan invariant review (powered by Enterprise Invariant Gatekeeper profile) to prevent rubber-stamping and defects."},
+    "review_skill_package": {"description": "Inspect a skill package without activating, installing, executing, or editing it. Use this tool only for skill review workflows. The target package is"},
+    "run_autonomous_benchmark_eval": {"description": "Evaluate agent code patches against coding benchmarks and compute pass@k. Each problem is executed in an isolated git workspace: the repository is"},
+    "run_avo_variation": {"description": "Run an Autonomous Value Optimization (AVO) variation step. Applies the strict matches-or-improves commit policy against the lineage tree."},
+    "run_differential_regression_oracle": {"description": "Execute differential invariant validation and regression testing between code revisions. Synthesizes property-based fuzz tests and executes dual shadow sandboxes with randomized"},
+    "run_introspective_tree_search": {"description": "Execute tree-guided multi-path search (I-MCTS / CodeTree) to resolve complex bugs. Coordinates Monte Carlo Tree Search with introspective node expansion, pruning invalid"},
     "run_rsi_cycle": {
         "description": "Execute an autonomous Recursive Self-Improvement (RSI) cycle: Bottleneck -> Hypothesis -> Candidate -> A/B Test -> Holdout -> Promote. Analyzes agent performance bottlenecks, generates an optimization"
     },
-    "run_task_evaluation_benchmark": {
-        "description": "Run standard agentic benchmarks (research, coding, browser, computer, multi-agent) and report scores."
-    },
-    "run_variation_operator_step": {
-        "description": "Execute an Autonomous Agentic Variation Operator (AVO) step. Supports multi-dimensional vector evaluation, Pareto dominance tracking,"
-    },
-    "schedule_work_queue": {
-        "description": "Manage the durable DAG task scheduler, execution queue, and budget guardrails."
-    },
-    "search_project_docs": {
-        "description": "Search, read, or inspect the current project's documentation offline. Use this for questions about Alpha configuration, commands, architecture,"
-    },
-    "search_session_memory": {
-        "description": "Search long-term conversation history using SQLite FTS5 full-text indexing with BM25 ranking. Applies cron session demotion to prevent vocabulary starvation ('recall blindness') and"
-    },
+    "run_task_evaluation_benchmark": {"description": "Run standard agentic benchmarks (research, coding, browser, computer, multi-agent) and report scores."},
+    "run_variation_operator_step": {"description": "Execute an Autonomous Agentic Variation Operator (AVO) step. Supports multi-dimensional vector evaluation, Pareto dominance tracking,"},
+    "schedule_work_queue": {"description": "Manage the durable DAG task scheduler, execution queue, and budget guardrails."},
+    "search_project_docs": {"description": "Search, read, or inspect the current project's documentation offline. Use this for questions about Alpha configuration, commands, architecture,"},
+    "search_session_memory": {"description": "Search long-term conversation history using SQLite FTS5 full-text indexing with BM25 ranking. Applies cron session demotion to prevent vocabulary starvation ('recall blindness') and"},
     "self_heal_diagnose": {
         "description": "Diagnose runtime health anomalies, stale lock files, or hanging operations and execute self-healing actions. Scans workspace for locks (such as .git/index.lock or .pytest_cache/.lock) older than thres"
     },
-    "session_search": {
-        "description": "Search past conversations or read one thread's history. Discovery: session_search(query=\"router password\") searches every thread"
-    },
+    "session_search": {"description": 'Search past conversations or read one thread\'s history. Discovery: session_search(query="router password") searches every thread'},
     "simulate_consequences": {
         "description": "Simulate potential environmental side-effects, blast radius, and cascading failures before execution. Probes the host environment affordances, checks if the workspace is git-tracked, analyzes package"
     },
-    "skills_hub_manage": {
-        "description": "Manage Skills Hub discovery, AST security audits, and skill installation."
-    },
-    "supervisor_watchdog": {
-        "description": "Monitor agent health, report heartbeats, inspect anomalies, and trigger recovery."
-    },
-    "swarm": {
-        "description": "Evaluate, spawn, run, communicate with, and monitor bounded agent swarms."
-    },
-    "synthesize_reusable_skill": {
-        "description": "Synthesize a structured and validated SKILL.md package from execution steps."
-    },
-    "synthesize_runtime_tool": {
-        "description": "Synthesize, security-verify, self-test and register a new agent tool at runtime. The source is first screened by a static AST security validator that blocks"
-    },
-    "tom_consult": {
-        "description": "Consult the Theory of Mind cognitive model to infer unstated user expectations, invariants, and pitfalls. Before executing high-impact, destructive, or ambiguous modifications, this tool models the hu"
-    },
-    "trace_artifact_lineage": {
-        "description": "Manage artifact provenance, track causal derivation, and audit the ancestry graph of any output."
-    },
-    "trajectory_audit": {
-        "description": "Inspect and export step-by-step reasoning and tool execution trajectories."
-    },
-    "update_progress_card": {
-        "description": "Publish or update an in-place streaming progress draft card. Instead of polluting the chat with repetitive conversational status messages,"
-    },
-    "verify_command_approval": {
-        "description": "Evaluate whether a shell command is safe to execute using Smart Approvals guardian. Strips shell comments to prevent injection bypasses, checks against dangerous destruction"
-    },
-    "verify_web_ui_visual_regression": {
-        "description": "Verify web UI visual integrity and accessibility tree parity between HTML snapshots. Extracts semantic interactive elements and detects visual regression, missing"
-    },
-    "visual_verify_artifact": {
-        "description": "Verify visual, structural, and layout integrity of an HTML/SVG/Canvas artifact."
-    },
-    "war_room": {
-        "description": "Open and steer a group war room, and manage the bot lifecycle behind it. A war room is a staged, time-boxed group deliberation: every stage is bounded"
-    },
-    "workflow_dag_manage": {
-        "description": "Manage dependency-ordered and dynamic task graphs (DAG / DWE)."
-    }
+    "skills_hub_manage": {"description": "Manage Skills Hub discovery, AST security audits, and skill installation."},
+    "supervisor_watchdog": {"description": "Monitor agent health, report heartbeats, inspect anomalies, and trigger recovery."},
+    "swarm": {"description": "Evaluate, spawn, run, communicate with, and monitor bounded agent swarms."},
+    "synthesize_reusable_skill": {"description": "Synthesize a structured and validated SKILL.md package from execution steps."},
+    "synthesize_runtime_tool": {"description": "Synthesize, security-verify, self-test and register a new agent tool at runtime. The source is first screened by a static AST security validator that blocks"},
+    "tom_consult": {"description": "Consult the Theory of Mind cognitive model to infer unstated user expectations, invariants, and pitfalls. Before executing high-impact, destructive, or ambiguous modifications, this tool models the hu"},
+    "trace_artifact_lineage": {"description": "Manage artifact provenance, track causal derivation, and audit the ancestry graph of any output."},
+    "trajectory_audit": {"description": "Inspect and export step-by-step reasoning and tool execution trajectories."},
+    "update_progress_card": {"description": "Publish or update an in-place streaming progress draft card. Instead of polluting the chat with repetitive conversational status messages,"},
+    "verify_command_approval": {"description": "Evaluate whether a shell command is safe to execute using Smart Approvals guardian. Strips shell comments to prevent injection bypasses, checks against dangerous destruction"},
+    "verify_web_ui_visual_regression": {"description": "Verify web UI visual integrity and accessibility tree parity between HTML snapshots. Extracts semantic interactive elements and detects visual regression, missing"},
+    "visual_verify_artifact": {"description": "Verify visual, structural, and layout integrity of an HTML/SVG/Canvas artifact."},
+    "war_room": {"description": "Open and steer a group war room, and manage the bot lifecycle behind it. A war room is a staged, time-boxed group deliberation: every stage is bounded"},
+    "workflow_dag_manage": {"description": "Manage dependency-ordered and dynamic task graphs (DAG / DWE)."},
 }
 
 _DRIFT = verify_stub_fingerprint()
@@ -415,7 +181,6 @@ def tool(name: str, **kwargs) -> object:
     a reason rather than silently ignored.
     """
     return get_client().call(name, dict(kwargs))
-
 
 
 def a2a_protocol(**kwargs) -> object:
@@ -455,7 +220,7 @@ def ask_clarification(**kwargs) -> object:
 
 
 def ask_oracle(**kwargs) -> object:
-    """Consult the isolated Oracle advisor on technical standards, API contracts, or architecture best practices. Uses an isolated subagent interface to retrieve authoritative guidance without polluting the 
+    """Consult the isolated Oracle advisor on technical standards, API contracts, or architecture best practices. Uses an isolated subagent interface to retrieve authoritative guidance without polluting the
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``ask_oracle`` tool
     through the script bridge; authorisation is evaluated parent-side.
@@ -1541,4 +1306,3 @@ def workflow_dag_manage(**kwargs) -> object:
     through the script bridge; authorisation is evaluated parent-side.
     """
     return get_client().call("workflow_dag_manage", dict(kwargs))
-

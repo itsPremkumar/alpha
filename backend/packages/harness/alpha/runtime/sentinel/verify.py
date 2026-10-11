@@ -115,7 +115,9 @@ class Verifier:
             )
         except subprocess.TimeoutExpired as exc:
             return CheckResult(
-                name=name, passed=False, error=f"timed out after {timeout or self.default_timeout}s",
+                name=name,
+                passed=False,
+                error=f"timed out after {timeout or self.default_timeout}s",
                 stdout=(exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or ""),
                 duration_s=time.time() - started,
             )

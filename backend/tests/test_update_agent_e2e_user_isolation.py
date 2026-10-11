@@ -31,12 +31,12 @@ import yaml
 from _agent_e2e_helpers import build_single_tool_call_model
 from langchain_core.messages import HumanMessage
 
+from alpha.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 from app.gateway.services import (
     build_run_config,
     inject_authenticated_user_context,
     merge_run_context_overrides,
 )
-from alpha.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 
 
 def _make_request(user_id_str: str | None) -> SimpleNamespace:

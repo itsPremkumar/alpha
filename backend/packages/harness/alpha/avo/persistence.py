@@ -160,9 +160,7 @@ class AVOPersistenceManager:
                     len(chain),
                     len(lineage.versions),
                 )
-                raise LineageIntegrityError(
-                    f"avo lineage chain length {len(chain)} does not match {len(lineage.versions)} committed versions"
-                )
+                raise LineageIntegrityError(f"avo lineage chain length {len(chain)} does not match {len(lineage.versions)} committed versions")
 
             return lineage
         except LineageIntegrityError:

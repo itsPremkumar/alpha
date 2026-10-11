@@ -1,4 +1,3 @@
-
 from alpha.learning.curriculum import (
     CapabilityGap,
     Curriculum,
@@ -26,8 +25,8 @@ def test_curriculum_builder_discovery_and_scheduling():
 
     perf_map = {
         "unit_test_authoring": 0.95,  # Above target -> should NOT be a gap
-        "ast_refactoring": 0.60,      # Gap = 0.30, diff = 0.3 -> prio = 1.0
-        "memory_leak_detection": 0.40, # Gap = 0.50, diff = 0.25 -> prio = 2.0
+        "ast_refactoring": 0.60,  # Gap = 0.30, diff = 0.3 -> prio = 1.0
+        "memory_leak_detection": 0.40,  # Gap = 0.50, diff = 0.25 -> prio = 2.0
     }
     difficulties = {
         "ast_refactoring": 0.3,

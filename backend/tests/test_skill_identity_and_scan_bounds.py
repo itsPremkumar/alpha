@@ -405,9 +405,7 @@ def test_user_scoped_storage_scan_is_bounded_too(tmp_path: Path, monkeypatch) ->
     (skills_root / "public").mkdir(parents=True)
     (user_root / "custom").mkdir(parents=True)
     (user_root / "custom" / "team" / "my-skill").mkdir(parents=True)
-    (user_root / "custom" / "team" / "my-skill" / "SKILL.md").write_text(
-        "---\nname: my-skill\ndescription: d\n---\n\nbody\n", encoding="utf-8"
-    )
+    (user_root / "custom" / "team" / "my-skill" / "SKILL.md").write_text("---\nname: my-skill\ndescription: d\n---\n\nbody\n", encoding="utf-8")
     monkeypatch.setenv("ALPHA_HOME", str(home))
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(home))
     try:
@@ -439,9 +437,7 @@ def test_external_package_symlink_is_still_followed(tmp_path: Path) -> None:
 
     external = tmp_path / "external-pack"
     (external / "linked-skill").mkdir(parents=True)
-    (external / "linked-skill" / "SKILL.md").write_text(
-        "---\nname: linked-skill\ndescription: d\n---\n\nbody\n", encoding="utf-8"
-    )
+    (external / "linked-skill" / "SKILL.md").write_text("---\nname: linked-skill\ndescription: d\n---\n\nbody\n", encoding="utf-8")
     public = tmp_path / "public"
     public.mkdir(parents=True)
     try:

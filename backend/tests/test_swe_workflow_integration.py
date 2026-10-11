@@ -95,10 +95,12 @@ def test_openhands_full_engineering_workflow(tmp_path):
     assert patch_validation.stats["files_changed_count"] == 1
 
     # 8. Completion Critic Verification
-    critic_pipeline = CriticPipeline(critics=[
-        AgentFinishedCritic(check_unresolved_errors=True),
-        EmptyPatchCritic(force_check=False),
-    ])
+    critic_pipeline = CriticPipeline(
+        critics=[
+            AgentFinishedCritic(check_unresolved_errors=True),
+            EmptyPatchCritic(force_check=False),
+        ]
+    )
 
     execution_history = [
         {"tool_name": "run_command", "status": "success", "exit_code": 0},

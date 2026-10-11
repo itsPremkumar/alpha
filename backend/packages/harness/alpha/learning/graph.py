@@ -332,10 +332,7 @@ class SkillGraph:
         }
 
         if not self._edges:
-            base["note"] = (
-                "The skill relationship graph is empty: no edges have been recorded, so there is nothing to "
-                f"chain. {BASELINE_CONFIDENCE_NOTE}"
-            )
+            base["note"] = f"The skill relationship graph is empty: no edges have been recorded, so there is nothing to chain. {BASELINE_CONFIDENCE_NOTE}"
             return base
         if start is None and goal is None and not tags:
             base["note"] = "No start, goal, or task_tags supplied; pass at least one so a chain can be grounded. The empty chain list is deliberate."
@@ -352,11 +349,7 @@ class SkillGraph:
             score = round(0.5 * confidence_mean + 0.5 * tag_similarity, 3) if tag_tokens else round(confidence_mean, 3)
             total_evidence = sum(edge.evidence_count for edge in edges)
             reasons = [
-                (
-                    f"{edge.source} -{edge.edge_type}-> {edge.target}: confidence {edge.confidence} "
-                    f"({'neutral baseline' if edge.confidence == BASELINE_CONFIDENCE else 'explicitly supplied'}), "
-                    f"{edge.evidence_count} recorded observation(s)"
-                )
+                (f"{edge.source} -{edge.edge_type}-> {edge.target}: confidence {edge.confidence} ({'neutral baseline' if edge.confidence == BASELINE_CONFIDENCE else 'explicitly supplied'}), {edge.evidence_count} recorded observation(s)")
                 for edge in edges
             ]
             if tag_tokens:
@@ -375,19 +368,13 @@ class SkillGraph:
             if not paths:
                 if start is not None:
                     known = start in {key[0] for key in self._edges} | {key[1] for key in self._edges}
-                    base["note"] = (
-                        f"No directed chain found from start '{start}' within max_depth={max_depth}"
-                        + (" (unknown skill name: not present in the graph)." if not known else " (no recorded edges continue from it).")
-                    )
+                    base["note"] = f"No directed chain found from start '{start}' within max_depth={max_depth}" + (" (unknown skill name: not present in the graph)." if not known else " (no recorded edges continue from it).")
                 elif goal is not None:
                     base["note"] = f"No recorded directed chain reaches goal '{goal}' within max_depth={max_depth}."
                 else:  # pragma: no cover - defensive; tags branch below handles overlap misses
                     base["note"] = "No candidate chain could be enumerated from the supplied filters."
             else:
-                base["note"] = (
-                    f"None of the {len(paths)} recorded candidate chain(s) lexically matched the task tags {tags}; "
-                    "returning an honest empty list instead of an unrelated chain."
-                )
+                base["note"] = f"None of the {len(paths)} recorded candidate chain(s) lexically matched the task tags {tags}; returning an honest empty list instead of an unrelated chain."
             return base
 
         candidates.sort(key=lambda item: (-item["score"], -item["total_evidence"], len(item["chain"]), item["chain"]))

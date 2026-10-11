@@ -55,9 +55,7 @@ class CriticPipeline:
 
         if rejections:
             combined_reasons = "\n- ".join(r.reason for r in rejections)
-            combined_prompts = "\n\n".join(
-                r.diagnostic_prompt for r in rejections if r.diagnostic_prompt
-            )
+            combined_prompts = "\n\n".join(r.diagnostic_prompt for r in rejections if r.diagnostic_prompt)
             return CriticResult(
                 verdict=CriticVerdict.REJECTED,
                 reason=f"Verification rejected by {len(rejections)} critic(s):\n- {combined_reasons}",

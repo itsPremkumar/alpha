@@ -13,6 +13,10 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
+from alpha.config.agents_api_config import load_agents_api_config_from_dict
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
 from app.gateway.routers.agents import (
     AgentCreateRequest,
     AgentUpdateRequest,
@@ -20,10 +24,6 @@ from app.gateway.routers.agents import (
     get_agent,
     update_agent,
 )
-from alpha.config.agents_api_config import load_agents_api_config_from_dict
-from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
-from alpha.config.model_config import ModelConfig
-from alpha.config.sandbox_config import SandboxConfig
 
 pytestmark = pytest.mark.asyncio
 

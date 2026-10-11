@@ -13,8 +13,7 @@ if str(_HARNESS_ROOT) not in sys.path:
 
 import pytest  # noqa: E402
 
-from alpha.routines import (
-    Routine,
+from alpha.routines import (  # noqa: E402
     RoutineRecorder,
     RoutineStore,
     RoutineStoreUnreadable,

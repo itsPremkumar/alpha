@@ -105,18 +105,10 @@ def record_governance_action(
     record, because it looks like a record.
     """
     if action not in GOVERNANCE_ACTIONS:
-        raise GovernanceLedgerError(
-            f"unknown governance action {action!r}; expected one of {sorted(GOVERNANCE_ACTIONS)}"
-        )
-    missing = [
-        field
-        for field, value in (("actor", actor), ("target", target), ("reason", reason))
-        if not str(value or "").strip()
-    ]
+        raise GovernanceLedgerError(f"unknown governance action {action!r}; expected one of {sorted(GOVERNANCE_ACTIONS)}")
+    missing = [field for field, value in (("actor", actor), ("target", target), ("reason", reason)) if not str(value or "").strip()]
     if missing:
-        raise GovernanceLedgerError(
-            f"governance action {action!r} is missing required attribution: {missing}"
-        )
+        raise GovernanceLedgerError(f"governance action {action!r} is missing required attribution: {missing}")
 
     event = (store or get_org_event_store()).append_event(
         event_type=f"{GOVERNANCE_PREFIX}{action}",
@@ -273,9 +265,7 @@ def query_governance_actions(
     store: Any = None,
 ) -> list[dict[str, Any]]:
     """Read the governance ledger back, newest first."""
-    events = (store or get_org_event_store()).query_events(
-        limit=limit, actor=actor, target=target
-    )
+    events = (store or get_org_event_store()).query_events(limit=limit, actor=actor, target=target)
     return [e for e in events if str(e.get("event_type", "")).startswith(GOVERNANCE_PREFIX)]
 
 
@@ -293,15 +283,11 @@ def assert_ledger_ordered_and_gap_free(
     for entry in entries:
         seq = entry.get("seq")
         if not isinstance(seq, int):
-            raise GovernanceLedgerError(
-                f"ledger entry {entry.get('id')!r} has no integer seq; ordering unverifiable"
-            )
+            raise GovernanceLedgerError(f"ledger entry {entry.get('id')!r} has no integer seq; ordering unverifiable")
         seen.append(seq)
     for previous, current in zip(seen, seen[1:], strict=False):
         if current != previous + 1:
-            raise GovernanceLedgerError(
-                f"ledger is not gap-free: seq {previous} is followed by {current}"
-            )
+            raise GovernanceLedgerError(f"ledger is not gap-free: seq {previous} is followed by {current}")
 
 
 __all__ = [

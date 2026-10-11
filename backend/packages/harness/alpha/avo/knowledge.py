@@ -8,6 +8,7 @@ from typing import Any
 @dataclass
 class KnowledgeEntry:
     """Entry in the domain knowledge base K."""
+
     category: str  # "spec", "reference", "pattern", "anti_pattern"
     title: str
     content: str
@@ -49,11 +50,7 @@ class DomainKnowledgeBase:
         self.add_entry(
             category="pattern",
             title="Branchless Accumulator Rescaling",
-            content=(
-                "Replace conditional branch checking of row-maximum updates with predicated select "
-                "substituting 1.0 when rescaling is unnecessary. Eliminates warp synchronization and divergence, "
-                "allowing non-blocking memory fences."
-            ),
+            content=("Replace conditional branch checking of row-maximum updates with predicated select substituting 1.0 when rescaling is unnecessary. Eliminates warp synchronization and divergence, allowing non-blocking memory fences."),
             tags=["branchless", "accumulator", "warp-divergence", "fences", "attention"],
             impact_description="+8.1% non-causal throughput on Blackwell B200",
         )
@@ -61,10 +58,7 @@ class DomainKnowledgeBase:
         self.add_entry(
             category="pattern",
             title="Correction and MMA Pipeline Overlap",
-            content=(
-                "Overlap tensor core matrix multiplication (MMA) with accumulator correction stages "
-                "by staging asynchronous GMEM/SMEM loads and scheduling warp groups cooperatively."
-            ),
+            content=("Overlap tensor core matrix multiplication (MMA) with accumulator correction stages by staging asynchronous GMEM/SMEM loads and scheduling warp groups cooperatively."),
             tags=["pipeline-overlap", "mma", "async-copy", "warp-specialization"],
             impact_description="+1.1% causal throughput overlap",
         )
@@ -72,10 +66,7 @@ class DomainKnowledgeBase:
         self.add_entry(
             category="pattern",
             title="Register Rebalancing Across Warp Groups",
-            content=(
-                "Rebalance register budget across specialized producer and consumer warp groups "
-                "to prevent spill while maximizing occupancy on Blackwell architecture."
-            ),
+            content=("Rebalance register budget across specialized producer and consumer warp groups to prevent spill while maximizing occupancy on Blackwell architecture."),
             tags=["registers", "occupancy", "warp-groups", "spill"],
             impact_description="+2.1% throughput gain",
         )
@@ -83,10 +74,7 @@ class DomainKnowledgeBase:
         self.add_entry(
             category="anti_pattern",
             title="Divergent Branching in Core Computation Loop",
-            content=(
-                "Avoid divergent if-else branches inside inner tile iteration loops. "
-                "Serializes thread execution within the warp and forces heavyweight memory barriers."
-            ),
+            content=("Avoid divergent if-else branches inside inner tile iteration loops. Serializes thread execution within the warp and forces heavyweight memory barriers."),
             tags=["warp-divergence", "anti-pattern", "inner-loop", "branch"],
             impact_description="Severe degradation of SM instruction issue rate",
         )

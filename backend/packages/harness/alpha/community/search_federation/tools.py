@@ -204,9 +204,7 @@ def web_search_tool(
         # response, not raised past the tool boundary.
         request = SearchRequest(
             query=query,
-            max_results=_coerce_int(
-                extra.get("max_results", max_results), DEFAULT_MAX_RESULTS, low=1, high=MAX_RESULTS_HARD_CAP
-            ),
+            max_results=_coerce_int(extra.get("max_results", max_results), DEFAULT_MAX_RESULTS, low=1, high=MAX_RESULTS_HARD_CAP),
             time_range=time_range,
             mode=str(mode or extra.get("mode") or "auto").strip().lower(),
             search_depth=str(extra.get("search_depth") or DEFAULT_SEARCH_DEPTH).strip().lower(),
@@ -248,9 +246,7 @@ def web_find_similar_tool(url: str, max_results: int = DEFAULT_MAX_RESULTS) -> s
     try:
         outcome = federation.find_similar(
             url,
-            max_results=_coerce_int(
-                extra.get("max_results", max_results), DEFAULT_MAX_RESULTS, low=1, high=MAX_RESULTS_HARD_CAP
-            ),
+            max_results=_coerce_int(extra.get("max_results", max_results), DEFAULT_MAX_RESULTS, low=1, high=MAX_RESULTS_HARD_CAP),
             timeout=_coerce_float(extra.get("timeout", DEFAULT_TIMEOUT), DEFAULT_TIMEOUT, low=1.0, high=120.0),
         )
     except (SearchExhaustedError, SearchProviderError) as exc:

@@ -120,12 +120,14 @@ class SymbolGraph:
         token_budget: int = 1500,
     ) -> str:
         """Generates a compact repo map using Personalized PageRank within token budget."""
-        from alpha.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
         from alpha.coding.structural_intelligence.repo_map import RepoMapGenerator
+        from alpha.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
 
         graph = SymbolDependencyGraph()
         for sym in self.symbols.values():
-            from alpha.coding.structural_intelligence.polyglot_cst import SymbolKind, SymbolNode as RichNode
+            from alpha.coding.structural_intelligence.polyglot_cst import SymbolKind
+            from alpha.coding.structural_intelligence.polyglot_cst import SymbolNode as RichNode
+
             kind_map = {
                 SymbolType.CLASS: SymbolKind.CLASS,
                 SymbolType.FUNCTION: SymbolKind.FUNCTION,
@@ -144,7 +146,6 @@ class SymbolGraph:
                 parameters=sym.parameters,
             )
             graph.add_node(node)
-        
+
         generator = RepoMapGenerator(token_budget=token_budget)
         return generator.generate_repo_map(graph, active_files=active_files, query=query)
-

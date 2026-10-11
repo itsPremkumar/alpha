@@ -83,10 +83,7 @@ class QualityCouncil:
             for c in v.concerns:
                 all_concerns.append(f"[{v.role}] {c}")
 
-        summary = (
-            f"Council {'APPROVED' if passed else 'REJECTED'} '{artifact_name}' under {risk_tier.value.upper()}. "
-            f"Votes: {approvals} Approve, {rejections} Reject, {conditionals} Conditional (Quorum needed: {quorum_needed}/5)."
-        )
+        summary = f"Council {'APPROVED' if passed else 'REJECTED'} '{artifact_name}' under {risk_tier.value.upper()}. Votes: {approvals} Approve, {rejections} Reject, {conditionals} Conditional (Quorum needed: {quorum_needed}/5)."
 
         logger.info(summary)
 

@@ -4,8 +4,8 @@ from .adaptive_autonomy_tool import check_or_set_autonomy_profile
 from .agency_competence_tool import evaluate_agent_competence
 from .agent_message_tool import agent_message_tool, agent_observe_tool
 from .alpha_capability_tool import alpha_capability
-from .artifact_lineage_tool import trace_artifact_lineage
 from .arena_tool import arena_tool
+from .artifact_lineage_tool import trace_artifact_lineage
 from .ask_oracle_tool import ask_oracle
 from .ast_grep_tool import ast_grep_rewrite, ast_grep_search
 from .autonomous_benchmark_tool import run_autonomous_benchmark_eval
@@ -305,6 +305,7 @@ __all__ = [
     "supervision_tool",
     "goal_integrity_tool",
     "a2a_tool",
+    "arena_tool",
     "company_tool",
     "generate_repo_map",
     "auto_test_and_repair",

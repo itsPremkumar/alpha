@@ -10,6 +10,7 @@ from typing import Any
 
 class CriticVerdict(str, Enum):
     """Verdict returned by a Critic evaluation."""
+
     APPROVED = "approved"
     REJECTED = "rejected"
     WARNING = "warning"
@@ -18,6 +19,7 @@ class CriticVerdict(str, Enum):
 @dataclass
 class CriticResult:
     """Outcome of a Critic check."""
+
     verdict: CriticVerdict
     reason: str
     diagnostic_prompt: str | None = None

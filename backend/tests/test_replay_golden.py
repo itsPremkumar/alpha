@@ -104,8 +104,5 @@ def test_replay_write_read_file_ultra_matches_golden(tmp_path: Path, monkeypatch
         got = repr(events[diff_at])[:2000] if diff_at < len(events) else "<missing: got is shorter than golden>"
         want = repr(golden[diff_at])[:2000] if diff_at < len(golden) else "<missing: want is shorter than got>"
         pytest.fail(
-            f"SSE event-shape sequence drifted from the golden.\n"
-            f"got  ({len(events)}): {[e['event'] for e in events]}\n"
-            f"want ({len(golden)}): {[e['event'] for e in golden]}\n"
-            f"first difference at index {diff_at}:\n  got  {got}\n  want {want}"
+            f"SSE event-shape sequence drifted from the golden.\ngot  ({len(events)}): {[e['event'] for e in events]}\nwant ({len(golden)}): {[e['event'] for e in golden]}\nfirst difference at index {diff_at}:\n  got  {got}\n  want {want}"
         )

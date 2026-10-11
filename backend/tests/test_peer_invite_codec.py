@@ -124,7 +124,7 @@ def test_an_unrecognised_field_is_refused_not_ignored():
 
 
 def test_a_duplicated_field_is_refused():
-    uri = _full_invite() + f"&a=alpha-elsewhere"
+    uri = _full_invite() + "&a=alpha-elsewhere"
     with pytest.raises(InviteError, match="more than once"):
         parse_invite(uri)
 

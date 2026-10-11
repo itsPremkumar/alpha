@@ -50,12 +50,15 @@ class GitHubWorkforceBridge:
                     task_id=task_id,
                     required_capabilities=labels,
                 )
-                record.update({
-                    "status": "auction_awarded",
-                    "auction_id": winning_bid.bid_id if winning_bid else None,
-                    "winning_bot": winning_bid.bot_name if winning_bid else "coder",
-                    "task_id": task_id,
-                })
+                record.update(
+                    {
+                        "status": "auction_awarded",
+                        "title": title,
+                        "auction_id": winning_bid.bid_id if winning_bid else None,
+                        "winning_bot": winning_bid.bot_name if winning_bid else "coder",
+                        "task_id": task_id,
+                    }
+                )
             except Exception as e:
                 logger.error(f"Failed to launch auction for GitHub issue: {e}")
                 record.update({"status": "auction_failed", "error": str(e)})
@@ -72,25 +75,26 @@ class GitHubWorkforceBridge:
 
                 council = get_audit_council(project_id)
                 audit = council.audit_code(code_content=diff_text, context_description=f"PR #{pr.get('number')}")
-                record.update({
-                    "status": "audit_completed",
-                    "audit_id": audit.audit_id,
-                    "verdict": "approved" if audit.passed else "rejected",
-                    "risk_score": round(100.0 - (audit.score * 100.0), 1),
-                })
+                record.update(
+                    {
+                        "status": "audit_completed",
+                        "audit_id": audit.audit_id,
+                        "verdict": "approved" if audit.passed else "rejected",
+                        "risk_score": round(100.0 - (audit.score * 100.0), 1),
+                    }
+                )
             except Exception as e:
                 logger.error(f"Failed to audit GitHub PR: {e}")
                 record.update({"status": "audit_failed", "error": str(e)})
 
         # 3. CI Workflow Run Failed -> Trigger Self-Healing Runner
-        elif (event_type in ("check_run", "workflow_run") and action == "completed") or (
-            event_type == "workflow_run" and payload.get("workflow_run", {}).get("conclusion") == "failure"
-        ):
+        elif (event_type in ("check_run", "workflow_run") and action == "completed") or (event_type == "workflow_run" and payload.get("workflow_run", {}).get("conclusion") == "failure"):
             wf = payload.get("workflow_run") or payload.get("check_run") or {}
             wf_name = wf.get("name", "CI Pipeline")
 
             try:
                 import uuid
+
                 from alpha.projects.self_healing_runner import TestRunResult, get_self_healing_runner
 
                 runner = get_self_healing_runner(project_id)
@@ -108,12 +112,14 @@ class GitHubWorkforceBridge:
                     test_fn=_ci_test,
                     max_attempts=2,
                 )
-                record.update({
-                    "status": "self_healing_executed",
-                    "workflow": wf_name,
-                    "repaired": result.success,
-                    "attempts": result.attempts,
-                })
+                record.update(
+                    {
+                        "status": "self_healing_executed",
+                        "workflow": wf_name,
+                        "repaired": result.success,
+                        "attempts": result.attempts,
+                    }
+                )
             except Exception as e:
                 logger.error(f"Failed to execute self-healing for CI failure: {e}")
                 record.update({"status": "healing_failed", "error": str(e)})
@@ -123,11 +129,13 @@ class GitHubWorkforceBridge:
             comment = payload.get("comment", {})
             body = comment.get("body", "")
             if "@alpha" in body.lower():
-                record.update({
-                    "status": "workforce_mention_dispatched",
-                    "comment_author": comment.get("user", {}).get("login"),
-                    "instruction": body,
-                })
+                record.update(
+                    {
+                        "status": "workforce_mention_dispatched",
+                        "comment_author": comment.get("user", {}).get("login"),
+                        "instruction": body,
+                    }
+                )
             else:
                 record.update({"status": "ignored_no_mention"})
         else:

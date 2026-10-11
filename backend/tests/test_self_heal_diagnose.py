@@ -35,10 +35,12 @@ def test_self_healing_stale_lock_detection_and_remediation(tmp_path):
 
 
 def test_self_heal_tool_invocation(tmp_path):
-    res_str = self_heal_diagnose.invoke({
-        "auto_remediate": True,
-        "workspace_dir": str(tmp_path),
-    })
+    res_str = self_heal_diagnose.invoke(
+        {
+            "auto_remediate": True,
+            "workspace_dir": str(tmp_path),
+        }
+    )
     data = json.loads(res_str)
     assert "healthy" in data
     assert "faults" in data

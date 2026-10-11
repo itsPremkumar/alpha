@@ -64,9 +64,7 @@ class Milestone:
         raw_checks = data.pop("verification_checks", [])
         filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         m = cls(**filtered)
-        m.verification_checks = [
-            VerificationCheck(**vc) if isinstance(vc, dict) else vc for vc in raw_checks
-        ]
+        m.verification_checks = [VerificationCheck(**vc) if isinstance(vc, dict) else vc for vc in raw_checks]
         return m
 
 

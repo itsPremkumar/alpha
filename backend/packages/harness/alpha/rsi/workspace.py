@@ -117,10 +117,7 @@ def _validate_branch_name(branch: str) -> str:
     module.
     """
     if not isinstance(branch, str) or not branch.startswith("rsi/"):
-        raise ValueError(
-            f"RSI workspaces only operate on 'rsi/*' branches (got {branch!r}); "
-            "refusing to touch main/master or any other branch."
-        )
+        raise ValueError(f"RSI workspaces only operate on 'rsi/*' branches (got {branch!r}); refusing to touch main/master or any other branch.")
     rest = branch[len("rsi/") :]
     if not rest or not _CANDIDATE_ID_RE.fullmatch(rest) or ".." in branch:
         raise ValueError(f"Invalid RSI workspace branch name: {branch!r}")
@@ -356,17 +353,11 @@ class RsiWorkspaceManager:
                 timeout=float(timeout),
             )
         except subprocess.TimeoutExpired as exc:
-            detail = (
-                f"command timed out after {timeout}s: {cmd_str} | stdout tail: {_output_tail(getattr(exc, 'stdout', None))}"
-                f" | stderr tail: {_output_tail(getattr(exc, 'stderr', None))} | {' | '.join(notes)}"
-            )
+            detail = f"command timed out after {timeout}s: {cmd_str} | stdout tail: {_output_tail(getattr(exc, 'stdout', None))} | stderr tail: {_output_tail(getattr(exc, 'stderr', None))} | {' | '.join(notes)}"
             return False, detail
         except OSError as exc:
             return False, f"command could not be executed: {type(exc).__name__}: {exc}: {cmd_str} | {' | '.join(notes)}"
-        detail = (
-            f"exit code {proc.returncode}: {cmd_str} | stdout tail: {_output_tail(proc.stdout)}"
-            f" | stderr tail: {_output_tail(proc.stderr)} | {' | '.join(notes)}"
-        )
+        detail = f"exit code {proc.returncode}: {cmd_str} | stdout tail: {_output_tail(proc.stdout)} | stderr tail: {_output_tail(proc.stderr)} | {' | '.join(notes)}"
         return proc.returncode == 0, detail
 
     # ── delegation / records ────────────────────────────────────────────────

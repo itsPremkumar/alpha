@@ -6,13 +6,10 @@ biased by active task query and open/active files.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
-from typing import Any, Optional
 
 from alpha.coding.structural_intelligence.polyglot_cst import SymbolKind, SymbolNode
 from alpha.coding.structural_intelligence.symbol_dependency_graph import (
-    EdgeType,
     SymbolDependencyGraph,
 )
 
@@ -29,10 +26,10 @@ class PersonalizedPageRank:
         self,
         graph: SymbolDependencyGraph,
         seed_nodes: list[str],
-        seed_weights: Optional[dict[str, float]] = None,
+        seed_weights: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """Computes Personalized PageRank biased toward seed_nodes.
-        
+
         Args:
             graph: The symbol dependency graph.
             seed_nodes: Node IDs (files or symbols) representing active focus/query.
@@ -44,7 +41,7 @@ class PersonalizedPageRank:
         for edge in graph.edges:
             node_set.add(edge.source_id)
             node_set.add(edge.target_id)
-        
+
         nodes = sorted(list(node_set))
         n = len(nodes)
         if n == 0:
@@ -116,7 +113,7 @@ class RepoMapGenerator:
         self,
         token_budget: int = 1500,
         char_per_token: float = 4.0,
-        ppr_engine: Optional[PersonalizedPageRank] = None,
+        ppr_engine: PersonalizedPageRank | None = None,
     ) -> None:
         self.token_budget = token_budget
         self.char_per_token = char_per_token
@@ -126,8 +123,8 @@ class RepoMapGenerator:
     def generate_repo_map(
         self,
         graph: SymbolDependencyGraph,
-        active_files: Optional[list[str]] = None,
-        query: Optional[str] = None,
+        active_files: list[str] | None = None,
+        query: str | None = None,
     ) -> str:
         """Generates a compact structural repo map biased by active files and query."""
         seed_nodes: list[str] = []

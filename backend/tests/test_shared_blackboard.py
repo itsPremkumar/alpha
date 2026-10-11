@@ -37,19 +37,19 @@ def test_blackboard_plane_state_transitions():
 
 def test_blackboard_evidence_recording_and_query():
     bb = BlackboardEngine(goal="Verify memory integrity")
-    item1 = bb.record_evidence(
+    bb.record_evidence(
         plane_id="plane_4_deep_research",
         evidence_type="source_verification",
         content={"doc": "RFC-7540", "status": "verified"},
         confidence=0.95,
     )
-    item2 = bb.record_evidence(
+    bb.record_evidence(
         plane_id="plane_13_multi_round_verification",
         evidence_type="test_pass",
         content={"tests": 45, "passed": 45},
         confidence=1.0,
     )
-    item3 = bb.record_evidence(
+    bb.record_evidence(
         plane_id="plane_13_multi_round_verification",
         evidence_type="lint_check",
         content={"warnings": 2},

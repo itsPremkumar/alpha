@@ -637,9 +637,7 @@ def test_tool_forge_reports_a_complete_build(tmp_path, monkeypatch):
 
 
 def test_tool_forge_writes_default_approvals_into_the_soul():
-    bot_roster_tool.invoke(
-        {"action": "forge", "name": "inkwell", "role": "Write scheduled social posts"}
-    )
+    bot_roster_tool.invoke({"action": "forge", "name": "inkwell", "role": "Write scheduled social posts"})
     from alpha.bots.registry import get_bot_registry
 
     bot = get_bot_registry().get_bot("inkwell")
@@ -650,9 +648,7 @@ def test_tool_forge_writes_default_approvals_into_the_soul():
 
 def test_tool_forge_approvals_opt_out_is_explicit_not_implicit():
     """``approvals=""`` cannot mean opt-out (indistinguishable from unasked)."""
-    bot_roster_tool.invoke(
-        {"action": "forge", "name": "barebot", "role": "Reconcile invoices monthly", "approvals": "none"}
-    )
+    bot_roster_tool.invoke({"action": "forge", "name": "barebot", "role": "Reconcile invoices monthly", "approvals": "none"})
     from alpha.bots.registry import get_bot_registry
 
     bot = get_bot_registry().get_bot("barebot")

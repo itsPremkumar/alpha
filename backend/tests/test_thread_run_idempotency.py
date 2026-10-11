@@ -12,14 +12,14 @@ from _router_auth_helpers import call_unwrapped, make_authed_test_app
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.gateway import services
-from app.gateway.auth.models import User
-from app.gateway.routers import thread_runs
-from app.gateway.run_models import RunCreateRequest
 from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
 from alpha.runtime import DisconnectMode, RunManager, RunRecord, RunStatus
 from alpha.runtime.events.store.memory import MemoryRunEventStore
 from alpha.runtime.runs.store.memory import MemoryRunStore
+from app.gateway import services
+from app.gateway.auth.models import User
+from app.gateway.routers import thread_runs
+from app.gateway.run_models import RunCreateRequest
 
 
 def _user(email: str) -> User:

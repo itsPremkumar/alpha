@@ -227,7 +227,7 @@ async def test_click_follows_the_link():
 @pytest.mark.asyncio
 async def test_click_without_an_href_is_refused_not_faked():
     """A button with no href is not clickable over HTTP; say so."""
-    executor = HtmlExecutor(HOME, client=_site({HOME: '<button>Submit</button>'}))
+    executor = HtmlExecutor(HOME, client=_site({HOME: "<button>Submit</button>"}))
     state = await executor.observe()
 
     result = await executor.act("CLICK", "1", "", _element(state))
@@ -383,13 +383,7 @@ async def test_the_response_body_is_capped():
 # forms: filling and submitting
 # --------------------------------------------------------------------------
 
-SEARCH = (
-    '<form action="/search" method="get">'
-    '<input type="hidden" name="csrf" value="tok">'
-    '<input type="text" name="q" placeholder="Search">'
-    '<button type="submit">Go</button>'
-    "</form>"
-)
+SEARCH = '<form action="/search" method="get"><input type="hidden" name="csrf" value="tok"><input type="text" name="q" placeholder="Search"><button type="submit">Go</button></form>'
 
 
 @pytest.mark.asyncio
@@ -398,9 +392,7 @@ async def test_a_form_is_extracted_with_its_hidden_fields():
     executor = HtmlExecutor(HOME, client=_site({HOME: SEARCH}))
     state = await executor.observe()
 
-    assert state["forms"] == [
-        {"index": 1, "action": "/search", "method": "get", "enctype": "", "fields": [{"name": "csrf", "value": "tok"}]}
-    ]
+    assert state["forms"] == [{"index": 1, "action": "/search", "method": "get", "enctype": "", "fields": [{"name": "csrf", "value": "tok"}]}]
     assert [e["role"] for e in state["elements"]] == ["textbox", "button"], "the hidden input is not an action"
 
 
@@ -438,11 +430,7 @@ async def test_a_typed_value_survives_the_next_observation():
 @pytest.mark.asyncio
 async def test_a_select_records_the_option_value_not_its_label():
     """The server wants the value; the model was shown the label."""
-    html = (
-        '<form action="/s" method="get">'
-        '<select name="sort"><option value="relevance">Relevance</option><option value="date">Date</option></select>'
-        '<button type="submit">Go</button></form>'
-    )
+    html = '<form action="/s" method="get"><select name="sort"><option value="relevance">Relevance</option><option value="date">Date</option></select><button type="submit">Go</button></form>'
     server = _Server(pages={HOME: html, "https://x.test/s?sort=date": "<h1>ok</h1>"})
     executor = HtmlExecutor(HOME, client=server.client())
 
@@ -456,13 +444,7 @@ async def test_a_select_records_the_option_value_not_its_label():
 
 @pytest.mark.asyncio
 async def test_a_post_form_sends_hidden_fields_and_typed_values():
-    html = (
-        '<form action="/login" method="post">'
-        '<input type="hidden" name="csrf" value="tok">'
-        '<input type="text" name="user">'
-        '<button type="submit">Sign in</button>'
-        "</form>"
-    )
+    html = '<form action="/login" method="post"><input type="hidden" name="csrf" value="tok"><input type="text" name="user"><button type="submit">Sign in</button></form>'
     server = _Server(pages={HOME: html}, posts={"https://x.test/login": "<h1>Welcome</h1>"})
     executor = HtmlExecutor(HOME, client=server.client())
 
@@ -664,12 +646,7 @@ async def test_a_refused_click_does_not_end_the_run_silently():
     assert run.detail, "the run must explain why it stopped"
 
 
-SEARCH_FORM = (
-    '<form action="/search" method="get">'
-    '<input type="text" name="q" placeholder="Search">'
-    '<button type="submit">Go</button>'
-    "</form>"
-)
+SEARCH_FORM = '<form action="/search" method="get"><input type="text" name="q" placeholder="Search"><button type="submit">Go</button></form>'
 RESULTS = "https://x.test/search?q=python"
 
 
@@ -743,15 +720,7 @@ async def test_a_form_value_that_does_not_exist_stops_rather_than_guessing():
     assert run.status == STATUS_NEEDS_TEXT, f"got {run.status}: {run.detail}"
 
 
-PICK_FORM = (
-    '<form action="/pick" method="get">'
-    '<select name="country">'
-    '<option value="us">United States</option>'
-    '<option value="de">Germany</option>'
-    "</select>"
-    '<button type="submit">Go</button>'
-    "</form>"
-)
+PICK_FORM = '<form action="/pick" method="get"><select name="country"><option value="us">United States</option><option value="de">Germany</option></select><button type="submit">Go</button></form>'
 # `_sequence_client` answers a target head with its first candidate, so the
 # scripted SELECT lands on "1:1" — United States.
 PICKED = "https://x.test/pick?country=us"

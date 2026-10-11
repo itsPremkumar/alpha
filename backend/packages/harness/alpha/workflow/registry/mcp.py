@@ -40,10 +40,7 @@ class MCPServerRegistry:
     def list(self) -> list[CapabilityDescriptor]:
         config = self._load_config()
         base = self._config_base()
-        return [
-            self._describe_server(name, server, f"{base}.{name}")
-            for name, server in config.mcp_servers.items()
-        ]
+        return [self._describe_server(name, server, f"{base}.{name}") for name, server in config.mcp_servers.items()]
 
     def describe(self, server_name: str) -> CapabilityDescriptor | None:
         config = self._load_config()

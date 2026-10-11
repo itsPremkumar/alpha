@@ -116,6 +116,7 @@ def compute_fingerprint(source: str, kind: str, message: str) -> str:
 
 # ── Attempt tracking ───────────────────────────────────────────────────────
 
+
 @dataclass
 class AttemptRecord:
     fingerprint: str

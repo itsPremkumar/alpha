@@ -8,6 +8,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
+from alpha.branding import DISPLAY_NAME
 from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
@@ -18,7 +19,6 @@ from app.channels.message_bus import (
     OutboundMessage,
     ResolvedAttachment,
 )
-from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 

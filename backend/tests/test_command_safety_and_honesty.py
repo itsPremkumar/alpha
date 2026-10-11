@@ -151,9 +151,7 @@ def test_approval_gated_command_never_reaches_its_handler():
     calls: list[str] = []
     stub = command_registry.get("/security lockdown")
     assert stub is not None
-    command_registry._handlers["/security lockdown"] = lambda args, context=None: calls.append(args) or CommandExecutionResult(
-        status="success", command="/security lockdown", output="ran"
-    )
+    command_registry._handlers["/security lockdown"] = lambda args, context=None: calls.append(args) or CommandExecutionResult(status="success", command="/security lockdown", output="ran")
     try:
         blocked = command_registry.execute("/security lockdown")
         assert blocked.status == "approval_required"
@@ -497,9 +495,7 @@ def test_identify_autonomous_command_says_a_placeholder_recommendation_is_not_ex
     """A recommendation the registry cannot act on must not look actionable."""
     from alpha.tools.builtins.autonomous_command_tool import identify_autonomous_command_tool
 
-    out = identify_autonomous_command_tool.invoke(
-        {"current_intent_or_error": "Conduct deep research into the latest consensus protocols and compare solutions", "phase": "research"}
-    )
+    out = identify_autonomous_command_tool.invoke({"current_intent_or_error": "Conduct deep research into the latest consensus protocols and compare solutions", "phase": "research"})
 
     assert "Autonomous Recommendation" in out
     assert "- Executable: False" in out, out

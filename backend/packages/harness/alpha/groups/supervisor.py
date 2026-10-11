@@ -186,10 +186,7 @@ class LoopDetector:
             history.pop(0)
         repeats = history.count(sig)
         if repeats >= self.max_repeats:
-            return True, (
-                f"progress signature {sig} repeated {repeats} times across {len(history)} "
-                f"observations; treating @{task_id} as stuck"
-            )
+            return True, (f"progress signature {sig} repeated {repeats} times across {len(history)} observations; treating @{task_id} as stuck")
         return False, f"progress signature {sig}, observation {len(history)}, not looping"
 
     def forget(self, task_id: str) -> None:
@@ -240,9 +237,7 @@ class Supervisor:
         try:
             from alpha.models.workforce_router import get_workforce_model_router
 
-            decision = get_workforce_model_router().route_model(
-                task_category="", bot_role=role, complexity=complexity
-            )
+            decision = get_workforce_model_router().route_model(task_category="", bot_role=role, complexity=complexity)
             return decision.to_dict()
         except Exception as exc:  # noqa: BLE001
             return {"tier": "unknown", "reasoning": f"model router unavailable: {type(exc).__name__}: {exc}"}
@@ -342,11 +337,7 @@ class Supervisor:
         return SupervisorDecision(
             task_id=task_id,
             step=STEP_UNROUTABLE,
-            reason=(
-                "no capability dispatcher is wired into this supervisor; refusing to select a "
-                "target by name, because selection by department or by name is how mismatched "
-                "agents get tasks they cannot do"
-            ),
+            reason=("no capability dispatcher is wired into this supervisor; refusing to select a target by name, because selection by department or by name is how mismatched agents get tasks they cannot do"),
             required_capability_tags=required,
             depth=ctx.depth,
             hops=ctx.hops,
@@ -382,11 +373,7 @@ class Supervisor:
         resolved = reason if reason in ALL_REASONS else classify_work_failure(error)
         klass = failure_class(resolved)
         verdict = decide_failure(resolved, attempt=attempt, max_attempts=max_attempts)
-        detail = (
-            f"{verdict.detail} (reason={resolved}, class={klass}"
-            + ("" if reason in ALL_REASONS else f", classified from {error!r}")
-            + ")"
-        )
+        detail = f"{verdict.detail} (reason={resolved}, class={klass}" + ("" if reason in ALL_REASONS else f", classified from {error!r}") + ")"
 
         if verdict.action == ACTION_RETRY:
             step = STEP_RETRY_IN_PLACE
@@ -460,9 +447,7 @@ class Supervisor:
                 reason=f"a descendant failed: {tree.failure_detail}",
                 open_descendants=len(open_children),
                 unresolved_descendants=len(unresolved),
-                failed_children=tuple(
-                    c.agent for c in tree.children if c.status is ChildStatus.FAILED
-                ),
+                failed_children=tuple(c.agent for c in tree.children if c.status is ChildStatus.FAILED),
             )
         if aggregate is TreeStatus.UNRESOLVED:
             # An unknown outcome is NOT a success and NOT a clean failure.
@@ -491,10 +476,7 @@ class Supervisor:
                 return SettleVerdict(
                     complete=False,
                     status="inconsistent",
-                    reason=(
-                        f"@{child.agent} is marked completed but carries an error or an empty "
-                        f"result; refusing to report success over a contradictory receipt"
-                    ),
+                    reason=(f"@{child.agent} is marked completed but carries an error or an empty result; refusing to report success over a contradictory receipt"),
                     failed_children=(child.agent,),
                 )
         return SettleVerdict(

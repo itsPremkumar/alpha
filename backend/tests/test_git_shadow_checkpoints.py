@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import json
-import pytest
-from pathlib import Path
 
 from alpha.tools.builtins.code_agentic_core import (
-    CodeCheckpoint,
     create_shadow_checkpoint,
     get_all_checkpoints,
-    rollback_to_checkpoint,
     get_checkpoint_diff,
     manage_code_checkpoint,
-    _ACTIVE_CHECKPOINTS,
+    rollback_to_checkpoint,
 )
 
 

@@ -15,6 +15,7 @@ import re
 
 class LazyCommentDetectedError(ValueError):
     """Raised when a code replacement contains lazy omission comments."""
+
     pass
 
 
@@ -28,7 +29,7 @@ LAZY_PATTERNS = [
 
 def check_for_lazy_comments(code: str, strict: bool = True) -> list[str]:
     """Scan code for lazy omission patterns.
-    
+
     If strict=True, raises LazyCommentDetectedError on first detection.
     Otherwise returns list of matched pattern descriptions.
     """
@@ -45,9 +46,7 @@ def check_for_lazy_comments(code: str, strict: bool = True) -> list[str]:
 
     if strict and violations:
         raise LazyCommentDetectedError(
-            f"Write rejected by CommentGuard! Code contains {len(violations)} lazy comment omission(s):\n"
-            + "\n".join(f"- {v}" for v in violations)
-            + "\nPlease provide the full, unmodified code rather than omitting existing logic."
+            f"Write rejected by CommentGuard! Code contains {len(violations)} lazy comment omission(s):\n" + "\n".join(f"- {v}" for v in violations) + "\nPlease provide the full, unmodified code rather than omitting existing logic."
         )
 
     return violations

@@ -286,8 +286,8 @@ class MetricsRegistry:
                         if key[0] != name:
                             continue
                         for index, bound in enumerate(buckets):
-                            lines.append(f'{name}_bucket{_render_labels(decl.labels, key[1], le=_format_float(bound))} {counts[index]}')
-                        lines.append(f'{name}_bucket{_render_labels(decl.labels, key[1], le="+Inf")} {count}')
+                            lines.append(f"{name}_bucket{_render_labels(decl.labels, key[1], le=_format_float(bound))} {counts[index]}")
+                        lines.append(f"{name}_bucket{_render_labels(decl.labels, key[1], le='+Inf')} {count}")
                         lines.append(f"{name}_sum{_render_labels(decl.labels, key[1])} {_format_float(total)}")
                         lines.append(f"{name}_count{_render_labels(decl.labels, key[1])} {count}")
             return "\n".join(lines) + ("\n" if lines else "")

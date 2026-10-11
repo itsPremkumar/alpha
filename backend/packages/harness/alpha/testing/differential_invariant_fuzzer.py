@@ -198,9 +198,7 @@ class DifferentialInvariantFuzzer:
         self.timeout_per_trial_seconds = timeout_per_trial_seconds
         self.boundary_generator = BoundaryValueGenerator()
 
-    def _compile_entrypoint(
-        self, code_str: str, entrypoint_name: str
-    ) -> tuple[Callable | None, str | None]:
+    def _compile_entrypoint(self, code_str: str, entrypoint_name: str) -> tuple[Callable | None, str | None]:
         """Safely compile source code and retrieve the entrypoint callable."""
         try:
             tree = ast.parse(code_str)
@@ -221,9 +219,7 @@ class DifferentialInvariantFuzzer:
         except Exception as e:
             return None, f"Compilation/Execution failed: {type(e).__name__}: {str(e)}"
 
-    def _safe_execute(
-        self, func: Callable, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> ExecutionTrialResult:
+    def _safe_execute(self, func: Callable, args: tuple[Any, ...], kwargs: dict[str, Any]) -> ExecutionTrialResult:
         """Execute callable safely with isolated argument deepcopies."""
         import time
 
@@ -427,9 +423,7 @@ class DifferentialInvariantFuzzer:
                     comparisons.append(reg)
                     regressions.append(reg.to_dict())
 
-        consistency_score = (
-            unmutated_consistent / unmutated_evaluated if unmutated_evaluated > 0 else 1.0
-        )
+        consistency_score = unmutated_consistent / unmutated_evaluated if unmutated_evaluated > 0 else 1.0
 
         return {
             "success": len(regressions) == 0,
@@ -441,9 +435,7 @@ class DifferentialInvariantFuzzer:
             "regressions": regressions[:10],
             "bug_fixes_verified_count": len(verified_fixes),
             "bug_fixes_verified": verified_fixes,
-            "invariant_summary": (
-                f"Consistency Score: {consistency_score:.1%} | Regressions: {len(regressions)} | Bug Fixes Verified: {len(verified_fixes)}"
-            ),
+            "invariant_summary": (f"Consistency Score: {consistency_score:.1%} | Regressions: {len(regressions)} | Bug Fixes Verified: {len(verified_fixes)}"),
         }
 
 

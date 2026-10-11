@@ -77,19 +77,13 @@ class DeliberationVerifier:
             result.verification_status = "deterministic_timeout"
             result.confidence_score = max(0.30, result.confidence_score - 0.15)
             result.confidence_level = DeliberationConfidence.LOW_CONFIDENCE
-            result.verdict_rationale = (
-                (result.verdict_rationale + " ")
-                + f"Deterministic check '{command}' exceeded {COMMAND_TIMEOUT_SECONDS}s and was killed."
-            ).strip()
+            result.verdict_rationale = ((result.verdict_rationale + " ") + f"Deterministic check '{command}' exceeded {COMMAND_TIMEOUT_SECONDS}s and was killed.").strip()
             return result
         except OSError as exc:
             result.verification_status = "deterministic_error"
             result.confidence_score = max(0.30, result.confidence_score - 0.15)
             result.confidence_level = DeliberationConfidence.LOW_CONFIDENCE
-            result.verdict_rationale = (
-                (result.verdict_rationale + " ")
-                + f"Deterministic check '{command}' could not run: {exc}."
-            ).strip()
+            result.verdict_rationale = ((result.verdict_rationale + " ") + f"Deterministic check '{command}' could not run: {exc}.").strip()
             return result
 
         if proc.returncode == 0:
@@ -97,19 +91,13 @@ class DeliberationVerifier:
             result.verification_status = "deterministic_pass"
             result.confidence_score = min(1.0, result.confidence_score + 0.08)
             result.confidence_level = DeliberationConfidence.HIGH_CONFIDENCE
-            result.verdict_rationale = (
-                (result.verdict_rationale + " ")
-                + f"Deterministic check passed (exit 0): {command}"
-            ).strip()
+            result.verdict_rationale = ((result.verdict_rationale + " ") + f"Deterministic check passed (exit 0): {command}").strip()
             return result
 
         tail = ((proc.stderr or "") + (proc.stdout or "")).strip()[-500:]
         result.verification_status = "deterministic_fail"
         result.confidence_score = max(0.20, result.confidence_score - 0.25)
         result.confidence_level = DeliberationConfidence.CONTESTED
-        result.verdict_rationale = (
-            (result.verdict_rationale + " ")
-            + f"Deterministic check FAILED (exit {proc.returncode}): {command}. Output tail: {tail}"
-        ).strip()
+        result.verdict_rationale = ((result.verdict_rationale + " ") + f"Deterministic check FAILED (exit {proc.returncode}): {command}. Output tail: {tail}").strip()
         logger.warning("Deterministic verification failed (exit %s): %s", proc.returncode, command)
         return result

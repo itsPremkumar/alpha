@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from app.gateway.routers import skills as skills_router
 from alpha.agents.lead_agent import prompt as prompt_module
 from alpha.skills.storage.local_skill_storage import LocalSkillStorage
+from app.gateway.routers import skills as skills_router
 
 pytestmark = pytest.mark.asyncio
 

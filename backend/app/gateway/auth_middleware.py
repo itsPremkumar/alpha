@@ -114,9 +114,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         internal_user = None
-        internal_token = request.headers.get(INTERNAL_AUTH_HEADER_NAME) or request.headers.get(
-            LEGACY_INTERNAL_AUTH_HEADER_NAME
-        )
+        internal_token = request.headers.get(INTERNAL_AUTH_HEADER_NAME) or request.headers.get(LEGACY_INTERNAL_AUTH_HEADER_NAME)
         if is_valid_internal_auth_token(internal_token):
             # Extract the channel owner user ID from the trusted header.
             # When present, the synthetic internal user carries the actual
@@ -128,9 +126,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 LEGACY_INTERNAL_OWNER_USER_ID_HEADER_NAME,
             )
 
-            owner_user_id = request.headers.get(INTERNAL_OWNER_USER_ID_HEADER_NAME) or request.headers.get(
-                LEGACY_INTERNAL_OWNER_USER_ID_HEADER_NAME
-            )
+            owner_user_id = request.headers.get(INTERNAL_OWNER_USER_ID_HEADER_NAME) or request.headers.get(LEGACY_INTERNAL_OWNER_USER_ID_HEADER_NAME)
             if owner_user_id:
                 owner_user_id = owner_user_id.strip()
             internal_user = get_internal_user(owner_user_id=owner_user_id or None)

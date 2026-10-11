@@ -28,7 +28,6 @@ import argparse
 import json
 import sys
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -140,8 +139,7 @@ def run(s: Sweep) -> None:
         s.add("A.core", "thread create", FAIL, f"HTTP {code}: {str(body)[:160]}", ms)
 
     if tid:
-        s.read("A.core", "thread history page", f"/api/threads/{tid}/messages/page",
-               params={"limit": 25}, check=lambda b: isinstance(b, dict) and "data" in b and "has_more" in b)
+        s.read("A.core", "thread history page", f"/api/threads/{tid}/messages/page", params={"limit": 25}, check=lambda b: isinstance(b, dict) and "data" in b and "has_more" in b)
 
     # ---------------- B. ORCHESTRATION ----------------
     # Paths below were read off the live route table (create_app().routes), not
@@ -177,20 +175,15 @@ def run(s: Sweep) -> None:
     s.read("C.platform", "skills list", "/api/skills", check=lambda b: isinstance(b, (list, dict)))
     s.read("C.platform", "mcp config", "/api/mcp/config", check=lambda b: isinstance(b, dict))
     s.read("C.platform", "peer network status", "/api/peer-network/status", check=lambda b: isinstance(b, dict))
-    s.read("C.platform", "self-inventory", "/api/intelligence/inventory",
-           check=lambda b: b.get("schema_version") == "alpha.self-inventory.v1")
-    s.read("C.platform", "ops integration health", "/api/ops/integration-health",
-           check=lambda b: b.get("manifest_found") is True)
-    s.read("C.platform", "ops network link state", "/api/ops/network",
-           check=lambda b: isinstance(b, dict) and "state" in b)
+    s.read("C.platform", "self-inventory", "/api/intelligence/inventory", check=lambda b: b.get("schema_version") == "alpha.self-inventory.v1")
+    s.read("C.platform", "ops integration health", "/api/ops/integration-health", check=lambda b: b.get("manifest_found") is True)
+    s.read("C.platform", "ops network link state", "/api/ops/network", check=lambda b: isinstance(b, dict) and "state" in b)
     s.read("C.platform", "system capabilities", "/api/system/capabilities", check=lambda b: isinstance(b, dict))
-    s.read("C.platform", "multimodal capability matrix", "/api/multimodal/capabilities",
-           check=lambda b: isinstance(b.get("rows"), list))
+    s.read("C.platform", "multimodal capability matrix", "/api/multimodal/capabilities", check=lambda b: isinstance(b.get("rows"), list))
     s.read("C.platform", "ops version", "/api/ops/version", check=lambda b: "version" in b)
 
     # ---------------- capabilities that need an environment ----------------
-    s.read("D.limits", "sentinel signals (repo scan)", "/api/autonomy/sentinel/signals",
-           check=lambda b: isinstance(b.get("signals"), list))
+    s.read("D.limits", "sentinel signals (repo scan)", "/api/autonomy/sentinel/signals", check=lambda b: isinstance(b.get("signals"), list))
     s.read("D.limits", "intelligence loop health", "/api/intelligence/health", check=lambda b: isinstance(b, dict))
     s.read("D.limits", "lark integration status", "/api/integrations/lark/status", check=lambda b: isinstance(b, dict))
 

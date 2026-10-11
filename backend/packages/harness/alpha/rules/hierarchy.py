@@ -50,10 +50,12 @@ class HierarchicalRuleEngine:
             try:
                 content = file_path.read_text(encoding="utf-8").strip()
                 rel = file_path.relative_to(self.root_dir)
-                results.append({
-                    "path": str(rel).replace("\\", "/"),
-                    "content": content,
-                })
+                results.append(
+                    {
+                        "path": str(rel).replace("\\", "/"),
+                        "content": content,
+                    }
+                )
             except Exception:
                 pass
 
@@ -81,9 +83,7 @@ def init_deep_scaffold(project_root: Path, subdirs: list[str] | None = None) -> 
     root_agents = project_root / "AGENTS.md"
     if not root_agents.exists():
         root_agents.write_text(
-            "# Project Guidelines & Global Architecture\n\n"
-            "- Architecture: Alpha Autonomous Mega-Agent Harness\n"
-            "- Code Quality: 100% test passing required before commits\n",
+            "# Project Guidelines & Global Architecture\n\n- Architecture: Alpha Autonomous Mega-Agent Harness\n- Code Quality: 100% test passing required before commits\n",
             encoding="utf-8",
         )
         created.append(root_agents)
@@ -96,8 +96,7 @@ def init_deep_scaffold(project_root: Path, subdirs: list[str] | None = None) -> 
             sub_agents = sub_path / "AGENTS.md"
             if not sub_agents.exists():
                 sub_agents.write_text(
-                    f"# {sub.capitalize()} Scoped Rules\n\n"
-                    f"- Scope: Rules strictly applicable to `{sub}/` directory.\n",
+                    f"# {sub.capitalize()} Scoped Rules\n\n- Scope: Rules strictly applicable to `{sub}/` directory.\n",
                     encoding="utf-8",
                 )
                 created.append(sub_agents)

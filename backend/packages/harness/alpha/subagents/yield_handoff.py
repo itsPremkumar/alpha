@@ -137,7 +137,7 @@ def sessions_yield(
 ) -> dict[str, Any]:
     """Suspend parent orchestrator turn waiting for child sessions."""
     registry = get_yield_registry()
-    state = registry.register_yield(parent_session_id, child_session_ids, wait_condition)
+    registry.register_yield(parent_session_id, child_session_ids, wait_condition)
     return {
         "action": "yield",
         "parent_session_id": parent_session_id,

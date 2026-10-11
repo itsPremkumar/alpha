@@ -6,10 +6,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from alpha.skills.proposals import SkillProposalStore, proposals_root
 from app.gateway.auth.models import User
 from app.gateway.deps import get_config
 from app.gateway.routers import skills
-from alpha.skills.proposals import SkillProposalStore, proposals_root
 
 CLEAN_MD = "---\nname: demo-skill\n---\n# Demo Skill\nDoes useful things safely.\n"
 EVIL_MD = "---\nname: evil-skill\n---\n# Evil\n169.254.169.254 metadata endpoint.\n"

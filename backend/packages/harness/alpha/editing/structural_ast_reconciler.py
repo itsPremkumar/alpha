@@ -17,8 +17,8 @@ import ast
 import copy
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from dataclasses import asdict, dataclass
+from typing import Any
 
 from langchain.tools import tool
 
@@ -32,9 +32,9 @@ class ReconciledElement:
     element_name: str
     element_type: str  # "import", "function", "class", "global_assign", "docstring"
     resolution_source: str  # "ours", "theirs", "structural_merge", "deduplicated"
-    details: Optional[str] = None
+    details: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -44,27 +44,20 @@ class StructuralAstConflictReconciler:
     def __init__(self) -> None:
         pass
 
-    def _get_docstring_node(self, body: List[ast.AST]) -> Optional[ast.Expr]:
+    def _get_docstring_node(self, body: list[ast.AST]) -> ast.Expr | None:
         """Retrieve module or function docstring node if present."""
-        if (
-            body
-            and isinstance(body[0], ast.Expr)
-            and isinstance(body[0].value, ast.Constant)
-            and isinstance(body[0].value.value, str)
-        ):
+        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
             return body[0]
         return None
 
-    def reconcile_imports(
-        self, base_tree: ast.Module, ours_tree: ast.Module, theirs_tree: ast.Module
-    ) -> Tuple[List[ast.AST], List[ReconciledElement]]:
+    def reconcile_imports(self, base_tree: ast.Module, ours_tree: ast.Module, theirs_tree: ast.Module) -> tuple[list[ast.AST], list[ReconciledElement]]:
         """Deduplicate, merge, and group import statements across all revisions."""
-        records: List[ReconciledElement] = []
+        records: list[ReconciledElement] = []
 
         # Maps module_name -> set of (name, alias)
-        from_imports: Dict[str, Set[Tuple[str, Optional[str]]]] = defaultdict(set)
+        from_imports: dict[str, set[tuple[str, str | None]]] = defaultdict(set)
         # Set of (module_name, alias)
-        direct_imports: Set[Tuple[str, Optional[str]]] = set()
+        direct_imports: set[tuple[str, str | None]] = set()
 
         for tree, label in [(base_tree, "base"), (theirs_tree, "theirs"), (ours_tree, "ours")]:
             for node in tree.body:
@@ -78,7 +71,7 @@ class StructuralAstConflictReconciler:
                     for alias in node.names:
                         from_imports[key].add((alias.name, alias.asname))
 
-        reconciled_nodes: List[ast.AST] = []
+        reconciled_nodes: list[ast.AST] = []
 
         # Build combined direct imports
         for mod_name, alias_name in sorted(direct_imports, key=lambda x: x[0]):
@@ -99,13 +92,8 @@ class StructuralAstConflictReconciler:
             while mod_key.startswith("."):
                 level += 1
                 mod_key = mod_key[1:]
-            sorted_aliases = [
-                ast.alias(name=n, asname=a)
-                for n, a in sorted(names_set, key=lambda x: (x[0], x[1] or ""))
-            ]
-            reconciled_nodes.append(
-                ast.ImportFrom(module=mod_key or None, names=sorted_aliases, level=level)
-            )
+            sorted_aliases = [ast.alias(name=n, asname=a) for n, a in sorted(names_set, key=lambda x: (x[0], x[1] or ""))]
+            reconciled_nodes.append(ast.ImportFrom(module=mod_key or None, names=sorted_aliases, level=level))
             records.append(
                 ReconciledElement(
                     element_name=mod_key or ".",
@@ -126,10 +114,10 @@ class StructuralAstConflictReconciler:
 
     def reconcile_functions(
         self,
-        base_fn: Optional[Union[ast.FunctionDef, ast.AsyncFunctionDef]],
-        ours_fn: Optional[Union[ast.FunctionDef, ast.AsyncFunctionDef]],
-        theirs_fn: Optional[Union[ast.FunctionDef, ast.AsyncFunctionDef]],
-    ) -> Tuple[Optional[ast.AST], ReconciledElement]:
+        base_fn: ast.FunctionDef | ast.AsyncFunctionDef | None,
+        ours_fn: ast.FunctionDef | ast.AsyncFunctionDef | None,
+        theirs_fn: ast.FunctionDef | ast.AsyncFunctionDef | None,
+    ) -> tuple[ast.AST | None, ReconciledElement]:
         """Perform 3-way reconciliation on function definitions."""
         name = (ours_fn or theirs_fn or base_fn).name  # type: ignore
 
@@ -169,15 +157,9 @@ class StructuralAstConflictReconciler:
                     merged_fn.args.args.append(a)
 
             # Reconcile body statements
-            base_stmts_code = {
-                self._ast_to_code(s) for s in (base_fn.body if base_fn else [])
-            }
-            ours_stmts = [
-                s for s in ours_fn.body if not (chosen_doc and s is ours_doc)
-            ]
-            theirs_stmts = [
-                s for s in theirs_fn.body if not (chosen_doc and s is theirs_doc)
-            ]
+            base_stmts_code = {self._ast_to_code(s) for s in (base_fn.body if base_fn else [])}
+            ours_stmts = [s for s in ours_fn.body if not (chosen_doc and s is ours_doc)]
+            theirs_stmts = [s for s in theirs_fn.body if not (chosen_doc and s is theirs_doc)]
 
             ours_code_set = {self._ast_to_code(s) for s in ours_stmts}
 
@@ -187,19 +169,13 @@ class StructuralAstConflictReconciler:
             theirs_non_term = [s for s in theirs_stmts if not isinstance(s, (ast.Return, ast.Raise))]
             theirs_term = [s for s in theirs_stmts if isinstance(s, (ast.Return, ast.Raise))]
 
-            theirs_new_non_term = [
-                s for s in theirs_non_term
-                if self._ast_to_code(s) not in base_stmts_code and self._ast_to_code(s) not in ours_code_set
-            ]
+            theirs_new_non_term = [s for s in theirs_non_term if self._ast_to_code(s) not in base_stmts_code and self._ast_to_code(s) not in ours_code_set]
 
             # Reconcile terminal return/raise statement
-            chosen_term: List[ast.AST] = []
+            chosen_term: list[ast.AST] = []
             if theirs_term and ours_term:
                 # If theirs updated return logic while ours kept base, adopt theirs
-                if (
-                    self._ast_to_code(ours_term[0]) in base_stmts_code
-                    and self._ast_to_code(theirs_term[0]) not in base_stmts_code
-                ):
+                if self._ast_to_code(ours_term[0]) in base_stmts_code and self._ast_to_code(theirs_term[0]) not in base_stmts_code:
                     chosen_term = theirs_term
                 else:
                     chosen_term = ours_term
@@ -209,7 +185,7 @@ class StructuralAstConflictReconciler:
                 chosen_term = ours_term
 
             # Place statements: docstring first, then ours non-terminal, then theirs additions, then terminal return
-            new_body: List[ast.AST] = []
+            new_body: list[ast.AST] = []
             if chosen_doc:
                 new_body.append(chosen_doc)
             new_body.extend(ours_non_term)
@@ -232,10 +208,10 @@ class StructuralAstConflictReconciler:
 
     def reconcile_classes(
         self,
-        base_cls: Optional[ast.ClassDef],
-        ours_cls: Optional[ast.ClassDef],
-        theirs_cls: Optional[ast.ClassDef],
-    ) -> Tuple[Optional[ast.AST], ReconciledElement]:
+        base_cls: ast.ClassDef | None,
+        ours_cls: ast.ClassDef | None,
+        theirs_cls: ast.ClassDef | None,
+    ) -> tuple[ast.AST | None, ReconciledElement]:
         """Perform 3-way reconciliation on ClassDef nodes and member methods."""
         name = (ours_cls or theirs_cls or base_cls).name  # type: ignore
 
@@ -259,20 +235,12 @@ class StructuralAstConflictReconciler:
             merged_cls = copy.deepcopy(ours_cls)
 
             # Reconcile methods inside class
-            base_methods = {
-                m.name: m for m in (base_cls.body if base_cls else []) if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            ours_methods = {
-                m.name: m for m in ours_cls.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            theirs_methods = {
-                m.name: m for m in theirs_cls.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
+            base_methods = {m.name: m for m in (base_cls.body if base_cls else []) if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}
+            ours_methods = {m.name: m for m in ours_cls.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}
+            theirs_methods = {m.name: m for m in theirs_cls.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
-            all_method_names = list(
-                dict.fromkeys(list(ours_methods.keys()) + list(theirs_methods.keys()))
-            )
-            reconciled_methods: List[ast.AST] = []
+            all_method_names = list(dict.fromkeys(list(ours_methods.keys()) + list(theirs_methods.keys())))
+            reconciled_methods: list[ast.AST] = []
             for m_name in all_method_names:
                 b_m = base_methods.get(m_name)
                 o_m = ours_methods.get(m_name)
@@ -282,20 +250,16 @@ class StructuralAstConflictReconciler:
                     reconciled_methods.append(rec_m)
 
             # Preserve non-method statements (attributes, docstring)
-            non_method_stmts = [
-                s for s in ours_cls.body if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
-            ]
+            non_method_stmts = [s for s in ours_cls.body if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))]
             merged_cls.body = non_method_stmts + reconciled_methods
-            return merged_cls, ReconciledElement(
-                name, "class", "structural_merge", f"Merged class {name} methods and attributes."
-            )
+            return merged_cls, ReconciledElement(name, "class", "structural_merge", f"Merged class {name} methods and attributes.")
 
         fallback = ours_cls or theirs_cls or base_cls
         return fallback, ReconciledElement(name, "class", "ours", "Class fallback.")
 
-    def _get_assignment_targets(self, stmt: ast.AST) -> List[str]:
+    def _get_assignment_targets(self, stmt: ast.AST) -> list[str]:
         """Extract variable names assigned by a top-level statement if any."""
-        targets: List[str] = []
+        targets: list[str] = []
         if isinstance(stmt, ast.Assign):
             for t in stmt.targets:
                 if isinstance(t, ast.Name):
@@ -305,9 +269,7 @@ class StructuralAstConflictReconciler:
                 targets.append(stmt.target.id)
         return targets
 
-    def reconcile(
-        self, base_code: str, ours_code: str, theirs_code: str, file_path: str = "module.py"
-    ) -> Dict[str, Any]:
+    def reconcile(self, base_code: str, ours_code: str, theirs_code: str, file_path: str = "module.py") -> dict[str, Any]:
         """Reconcile concurrent Python edits into a single valid AST representation."""
         try:
             base_tree = ast.parse(base_code or "")
@@ -322,8 +284,8 @@ class StructuralAstConflictReconciler:
                 "reconciled_elements": [],
             }
 
-        reconciled_elements: List[ReconciledElement] = []
-        final_body: List[ast.AST] = []
+        reconciled_elements: list[ReconciledElement] = []
+        final_body: list[ast.AST] = []
 
         # 1. Module Docstring
         base_doc = self._get_docstring_node(base_tree.body)
@@ -337,9 +299,7 @@ class StructuralAstConflictReconciler:
 
         if chosen_doc:
             final_body.append(chosen_doc)
-            reconciled_elements.append(
-                ReconciledElement("module_docstring", "docstring", "structural_merge", "Module docstring preserved.")
-            )
+            reconciled_elements.append(ReconciledElement("module_docstring", "docstring", "structural_merge", "Module docstring preserved."))
 
         # 2. Imports
         import_nodes, import_records = self.reconcile_imports(base_tree, ours_tree, theirs_tree)
@@ -347,7 +307,7 @@ class StructuralAstConflictReconciler:
         reconciled_elements.extend(import_records)
 
         # 3. Categorize top-level definitions
-        def categorize(tree: ast.Module) -> Tuple[Dict[str, Any], Dict[str, Any], List[ast.AST]]:
+        def categorize(tree: ast.Module) -> tuple[dict[str, Any], dict[str, Any], list[ast.AST]]:
             funcs = {}
             classes = {}
             others = []
@@ -369,9 +329,7 @@ class StructuralAstConflictReconciler:
         theirs_funcs, theirs_classes, theirs_others = categorize(theirs_tree)
 
         # Reconcile Classes
-        all_class_names = list(
-            dict.fromkeys(list(ours_classes.keys()) + list(theirs_classes.keys()) + list(base_classes.keys()))
-        )
+        all_class_names = list(dict.fromkeys(list(ours_classes.keys()) + list(theirs_classes.keys()) + list(base_classes.keys())))
         for c_name in all_class_names:
             b_c = base_classes.get(c_name)
             o_c = ours_classes.get(c_name)
@@ -382,9 +340,7 @@ class StructuralAstConflictReconciler:
                 reconciled_elements.append(rec_el)
 
         # Reconcile Functions
-        all_func_names = list(
-            dict.fromkeys(list(ours_funcs.keys()) + list(theirs_funcs.keys()) + list(base_funcs.keys()))
-        )
+        all_func_names = list(dict.fromkeys(list(ours_funcs.keys()) + list(theirs_funcs.keys()) + list(base_funcs.keys())))
         for f_name in all_func_names:
             b_f = base_funcs.get(f_name)
             o_f = ours_funcs.get(f_name)
@@ -396,25 +352,25 @@ class StructuralAstConflictReconciler:
 
         # Reconcile other top-level statements (e.g. assignments, main guards)
         base_others_code = {self._ast_to_code(s) for s in base_others}
-        base_target_map: Dict[str, Tuple[ast.AST, str]] = {}
+        base_target_map: dict[str, tuple[ast.AST, str]] = {}
         for s in base_others:
             for t in self._get_assignment_targets(s):
                 base_target_map[t] = (s, self._ast_to_code(s))
 
-        theirs_target_map: Dict[str, Tuple[ast.AST, str]] = {}
+        theirs_target_map: dict[str, tuple[ast.AST, str]] = {}
         for s in theirs_others:
             for t in self._get_assignment_targets(s):
                 theirs_target_map[t] = (s, self._ast_to_code(s))
 
-        handled_targets: Set[str] = set()
-        seen_others_code: Set[str] = set()
+        handled_targets: set[str] = set()
+        seen_others_code: set[str] = set()
 
         for stmt in ours_others:
             targets = self._get_assignment_targets(stmt)
             c = self._ast_to_code(stmt)
             if targets:
-                adopt_theirs_stmt: Optional[ast.AST] = None
-                adopt_theirs_code: Optional[str] = None
+                adopt_theirs_stmt: ast.AST | None = None
+                adopt_theirs_code: str | None = None
                 for t in targets:
                     handled_targets.add(t)
                     if t in base_target_map and t in theirs_target_map:
@@ -432,16 +388,12 @@ class StructuralAstConflictReconciler:
                 if chosen_c not in seen_others_code:
                     seen_others_code.add(chosen_c)
                     final_body.append(chosen_stmt)
-                    reconciled_elements.append(
-                        ReconciledElement("statement", "global_assign", source, f"Statement: {chosen_c[:40]}")
-                    )
+                    reconciled_elements.append(ReconciledElement("statement", "global_assign", source, f"Statement: {chosen_c[:40]}"))
             else:
                 if c not in seen_others_code:
                     seen_others_code.add(c)
                     final_body.append(stmt)
-                    reconciled_elements.append(
-                        ReconciledElement("statement", "global_stmt", "ours", f"Statement: {c[:40]}")
-                    )
+                    reconciled_elements.append(ReconciledElement("statement", "global_stmt", "ours", f"Statement: {c[:40]}"))
 
         for stmt in theirs_others:
             targets = self._get_assignment_targets(stmt)
@@ -454,16 +406,12 @@ class StructuralAstConflictReconciler:
                         if c not in seen_others_code:
                             seen_others_code.add(c)
                             final_body.append(stmt)
-                            reconciled_elements.append(
-                                ReconciledElement("statement", "global_assign", "theirs", f"Statement: {c[:40]}")
-                            )
+                            reconciled_elements.append(ReconciledElement("statement", "global_assign", "theirs", f"Statement: {c[:40]}"))
             else:
                 if c not in seen_others_code and c not in base_others_code:
                     seen_others_code.add(c)
                     final_body.append(stmt)
-                    reconciled_elements.append(
-                        ReconciledElement("statement", "global_stmt", "theirs", f"Statement: {c[:40]}")
-                    )
+                    reconciled_elements.append(ReconciledElement("statement", "global_stmt", "theirs", f"Statement: {c[:40]}"))
 
         # Synthesize final module and unparse
         merged_module = ast.Module(body=final_body, type_ignores=[])
@@ -491,7 +439,7 @@ def reconcile_structural_ast_conflicts(
     ours_code: str,
     theirs_code: str,
     file_path: str = "module.py",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Reconcile multi-agent concurrent modifications via semantic 3-way AST node merging.
 
     Replaces line-based git conflict markers with structural AST reconciliation. Merges

@@ -62,9 +62,7 @@ def test_every_inbound_entry_point_is_classified_with_an_enforcement_site() -> N
         assert entry.name.strip(), "an entry point needs a name"
         assert entry.surface in SurfaceKind
         assert entry.kind in BoundaryKind, f"{entry.name} has no security/convenience classification"
-        assert entry.enforcement_site.strip(), (
-            f"{entry.name} names no enforcement site, so a reviewer cannot go and read the check"
-        )
+        assert entry.enforcement_site.strip(), f"{entry.name} names no enforcement site, so a reviewer cannot go and read the check"
         assert ":" in entry.enforcement_site, f"{entry.name} enforcement site is not file:line"
         assert entry.default_posture in GatePosture
 
@@ -151,10 +149,7 @@ def test_every_public_middleware_exemption_has_a_classified_entry() -> None:
     if not exemptions:
         pytest.skip("auth_middleware.py is not resolvable from this working directory")
     unclassified = unclassified_public_exemptions()
-    assert unclassified == (), (
-        "these middleware auth exemptions have no classified entry in INBOUND_ENTRY_POINTS: "
-        f"{unclassified}"
-    )
+    assert unclassified == (), f"these middleware auth exemptions have no classified entry in INBOUND_ENTRY_POINTS: {unclassified}"
 
 
 def test_the_known_unauthenticated_paths_are_declared_not_hidden() -> None:
@@ -163,10 +158,7 @@ def test_the_known_unauthenticated_paths_are_declared_not_hidden() -> None:
     unauthenticated = unauthenticated_inbound_paths()
     names = {item.name for item in unauthenticated}
     assert "gateway-http-auth-disabled" in names
-    assert "auth-login-register-status" in names, (
-        "the login/register exemptions are unauthenticated by necessity and must be listed, "
-        "with the credential check that makes them safe stated in the note"
-    )
+    assert "auth-login-register-status" in names, "the login/register exemptions are unauthenticated by necessity and must be listed, with the credential check that makes them safe stated in the note"
     assert "peer-discovery-card" in names
     for item in unauthenticated:
         assert item.note.strip(), f"{item.name} is unauthenticated and explains nothing"
@@ -197,9 +189,7 @@ def test_the_security_vs_convenience_split_is_stated_and_partitioned() -> None:
 
 def test_a_security_boundary_is_one_where_the_far_side_must_prove_a_credential() -> None:
     for entry in security_boundaries():
-        assert entry.authenticated_by_default or entry.name == "auth-login-register-status", (
-            f"{entry.name} is classified SECURITY but requires no credential from the far side"
-        )
+        assert entry.authenticated_by_default or entry.name == "auth-login-register-status", f"{entry.name} is classified SECURITY but requires no credential from the far side"
         # An unauthenticated SECURITY entry point is only defensible when the
         # credential check happens inside the handler, and that has to be said.
         if not entry.authenticated_by_default:
@@ -431,9 +421,7 @@ def test_a_credential_that_raises_does_not_stop_the_others_being_resolved() -> N
 
 
 def test_a_secret_value_is_never_recorded_only_its_reference() -> None:
-    report = resolve_credential_owners(
-        (CredentialSpec(owner="a", capability="ca", credential_key="ka", validator=lambda: True, secret_ref="vault://x"),)
-    )
+    report = resolve_credential_owners((CredentialSpec(owner="a", capability="ca", credential_key="ka", validator=lambda: True, secret_ref="vault://x"),))
     payload = report.to_dict()
     text = repr(payload)
     assert "vault://x" in text
@@ -442,9 +430,7 @@ def test_a_secret_value_is_never_recorded_only_its_reference() -> None:
 
 
 def test_a_degradation_with_no_reason_is_a_defect() -> None:
-    report = resolve_credential_owners(
-        (CredentialSpec(owner="a", capability="ca", credential_key="ka", validator=lambda: False),)
-    )
+    report = resolve_credential_owners((CredentialSpec(owner="a", capability="ca", credential_key="ka", validator=lambda: False),))
     # A refusal from check_permission returns False, which the resolver turns into
     # an explicit reason. Assert the reason is present rather than absent.
     assert report.owner("a").reason
@@ -491,9 +477,7 @@ def test_an_exposed_bind_host_with_no_ingress_auth_refuses_to_start() -> None:
 
 def test_a_missing_internal_token_with_required_ingress_auth_refuses_to_start() -> None:
     with pytest.raises(StartupRefused) as caught:
-        assert_startable(
-            {"bind_host": "127.0.0.1", "require_ingress_auth": True, "internal_auth_token_configured": False}
-        )
+        assert_startable({"bind_host": "127.0.0.1", "require_ingress_auth": True, "internal_auth_token_configured": False})
     assert any("no internal auth token is configured" in item for item in caught.value.violations)
 
 
@@ -543,9 +527,7 @@ def test_a_valid_scope_configuration_starts() -> None:
 
 def test_every_violation_is_reported_not_just_the_first() -> None:
     with pytest.raises(StartupRefused) as caught:
-        assert_startable(
-            {"bind_host": "0.0.0.0", "require_ingress_auth": False, "auth_disabled": True, "typo": 1}
-        )
+        assert_startable({"bind_host": "0.0.0.0", "require_ingress_auth": False, "auth_disabled": True, "typo": 1})
     assert len(caught.value.violations) >= 3, caught.value.violations
 
 
@@ -609,10 +591,7 @@ def test_no_policy_control_is_labelled_a_security_boundary() -> None:
 
     for name in ("gateway-http-auth-disabled", "a2a-cards-and-delegate", "scheduler-and-mcp-task-workers"):
         entry = next(item for item in INBOUND_ENTRY_POINTS if item.name == name)
-        assert entry.is_security_boundary is False, (
-            f"{name} is a policy control inside one trust envelope and must not be labelled "
-            "a security boundary"
-        )
+        assert entry.is_security_boundary is False, f"{name} is a policy control inside one trust envelope and must not be labelled a security boundary"
 
 
 def test_the_boundary_errors_are_not_value_errors() -> None:

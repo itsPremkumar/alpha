@@ -107,11 +107,7 @@ def synthesize(
     if model is None:
         return PersonaReport(status="llm_error", error="no_model_configured")
 
-    records = [
-        record
-        for record in store.list_records(user_id, agent_name)
-        if record.type == "persona" and record.priority >= 0
-    ]
+    records = [record for record in store.list_records(user_id, agent_name) if record.type == "persona" and record.priority >= 0]
     if len(records) < max(1, min_memories):
         return PersonaReport(status="below_threshold", memory_count=len(records))
 
@@ -150,9 +146,7 @@ def synthesize(
     if len(text) > MAX_PROFILE_CHARS:
         text = text[:MAX_PROFILE_CHARS].rstrip()
     if text == existing.strip():
-        return PersonaReport(
-            status="unchanged", profile=text, memory_count=len(records), credits=credits
-        )
+        return PersonaReport(status="unchanged", profile=text, memory_count=len(records), credits=credits)
     try:
         save_profile(store, text, user_id=user_id, agent_name=agent_name)
     except OSError as exc:
@@ -162,9 +156,7 @@ def synthesize(
             error=f"write_failed: {exc}"[:500],
             credits=credits,
         )
-    return PersonaReport(
-        status="updated", profile=text, memory_count=len(records), credits=credits
-    )
+    return PersonaReport(status="updated", profile=text, memory_count=len(records), credits=credits)
 
 
 __all__ = ["MAX_PROFILE_CHARS", "PersonaReport", "load_profile", "save_profile", "synthesize"]

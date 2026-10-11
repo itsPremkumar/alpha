@@ -26,11 +26,11 @@ import httpx
 import pytest
 from langgraph_sdk.errors import ConflictError
 
+from alpha.sandbox.local.local_sandbox import LocalSandbox
+from alpha.sandbox.tools import _github_env_from_runtime, bash_tool
 from app.channels.manager import ChannelManager
 from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus
 from app.channels.store import ChannelStore
-from alpha.sandbox.local.local_sandbox import LocalSandbox
-from alpha.sandbox.tools import _github_env_from_runtime, bash_tool
 
 
 def _make_conflict_error(detail: str = "thread_id already exists") -> ConflictError:

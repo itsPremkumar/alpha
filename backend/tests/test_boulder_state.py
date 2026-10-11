@@ -43,7 +43,7 @@ def test_update_checklist_and_auto_completion(tmp_path: Path):
 def test_append_session_and_clear(tmp_path: Path):
     bp = tmp_path / "test_boulder.json"
     create_boulder("Long Running", ["Step 1"], path=bp, session_id="sess_01")
-    
+
     append_session_id("sess_02", path=bp)
     loaded = load_boulder(bp)
     assert loaded.session_ids == ["sess_01", "sess_02"]

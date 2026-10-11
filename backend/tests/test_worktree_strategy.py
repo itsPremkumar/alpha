@@ -128,7 +128,7 @@ def test_git_unavailable_degrades_every_git_backed_signal():
 
 
 def test_degradation_reason_names_the_mode_that_was_lost():
-    """"a copy was used" is not actionable on its own; the operator needs to
+    """ "a copy was used" is not actionable on its own; the operator needs to
     know a worktree was requested and refused."""
     sel = select_strategy(
         TaskSignals(produces_mergeable_diff=True),

@@ -64,11 +64,7 @@ def main() -> int:
     print(f"  list row keys: {sorted(first) if isinstance(first, dict) else 'n/a'}")
 
     # Pick the most interesting swarm: prefer one that actually ran.
-    candidates = [
-        r
-        for r in rows
-        if isinstance(r, dict) and (r.get("task_counts") or {}).get("total", 0) not in (0, None)
-    ]
+    candidates = [r for r in rows if isinstance(r, dict) and (r.get("task_counts") or {}).get("total", 0) not in (0, None)]
     target = candidates[0] if candidates else first
     sid = target.get("id") or target.get("swarm_id")
     print(f"\n=== inspecting {sid} (status={target.get('status')!r}) ===")

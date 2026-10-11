@@ -102,11 +102,7 @@ class MicroAgentRegistry:
                     PathTrigger(patterns=["**/migrations/**", "alembic/**", "**/*migration*.py"]),
                     KeywordTrigger(keywords=["migration", "schema", "alembic", "alter table"]),
                 ],
-                content=(
-                    "- Ensure migrations are backward-compatible (expand before contract).\n"
-                    "- Provide both 'upgrade' and 'downgrade' handlers.\n"
-                    "- Never execute unindexed table-locks on high-traffic production databases."
-                ),
+                content=("- Ensure migrations are backward-compatible (expand before contract).\n- Provide both 'upgrade' and 'downgrade' handlers.\n- Never execute unindexed table-locks on high-traffic production databases."),
             )
         )
 

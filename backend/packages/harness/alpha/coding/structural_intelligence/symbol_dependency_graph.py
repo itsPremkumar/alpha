@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from alpha.coding.structural_intelligence.polyglot_cst import (
     PolyglotCSTParser,
@@ -59,7 +59,7 @@ class SymbolDependencyGraph:
         source_id: str,
         target_id: str,
         edge_type: EdgeType,
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         edge = GraphEdge(
             source_id=source_id,

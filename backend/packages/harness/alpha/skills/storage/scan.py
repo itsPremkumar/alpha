@@ -204,8 +204,7 @@ def iter_skill_md_files(
 
     if walk.exhausted:
         logger.warning(
-            "Skill scan of %s was bounded: some skills in this tree were not considered. "
-            "Check for a symlink cycle, a symlink to a sibling subtree, or an unexpectedly large skill directory.",
+            "Skill scan of %s was bounded: some skills in this tree were not considered. Check for a symlink cycle, a symlink to a sibling subtree, or an unexpectedly large skill directory.",
             category_root,
         )
 

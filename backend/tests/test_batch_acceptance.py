@@ -262,9 +262,9 @@ async def test_denied_sandbox_keeps_result_unchecked_without_acquiring(env, monk
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case", ["oversized", "escaped", "truncated_tag", "empty"])
 async def test_stored_delegated_checked_and_exported_criteria_agree(env, monkeypatch, case):
-    from app.gateway.routers import subagent_batches as router
     from alpha.subagents.acceptance_checks import check_acceptance_criteria
     from alpha.subagents.report_contract import render_acceptance_criteria_block
+    from app.gateway.routers import subagent_batches as router
 
     if case == "oversized":
         criteria = ["", "  ", None, 42] + ["  " + "x" * 1000 + "  "] * 25

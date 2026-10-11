@@ -101,10 +101,7 @@ class UnauthenticatedInboundPath(BoundaryError):
 
     def __init__(self, offenders: Sequence[InboundEntryPoint]) -> None:
         names = [f"{item.name} ({item.path} -- {item.enforcement_site})" for item in offenders]
-        super().__init__(
-            "inbound access must be authenticated by default; these entry points are not: "
-            + "; ".join(names)
-        )
+        super().__init__("inbound access must be authenticated by default; these entry points are not: " + "; ".join(names))
         self.offenders = tuple(offenders)
 
     def to_dict(self) -> dict[str, Any]:
@@ -138,9 +135,7 @@ class StartupRefused(BoundaryError):
     """Configuration that must stop startup rather than start degraded."""
 
     def __init__(self, violations: Sequence[str]) -> None:
-        super().__init__(
-            f"startup REFUSED: {len(violations)} configuration violation(s): " + "; ".join(violations)
-        )
+        super().__init__(f"startup REFUSED: {len(violations)} configuration violation(s): " + "; ".join(violations))
         self.violations = tuple(violations)
 
 
@@ -221,11 +216,7 @@ INBOUND_ENTRY_POINTS: Final[tuple[InboundEntryPoint, ...]] = (
         enforcement_site="backend/app/gateway/auth_middleware.py:112",
         kind=BoundaryKind.SECURITY,
         authorization="backend/app/gateway/authz.py:653 require_permission",
-        note=(
-            "BaseHTTPMiddleware rejects any non-public path with no credential before a route "
-            "handler exists. This is a real change of principal: the caller is an unverified "
-            "network peer until the token verifies."
-        ),
+        note=("BaseHTTPMiddleware rejects any non-public path with no credential before a route handler exists. This is a real change of principal: the caller is an unverified network peer until the token verifies."),
     ),
     InboundEntryPoint(
         name="gateway-http-internal-token",
@@ -286,15 +277,9 @@ INBOUND_ENTRY_POINTS: Final[tuple[InboundEntryPoint, ...]] = (
         enforcement_site="backend/app/gateway/auth_middleware.py:50",
         kind=BoundaryKind.SECURITY,
         exemption=(
-            "Unauthenticated by necessity: these are how a credential is OBTAINED, so requiring "
-            "one first is circular. The security property is the password/credential verification "
-            "inside each handler, not the middleware exemption."
+            "Unauthenticated by necessity: these are how a credential is OBTAINED, so requiring one first is circular. The security property is the password/credential verification inside each handler, not the middleware exemption."
         ),
-        note=(
-            "Each performs its own credential verification inside the handler. A change of "
-            "principal still happens here, which is why the classification is SECURITY even "
-            "though the middleware does not gate it."
-        ),
+        note=("Each performs its own credential verification inside the handler. A change of principal still happens here, which is why the classification is SECURITY even though the middleware does not gate it."),
     ),
     InboundEntryPoint(
         name="auth-oidc-callback",
@@ -366,11 +351,7 @@ INBOUND_ENTRY_POINTS: Final[tuple[InboundEntryPoint, ...]] = (
         authentication=Authentication.PAIRING_TOKEN,
         enforcement_site="backend/app/gateway/routers/peer_network.py:278",
         kind=BoundaryKind.SECURITY,
-        note=(
-            "A websocket is NOT covered by AuthMiddleware (BaseHTTPMiddleware only handles the "
-            "http scope), so this handler performs its own token check. Correct here, and a "
-            "shape worth watching: any future websocket must do the same."
-        ),
+        note=("A websocket is NOT covered by AuthMiddleware (BaseHTTPMiddleware only handles the http scope), so this handler performs its own token check. Correct here, and a shape worth watching: any future websocket must do the same."),
     ),
     InboundEntryPoint(
         name="openai-compat-api",
@@ -526,7 +507,6 @@ def declared_public_exemptions() -> tuple[str, ...]:
     middleware without a corresponding classified entry here.
     """
 
-
     try:
         from alpha.config.runtime_paths import project_root
 
@@ -588,9 +568,7 @@ def security_boundaries() -> tuple[InboundEntryPoint, ...]:
 
 
 def convenience_boundaries() -> tuple[InboundEntryPoint, ...]:
-    return tuple(
-        item for item in INBOUND_ENTRY_POINTS if item.kind is BoundaryKind.CONVENIENCE
-    )
+    return tuple(item for item in INBOUND_ENTRY_POINTS if item.kind is BoundaryKind.CONVENIENCE)
 
 
 def boundary_inventory() -> dict[str, Any]:
@@ -600,9 +578,7 @@ def boundary_inventory() -> dict[str, Any]:
         "security_boundaries": [item.to_dict() for item in security_boundaries()],
         "convenience_boundaries": [item.to_dict() for item in convenience_boundaries()],
         "unauthenticated_by_default": [item.to_dict() for item in unauthenticated_inbound_paths()],
-        "undeclared_unauthenticated_inbound_paths": [
-            item.to_dict() for item in undeclared_unauthenticated_inbound_paths()
-        ],
+        "undeclared_unauthenticated_inbound_paths": [item.to_dict() for item in undeclared_unauthenticated_inbound_paths()],
         "unclassified_middleware_exemptions": list(unclassified_public_exemptions()),
         "statement": (
             "alpha's agent loop, channel connections, credential handling and shell all run "
@@ -667,9 +643,7 @@ def _verdict_to_result(
     """Turn an approver's return value into a result. Only ``True`` approves."""
 
     if verdict is True:
-        return ApprovalResult(
-            outcome=ApprovalOutcome.APPROVED, approver=approver_name, reason="explicit_approval"
-        )
+        return ApprovalResult(outcome=ApprovalOutcome.APPROVED, approver=approver_name, reason="explicit_approval")
     if verdict is False:
         return ApprovalResult(
             outcome=ApprovalOutcome.REFUSED,
@@ -688,10 +662,7 @@ def _verdict_to_result(
         outcome=ApprovalOutcome.REFUSED,
         approver=approver_name,
         reason="approver_returned_unrecognised_verdict",
-        detail=(
-            f"approver for {subject!r} returned {verdict!r}, which is not the boolean True that "
-            "an explicit approval must be. Anything else is a refusal."
-        ),
+        detail=(f"approver for {subject!r} returned {verdict!r}, which is not the boolean True that an explicit approval must be. Anything else is a refusal."),
     )
 
 
@@ -722,10 +693,7 @@ def resolve_authority_approval(
             outcome=ApprovalOutcome.REFUSED,
             approver=approver_name,
             reason="tainted_turn_cannot_satisfy_approval",
-            detail=(
-                f"subject {subject!r} requested approval on a turn tainted by {list(sources)}; "
-                "the content the gate would be approving arrived from an untrusted source"
-            ),
+            detail=(f"subject {subject!r} requested approval on a turn tainted by {list(sources)}; the content the gate would be approving arrived from an untrusted source"),
             taint_sources=sources,
         )
 
@@ -769,10 +737,7 @@ def resolve_authority_approval(
             outcome=ApprovalOutcome.REFUSED,
             approver=approver_name,
             reason="approver_returned_unrecognised_verdict",
-            detail=(
-                f"approver for {subject!r} returned an awaitable to the synchronous resolver; "
-                "use resolve_authority_approval_async, or return a plain boolean"
-            ),
+            detail=(f"approver for {subject!r} returned an awaitable to the synchronous resolver; use resolve_authority_approval_async, or return a plain boolean"),
         )
 
     return _verdict_to_result(verdict, subject=subject, approver_name=approver_name)
@@ -797,10 +762,7 @@ async def resolve_authority_approval_async(
             outcome=ApprovalOutcome.REFUSED,
             approver=approver_name,
             reason="tainted_turn_cannot_satisfy_approval",
-            detail=(
-                f"subject {subject!r} requested approval on a turn tainted by {list(sources)}; "
-                "the content the gate would be approving arrived from an untrusted source"
-            ),
+            detail=(f"subject {subject!r} requested approval on a turn tainted by {list(sources)}; the content the gate would be approving arrived from an untrusted source"),
             taint_sources=sources,
         )
     if approver is None:
@@ -971,10 +933,7 @@ def resolve_credential_owners(
                     credential_key=spec.credential_key,
                     secret_ref=spec.secret_ref,
                     status=CredentialStatus.DEGRADED,
-                    reason=(
-                        f"credential validation returned {verdict!r}, which is not a decision; the "
-                        "owner's capability degrades and every other owner is unaffected"
-                    ),
+                    reason=(f"credential validation returned {verdict!r}, which is not a decision; the owner's capability degrades and every other owner is unaffected"),
                 )
             )
     return CredentialIsolationReport(owners=tuple(owners))
@@ -992,10 +951,7 @@ def assert_credential_failures_isolated(
 
     for failed in report.degraded:
         if not failed.reason:
-            raise BoundaryError(
-                f"owner {failed.owner!r} is {failed.status.value} with no reason; a degradation "
-                "an operator cannot explain is indistinguishable from a bug"
-            )
+            raise BoundaryError(f"owner {failed.owner!r} is {failed.status.value} with no reason; a degradation an operator cannot explain is indistinguishable from a bug")
         for other in report.owners:
             if other.owner == failed.owner:
                 continue
@@ -1038,10 +994,7 @@ class StartupReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "ok": self.ok,
-            "checks": [
-                {"check": name.value, "passed": passed, "detail": detail}
-                for name, passed, detail in self.checks
-            ],
+            "checks": [{"check": name.value, "passed": passed, "detail": detail} for name, passed, detail in self.checks],
         }
 
 
@@ -1115,23 +1068,11 @@ def assert_startable(
         (
             StartupCheck.INGRESS_AUTH_NOT_DISABLED,
             not (auth_disabled and not production),
-            (
-                "authentication is enabled"
-                if not auth_disabled
-                else (
-                    "auth_disabled is permitted in this environment"
-                    if not production
-                    else "auth_disabled requested in a production environment"
-                )
-            ),
+            ("authentication is enabled" if not auth_disabled else ("auth_disabled is permitted in this environment" if not production else "auth_disabled requested in a production environment")),
         )
     )
     if auth_disabled and not production:
-        violations.append(
-            "auth_disabled=true: authentication is off for the whole process, so every inbound "
-            "path is unauthenticated. Refusing to start rather than serving an unauthenticated "
-            "Gateway."
-        )
+        violations.append("auth_disabled=true: authentication is off for the whole process, so every inbound path is unauthenticated. Refusing to start rather than serving an unauthenticated Gateway.")
     if auth_disabled and production:
         violations.append("auth_disabled=true in a production environment")
 
@@ -1142,16 +1083,11 @@ def assert_startable(
         (
             StartupCheck.INGRESS_AUTH_CONFIGURED,
             not (exposed and not require_ingress_auth),
-            (
-                f"bind_host={bind_host!r} with require_ingress_auth={require_ingress_auth}"
-            ),
+            (f"bind_host={bind_host!r} with require_ingress_auth={require_ingress_auth}"),
         )
     )
     if exposed and not require_ingress_auth:
-        violations.append(
-            f"bind_host={bind_host!r} exposes the Gateway to the network while "
-            "require_ingress_auth is false; refusing to start an unauthenticated network ingress"
-        )
+        violations.append(f"bind_host={bind_host!r} exposes the Gateway to the network while require_ingress_auth is false; refusing to start an unauthenticated network ingress")
 
     checks.append(
         (
@@ -1164,10 +1100,7 @@ def assert_startable(
         violations.append("production environment with an exposed bind host and no ingress auth")
 
     if require_ingress_auth and not bool(payload.get("internal_auth_token_configured", True)):
-        violations.append(
-            "require_ingress_auth is true but no internal auth token is configured; trusted "
-            "internal callers would have no credential to present"
-        )
+        violations.append("require_ingress_auth is true but no internal auth token is configured; trusted internal callers would have no credential to present")
 
     raw_scopes = payload.get("scopes") or []
     if baseline is not None and raw_scopes:
@@ -1190,8 +1123,7 @@ def assert_startable(
         (
             StartupCheck.AGENT_CEILING_PRESENT,
             True,
-            "the authority ceiling is loaded from server configuration at import time and a "
-            "malformed ceiling file raises rather than falling back to the default",
+            "the authority ceiling is loaded from server configuration at import time and a malformed ceiling file raises rather than falling back to the default",
         )
     )
 
@@ -1216,7 +1148,7 @@ def assert_ingress_auth_configured(*, require: bool, bind_host: str, environment
 
 __all__ = [
     "KNOWN_STARTUP_KEYS",
-        "REQUIRED_POSTURE",
+    "REQUIRED_POSTURE",
     "ApprovalOutcome",
     "ApprovalRefused",
     "ApprovalResult",

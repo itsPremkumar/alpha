@@ -69,10 +69,7 @@ class CouncilEngine:
         if len(models) < 2:
             # Peer review with a single model would be self-review — the old
             # code happily "ran" it and synthesized a fabricated 0.8 score.
-            raise RuntimeError(
-                f"Council requires at least 2 configured chat models; found {len(models)}. "
-                "Add another model under `models:` in config.yaml."
-            )
+            raise RuntimeError(f"Council requires at least 2 configured chat models; found {len(models)}. Add another model under `models:` in config.yaml.")
 
         # ---------------------------------------------------------------------
         # STAGE 1: Independent Blind Generation
@@ -138,10 +135,7 @@ class CouncilEngine:
         target: ParticipantCandidate,
     ) -> dict | None:
         """One REAL reviewer-model call scoring the target's real response."""
-        system = (
-            "You are an impartial anonymous peer reviewer in a deliberation council. "
-            "Score strictly from the rubric; output ONLY the requested lines."
-        )
+        system = "You are an impartial anonymous peer reviewer in a deliberation council. Score strictly from the rubric; output ONLY the requested lines."
         user = (
             f"QUERY:\n{query}\n\n"
             f"TARGET RESPONSE ({target.anonymous_label}):\n{target.response}\n\n"
@@ -203,8 +197,7 @@ class CouncilEngine:
                         target_candidate_id=target.candidate_id,
                         rubric_scores=dict(scores),
                         composite_score=round(composite, 3),
-                        critique=parsed["critique"]
-                        or f"{reviewer.anonymous_label} reviewed {target.anonymous_label}.",
+                        critique=parsed["critique"] or f"{reviewer.anonymous_label} reviewed {target.anonymous_label}.",
                         identified_flaws=list(parsed["flaws"]),
                     )
                 )
@@ -254,16 +247,10 @@ class CouncilEngine:
         # 3. Minority Report Preservation (real margin, real labels)
         minority_dissent = None
         if runner_up and abs(top_score - runner_score) < 0.15:
-            minority_dissent = (
-                f"{runner_up['label']} ({runner_up['model_id']}) dissents: it finishes "
-                f"{abs(top_score - runner_score):.3f} behind {winner['label']}, inside the "
-                "0.15 threshold, so the trade-offs remain contested."
-            )
+            minority_dissent = f"{runner_up['label']} ({runner_up['model_id']}) dissents: it finishes {abs(top_score - runner_score):.3f} behind {winner['label']}, inside the 0.15 threshold, so the trade-offs remain contested."
 
         # 4. Synthesize Final Answer from the REAL winner response
-        winner_response = next(
-            c.response for c in candidates if c.candidate_id == winner["candidate_id"]
-        )
+        winner_response = next(c.response for c in candidates if c.candidate_id == winner["candidate_id"])
         stated_claims = "\n".join(f"- {clm}" for clm in winner["claims"]) or "(no claims stated)"
         final_answer = (
             f"### Consensus Recommendation\n"
@@ -286,10 +273,7 @@ class CouncilEngine:
             key_evidence=winner["claims"],
             minority_dissent=minority_dissent,
             candidate_rankings=rankings,
-            verdict_rationale=(
-                f"Winner {winner['label']} achieved the highest real peer-review score "
-                f"({top_score}) across correctness and evidence."
-            ),
+            verdict_rationale=(f"Winner {winner['label']} achieved the highest real peer-review score ({top_score}) across correctness and evidence."),
             # LLM-consensus tier until the verifier runs a real check.
             verification_status="consensus_supported",
             duration_seconds=round(time.time() - start_time, 2),

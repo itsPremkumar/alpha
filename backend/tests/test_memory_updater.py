@@ -1266,9 +1266,7 @@ class TestUpdateMemoryStructuredResponse:
     def test_schema_guard_ignores_invalid_update_fields(self):
         """Parsed JSON with bad field types should not break the memory update."""
         response = (
-            '{"user": "bad", "history": [], "newFacts": ["bad", '
-            '{"content": "User works on Alpha", "category": "context", "confidence": 0.91, '
-            '"scope": "user", "durability": "durable", "authority": "descriptive"}], "factsToRemove": "bad"}'
+            '{"user": "bad", "history": [], "newFacts": ["bad", {"content": "User works on Alpha", "category": "context", "confidence": 0.91, "scope": "user", "durability": "durable", "authority": "descriptive"}], "factsToRemove": "bad"}'
         )
 
         result, storage = self._run_update_with_response(response)

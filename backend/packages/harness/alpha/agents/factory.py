@@ -339,9 +339,7 @@ def _assemble_from_features(
             if l1_memory_enabled(memory_cfg):
                 from alpha.agents.middlewares.l1_memory_middleware import L1MemoryMiddleware
 
-                chain.append(
-                    L1MemoryMiddleware(agent_name=name, memory_config=memory_cfg)
-                )
+                chain.append(L1MemoryMiddleware(agent_name=name, memory_config=memory_cfg))
 
     # --- [10] Vision ---
     if feat.vision is not False:

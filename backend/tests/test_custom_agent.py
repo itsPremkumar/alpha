@@ -10,10 +10,10 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from app.gateway.routers.agents import AGENT_NAME_PATTERN as GATEWAY_AGENT_NAME_PATTERN
 from alpha.agents.memory.backends.deermem.deermem.core.paths import AGENT_NAME_PATTERN as DEERMEM_AGENT_NAME_PATTERN
 from alpha.agents.memory.backends.deermem.deermem.core.paths import DEFAULT_AGENT_BUCKET, validate_agent_name
 from alpha.config.agents_api_config import AgentsApiConfig, get_agents_api_config, set_agents_api_config
+from app.gateway.routers.agents import AGENT_NAME_PATTERN as GATEWAY_AGENT_NAME_PATTERN
 
 # ---------------------------------------------------------------------------
 # Helpers

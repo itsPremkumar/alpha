@@ -35,7 +35,7 @@ class ContextTransformer:
                 for c in range(max(0, idx - context_lines), min(len(lines), idx + context_lines + 1)):
                     matched_indices.add(c)
 
-        matched_lines = [f"{i+1}: {lines[i]}" for i in sorted(matched_indices)]
+        matched_lines = [f"{i + 1}: {lines[i]}" for i in sorted(matched_indices)]
         new_content = "\n".join(matched_lines)
 
         return self.store.register(

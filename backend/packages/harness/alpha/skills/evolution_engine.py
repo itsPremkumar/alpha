@@ -624,8 +624,7 @@ class SkillEvolutionEngine:
                 suite = evaluation.get("suite") or {}
                 _note(
                     record,
-                    f"Validation ran the declared test suite via subprocess (exit_code={suite.get('exit_code')}, timed_out={suite.get('timed_out')}); "
-                    "only the declared command was exercised - broader runtime behavior was NOT verified.",
+                    f"Validation ran the declared test suite via subprocess (exit_code={suite.get('exit_code')}, timed_out={suite.get('timed_out')}); only the declared command was exercised - broader runtime behavior was NOT verified.",
                 )
             if moderation["status"] == "not_configured":
                 _note(record, "No moderation model configured; moderation was NOT performed - this is not a moderation pass.")
@@ -788,9 +787,7 @@ class SkillEvolutionEngine:
             _record_event(
                 record,
                 "rolled_back",
-                f"restored v{record.previous_version or 'unset'} (dropped v{record.candidate_version})"
-                + (f" by {actor}" if actor else "")
-                + (f": {reason}" if reason else ""),
+                f"restored v{record.previous_version or 'unset'} (dropped v{record.candidate_version})" + (f" by {actor}" if actor else "") + (f": {reason}" if reason else ""),
             )
             _note(record, f"Rolled back to the retained previous body; the promoted v{record.candidate_version} candidate was withdrawn from the active skill.")
             record.updated_at = _utcnow()

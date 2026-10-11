@@ -1,11 +1,15 @@
 """Probe: durable resume + orphan reconciliation + idempotency + leases (real engine)."""
-import sys, os, pathlib
+
+import os  # noqa: E402
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
 os.chdir(pathlib.Path(__file__).resolve().parent.parent.parent)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode, WorkflowRun, WorkflowRunStatus
-from alpha.workflow.runtime import DynamicWorkflowEngine
-from alpha.workflow.leases import LeaseManager
+from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowEdge, WorkflowGraph, WorkflowNode  # noqa: E402
+from alpha.workflow.runtime import DynamicWorkflowEngine  # noqa: E402
+
 
 def make_def():
     g = WorkflowGraph(id="w4", version=1)
@@ -15,6 +19,7 @@ def make_def():
     g.nodes["n2"] = n2
     g.edges = [WorkflowEdge(source="n1", target="n2")]
     return WorkflowDefinition(id="w4", name="w4", graph=g, variables={}, version=1)
+
 
 def main():
     engine = DynamicWorkflowEngine()
@@ -29,6 +34,7 @@ def main():
     run = engine.execute_step(run.run_id)
     print("AFTER EXHAUST STEP", run.status.value, run.tokens_consumed)
     print("failed_nodes", run.failed_nodes)
+
 
 if __name__ == "__main__":
     main()

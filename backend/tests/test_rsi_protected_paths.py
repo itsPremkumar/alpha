@@ -106,10 +106,7 @@ def test_module_source_loads_rules_from_code_never_from_a_file():
     assert isinstance(assign.value, ast.Tuple)
     # Each element is a literal rule-constructor call (never a variable read
     # or anything derived from external data).
-    assert all(
-        isinstance(item, ast.Call) and getattr(item.func, "id", None) in {"ProtectedRule", "_rule"}
-        for item in assign.value.elts
-    )
+    assert all(isinstance(item, ast.Call) and getattr(item.func, "id", None) in {"ProtectedRule", "_rule"} for item in assign.value.elts)
 
 
 def test_policy_cannot_be_disabled_by_any_candidate_supplied_input(monkeypatch):
@@ -274,9 +271,5 @@ def test_module_source_contains_no_secrets_static_scan():
     # No environment variable in this module can alter or disable the policy.
     tree = ast.parse(source, filename=str(MODULE_PATH))
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
-    env_calls = [
-        node
-        for node in calls
-        if isinstance(node.func, ast.Attribute) and node.func.attr in {"getenv", "environ.get"}
-    ]
+    env_calls = [node for node in calls if isinstance(node.func, ast.Attribute) and node.func.attr in {"getenv", "environ.get"}]
     assert not env_calls, "protected-path policy must not read environment variables"

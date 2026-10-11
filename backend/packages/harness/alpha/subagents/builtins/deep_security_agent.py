@@ -132,11 +132,7 @@ class DeepSecurityAuditorAgent:
         summary = (
             f"DeepSecurityAuditorAgent audited {len(sources)} source(s) with static pattern scans "
             f"and detected {total_findings} security relevant finding(s)."
-            + (
-                f" A sanitization guard was proposed for dangerous sink '{sink_names[0]}'."
-                if sink_names
-                else " No dangerous sink pattern matched, so no remediation patch was generated."
-            )
+            + (f" A sanitization guard was proposed for dangerous sink '{sink_names[0]}'." if sink_names else " No dangerous sink pattern matched, so no remediation patch was generated.")
             + " No dynamic verification or test suite ran in this run; findings and the proposed "
             "patch are unverified by re-execution."
         )

@@ -1,10 +1,7 @@
 """Unit tests for Contrastive Trajectory Replay and Negative-Path Memory."""
 
-import pytest
-
 from alpha.memory.contrastive_trajectory_replay import (
     ContrastiveTrajectoryReplay,
-    TrajectoryRecord,
     query_contrastive_memory,
     record_trajectory_outcome,
 )
@@ -83,22 +80,26 @@ def test_cyclic_trap_detector(tmp_path):
 
 def test_contrastive_memory_tools():
     # Test record tool
-    res_rec = record_trajectory_outcome.invoke({
-        "task_id": "session_tool_test",
-        "failure_signature": "KeyError: 'auth_token'",
-        "erroneous_hypothesis": "Assume auth_token always present in headers dict",
-        "failed_patch": "token = headers['auth_token']",
-        "winning_resolution": "token = headers.get('auth_token', '')",
-    })
+    res_rec = record_trajectory_outcome.invoke(
+        {
+            "task_id": "session_tool_test",
+            "failure_signature": "KeyError: 'auth_token'",
+            "erroneous_hypothesis": "Assume auth_token always present in headers dict",
+            "failed_patch": "token = headers['auth_token']",
+            "winning_resolution": "token = headers.get('auth_token', '')",
+        }
+    )
     assert res_rec["success"] is True
     assert "record_id" in res_rec["data"]
 
     # Test query tool
-    res_query = query_contrastive_memory.invoke({
-        "query": "Missing auth_token header access in request",
-        "failure_signature": "KeyError: 'auth_token'",
-        "top_k": 3,
-    })
+    res_query = query_contrastive_memory.invoke(
+        {
+            "query": "Missing auth_token header access in request",
+            "failure_signature": "KeyError: 'auth_token'",
+            "top_k": 3,
+        }
+    )
     assert res_query["success"] is True
     assert res_query["data"]["matched_constraints_count"] >= 1
     assert len(res_query["data"]["negative_constraints"]) >= 1

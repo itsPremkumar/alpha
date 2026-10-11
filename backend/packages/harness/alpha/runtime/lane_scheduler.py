@@ -285,9 +285,7 @@ class RunAdmissionRejected(RuntimeError):
     """
 
     def __init__(self, decision: AdmissionDecision, *, retry_after_seconds: float) -> None:
-        super().__init__(
-            f"Gateway run capacity exhausted ({decision.active}/{decision.limit} runs in flight); retry in {retry_after_seconds:g}s"
-        )
+        super().__init__(f"Gateway run capacity exhausted ({decision.active}/{decision.limit} runs in flight); retry in {retry_after_seconds:g}s")
         self.code = decision.code
         self.decision = decision
         self.retry_after_seconds = retry_after_seconds
@@ -619,4 +617,3 @@ def has_run_capacity(*, controller: RunAdmissionController | None = None) -> boo
         return resolved.available > 0
     except Exception:
         return True
-

@@ -16,9 +16,10 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +36,18 @@ class RoutineRun:
     bot: str
     name: str
     action: str
-    status: str                 # "ok" | "skipped" | "failed"
+    status: str  # "ok" | "skipped" | "failed"
     detail: str = ""
     result: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "bot": self.bot, "name": self.name, "action": self.action,
-            "status": self.status, "detail": self.detail, "result": self.result,
+            "bot": self.bot,
+            "name": self.name,
+            "action": self.action,
+            "status": self.status,
+            "detail": self.detail,
+            "result": self.result,
         }
 
 
@@ -109,18 +114,15 @@ class RoutineScheduler:
         bot_name = getattr(bot, "name", "?")
 
         if action not in ACTIONS:
-            return RoutineRun(bot_name, name, action, "skipped",
-                              f"unsupported action {action!r}")
+            return RoutineRun(bot_name, name, action, "skipped", f"unsupported action {action!r}")
 
         try:
             if action == "sentinel.run_once":
                 report = self._runner().run_once()
-                return RoutineRun(bot_name, name, action, "ok",
-                                  report.summary(), report.to_dict())
+                return RoutineRun(bot_name, name, action, "ok", report.summary(), report.to_dict())
         except Exception as exc:  # noqa: BLE001 - one routine must not kill the pass
             logger.warning("routine %s failed", name, exc_info=True)
-            return RoutineRun(bot_name, name, action, "failed",
-                              f"{type(exc).__name__}: {exc}")
+            return RoutineRun(bot_name, name, action, "failed", f"{type(exc).__name__}: {exc}")
 
         return RoutineRun(bot_name, name, action, "skipped", "no handler")
 

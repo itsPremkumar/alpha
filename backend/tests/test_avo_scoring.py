@@ -1,4 +1,3 @@
-
 from alpha.avo.scoring import EvaluationVector
 
 
@@ -66,7 +65,7 @@ def test_evaluation_vector_pareto_dominance():
 
 def test_rhae_action_efficiency_score():
     vec = EvaluationVector(correctness=True)
-    
+
     # 100% completion with equal or fewer actions than baseline -> 100.00 RHAE
     score_full = vec.rhae_score(
         total_levels=183,

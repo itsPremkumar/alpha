@@ -10,7 +10,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -47,7 +47,7 @@ class OchiaiFaultLocalizer:
         N_F: Total number of failing tests
     """
 
-    def __init__(self, workspace_root: Optional[str] = None) -> None:
+    def __init__(self, workspace_root: str | None = None) -> None:
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else None
 
     @staticmethod
@@ -99,9 +99,7 @@ class OchiaiFaultLocalizer:
     ) -> list[SuspiciousLocation]:
         """Parses Python or Node.js failure traceback logs and computes SBFL suspiciousness."""
         # Python traceback regex: File "path/to/file.py", line 123, in func_name
-        py_frame_pattern = re.compile(
-            r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+([\w<>]+))?'
-        )
+        py_frame_pattern = re.compile(r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+([\w<>]+))?')
         # Error message regex: AssertionError: msg or ValueError: msg
         error_pattern = re.compile(r"^([A-Z]\w*(?:Error|Exception|Failure)):\s*(.*)$", re.MULTILINE)
 
@@ -158,7 +156,7 @@ class OchiaiFaultLocalizer:
             depth_weight = (depth_idx + 1) / total_frames
             n_cf = hits[element_key] * (1.0 + depth_weight)
             n_cs = total_passing_tests
-            
+
             # Ochiai calculation
             score = n_cf / math.sqrt(total_failing * (n_cf + n_cs))
 
@@ -171,7 +169,7 @@ class OchiaiFaultLocalizer:
                         all_lines = target_file.read_text(encoding="utf-8", errors="replace").splitlines()
                         start = max(0, line_no - 3)
                         end = min(len(all_lines), line_no + 2)
-                        context = [f"{i+1}: {all_lines[i]}" for i in range(start, end)]
+                        context = [f"{i + 1}: {all_lines[i]}" for i in range(start, end)]
                     except Exception:
                         pass
 

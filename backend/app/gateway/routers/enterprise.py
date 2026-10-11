@@ -31,6 +31,7 @@ router = _inner_router
 
 # --- Request Payloads ---
 
+
 class SynthesizeDepartmentRequest(BaseModel):
     name: str = Field(..., min_length=2, description="Department display name")
     department_key: str = Field(..., min_length=2, description="Department key / slug")
@@ -110,6 +111,7 @@ class SignReleaseRequest(BaseModel):
 
 # --- Hierarchy Endpoints ---
 
+
 @router.get("/hierarchy")
 async def get_enterprise_hierarchy_chart() -> dict[str, Any]:
     """Retrieves full interactive organization chart tree for the War Room UI."""
@@ -142,6 +144,7 @@ async def synthesize_department(payload: SynthesizeDepartmentRequest) -> dict[st
 
 
 # --- Cross-Department RFCs & Epistemic Debate Endpoints ---
+
 
 @router.get("/rfcs")
 async def list_rfcs(status: str | None = None) -> list[dict[str, Any]]:
@@ -190,11 +193,7 @@ async def submit_rfc_review(rfc_id: str, payload: SubmitRFCReviewRequest) -> dic
             verdict=payload.verdict,
             argument=payload.argument,
             epistemic_confidence=payload.epistemic_confidence,
-            confidence_basis=(
-                CONFIDENCE_BASIS_CALLER_SUPPLIED
-                if "epistemic_confidence" in payload.model_fields_set
-                else CONFIDENCE_BASIS_NEUTRAL
-            ),
+            confidence_basis=(CONFIDENCE_BASIS_CALLER_SUPPLIED if "epistemic_confidence" in payload.model_fields_set else CONFIDENCE_BASIS_NEUTRAL),
         )
         return review.model_dump()
     except KeyError:
@@ -216,11 +215,7 @@ async def submit_debate_argument(rfc_id: str, payload: SubmitDebateArgumentReque
             evidence=payload.evidence,
             counter_to_id=payload.counter_to_id,
             epistemic_weight=payload.epistemic_weight,
-            confidence_basis=(
-                CONFIDENCE_BASIS_CALLER_SUPPLIED
-                if "epistemic_weight" in payload.model_fields_set
-                else CONFIDENCE_BASIS_NEUTRAL
-            ),
+            confidence_basis=(CONFIDENCE_BASIS_CALLER_SUPPLIED if "epistemic_weight" in payload.model_fields_set else CONFIDENCE_BASIS_NEUTRAL),
         )
         return arg.model_dump()
     except KeyError:
@@ -244,6 +239,7 @@ async def evaluate_rfc_gating(rfc_id: str) -> dict[str, Any]:
 
 
 # --- Mission-to-Sprint Pipeline Endpoints ---
+
 
 @router.get("/missions/pipeline")
 async def get_missions_pipeline() -> dict[str, Any]:
@@ -301,6 +297,7 @@ async def step_sprint(sprint_id: str) -> dict[str, Any]:
 
 # --- Department Token Treasury Endpoints ---
 
+
 @router.get("/treasury")
 async def get_treasury_status() -> dict[str, Any]:
     """Retrieves department budget allocations, burn rate monitoring, and circuit breaker states."""
@@ -328,6 +325,7 @@ async def reset_circuit_breaker(payload: ResetCircuitBreakerRequest) -> dict[str
 
 
 # --- Quality Council Quorum Endpoints ---
+
 
 @router.get("/council/releases")
 async def list_releases() -> list[dict[str, Any]]:
@@ -372,10 +370,7 @@ async def run_release_benchmark(release_id: str) -> dict[str, Any]:
             # from a simulated score. The stored model gate
             # (release.holdout_passed) remains False.
             "holdout_passed": None,
-            "holdout_passed_reason": (
-                f"score is simulated (evidence_kind={evidence_kind}); "
-                "no measured benchmark ran — pass verdict unavailable"
-            ),
+            "holdout_passed_reason": (f"score is simulated (evidence_kind={evidence_kind}); no measured benchmark ran — pass verdict unavailable"),
             "release": release.model_dump() if release else None,
         }
     except KeyError:
@@ -414,6 +409,7 @@ async def promote_release(release_id: str) -> dict[str, Any]:
 
 
 # --- Discovery, Latency, Security & Heartbeat Endpoints ---
+
 
 @router.get("/discovery")
 async def get_discovery_overview() -> dict[str, Any]:

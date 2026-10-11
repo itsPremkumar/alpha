@@ -106,10 +106,7 @@ class CandidateTargetRefused(Exception):
     def __init__(self, target: str, matched: str) -> None:
         self.target = target
         self.matched = matched
-        super().__init__(
-            f"candidate target refused: '{target}' is part of the server-owned scoring surface (matched '{matched}'). "
-            "A candidate may not modify the fitness function or the gate that judges it."
-        )
+        super().__init__(f"candidate target refused: '{target}' is part of the server-owned scoring surface (matched '{matched}'). A candidate may not modify the fitness function or the gate that judges it.")
 
 
 def _normalise(path: str | Path) -> str:
@@ -255,16 +252,10 @@ class ScorerProposalLedger:
         matched = is_server_owned_path(subject)
         if matched is not None:
             reason = RejectionReason.GATE_MODIFICATION_REFUSED
-            detail = (
-                f"'{subject}' is the server-owned gate/scorer surface (matched '{matched}'). "
-                "The agent may inspect it to learn what it is measured on; it may not write to it."
-            )
+            detail = f"'{subject}' is the server-owned gate/scorer surface (matched '{matched}'). The agent may inspect it to learn what it is measured on; it may not write to it."
         else:
             reason = RejectionReason.SCORER_INSTALL_REFUSED
-            detail = (
-                f"'{subject}' is not a server-owned path, but a scorer proposed by an agent is still not "
-                "authoritative for its own promotion. Scorers are owned by the server."
-            )
+            detail = f"'{subject}' is not a server-owned path, but a scorer proposed by an agent is still not authoritative for its own promotion. Scorers are owned by the server."
         proposal = ScorerProposal(
             proposal_id=f"sp_{uuid.uuid4().hex[:12]}",
             author=author,

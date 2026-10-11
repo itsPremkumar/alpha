@@ -45,18 +45,10 @@ def _assert_descriptor_invariants(descriptor: CapabilityDescriptor) -> None:
     assert descriptor.kind, "descriptor kind must be non-empty"
     assert descriptor.source, "descriptor source must be non-empty"
     assert descriptor.evidence_kind in _ALLOWED_EVIDENCE
-    assert descriptor.health in _ALLOWED_HEALTH, (
-        "W-N3 executes nothing, so no descriptor may claim runtime health: "
-        f"{descriptor.id} health={descriptor.health!r}"
-    )
-    assert descriptor.version is None, (
-        "no source declares a version today; W-N3 must not invent one: "
-        f"{descriptor.id} version={descriptor.version!r}"
-    )
+    assert descriptor.health in _ALLOWED_HEALTH, f"W-N3 executes nothing, so no descriptor may claim runtime health: {descriptor.id} health={descriptor.health!r}"
+    assert descriptor.version is None, f"no source declares a version today; W-N3 must not invent one: {descriptor.id} version={descriptor.version!r}"
     if descriptor.availability == "unavailable":
-        assert descriptor.reason and descriptor.reason.strip(), (
-            f"unavailable descriptor must carry an honest reason: {descriptor.id}"
-        )
+        assert descriptor.reason and descriptor.reason.strip(), f"unavailable descriptor must carry an honest reason: {descriptor.id}"
 
 
 def test_facade_exposes_all_five_registry_kinds() -> None:
@@ -357,9 +349,7 @@ def test_live_descriptors_make_no_running_subsystem_claims() -> None:
             continue
         for descriptor in descriptors:
             _assert_descriptor_invariants(descriptor)
-            assert descriptor.health == "unverified", (
-                f"{kind}:{descriptor.id} claims runtime health without a runtime probe"
-            )
+            assert descriptor.health == "unverified", f"{kind}:{descriptor.id} claims runtime health without a runtime probe"
             checked += 1
     assert checked > 0, "at least one registry must have produced descriptors"
 

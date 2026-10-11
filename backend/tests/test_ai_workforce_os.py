@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-import pytest
+
 from fastapi.testclient import TestClient
 
-from app.gateway.app import create_app
 from alpha.bots.permissions import get_permission_gate
 from alpha.planning.dag_orchestrator import get_dag_orchestrator
 from alpha.projects.context_router import ThreeLevelContextRouter
 from alpha.projects.worktree_hook import WorktreeTaskContext
+from app.gateway.app import create_app
 
 
 def test_three_level_context_router():
@@ -93,6 +93,7 @@ def test_worktree_execution_lifecycle():
         repo.mkdir()
         # Initialize a basic git repo
         import subprocess
+
         subprocess.run(["git", "init"], cwd=str(repo), capture_output=True, check=False)
         subprocess.run(["git", "config", "user.name", "TestUser"], cwd=str(repo), capture_output=True, check=False)
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(repo), capture_output=True, check=False)
@@ -159,4 +160,3 @@ def test_war_room_gateway_endpoint():
         assert "decisions" in data
         assert "events" in data
         assert "kill_switch" in data
-

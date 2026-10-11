@@ -71,9 +71,7 @@ def test_recover_refuses_a_sync_callable_returning_a_coroutine() -> None:
             outcome = recover(_sync_wrapper_returning_coroutine, policy=RetryPolicy(attempts=2))
         except AsyncOperationRefused:
             return
-    assert outcome.status != RecoveryStatus.SUCCEEDED, (
-        f"recover reported {outcome.status!r} for an operation that never ran"
-    )
+    assert outcome.status != RecoveryStatus.SUCCEEDED, f"recover reported {outcome.status!r} for an operation that never ran"
 
 
 def test_retry_call_refuses_a_sync_callable_returning_a_coroutine() -> None:
@@ -93,9 +91,7 @@ def test_refusal_closes_the_coroutine_so_no_warning_is_emitted() -> None:
             recover(_sync_wrapper_returning_coroutine, policy=RetryPolicy(attempts=1))
         except AsyncOperationRefused:
             pass
-    never_awaited = [
-        w for w in caught if "never awaited" in str(w.message).lower()
-    ]
+    never_awaited = [w for w in caught if "never awaited" in str(w.message).lower()]
     assert not never_awaited, f"refusal leaked a coroutine: {[str(w.message) for w in never_awaited]}"
 
 
@@ -129,6 +125,7 @@ def test_disabled_pass_through_also_refuses_async() -> None:
 
 def test_an_awaited_coroutine_is_still_fine_elsewhere() -> None:
     """Guard the guard: normal async usage is untouched by this change."""
+
     async def driver() -> str:
         return await _async_ok()
 

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+
 import pytest
 
-from alpha.selfrepair.sbfl import OchiaiFaultLocalizer
 from alpha.selfrepair.assertion_guard import TestAssertionImmutabilityGuard
+from alpha.selfrepair.sbfl import OchiaiFaultLocalizer
 from alpha.selfrepair.surgical_apr import SurgicalProgramRepairEngine
 from alpha.tools.builtins.code_agentic_core import run_surgical_program_repair
 
@@ -190,6 +191,7 @@ ZeroDivisionError: division by zero
 
 def test_run_surgical_program_repair_tool():
     import json
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         buggy_file = tmp_path / "math_fn.py"
@@ -203,11 +205,13 @@ Traceback (most recent call last):
     return a / b
 ZeroDivisionError: division by zero
 """
-        raw_res = run_surgical_program_repair.invoke({
-            "test_output": traceback_output,
-            "root_path": str(tmp_path),
-            "total_passing_tests": 1,
-        })
+        raw_res = run_surgical_program_repair.invoke(
+            {
+                "test_output": traceback_output,
+                "root_path": str(tmp_path),
+                "total_passing_tests": 1,
+            }
+        )
         res_data = json.loads(raw_res)
         assert res_data["success"] is True
         assert res_data["applied_patch"] is not None

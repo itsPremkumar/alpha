@@ -12,9 +12,9 @@ import logging
 
 from fastapi import HTTPException, status
 
+from alpha.config.auth_config import OIDCProviderConfig
 from app.gateway.auth.local_provider import LocalAuthProvider
 from app.gateway.auth.oidc import OIDCIdentity
-from alpha.config.auth_config import OIDCProviderConfig
 
 logger = logging.getLogger(__name__)
 

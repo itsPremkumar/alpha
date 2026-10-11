@@ -246,9 +246,7 @@ async def test_the_per_provider_reconciliation_never_raises(monkeypatch, fault: 
     # "not configured at all" is the None answer, whichever fault follows.
     assert await channel_connections._ensure_runtime_channel_ready_if_available("slack", {}) is None
 
-    result = await channel_connections._ensure_runtime_channel_ready_if_available(
-        "slack", {"slack": {"enabled": True, "bot_token": "xoxb-operator", "app_token": "xapp-operator"}}
-    )
+    result = await channel_connections._ensure_runtime_channel_ready_if_available("slack", {"slack": {"enabled": True, "bot_token": "xoxb-operator", "app_token": "xapp-operator"}})
     assert result is expected, f"{label} must degrade this provider to {expected!r}, got {result!r}"
 
 
@@ -403,4 +401,3 @@ def test_a_slow_provider_does_not_serialize_the_response(tmp_path, monkeypatch):
     assert elapsed >= _SLOW_PROVIDER_DELAY, "the slowest provider must still be waited for"
 
     anyio.run(repo.close)
-

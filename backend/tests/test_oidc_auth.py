@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
+from alpha.config.auth_config import OIDCProviderConfig
 from app.gateway.auth.models import User
 from app.gateway.auth.oidc import OIDCError, OIDCIdentity, OIDCMetadata, OIDCService, OIDCValidationError
 from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
-from alpha.config.auth_config import OIDCProviderConfig
 
 
 def _provider_config(**overrides):

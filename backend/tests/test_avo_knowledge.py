@@ -1,4 +1,3 @@
-
 from alpha.avo.knowledge import DomainKnowledgeBase
 
 

@@ -88,9 +88,7 @@ def test_low_measured_roi_velocity_is_preserved_not_floored():
 
     # Burn a large amount of tokens while completing zero tasks: the real ROI
     # for this window is 0 tasks / 10k tokens = 0.0.
-    alloc, _tripped = treasury.record_token_burn(
-        "dept-engineering", tokens_burned=50000, tasks_completed=0
-    )
+    alloc, _tripped = treasury.record_token_burn("dept-engineering", tokens_burned=50000, tasks_completed=0)
     assert alloc.spent_tokens > 0
     # HONESTY PIN: the old code floored any ROI < 0.1 up to the constant 0.85.
     assert alloc.roi_velocity == 0.0

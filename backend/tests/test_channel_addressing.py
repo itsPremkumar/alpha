@@ -65,9 +65,7 @@ def test_e_a_role_selector_dispatches_to_every_holder():
 
 
 def test_e_mixed_bot_and_role_targets_are_all_reported():
-    resolution = parse_mentions(
-        "@alice and @role:reviewers: go", roster=ROSTER, roles=ROLES
-    )
+    resolution = parse_mentions("@alice and @role:reviewers: go", roster=ROSTER, roles=ROLES)
     assert resolution.ok
     assert set(resolution.resolved_handles) == {"alice", "rev1", "rev2"}
     assert {t.via for t in resolution.targets} == {"explicit-handle", "role-selector"}
@@ -127,9 +125,7 @@ def test_e_a_target_returning_none_is_still_a_successful_delivery():
         return None
 
     resolution = parse_mentions("@alice go", roster=ROSTER, roles=ROLES)
-    report = asyncio.run(
-        dispatch_resolution(resolution, quiet, record_ledger=False)
-    )
+    report = asyncio.run(dispatch_resolution(resolution, quiet, record_ledger=False))
     assert report.outcome_for("alice").status == TARGET_OK
     assert report.ok is True
 
@@ -165,9 +161,7 @@ def test_f_an_unknown_handle_dispatches_to_nobody_at_all():
         return "answered"
 
     resolution = parse_mentions("@ghost hello", roster=ROSTER, roles=ROLES)
-    report = asyncio.run(
-        dispatch_resolution(resolution, handler, record_ledger=False)
-    )
+    report = asyncio.run(dispatch_resolution(resolution, handler, record_ledger=False))
     assert called == [], "an unknown handle reached a handler"
     assert report.outcomes == []
     assert report.ok is False
@@ -383,9 +377,7 @@ def test_a_command_a_bot_may_issue_to_itself_it_may_not_issue_on_another_bot():
     assert router.check(on_self).allowed is True
 
     # Same actor, same command, but aimed at somebody else.
-    on_other = CommandRequest(
-        "status", "", "alice", "lead", "/status", "room", on_behalf_of="bob"
-    )
+    on_other = CommandRequest("status", "", "alice", "lead", "/status", "room", on_behalf_of="bob")
     decision = router.check(on_other)
     assert decision.allowed is False
     assert decision.refused_by == "target_authority"
@@ -420,9 +412,7 @@ def test_a_command_aimed_at_a_protected_component_is_refused():
         "alpha.bots.authority_ceiling",
         "kill_switch.py",
     ):
-        request = CommandRequest(
-            "archive", "", "lead", "lead", "/archive", "r", on_behalf_of=target
-        )
+        request = CommandRequest("archive", "", "lead", "lead", "/archive", "r", on_behalf_of=target)
         decision = router.check(request)
         assert decision.allowed is False, target
         assert decision.refused_by == "protected", target

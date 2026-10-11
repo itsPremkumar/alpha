@@ -1,4 +1,3 @@
-
 from alpha.agency import (
     CompetenceTracker,
     CuriosityScorer,

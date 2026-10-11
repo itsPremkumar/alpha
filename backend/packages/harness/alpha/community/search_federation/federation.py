@@ -215,9 +215,7 @@ class SearchFederation:
         # operator can reorder or extend it without editing the default table.
         self._chains: dict[str, tuple[str, ...]] = dict(chains) if chains else dict(MODE_CHAINS)
         self._lock = threading.Lock()
-        self._state: dict[str, ProviderRuntimeState] = {
-            name: ProviderRuntimeState(name=name) for name in layer.PROVIDER_ORDER
-        }
+        self._state: dict[str, ProviderRuntimeState] = {name: ProviderRuntimeState(name=name) for name in layer.PROVIDER_ORDER}
         # ``layer.BUDGET_SPECS`` so a test can inject a provider with its own
         # allowance without touching the process-wide table.
         self.budgets = BudgetLedger(specs=dict(getattr(layer, "BUDGET_SPECS", BUDGET_SPECS)), path=budget_path, clock=clock)
@@ -465,11 +463,7 @@ class SearchFederation:
         """
         predicted = result.cost
         expected_unit = self.budgets.unit_for(result.provider)
-        if (
-            result.reported_cost is not None
-            and result.reported_cost_unit
-            and result.reported_cost_unit == expected_unit
-        ):
+        if result.reported_cost is not None and result.reported_cost_unit and result.reported_cost_unit == expected_unit:
             charged = CreditCost(
                 float(result.reported_cost),
                 str(result.reported_cost_unit),

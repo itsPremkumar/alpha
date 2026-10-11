@@ -5,10 +5,10 @@ import pytest
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from app.gateway.routers.mcp import McpServerConfigResponse
 from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
 from alpha.mcp.tools import _make_session_pool_tool, get_mcp_tools
 from alpha.tools.mcp_metadata import get_mcp_routing
+from app.gateway.routers.mcp import McpServerConfigResponse
 
 
 class _Args(BaseModel):

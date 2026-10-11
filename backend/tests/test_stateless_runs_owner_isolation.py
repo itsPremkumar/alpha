@@ -33,11 +33,11 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 from langgraph.store.memory import InMemoryStore
 
-from app.gateway.auth.models import User
-from app.gateway.routers import runs
 from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
 from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
 from alpha.runtime import ConflictError
+from app.gateway.auth.models import User
+from app.gateway.routers import runs
 
 USER_A = User(email="owner-a@example.com", password_hash="x", system_role="user", id=uuid4())
 USER_B = User(email="intruder-b@example.com", password_hash="x", system_role="user", id=uuid4())

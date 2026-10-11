@@ -49,10 +49,7 @@ def main() -> int:
 
     print("\n=== every task ===")
     for tid, t in tasks.items():
-        print(
-            f"  {tid:18} status={str(t.get('status')):11} worker={str(t.get('assigned_worker')):12} "
-            f"type={str(t.get('worker_type')):15} deps={t.get('dependencies')}"
-        )
+        print(f"  {tid:18} status={str(t.get('status')):11} worker={str(t.get('assigned_worker')):12} type={str(t.get('worker_type')):15} deps={t.get('dependencies')}")
 
     # Event vocabulary across every swarm, so the view can render a type it has
     # never seen rather than dropping it.

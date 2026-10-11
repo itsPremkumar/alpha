@@ -64,12 +64,14 @@ def test_category_team_dispatcher_routes_correctly():
 
 
 def test_consult_plan_gap_analysis_tool():
-    res = consult_plan_gap_analysis.invoke({
-        "task_title": "Database Cleanup",
-        "task_description": "Clean temporary tables without test coverage",
-        "proposed_steps_csv": "Drop temp tables, Exit",
-        "is_visual_or_frontend": False,
-    })
+    res = consult_plan_gap_analysis.invoke(
+        {
+            "task_title": "Database Cleanup",
+            "task_description": "Clean temporary tables without test coverage",
+            "proposed_steps_csv": "Drop temp tables, Exit",
+            "is_visual_or_frontend": False,
+        }
+    )
     parsed = json.loads(res)
     assert "gaps_identified" in parsed
     assert parsed["model_family"] == "anthropic/claude-3-7-sonnet"
@@ -78,34 +80,40 @@ def test_consult_plan_gap_analysis_tool():
 
 def test_review_plan_invariant_gate_tool():
     # Dangerous step rejected
-    res_rejected = review_plan_invariant_gate.invoke({
-        "task_goal": "Clean project files",
-        "proposed_steps_csv": "git push --force origin main, remove cache",
-        "constraints_csv": "no data loss",
-        "budget_cap_usd": 5.0,
-    })
+    res_rejected = review_plan_invariant_gate.invoke(
+        {
+            "task_goal": "Clean project files",
+            "proposed_steps_csv": "git push --force origin main, remove cache",
+            "constraints_csv": "no data loss",
+            "budget_cap_usd": 5.0,
+        }
+    )
     parsed_rej = json.loads(res_rejected)
     assert parsed_rej["approved"] is False
     assert parsed_rej["model_family"] == "openai/gpt-4o"
 
     # Sound step approved
-    res_approved = review_plan_invariant_gate.invoke({
-        "task_goal": "Run test verification",
-        "proposed_steps_csv": "Execute pytest backend/tests, Assert exit code 0",
-        "constraints_csv": "read only",
-        "budget_cap_usd": 5.0,
-    })
+    res_approved = review_plan_invariant_gate.invoke(
+        {
+            "task_goal": "Run test verification",
+            "proposed_steps_csv": "Execute pytest backend/tests, Assert exit code 0",
+            "constraints_csv": "read only",
+            "budget_cap_usd": 5.0,
+        }
+    )
     parsed_app = json.loads(res_approved)
     assert parsed_app["approved"] is True
 
 
 def test_dispatch_discipline_worker_tool():
-    res = dispatch_discipline_worker.invoke({
-        "category": "visual-engineering",
-        "task_prompt": "Render memory usage meter",
-        "context_json": json.dumps({"component_name": "MemoryMeter"}),
-        "constraints_csv": "",
-    })
+    res = dispatch_discipline_worker.invoke(
+        {
+            "category": "visual-engineering",
+            "task_prompt": "Render memory usage meter",
+            "context_json": json.dumps({"component_name": "MemoryMeter"}),
+            "constraints_csv": "",
+        }
+    )
     parsed = json.loads(res)
     assert parsed["category"] == "visual-engineering"
     assert parsed["model_used"] == "anthropic/claude-3-7-sonnet"

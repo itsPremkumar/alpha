@@ -1,4 +1,3 @@
-import json
 import subprocess
 from types import SimpleNamespace
 
@@ -7,7 +6,6 @@ import pytest
 from alpha.avo.persistence import AVOPersistenceManager
 from alpha.avo.workspace_runner import WorkspaceAVORunner
 from alpha.tools.builtins import code_agentic_core
-from alpha.tools.builtins.code_agentic_core import create_shadow_checkpoint, rollback_to_checkpoint
 
 
 @pytest.fixture

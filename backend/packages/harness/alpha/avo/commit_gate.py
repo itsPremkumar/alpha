@@ -183,10 +183,7 @@ class InvariantOracle:
             regressions=regressions,
             consistency_score=float(result.get("consistency_score", 0.0) or 0.0),
             findings=tuple(str(r.get("discrepancy_details", ""))[:200] for r in (result.get("regressions") or [])[:5]),
-            detail=(
-                f"entrypoint={entrypoint} input_schema={schema or 'unresolved'} "
-                f"unmutated_paths_checked={result.get('unmutated_paths_checked', 0)}"
-            ),
+            detail=(f"entrypoint={entrypoint} input_schema={schema or 'unresolved'} unmutated_paths_checked={result.get('unmutated_paths_checked', 0)}"),
         )
 
 
@@ -371,10 +368,7 @@ class CommitGate:
                 return verdict(
                     False,
                     RejectionReason.SCORE_REGRESSION,
-                    (
-                        f"score {candidate_score:.6g} is below the best committed {best_score:.6g} "
-                        f"(version {best_id}); the committed lineage never regresses"
-                    ),
+                    (f"score {candidate_score:.6g} is below the best committed {best_score:.6g} (version {best_id}); the committed lineage never regresses"),
                     invariant_scope=invariant_scope,
                     oracle=receipt.oracle if receipt else "",
                     detail={"compared_against": "best_committed", "task_id": task_id, "parent_id": getattr(candidate, "parent_id", None)},

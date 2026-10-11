@@ -11,19 +11,21 @@ from typing import Any
 
 class EpistemicStatus(str, Enum):
     """Rigorous epistemic statuses."""
-    FACT = "fact"                    # Empirically verified via direct execution or code inspection
-    OBSERVATION = "observation"      # Direct tool observation or command output
-    INFERENCE = "inference"          # Deductive conclusion from verified facts
-    HYPOTHESIS = "hypothesis"        # Plausible working theory undergoing testing
-    ASSUMPTION = "assumption"        # Unverified working premise (requires falsification test)
+
+    FACT = "fact"  # Empirically verified via direct execution or code inspection
+    OBSERVATION = "observation"  # Direct tool observation or command output
+    INFERENCE = "inference"  # Deductive conclusion from verified facts
+    HYPOTHESIS = "hypothesis"  # Plausible working theory undergoing testing
+    ASSUMPTION = "assumption"  # Unverified working premise (requires falsification test)
     CONTRADICTION = "contradiction"  # Discrepancy between opposing sources
-    SPECULATION = "speculation"      # Low-confidence guess
-    OBSOLETE = "obsolete"            # Superceded by newer evidence
+    SPECULATION = "speculation"  # Low-confidence guess
+    OBSOLETE = "obsolete"  # Superceded by newer evidence
 
 
 @dataclass
 class Claim:
     """An epistemic assertion with Bayesian confidence and falsification criteria."""
+
     text: str
     status: EpistemicStatus = EpistemicStatus.HYPOTHESIS
     confidence: float = 0.5

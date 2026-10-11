@@ -18,6 +18,7 @@ from typing import Any
 @dataclass
 class UltrabrainSolution:
     """Rigorous algorithmic and logical solution synthesized by Ultrabrain."""
+
     solution_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     goal: str = ""
     algorithmic_strategy: str = ""

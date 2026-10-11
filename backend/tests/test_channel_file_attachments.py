@@ -227,8 +227,8 @@ class TestResolveAttachments:
         Uses the real ``Paths`` layout so the shared outputs-confinement helper
         (also used by the artifact editor) is exercised end to end.
         """
-        from app.channels.manager import _resolve_attachments
         from alpha.config.paths import Paths
+        from app.channels.manager import _resolve_attachments
 
         paths = Paths(tmp_path)
         outputs_dir = paths.sandbox_outputs_dir("t1", user_id="owner-1")

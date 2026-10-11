@@ -495,6 +495,7 @@ def build_writer(config: TraceConfig | None = None, *, store: Any = None, **kwar
 
     return _build(config, store=store, **kwargs)
 
+
 def disabled_writer() -> TraceWriter:
     """Return a writer that is inert by construction.
 

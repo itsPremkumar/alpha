@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from alpha.scorecard.taxonomy import CATEGORIES, Capability, TAXONOMY
+from alpha.scorecard.taxonomy import CATEGORIES, TAXONOMY, Capability
 
 
 @dataclass
@@ -88,11 +88,7 @@ class ScorecardReport:
             lines.append("")
             lines.append("_None — every capability in the taxonomy was detected._")
         lines.append("")
-        lines.append(
-            "> Presence is checked by filesystem probe only. A present capability is "
-            "implemented in the tree; it is not a claim that it is enabled, configured, "
-            "or verified at runtime."
-        )
+        lines.append("> Presence is checked by filesystem probe only. A present capability is implemented in the tree; it is not a claim that it is enabled, configured, or verified at runtime.")
         return "\n".join(lines)
 
 

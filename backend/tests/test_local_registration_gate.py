@@ -13,8 +13,8 @@ import secrets
 import pytest
 from fastapi.testclient import TestClient
 
-from app.gateway.auth.config import AuthConfig, set_auth_config
 from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+from app.gateway.auth.config import AuthConfig, set_auth_config
 
 _TEST_SECRET = "test-secret-key-for-registration-gate-tests-only"
 
@@ -29,8 +29,8 @@ def _persistence_engine(tmp_path):
     """
     import asyncio
 
-    from app.gateway import deps
     from alpha.persistence.engine import close_engine, init_engine
+    from app.gateway import deps
 
     asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/registration_gate.db", sqlite_dir=str(tmp_path)))
     deps._cached_local_provider = None

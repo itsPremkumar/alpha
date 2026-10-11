@@ -9,6 +9,8 @@ import time
 from collections.abc import Coroutine
 from typing import Any
 
+from alpha.branding import DISPLAY_NAME
+from alpha.uploads.manager import is_upload_staging_file, normalize_filename
 from app.channels.base import Channel
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import (
@@ -20,8 +22,6 @@ from app.channels.message_bus import (
     OutboundMessage,
     ResolvedAttachment,
 )
-from alpha.branding import DISPLAY_NAME
-from alpha.uploads.manager import is_upload_staging_file, normalize_filename
 
 logger = logging.getLogger(__name__)
 

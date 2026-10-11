@@ -42,12 +42,14 @@ class MetaLineageStore:
         seed_sc = MetaBenchmarkHarness.evaluate_blueprint(seed, baseline_score=0.70)
         self._scorecards[seed.blueprint_id] = seed_sc
 
-        self._history.append({
-            "event": "seed_initialized",
-            "blueprint_id": seed.blueprint_id,
-            "generation": 0,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        })
+        self._history.append(
+            {
+                "event": "seed_initialized",
+                "blueprint_id": seed.blueprint_id,
+                "generation": 0,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        )
 
     @property
     def active_head(self) -> AgentBlueprint:
@@ -83,13 +85,15 @@ class MetaLineageStore:
 
         if outcome.success:
             self._active_head_id = candidate.blueprint_id
-            self._history.append({
-                "event": "hotswap_promoted",
-                "previous_head": outcome.previous_head_id,
-                "new_head": outcome.new_head_id,
-                "generation": outcome.generation,
-                "timestamp": outcome.promoted_at,
-            })
+            self._history.append(
+                {
+                    "event": "hotswap_promoted",
+                    "previous_head": outcome.previous_head_id,
+                    "new_head": outcome.new_head_id,
+                    "generation": outcome.generation,
+                    "timestamp": outcome.promoted_at,
+                }
+            )
 
         return outcome
 
@@ -100,21 +104,19 @@ class MetaLineageStore:
 
         old_head = self._active_head_id
         self._active_head_id = target_blueprint_id
-        self._history.append({
-            "event": "rollback_executed",
-            "from_head": old_head,
-            "to_head": target_blueprint_id,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        })
+        self._history.append(
+            {
+                "event": "rollback_executed",
+                "from_head": old_head,
+                "to_head": target_blueprint_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        )
         return True
 
     def get_pareto_frontier(self) -> list[AgentBlueprint]:
         """Compute the Pareto-optimal frontier of agent architectures."""
-        scored = [
-            (self._blueprints[bid], sc)
-            for bid, sc in self._scorecards.items()
-            if bid in self._blueprints
-        ]
+        scored = [(self._blueprints[bid], sc) for bid, sc in self._scorecards.items() if bid in self._blueprints]
         if not scored:
             return [self.active_head]
 

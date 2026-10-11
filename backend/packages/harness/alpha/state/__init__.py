@@ -1,6 +1,7 @@
 """Boulder State Machine & Checkpointing (Sisyphus Engine).
 Inspired by oh-my-openagent (OmO) boulder-state.
 """
+
 from alpha.state.boulder import (
     BoulderState,
     append_session_id,

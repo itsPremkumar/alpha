@@ -395,9 +395,9 @@ def test_allowed_users_filter_blocks_non_whitelisted_sender():
 
 
 def test_connect_code_bypasses_allowed_users_filter(tmp_path: Path):
-    from app.channels.wechat import WechatChannel
     from alpha.persistence.channel_connections import ChannelConnectionRepository, ChannelCredentialCipher
     from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+    from app.channels.wechat import WechatChannel
 
     async def go():
         from datetime import UTC, datetime, timedelta

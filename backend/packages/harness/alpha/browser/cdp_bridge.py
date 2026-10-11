@@ -161,10 +161,7 @@ class CDPBrowserBridge:
         """
         tab = self.attach_tab(target_id)
         if self._transport is None:
-            raise CdpError(
-                "no CDP transport is configured; construct the bridge with a transport, "
-                "or drive the page with CdpExecutor instead"
-            )
+            raise CdpError("no CDP transport is configured; construct the bridge with a transport, or drive the page with CdpExecutor instead")
         response = await self._transport.send(
             "Runtime.evaluate",
             {"expression": expression, "returnByValue": True},

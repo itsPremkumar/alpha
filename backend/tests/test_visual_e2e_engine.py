@@ -1,6 +1,6 @@
 """Tests for Visual Grounding and Web E2E Verification Engine."""
 
-from alpha.verification.visual_e2e_engine import VisualE2EEngine, AccessibilityTree
+from alpha.verification.visual_e2e_engine import AccessibilityTree, VisualE2EEngine
 
 
 def test_accessibility_tree_parsing():

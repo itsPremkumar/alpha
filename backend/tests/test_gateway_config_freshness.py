@@ -20,8 +20,6 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway import deps as gateway_deps
-from app.gateway.deps import get_config
 from alpha.config.app_config import (
     AppConfig,
     pop_current_app_config,
@@ -30,6 +28,8 @@ from alpha.config.app_config import (
     set_app_config,
 )
 from alpha.config.sandbox_config import SandboxConfig
+from app.gateway import deps as gateway_deps
+from app.gateway.deps import get_config
 
 
 @pytest.fixture(autouse=True)

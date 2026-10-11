@@ -195,9 +195,7 @@ class TestLauncherStatusFileCheck:
 
     def test_live_launcher_is_ok(self, fake_repo: Path) -> None:
         (fake_repo / "logs" / "alpha_health.json").write_text(
-            json.dumps(
-                {"pid": os.getpid(), "status": "healthy", "timestamp_utc": datetime.now(UTC).isoformat()}
-            ),
+            json.dumps({"pid": os.getpid(), "status": "healthy", "timestamp_utc": datetime.now(UTC).isoformat()}),
             encoding="utf-8",
         )
 
@@ -273,9 +271,7 @@ class TestGatewayReadinessCheck:
 
     def test_unreachable_gateway_is_unknown_not_ok(self, monkeypatch) -> None:
         """Pre-flight runs before the stack is up: that is not a failure to pass."""
-        monkeypatch.setattr(
-            ds, "probe_readiness", lambda *_a, **_k: ds.Verdict(ds.UNKNOWN, "could not reach http://127.0.0.1:8001/health/ready")
-        )
+        monkeypatch.setattr(ds, "probe_readiness", lambda *_a, **_k: ds.Verdict(ds.UNKNOWN, "could not reach http://127.0.0.1:8001/health/ready"))
 
         result = doctor.check_gateway_readiness()
 
@@ -285,15 +281,11 @@ class TestGatewayReadinessCheck:
 
 class TestFrontendHttpCheck:
     def test_refused_is_unknown(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            ds, "probe_http_ok", lambda *_a, **_k: ds.Verdict(ds.UNKNOWN, "http://127.0.0.1:3000/ is not answering")
-        )
+        monkeypatch.setattr(ds, "probe_http_ok", lambda *_a, **_k: ds.Verdict(ds.UNKNOWN, "http://127.0.0.1:3000/ is not answering"))
 
         assert doctor.check_frontend_http().status == "skip"
 
     def test_error_status_fails(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            ds, "probe_http_ok", lambda *_a, **_k: ds.Verdict(ds.NOT_OK, "http://127.0.0.1:3000/ returned HTTP 500")
-        )
+        monkeypatch.setattr(ds, "probe_http_ok", lambda *_a, **_k: ds.Verdict(ds.NOT_OK, "http://127.0.0.1:3000/ returned HTTP 500"))
 
         assert doctor.check_frontend_http().status == "fail"

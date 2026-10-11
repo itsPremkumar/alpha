@@ -89,6 +89,7 @@ class CheckpointManager:
 
 # ── Commit-message temp files ──────────────────────────────────────────────
 
+
 def write_temp_message(message: str) -> Path:
     """Write a commit message to a temp file, avoiding shell quoting entirely."""
     fd, path = tempfile.mkstemp(prefix="sentinel-msg-", suffix=".txt")

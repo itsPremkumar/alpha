@@ -135,9 +135,7 @@ def test_example_config_matches_schema_defaults() -> None:
         example_block = memory[section]
         schema_block = _schema_defaults(section)
         assert set(example_block) == set(schema_block), (
-            f"memory.{section} keys differ between config.example.yaml and the schema: "
-            f"example-only={sorted(set(example_block) - set(schema_block))} "
-            f"schema-only={sorted(set(schema_block) - set(example_block))}"
+            f"memory.{section} keys differ between config.example.yaml and the schema: example-only={sorted(set(example_block) - set(schema_block))} schema-only={sorted(set(schema_block) - set(example_block))}"
         )
         for key, expected in schema_block.items():
             actual = _normalize(example_block[key])
@@ -148,9 +146,7 @@ def test_example_config_matches_schema_defaults() -> None:
                 continue
             seen_overrides.add((section, key))
             assert actual == _normalize(override), f"memory.{section}.{key}: example={actual!r} sanctioned={override!r}"
-    assert seen_overrides == set(INTENTIONAL_EXAMPLE_OVERRIDES), (
-        f"sanctioned overrides that are no longer deviations: {sorted(set(INTENTIONAL_EXAMPLE_OVERRIDES) - seen_overrides)}"
-    )
+    assert seen_overrides == set(INTENTIONAL_EXAMPLE_OVERRIDES), f"sanctioned overrides that are no longer deviations: {sorted(set(INTENTIONAL_EXAMPLE_OVERRIDES) - seen_overrides)}"
 
 
 def test_example_sections_are_documented_opt_in() -> None:
@@ -158,14 +154,9 @@ def test_example_sections_are_documented_opt_in() -> None:
     default is OFF, so any true value here is an intentional product choice and
     must be justified; anything else would surprise operators."""
     memory = _example_memory()
-    enabled_in_example = {
-        section: memory[section]["enabled"] for section in SECTIONS if memory[section].get("enabled")
-    }
+    enabled_in_example = {section: memory[section]["enabled"] for section in SECTIONS if memory[section].get("enabled")}
     expected_enabled = {section for (section, key), value in INTENTIONAL_EXAMPLE_OVERRIDES.items() if key == "enabled" and value is True}
-    assert set(enabled_in_example) == expected_enabled, (
-        f"enabled memory subsystems in config.example.yaml = {sorted(enabled_in_example)}, "
-        f"sanctioned = {sorted(expected_enabled)}"
-    )
+    assert set(enabled_in_example) == expected_enabled, f"enabled memory subsystems in config.example.yaml = {sorted(enabled_in_example)}, sanctioned = {sorted(expected_enabled)}"
 
 
 def test_subsystem_internals_are_not_imported_by_the_config_plane() -> None:

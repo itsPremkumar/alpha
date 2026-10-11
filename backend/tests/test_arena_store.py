@@ -82,6 +82,7 @@ class TestArenaStore:
         This test verifies the store's atomic write semantics work.
         """
         import platform
+
         if platform.system() == "Windows":
             pytest.skip("FileLock thread contention on Windows")
 

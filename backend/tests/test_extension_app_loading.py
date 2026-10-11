@@ -176,8 +176,8 @@ def test_create_app_tolerates_a_missing_config_file_and_loads_no_extensions(monk
     Only an absent config.yaml is tolerated; lifespan still performs strict
     config loading before the Gateway serves traffic.
     """
-    import app.gateway.app as app_module
     import alpha.extensions as extensions_module
+    import app.gateway.app as app_module
 
     def _missing_config():
         raise FileNotFoundError("`config.yaml` file not found in the project root or legacy backend/repository root locations")
@@ -206,8 +206,8 @@ def test_create_app_propagates_config_failures_instead_of_blaming_extension_load
     plugin list is not part of it: degrading to zero extensions there would
     drop a ``required: true`` extension without failing the boot.
     """
-    import app.gateway.app as app_module
     import alpha.extensions as extensions_module
+    import app.gateway.app as app_module
 
     def _broken_config():
         raise ValueError("config.yaml failed validation")

@@ -460,7 +460,7 @@ async def test_unicode_and_cjk_and_emoji_state():
 
 @pytest.mark.asyncio
 async def test_large_state_is_accepted():
-    big = ("The API returned 500 errors repeatedly. " * 800)  # ~30KB
+    big = "The API returned 500 errors repeatedly. " * 800  # ~30KB
     client, fake = jev_client()
     result = await client.evaluate(big, {"q": BooleanQuestion("Are there server errors?")})
     assert result is not None
@@ -505,6 +505,7 @@ async def test_high_confidence_answer_survives_evaluate_many():
 @pytest.mark.asyncio
 async def test_mixed_confidence_filters_per_question():
     """Per-question filtering: confident answers kept, weak ones dropped."""
+
     class _Mixed(FakeJev):
         def _answer(self, body):
             out = super()._answer(body)
@@ -560,9 +561,7 @@ async def test_gateway_validation_error_is_surfaced_not_crashed():
 
 @pytest.mark.asyncio
 async def test_breaker_stops_callouts_and_recovers_after_cooldown():
-    client = SystemOneClient(
-        SystemOneConfig(api_key="k", max_retries=0, circuit_breaker_threshold=2, circuit_breaker_cooldown_s=0.05)
-    )
+    client = SystemOneClient(SystemOneConfig(api_key="k", max_retries=0, circuit_breaker_threshold=2, circuit_breaker_cooldown_s=0.05))
     fake = FakeJev(fail_status=500)
     client._get_client = lambda: httpx.AsyncClient(transport=httpx.MockTransport(fake), timeout=5.0)  # type: ignore[method-assign]
 
@@ -633,9 +632,7 @@ async def test_deliberation_router_uses_jev_strategy(monkeypatch):
     from alpha.deliberation.models import DeliberationStrategy
     from alpha.deliberation.router import DeliberationRouter
 
-    client, _ = jev_client(
-        overrides={"strategy": ("choice", "SINGLE"), "difficulty": ("choice", "trivial"), "risk": ("choice", "low")}
-    )
+    client, _ = jev_client(overrides={"strategy": ("choice", "SINGLE"), "difficulty": ("choice", "trivial"), "risk": ("choice", "low")})
     _install(client, monkeypatch)
     ev = await DeliberationRouter.aclassify("anything at all")
     assert ev.strategy == DeliberationStrategy.SINGLE

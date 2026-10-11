@@ -212,7 +212,4 @@ def test_shipped_config_models_declare_supports_thinking_false():
     models = data.get("models") or []
     assert models, "shipped config.yaml declares no models"
     non_thinking = [m["name"] for m in models if not m.get("supports_thinking")]
-    assert len(non_thinking) == len(models), (
-        "shipped config.yaml now declares at least one thinking model, so the "
-        f"default-thinking argument no longer holds (non-thinking: {non_thinking})"
-    )
+    assert len(non_thinking) == len(models), f"shipped config.yaml now declares at least one thinking model, so the default-thinking argument no longer holds (non-thinking: {non_thinking})"

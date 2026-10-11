@@ -56,9 +56,7 @@ def invoke_model(model_name: str, *, system: str, user: str) -> str:
     )
     content = getattr(response, "content", "")
     if isinstance(content, list):
-        content = "".join(
-            part.get("text", "") if isinstance(part, dict) else str(part) for part in content
-        )
+        content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
     text = str(content)
     if not text.strip():
         raise RuntimeError(f"Model {model_name!r} returned an empty deliberation response.")

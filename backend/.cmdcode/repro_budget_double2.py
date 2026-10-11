@@ -1,16 +1,21 @@
-import sys, os, pathlib
+import os  # noqa: E402
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
 os.chdir(pathlib.Path(__file__).resolve().parent.parent.parent)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode, WorkflowRun, WorkflowRunStatus
-from alpha.workflow.runtime import DynamicWorkflowEngine
-from alpha.workflow.events import WorkflowEvent, get_event_dispatcher
+from alpha.workflow.events import get_event_dispatcher  # noqa: E402
+from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode  # noqa: E402
+from alpha.workflow.runtime import DynamicWorkflowEngine  # noqa: E402
+
 
 def make_def():
     g = WorkflowGraph(id="w_bud", version=1)
     n = WorkflowNode(id="n1", type=NodeType.COMPUTE, prompt="node n1", budget=100)
     g.nodes["n1"] = n
     return WorkflowDefinition(id="w_bud", name="w_bud", graph=g, variables={}, version=1)
+
 
 def main():
     engine = DynamicWorkflowEngine()
@@ -29,6 +34,7 @@ def main():
     print("BUDGET_EVENT COUNT", len(budget_events), flush=True)
     for e in budget_events:
         print("  ->", e.payload, flush=True)
+
 
 if __name__ == "__main__":
     main()

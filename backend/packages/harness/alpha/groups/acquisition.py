@@ -148,10 +148,7 @@ class Provenance:
         return asdict(self)
 
     def human_line(self) -> str:
-        return (
-            f"{self.kind} {self.name!r} from {self.source_url} sha256={self.sha256[:16]}... "
-            f"bytes={self.byte_length} fetched={self.fetched_at} by @{self.requested_by}"
-        )
+        return f"{self.kind} {self.name!r} from {self.source_url} sha256={self.sha256[:16]}... bytes={self.byte_length} fetched={self.fetched_at} by @{self.requested_by}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,9 +234,7 @@ def default_fetcher() -> Fetcher:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT_SECONDS) as response:  # noqa: S310
             declared = response.headers.get("Content-Length")
             if declared and declared.isdigit() and int(declared) > MAX_ARTEFACT_BYTES:
-                raise AcquisitionRefused(
-                    f"declared Content-Length {declared} exceeds the {MAX_ARTEFACT_BYTES} byte ceiling"
-                )
+                raise AcquisitionRefused(f"declared Content-Length {declared} exceeds the {MAX_ARTEFACT_BYTES} byte ceiling")
             chunks: list[bytes] = []
             total = 0
             while True:
@@ -248,9 +243,7 @@ def default_fetcher() -> Fetcher:
                     break
                 total += len(chunk)
                 if total > MAX_ARTEFACT_BYTES:
-                    raise AcquisitionRefused(
-                        f"body exceeded the {MAX_ARTEFACT_BYTES} byte ceiling while streaming"
-                    )
+                    raise AcquisitionRefused(f"body exceeded the {MAX_ARTEFACT_BYTES} byte ceiling while streaming")
                 chunks.append(chunk)
             return b"".join(chunks)
 
@@ -282,9 +275,7 @@ class AcquisitionPipeline:
         block_severity: str = ACQUIRED_BLOCK_SEVERITY,
     ) -> None:
         self.quarantine_root = Path(quarantine_root)
-        self.allowed_hosts = frozenset(
-            h.strip().lower() for h in (allowed_hosts if allowed_hosts is not None else DEFAULT_ALLOWED_HOSTS) if h.strip()
-        )
+        self.allowed_hosts = frozenset(h.strip().lower() for h in (allowed_hosts if allowed_hosts is not None else DEFAULT_ALLOWED_HOSTS) if h.strip())
         self.ledger_store = ledger_store
         self.tier_registry = tier_registry
         self._ceiling = ceiling
@@ -357,10 +348,7 @@ class AcquisitionPipeline:
         if not host:
             return False, "URL has no host"
         if host not in self.allowed_hosts:
-            return False, (
-                f"host {host!r} is not on the source allowlist "
-                f"({', '.join(sorted(self.allowed_hosts))})"
-            )
+            return False, (f"host {host!r} is not on the source allowlist ({', '.join(sorted(self.allowed_hosts))})")
         return True, f"host {host!r} is on the source allowlist"
 
     # -- stage 2: fetch into quarantine ----------------------------------
@@ -378,9 +366,7 @@ class AcquisitionPipeline:
         if not payload:
             raise AcquisitionRefused("fetcher returned an empty payload")
         if len(payload) > MAX_ARTEFACT_BYTES:
-            raise AcquisitionRefused(
-                f"artefact is {len(payload)} bytes, above the {MAX_ARTEFACT_BYTES} byte ceiling"
-            )
+            raise AcquisitionRefused(f"artefact is {len(payload)} bytes, above the {MAX_ARTEFACT_BYTES} byte ceiling")
         digest = hashlib.sha256(payload).hexdigest()
         target = self.quarantine_root / f"{kind}s" / name
         if target.exists():
@@ -398,9 +384,7 @@ class AcquisitionPipeline:
             quarantine_path=str(target),
             host=(urlparse(url).hostname or "").lower(),
         )
-        (target / "provenance.json").write_text(
-            json.dumps(provenance.to_dict(), indent=2, ensure_ascii=True), encoding="utf-8", newline="\n"
-        )
+        (target / "provenance.json").write_text(json.dumps(provenance.to_dict(), indent=2, ensure_ascii=True), encoding="utf-8", newline="\n")
         # Quarantine in the tier registry too, so the existing "quarantined
         # skills never load into a live agent" rule applies to this artefact.
         if self.tier_registry is not None:
@@ -449,21 +433,14 @@ class AcquisitionPipeline:
             )
         findings = tuple(dict(f) for f in result.get("findings", []))
         floor = _SEVERITY_RANK.get(self.block_severity.upper(), 30)
-        blocked = tuple(
-            f"{f.get('rule_id')}:{f.get('severity')}"
-            for f in findings
-            if _SEVERITY_RANK.get(str(f.get("severity", "")).upper(), 0) >= floor
-        )
+        blocked = tuple(f"{f.get('rule_id')}:{f.get('severity')}" for f in findings if _SEVERITY_RANK.get(str(f.get("severity", "")).upper(), 0) >= floor)
         if result.get("scanner_errors"):
             # Analyzer errors are non-fatal in the scanner by design. For a
             # supply chain fetch they ARE fatal: fewer findings is not consent.
             return ScanVerdict(
                 passed=False,
                 scanner="skillscan",
-                reason=(
-                    f"scanner reported {len(result['scanner_errors'])} analyzer error(s); "
-                    f"an incomplete scan cannot clear an artefact"
-                ),
+                reason=(f"scanner reported {len(result['scanner_errors'])} analyzer error(s); an incomplete scan cannot clear an artefact"),
                 findings=findings,
                 blocked_by=blocked + ("scanner_incomplete",),
             )
@@ -476,11 +453,7 @@ class AcquisitionPipeline:
             return ScanVerdict(
                 passed=False,
                 scanner="skillscan",
-                reason=(
-                    f"{len(blocked)} finding(s) at or above {self.block_severity} block this "
-                    f"acquired artefact (highest severity {worst}); the acquired tier is stricter "
-                    f"than the bundled tier, which blocks only on CRITICAL"
-                ),
+                reason=(f"{len(blocked)} finding(s) at or above {self.block_severity} block this acquired artefact (highest severity {worst}); the acquired tier is stricter than the bundled tier, which blocks only on CRITICAL"),
                 findings=findings,
                 blocked_by=blocked,
             )
@@ -521,14 +494,10 @@ class AcquisitionPipeline:
                 findings=findings,
                 blocked_by=(f"rubric:{rubric.decision}",),
             )
-        return ScanVerdict(
-            passed=True, scanner="security_scanner", reason=rubric.reason, findings=findings
-        )
+        return ScanVerdict(passed=True, scanner="security_scanner", reason=rubric.reason, findings=findings)
 
     # -- stage 4: approval that is not the requester ----------------------
-    def check_approval(
-        self, *, name: str, requested_by: str, approver: str, scan: ScanVerdict
-    ) -> tuple[bool, str]:
+    def check_approval(self, *, name: str, requested_by: str, approver: str, scan: ScanVerdict) -> tuple[bool, str]:
         """A model must never be the approver of something it requested.
 
         Three independent refusals: the scan must have passed, the approver must
@@ -539,14 +508,9 @@ class AcquisitionPipeline:
         if not str(approver or "").strip():
             return False, "no approver named; an absent approver is not an approving approver"
         if str(approver).strip().lower() == str(requested_by or "").strip().lower():
-            return False, (
-                f"self-approval refused: @{requested_by} requested {name!r} and cannot also approve it. "
-                f"A model must never be the approver of something it requested."
-            )
+            return False, (f"self-approval refused: @{requested_by} requested {name!r} and cannot also approve it. A model must never be the approver of something it requested.")
         if _model_identity(approver):
-            return False, (
-                f"approver {approver!r} is a model identity; approval must come from outside the model"
-            )
+            return False, (f"approver {approver!r} is a model identity; approval must come from outside the model")
         return True, f"approved by @{approver}, requested by @{requested_by}"
 
     # -- the whole pipeline ------------------------------------------------
@@ -564,24 +528,18 @@ class AcquisitionPipeline:
         """Run the whole fence. Returns a result; enables only if every stage passed."""
         kind_s = str(kind)
         if not str(requested_by or "").strip():
-            return self._refuse(
-                name, kind_s, "no requester named; anonymous acquisition is refused", actor="acquisition", stage="requester"
-            )
+            return self._refuse(name, kind_s, "no requester named; anonymous acquisition is refused", actor="acquisition", stage="requester")
 
         ok, reason = self.check_source(url)
         if not ok:
-            return self._refuse(
-                name, kind_s, f"source refused: {reason}", actor=requested_by, stage="source_allowlist"
-            )
+            return self._refuse(name, kind_s, f"source refused: {reason}", actor=requested_by, stage="source_allowlist")
 
         try:
             provenance = self.fetch(name, url, kind=kind_s, requested_by=requested_by)
         except AcquisitionRefused as exc:
             return self._refuse(name, kind_s, str(exc), actor=requested_by, stage="fetch")
         except Exception as exc:  # noqa: BLE001
-            return self._refuse(
-                name, kind_s, f"fetch failed: {type(exc).__name__}: {exc}", actor=requested_by, stage="fetch"
-            )
+            return self._refuse(name, kind_s, f"fetch failed: {type(exc).__name__}: {exc}", actor=requested_by, stage="fetch")
 
         verdict = self.scan(provenance)
         if not verdict.passed:
@@ -595,9 +553,7 @@ class AcquisitionPipeline:
                 provenance=provenance,
             )
 
-        approved, approval_reason = self.check_approval(
-            name=name, requested_by=requested_by, approver=approver, scan=verdict
-        )
+        approved, approval_reason = self.check_approval(name=name, requested_by=requested_by, approver=approver, scan=verdict)
         if not approved:
             return self._refuse(
                 name,
@@ -687,8 +643,7 @@ class AcquisitionPipeline:
             return self._refuse(
                 name,
                 CapabilityKind.TOOL,
-                f"tool modification refused: self-approval by {approver!r}. Tool modification "
-                f"requires an approver who is neither the modifier nor a model.",
+                f"tool modification refused: self-approval by {approver!r}. Tool modification requires an approver who is neither the modifier nor a model.",
                 actor=modified_by,
                 stage="modification_approval",
             )

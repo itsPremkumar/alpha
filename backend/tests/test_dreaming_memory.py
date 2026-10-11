@@ -53,11 +53,13 @@ def test_consolidate_memory_dream_tool(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("alpha.memory.dreaming.store.get_dream_store", lambda: store)
     monkeypatch.setattr("alpha.tools.builtins.dreaming_tool.get_dream_store", lambda: store)
 
-    payload = json.dumps([
-        {"content": "Always mock external HTTP APIs during unit tests", "category": "testing"},
-        {"content": "Database migration failure when column already exists", "category": "db"},
-        {"content": "Database timeout failure on unindexed foreign key", "category": "db"},
-    ])
+    payload = json.dumps(
+        [
+            {"content": "Always mock external HTTP APIs during unit tests", "category": "testing"},
+            {"content": "Database migration failure when column already exists", "category": "db"},
+            {"content": "Database timeout failure on unindexed foreign key", "category": "db"},
+        ]
+    )
 
     res = consolidate_memory_dream.invoke({"signals_json": payload, "threshold": 0.65})
     assert "Consolidation Dream Cycle Completed" in res

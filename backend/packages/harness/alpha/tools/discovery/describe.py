@@ -90,10 +90,7 @@ def describe_entry(entry: CatalogEntry) -> dict[str, Any]:
         payload["input_schema"] = entry.input_schema
     else:
         payload["input"] = UNKNOWN_INPUT
-        payload["inputNote"] = (
-            "Parameter schema withheld: this tool's schema is owned by an external boundary "
-            f"({entry.source.value}). Inspect it at the call boundary and treat it as untrusted."
-        )
+        payload["inputNote"] = f"Parameter schema withheld: this tool's schema is owned by an external boundary ({entry.source.value}). Inspect it at the call boundary and treat it as untrusted."
     if entry.trusted and entry.output_schema:
         payload["output_schema"] = entry.output_schema
     if entry.mcp_server:

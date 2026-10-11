@@ -662,14 +662,14 @@ def test_private_custom_convertor_with_named_backreference_is_allowed(monkeypatc
 
 
 def test_extension_public_paths_track_auth_middleware_public_paths():
+    from alpha.extensions.gateway import (
+        _HOST_PUBLIC_EXACT_PATHS,
+        _HOST_PUBLIC_PATH_PREFIXES,
+    )
     from app.gateway.auth_middleware import (
         _PUBLIC_EXACT_PATHS,
         _PUBLIC_PATH_PREFIXES,
         _is_public,
-    )
-    from alpha.extensions.gateway import (
-        _HOST_PUBLIC_EXACT_PATHS,
-        _HOST_PUBLIC_PATH_PREFIXES,
     )
 
     assert _HOST_PUBLIC_PATH_PREFIXES == _PUBLIC_PATH_PREFIXES
@@ -744,12 +744,12 @@ def test_extension_csrf_reserved_exact_paths_track_csrf_exemption(
 ):
     from starlette.requests import Request
 
-    from app.gateway import csrf_middleware
     from alpha.extensions.gateway import (
         _CSRF_STATE_CHANGING_METHODS,
         _HOST_CSRF_EXEMPT_EXACT_PATHS,
         _HOST_PUBLIC_EXACT_PATHS,
     )
+    from app.gateway import csrf_middleware
 
     monkeypatch.setattr(csrf_middleware, "is_auth_disabled", lambda: False)
     request = Request(

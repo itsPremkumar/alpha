@@ -74,7 +74,7 @@ class StructuredStateCondenser:
             if role in {"tool", "observation"} or msg.get("status") in {"error", "failed"}:
                 if "error" in content.lower() or "exception" in content.lower() or "traceback" in content.lower():
                     first_err_line = next(
-                        (l.strip() for l in content.splitlines() if "error" in l.lower() or "exception" in l.lower()),
+                        (line.strip() for line in content.splitlines() if "error" in line.lower() or "exception" in line.lower()),
                         content[:100],
                     )
                     if first_err_line and first_err_line not in state.encountered_errors:

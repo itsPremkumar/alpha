@@ -7,6 +7,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.personal_access_tokens import PersonalAccessTokenRepository
 from app.gateway.auth.pat import (
     PAT_ALLOWED_SCOPES,
     PAT_TOKEN_PREFIX,
@@ -16,9 +19,6 @@ from app.gateway.auth.pat import (
     pat_token_digest,
     validate_scopes,
 )
-from alpha.config.database_config import DatabaseConfig
-from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from alpha.persistence.personal_access_tokens import PersonalAccessTokenRepository
 
 
 @pytest_asyncio.fixture(autouse=True)

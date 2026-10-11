@@ -1,9 +1,9 @@
 """Tests for Mutation Testing and Invariant Fuzzing Engine."""
 
 from alpha.testing.mutation_fuzzer import (
+    MutantType,
     MutationTestingEngine,
     PropertyInvariantFuzzer,
-    MutantType,
 )
 
 
@@ -84,6 +84,7 @@ def test_property_invariant_fuzzing():
         return res >= 0
 
     import random
+
     report = PropertyInvariantFuzzer.fuzz_invariants(
         fn=target_abs,
         invariant_check=invariant_non_negative,

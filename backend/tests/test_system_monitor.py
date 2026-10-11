@@ -199,10 +199,7 @@ def test_compact_history_point_shape() -> None:
 
 
 def test_get_processes_serves_cache_and_slices(monkeypatch) -> None:
-    rows = [
-        {"pid": i, "name": f"proc-{i}", "status": "running", "cpu_percent": float(i), "memory_percent": 1.0, "memory_mb": 10.0, "threads": 1, "create_time": None}
-        for i in range(5)
-    ]
+    rows = [{"pid": i, "name": f"proc-{i}", "status": "running", "cpu_percent": float(i), "memory_percent": 1.0, "memory_mb": 10.0, "threads": 1, "create_time": None} for i in range(5)]
     calls = {"n": 0}
 
     def _fake_scan(self, *, budget_seconds):

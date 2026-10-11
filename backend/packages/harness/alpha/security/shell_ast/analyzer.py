@@ -155,7 +155,7 @@ class ShellASTSecurityAnalyzer:
                                 risk_level=RiskLevel.HIGH,
                                 message=f"Dangerous unquoted variable expansion in deletion: '{target}'",
                                 command_snippet=full_line,
-                                remediation=f'Enclose variable in double quotes: \'"{target}"\'.',
+                                remediation=f"Enclose variable in double quotes: '\"{target}\"'.",
                             )
                         )
 
@@ -205,9 +205,7 @@ class ShellASTSecurityAnalyzer:
             )
 
         # 5. Potential credential exfiltration
-        if any(kw in full_line for kw in ["id_rsa", ".ssh/id_", "/etc/shadow"]) and any(
-            t in cmd for t in ["curl", "nc", "ncat", "telnet", "wget"]
-        ):
+        if any(kw in full_line for kw in ["id_rsa", ".ssh/id_", "/etc/shadow"]) and any(t in cmd for t in ["curl", "nc", "ncat", "telnet", "wget"]):
             violations.append(
                 SecurityViolation(
                     rule_id="SEC_CREDENTIAL_EXFILTRATION",

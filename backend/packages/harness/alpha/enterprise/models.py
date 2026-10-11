@@ -23,10 +23,10 @@ CONFIDENCE_BASIS_SEED_DEMO = "seed_demo_data"  # bootstrap demo record, not a li
 
 
 class CSuiteRole(StrEnum):
-    CEO = "ceo"      # Executive Director
-    CTO = "cto"      # Lead Architect
-    CPO = "cpo"      # Product & Market Strategist
-    CISO = "ciso"    # Quality & Security Director
+    CEO = "ceo"  # Executive Director
+    CTO = "cto"  # Lead Architect
+    CPO = "cpo"  # Product & Market Strategist
+    CISO = "ciso"  # Quality & Security Director
 
 
 class EnterpriseDepartment(StrEnum):

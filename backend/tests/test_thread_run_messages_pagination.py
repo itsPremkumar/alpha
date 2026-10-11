@@ -9,9 +9,9 @@ from _router_auth_helpers import make_authed_test_app
 from _run_message_pagination_helpers import assert_run_message_page
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import thread_runs
 from alpha.runtime import END_SENTINEL, MemoryStreamBridge, RunManager
 from alpha.runtime.runs.store.memory import MemoryRunStore
+from app.gateway.routers import thread_runs
 
 # ---------------------------------------------------------------------------
 # Helpers

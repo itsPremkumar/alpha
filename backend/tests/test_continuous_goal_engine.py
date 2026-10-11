@@ -72,11 +72,13 @@ def test_continuous_goal_runner_autonomous_lifecycle(tmp_path: Path):
 def test_goal_engine_and_canvas_tools():
     # 1. Start goal via tool
     goal_title = f"Goal_{uuid4().hex[:6]}"
-    res_start = goal_engine_tool.invoke({
-        "action": "start",
-        "title": goal_title,
-        "description": "Continuous test automation goal",
-    })
+    res_start = goal_engine_tool.invoke(
+        {
+            "action": "start",
+            "title": goal_title,
+            "description": "Continuous test automation goal",
+        }
+    )
     assert "Continuous Autonomous Goal initialized" in res_start
     goal_id = res_start.split("Goal initialized: ")[1].split("\n")[0].strip()
 
@@ -97,12 +99,14 @@ def test_goal_engine_and_canvas_tools():
     assert "executing" in res_resume
 
     # 5. Canvas widget tool
-    res_canvas = canvas_widget_tool.invoke({
-        "action": "render",
-        "title": "Continuous Harness Monitor",
-        "kind": "dashboard",
-        "data_json": '{"goal_id": "' + goal_id + '", "health": "excellent"}',
-    })
+    res_canvas = canvas_widget_tool.invoke(
+        {
+            "action": "render",
+            "title": "Continuous Harness Monitor",
+            "kind": "dashboard",
+            "data_json": '{"goal_id": "' + goal_id + '", "health": "excellent"}',
+        }
+    )
     assert "Canvas Widget rendered" in res_canvas
     wid = res_canvas.split("Widget rendered: ")[1].split("\n")[0].strip()
 

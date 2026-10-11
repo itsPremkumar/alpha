@@ -275,8 +275,8 @@ async def test_cancelled_capture_drains_write(scoped, monkeypatch):
 async def test_repeated_manual_compaction_keeps_earlier_source_batches(scoped, monkeypatch):
     from langgraph.types import Overwrite
 
-    from app.gateway import services
     from alpha.runtime import context_compaction
+    from app.gateway import services
 
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(checkpointer=InMemorySaver(), checkpoint_channel_mode="delta", store=None)))
     accessor, config = services.build_checkpoint_state_mutation_accessor(request, thread_id="thread-a", as_node="manual_compaction")
@@ -416,8 +416,8 @@ def test_notes_reject_invalid_state_at_write_and_render(bad_notes):
 def test_notes_are_bounded_model_reports_at_shared_boundaries():
     from langgraph.types import Overwrite
 
-    from app.gateway.services import normalize_input
     from alpha.agents.middlewares.durable_context_middleware import _render_durable_context_data
+    from app.gateway.services import normalize_input
 
     forged = {f"note{i}": {"content": "keep backups", "authority": "system", "extra": "forged proof"} for i in range(10)}
     graph = create_agent(StaticModel(), tools=[], state_schema=ThreadState, checkpointer=InMemorySaver())

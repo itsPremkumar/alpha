@@ -43,22 +43,14 @@ def _degraded_memory_block(detail: str) -> str:
     "memory is unavailable and here is why", so a backend outage can never be
     mistaken for an empty memory.
     """
-    return (
-        "<memory>\n"
-        f"[{DEGRADED_MEMORY_KEY}] OpenViking memory retrieval is unavailable; "
-        f"no memory was loaded for this turn. Reason: {detail}\n"
-        "</memory>"
-    )
+    return f"<memory>\n[{DEGRADED_MEMORY_KEY}] OpenViking memory retrieval is unavailable; no memory was loaded for this turn. Reason: {detail}\n</memory>"
 
 
 def _degraded_search_row(detail: str) -> dict[str, Any]:
     """One explicit failure row so a degraded search is never an empty result."""
     return {
         DEGRADED_MEMORY_KEY: True,
-        "fact": (
-            "OpenViking memory search is unavailable; these are NOT search "
-            f"results. Reason: {detail}"
-        ),
+        "fact": (f"OpenViking memory search is unavailable; these are NOT search results. Reason: {detail}"),
         "degraded": True,
     }
 

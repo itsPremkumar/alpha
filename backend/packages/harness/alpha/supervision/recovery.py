@@ -108,7 +108,8 @@ class WatchdogRecoveryManager:
                     # the supervision loop or lose the audit record.
                     logger.warning(
                         "Restart hook raised for worker %s; reporting restart as not performed",
-                        worker_id, exc_info=True,
+                        worker_id,
+                        exc_info=True,
                     )
                     restarted = False
             record["restarted"] = restarted
@@ -118,24 +119,15 @@ class WatchdogRecoveryManager:
                 # Previously this claimed a restart unconditionally. Without a
                 # wired runner no process is actually restarted, and lying about
                 # it makes incident review useless.
-                status_msg = (
-                    f"Worker {worker_id} restart requested (no runner wired); "
-                    "status set to RECOVERING but no process was restarted."
-                )
+                status_msg = f"Worker {worker_id} restart requested (no runner wired); status set to RECOVERING but no process was restarted."
             else:
-                status_msg = (
-                    f"Worker {worker_id} restart hook was wired but did not report success; "
-                    "status set to RECOVERING but no process was restarted."
-                )
+                status_msg = f"Worker {worker_id} restart hook was wired but did not report success; status set to RECOVERING but no process was restarted."
 
         elif action == RecoveryAction.HOT_REPLACE:
             self._watchdog.clear_anomalies(worker_id)
             # No ephemeral replacement or checkpoint rehydration is performed
             # by this manager; claiming either would be a false success.
-            status_msg = (
-                f"Worker {worker_id} hot-replace not implemented — no replacement or "
-                "checkpoint rehydration was performed; restart required."
-            )
+            status_msg = f"Worker {worker_id} hot-replace not implemented — no replacement or checkpoint rehydration was performed; restart required."
 
         elif action == RecoveryAction.SUCCESSOR_HANDOFF:
             target = successor_id or f"successor-{worker_id}"

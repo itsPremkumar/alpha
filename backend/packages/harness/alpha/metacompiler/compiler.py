@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
 
 from alpha.metacompiler.models import (
     AgentBlueprint,
@@ -51,7 +50,7 @@ class AgentMetaCompiler:
             curr_idx = strategy_progression.index(parent_strat)
         except ValueError:
             curr_idx = 1
-        
+
         # Advance strategy if possible, or adapt based on target
         if "hierarchical" in optimization_target.lower() or "decomposition" in optimization_target.lower():
             new_strategy = ReasoningStrategy.HIERARCHICAL_DECOMPOSITION
@@ -144,20 +143,14 @@ class AgentMetaCompiler:
         if "coding" in domain.lower() or "swe" in domain.lower():
             strategy = ReasoningStrategy.EPISTEMIC_FALSIFICATION
             specialization = "swe_debugger_specialist"
-            prompt = (
-                f"You are {spec_name}. Specialist in test-driven bug reproduction, AST rewriting, "
-                "and autonomous test healing. Never commit unverified code."
-            )
+            prompt = f"You are {spec_name}. Specialist in test-driven bug reproduction, AST rewriting, and autonomous test healing. Never commit unverified code."
             for t in ["code_executor", "filesystem_editor", "git_worktree", "ripgrep_search"]:
                 if t not in tools:
                     tools.append(t)
         elif "research" in domain.lower():
             strategy = ReasoningStrategy.MCTS_DELIBERATION
             specialization = "deep_research_specialist"
-            prompt = (
-                f"You are {spec_name}. Specialist in multi-source fact synthesis, paper analysis, "
-                "and deep citation verification."
-            )
+            prompt = f"You are {spec_name}. Specialist in multi-source fact synthesis, paper analysis, and deep citation verification."
             for t in ["web_research", "browser_controller", "epistemic_belief_graph"]:
                 if t not in tools:
                     tools.append(t)

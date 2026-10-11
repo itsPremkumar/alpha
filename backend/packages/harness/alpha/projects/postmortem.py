@@ -105,10 +105,7 @@ class ProjectPostmortemEngine:
     ) -> PostmortemRecord:
         """Record task postmortem and propagate heuristics to L1 (Bot) and L2 (Project) memory."""
         assumptions = erroneous_assumptions or []
-        rule = (
-            preventative_rule
-            or f"Avoid {error_summary[:80]}: ensure preconditions and unit verifications are executed first."
-        )
+        rule = preventative_rule or f"Avoid {error_summary[:80]}: ensure preconditions and unit verifications are executed first."
 
         with self._lock:
             pm_id = f"PM-{len(self._records) + 1:03d}"
@@ -147,13 +144,9 @@ class ProjectPostmortemEngine:
                 try:
                     proj_mem = router.get_project_memory(self.project_id)
                     heuristics = list(proj_mem.get("failure_heuristics", []))
-                    heuristics.append(
-                        f"[{bot_name.capitalize()} on {task_id}]: {rule}"
-                    )
+                    heuristics.append(f"[{bot_name.capitalize()} on {task_id}]: {rule}")
                     # Keep latest 25 heuristics
-                    router.update_project_memory(
-                        self.project_id, {"failure_heuristics": heuristics[-25:]}
-                    )
+                    router.update_project_memory(self.project_id, {"failure_heuristics": heuristics[-25:]})
                     record.applied_to_project_memory = True
                 except Exception:
                     logger.debug("Failed to sync postmortem to project memory", exc_info=True)

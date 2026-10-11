@@ -418,9 +418,7 @@ def upgrade_or_report(
         mode=selection.mode,
         assurance=Assurance.LOWER,
         reason=(
-            f"{selection.mode} isolation was selected for this task but is not provided by this deployment; "
-            f"available modes: {', '.join(sorted(str(m) for m in available_modes)) or 'none'}. "
-            "The guarantees of the requested mode do not hold."
+            f"{selection.mode} isolation was selected for this task but is not provided by this deployment; available modes: {', '.join(sorted(str(m) for m in available_modes)) or 'none'}. The guarantees of the requested mode do not hold."
         ),
         touches_main=selection.touches_main,
         survives_crash=selection.survives_crash,

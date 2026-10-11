@@ -6,8 +6,8 @@ import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
-from app.gateway.routers import thread_runs
 from alpha.runtime.runs.manager import EditReplayVisibility
+from app.gateway.routers import thread_runs
 
 
 def _make_app():

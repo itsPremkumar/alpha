@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import re
-from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from typing import Any
 
 
 class PIIFilter:
@@ -77,10 +78,7 @@ class MoAEngine:
                 return MoAAdvisory(advisor_name=name, perspective=perspective, output=f"Advisor error: {e}", confidence=0.0)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(self._advisors))) as pool:
-            futures = [
-                pool.submit(_run_single, name, pers, fn)
-                for name, (pers, fn) in self._advisors.items()
-            ]
+            futures = [pool.submit(_run_single, name, pers, fn) for name, (pers, fn) in self._advisors.items()]
             for f in concurrent.futures.as_completed(futures):
                 advisories.append(f.result())
 
@@ -90,7 +88,7 @@ class MoAEngine:
         self,
         query: str,
         advisories: list[MoAAdvisory],
-        aggregator_fn: Optional[Callable[[str, list[str]], str]] = None,
+        aggregator_fn: Callable[[str, list[str]], str] | None = None,
     ) -> MoAConsensus:
         """Synthesize final consensus with lexical convergence scoring."""
         if not advisories:
@@ -109,10 +107,7 @@ class MoAEngine:
         if aggregator_fn:
             summary = aggregator_fn(query, outputs)
         else:
-            summary = f"Synthesized consensus across {len(outputs)} advisors (agreement: {score:.1%}):\n" + "\n".join(
-                f"- [{a.advisor_name} / {a.perspective}]: {a.output[:120]}..."
-                for a in advisories
-            )
+            summary = f"Synthesized consensus across {len(outputs)} advisors (agreement: {score:.1%}):\n" + "\n".join(f"- [{a.advisor_name} / {a.perspective}]: {a.output[:120]}..." for a in advisories)
 
         return MoAConsensus(
             query=query,

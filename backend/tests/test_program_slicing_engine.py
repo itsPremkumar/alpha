@@ -1,12 +1,9 @@
 """Unit tests for AST Dynamic Program Slicing and Blast-Radius Engine."""
 
-import pytest
-
 from alpha.coding.program_slicing_engine import (
     ProgramSlicingEngine,
     compute_program_slice,
 )
-
 
 SAMPLE_CODE = """def process_data(value):
     unrelated_flag = False
@@ -102,12 +99,14 @@ def test_empty_and_syntax_error_handling():
 
 def test_compute_program_slice_tool(tmp_path):
     # Test backward slice tool invocation
-    res_b = compute_program_slice.invoke({
-        "source_code": SAMPLE_CODE,
-        "slicing_mode": "backward",
-        "target_line": 11,
-        "target_variable": "final_result",
-    })
+    res_b = compute_program_slice.invoke(
+        {
+            "source_code": SAMPLE_CODE,
+            "slicing_mode": "backward",
+            "target_line": 11,
+            "target_variable": "final_result",
+        }
+    )
     assert res_b["success"] is True
     assert "slice_lines" in res_b["data"]
 
@@ -115,11 +114,13 @@ def test_compute_program_slice_tool(tmp_path):
     test_file = tmp_path / "target.py"
     test_file.write_text(SAMPLE_CODE, encoding="utf-8")
 
-    res_f = compute_program_slice.invoke({
-        "file_path": str(test_file),
-        "slicing_mode": "forward",
-        "target_line": 3,
-    })
+    res_f = compute_program_slice.invoke(
+        {
+            "file_path": str(test_file),
+            "slicing_mode": "forward",
+            "target_line": 3,
+        }
+    )
     assert res_f["success"] is True
     assert "impacted_lines" in res_f["data"]
     assert "blast_radius_risk" in res_f["data"]
@@ -183,11 +184,13 @@ def test_backward_slice_by_variable_name_does_not_slice_the_wrong_function():
 
 def test_compute_program_slice_does_not_report_success_for_a_wrong_slice():
     """The tool must not answer for `helper` when asked about `main`."""
-    res = compute_program_slice.invoke({
-        "source_code": TWO_FUNCTION_CODE,
-        "slicing_mode": "backward",
-        "target_variable": "main",
-    })
+    res = compute_program_slice.invoke(
+        {
+            "source_code": TWO_FUNCTION_CODE,
+            "slicing_mode": "backward",
+            "target_variable": "main",
+        }
+    )
 
     assert res["success"] is True
     assert "def helper():" not in res["data"]["slice_code"].split("def main():")[0]
@@ -205,22 +208,26 @@ def test_unknown_variable_is_refused_rather_than_substituted():
 
 def test_unknown_variable_is_not_reported_as_success():
     """The caller must be able to distinguish 'no slice' from 'wrong slice'."""
-    res = compute_program_slice.invoke({
-        "source_code": TWO_FUNCTION_CODE,
-        "slicing_mode": "backward",
-        "target_variable": "does_not_exist",
-    })
+    res = compute_program_slice.invoke(
+        {
+            "source_code": TWO_FUNCTION_CODE,
+            "slicing_mode": "backward",
+            "target_variable": "does_not_exist",
+        }
+    )
 
     assert res["success"] is False
 
 
 def test_forward_slice_by_variable_name_resolves_the_variable():
     """Blast radius obeys the same resolution rule as the backward slice."""
-    res = compute_program_slice.invoke({
-        "source_code": TWO_FUNCTION_CODE,
-        "slicing_mode": "forward",
-        "target_variable": "helper",
-    })
+    res = compute_program_slice.invoke(
+        {
+            "source_code": TWO_FUNCTION_CODE,
+            "slicing_mode": "forward",
+            "target_variable": "helper",
+        }
+    )
 
     assert res["success"] is True
     # `main` calls `helper` on line 6, so that call site is inside the radius.

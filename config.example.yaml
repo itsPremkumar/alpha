@@ -30,7 +30,7 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 60
+config_version: 61
 
 # ============================================================================
 # Logging
@@ -4724,6 +4724,30 @@ arena:
   max_wall_seconds_per_run: 7200.0 # default wall-clock budget (caller may lower)
   max_judge_attempts: 2       # judge retries per match before run fails honestly
   reasoning_bank_seed: true    # record match outcomes into alpha.reasoning_bank
+
+# ============================================================================
+# Group-Relative Orchestration (GRO): one objective, a bounded group of candidates
+# executed under DISTINCT strategies, then selection by hard gates first, absolute
+# score second, group-relative rank third (rank is diagnostic only and can never
+# promote an ineligible candidate). Default OFF — baseline behaviour is unchanged
+# and the `swarm` tool's `compete` action refuses with the reason named. An all-fail
+# group yields an explicit no-winner: either a bounded failure-directed repair round
+# or a result labelled UNVERIFIED, never "the best of a bad lot, verified".
+# Ceilings are refused, never clamped. Externally-visible or destructive work
+# resolves to human approval before any candidate executes.
+# ============================================================================
+gro:
+  enabled: false                # bind the swarm `compete` action; off = refused with reason
+  default_mode: "adaptive"      # single | group | adaptive (tier-driven group size)
+  max_candidates_per_task: 3    # hard ceiling on the initial candidate group
+  max_active_candidates_global: 2  # concurrent candidate lanes per run
+  max_repair_rounds: 1          # bounded failure-directed repair rounds after an all-fail group
+  early_stop_on_verified_success: true  # stop dispatching later waves once an eligible candidate exists
+  candidate_timeout_seconds: 240.0   # per-candidate bound; a late result is fenced, never adopted
+  run_timeout_seconds: 900.0    # whole-run wall-clock bound
+  require_final_verification: true   # re-check the winner's gates before reporting it
+  relative_rank_is_tiebreaker_only: true  # pinned by design: rank orders eligible candidates only
+  require_approval_for_external_side_effects: true  # external/destructive work needs a human first
 
 # ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it

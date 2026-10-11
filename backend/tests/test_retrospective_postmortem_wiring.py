@@ -56,14 +56,9 @@ def test_postmortem_load_failure_logged_with_real_text(caplog, tmp_path, monkeyp
 
     monkeypatch.setattr("alpha.projects.postmortem.get_postmortem_engine", _boom)
     with caplog.at_level(logging.WARNING, logger="alpha.evolution.retrospective_engine"):
-        proposals = RetrospectiveEngine(f"retro-{uuid.uuid4().hex[:8]}").analyze_recent_learnings(
-            queue_for_approval=False
-        )
+        proposals = RetrospectiveEngine(f"retro-{uuid.uuid4().hex[:8]}").analyze_recent_learnings(queue_for_approval=False)
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert any(
-        "could not load postmortems" in w and "RuntimeError: postmortem store unavailable" in w
-        for w in warnings
-    ), f"real load failure not disclosed at WARNING: {warnings}"
+    assert any("could not load postmortems" in w and "RuntimeError: postmortem store unavailable" in w for w in warnings), f"real load failure not disclosed at WARNING: {warnings}"
     # honest disclosure of state: with no evidence, only the generic fallback exists
     assert [p.trigger_pattern for p in proposals] == ["Proactive Quality Hardening"]
 
@@ -77,14 +72,7 @@ def test_approval_queue_failure_logged_with_real_text(caplog, tmp_path, monkeypa
 
     monkeypatch.setattr("alpha.projects.approval_queue.get_approval_queue", _queue_boom)
     with caplog.at_level(logging.WARNING, logger="alpha.evolution.retrospective_engine"):
-        proposals = RetrospectiveEngine(f"retro-{uuid.uuid4().hex[:8]}").analyze_recent_learnings(
-            queue_for_approval=True
-        )
+        proposals = RetrospectiveEngine(f"retro-{uuid.uuid4().hex[:8]}").analyze_recent_learnings(queue_for_approval=True)
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert len(proposals) == 1  # synthesis still returns honestly
-    assert any(
-        "could not queue prompt evolution proposal" in w
-        and proposals[0].proposal_id in w
-        and "RuntimeError: approval queue down" in w
-        for w in warnings
-    ), f"queue failure not disclosed at WARNING with proposal id: {warnings}"
+    assert any("could not queue prompt evolution proposal" in w and proposals[0].proposal_id in w and "RuntimeError: approval queue down" in w for w in warnings), f"queue failure not disclosed at WARNING with proposal id: {warnings}"

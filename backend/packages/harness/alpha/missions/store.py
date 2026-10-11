@@ -244,10 +244,7 @@ class MissionStore:
             return "mission records no acceptance criteria; a terminal 'completed' cannot be justified"
         if m.acceptance is None:
             count = len(m.acceptance_criteria)
-            return (
-                f"acceptance criteria have not been evaluated yet: {count} pending; "
-                f"evaluate them before completing the mission"
-            )
+            return f"acceptance criteria have not been evaluated yet: {count} pending; evaluate them before completing the mission"
         try:
             assert_acceptance_passed(m.acceptance_report())
         except Exception as exc:  # AcceptanceNotSatisfied and friends

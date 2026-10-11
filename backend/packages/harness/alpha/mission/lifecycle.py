@@ -324,20 +324,12 @@ class MissionLifecycle:
         :meth:`request_pass`, which checks the acceptance report first.
         """
         if target is GATED_TERMINAL_PHASE:
-            raise IllegalMissionTransition(
-                f"mission '{self.mission_id}' cannot enter '{GATED_TERMINAL_PHASE.value}' directly; "
-                f"the acceptance gate must be satisfied first (use request_pass)"
-            )
+            raise IllegalMissionTransition(f"mission '{self.mission_id}' cannot enter '{GATED_TERMINAL_PHASE.value}' directly; the acceptance gate must be satisfied first (use request_pass)")
         if self.is_terminal:
-            raise IllegalMissionTransition(
-                f"mission '{self.mission_id}' is terminal ('{self.phase.value}'); it cannot move to '{target.value}'"
-            )
+            raise IllegalMissionTransition(f"mission '{self.mission_id}' is terminal ('{self.phase.value}'); it cannot move to '{target.value}'")
         if not self.can_transition_to(target):
             allowed = sorted(s.value for s in MISSION_TRANSITIONS.get(self.phase, set()))
-            raise IllegalMissionTransition(
-                f"mission '{self.mission_id}' cannot move from '{self.phase.value}' to '{target.value}'; "
-                f"allowed next phases: {allowed}"
-            )
+            raise IllegalMissionTransition(f"mission '{self.mission_id}' cannot move from '{self.phase.value}' to '{target.value}'; allowed next phases: {allowed}")
         previous = self.phase
         self.phase = target
         self._emit(
@@ -348,9 +340,7 @@ class MissionLifecycle:
 
     def fail(self, reason: str, *, actor: str = "orchestrator") -> MissionPhase:
         if not self.can_transition_to(MissionPhase.FAILED):
-            raise IllegalMissionTransition(
-                f"mission '{self.mission_id}' in phase '{self.phase.value}' cannot be marked failed"
-            )
+            raise IllegalMissionTransition(f"mission '{self.mission_id}' in phase '{self.phase.value}' cannot be marked failed")
         return self.transition(MissionPhase.FAILED, reason=reason, actor=actor)
 
     # ----------------------------------------------------------- acceptance
@@ -399,15 +389,10 @@ class MissionLifecycle:
         """
         assert_acceptance_passed(self.acceptance)
         if self.is_terminal:
-            raise IllegalMissionTransition(
-                f"mission '{self.mission_id}' is already terminal ('{self.phase.value}')"
-            )
+            raise IllegalMissionTransition(f"mission '{self.mission_id}' is already terminal ('{self.phase.value}')")
         if not self.can_transition_to(MissionPhase.PASSED):
             allowed = sorted(s.value for s in MISSION_TRANSITIONS.get(self.phase, set()))
-            raise IllegalMissionTransition(
-                f"mission '{self.mission_id}' in phase '{self.phase.value}' cannot reach "
-                f"'{MissionPhase.PASSED.value}'; allowed next phases: {allowed}"
-            )
+            raise IllegalMissionTransition(f"mission '{self.mission_id}' in phase '{self.phase.value}' cannot reach '{MissionPhase.PASSED.value}'; allowed next phases: {allowed}")
         previous = self.phase
         self.phase = MissionPhase.PASSED
         self._emit(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from alpha.perpetual.models import MemoryConsolidationReport
 
@@ -24,10 +23,7 @@ class PerpetualMemoryConsolidator:
         skills_indexed = max(1, trace_count // 3)
         pruned_tokens = trace_count * 1250
 
-        summary = (
-            f"Consolidated {trace_count} episodic traces into {facts_extracted} semantic belief claims. "
-            f"Indexed {skills_indexed} reusable procedural skills and compacted {pruned_tokens} redundant tokens."
-        )
+        summary = f"Consolidated {trace_count} episodic traces into {facts_extracted} semantic belief claims. Indexed {skills_indexed} reusable procedural skills and compacted {pruned_tokens} redundant tokens."
 
         report = MemoryConsolidationReport(
             traces_analyzed=trace_count,

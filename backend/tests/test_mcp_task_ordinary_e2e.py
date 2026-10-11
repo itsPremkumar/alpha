@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
-from app.mcp_tasks import McpTaskService
 from alpha.config.database_config import DatabaseConfig
 from alpha.mcp.tasks import (
     ORDINARY_MCP_TASK_DRIVER,
@@ -14,6 +13,7 @@ from alpha.mcp.tasks import (
 )
 from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from alpha.persistence.mcp_tasks import McpTaskRepository
+from app.mcp_tasks import McpTaskService
 
 
 @pytest_asyncio.fixture(autouse=True)

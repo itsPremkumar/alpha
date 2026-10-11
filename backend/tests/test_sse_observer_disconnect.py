@@ -14,8 +14,8 @@ import asyncio
 import inspect
 from types import SimpleNamespace
 
-from app.gateway.services import sse_consumer
 from alpha.runtime import DisconnectMode, RunRecord, RunStatus
+from app.gateway.services import sse_consumer
 
 
 def _running_record() -> RunRecord:

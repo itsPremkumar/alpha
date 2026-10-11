@@ -803,9 +803,7 @@ def test_doctor_reports_run_readiness_as_a_section(monkeypatch):
 def test_doctor_probe_timeout_is_bounded(monkeypatch):
     """A dead endpoint must report, not hang the health check."""
     doctor = _import_doctor()
-    assert 0 < doctor._PROBE_TIMEOUT_SECONDS <= 120, (
-        f"probe timeout {doctor._PROBE_TIMEOUT_SECONDS}s is not a bounded health check"
-    )
+    assert 0 < doctor._PROBE_TIMEOUT_SECONDS <= 120, f"probe timeout {doctor._PROBE_TIMEOUT_SECONDS}s is not a bounded health check"
 
 
 def test_doctor_run_readiness_does_not_false_fail_on_a_healthy_checkout(tmp_path):

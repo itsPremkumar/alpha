@@ -35,8 +35,8 @@ workspace root, and every failure degrades to the static index.
 
 from __future__ import annotations
 
-import asyncio
 import ast
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -44,13 +44,13 @@ import logging
 import os
 import re
 import shutil
-import sys
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +119,8 @@ class SourceLocation:
     file_path: str
     line: int
     character: int = 0
-    end_line: Optional[int] = None
-    end_character: Optional[int] = None
+    end_line: int | None = None
+    end_character: int | None = None
     preview: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -141,7 +141,7 @@ class SymbolRecord:
     name: str
     kind: SymbolKind
     location: SourceLocation
-    container: Optional[str] = None
+    container: str | None = None
     detail: str = ""
     signature: str = ""
     documentation: str = ""
@@ -265,7 +265,7 @@ LANGUAGE_BY_EXTENSION: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def run_coroutine(coro: "asyncio.Future[Any] | Any") -> Any:
+def run_coroutine(coro: asyncio.Future[Any] | Any) -> Any:
     """Execute ``coro`` from synchronous code in every loop context.
 
     Language server I/O is asynchronous, but LangChain tools are invoked from
@@ -315,10 +315,7 @@ class LspTransport:
     async def write_message(self, payload: dict[str, Any]) -> None:
         """Serialize and frame a JSON-RPC message."""
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        header = (
-            f"Content-Length: {len(body)}\r\n"
-            f"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n"
-        ).encode("ascii")
+        header = (f"Content-Length: {len(body)}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n").encode("ascii")
         async with self._write_lock:
             self._writer.write(header + body)
             await self._writer.drain()
@@ -375,11 +372,11 @@ class LanguageServerSession:
         self.workspace_root = workspace_root
         self.request_timeout = request_timeout
         self.startup_timeout = startup_timeout
-        self.process: Optional[asyncio.subprocess.Process] = None
-        self.transport: Optional[LspTransport] = None
+        self.process: asyncio.subprocess.Process | None = None
+        self.transport: LspTransport | None = None
         self._next_id = 1
         self._pending: dict[int, asyncio.Future] = {}
-        self._reader_task: Optional[asyncio.Task] = None
+        self._reader_task: asyncio.Task | None = None
         self.diagnostics: dict[str, list[DiagnosticRecord]] = {}
         self.server_capabilities: dict[str, Any] = {}
         self.open_documents: set[str] = set()
@@ -428,13 +425,11 @@ class LanguageServerSession:
                         },
                     },
                     "initializationOptions": self.spec.initialization_options,
-                    "workspaceFolders": [
-                        {"uri": self.workspace_root.as_uri(), "name": self.workspace_root.name}
-                    ],
+                    "workspaceFolders": [{"uri": self.workspace_root.as_uri(), "name": self.workspace_root.name}],
                 },
                 timeout=self.startup_timeout,
             )
-        except (LspProtocolError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, LspProtocolError) as exc:
             logger.debug("initialize handshake failed for %s: %s", self.spec.name, exc)
             await self.stop()
             return False
@@ -477,13 +472,9 @@ class LanguageServerSession:
         """Send a notification (a request without an id)."""
         if self.transport is None:
             raise LspProtocolError("session is not connected")
-        await self.transport.write_message(
-            {"jsonrpc": "2.0", "method": method, "params": params}
-        )
+        await self.transport.write_message({"jsonrpc": "2.0", "method": method, "params": params})
 
-    async def request(
-        self, method: str, params: Any, timeout: Optional[float] = None
-    ) -> Any:
+    async def request(self, method: str, params: Any, timeout: float | None = None) -> Any:
         """Send a request and await its matching response."""
         if self.transport is None:
             raise LspProtocolError("session is not connected")
@@ -492,9 +483,7 @@ class LanguageServerSession:
         loop = asyncio.get_running_loop()
         future: asyncio.Future = loop.create_future()
         self._pending[request_id] = future
-        await self.transport.write_message(
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
-        )
+        await self.transport.write_message({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
         try:
             return await asyncio.wait_for(future, timeout or self.request_timeout)
         finally:
@@ -510,14 +499,12 @@ class LanguageServerSession:
                     future = self._pending.pop(message.get("id"), None)
                     if future is not None and not future.done():
                         if "error" in message:
-                            future.set_exception(
-                                LspProtocolError(str(message["error"]))
-                            )
+                            future.set_exception(LspProtocolError(str(message["error"])))
                         else:
                             future.set_result(message.get("result"))
                 elif "method" in message:
                     self._handle_notification(message)
-        except (asyncio.CancelledError, LspProtocolError, asyncio.TimeoutError, ConnectionError):
+        except (TimeoutError, asyncio.CancelledError, LspProtocolError, ConnectionError):
             return
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("language server reader terminated: %s", exc)
@@ -580,9 +567,7 @@ class LanguageServerSession:
         )
         return _coerce_locations(result)
 
-    async def references(
-        self, file_path: Path, line: int, character: int, include_declaration: bool = True
-    ) -> list[SourceLocation]:
+    async def references(self, file_path: Path, line: int, character: int, include_declaration: bool = True) -> list[SourceLocation]:
         """Resolve ``textDocument/references`` for a 1-based line position."""
         result = await self.request(
             "textDocument/references",
@@ -602,7 +587,7 @@ class LanguageServerSession:
         )
         return _coerce_symbols(result)
 
-    async def hover(self, file_path: Path, line: int, character: int) -> Optional[HoverRecord]:
+    async def hover(self, file_path: Path, line: int, character: int) -> HoverRecord | None:
         """Resolve ``textDocument/hover`` for a 1-based line position."""
         result = await self.request(
             "textDocument/hover",
@@ -686,7 +671,7 @@ def _coerce_symbols(result: Any) -> list[SymbolRecord]:
         return []
     symbols: list[SymbolRecord] = []
 
-    def _walk(node: dict[str, Any], container: Optional[str]) -> None:
+    def _walk(node: dict[str, Any], container: str | None) -> None:
         location = node.get("location")
         range_ = node.get("range")
         if isinstance(location, dict):
@@ -843,9 +828,7 @@ class StaticSymbolIndexer:
         for symbol in self._symbols:
             self._by_name.setdefault(symbol.name, []).append(symbol)
         self._indexed_at = time.time()
-        self._digest = hashlib.sha256(
-            "\n".join(sorted(str(p) for p in files)).encode("utf-8")
-        ).hexdigest()
+        self._digest = hashlib.sha256("\n".join(sorted(str(p) for p in files)).encode("utf-8")).hexdigest()
         return len(self._symbols)
 
     def _iter_source_files(self, max_files: int) -> Iterable[Path]:
@@ -885,7 +868,7 @@ class StaticSymbolIndexer:
                 return lines[line_no - 1].strip()
             return ""
 
-        def _walk(node: ast.AST, container: Optional[str]) -> None:
+        def _walk(node: ast.AST, container: str | None) -> None:
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     kind = SymbolKind.METHOD if container else SymbolKind.FUNCTION
@@ -967,12 +950,7 @@ class StaticSymbolIndexer:
     def document_symbols(self, file_path: str) -> list[SymbolRecord]:
         """Return every symbol defined in ``file_path``."""
         target = _normalize_relative(file_path)
-        return [
-            symbol
-            for symbol in self._symbols
-            if symbol.location.file_path == target
-            or symbol.location.file_path.endswith(target)
-        ]
+        return [symbol for symbol in self._symbols if symbol.location.file_path == target or symbol.location.file_path.endswith(target)]
 
     def definitions(self, symbol: str) -> list[SourceLocation]:
         """Return definition sites for ``symbol`` (exact, then suffix match)."""
@@ -1009,15 +987,13 @@ class StaticSymbolIndexer:
                         return locations
         return locations
 
-    def hover(self, symbol: str) -> Optional[HoverRecord]:
+    def hover(self, symbol: str) -> HoverRecord | None:
         """Return hover metadata for ``symbol``."""
         records = self._lookup(symbol)
         if not records:
             return None
         record = records[0]
-        contents = "\n".join(
-            part for part in (record.signature, record.documentation) if part
-        ).strip()
+        contents = "\n".join(part for part in (record.signature, record.documentation) if part).strip()
         return HoverRecord(
             symbol=record.name,
             contents=contents or f"{record.kind.value} {record.name}",
@@ -1032,20 +1008,10 @@ class StaticSymbolIndexer:
         exact = self._by_name.get(symbol)
         if exact:
             return list(exact)
-        suffix_matches = [
-            record
-            for name, records in self._by_name.items()
-            if name.endswith(symbol)
-            for record in records
-        ]
+        suffix_matches = [record for name, records in self._by_name.items() if name.endswith(symbol) for record in records]
         if suffix_matches:
             return suffix_matches
-        return [
-            record
-            for name, records in self._by_name.items()
-            if symbol.lower() in name.lower()
-            for record in records
-        ]
+        return [record for name, records in self._by_name.items() if symbol.lower() in name.lower() for record in records]
 
 
 def _base_names(node: ast.ClassDef) -> str:
@@ -1077,9 +1043,7 @@ def _python_signature(node: ast.AST) -> str:
     decorators = ""
     if getattr(node, "decorator_list", None):
         with contextlib.suppress(Exception):
-            decorators = "".join(
-                f"@{ast.unparse(d)}\n" for d in node.decorator_list
-            )
+            decorators = "".join(f"@{ast.unparse(d)}\n" for d in node.decorator_list)
     return f"{decorators}{prefix} {node.name}({args}){returns}"
 
 
@@ -1140,7 +1104,7 @@ class StaticIndexReader:
 
     def __init__(self) -> None:
         self.symbols: list[StaticIndexSymbol] = []
-        self.format: Optional[IndexFormat] = None
+        self.format: IndexFormat | None = None
         self.source: str = ""
 
     @property
@@ -1169,7 +1133,6 @@ class StaticIndexReader:
         """Parse newline delimited LSIF JSON vertices and edges."""
         documents: dict[Any, str] = {}
         ranges: dict[Any, dict[str, Any]] = {}
-        range_to_definition: dict[Any, str] = {}
         definition_to_result: dict[Any, list[Any]] = {}
         result_to_ranges: dict[Any, list[Any]] = {}
         symbols: list[StaticIndexSymbol] = []
@@ -1187,7 +1150,7 @@ class StaticIndexReader:
                 if label == "document":
                     documents[element.get("id")] = _uri_to_path(str(element.get("uri", "")))
                 elif label == "range":
-                    start = (element.get("start") or {})
+                    start = element.get("start") or {}
                     ranges[element.get("id")] = {
                         "line": int(start.get("line", 0)) + 1,
                         "character": int(start.get("character", 0)),
@@ -1205,9 +1168,7 @@ class StaticIndexReader:
                     else:
                         definition_to_result[out_v] = list(in_vs)
                 elif label == "item" and out_v in definition_to_result:
-                    result_to_ranges.setdefault(element.get("inV"), []).extend(
-                        in_vs or ([in_v] if in_v is not None else [])
-                    )
+                    result_to_ranges.setdefault(element.get("inV"), []).extend(in_vs or ([in_v] if in_v is not None else []))
 
         for range_id, result_ids in definition_to_result.items():
             for result_id in result_ids:
@@ -1305,11 +1266,7 @@ class StaticIndexReader:
         needle = (symbol or "").lower()
         if not needle:
             return []
-        matches = [
-            entry
-            for entry in self.symbols
-            if needle in entry.name.lower() or needle in entry.symbol_id.lower()
-        ]
+        matches = [entry for entry in self.symbols if needle in entry.name.lower() or needle in entry.symbol_id.lower()]
         return matches[:max_results]
 
 
@@ -1430,14 +1387,12 @@ class LanguageServerIntelligenceEngine:
     def __init__(
         self,
         workspace_root: str | Path,
-        server_specs: Optional[Iterable[LanguageServerSpec]] = None,
+        server_specs: Iterable[LanguageServerSpec] | None = None,
         enable_servers: bool = True,
     ):
         self.workspace_root = Path(workspace_root).resolve()
         self.enable_servers = enable_servers
-        self.server_specs: tuple[LanguageServerSpec, ...] = tuple(
-            server_specs if server_specs is not None else DEFAULT_SERVER_SPECS
-        )
+        self.server_specs: tuple[LanguageServerSpec, ...] = tuple(server_specs if server_specs is not None else DEFAULT_SERVER_SPECS)
         self.indexer = StaticSymbolIndexer(self.workspace_root)
         self.static_index = StaticIndexReader()
         self._sessions: dict[str, LanguageServerSession] = {}
@@ -1473,14 +1428,14 @@ class LanguageServerIntelligenceEngine:
 
     # -- session management ------------------------------------------------
 
-    def _spec_for_language(self, language: str) -> Optional[LanguageServerSpec]:
+    def _spec_for_language(self, language: str) -> LanguageServerSpec | None:
         """Return the first installed server spec covering ``language``."""
         for spec in self.server_specs:
             if language in spec.languages and spec.is_installed():
                 return spec
         return None
 
-    def _session_for_language(self, language: str) -> Optional[LanguageServerSession]:
+    def _session_for_language(self, language: str) -> LanguageServerSession | None:
         """Return (and lazily start) a session for ``language``."""
         if not self.enable_servers:
             return None
@@ -1507,7 +1462,7 @@ class LanguageServerIntelligenceEngine:
 
     # -- queries -----------------------------------------------------------
 
-    def _resolve_file(self, file_path: str) -> Optional[Path]:
+    def _resolve_file(self, file_path: str) -> Path | None:
         """Resolve a user supplied path against the workspace root."""
         if not file_path:
             return None
@@ -1568,7 +1523,7 @@ class LanguageServerIntelligenceEngine:
     def _definition(
         self,
         symbol: str,
-        resolved: Optional[Path],
+        resolved: Path | None,
         language: str,
         line: int,
         character: int,
@@ -1586,9 +1541,7 @@ class LanguageServerIntelligenceEngine:
         session = self._session_for_language(language) if resolved else None
         if session is not None and resolved is not None and line > 0:
             try:
-                locations = run_coroutine(
-                    self._with_document(session, resolved, language, lambda: session.definition(resolved, line, character))
-                )
+                locations = run_coroutine(self._with_document(session, resolved, language, lambda: session.definition(resolved, line, character)))
                 if locations:
                     return self._ok(
                         symbol=symbol,
@@ -1611,7 +1564,7 @@ class LanguageServerIntelligenceEngine:
     def _references(
         self,
         symbol: str,
-        resolved: Optional[Path],
+        resolved: Path | None,
         language: str,
         line: int,
         character: int,
@@ -1621,11 +1574,7 @@ class LanguageServerIntelligenceEngine:
         session = self._session_for_language(language) if resolved else None
         if session is not None and resolved is not None and line > 0:
             try:
-                locations = run_coroutine(
-                    self._with_document(
-                        session, resolved, language, lambda: session.references(resolved, line, character)
-                    )
-                )
+                locations = run_coroutine(self._with_document(session, resolved, language, lambda: session.references(resolved, line, character)))
                 if locations:
                     return self._ok(
                         symbol=symbol,
@@ -1648,7 +1597,7 @@ class LanguageServerIntelligenceEngine:
     def _hover(
         self,
         symbol: str,
-        resolved: Optional[Path],
+        resolved: Path | None,
         language: str,
         line: int,
         character: int,
@@ -1657,9 +1606,7 @@ class LanguageServerIntelligenceEngine:
         session = self._session_for_language(language) if resolved else None
         if session is not None and resolved is not None and line > 0:
             try:
-                hover = run_coroutine(
-                    self._with_document(session, resolved, language, lambda: session.hover(resolved, line, character))
-                )
+                hover = run_coroutine(self._with_document(session, resolved, language, lambda: session.hover(resolved, line, character)))
                 if hover is not None and hover.contents:
                     payload = hover.to_dict()
                     payload["symbol"] = symbol
@@ -1675,9 +1622,7 @@ class LanguageServerIntelligenceEngine:
         self.ensure_index()
         hover = self.indexer.hover(symbol)
         if hover is None:
-            return self._ok(
-                symbol=symbol, action="hover", source="static_ast_index", results=[]
-            )
+            return self._ok(symbol=symbol, action="hover", source="static_ast_index", results=[])
         return self._ok(
             symbol=symbol,
             action="hover",
@@ -1690,11 +1635,7 @@ class LanguageServerIntelligenceEngine:
         session = self._session_for_language(language)
         if session is not None:
             try:
-                symbols = run_coroutine(
-                    self._with_document(
-                        session, resolved, language, lambda: session.document_symbols(resolved)
-                    )
-                )
+                symbols = run_coroutine(self._with_document(session, resolved, language, lambda: session.document_symbols(resolved)))
                 if symbols:
                     return self._ok(
                         symbol=resolved.name,
@@ -1714,7 +1655,7 @@ class LanguageServerIntelligenceEngine:
             results=[sym.to_dict() for sym in symbols],
         )
 
-    def _diagnostics(self, resolved: Optional[Path], language: str) -> dict[str, Any]:
+    def _diagnostics(self, resolved: Path | None, language: str) -> dict[str, Any]:
         """Collect diagnostics published by language servers."""
         results: list[dict[str, Any]] = []
         session = self._session_for_language(language) if resolved else None
@@ -1771,9 +1712,7 @@ _ENGINE_LOCK = threading.Lock()
 _ENGINES: dict[str, LanguageServerIntelligenceEngine] = {}
 
 
-def get_language_server_engine(
-    workspace_root: str | Path, enable_servers: bool = True
-) -> LanguageServerIntelligenceEngine:
+def get_language_server_engine(workspace_root: str | Path, enable_servers: bool = True) -> LanguageServerIntelligenceEngine:
     """Return the process-wide engine for ``workspace_root`` (creating it once)."""
     key = str(Path(workspace_root).resolve())
     with _ENGINE_LOCK:

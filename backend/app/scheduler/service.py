@@ -997,9 +997,7 @@ class ScheduledTaskService:
         if len(self._job_memory_notes) < 4:
             self._job_memory_notes.append(note)
         elif not self._job_memory_notes_capped:
-            self._job_memory_notes.append(
-                "further journal write failure notes are suppressed in prompts (each failure is still logged at ERROR)"
-            )
+            self._job_memory_notes.append("further journal write failure notes are suppressed in prompts (each failure is still logged at ERROR)")
             self._job_memory_notes_capped = True
         # A note added after the last prompt has not been presented yet.
         self._job_memory_notes_presented = False

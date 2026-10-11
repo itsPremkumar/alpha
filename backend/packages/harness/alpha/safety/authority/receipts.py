@@ -127,22 +127,13 @@ class ExecutionIdentity:
             raise IdentityError("an execution identity needs a non-empty principal id")
         if self.kind is ActorKind.CHILD_AGENT:
             if self.delegator is None:
-                raise IdentityError(
-                    f"child agent {self.principal_id!r} has no delegator; a delegated child's "
-                    "action must name who delegated it, or it is unattributable"
-                )
+                raise IdentityError(f"child agent {self.principal_id!r} has no delegator; a delegated child's action must name who delegated it, or it is unattributable")
             if self.delegator.kind is ActorKind.CHILD_AGENT:
-                raise IdentityError(
-                    f"child agent {self.principal_id!r} names another child as its delegator; "
-                    "a delegation chain must terminate at an agent, a human, or the system"
-                )
+                raise IdentityError(f"child agent {self.principal_id!r} names another child as its delegator; a delegation chain must terminate at an agent, a human, or the system")
             if self.delegator.principal_id == self.principal_id:
                 raise IdentityError(f"{self.principal_id!r} cannot delegate to itself")
         elif self.delegator is not None:
-            raise IdentityError(
-                f"{self.kind.value} {self.principal_id!r} may not carry a delegator; only a "
-                "child agent is acting on someone else's authority"
-            )
+            raise IdentityError(f"{self.kind.value} {self.principal_id!r} may not carry a delegator; only a child agent is acting on someone else's authority")
 
     @property
     def is_authoritative(self) -> bool:
@@ -188,9 +179,7 @@ def agent(principal_id: str, *, authenticated_by: str = "internal-token") -> Exe
 
 
 def automated_system(principal_id: str, *, authenticated_by: str = "scheduler") -> ExecutionIdentity:
-    return ExecutionIdentity(
-        kind=ActorKind.AUTOMATED_SYSTEM, principal_id=principal_id, authenticated_by=authenticated_by
-    )
+    return ExecutionIdentity(kind=ActorKind.AUTOMATED_SYSTEM, principal_id=principal_id, authenticated_by=authenticated_by)
 
 
 def child_agent(
@@ -240,10 +229,7 @@ class RejectedAlternative:
         if not str(self.option or "").strip():
             raise ReceiptError("a rejected alternative needs a name")
         if not str(self.reason or "").strip():
-            raise ReceiptError(
-                f"rejected alternative {self.option!r} has no reason; 'rejected' without a "
-                "reason is not evidence that a decision was made"
-            )
+            raise ReceiptError(f"rejected alternative {self.option!r} has no reason; 'rejected' without a reason is not evidence that a decision was made")
 
     def to_dict(self) -> dict[str, str]:
         return {"option": self.option, "reason": self.reason}
@@ -343,11 +329,8 @@ class DecisionReceipt:
 
         alternatives = "; ".join(f"rejected {item.option} ({item.reason})" for item in self.rejected_alternatives)
         flags = f" FLAGGED[{','.join(self.why_flagged())}]" if self.flagged else ""
-        return (
-            f"#{self.seq} {self.decision} by {self.identity.actor_line()} "
-            f"rule={self.policy_rule or '<unnamed>'} scope={self.scope or '<none>'} "
-            f"outcome={self.outcome} work={self.work_ref or '<none>'}{flags}"
-            + (f" | {alternatives}" if alternatives else "")
+        return f"#{self.seq} {self.decision} by {self.identity.actor_line()} rule={self.policy_rule or '<unnamed>'} scope={self.scope or '<none>'} outcome={self.outcome} work={self.work_ref or '<none>'}{flags}" + (
+            f" | {alternatives}" if alternatives else ""
         )
 
 
@@ -588,31 +571,21 @@ class ReceiptChain:
                     ok=False,
                     receipts_checked=index - 1,
                     broken_at_seq=receipt.seq,
-                    reason=(
-                        f"receipt {receipt.receipt_id!r} claims seq {receipt.seq} at position "
-                        f"{index}: a receipt was removed or reordered"
-                    ),
+                    reason=(f"receipt {receipt.receipt_id!r} claims seq {receipt.seq} at position {index}: a receipt was removed or reordered"),
                 )
             if receipt.prev_hash != previous_hash:
                 return ChainVerification(
                     ok=False,
                     receipts_checked=index - 1,
                     broken_at_seq=receipt.seq,
-                    reason=(
-                        f"receipt {receipt.receipt_id!r} chains to {receipt.prev_hash[:23]!r} but "
-                        f"its predecessor hashes to {previous_hash[:23]!r}: a historical receipt "
-                        "was edited"
-                    ),
+                    reason=(f"receipt {receipt.receipt_id!r} chains to {receipt.prev_hash[:23]!r} but its predecessor hashes to {previous_hash[:23]!r}: a historical receipt was edited"),
                 )
             if receipt.compute_hash() != receipt.hash:
                 return ChainVerification(
                     ok=False,
                     receipts_checked=index - 1,
                     broken_at_seq=receipt.seq,
-                    reason=(
-                        f"receipt {receipt.receipt_id!r} contents do not match its recorded hash: "
-                        f"stored {receipt.hash[:23]!r}, recomputed {receipt.compute_hash()[:23]!r}"
-                    ),
+                    reason=(f"receipt {receipt.receipt_id!r} contents do not match its recorded hash: stored {receipt.hash[:23]!r}, recomputed {receipt.compute_hash()[:23]!r}"),
                 )
             previous_hash = receipt.hash
         return ChainVerification(ok=True, receipts_checked=len(receipts))
@@ -620,9 +593,7 @@ class ReceiptChain:
     def assert_intact(self) -> None:
         verdict = self.verify()
         if not verdict.ok:
-            raise ChainIntegrityError(
-                f"decision receipt chain {self._chain_id!r} does not verify: {verdict.reason}"
-            )
+            raise ChainIntegrityError(f"decision receipt chain {self._chain_id!r} does not verify: {verdict.reason}")
 
     # -- persistence ---------------------------------------------------------
 
@@ -664,9 +635,7 @@ class ReceiptChain:
                     payload = json.loads(text)
                     receipt = _receipt_from_dict(payload)
                 except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
-                    raise ChainIntegrityError(
-                        f"receipt chain {chain_id!r} line {lineno} is not a readable receipt: {exc}"
-                    ) from exc
+                    raise ChainIntegrityError(f"receipt chain {chain_id!r} line {lineno} is not a readable receipt: {exc}") from exc
                 chain._receipts.append(receipt)
         return chain
 
@@ -688,12 +657,7 @@ class ReceiptChain:
     def receipts_for_actor(self, principal_id: str) -> tuple[DecisionReceipt, ...]:
         target = str(principal_id or "").strip().lower()
         with self._lock:
-            return tuple(
-                receipt
-                for receipt in self._receipts
-                if receipt.identity.principal_id.lower() == target
-                or receipt.identity.delegator_id.lower() == target
-            )
+            return tuple(receipt for receipt in self._receipts if receipt.identity.principal_id.lower() == target or receipt.identity.delegator_id.lower() == target)
 
     def flagged(self) -> tuple[DecisionReceipt, ...]:
         with self._lock:
@@ -726,10 +690,7 @@ def _receipt_from_dict(payload: Mapping[str, Any]) -> DecisionReceipt:
         authenticated_by=str(identity_payload.get("authenticated_by", "")),
         model_asserted=bool(identity_payload.get("model_asserted", False)),
     )
-    alternatives = tuple(
-        RejectedAlternative(option=str(item["option"]), reason=str(item["reason"]))
-        for item in payload.get("rejected_alternatives", ())
-    )
+    alternatives = tuple(RejectedAlternative(option=str(item["option"]), reason=str(item["reason"])) for item in payload.get("rejected_alternatives", ()))
     return DecisionReceipt(
         receipt_id=str(payload["receipt_id"]),
         seq=int(payload["seq"]),

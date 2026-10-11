@@ -82,8 +82,7 @@ def main() -> int:
     view = router.catalog_dict()
     print(f"eligible providers: {view.get('eligible_providers') or view.get('eligible') or '-'}")
     print(f"probe summary: {probes}")
-    print(f"discovery ok={sum(1 for r in discovery.values() if r.ok)}/{len(discovery)} "
-          f"probe ok={probe_ok}/{probe_ok + probe_fail}")
+    print(f"discovery ok={sum(1 for r in discovery.values() if r.ok)}/{len(discovery)} probe ok={probe_ok}/{probe_ok + probe_fail}")
     return 0 if probe_ok > 0 else 1
 
 

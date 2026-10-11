@@ -413,4 +413,3 @@ def network_snapshot(monitor: Any, wait_service: Any, *, network_enabled: bool |
         "parked_sessions": None,
         "parked_durability": "installed" if wait_service is not None else "unavailable",
     }
-

@@ -21,7 +21,7 @@ def test_visual_engineering_worker():
     assert "--primary" in widget.design_tokens
     assert widget.design_tokens["--primary"] == "#10B981"
     assert "widget-card" in widget.css_styles
-    assert "<div class=\"widget-card\"" in widget.html_markup
+    assert '<div class="widget-card"' in widget.html_markup
 
     html = widget.render_standalone_html()
     assert "<!DOCTYPE html>" in html

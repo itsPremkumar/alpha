@@ -1,6 +1,5 @@
 """Unit tests for Inbound Message Debouncer and Turn Batcher."""
 
-
 import pytest
 
 from alpha.channels.debounce.debouncer import InboundDebouncer
@@ -10,8 +9,8 @@ def test_inbound_debouncer_flush():
     debouncer = InboundDebouncer(debounce_seconds=0.1)
 
     # Push 3 rapid messages
-    q1 = debouncer.push("session_a", "alice", "Hello")
-    q2 = debouncer.push("session_a", "alice", "are you there?")
+    debouncer.push("session_a", "alice", "Hello")
+    debouncer.push("session_a", "alice", "are you there?")
     q3 = debouncer.push("session_a", "bob", "ping")
 
     assert q3 == 3

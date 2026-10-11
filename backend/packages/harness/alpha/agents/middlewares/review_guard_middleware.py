@@ -170,11 +170,7 @@ class ReviewGuardMiddleware(AgentMiddleware[ReviewGuardMiddlewareState]):
                         path,
                     )
                     return ToolMessage(
-                        content=(
-                            f"Error: Comment density too low ({ratio:.1%}). "
-                            f"Minimum required: {self._config.min_comment_ratio:.1%}. "
-                            f"Add more comments to {path}."
-                        ),
+                        content=(f"Error: Comment density too low ({ratio:.1%}). Minimum required: {self._config.min_comment_ratio:.1%}. Add more comments to {path}."),
                         tool_call_id=str(request.tool_call.get("id") or ""),
                         name=tool_name,
                         status="error",
@@ -219,8 +215,7 @@ class ReviewGuardMiddleware(AgentMiddleware[ReviewGuardMiddlewareState]):
             if isinstance(new_str, str):
                 return new_str
         logger.warning(
-            "ReviewGuard: could not determine the content written by %s; "
-            "comment density was NOT checked for this call",
+            "ReviewGuard: could not determine the content written by %s; comment density was NOT checked for this call",
             tool_name,
         )
         return None

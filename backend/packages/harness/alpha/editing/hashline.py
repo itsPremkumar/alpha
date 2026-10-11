@@ -25,12 +25,13 @@ class LineRef(NamedTuple):
 
 class HashlineMismatchError(ValueError):
     """Raised when a specified line reference does not match the actual line hash."""
+
     pass
 
 
 def compute_line_hash(line: str) -> str:
     """Compute a deterministic 2-character base36 hash for line content.
-    
+
     Trailing newlines and carriage returns are stripped to be platform-agnostic.
     """
     clean_line = line.rstrip("\r\n")
@@ -53,7 +54,7 @@ def format_hash_lines(content: str) -> str:
     if not content:
         return ""
     lines = content.splitlines()
-    formatted = [format_hash_line(i + 1, l) for i, l in enumerate(lines)]
+    formatted = [format_hash_line(i + 1, line) for i, line in enumerate(lines)]
     return "\n".join(formatted)
 
 
@@ -68,16 +69,11 @@ def parse_line_ref(ref: str) -> LineRef:
 def validate_line_ref(lines: list[str], ref: LineRef) -> None:
     """Check that line_num is in range and its hash matches."""
     if ref.line_num < 1 or ref.line_num > len(lines):
-        raise HashlineMismatchError(
-            f"Line {ref.line_num} is out of bounds (file has {len(lines)} lines)"
-        )
+        raise HashlineMismatchError(f"Line {ref.line_num} is out of bounds (file has {len(lines)} lines)")
     actual_line = lines[ref.line_num - 1]
     actual_hash = compute_line_hash(actual_line)
     if actual_hash != ref.hash_str:
-        raise HashlineMismatchError(
-            f"Hashline mismatch at line {ref.line_num}! Expected hash '{ref.hash_str}', "
-            f"but found actual hash '{actual_hash}' for content: '{actual_line.strip()}'"
-        )
+        raise HashlineMismatchError(f"Hashline mismatch at line {ref.line_num}! Expected hash '{ref.hash_str}', but found actual hash '{actual_hash}' for content: '{actual_line.strip()}'")
 
 
 def apply_hashline_edit(
@@ -87,7 +83,7 @@ def apply_hashline_edit(
     replacement: str,
 ) -> str:
     """Apply a replacement spanning from start_ref to end_ref (inclusive).
-    
+
     1. Parses line references (e.g. '10#VK', '12#MB').
     2. Validates hashes against existing content.
     3. Replaces lines start_line..end_line with replacement.
@@ -96,9 +92,7 @@ def apply_hashline_edit(
     end_ref = parse_line_ref(end_ref_str)
 
     if start_ref.line_num > end_ref.line_num:
-        raise ValueError(
-            f"start_ref ({start_ref.line_num}) cannot be after end_ref ({end_ref.line_num})"
-        )
+        raise ValueError(f"start_ref ({start_ref.line_num}) cannot be after end_ref ({end_ref.line_num})")
 
     lines = original_text.splitlines()
     validate_line_ref(lines, start_ref)
@@ -108,12 +102,8 @@ def apply_hashline_edit(
     rep_lines = replacement.splitlines() if replacement else []
 
     # Reconstruct lines
-    new_lines = (
-        lines[: start_ref.line_num - 1]
-        + rep_lines
-        + lines[end_ref.line_num :]
-    )
-    
+    new_lines = lines[: start_ref.line_num - 1] + rep_lines + lines[end_ref.line_num :]
+
     trailing_newline = original_text.endswith("\n")
     result = "\n".join(new_lines)
     if trailing_newline and not result.endswith("\n"):

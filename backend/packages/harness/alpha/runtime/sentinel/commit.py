@@ -231,9 +231,7 @@ class Committer:
 
         allowed, refused = validate_paths(paths)
         if not allowed:
-            return CommitResult(
-                ok=False, refused=refused, error="every path was refused by the safety filter"
-            )
+            return CommitResult(ok=False, refused=refused, error="every path was refused by the safety filter")
 
         if self.dry_run:
             return CommitResult(ok=True, message=message, staged=allowed, refused=refused)
@@ -277,14 +275,22 @@ class Committer:
         if push:
             if not self.allow_push:
                 return CommitResult(
-                    ok=True, sha=sha, message=message, staged=allowed, refused=refused,
+                    ok=True,
+                    sha=sha,
+                    message=message,
+                    staged=allowed,
+                    refused=refused,
                     error="push requested but allow_push is False; commit landed locally only",
                 )
             target = branch or "HEAD"
             code, out = self._run(["push", self.remote, target])
             if code != 0:
                 return CommitResult(
-                    ok=False, sha=sha, message=message, staged=allowed, refused=refused,
+                    ok=False,
+                    sha=sha,
+                    message=message,
+                    staged=allowed,
+                    refused=refused,
                     error=f"git push failed: {out.strip()}",
                 )
 

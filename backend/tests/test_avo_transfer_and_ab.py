@@ -40,23 +40,23 @@ from alpha.avo.workspace_runner import WorkspaceAVORunner
 
 # ----------------------------------------------------------------------
 # Task A: numeric accumulation with a skip branch.
-TASK_A_BASELINE = '''\
+TASK_A_BASELINE = """\
 def normalise(values):
     total = 0
     for value in values:
         if value is not None:
             total = total + value
     return total
-'''
+"""
 
-TASK_A_CANDIDATE = '''\
+TASK_A_CANDIDATE = """\
 def normalise(values):
     total = 0
     for value in values:
         if value is not None:
             total += value
     return total
-'''
+"""
 
 # Task A's test needs no string literals, so the ``-c`` payload stays free of
 # quote characters. ``shlex.split(posix=False)`` on Windows mangles a payload
@@ -66,7 +66,7 @@ TASK_A_TEST = "import task; assert task.normalise([1, 2, 3]) == 6; assert task.n
 
 # Task B: a different module, a different accumulator type, a different return
 # shape, a different branch. Same *class* of redundancy.
-TASK_B_BASELINE = '''\
+TASK_B_BASELINE = """\
 def summarise(text: str):
     parts = []
     for ch in text:
@@ -75,11 +75,11 @@ def summarise(text: str):
         else:
             parts = parts + [ch]
     return "".join(parts)
-'''
+"""
 
 # The transferred strategy: same insight -- stop rebuilding the accumulator every
 # iteration -- re-expressed for a different type. Not a literal port.
-TASK_B_CANDIDATE = '''\
+TASK_B_CANDIDATE = """\
 def summarise(text: str):
     parts = []
     for ch in text:
@@ -88,13 +88,13 @@ def summarise(text: str):
         else:
             parts.append(ch)
     return "".join(parts)
-'''
+"""
 
 # The control: a plausible-looking "optimisation" that PASSES the supplied test
 # and is faster, but silently drops "!" on inputs the test does not cover.
 # This is the composition case at the task level: correctness holds, the score
 # improves, and the invariant half is the only thing that can catch it.
-TASK_B_LITERAL_PORT = '''\
+TASK_B_LITERAL_PORT = """\
 def summarise(text: str):
     out = []
     for ch in text:
@@ -105,13 +105,10 @@ def summarise(text: str):
         else:
             out.append(ch)
     return "".join(out)
-'''
+"""
 
 # chr() keeps the payload free of quote characters for the reason above.
-TASK_B_TEST = (
-    "import task; assert task.summarise(chr(97)+chr(32)+chr(98)) == chr(97)+chr(124)+chr(98); "
-    "assert task.summarise(chr(97)+chr(32)+chr(32)+chr(98)) == chr(97)+chr(124)+chr(124)+chr(98)"
-)
+TASK_B_TEST = "import task; assert task.summarise(chr(97)+chr(32)+chr(98)) == chr(97)+chr(124)+chr(98); assert task.summarise(chr(97)+chr(32)+chr(32)+chr(98)) == chr(97)+chr(124)+chr(124)+chr(98)"
 
 # A non-Python-safety note: the invariant suite execs these modules in-process,
 # because that is how alpha's existing DifferentialInvariantFuzzer works. These
@@ -272,9 +269,7 @@ def test_l_capability_learned_on_task_a_transfers_to_task_b(tmp_path: Path) -> N
     # correctness test, so if the gate ever lets it through, the gate is
     # decorative and the transfer number above means nothing.
     assert verdict["control_correctness_passed"] is True, f"the control must pass correctness to isolate the invariant: {verdict}"
-    assert verdict["control_committed"] is False, (
-        f"a change that passes correctness but silently diverges must be rejected; got {verdict} -- the gate is not biting"
-    )
+    assert verdict["control_committed"] is False, f"a change that passes correctness but silently diverges must be rejected; got {verdict} -- the gate is not biting"
     assert verdict["control_rejection_category"] == "invariant", verdict
     assert (verdict["control_invariant_regressions"] or 0) > 0, verdict
     print(f"\nPHASE 7 TRANSFER: {verdict}\n")

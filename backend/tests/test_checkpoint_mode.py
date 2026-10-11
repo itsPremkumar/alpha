@@ -239,8 +239,8 @@ async def test_gateway_runtime_rejects_mode_different_from_frozen_process(
 
     from fastapi import FastAPI
 
-    from app.gateway.deps import langgraph_runtime
     from alpha.runtime import checkpoint_mode
+    from app.gateway.deps import langgraph_runtime
 
     @asynccontextmanager
     async def resource(_config):

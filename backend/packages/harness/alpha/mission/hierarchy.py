@@ -34,6 +34,7 @@ class ExecutionStatus(str, Enum):
 @dataclass
 class HierarchyNode:
     """Base node representing an execution element in the 6-level hierarchy."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     level: HierarchyLevel = HierarchyLevel.GOAL
     name: str = ""
@@ -55,6 +56,7 @@ class HierarchyNode:
 @dataclass
 class GoalNode(HierarchyNode):
     """Level 1: Strategic long-term user or enterprise goal."""
+
     def __post_init__(self):
         self.level = HierarchyLevel.GOAL
 
@@ -62,6 +64,7 @@ class GoalNode(HierarchyNode):
 @dataclass
 class MissionNode(HierarchyNode):
     """Level 2: Scoped operational mission with constraints and desired outcome."""
+
     constraints: list[str] = field(default_factory=list)
     desired_outcome: str = ""
 
@@ -72,6 +75,7 @@ class MissionNode(HierarchyNode):
 @dataclass
 class TaskNode(HierarchyNode):
     """Level 3: Discrete unit of work with assignees, dependencies, and priority."""
+
     assignee_role: str = ""
     priority: str = "medium"  # low, medium, high, critical
     dependencies: list[str] = field(default_factory=list)  # list of task IDs that must finish first
@@ -83,6 +87,7 @@ class TaskNode(HierarchyNode):
 @dataclass
 class SubtaskNode(HierarchyNode):
     """Level 4: Detailed sub-component of a task."""
+
     def __post_init__(self):
         self.level = HierarchyLevel.SUBTASK
 
@@ -90,6 +95,7 @@ class SubtaskNode(HierarchyNode):
 @dataclass
 class ActionNode(HierarchyNode):
     """Level 5: Executable plan step (e.g. read_file, run_tests, git_commit)."""
+
     action_type: str = "generic"
 
     def __post_init__(self):
@@ -99,6 +105,7 @@ class ActionNode(HierarchyNode):
 @dataclass
 class ToolCallNode(HierarchyNode):
     """Level 6: Lowest level tool invocation with specific arguments and tool output."""
+
     tool_name: str = ""
     tool_input: dict[str, Any] = field(default_factory=dict)
     tool_output: str | None = None
@@ -305,9 +312,7 @@ class MissionHierarchyTree:
         if not node.children_ids:
             return 0.0
 
-        child_progresses = [
-            self.calculate_progress(cid) for cid in node.children_ids if cid in self._nodes
-        ]
+        child_progresses = [self.calculate_progress(cid) for cid in node.children_ids if cid in self._nodes]
         if not child_progresses:
             return 0.0
 
@@ -322,9 +327,7 @@ class MissionHierarchyTree:
         root = self._nodes[target_id]
         data = root.to_dict()
         data["progress"] = self.calculate_progress(root.id)
-        data["children"] = [
-            self.to_tree_dict(cid) for cid in root.children_ids if cid in self._nodes
-        ]
+        data["children"] = [self.to_tree_dict(cid) for cid in root.children_ids if cid in self._nodes]
         return data
 
     def to_markdown_tree(self, node_id: str | None = None, indent: int = 0) -> str:

@@ -341,12 +341,7 @@ class SlashCommandRegistry:
             return CommandExecutionResult(
                 status="not_found",
                 command=cmd_def.command,
-                output=(
-                    f"Unknown subcommand '{resolution.near_miss}' for {cmd_def.command}; "
-                    f"nothing was executed.{hint}\n"
-                    f"Known subcommands of {cmd_def.command}: {listing}\n"
-                    f"Published usage: {cmd_def.usage}"
-                ),
+                output=(f"Unknown subcommand '{resolution.near_miss}' for {cmd_def.command}; nothing was executed.{hint}\nKnown subcommands of {cmd_def.command}: {listing}\nPublished usage: {cmd_def.usage}"),
                 data={
                     "category": cmd_def.category.value,
                     "executed": False,
@@ -432,10 +427,7 @@ class SlashCommandRegistry:
             return CommandExecutionResult(
                 status="timeout",
                 command=cmd_def.command,
-                output=(
-                    f"{cmd_def.command} did not finish within {timeout_seconds:g}s and was abandoned; "
-                    f"the result is unknown (it may still complete in the background)."
-                ),
+                output=(f"{cmd_def.command} did not finish within {timeout_seconds:g}s and was abandoned; the result is unknown (it may still complete in the background)."),
                 data={
                     "category": cmd_def.category.value,
                     "executed": False,

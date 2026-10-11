@@ -132,9 +132,7 @@ class LedgerEntry:
         """One line an operator can read without a JSON viewer."""
         detail = ""
         if self.details:
-            detail = " " + " ".join(
-                f"{k}={self.details[k]!r}" for k in sorted(self.details) if k != "reason"
-            )
+            detail = " " + " ".join(f"{k}={self.details[k]!r}" for k in sorted(self.details) if k != "reason")
         return f"#{self.seq} {self.event_type} actor=@{self.actor} target={self.target} reason={self.reason!r}{detail}"
 
 
@@ -170,11 +168,7 @@ def _on_disk(store: OrgEventStore, event: Mapping[str, Any]) -> bool:
                     found = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if (
-                    found.get("seq") == event.get("seq")
-                    and found.get("id") == event.get("id")
-                    and found.get("event_type") == event.get("event_type")
-                ):
+                if found.get("seq") == event.get("seq") and found.get("id") == event.get("id") and found.get("event_type") == event.get("event_type"):
                     return True
     except OSError:
         return False
@@ -198,14 +192,8 @@ def append(
     in memory, which is exactly what the fail-closed test needs to distinguish.
     """
     if event_type not in CHANNEL_EVENTS:
-        raise LedgerRefused(
-            f"unknown channel event {event_type!r}; expected one of {sorted(CHANNEL_EVENTS)}"
-        )
-    missing = [
-        name
-        for name, value in (("actor", actor), ("target", target), ("reason", reason))
-        if not str(value or "").strip()
-    ]
+        raise LedgerRefused(f"unknown channel event {event_type!r}; expected one of {sorted(CHANNEL_EVENTS)}")
+    missing = [name for name, value in (("actor", actor), ("target", target), ("reason", reason)) if not str(value or "").strip()]
     if missing:
         raise LedgerRefused(f"event {event_type!r} is missing required attribution: {missing}")
 
@@ -218,16 +206,10 @@ def append(
             details={"reason": str(reason).strip(), **(details or {})},
         )
     except Exception as exc:  # noqa: BLE001 - any sink fault must fail closed
-        raise LedgerUnavailable(
-            f"ledger append for {event_type!r} raised {type(exc).__name__}: {exc}; "
-            "the operation is REFUSED rather than performed unrecorded"
-        ) from exc
+        raise LedgerUnavailable(f"ledger append for {event_type!r} raised {type(exc).__name__}: {exc}; the operation is REFUSED rather than performed unrecorded") from exc
 
     if durable and not _on_disk(sink, event):
-        raise LedgerUnavailable(
-            f"ledger append for {event_type!r} (seq {event.get('seq')}) did not reach "
-            f"{sink.log_path}; the operation is REFUSED rather than performed unrecorded"
-        )
+        raise LedgerUnavailable(f"ledger append for {event_type!r} (seq {event.get('seq')}) did not reach {sink.log_path}; the operation is REFUSED rather than performed unrecorded")
     return _entry_from_event(event, reason=reason)
 
 
@@ -243,25 +225,16 @@ def governance(
 ) -> LedgerEntry:
     """Append a governance action through the existing validated code set."""
     if action not in GOVERNANCE_ACTIONS:
-        raise LedgerRefused(
-            f"unknown governance action {action!r}; expected one of {sorted(GOVERNANCE_ACTIONS)}"
-        )
+        raise LedgerRefused(f"unknown governance action {action!r}; expected one of {sorted(GOVERNANCE_ACTIONS)}")
     sink = store or get_org_event_store()
     try:
-        event = record_governance_action(
-            action, actor=actor, target=target, reason=reason, details=details, store=sink
-        )
+        event = record_governance_action(action, actor=actor, target=target, reason=reason, details=details, store=sink)
     except GovernanceLedgerError:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise LedgerUnavailable(
-            f"governance append {action!r} raised {type(exc).__name__}: {exc}; the operation is REFUSED"
-        ) from exc
+        raise LedgerUnavailable(f"governance append {action!r} raised {type(exc).__name__}: {exc}; the operation is REFUSED") from exc
     if durable and not _on_disk(sink, event):
-        raise LedgerUnavailable(
-            f"governance append {action!r} (seq {event.get('seq')}) did not reach "
-            f"{sink.log_path}; the operation is REFUSED"
-        )
+        raise LedgerUnavailable(f"governance append {action!r} (seq {event.get('seq')}) did not reach {sink.log_path}; the operation is REFUSED")
     return _entry_from_event(event, reason=reason)
 
 
@@ -391,12 +364,8 @@ def note_capability_acquired(
     )
 
 
-def note_capability_refused(
-    actor: str, *, target: str, reason: str, store: Any | None = None, **extra: Any
-) -> LedgerEntry:
-    return append(
-        EV_CAPABILITY_REFUSED, actor=actor, target=target, reason=reason, details=dict(extra), store=store
-    )
+def note_capability_refused(actor: str, *, target: str, reason: str, store: Any | None = None, **extra: Any) -> LedgerEntry:
+    return append(EV_CAPABILITY_REFUSED, actor=actor, target=target, reason=reason, details=dict(extra), store=store)
 
 
 def note_tool_modified(
@@ -435,11 +404,7 @@ def note_self_modification(
     store: Any | None = None,
     **extra: Any,
 ) -> LedgerEntry:
-    action = (
-        ACTION_SELF_MODIFICATION_RESULT
-        if result in {"applied", "rejected", "failed"}
-        else ACTION_SELF_MODIFICATION_PROPOSED
-    )
+    action = ACTION_SELF_MODIFICATION_RESULT if result in {"applied", "rejected", "failed"} else ACTION_SELF_MODIFICATION_PROPOSED
     return governance(
         action,
         actor=actor,
@@ -469,9 +434,7 @@ def note_kill_switch(
     )
 
 
-def note_ledger_refusal(
-    actor: str, *, target: str, reason: str, store: Any | None = None, **extra: Any
-) -> LedgerEntry:
+def note_ledger_refusal(actor: str, *, target: str, reason: str, store: Any | None = None, **extra: Any) -> LedgerEntry:
     """Record that an operation was REFUSED because the ledger could not take it.
 
     This entry is best-effort by necessity: the sink is the thing that just
@@ -493,12 +456,8 @@ def note_ledger_refusal(
         raise
 
 
-def note_profile_installed(
-    actor: str, *, target: str, reason: str, store: Any | None = None, **extra: Any
-) -> LedgerEntry:
-    return governance(
-        ACTION_PROFILE_INSTALLED, actor=actor, target=target, reason=reason, details=dict(extra), store=store
-    )
+def note_profile_installed(actor: str, *, target: str, reason: str, store: Any | None = None, **extra: Any) -> LedgerEntry:
+    return governance(ACTION_PROFILE_INSTALLED, actor=actor, target=target, reason=reason, details=dict(extra), store=store)
 
 
 def note_authority_refused(

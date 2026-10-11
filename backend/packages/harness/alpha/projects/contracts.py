@@ -17,7 +17,6 @@ from typing import Any, Literal
 
 from alpha.config.runtime_paths import runtime_home
 from alpha.projects.events import get_event_bus
-from alpha.projects.evidence import Evidence
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +97,7 @@ class TaskContract:
         if "definition_of_done" in d and isinstance(d["definition_of_done"], dict):
             d["definition_of_done"] = DefinitionOfDone.from_dict(d["definition_of_done"])
         if "evidence_receipts" in d and isinstance(d["evidence_receipts"], list):
-            d["evidence_receipts"] = [
-                EvidenceReceipt.from_dict(e) if isinstance(e, dict) else e for e in d["evidence_receipts"]
-            ]
+            d["evidence_receipts"] = [EvidenceReceipt.from_dict(e) if isinstance(e, dict) else e for e in d["evidence_receipts"]]
         filtered = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         return cls(**filtered)
 
@@ -155,11 +152,7 @@ class ContractGatekeeper:
         allowed_tools: list[str] | None = None,
         definition_of_done: DefinitionOfDone | dict[str, Any] | None = None,
     ) -> TaskContract:
-        dod = (
-            definition_of_done
-            if isinstance(definition_of_done, DefinitionOfDone)
-            else (DefinitionOfDone.from_dict(definition_of_done) if isinstance(definition_of_done, dict) else DefinitionOfDone())
-        )
+        dod = definition_of_done if isinstance(definition_of_done, DefinitionOfDone) else (DefinitionOfDone.from_dict(definition_of_done) if isinstance(definition_of_done, dict) else DefinitionOfDone())
         with self._lock:
             contract = TaskContract(
                 task_id=task_id,
@@ -236,11 +229,7 @@ class ContractGatekeeper:
 
             # Check verifier bot signoff if required
             if contract.definition_of_done.require_verifier_signoff:
-                has_signoff = any(
-                    e.kind == "verifier_signoff"
-                    and (not contract.verifier_bot or e.verified_by.lower() == contract.verifier_bot.lower())
-                    for e in contract.evidence_receipts
-                )
+                has_signoff = any(e.kind == "verifier_signoff" and (not contract.verifier_bot or e.verified_by.lower() == contract.verifier_bot.lower()) for e in contract.evidence_receipts)
                 if not has_signoff and verifier_bot:
                     # If verifier is actively performing signoff now:
                     if not contract.verifier_bot or verifier_bot.lower() == contract.verifier_bot.lower():
@@ -254,9 +243,7 @@ class ContractGatekeeper:
                         has_signoff = True
 
                 if not has_signoff:
-                    missing.append(
-                        f"Requires sign-off from designated verifier bot: '{contract.verifier_bot or 'any'}'"
-                    )
+                    missing.append(f"Requires sign-off from designated verifier bot: '{contract.verifier_bot or 'any'}'")
 
             if missing:
                 contract.status = "rejected"

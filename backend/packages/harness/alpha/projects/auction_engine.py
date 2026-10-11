@@ -67,9 +67,9 @@ class AuctionEngine:
         registry = get_bot_registry()
         lock_mgr = get_lock_manager()
         active_locks = lock_mgr.list_locks(self.project_id)
-        bot_lock_counts = {l.owner_bot: 0 for l in active_locks}
-        for l in active_locks:
-            bot_lock_counts[l.owner_bot] = bot_lock_counts.get(l.owner_bot, 0) + 1
+        bot_lock_counts = {lock.owner_bot: 0 for lock in active_locks}
+        for lock in active_locks:
+            bot_lock_counts[lock.owner_bot] = bot_lock_counts.get(lock.owner_bot, 0) + 1
 
         req_caps = [c.lower().strip() for c in (required_capabilities or [])]
 
@@ -110,11 +110,7 @@ class AuctionEngine:
             raw_score = (cap_score * 0.6 + (1.0 - workload_penalty) * 0.4) * rep_multiplier
             final_score = round(max(0.01, min(1.0, raw_score)), 3)
 
-            rationale = (
-                f"Capability match: {int(cap_score*100)}%, "
-                f"Workload penalty: {workload_penalty:.2f} ({held_locks} locks), "
-                f"Reputation multiplier: {rep_multiplier}."
-            )
+            rationale = f"Capability match: {int(cap_score * 100)}%, Workload penalty: {workload_penalty:.2f} ({held_locks} locks), Reputation multiplier: {rep_multiplier}."
 
             bid = TaskBid(
                 bid_id=f"BID-{uuid.uuid4().hex[:8].upper()}",
@@ -174,10 +170,7 @@ class AuctionEngine:
             },
         )
 
-        logger.info(
-            "Awarded task %s to @%s (score: %.3f)",
-            task_id, winning_bid.bot_name, winning_bid.bid_score
-        )
+        logger.info("Awarded task %s to @%s (score: %.3f)", task_id, winning_bid.bot_name, winning_bid.bid_score)
         return winning_bid, contract
 
 

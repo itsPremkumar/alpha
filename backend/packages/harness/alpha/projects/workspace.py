@@ -105,4 +105,3 @@ def with_task_worktree(
         task_id=task_id,
         base_ref=base_ref,
     )
-

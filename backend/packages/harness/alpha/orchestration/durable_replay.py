@@ -88,10 +88,7 @@ class DurableReplayEngine:
     ) -> DurableTaskCheckpoint:
         """Create a durable snapshot of the task's memory and execution state."""
         # Collect all idempotency keys associated with this task so far
-        keys = [
-            ev.idempotency_key for ev in self._journals.get(task_id, [])
-            if ev.idempotency_key
-        ]
+        keys = [ev.idempotency_key for ev in self._journals.get(task_id, []) if ev.idempotency_key]
 
         cp = DurableTaskCheckpoint(
             task_id=task_id,
@@ -131,7 +128,7 @@ class DurableReplayEngine:
             for idx, ev in enumerate(journal):
                 if ev.event_type == "CHECKPOINT_SAVED" and ev.payload.get("checkpoint_id") == latest_cp.checkpoint_id:
                     cp_journal_idx = idx
-            events_to_replay = journal[cp_journal_idx + 1:] if cp_journal_idx >= 0 else journal
+            events_to_replay = journal[cp_journal_idx + 1 :] if cp_journal_idx >= 0 else journal
         else:
             latest_cp = None
             restored_state = "created"

@@ -261,10 +261,7 @@ class HierarchicalDelegationEngine:
             if time_budget_seconds <= 0:
                 raise TimeoutError("time budget exhausted before execution")
             if runner is None:
-                raise RuntimeError(
-                    "No deep agent execution backend is configured; "
-                    "delegation refuses to fabricate an execution result."
-                )
+                raise RuntimeError("No deep agent execution backend is configured; delegation refuses to fabricate an execution result.")
             contract = runner(session)
             if not contract.session_id:
                 contract.session_id = session_id

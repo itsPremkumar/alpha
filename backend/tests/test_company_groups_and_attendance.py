@@ -9,11 +9,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers.company import router
 from alpha.company.attendance import AttendanceStatus
 from alpha.company.models import OrgArchetype
 from alpha.company.organization import get_autonomous_company_engine
 from alpha.tools.builtins.company_tool import company_tool
+from app.gateway.routers.company import router
 
 
 @pytest.fixture

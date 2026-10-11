@@ -48,13 +48,13 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+from alpha.branding import DISPLAY_NAME
 from app.channels import buzz_nostr
 from app.channels.base import Channel
 from app.channels.buzz_seen_events import BuzzSeenEventStore
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, InboundQueueFullError, MessageBus, OutboundMessage
-from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 

@@ -108,4 +108,3 @@ def get_three_level_context(
         task_id=task_id,
         task_scratchpad=task_scratchpad,
     )
-

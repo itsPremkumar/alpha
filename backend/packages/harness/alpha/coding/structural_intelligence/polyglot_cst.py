@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class SymbolKind(str, Enum):
@@ -39,9 +39,9 @@ class SymbolNode:
     end_line: int
     docstring: str = ""
     parameters: list[str] = field(default_factory=list)
-    return_type: Optional[str] = None
+    return_type: str | None = None
     modifiers: list[str] = field(default_factory=list)
-    parent_symbol: Optional[str] = None
+    parent_symbol: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,9 +80,9 @@ class _PythonASTVisitor(ast.NodeVisitor):
         self.imports_edges: list[tuple[str, str]] = []
         self.inherits_edges: list[tuple[str, str]] = []
         self._current_scope: list[str] = []
-        self._current_class: Optional[str] = None
+        self._current_class: str | None = None
 
-    def _get_call_name(self, func_node: ast.AST) -> Optional[str]:
+    def _get_call_name(self, func_node: ast.AST) -> str | None:
         if isinstance(func_node, ast.Name):
             return func_node.id
         elif isinstance(func_node, ast.Attribute):
@@ -105,7 +105,7 @@ class _PythonASTVisitor(ast.NodeVisitor):
         class_id = f"{self.file_path}:{node.name}"
         end_line = getattr(node, "end_lineno", node.lineno)
         doc = ast.get_docstring(node) or ""
-        
+
         # Base inheritance
         for base in node.bases:
             if isinstance(base, ast.Name):
@@ -139,7 +139,7 @@ class _PythonASTVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         is_method = self._current_class is not None
         kind = SymbolKind.METHOD if is_method else SymbolKind.FUNCTION
-        
+
         if is_method and self._current_class:
             sym_id = f"{self._current_class}.{node.name}"
             parent_id = self._current_class
@@ -150,7 +150,7 @@ class _PythonASTVisitor(ast.NodeVisitor):
         end_line = getattr(node, "end_lineno", node.lineno)
         doc = ast.get_docstring(node) or ""
         params = [arg.arg for arg in node.args.args]
-        
+
         return_annotation = None
         if node.returns:
             try:
@@ -229,7 +229,7 @@ class PolyglotCSTParser:
         """Parse source code string into structured AST symbols and dependency relations."""
         norm_path = str(Path(file_path)).replace("\\", "/")
         language = self.detect_language(file_path)
-        
+
         parsed = ParsedFile(file_path=norm_path, language=language)
 
         if language == "python":
@@ -280,15 +280,15 @@ class PolyglotCSTParser:
                     parsed.imports_edges.append((file_path, target))
 
         # 2. Classes & Interfaces
-        class_pattern = re.compile(r'(?:export\s+)?(?:default\s+)?class\s+([\w$]+)(?:\s+extends\s+([\w$]+))?(?:\s+implements\s+([\w$,\s]+))?')
-        interface_pattern = re.compile(r'(?:export\s+)?interface\s+([\w$]+)(?:\s+extends\s+([\w$,\s]+))?')
-        
-        # 3. Functions & Methods
-        func_pattern = re.compile(r'(?:export\s+)?(?:async\s+)?function\s+([\w$]+)(?:<[^>]+>)?\s*\(([^)]*)\)')
-        arrow_func_pattern = re.compile(r'(?:export\s+)?(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:<[^>]+>)?\s*\(([^)]*)\)\s*(?::\s*[^=]+)?\s*=>')
-        method_pattern = re.compile(r'^\s*(?:public|private|protected|static|async|\s)*\s*([\w$]+)(?:<[^>]+>)?\s*\(([^)]*)\)\s*(?::\s*[^{]+)?\s*\{?')
+        class_pattern = re.compile(r"(?:export\s+)?(?:default\s+)?class\s+([\w$]+)(?:\s+extends\s+([\w$]+))?(?:\s+implements\s+([\w$,\s]+))?")
+        interface_pattern = re.compile(r"(?:export\s+)?interface\s+([\w$]+)(?:\s+extends\s+([\w$,\s]+))?")
 
-        current_class: Optional[str] = None
+        # 3. Functions & Methods
+        func_pattern = re.compile(r"(?:export\s+)?(?:async\s+)?function\s+([\w$]+)(?:<[^>]+>)?\s*\(([^)]*)\)")
+        arrow_func_pattern = re.compile(r"(?:export\s+)?(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:<[^>]+>)?\s*\(([^)]*)\)\s*(?::\s*[^=]+)?\s*=>")
+        method_pattern = re.compile(r"^\s*(?:public|private|protected|static|async|\s)*\s*([\w$]+)(?:<[^>]+>)?\s*\(([^)]*)\)\s*(?::\s*[^{]+)?\s*\{?")
+
+        current_class: str | None = None
         brace_depth = 0
 
         for idx, line in enumerate(lines, 1):
@@ -392,7 +392,7 @@ class PolyglotCSTParser:
                         parsed.defines_edges.append((current_class, mid))
 
         # Calls detection
-        call_pattern = re.compile(r'([\w$]+)\s*\(')
+        call_pattern = re.compile(r"([\w$]+)\s*\(")
         for line in lines:
             for match in call_pattern.finditer(line):
                 call_name = match.group(1)
@@ -402,9 +402,9 @@ class PolyglotCSTParser:
     def _parse_go(self, file_path: str, code: str, parsed: ParsedFile) -> None:
         lines = code.splitlines()
         import_single = re.compile(r'import\s+"([^"]+)"')
-        type_struct = re.compile(r'type\s+(\w+)\s+struct')
-        type_interface = re.compile(r'type\s+(\w+)\s+interface')
-        func_decl = re.compile(r'func\s+(?:\((?:[\w*]+\s+)?(\*?[\w]+)\)\s+)?(\w+)\s*\(([^)]*)\)')
+        type_struct = re.compile(r"type\s+(\w+)\s+struct")
+        type_interface = re.compile(r"type\s+(\w+)\s+interface")
+        func_decl = re.compile(r"func\s+(?:\((?:[\w*]+\s+)?(\*?[\w]+)\)\s+)?(\w+)\s*\(([^)]*)\)")
 
         in_import_block = False
         for idx, line in enumerate(lines, 1):
@@ -453,11 +453,11 @@ class PolyglotCSTParser:
 
     def _parse_rust(self, file_path: str, code: str, parsed: ParsedFile) -> None:
         lines = code.splitlines()
-        use_pattern = re.compile(r'use\s+([^;]+);')
-        struct_pattern = re.compile(r'(?:pub\s+)?struct\s+(\w+)')
-        trait_pattern = re.compile(r'(?:pub\s+)?trait\s+(\w+)')
-        impl_pattern = re.compile(r'impl(?:\s*<[^>]+>)?\s+(?:(\w+)\s+for\s+)?(\w+)')
-        fn_pattern = re.compile(r'(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*\(([^)]*)\)')
+        use_pattern = re.compile(r"use\s+([^;]+);")
+        struct_pattern = re.compile(r"(?:pub\s+)?struct\s+(\w+)")
+        trait_pattern = re.compile(r"(?:pub\s+)?trait\s+(\w+)")
+        impl_pattern = re.compile(r"impl(?:\s*<[^>]+>)?\s+(?:(\w+)\s+for\s+)?(\w+)")
+        fn_pattern = re.compile(r"(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*\(([^)]*)\)")
 
         for idx, line in enumerate(lines, 1):
             um = use_pattern.search(line)
@@ -496,9 +496,9 @@ class PolyglotCSTParser:
 
     def _parse_java(self, file_path: str, code: str, parsed: ParsedFile) -> None:
         lines = code.splitlines()
-        import_pattern = re.compile(r'import\s+(?:static\s+)?([\w.]+);')
-        class_pattern = re.compile(r'(?:public|protected|private)?\s*(?:abstract|final)?\s*(class|interface|enum)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?')
-        method_pattern = re.compile(r'(?:public|protected|private)\s+(?:static\s+)?[<\w>,\[\]]+\s+(\w+)\s*\(([^)]*)\)')
+        import_pattern = re.compile(r"import\s+(?:static\s+)?([\w.]+);")
+        class_pattern = re.compile(r"(?:public|protected|private)?\s*(?:abstract|final)?\s*(class|interface|enum)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?")
+        method_pattern = re.compile(r"(?:public|protected|private)\s+(?:static\s+)?[<\w>,\[\]]+\s+(\w+)\s*\(([^)]*)\)")
 
         for idx, line in enumerate(lines, 1):
             im = import_pattern.search(line)
@@ -533,8 +533,8 @@ class PolyglotCSTParser:
     def _parse_c_cpp(self, file_path: str, code: str, parsed: ParsedFile) -> None:
         lines = code.splitlines()
         include_pattern = re.compile(r'#include\s+[<"]([^>"]+)[>"]')
-        class_pattern = re.compile(r'(?:class|struct)\s+(\w+)(?:\s*:\s*(?:public|protected|private)?\s*(\w+))?')
-        func_pattern = re.compile(r'(?:[\w:*&]+)\s+(\w+)\s*\(([^)]*)\)\s*\{?')
+        class_pattern = re.compile(r"(?:class|struct)\s+(\w+)(?:\s*:\s*(?:public|protected|private)?\s*(\w+))?")
+        func_pattern = re.compile(r"(?:[\w:*&]+)\s+(\w+)\s*\(([^)]*)\)\s*\{?")
 
         for idx, line in enumerate(lines, 1):
             inc = include_pattern.search(line)
@@ -562,7 +562,7 @@ class PolyglotCSTParser:
 
     def _parse_generic(self, file_path: str, code: str, parsed: ParsedFile) -> None:
         lines = code.splitlines()
-        def_pattern = re.compile(r'(?:def|function|fn|func|class)\s+([\w$]+)')
+        def_pattern = re.compile(r"(?:def|function|fn|func|class)\s+([\w$]+)")
         for idx, line in enumerate(lines, 1):
             m = def_pattern.search(line)
             if m:

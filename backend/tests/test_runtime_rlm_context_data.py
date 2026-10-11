@@ -1,4 +1,3 @@
-
 from alpha.runtime.rlm import ContextStore, ContextTransformer, RLMEngine
 
 
@@ -16,13 +15,7 @@ def test_context_store_registration_and_immutability():
 
 def test_context_transformer_grep():
     store = ContextStore()
-    text = (
-        "INFO: system started\n"
-        "DEBUG: loading config\n"
-        "ERROR: database timeout occurred\n"
-        "INFO: retry scheduled\n"
-        "ERROR: connection reset by peer"
-    )
+    text = "INFO: system started\nDEBUG: loading config\nERROR: database timeout occurred\nINFO: retry scheduled\nERROR: connection reset by peer"
     handle = store.register(content=text, label="server_logs")
     transformer = ContextTransformer(store)
 
@@ -59,7 +52,7 @@ def test_context_transformer_slice_and_chunk():
 
 def test_rlm_engine_workflow():
     engine = RLMEngine()
-    text = "\n".join([f"record_{i}: data_{i*10}" for i in range(1, 51)])
+    text = "\n".join([f"record_{i}: data_{i * 10}" for i in range(1, 51)])
     handle = engine.load_variable(content=text, label="dataset")
 
     peek_res = engine.peek(handle.handle_id, max_lines=5)

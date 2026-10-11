@@ -1,4 +1,3 @@
-
 from alpha.avo import (
     AgenticVariationLoop,
     AVOEngine,
@@ -56,7 +55,7 @@ def test_agentic_variation_loop_multi_trial_repair():
     assert result["trials_conducted"] == 2  # Trial 1 failed and was repaired in Trial 2
     assert result["committed_version_id"] is not None
     assert lineage.head_id == result["committed_version_id"]
-    
+
     head = lineage.get_head()
     assert head is not None
     assert head.vector.effective_metric("throughput") == 750.0

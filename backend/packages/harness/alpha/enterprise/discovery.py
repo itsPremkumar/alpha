@@ -96,31 +96,37 @@ class ContinuousDiscoveryAndOptimizationEngine:
                 # Check direct calls like eval(), exec()
                 if isinstance(node.func, ast.Name):
                     if node.func.id in ("eval", "exec"):
-                        violations.append({
-                            "file": filename,
-                            "line": getattr(node, "lineno", 1),
-                            "type": f"DangerousCall_{node.func.id}",
-                            "severity": "critical",
-                        })
+                        violations.append(
+                            {
+                                "file": filename,
+                                "line": getattr(node, "lineno", 1),
+                                "type": f"DangerousCall_{node.func.id}",
+                                "severity": "critical",
+                            }
+                        )
                 # Check attribute calls like os.system, os.popen, subprocess.Popen, builtins.eval
                 elif isinstance(node.func, ast.Attribute):
                     attr_name = node.func.attr
                     val_id = getattr(node.func.value, "id", None)
                     if val_id in ("os", "subprocess", "builtins", "__builtins__"):
                         if attr_name in ("system", "popen", "spawn", "exec", "eval", "Popen", "call", "run"):
-                            violations.append({
+                            violations.append(
+                                {
+                                    "file": filename,
+                                    "line": getattr(node, "lineno", 1),
+                                    "type": f"DangerousCall_{val_id}.{attr_name}",
+                                    "severity": "critical",
+                                }
+                            )
+                    elif attr_name in ("eval", "exec"):
+                        violations.append(
+                            {
                                 "file": filename,
                                 "line": getattr(node, "lineno", 1),
-                                "type": f"DangerousCall_{val_id}.{attr_name}",
+                                "type": f"DangerousCall_{attr_name}",
                                 "severity": "critical",
-                            })
-                    elif attr_name in ("eval", "exec"):
-                        violations.append({
-                            "file": filename,
-                            "line": getattr(node, "lineno", 1),
-                            "type": f"DangerousCall_{attr_name}",
-                            "severity": "critical",
-                        })
+                            }
+                        )
         return violations
 
     def scan_code_snippet(self, code: str, filename: str = "<dynamic>") -> tuple[bool, list[dict[str, Any]]]:
@@ -130,12 +136,14 @@ class ContinuousDiscoveryAndOptimizationEngine:
             violations = self._inspect_ast_tree(tree, filename)
             return len(violations) == 0, violations
         except SyntaxError as e:
-            return False, [{
-                "file": filename,
-                "line": e.lineno or 1,
-                "type": f"SyntaxError_{type(e).__name__}",
-                "severity": "high",
-            }]
+            return False, [
+                {
+                    "file": filename,
+                    "line": e.lineno or 1,
+                    "type": f"SyntaxError_{type(e).__name__}",
+                    "severity": "high",
+                }
+            ]
 
     def scan_ast_boundaries(self, source_directory: str | None = None) -> SecurityScanReport:
         """Parses Python source files using AST to verify sandbox safety and absence of banned primitives."""

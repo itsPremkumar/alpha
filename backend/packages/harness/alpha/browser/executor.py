@@ -292,13 +292,7 @@ def _is_local_host(host: str) -> bool:
         address = ipaddress.ip_address(host)
     except ValueError:
         return False
-    return (
-        address.is_private
-        or address.is_loopback
-        or address.is_link_local
-        or address.is_reserved
-        or address.is_multicast
-    )
+    return address.is_private or address.is_loopback or address.is_link_local or address.is_reserved or address.is_multicast
 
 
 class HtmlExecutor:

@@ -144,11 +144,7 @@ def test_lease_failure_is_surfaced_not_swallowed(isolated_bot_state, monkeypatch
 
     # The failure is visible in logs at ERROR, with the real exception text
     # and a traceback attached (no warning-only downgrade).
-    error_records = [
-        r
-        for r in caplog.records
-        if r.name == "alpha.bots.cloning" and r.levelno >= logging.ERROR
-    ]
+    error_records = [r for r in caplog.records if r.name == "alpha.bots.cloning" and r.levelno >= logging.ERROR]
     assert error_records, "lease failure was not logged at ERROR level"
     assert any("lease backend unavailable: disk locked" in r.getMessage() for r in error_records)
     assert any(r.exc_info is not None for r in error_records)

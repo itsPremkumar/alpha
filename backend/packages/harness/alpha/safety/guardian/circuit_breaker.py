@@ -17,10 +17,7 @@ class DenialCircuitBreaker:
             self.consecutive_denials += 1
             if self.consecutive_denials >= self.threshold:
                 self.is_tripped = True
-                self.trip_reason = (
-                    f"Denial circuit breaker tripped: {self.consecutive_denials} consecutive commands "
-                    f"were denied by safety guardian. Halting execution to prevent infinite loop."
-                )
+                self.trip_reason = f"Denial circuit breaker tripped: {self.consecutive_denials} consecutive commands were denied by safety guardian. Halting execution to prevent infinite loop."
         elif verdict == "APPROVE":
             self.consecutive_denials = 0
             self.is_tripped = False

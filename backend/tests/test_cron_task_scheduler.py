@@ -46,12 +46,14 @@ def test_cronjob_manage_tool(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("alpha.tools.builtins.cronjob_manage_tool.get_cron_manager", lambda: manager)
 
     # Add
-    add_out = cronjob_manage.invoke({
-        "action": "add",
-        "name": "backup_db",
-        "schedule": "0 2 * * *",
-        "command_or_prompt": "pg_dump production_db",
-    })
+    add_out = cronjob_manage.invoke(
+        {
+            "action": "add",
+            "name": "backup_db",
+            "schedule": "0 2 * * *",
+            "command_or_prompt": "pg_dump production_db",
+        }
+    )
     assert "Scheduled job 'backup_db' added successfully" in add_out
 
     # List

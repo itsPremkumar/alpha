@@ -1508,11 +1508,7 @@ class BehaviourTraceWriter:
         if run_id is not None:
             selected = [record for record in selected if record.get("run_id") == run_id]
         if after_seq is not None:
-            selected = [
-                record
-                for record in selected
-                if isinstance(record.get("seq"), int) and not isinstance(record.get("seq"), bool) and record["seq"] > after_seq
-            ]
+            selected = [record for record in selected if isinstance(record.get("seq"), int) and not isinstance(record.get("seq"), bool) and record["seq"] > after_seq]
         if limit is not None:
             selected = selected[:limit]
         return tuple(selected)

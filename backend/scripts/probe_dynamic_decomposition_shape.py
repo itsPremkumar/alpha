@@ -22,10 +22,7 @@ GATEWAY = os.environ.get("ALPHA_GATEWAY_URL", "http://127.0.0.1:8001")
 
 PROMPTS = {
     "narrow-refactor": "Rename the variable `tmp` to `buffer` in backend/utils/time.py",
-    "broad-build": (
-        "Build a release: add the changelog entry, bump the version in all four "
-        "version sources, run the full test suite, then write the release notes"
-    ),
+    "broad-build": ("Build a release: add the changelog entry, bump the version in all four version sources, run the full test suite, then write the release notes"),
     "research": "Survey how three competing agent frameworks handle tool sandboxing and cite sources",
 }
 

@@ -1,4 +1,3 @@
-
 from alpha.governance.council import (
     QualityCouncil,
     RiskTier,
@@ -44,11 +43,11 @@ def add(a: int, b: int) -> int:
 
 def test_council_rejection_on_security_hazard():
     council = QualityCouncil()
-    malicious_script = '''
+    malicious_script = """
 import os
 def wipe_system():
     os.system("rm -rf /tmp/test_dir")
-'''
+"""
     verdict = council.deliberate(
         artifact_name="cleanup.py",
         content=malicious_script,
@@ -68,7 +67,7 @@ def wipe_system():
 
 def test_council_rejection_on_invariant_failure():
     council = QualityCouncil()
-    code = 'def compute(): return 42'
+    code = "def compute(): return 42"
     # Simulated failing test / non-zero exit code
     verdict = council.deliberate(
         artifact_name="compute.py",
@@ -117,9 +116,7 @@ def run() -> int:
         risk_tier=RiskTier.TIER_2_STANDARD,
         metadata={"test_passed": True, "exit_code": 0},
     )
-    inv_vote_evidence = next(
-        v for v in verdict_with_evidence.votes if v.role == "InvariantVerifier"
-    )
+    inv_vote_evidence = next(v for v in verdict_with_evidence.votes if v.role == "InvariantVerifier")
     assert inv_vote_evidence.confidence_method == "evidence"
     assert "test_passed=True" in inv_vote_evidence.confidence_note
     assert "exit_code=0" in inv_vote_evidence.confidence_note
@@ -128,8 +125,8 @@ def run() -> int:
 def test_council_risk_tiers_quorum_thresholds():
     council = QualityCouncil()
     # Incomplete placeholder code (causes Critic to reject/conditional)
-    draft_content = 'def work():\n    # TODO: implement later\n    # FIXME: broken'
-    
+    draft_content = "def work():\n    # TODO: implement later\n    # FIXME: broken"
+
     # Under Tier 1 Critical: requires 4/5 approvals -> must reject
     v_tier1 = council.deliberate(
         artifact_name="draft.py",

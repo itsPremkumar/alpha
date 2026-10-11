@@ -169,9 +169,7 @@ def test_no_module_executes_a_subprocess_at_import_time() -> None:
         offenders.extend(_violations(path))
 
     assert not offenders, (
-        "Importing a module must not execute anything. These run at import time:\n  "
-        + "\n  ".join(offenders)
-        + "\n\nIf a call is genuinely needed at import, it belongs inside a function "
+        "Importing a module must not execute anything. These run at import time:\n  " + "\n  ".join(offenders) + "\n\nIf a call is genuinely needed at import, it belongs inside a function "
         "that the caller invokes deliberately. If it shells out to git, use the "
         "guarded repository API so SelfRepoGuard still applies."
     )

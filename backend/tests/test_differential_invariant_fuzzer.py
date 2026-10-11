@@ -1,7 +1,5 @@
 """Unit tests for Differential Invariant Synthesis and Regression Oracle."""
 
-import pytest
-
 from alpha.testing.differential_invariant_fuzzer import (
     BoundaryValueGenerator,
     DifferentialInvariantFuzzer,
@@ -85,13 +83,15 @@ def test_run_differential_regression_oracle_tool():
     baseline = """def double(x):\n    return x * 2\n"""
     modified = """def double(x):\n    return x + x\n"""
 
-    res = run_differential_regression_oracle.invoke({
-        "baseline_code": baseline,
-        "modified_code": modified,
-        "entrypoint_function": "double",
-        "input_schema": {"x": "int"},
-        "num_trials": 15,
-    })
+    res = run_differential_regression_oracle.invoke(
+        {
+            "baseline_code": baseline,
+            "modified_code": modified,
+            "entrypoint_function": "double",
+            "input_schema": {"x": "int"},
+            "num_trials": 15,
+        }
+    )
 
     assert isinstance(res, dict)
     assert res["success"] is True

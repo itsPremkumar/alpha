@@ -13,8 +13,9 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 from typing import Any, Literal
+from uuid import uuid4
+
 from alpha.persistence.storekit.atomic import atomic_write_bytes
 
 HarnessKind = Literal["prompt", "memory", "skill", "subagent"]

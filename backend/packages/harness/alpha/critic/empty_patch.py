@@ -13,14 +13,41 @@ logger = logging.getLogger(__name__)
 
 # Keywords indicating that the task entails modifying or writing files/code
 CODE_MODIFICATION_KEYWORDS: set[str] = {
-    "fix", "bug", "implement", "add", "refactor", "change", "update",
-    "modify", "create", "write", "patch", "delete", "remove", "build",
-    "optimize", "clean", "rewrite", "replace", "introduce", "develop",
+    "fix",
+    "bug",
+    "implement",
+    "add",
+    "refactor",
+    "change",
+    "update",
+    "modify",
+    "create",
+    "write",
+    "patch",
+    "delete",
+    "remove",
+    "build",
+    "optimize",
+    "clean",
+    "rewrite",
+    "replace",
+    "introduce",
+    "develop",
 }
 
 READ_ONLY_KEYWORDS: set[str] = {
-    "explain", "what is", "why", "how does", "summarize", "analyze",
-    "find", "search", "where is", "list", "describe", "check whether",
+    "explain",
+    "what is",
+    "why",
+    "how does",
+    "summarize",
+    "analyze",
+    "find",
+    "search",
+    "where is",
+    "list",
+    "describe",
+    "check whether",
 }
 
 
@@ -69,8 +96,7 @@ class EmptyPatchCritic(BaseCritic):
             res = subprocess.run(
                 ["git", "status", "--porcelain"],
                 cwd=target_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=10,
             )
@@ -80,8 +106,7 @@ class EmptyPatchCritic(BaseCritic):
                 diff_res = subprocess.run(
                     ["git", "diff", "--stat"],
                     cwd=target_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     text=True,
                     timeout=10,
                 )
@@ -116,11 +141,7 @@ class EmptyPatchCritic(BaseCritic):
 
         # Fallback: Check execution history for any file writing/editing tool calls
         if execution_history:
-            has_write = any(
-                step.get("tool_name") in {"write_to_file", "replace_file_content", "edit_file", "write_file", "hashline_edit"}
-                or step.get("type") in {"file_edit", "write_file"}
-                for step in execution_history
-            )
+            has_write = any(step.get("tool_name") in {"write_to_file", "replace_file_content", "edit_file", "write_file", "hashline_edit"} or step.get("type") in {"file_edit", "write_file"} for step in execution_history)
             if has_write:
                 return CriticResult(
                     verdict=CriticVerdict.APPROVED,

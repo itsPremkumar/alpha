@@ -206,7 +206,6 @@ def test_signals_are_observe_only(client: TestClient, monkeypatch: pytest.Monkey
         def collect(self):
             return []
 
-
     monkeypatch.setattr(loops, "_resolve_project_root", lambda: Path("."))
     from alpha.runtime.sentinel import runner as runner_module
 

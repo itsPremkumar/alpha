@@ -91,9 +91,7 @@ def test_n_the_kill_switch_stops_a_running_war_room():
         return "DECISION"
 
     async def scenario():
-        config = build_default_config(
-            "kill switch test", ["a", "b"], stage_timeout_seconds=30.0, stage_grace_seconds=1.0
-        )
+        config = build_default_config("kill switch test", ["a", "b"], stage_timeout_seconds=30.0, stage_grace_seconds=1.0)
         room = WarRoom(
             config,
             participants={"a": slow_participant, "b": slow_participant},
@@ -145,9 +143,6 @@ def test_n_a_kill_switch_engaged_before_the_start_refuses_to_open():
     assert run.all_receipts() == []
 
 
-
-
-
 def test_a_kill_switch_activation_is_recorded_on_the_ledger(tmp_path):
     """The activation lands in the ledger the store was given, read back from disk.
 
@@ -159,9 +154,7 @@ def test_a_kill_switch_activation_is_recorded_on_the_ledger(tmp_path):
     store = OrgEventStore(tmp_path / "events.jsonl")
     set_global_kill_switch(True, "testing the stop")
     try:
-        entry = channel_ledger.note_kill_switch(
-            "operator", target="fleet", active=True, reason="testing the stop", store=store
-        )
+        entry = channel_ledger.note_kill_switch("operator", target="fleet", active=True, reason="testing the stop", store=store)
     finally:
         set_global_kill_switch(False, "done")
 
@@ -367,9 +360,7 @@ def test_the_supervisor_refuses_a_step_that_would_exceed_a_ceiling():
 
 def test_budgets_are_inherited_so_depth_cannot_multiply_spend():
     """The child's budget is a share of the parent's REMAINDER, never more."""
-    parent = root_context(
-        "alpha", "t", limits=DelegationLimits(child_token_share=0.5), token_budget=1000
-    )
+    parent = root_context("alpha", "t", limits=DelegationLimits(child_token_share=0.5), token_budget=1000)
     child = parent.for_child("a")
     assert child.token_budget == 500, "the child got the parent's whole budget"
     grandchild = child.for_child("b")
@@ -407,13 +398,8 @@ def test_reassignment_uses_the_existing_taxonomy_untouched():
     # `DELIVERY_TIMEOUT` to `retry`. So a caller that knows the code must pass
     # it, which is why `on_failure` accepts `reason=`. This module does not
     # extend the taxonomy to fix that; it routes around it without weakening it.
-    assert classify_work_failure("delivery timeout") == "unknown", (
-        "the text classifier now recognises this phrase; the explicit-reason "
-        "path is still correct but this note should be revisited"
-    )
-    timeout_decision = supervisor.on_failure(
-        "t", "agent-a", "the relay never acknowledged the delivery", reason=DELIVERY_TIMEOUT
-    )
+    assert classify_work_failure("delivery timeout") == "unknown", "the text classifier now recognises this phrase; the explicit-reason path is still correct but this note should be revisited"
+    timeout_decision = supervisor.on_failure("t", "agent-a", "the relay never acknowledged the delivery", reason=DELIVERY_TIMEOUT)
     assert timeout_decision.step == STEP_RETRY_IN_PLACE
     assert timeout_decision.target == "agent-a"
     assert timeout_decision.reason_class == FAILURE_CLASS_TRANSIENT
@@ -421,24 +407,18 @@ def test_reassignment_uses_the_existing_taxonomy_untouched():
 
     # Without an explicit reason the text is classified, and an unrecognised
     # string fails closed to permanent rather than guessing transient.
-    unknown_decision = supervisor.on_failure(
-        "t", "agent-a", "something nobody has a name for", attempt=1, max_attempts=3
-    )
+    unknown_decision = supervisor.on_failure("t", "agent-a", "something nobody has a name for", attempt=1, max_attempts=3)
     assert unknown_decision.reason_class == "permanent"
     assert "classified from" in unknown_decision.reason
 
     # A capability gap is not a bad attempt: route elsewhere.
-    capability_decision = supervisor.on_failure(
-        "t", "agent-a", "no such tool: the agent lacks the skill", attempt=1, max_attempts=3
-    )
+    capability_decision = supervisor.on_failure("t", "agent-a", "no such tool: the agent lacks the skill", attempt=1, max_attempts=3)
     assert capability_decision.step == STEP_RESCOPE, capability_decision.reason
     assert capability_decision.target is None
     assert capability_decision.reason_class == FAILURE_CLASS_CAPABILITY
 
     # The attempt ceiling is authoritative and outranks the class.
-    exhausted = supervisor.on_failure(
-        "t", "agent-a", "the relay never acknowledged", reason=DELIVERY_TIMEOUT, attempt=3, max_attempts=3
-    )
+    exhausted = supervisor.on_failure("t", "agent-a", "the relay never acknowledged", reason=DELIVERY_TIMEOUT, attempt=3, max_attempts=3)
     assert exhausted.step == STEP_ESCALATE
     assert "3/3" in exhausted.reason
 
@@ -566,24 +546,16 @@ def test_a_dispatch_that_cannot_be_recorded_is_not_reported_as_delivered():
 
     resolution = parse_mentions("@alice go", roster=["alice"], roles={})
     with pytest.raises(channel_ledger.LedgerUnavailable):
-        asyncio.run(
-            dispatch_resolution(
-                resolution, handler, sender="user", room="r", ledger_store=broken
-            )
-        )
+        asyncio.run(dispatch_resolution(resolution, handler, sender="user", room="r", ledger_store=broken))
 
 
 def test_the_ledger_is_gap_free_across_mixed_event_kinds(tmp_path):
     """Messages, dispatches and stage transitions share ONE ordered sequence."""
     store = OrgEventStore(tmp_path / "events.jsonl")
     channel_ledger.note_message("alice", target="room", body_chars=10, seq=1, store=store)
-    channel_ledger.note_mention(
-        "alice", target="room", resolution_line="@bob->bob", ok=True, store=store
-    )
+    channel_ledger.note_mention("alice", target="room", resolution_line="@bob->bob", ok=True, store=store)
     channel_ledger.note_stage("wrun_1", actor="war_room", stage="positions", previous="open", status="running", store=store)
-    channel_ledger.note_dispatch(
-        "alpha", target="bob", objective="do work", reason="capability match", store=store
-    )
+    channel_ledger.note_dispatch("alpha", target="bob", objective="do work", reason="capability match", store=store)
     channel_ledger.note_kill_switch("op", target="fleet", active=False, reason="test", store=store)
     channel_ledger.verify_ledger_ordered_and_gap_free(store=store)
     entries = channel_ledger.read_ledger(store=store)

@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import os
 import threading
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Mapping
+from typing import Any, Final
 
 from alpha.skills_market.catalog import SkillMarketCatalog
 
@@ -28,7 +29,7 @@ class SkillStoreUnreadable(SkillMarketError):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass

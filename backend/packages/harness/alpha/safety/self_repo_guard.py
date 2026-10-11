@@ -17,10 +17,20 @@ class SelfRepoViolation:
 class SelfRepoGuard:
     """Detects Git operations that can alter or destroy the running harness checkout."""
 
-    MUTATING_GIT_ACTIONS = frozenset({
-        "checkout", "switch", "rebase", "merge", "pull",
-        "restore", "clean", "cherry-pick", "revert", "reset",
-    })
+    MUTATING_GIT_ACTIONS = frozenset(
+        {
+            "checkout",
+            "switch",
+            "rebase",
+            "merge",
+            "pull",
+            "restore",
+            "clean",
+            "cherry-pick",
+            "revert",
+            "reset",
+        }
+    )
 
     def __init__(self, running_repo_root: Path | str | None = None, allow_self_mutation: bool = False):
         if running_repo_root is None:

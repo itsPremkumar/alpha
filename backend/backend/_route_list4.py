@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-import ast, glob, os
+import ast
+import glob
+import os
 
 # The repo root in this session is C:/Users/PREM KUMAR/Videos/alpha
 ROOT = "/c/Users/PREM KUMAR/Videos/alpha"

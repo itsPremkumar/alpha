@@ -1,6 +1,4 @@
-
 from alpha.verification.evidence import (
-    ContradictionDetector,
     EvidenceMatrix,
     FinishFirstAuditor,
     ProofType,
@@ -36,7 +34,6 @@ def test_evidence_matrix_record_and_attach():
 
 
 def test_contradiction_detector():
-    detector = ContradictionDetector()
     matrix = EvidenceMatrix()
 
     # Claim states success, but exit code is 1

@@ -17,6 +17,7 @@ logger = logging.getLogger("alpha.governance.council.roles")
 
 class IndependentCritic:
     """Deliberator 1: Actively stress-tests assumptions, searches for edge cases, and flags vulnerabilities."""
+
     name = "IndependentCritic"
     role = "Critic"
 
@@ -50,11 +51,7 @@ class IndependentCritic:
 
         # Disclosed heuristic: the number is an uncalibrated rule score, not a
         # measured probability of correctness.
-        note = (
-            "Heuristic confidence: uncalibrated rule-based score from a deterministic "
-            "keyword scan (error-handling coverage, TODO/FIXME placeholders); not a "
-            "measured probability."
-        )
+        note = "Heuristic confidence: uncalibrated rule-based score from a deterministic keyword scan (error-handling coverage, TODO/FIXME placeholders); not a measured probability."
 
         return DeliberatorVote(
             deliberator_name=self.name,
@@ -71,6 +68,7 @@ class IndependentCritic:
 
 class InvariantVerifier:
     """Deliberator 2: Audits claims against Ground Truth facts, test outputs, and invariant rules."""
+
     name = "InvariantVerifier"
     role = "InvariantVerifier"
 
@@ -111,33 +109,19 @@ class InvariantVerifier:
             verdict = VoteVerdict.APPROVE
             confidence = NEUTRAL_CONFIDENCE_BASELINE
             method = CONFIDENCE_METHOD_UNVERIFIED
-            note = (
-                "No test results or exit-code evidence were supplied; confidence is held "
-                "at the neutral unverified baseline (0.5) — an honest 'unknown', not a "
-                "measured confidence."
-            )
-            reasoning = (
-                "No execution evidence supplied; invariants were not verified. "
-                "Approval is procedural, not evidence-backed."
-            )
+            note = "No test results or exit-code evidence were supplied; confidence is held at the neutral unverified baseline (0.5) — an honest 'unknown', not a measured confidence."
+            reasoning = "No execution evidence supplied; invariants were not verified. Approval is procedural, not evidence-backed."
         elif concerns:
             verdict = VoteVerdict.REJECT
             confidence = 0.95
             method = CONFIDENCE_METHOD_EVIDENCE
-            note = (
-                f"Rule-based score over supplied execution evidence "
-                f"({', '.join(evidence_bits)}); failing checks drive this verdict. "
-                "Not a calibrated probability."
-            )
+            note = f"Rule-based score over supplied execution evidence ({', '.join(evidence_bits)}); failing checks drive this verdict. Not a calibrated probability."
             reasoning = "Invariant violation: factual verification or test checks failed."
         else:
             verdict = VoteVerdict.APPROVE
             confidence = 0.95
             method = CONFIDENCE_METHOD_EVIDENCE
-            note = (
-                f"Rule-based score over supplied execution evidence "
-                f"({', '.join(evidence_bits)}); not a calibrated probability."
-            )
+            note = f"Rule-based score over supplied execution evidence ({', '.join(evidence_bits)}); not a calibrated probability."
             reasoning = "Supplied execution evidence (tests/exit code) shows no invariant violation."
 
         return DeliberatorVote(
@@ -155,6 +139,7 @@ class InvariantVerifier:
 
 class SecurityReviewer:
     """Deliberator 3: Audits blast radius, permission violations, secret leakage risks, and command dangers."""
+
     name = "SecurityReviewer"
     role = "SecurityReviewer"
 
@@ -209,6 +194,7 @@ class SecurityReviewer:
 
 class QualityReviewer:
     """Deliberator 4: Checks maintainability, clean design, type annotations, and documentation."""
+
     name = "QualityReviewer"
     role = "QualityReviewer"
 
@@ -240,10 +226,7 @@ class QualityReviewer:
             reasoning = "Code and document structure adhere to clean architecture standards."
 
         # Disclosed heuristic: structural checks only; no calibration data exists.
-        note = (
-            "Heuristic confidence: uncalibrated rule-based score from structural checks "
-            "(artifact length, docstrings for .py files); not a measured probability."
-        )
+        note = "Heuristic confidence: uncalibrated rule-based score from structural checks (artifact length, docstrings for .py files); not a measured probability."
 
         return DeliberatorVote(
             deliberator_name=self.name,
@@ -260,6 +243,7 @@ class QualityReviewer:
 
 class PresidingJudge:
     """Deliberator 5: Evaluates the whole picture, aggregates the 4 specialist votes, and calculates quorum."""
+
     name = "PresidingJudge"
     role = "PresidingJudge"
 
@@ -301,10 +285,7 @@ class PresidingJudge:
             reasoning = "Consensus achieved across all council deliberators."
 
         # Disclosed heuristic: rule-based synthesis over the specialist votes.
-        note = (
-            "Heuristic confidence: uncalibrated rule-based synthesis over the 4 "
-            "specialist votes (veto and dissent counts); not a measured probability."
-        )
+        note = "Heuristic confidence: uncalibrated rule-based synthesis over the 4 specialist votes (veto and dissent counts); not a measured probability."
 
         return DeliberatorVote(
             deliberator_name=self.name,

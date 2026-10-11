@@ -91,15 +91,7 @@ class TestDetection:
 
     def test_nested_handler_does_not_launder_the_outer_one(self):
         """A parent's silence cannot hide behind a nested handler's log line."""
-        source = (
-            "try:\n"
-            "    f()\n"
-            "except ValueError:\n"
-            "    try:\n"
-            "        g()\n"
-            "    except TypeError:\n"
-            "        logger.error('inner')\n"
-        )
+        source = "try:\n    f()\nexcept ValueError:\n    try:\n        g()\n    except TypeError:\n        logger.error('inner')\n"
         findings, _handlers = _find(source)
         assert len(findings) == 1
         assert findings[0].lineno == 3, "the outer handler is the one that swallowed"
@@ -268,7 +260,7 @@ class TestScanAndCli:
         Reading with plain ``utf-8`` leaves a leading U+FEFF that ``ast.parse``
         rejects, which reported a perfectly working module as unverified.
         """
-        (tmp_path / "bom.py").write_bytes("﻿try:\n    f()\nexcept ValueError:\n    pass\n".encode("utf-8"))
+        (tmp_path / "bom.py").write_bytes("﻿try:\n    f()\nexcept ValueError:\n    pass\n".encode())
         result = GATE.scan(tmp_path, scan_dirs=(".",))
         assert result.unparsed == [], "a BOM'd module is valid Python and must be scanned"
         assert len(result.findings) == 1, "and its handlers must still be judged"
@@ -286,9 +278,7 @@ class TestScanAndCli:
     def test_clean_tree_exits_zero(self, tmp_path, capsys):
         scripts = tmp_path / "scripts"
         scripts.mkdir()
-        (scripts / "ok.py").write_text(
-            "try:\n    f()\nexcept ValueError as e:\n    logger.error('x', exc_info=e)\n", encoding="utf-8"
-        )
+        (scripts / "ok.py").write_text("try:\n    f()\nexcept ValueError as e:\n    logger.error('x', exc_info=e)\n", encoding="utf-8")
         assert GATE.main(["--root", str(tmp_path), "--quiet"]) == 0
 
     def test_missing_root_is_distinguishable_from_clean(self, tmp_path):
@@ -360,9 +350,7 @@ class TestRepositoryIsGreen:
             "sys.exit(1 if new else 0)\n",
             encoding="utf-8",
         )
-        (tmp_path / "planted.py").write_text(
-            "def f():\n    try:\n        g()\n    except ValueError:\n        pass\n", encoding="utf-8"
-        )
+        (tmp_path / "planted.py").write_text("def f():\n    try:\n        g()\n    except ValueError:\n        pass\n", encoding="utf-8")
         result = subprocess.run([sys.executable, str(script), str(tmp_path)], capture_output=True, text=True)
         assert result.returncode == 1, "a planted silent failure must fail the gate"
 
@@ -370,9 +358,7 @@ class TestRepositoryIsGreen:
         """The CLI is what CI invokes, so its exit code is part of the contract."""
         scripts = tmp_path / "scripts"
         scripts.mkdir()
-        (scripts / "clean.py").write_text(
-            "try:\n    f()\nexcept ValueError as e:\n    logger.error('x', exc_info=e)\n", encoding="utf-8"
-        )
+        (scripts / "clean.py").write_text("try:\n    f()\nexcept ValueError as e:\n    logger.error('x', exc_info=e)\n", encoding="utf-8")
         clean = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path), "--json"], capture_output=True, text=True)
         assert clean.returncode == 0, clean.stderr[-400:]
         assert '"new": 0' in clean.stdout

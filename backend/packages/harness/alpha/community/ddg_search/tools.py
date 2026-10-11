@@ -53,9 +53,7 @@ MIN_RESULTS = 1
 
 #: Returned (not raised) when the engine answered and genuinely had nothing.
 EMPTY_RESULT_NOTE = (
-    "The DuckDuckGo engine answered this query and returned zero results. This is an empty "
-    "result set, not a search failure: nothing on the web matched, so rephrase or try a "
-    "different provider rather than retrying the same query."
+    "The DuckDuckGo engine answered this query and returned zero results. This is an empty result set, not a search failure: nothing on the web matched, so rephrase or try a different provider rather than retrying the same query."
 )
 
 #: Provider names the engine reports for the HTTP statuses that have a better

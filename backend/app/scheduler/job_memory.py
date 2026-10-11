@@ -179,9 +179,7 @@ class JobMemoryStore:
             except json.JSONDecodeError as exc:
                 raise JobMemoryCorruptError(f"corrupt journal {path} at line {line_number}: invalid JSON ({exc})") from exc
             if not isinstance(entry, dict):
-                raise JobMemoryCorruptError(
-                    f"corrupt journal {path} at line {line_number}: expected a JSON object, got {type(entry).__name__}"
-                )
+                raise JobMemoryCorruptError(f"corrupt journal {path} at line {line_number}: expected a JSON object, got {type(entry).__name__}")
             if not isinstance(entry.get("event"), str) or not entry["event"]:
                 raise JobMemoryCorruptError(f"corrupt journal {path} at line {line_number}: missing or invalid 'event' field")
             if not isinstance(entry.get("recorded_at"), str) or not entry["recorded_at"]:
@@ -194,17 +192,11 @@ class JobMemoryStore:
         if self._retention_runs is None:
             retention_line = "retention: not configured; every recorded run is eligible to be shown"
         else:
-            retention_line = (
-                f"retention: only the most recent {self._retention_runs} run(s) are shown; "
-                "older runs are pruned at read time and the journal file is never rewritten"
-            )
+            retention_line = f"retention: only the most recent {self._retention_runs} run(s) are shown; older runs are pruned at read time and the journal file is never rewritten"
         if self._ttl_seconds is None:
             ttl_line = "ttl: not configured; no run ages out"
         else:
-            ttl_line = (
-                f"ttl: runs journaled more than {self._ttl_seconds:g} second(s) ago are pruned at read time "
-                "and the journal file is never rewritten"
-            )
+            ttl_line = f"ttl: runs journaled more than {self._ttl_seconds:g} second(s) ago are pruned at read time and the journal file is never rewritten"
         return [retention_line, ttl_line]
 
     def prior_context_block(self, job_id: str) -> str:
@@ -225,10 +217,7 @@ class JobMemoryStore:
         if not entries:
             body = ["No prior runs recorded: journal absent or empty (first observed run for this job)."]
         elif not shown:
-            body = [
-                f"Journal holds {len(entries)} recorded entry/entries but none survive the retention policy "
-                "above; no prior run context is shown."
-            ]
+            body = [f"Journal holds {len(entries)} recorded entry/entries but none survive the retention policy above; no prior run context is shown."]
         else:
             body = [f"{len(shown)} prior run(s) shown, oldest first:"]
             for index, group in enumerate(shown, start=1):
@@ -276,11 +265,7 @@ class JobMemoryStore:
         if dispatched is None:
             head = f"[{index}] dispatch record missing (outcome entries recorded without a preceding dispatch entry)"
         else:
-            head = (
-                f"[{index}] dispatched: journaled_at={dispatched.get('recorded_at')}, "
-                f"trigger={dispatched.get('trigger')!r}, run_id={dispatched.get('run_id')!r}, "
-                f"occurrence={dispatched.get('task_run_id')!r}"
-            )
+            head = f"[{index}] dispatched: journaled_at={dispatched.get('recorded_at')}, trigger={dispatched.get('trigger')!r}, run_id={dispatched.get('run_id')!r}, occurrence={dispatched.get('task_run_id')!r}"
         lines = [head]
         events = group["events"]
         terminal_seen = False
@@ -305,10 +290,7 @@ class JobMemoryStore:
         else:
             duration_text = f"{float(duration):.3f}s"
         finished = event.get("finished_at")
-        line = (
-            f"    outcome: {status}; finished_at={finished if finished is not None else 'unknown'}; "
-            f"duration={duration_text}"
-        )
+        line = f"    outcome: {status}; finished_at={finished if finished is not None else 'unknown'}; duration={duration_text}"
         run_id = event.get("run_id")
         if run_id:
             line += f"; run_id={run_id}"

@@ -29,19 +29,19 @@ def self_test() -> dict:
     return {"success": True, "detail": "length and upper verified"}
 '''
 
-FAILING_TOOL = '''
+FAILING_TOOL = """
 def run(x: int) -> int:
     return x + 1
 
 
 def self_test():
     assert run(1) == 99
-'''
+"""
 
-NO_SELF_TEST_TOOL = '''
+NO_SELF_TEST_TOOL = """
 def run() -> str:
     return "ok"
-'''
+"""
 
 
 @pytest.fixture()
@@ -148,9 +148,7 @@ def test_write_outside_workspace_is_blocked(synthesizer):
     source = f"def run() -> None:\n    open({outside!r}, 'w').write('x')\n"
     result = synthesizer.synthesize("writer", source)
     assert result["success"] is False
-    assert any(
-        item["rule"] == "blocked-write-outside-workspace" for item in result["violations"]
-    )
+    assert any(item["rule"] == "blocked-write-outside-workspace" for item in result["violations"])
 
 
 def test_write_inside_workspace_is_allowed(synthesizer, tmp_path):
@@ -393,12 +391,8 @@ def test_tool_invoke_action(tmp_path):
 
 
 def test_tool_unload_action(tmp_path):
-    synthesize_runtime_tool.invoke(
-        {"name": "temp_tool", "source_code": VALID_TOOL, "workspace_root": str(tmp_path)}
-    )
-    outcome = synthesize_runtime_tool.invoke(
-        {"name": "temp_tool", "source_code": "", "action": "unload", "workspace_root": str(tmp_path)}
-    )
+    synthesize_runtime_tool.invoke({"name": "temp_tool", "source_code": VALID_TOOL, "workspace_root": str(tmp_path)})
+    outcome = synthesize_runtime_tool.invoke({"name": "temp_tool", "source_code": "", "action": "unload", "workspace_root": str(tmp_path)})
     assert outcome["success"] is True
     assert outcome["status"] == "unloaded"
 
@@ -416,23 +410,15 @@ def test_tool_rejects_unsafe_source(tmp_path):
 
 
 def test_tool_unknown_action(tmp_path):
-    result = synthesize_runtime_tool.invoke(
-        {"name": "x", "source_code": VALID_TOOL, "action": "explode", "workspace_root": str(tmp_path)}
-    )
+    result = synthesize_runtime_tool.invoke({"name": "x", "source_code": VALID_TOOL, "action": "explode", "workspace_root": str(tmp_path)})
     assert result["success"] is False
     assert result["status"] == "invalid-action"
 
 
 def test_tool_history_action(tmp_path):
-    synthesize_runtime_tool.invoke(
-        {"name": "versioned_tool", "source_code": VALID_TOOL, "workspace_root": str(tmp_path)}
-    )
-    synthesize_runtime_tool.invoke(
-        {"name": "versioned_tool", "source_code": VALID_TOOL, "workspace_root": str(tmp_path)}
-    )
-    history = list_dynamic_tools.invoke(
-        {"action": "history", "name": "versioned_tool", "workspace_root": str(tmp_path)}
-    )
+    synthesize_runtime_tool.invoke({"name": "versioned_tool", "source_code": VALID_TOOL, "workspace_root": str(tmp_path)})
+    synthesize_runtime_tool.invoke({"name": "versioned_tool", "source_code": VALID_TOOL, "workspace_root": str(tmp_path)})
+    history = list_dynamic_tools.invoke({"action": "history", "name": "versioned_tool", "workspace_root": str(tmp_path)})
     assert history["success"] is True
     assert history["count"] >= 1
 

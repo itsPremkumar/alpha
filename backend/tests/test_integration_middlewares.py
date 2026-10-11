@@ -110,15 +110,7 @@ class TestContinualHarnessMiddleware:
 def test_lead_chain_references_both_middlewares() -> None:
     from pathlib import Path
 
-    agent_py = (
-        Path(__file__).resolve().parents[1]
-        / "packages"
-        / "harness"
-        / "alpha"
-        / "agents"
-        / "lead_agent"
-        / "agent.py"
-    )
+    agent_py = Path(__file__).resolve().parents[1] / "packages" / "harness" / "alpha" / "agents" / "lead_agent" / "agent.py"
     source = agent_py.read_text(encoding="utf-8")
     assert "ContinualHarnessMiddleware()" in source, "continual_harness middleware is not wired into the lead chain"
     assert "MetacognitiveMiddleware(" in source, "metacognitive middleware is not wired into the lead chain"

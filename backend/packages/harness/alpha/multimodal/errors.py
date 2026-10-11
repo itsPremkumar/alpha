@@ -28,10 +28,7 @@ class MultimodalUnavailableError(ConnectionError):
         self.attempts = [dict(row) for row in attempts]
         if message is None:
             if self.attempts:
-                rendered = ", ".join(
-                    f"{row.get('tier', '?')}/{row.get('engine', '?')}={row.get('error', '')}"
-                    for row in self.attempts
-                )
+                rendered = ", ".join(f"{row.get('tier', '?')}/{row.get('engine', '?')}={row.get('error', '')}" for row in self.attempts)
             else:
                 rendered = "(no attempt rows recorded)"
             message = f"No engine could serve capability '{self.capability}'; attempts: {rendered}"

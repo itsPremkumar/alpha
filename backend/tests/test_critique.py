@@ -55,8 +55,7 @@ def test_own_packages_are_clean():
     root = _HARNESS_ROOT / "alpha"
     if not root.exists():
         return
-    pkgs = ("routines", "connectors", "egress", "scorecard", "modes", "experts",
-            "automations", "skills_market", "workspace", "critique")
+    pkgs = ("routines", "connectors", "egress", "scorecard", "modes", "experts", "automations", "skills_market", "workspace", "critique")
     findings = []
     for pkg in pkgs:
         findings.extend(critique_path(root / pkg).findings)

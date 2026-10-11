@@ -14,9 +14,9 @@ def test_hierarchical_context_discovery_and_ordering(tmp_path: Path):
     # tmp_path/backend/AGENTS.md
     # tmp_path/backend/api/AGENTS.md
     # tmp_path/backend/api/routes/endpoint.py
-    
+
     (tmp_path / "AGENTS.md").write_text("ROOT RULE: Global standards", encoding="utf-8")
-    
+
     backend_dir = tmp_path / "backend"
     backend_dir.mkdir()
     (backend_dir / "AGENTS.md").write_text("BACKEND RULE: Python only", encoding="utf-8")

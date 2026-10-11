@@ -292,10 +292,7 @@ class TestLearningForkIntegration:
                     # The isolated-tool warning must name the failing tool —
                     # a generic assert_called() also matched unrelated
                     # warnings (e.g. the coroutine crash this test hid).
-                    warned = any(
-                        c.args and c.args[:2] == ("LearningFork: tool %s failed: %s", "memory_add")
-                        for c in mock_logger.warning.call_args_list
-                    )
+                    warned = any(c.args and c.args[:2] == ("LearningFork: tool %s failed: %s", "memory_add") for c in mock_logger.warning.call_args_list)
                     assert warned, mock_logger.warning.call_args_list
 
 

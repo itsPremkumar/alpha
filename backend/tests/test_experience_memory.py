@@ -51,22 +51,26 @@ def test_experience_retriever():
 
 def test_consult_experience_tool():
     # 1. Query phase
-    query_res_str = consult_experience.invoke({
-        "query": "asyncio event loop blocking",
-        "action": "query",
-    })
+    query_res_str = consult_experience.invoke(
+        {
+            "query": "asyncio event loop blocking",
+            "action": "query",
+        }
+    )
     query_data = json.loads(query_res_str)
     assert query_data["match_count"] > 0
     assert "markdown_advice" in query_data
 
     # 2. Record phase
-    rec_res_str = consult_experience.invoke({
-        "query": "Cache invalidation on tenant update",
-        "action": "record",
-        "outcome": "success",
-        "lessons": ["Invalidate multi-tenant cache keys using namespace patterns"],
-        "pitfalls": ["Flushing the entire Redis cache affects other tenants"],
-    })
+    rec_res_str = consult_experience.invoke(
+        {
+            "query": "Cache invalidation on tenant update",
+            "action": "record",
+            "outcome": "success",
+            "lessons": ["Invalidate multi-tenant cache keys using namespace patterns"],
+            "pitfalls": ["Flushing the entire Redis cache affects other tenants"],
+        }
+    )
     rec_data = json.loads(rec_res_str)
     assert rec_data["status"] == "recorded"
     assert "experience_id" in rec_data

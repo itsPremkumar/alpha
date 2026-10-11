@@ -10,8 +10,14 @@ class DeterministicPruner:
     """Stage 1: Prunes stale intermediate tool outputs (e.g., file reads, directory listings)."""
 
     VERBOSE_TOOLS: set[str] = {
-        "view_file", "read_file", "cat", "list_dir", "ls",
-        "find_by_name", "grep_search", "search_code",
+        "view_file",
+        "read_file",
+        "cat",
+        "list_dir",
+        "ls",
+        "find_by_name",
+        "grep_search",
+        "search_code",
     }
 
     def __init__(self, keep_last_n_observations: int = 4, max_pruned_length: int = 150):
@@ -50,10 +56,7 @@ class DeterministicPruner:
                 line_count = len(str_content.splitlines())
                 first_line = str_content.splitlines()[0][:80] if str_content else ""
 
-                tombstone = (
-                    f"[Pruned prior output from '{tool_name or 'tool'}' ({line_count} lines, "
-                    f"{len(str_content)} chars). Snippet: {first_line}...]"
-                )
+                tombstone = f"[Pruned prior output from '{tool_name or 'tool'}' ({line_count} lines, {len(str_content)} chars). Snippet: {first_line}...]"
 
                 msg["content"] = tombstone
                 msg["pruned"] = True

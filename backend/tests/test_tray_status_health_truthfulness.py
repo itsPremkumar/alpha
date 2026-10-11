@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -126,9 +126,7 @@ def _run_state(
         timeout=180,
         check=False,
     )
-    assert "HARNESS_BROKEN" not in proc.stdout, (
-        f"tray_status.ps1 was reordered; the extraction harness no longer finds its markers.\n{proc.stdout}\n{proc.stderr}"
-    )
+    assert "HARNESS_BROKEN" not in proc.stdout, f"tray_status.ps1 was reordered; the extraction harness no longer finds its markers.\n{proc.stdout}\n{proc.stderr}"
     out: dict[str, str] = {}
     for line in proc.stdout.splitlines():
         if "=" in line:
@@ -139,7 +137,7 @@ def _run_state(
 
 
 def _health(status: str, *, age_seconds: int, pid: int) -> dict:
-    when = datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
+    when = datetime.now(UTC) - timedelta(seconds=age_seconds)
     return {
         "status": status,
         "pid": pid,

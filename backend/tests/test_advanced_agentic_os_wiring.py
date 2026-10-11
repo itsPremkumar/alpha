@@ -1,6 +1,5 @@
 import json
 
-from app.gateway.app import app
 from alpha.tools.builtins import (
     a2a_tool,
     cognitive_plan,
@@ -13,6 +12,7 @@ from alpha.tools.builtins import (
     swarm_tool,
 )
 from alpha.tools.tools import BUILTIN_TOOLS, SUBAGENT_TOOLS, get_available_tools
+from app.gateway.app import app
 
 
 def test_builtin_tools_registration():
@@ -119,10 +119,12 @@ def test_tool_invocability_end_to_end():
     assert "Cognitive" in str(plan_res) or "Evaluation" in str(plan_res) or "Strategy" in str(plan_res)
 
     # 2. deliberation_tool
-    delib_res = deliberation_tool.invoke({
-        "action": "evaluate",
-        "prompt": "Microservices vs Modular Monolith for financial core banking",
-    })
+    delib_res = deliberation_tool.invoke(
+        {
+            "action": "evaluate",
+            "prompt": "Microservices vs Modular Monolith for financial core banking",
+        }
+    )
     assert "Deliberation" in str(delib_res) or "Evaluation" in str(delib_res) or "Strategy" in str(delib_res)
 
     # 3. company_tool
@@ -134,11 +136,13 @@ def test_tool_invocability_end_to_end():
     assert "A2A" in str(a2a_res) or "agent" in str(a2a_res).lower()
 
     # 5. goal_integrity_tool
-    goal_res = goal_integrity_tool.invoke({
-        "action": "audit_plan",
-        "mission_goal": "Maintain zero-defect builds",
-        "subtasks_json": '["run unit tests", "check linter"]',
-    })
+    goal_res = goal_integrity_tool.invoke(
+        {
+            "action": "audit_plan",
+            "mission_goal": "Maintain zero-defect builds",
+            "subtasks_json": '["run unit tests", "check linter"]',
+        }
+    )
     assert "score" in str(goal_res).lower() or "passed" in str(goal_res).lower() or "integrity" in str(goal_res).lower()
 
     # 6. job_tool

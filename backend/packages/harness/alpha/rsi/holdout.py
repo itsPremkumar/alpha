@@ -156,10 +156,7 @@ def register_hidden_suite() -> list[str]:
     suite = BenchmarkSuite(
         name=HOLDOUT_SUITE_NAME,
         version=HOLDOUT_SUITE_VERSION,
-        cases=[
-            BenchmarkCase(case_id=case.case_id, title=case.case_id, fixture=dict(case.fixture), expected=dict(case.expected))
-            for case in _HIDDEN_CASES
-        ],
+        cases=[BenchmarkCase(case_id=case.case_id, title=case.case_id, fixture=dict(case.fixture), expected=dict(case.expected)) for case in _HIDDEN_CASES],
     )
     runner.register_suite(suite, _hidden_holdout_evaluator)
     return [case.case_id for case in _HIDDEN_CASES]
@@ -243,15 +240,7 @@ def holdout_gate(result: dict) -> tuple[bool, str]:
         return False, "holdout unverified — cannot gate on unverified evidence"
     passed_count = result.get("passed")
     failed_count = result.get("failed")
-    counts_ok = (
-        isinstance(passed_count, int)
-        and not isinstance(passed_count, bool)
-        and isinstance(failed_count, int)
-        and not isinstance(failed_count, bool)
-        and passed_count >= 0
-        and failed_count >= 0
-        and passed_count + failed_count > 0
-    )
+    counts_ok = isinstance(passed_count, int) and not isinstance(passed_count, bool) and isinstance(failed_count, int) and not isinstance(failed_count, bool) and passed_count >= 0 and failed_count >= 0 and passed_count + failed_count > 0
     if result.get("evidence_kind") != "measured" or not counts_ok:
         return False, "holdout unverified — cannot gate on unverified evidence"
     if failed_count > 0:

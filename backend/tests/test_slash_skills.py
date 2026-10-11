@@ -7,7 +7,6 @@ import pytest
 from langchain.agents.middleware.types import ModelRequest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.channels.commands import KNOWN_CHANNEL_COMMANDS
 from alpha.agents.middlewares import skill_activation_middleware as middleware_module
 from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware, is_slash_skill_activation_reminder
 from alpha.config.extensions_config import ExtensionsConfig
@@ -16,6 +15,7 @@ from alpha.skills.slash import RESERVED_SLASH_SKILL_NAMES, parse_slash_skill_ref
 from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
 from alpha.skills.types import Skill, SkillCategory
 from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from app.channels.commands import KNOWN_CHANNEL_COMMANDS
 
 _SLASH_SOURCE_OWNER_TOKEN = "test-slash-source-owner"
 

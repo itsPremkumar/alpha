@@ -191,7 +191,6 @@ class TestRealMiddlewareToJournalPath:
         This exercises the REAL code path, not a hand-constructed fixture.
         """
         from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-        from alpha.config.app_config import AppConfig
 
         # Create the real middleware
         middleware = ToolErrorHandlingMiddleware(app_config=None)

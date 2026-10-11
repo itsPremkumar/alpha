@@ -41,9 +41,7 @@ class ShellASTParser:
         # 3. Simple command (with potential subshells or redirections)
         return self._parse_simple_command(cleaned)
 
-    def _split_top_level_operator(
-        self, text: str, operators: list[str]
-    ) -> tuple[str, str, str] | None:
+    def _split_top_level_operator(self, text: str, operators: list[str]) -> tuple[str, str, str] | None:
         """Split string by operators (&&, ||, ;) if they occur at the top level (outside quotes and subshells)."""
         in_single = False
         in_double = False

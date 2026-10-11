@@ -604,12 +604,12 @@ class TestThreadMetaRepository:
         persist into ``metadata_json`` either — membership is written only by
         POST /api/threads (create) and /threads/{id}/move.
         """
-        from app.gateway.services import _ensure_thread_metadata
         from alpha.persistence.projects import ProjectRepository
         from alpha.persistence.thread_meta.model import ThreadMetaRow
         from alpha.runtime.runs.manager import RunRecord
         from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
         from alpha.runtime.runs.worker import RunContext
+        from app.gateway.services import _ensure_thread_metadata
 
         projects = ProjectRepository(repo._sf)
         project = await projects.create(name="P")

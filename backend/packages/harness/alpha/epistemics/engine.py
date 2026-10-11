@@ -117,11 +117,7 @@ class EpistemicBeliefEngine:
 
     def get_unverified_assumptions(self) -> list[Claim]:
         """Return claims marked as ASSUMPTION or HYPOTHESIS lacking empirical validation."""
-        return [
-            c for c in self._claims.values()
-            if c.status in {EpistemicStatus.ASSUMPTION, EpistemicStatus.HYPOTHESIS}
-            and not c.is_verified
-        ]
+        return [c for c in self._claims.values() if c.status in {EpistemicStatus.ASSUMPTION, EpistemicStatus.HYPOTHESIS} and not c.is_verified]
 
     def render_belief_summary(self) -> str:
         """Render markdown summary of active claims and their epistemic statuses."""
@@ -131,9 +127,7 @@ class EpistemicBeliefEngine:
         lines = ["### Epistemic Belief & Calibration Ledger\n"]
         for c in self._claims.values():
             verified_badge = "✅ FACT" if c.status == EpistemicStatus.FACT else f"[{c.status.value.upper()}]"
-            lines.append(
-                f"- **{verified_badge}** (Conf: {int(c.confidence * 100)}%): {c.text}"
-            )
+            lines.append(f"- **{verified_badge}** (Conf: {int(c.confidence * 100)}%): {c.text}")
             if c.falsification_test:
                 lines.append(f"  * *Falsification Test*: {c.falsification_test}")
             if c.supporting_evidence:

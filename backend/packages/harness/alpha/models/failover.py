@@ -67,9 +67,7 @@ class ModelEndpointConfig:
             health.consecutive_failures += 1
             if is_rate_limit or health.consecutive_failures >= 3:
                 health.cooldown_until = time.time() + self.cooldown_seconds
-                logger.warning(
-                    f"ModelEndpoint {self.provider}/{self.model_name} key ending in ...{key[-4:]} entered cooldown for {self.cooldown_seconds}s"
-                )
+                logger.warning(f"ModelEndpoint {self.provider}/{self.model_name} key ending in ...{key[-4:]} entered cooldown for {self.cooldown_seconds}s")
 
 
 class ModelFailoverChain:
@@ -106,14 +104,16 @@ class ModelFailoverChain:
                     is_rate_limit = "429" in err_str or "rate limit" in err_str or "quota" in err_str
                     endpoint.record_key_failure(key, is_rate_limit=is_rate_limit)
 
-                    self.failover_history.append({
-                        "provider": endpoint.provider,
-                        "model": endpoint.model_name,
-                        "key_masked": f"...{key[-4:]}",
-                        "error": str(e),
-                        "rate_limit": is_rate_limit,
-                        "timestamp": time.time(),
-                    })
+                    self.failover_history.append(
+                        {
+                            "provider": endpoint.provider,
+                            "model": endpoint.model_name,
+                            "key_masked": f"...{key[-4:]}",
+                            "error": str(e),
+                            "rate_limit": is_rate_limit,
+                            "timestamp": time.time(),
+                        }
+                    )
                     # Loop will try next key or fall over to next candidate model
 
         raise RuntimeError(f"All failover candidates exhausted. Last error: {last_error}")

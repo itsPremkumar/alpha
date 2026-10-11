@@ -287,9 +287,7 @@ def serper_ok(record: dict[str, Any] | None = None):
 
 def http_error(status: int, payload: Any = None, *, headers: dict[str, str] | None = None):
     def handler(record: dict[str, Any] | None = None) -> httpx.Response:
-        return httpx.Response(
-            status, json=payload if payload is not None else {"detail": {"error": "nope"}}, headers=headers
-        )
+        return httpx.Response(status, json=payload if payload is not None else {"detail": {"error": "nope"}}, headers=headers)
 
     return handler
 
@@ -632,9 +630,7 @@ def test_provider_reported_exhaustion_is_learned_and_not_repaid(tmp_path, monkey
         return httpx.Response(500, json={"detail": {"error": "anonymous tier is down"}})
 
     handler = install(monkeypatch, routes={"api.tavily.com": tavily_route, "serper": serper_ok})
-    fed = make_federation(
-        tmp_path, env={"TAVILY_API_KEY": "tvly-x", "EXA_API_KEY": "exa-x", "SERPER_API_KEY": "serper-x"}
-    )
+    fed = make_federation(tmp_path, env={"TAVILY_API_KEY": "tvly-x", "EXA_API_KEY": "exa-x", "SERPER_API_KEY": "serper-x"})
     outcome = fed.search(SearchRequest(query="q", mode="web"))
 
     assert outcome.provider == "serper"
@@ -941,6 +937,7 @@ def test_unmapped_adapter_exception_does_not_sink_the_search(tmp_path, monkeypat
 
     assert outcome.provider == "duckduckgo"
     assert outcome.attempts == [("tavily_keyless", "ZeroDivisionError")]
+
 
 # ===========================================================================
 # 6. Honest exhaustion: never a silent empty result
@@ -1284,9 +1281,7 @@ def test_duckduckgo_call_is_bounded_and_forwards_its_timeout(monkeypatch) -> Non
     # layer actually receives.
     seen: dict[str, object] = {}
     use_real_ddg_adapter(monkeypatch)
-    monkeypatch.setattr(
-        ddg_tools, "search_web", lambda *a, **k: (seen.update(k), [{"href": "https://ddg.example/1"}])[1]
-    )
+    monkeypatch.setattr(ddg_tools, "search_web", lambda *a, **k: (seen.update(k), [{"href": "https://ddg.example/1"}])[1])
 
     providers.duckduckgo_search("q", timeout=7.5)
     assert seen["timeout"] == 7.5
@@ -1534,15 +1529,7 @@ def test_contested_provider_in_a_chain_is_skipped_unless_explicitly_opted_in(tmp
 def test_cooldown_constants_match_the_free_llm_router_without_importing_it() -> None:
     # Importing alpha.models costs ~50s, so the values are compared by parsing
     # the source instead. That still fails the build if the two drift.
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "packages"
-        / "harness"
-        / "alpha"
-        / "models"
-        / "free_router"
-        / "catalog.py"
-    )
+    source = Path(__file__).resolve().parents[1] / "packages" / "harness" / "alpha" / "models" / "free_router" / "catalog.py"
     assert source.is_file(), f"expected the free-LLM router catalog at {source}"
     tree = ast.parse(source.read_text(encoding="utf-8"))
     constants: dict[str, float] = {}

@@ -68,17 +68,9 @@ TERMINAL_ACTIONS: Final[frozenset[TurnAction]] = frozenset(
     {TurnAction.DONE, TurnAction.BLOCKED, TurnAction.PAUSED, TurnAction.IDLE},
 )
 
-BUDGET_EXHAUSTED_MESSAGE: Final[str] = (
-    "Goal paused - {used}/{max_turns} turns used. "
-    "Use /goal resume to keep going (the turn counter resets to zero), "
-    "or /goal clear to stop."
-)
+BUDGET_EXHAUSTED_MESSAGE: Final[str] = "Goal paused - {used}/{max_turns} turns used. Use /goal resume to keep going (the turn counter resets to zero), or /goal clear to stop."
 
-GATE_EXHAUSTED_MESSAGE: Final[str] = (
-    "Goal paused - quality gate exhausted its retries without exiting 0: {command}\n"
-    "Fix the failure by hand, or use /goal gate remove {index} to drop the gate, "
-    "then /goal resume to continue."
-)
+GATE_EXHAUSTED_MESSAGE: Final[str] = "Goal paused - quality gate exhausted its retries without exiting 0: {command}\nFix the failure by hand, or use /goal gate remove {index} to drop the gate, then /goal resume to continue."
 
 
 @dataclass(frozen=True)
@@ -151,11 +143,7 @@ def build_continuation_prompt(
         numbered = "\n".join(f"{index + 1}. {item}" for index, item in enumerate(state.subgoals))
         blocks.append(f"ADDITIONAL CRITERIA THE USER ADDED MID-LOOP (all must hold):\n{numbered}")
     if gate_report is not None and not gate_report.all_passed:
-        blocks.append(
-            "QUALITY GATES ARE RED. The exit codes below are deterministic evidence; "
-            "the goal cannot be judged complete until they exit 0.\n"
-            f"{gate_report.render_failures(attempts=gate_failures)}"
-        )
+        blocks.append(f"QUALITY GATES ARE RED. The exit codes below are deterministic evidence; the goal cannot be judged complete until they exit 0.\n{gate_report.render_failures(attempts=gate_failures)}")
     if reason:
         blocks.append(f"JUDGE: not done yet - {reason}")
     return "\n\n".join(blocks)
@@ -317,11 +305,7 @@ class GoalLoopEngine:
 
     def _exhausted_gates(self, state: GoalState, gate_report: GateReport) -> list[GateResult]:
         """Red gates that have spent their cross-boundary failure budget."""
-        return [
-            result
-            for position, result in enumerate(gate_report.results, start=1)
-            if not result.passed and state.gate_failures.get(position, 0) >= self._max_gate_failures
-        ]
+        return [result for position, result in enumerate(gate_report.results, start=1) if not result.passed and state.gate_failures.get(position, 0) >= self._max_gate_failures]
 
     def _pause_on_gate_exhaustion(
         self,

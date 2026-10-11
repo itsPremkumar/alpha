@@ -67,11 +67,7 @@ class SupportVerdict:
 
 def _question() -> ChoiceQuestion:
     return ChoiceQuestion(
-        instructions=(
-            "Does `evidence` support `claim`? "
-            "Judge only what the evidence actually shows, not whether the claim sounds plausible. "
-            "Choose contradicted when the evidence shows the opposite of the claim."
-        ),
+        instructions=("Does `evidence` support `claim`? Judge only what the evidence actually shows, not whether the claim sounds plausible. Choose contradicted when the evidence shows the opposite of the claim."),
         criteria={
             SUPPORTED: "The evidence directly shows or establishes the claim.",
             UNSUPPORTED: "The evidence exists but does not establish this claim; it is silent or off-topic.",
@@ -156,9 +152,7 @@ async def judge_batch(
     for i in range(len(batch)):
         questions[f"c{i}"] = ChoiceQuestion(
             instructions=(
-                f"Does `pairs[{i}].evidence` support `pairs[{i}].claim`? "
-                "Judge only what the evidence actually shows, not whether the claim sounds plausible. "
-                "Choose contradicted when the evidence shows the opposite of the claim."
+                f"Does `pairs[{i}].evidence` support `pairs[{i}].claim`? Judge only what the evidence actually shows, not whether the claim sounds plausible. Choose contradicted when the evidence shows the opposite of the claim."
             ),
             criteria={
                 SUPPORTED: "The evidence directly shows or establishes the claim.",

@@ -5,9 +5,9 @@ from fastapi import FastAPI
 from fastapi.responses import Response, StreamingResponse
 from starlette.testclient import TestClient
 
+from alpha.trace_context import TRACE_ID_HEADER, get_current_trace_id
 from app.gateway.csrf_middleware import CORS_EXPOSED_HEADERS
 from app.gateway.trace_middleware import TraceMiddleware
-from alpha.trace_context import TRACE_ID_HEADER, get_current_trace_id
 
 
 def _make_app() -> FastAPI:
@@ -139,8 +139,8 @@ def test_create_app_wires_trace_middleware_into_the_real_stack(monkeypatch) -> N
     short-circuiting above it) would strip the header and the ambient id that
     the run-record stamp and enhanced log records derive from, while every
     hand-wired suite still passed."""
-    import app.gateway.app as app_module
     import alpha.extensions as extensions_module
+    import app.gateway.app as app_module
     from alpha.config.app_config import AppConfig
     from alpha.config.sandbox_config import SandboxConfig
     from alpha.extensions import reset_loaded_extensions

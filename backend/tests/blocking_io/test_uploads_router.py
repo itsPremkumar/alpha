@@ -11,9 +11,9 @@ import pytest
 from _router_auth_helpers import call_unwrapped
 from fastapi import UploadFile
 
-from app.gateway.routers import uploads
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.uploads.manager import ensure_uploads_dir, get_uploads_dir
+from app.gateway.routers import uploads
 
 pytestmark = pytest.mark.asyncio
 

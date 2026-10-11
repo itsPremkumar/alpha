@@ -289,10 +289,7 @@ class AutonomousDispatchBridge:
                 status="failed",
                 execution_id=None,
                 assigned_agents=proposed,
-                summary=(
-                    f"Capability dispatch refused ({decision.refusal_code or 'no_eligible_agent'}): "
-                    f"{decision.reason}"
-                ),
+                summary=(f"Capability dispatch refused ({decision.refusal_code or 'no_eligible_agent'}): {decision.reason}"),
                 artifacts=[contract_path],
                 details={
                     "lead_bot": None,
@@ -330,11 +327,7 @@ class AutonomousDispatchBridge:
             status="dispatched",
             execution_id=f"handoff-{package.handoff_id}",
             assigned_agents=[decision.target, *proposed[1:]],
-            summary=(
-                f"Handoff {package.handoff_id} accepted: @{decision.target} now owns the objective "
-                f"(from @{decision.issuer}) — {decision.reason}; "
-                f"implementation contract written to {contract_path}."
-            ),
+            summary=(f"Handoff {package.handoff_id} accepted: @{decision.target} now owns the objective (from @{decision.issuer}) — {decision.reason}; implementation contract written to {contract_path}."),
             artifacts=[contract_path],
             details={
                 "lead_bot": decision.target,
@@ -409,11 +402,7 @@ class AutonomousDispatchBridge:
             status="completed",
             execution_id=f"research-{uuid.uuid4().hex[:6]}",
             assigned_agents=[],
-            summary=(
-                f"Deep research completed for '{plan.prompt[:80]}': "
-                f"{len(report.sources)} sources, {len(report.citations)} citations, "
-                f"{len(report.contradictions)} contradictions in {duration}s."
-            ),
+            summary=(f"Deep research completed for '{plan.prompt[:80]}': {len(report.sources)} sources, {len(report.citations)} citations, {len(report.contradictions)} contradictions in {duration}s."),
             artifacts=[report_path, citations_path],
             details={
                 "sources_inspected": len(report.sources),

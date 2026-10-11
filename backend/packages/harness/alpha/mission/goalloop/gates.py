@@ -224,9 +224,7 @@ class GateRunner:
                 gate=gate,
                 status=GateStatus.TIMEOUT,
                 exit_code=None,
-                output_tail=_render_tail(
-                    gate.command, None, GateStatus.TIMEOUT, f"timed out after {gate.timeout_seconds:g}s"
-                ),
+                output_tail=_render_tail(gate.command, None, GateStatus.TIMEOUT, f"timed out after {gate.timeout_seconds:g}s"),
                 attempts=1,
                 duration_seconds=time.monotonic() - started,
                 reason=f"gate timed out after {gate.timeout_seconds:g}s",
@@ -288,10 +286,7 @@ class GateReport:
             actual = self.results.index(result) + 1
             count = (attempts or {}).get(actual)
             progress = f"\nconsecutive failures: {count}" if count else ""
-            blocks.append(
-                f"### gate {actual}: {result.gate.name}\n"
-                f"status: {result.status.value}{progress}\n{result.output_tail}"
-            )
+            blocks.append(f"### gate {actual}: {result.gate.name}\nstatus: {result.status.value}{progress}\n{result.output_tail}")
         return "\n\n".join(blocks)
 
     def to_dict(self) -> dict[str, Any]:

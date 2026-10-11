@@ -11,6 +11,7 @@ logger = logging.getLogger("alpha.security.enclave.boundary")
 
 class BoundaryViolationError(PermissionError):
     """Raised when an action or path crosses a task boundary constraint."""
+
     pass
 
 
@@ -23,13 +24,14 @@ class TaskBoundaryPolicy:
       - Outbound network whitelists (blocks cloud metadata endpoints like 169.254.169.254)
       - Execution budget caps (subagent recursion depth, mutation counters)
     """
+
     allowed_root_paths: list[str] = field(default_factory=list)
     allowed_domains: list[str] = field(default_factory=list)
     blocked_hosts: list[str] = field(
         default_factory=lambda: [
-            "169.254.169.254",       # AWS/GCP/Azure instance metadata
+            "169.254.169.254",  # AWS/GCP/Azure instance metadata
             "metadata.google.internal",
-            "169.254.170.2",         # AWS ECS task metadata
+            "169.254.170.2",  # AWS ECS task metadata
         ]
     )
     max_subagent_depth: int = 3
@@ -61,10 +63,7 @@ class TaskBoundaryPolicy:
                 break
 
         if not is_safe:
-            msg = (
-                f"TASK_BOUNDARY_VIOLATION: Access to '{target_path}' (resolved: '{clean_path}') "
-                f"is outside the permitted enclave roots: {self.allowed_root_paths}"
-            )
+            msg = f"TASK_BOUNDARY_VIOLATION: Access to '{target_path}' (resolved: '{clean_path}') is outside the permitted enclave roots: {self.allowed_root_paths}"
             logger.error(msg)
             raise BoundaryViolationError(msg)
 
@@ -90,10 +89,7 @@ class TaskBoundaryPolicy:
         # Domain whitelist check
         is_allowed = any(host_lower == d or host_lower.endswith("." + d) for d in self.allowed_domains)
         if not is_allowed:
-            msg = (
-                f"TASK_BOUNDARY_VIOLATION: Outbound destination '{host}' "
-                f"is not in the permitted domain whitelist: {self.allowed_domains}"
-            )
+            msg = f"TASK_BOUNDARY_VIOLATION: Outbound destination '{host}' is not in the permitted domain whitelist: {self.allowed_domains}"
             logger.warning(msg)
             return False
 
@@ -111,10 +107,7 @@ class TaskBoundaryPolicy:
     def validate_subagent_depth(self, current_depth: int) -> bool:
         """Ensures subagent spawning doesn't trigger recursive fork bombs."""
         if current_depth >= self.max_subagent_depth:
-            msg = (
-                f"TASK_BOUNDARY_VIOLATION: Subagent depth {current_depth} "
-                f"exceeds boundary maximum {self.max_subagent_depth}."
-            )
+            msg = f"TASK_BOUNDARY_VIOLATION: Subagent depth {current_depth} exceeds boundary maximum {self.max_subagent_depth}."
             logger.error(msg)
             raise BoundaryViolationError(msg)
         return True

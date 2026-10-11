@@ -97,10 +97,12 @@ def test_fingerprint_is_stable_for_the_same_page():
 
 def test_fingerprint_ignores_coordinates():
     """Elements move as the page reflows; that must not look like a change."""
-    moved = page(elements=[
-        {"tag": "button", "text": "Submit", "selector": "#s", "coords": [999, 999]},
-        {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
-    ])
+    moved = page(
+        elements=[
+            {"tag": "button", "text": "Submit", "selector": "#s", "coords": [999, 999]},
+            {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
+        ]
+    )
     assert page_fingerprint(page()) == page_fingerprint(moved)
 
 
@@ -143,9 +145,7 @@ def test_signature_detects_disabled_and_checked():
 
 def test_text_and_label_are_treated_as_the_same_field():
     """Adapters disagree on the key; that must not read as a change."""
-    assert element_signature({"index": "1", "role": "button", "text": "Go"}) == element_signature(
-        {"index": "1", "role": "button", "label": "Go"}
-    )
+    assert element_signature({"index": "1", "role": "button", "text": "Go"}) == element_signature({"index": "1", "role": "button", "label": "Go"})
 
 
 def test_guards_are_keyed_by_index():
@@ -240,10 +240,12 @@ def test_target_guard_survives_an_unrelated_page_change():
 
 def test_target_guard_catches_the_target_being_replaced():
     observed = page()
-    current = page(elements=[
-        {"tag": "button", "text": "Delete account", "selector": "#s"},
-        {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
-    ])
+    current = page(
+        elements=[
+            {"tag": "button", "text": "Delete account", "selector": "#s"},
+            {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
+        ]
+    )
     assert is_fresh(observed, current, "1") is False
 
 
@@ -269,10 +271,12 @@ def test_describe_change_names_the_target_when_given_one():
     """A replaced target described as a whole-page change sends the reader looking
     in the wrong place."""
     observed = page()
-    replaced = page(elements=[
-        {"tag": "button", "text": "Delete account", "selector": "#s"},
-        {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
-    ])
+    replaced = page(
+        elements=[
+            {"tag": "button", "text": "Delete account", "selector": "#s"},
+            {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
+        ]
+    )
     assert describe_change(observed, replaced, "1") == "the target element changed"
     # Without the index it can only report the coarser fact.
     assert describe_change(observed, replaced) == "page content changed"
@@ -315,20 +319,24 @@ def test_evidence_omits_the_target_when_it_is_untouched():
 
 def test_evidence_names_the_target_when_only_the_target_moved():
     observed = page()
-    replaced = page(elements=[
-        {"tag": "button", "text": "Delete account", "selector": "#s"},
-        {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
-    ])
+    replaced = page(
+        elements=[
+            {"tag": "button", "text": "Delete account", "selector": "#s"},
+            {"tag": "input", "placeholder": "Email", "selector": "#e", "value": ""},
+        ]
+    )
     assert change_evidence(observed, replaced, "1") == ["target"]
 
 
 def test_evidence_falls_back_to_content_for_a_change_no_named_check_sees():
     """A filled field changes the fingerprint but not the url, text, or count."""
     observed = page()
-    filled = page(elements=[
-        {"tag": "button", "text": "Submit", "selector": "#s", "coords": [10, 10]},
-        {"tag": "input", "placeholder": "Email", "selector": "#e", "value": "a@b.com"},
-    ])
+    filled = page(
+        elements=[
+            {"tag": "button", "text": "Submit", "selector": "#s", "coords": [10, 10]},
+            {"tag": "input", "placeholder": "Email", "selector": "#e", "value": "a@b.com"},
+        ]
+    )
     assert change_evidence(observed, filled) == ["content"]
 
 

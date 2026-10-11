@@ -41,19 +41,8 @@ class CapabilityDescriptor(BaseModel):
     """One registrable thing behind the dynamic-workflow discovery plane."""
 
     id: str = Field(description="Stable identifier within its registry.")
-    kind: str = Field(
-        description=(
-            "The entry's grouping label as declared by its source (e.g. engine/guard "
-            "for capability specs); registries whose source declares no label use the "
-            "registry kind: tool, skill, mcp_server, memory."
-        )
-    )
-    availability: Availability = Field(
-        description=(
-            "What the source of truth says (module importable / registered / enabled / "
-            "configured). Never a claim that the subsystem is running or connected."
-        )
-    )
+    kind: str = Field(description=("The entry's grouping label as declared by its source (e.g. engine/guard for capability specs); registries whose source declares no label use the registry kind: tool, skill, mcp_server, memory."))
+    availability: Availability = Field(description=("What the source of truth says (module importable / registered / enabled / configured). Never a claim that the subsystem is running or connected."))
     source: str = Field(description="Where this descriptor was read from.")
     version: str | None = Field(
         default=None,
@@ -63,25 +52,16 @@ class CapabilityDescriptor(BaseModel):
         default="unverified",
         description="Runtime health; unverified unless a registry actually probed the subsystem.",
     )
-    authority: str = Field(
-        description="Who may change this entry: operator config, developer code, or runtime."
-    )
-    evidence_kind: EvidenceKind = Field(
-        description="How availability was established (measured probe, config read, ...)."
-    )
-    reason: str | None = Field(
-        default=None,
-        description="Honest reason when unavailable (disabled, module missing, read error)."
-    )
+    authority: str = Field(description="Who may change this entry: operator config, developer code, or runtime.")
+    evidence_kind: EvidenceKind = Field(description="How availability was established (measured probe, config read, ...).")
+    reason: str | None = Field(default=None, description="Honest reason when unavailable (disabled, module missing, read error).")
 
 
 class RegistryHealth(BaseModel):
     """Per-registry health report; ``health()`` never raises, it reports."""
 
     registry: str = Field(description="Registry name (capabilities, tools, skills, mcp, memory).")
-    status: RegistryStatus = Field(
-        description="ok = the source was read; unavailable = the source could not be read."
-    )
+    status: RegistryStatus = Field(description="ok = the source was read; unavailable = the source could not be read.")
     count: int | None = Field(
         default=None,
         description="Measured descriptor count when status is ok, else None.",

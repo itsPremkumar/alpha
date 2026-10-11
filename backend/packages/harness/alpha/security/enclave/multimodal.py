@@ -12,6 +12,7 @@ logger = logging.getLogger("alpha.security.enclave.multimodal")
 @dataclass
 class VisualEvidenceItem:
     """Represents a grounded visual observation (screenshot, rendered UI, diagram)."""
+
     evidence_id: str
     media_type: str  # "image/png", "image/jpeg", "svg"
     sha256_hash: str
@@ -112,11 +113,13 @@ class ProactiveTriggerEngine:
             return False
 
         if current_val == expected_val:
-            self.fired_events.append({
-                "trigger_id": trigger_id,
-                "target": trigger.target,
-                "timestamp": time.time(),
-            })
+            self.fired_events.append(
+                {
+                    "trigger_id": trigger_id,
+                    "target": trigger.target,
+                    "timestamp": time.time(),
+                }
+            )
             logger.info(f"PROACTIVE_WAKEUP: Trigger '{trigger_id}' fired on match.")
             return True
 

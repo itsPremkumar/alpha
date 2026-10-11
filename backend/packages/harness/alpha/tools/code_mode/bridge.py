@@ -93,7 +93,7 @@ class ToolBridge:
             # Handle async vs sync tool callables
             if inspect.iscoroutinefunction(fn):
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # In an active loop, schedule or create task
                     import concurrent.futures
 

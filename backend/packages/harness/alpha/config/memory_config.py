@@ -171,51 +171,27 @@ class MemoryConfig(BaseModel):
     # changes the configured backend's behavior; disabling one is a no-op.
     affective: AffectiveConfig = Field(
         default_factory=AffectiveConfig,
-        description=(
-            "Affective memory: remembered emotional tone (valence/arousal events), "
-            "decay-weighted mood state, and mood-aware recall. Requires "
-            "memory.enabled AND memory.affective.enabled."
-        ),
+        description=("Affective memory: remembered emotional tone (valence/arousal events), decay-weighted mood state, and mood-aware recall. Requires memory.enabled AND memory.affective.enabled."),
     )
     entities: EntityConfig = Field(
         default_factory=EntityConfig,
-        description=(
-            "Entity memory: deterministic (+ optional model) entity extraction, "
-            "alias resolution/merge, and entity-scoped recall. Requires "
-            "memory.enabled AND memory.entities.enabled."
-        ),
+        description=("Entity memory: deterministic (+ optional model) entity extraction, alias resolution/merge, and entity-scoped recall. Requires memory.enabled AND memory.entities.enabled."),
     )
     narrative: NarrativeConfig = Field(
         default_factory=NarrativeConfig,
-        description=(
-            "Narrative memory: an ordered, bounded life-story timeline synthesized "
-            "from stored records/episodes. Requires memory.enabled AND "
-            "memory.narrative.enabled."
-        ),
+        description=("Narrative memory: an ordered, bounded life-story timeline synthesized from stored records/episodes. Requires memory.enabled AND memory.narrative.enabled."),
     )
     prospective: ProspectiveConfig = Field(
         default_factory=ProspectiveConfig,
-        description=(
-            "Prospective memory: reminders, commitments, and trigger-bound "
-            "obligations with a pending -> fired -> done/expired lifecycle. "
-            "Requires memory.enabled AND memory.prospective.enabled."
-        ),
+        description=("Prospective memory: reminders, commitments, and trigger-bound obligations with a pending -> fired -> done/expired lifecycle. Requires memory.enabled AND memory.prospective.enabled."),
     )
     social: SocialConfig = Field(
         default_factory=SocialConfig,
-        description=(
-            "Social/shared memory: counterparts, relationship state, and "
-            "audience-scoped shared facts behind default-deny grants. Requires "
-            "memory.enabled AND memory.social.enabled."
-        ),
+        description=("Social/shared memory: counterparts, relationship state, and audience-scoped shared facts behind default-deny grants. Requires memory.enabled AND memory.social.enabled."),
     )
     policy: PolicyConfig = Field(
         default_factory=PolicyConfig,
-        description=(
-            "Memory admission policy: weighted admission score, hard rules "
-            "(including secret rejection), and hot-reloadable policy documents "
-            "that fail closed. Requires memory.enabled AND memory.policy.enabled."
-        ),
+        description=("Memory admission policy: weighted admission score, hard rules (including secret rejection), and hot-reloadable policy documents that fail closed. Requires memory.enabled AND memory.policy.enabled."),
     )
     fusion: FusionConfig = Field(
         default_factory=FusionConfig,
@@ -228,11 +204,7 @@ class MemoryConfig(BaseModel):
     )
     scenarios: ScenarioConfig = Field(
         default_factory=ScenarioConfig,
-        description=(
-            "Scenario-conditioned recall routing: classify the current kind of "
-            "work, then select/weight/budget the registered memory surfaces that "
-            "matter for it. Requires memory.enabled AND memory.scenarios.enabled."
-        ),
+        description=("Scenario-conditioned recall routing: classify the current kind of work, then select/weight/budget the registered memory surfaces that matter for it. Requires memory.enabled AND memory.scenarios.enabled."),
     )
     fabric: FabricConfig = Field(
         default_factory=FabricConfig,

@@ -95,10 +95,7 @@ def test_repl_is_absent_from_the_tool_list_when_disabled():
     from alpha.tools.tools import get_available_tools
 
     names = {getattr(t, "name", None) for t in get_available_tools(app_config=_config(allow_in_process_repl=False))}
-    assert "python_repl" not in names, (
-        "python_repl exec()s in the Gateway process with os preloaded; it must not be "
-        "offered to the model while sandbox.allow_in_process_repl is False"
-    )
+    assert "python_repl" not in names, "python_repl exec()s in the Gateway process with os preloaded; it must not be offered to the model while sandbox.allow_in_process_repl is False"
 
 
 def test_repl_is_present_when_explicitly_enabled():

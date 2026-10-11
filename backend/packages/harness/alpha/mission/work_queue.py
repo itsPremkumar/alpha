@@ -26,17 +26,20 @@ class TaskPriority(IntEnum):
 
 class CyclicDependencyError(ValueError):
     """Raised when circular dependencies are detected in the task DAG."""
+
     pass
 
 
 class BudgetExceededError(RuntimeError):
     """Raised when an execution budget limit is exceeded."""
+
     pass
 
 
 @dataclass
 class ExecutionBudget:
     """Hard caps and live counters for execution safety (Chapter 39)."""
+
     max_runtime_sec: float = 3600.0
     max_subagents: int = 15
     max_tool_calls: int = 250
@@ -58,30 +61,15 @@ class ExecutionBudget:
         retries: int = 0,
     ) -> None:
         if self.current_tool_calls + tool_calls > self.max_tool_calls:
-            raise BudgetExceededError(
-                f"Budget exceeded: tool calls limit {self.max_tool_calls} "
-                f"(current: {self.current_tool_calls}, requested: +{tool_calls})"
-            )
+            raise BudgetExceededError(f"Budget exceeded: tool calls limit {self.max_tool_calls} (current: {self.current_tool_calls}, requested: +{tool_calls})")
         if self.current_subagents + subagents > self.max_subagents:
-            raise BudgetExceededError(
-                f"Budget exceeded: subagents limit {self.max_subagents} "
-                f"(current: {self.current_subagents}, requested: +{subagents})"
-            )
+            raise BudgetExceededError(f"Budget exceeded: subagents limit {self.max_subagents} (current: {self.current_subagents}, requested: +{subagents})")
         if self.current_cost_usd + cost_usd > self.max_cost_usd:
-            raise BudgetExceededError(
-                f"Budget exceeded: cost limit ${self.max_cost_usd:.2f} "
-                f"(current: ${self.current_cost_usd:.2f}, requested: +${cost_usd:.2f})"
-            )
+            raise BudgetExceededError(f"Budget exceeded: cost limit ${self.max_cost_usd:.2f} (current: ${self.current_cost_usd:.2f}, requested: +${cost_usd:.2f})")
         if self.current_runtime_sec + runtime_sec > self.max_runtime_sec:
-            raise BudgetExceededError(
-                f"Budget exceeded: runtime limit {self.max_runtime_sec}s "
-                f"(current: {self.current_runtime_sec:.1f}s, requested: +{runtime_sec:.1f}s)"
-            )
+            raise BudgetExceededError(f"Budget exceeded: runtime limit {self.max_runtime_sec}s (current: {self.current_runtime_sec:.1f}s, requested: +{runtime_sec:.1f}s)")
         if self.current_retries + retries > self.max_retries:
-            raise BudgetExceededError(
-                f"Budget exceeded: retries limit {self.max_retries} "
-                f"(current: {self.current_retries}, requested: +{retries})"
-            )
+            raise BudgetExceededError(f"Budget exceeded: retries limit {self.max_retries} (current: {self.current_retries}, requested: +{retries})")
 
         self.current_tool_calls += tool_calls
         self.current_subagents += subagents
@@ -96,6 +84,7 @@ class ExecutionBudget:
 @dataclass
 class QueuedTask:
     """A unit of work queued for execution within a mission."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     title: str = ""
     description: str = ""
@@ -248,11 +237,7 @@ class DurableWorkQueue:
                 continue
 
             # Check if all dependencies are completed
-            deps_met = all(
-                self._tasks[dep].state == TaskState.COMPLETED
-                for dep in task.dependencies
-                if dep in self._tasks
-            )
+            deps_met = all(self._tasks[dep].state == TaskState.COMPLETED for dep in task.dependencies if dep in self._tasks)
 
             if deps_met:
                 if task.state == TaskState.BLOCKED:

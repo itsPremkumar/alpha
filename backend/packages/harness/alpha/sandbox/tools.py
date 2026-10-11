@@ -27,13 +27,13 @@ from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.runtime.secret_context import read_active_secrets
 from alpha.runtime.user_context import resolve_runtime_user_id
 from alpha.safety.ast_syntax_guard import validate_syntax_precommit
-from alpha.sandbox.git_push_guard import GIT_PUSH_GUARD_MESSAGE, GitPushVerdict
 from alpha.sandbox.exceptions import (
     SandboxError,
     SandboxNotFoundError,
     SandboxRuntimeError,
 )
 from alpha.sandbox.file_operation_lock import get_file_operation_lock
+from alpha.sandbox.git_push_guard import GIT_PUSH_GUARD_MESSAGE, GitPushVerdict
 from alpha.sandbox.lease import (
     get_sandbox_lease_manager,
     run_sync_lifecycle_operation,
@@ -2080,8 +2080,7 @@ def _current_git_branch() -> str | None:
     try:
         res = _sp.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            stdout=_sp.PIPE,
-            stderr=_sp.PIPE,
+            capture_output=True,
             text=True,
             timeout=5,
         )

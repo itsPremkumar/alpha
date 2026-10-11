@@ -9,7 +9,7 @@ from alpha.models.category_router import (
 
 def test_resolve_builtin_categories():
     router = CategoryRouter()
-    
+
     # Check ultrabrain
     ub = router.resolve_category("ultrabrain")
     assert ub.name == "ultrabrain"

@@ -297,10 +297,7 @@ def _build_opportunity(source_kind: str, signature: str, cluster: list[dict], so
 
     label = _SOURCE_LABELS[source_kind]
     frequency = sum(_occurrences(event) for event in cluster)
-    description = (
-        f"{frequency} {label} occurrence(s) share the exact normalized signature {signature!r}; "
-        f"cluster formed from {len(cluster)} of {len(source_events)} {label} input(s)."
-    )
+    description = f"{frequency} {label} occurrence(s) share the exact normalized signature {signature!r}; cluster formed from {len(cluster)} of {len(source_events)} {label} input(s)."
 
     denominator = _denominator(cluster, source_events)
     if denominator is not None:
@@ -386,8 +383,7 @@ def prioritization(opportunity: Opportunity) -> tuple[float, str]:
     """
     impact = _SEVERITY_IMPACT.get(opportunity.severity.casefold(), _NEUTRAL_IMPACT)
     score = round(
-        (impact * opportunity.frequency * opportunity.confidence * _NEUTRAL_REPRODUCIBILITY)
-        / (_NEUTRAL_RESOURCE_COST + _NEUTRAL_RISK_PENALTY),
+        (impact * opportunity.frequency * opportunity.confidence * _NEUTRAL_REPRODUCIBILITY) / (_NEUTRAL_RESOURCE_COST + _NEUTRAL_RISK_PENALTY),
         6,
     )
     disclosure = (

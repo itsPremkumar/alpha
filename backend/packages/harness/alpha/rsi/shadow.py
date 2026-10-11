@@ -106,10 +106,7 @@ SHADOW_STATES: frozenset[str] = frozenset({"improved", "regressed", "inconclusiv
 # Plan section 5.6 evidence whitelist, enforced at construction and in tests.
 EVIDENCE_KINDS: frozenset[str] = frozenset({"measured", "simulated", "heuristic", "unverified"})
 CHANNEL = "shadow"
-DISCLOSURE_NOTE = (
-    "offline fixture shadow, not live-traffic shadow: comparison evidence for the gate only "
-    "(channel=shadow), never counted as deployment traffic"
-)
+DISCLOSURE_NOTE = "offline fixture shadow, not live-traffic shadow: comparison evidence for the gate only (channel=shadow), never counted as deployment traffic"
 _SHADOW_RELATIVE_DIR = Path("rsi") / "shadow"
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
@@ -210,20 +207,13 @@ def _compare_fixture(fixture_id: str, base_metrics: dict, cand_metrics: dict) ->
     only_base = sorted(set(base_metrics) - set(cand_metrics))
     only_cand = sorted(set(cand_metrics) - set(base_metrics))
     if only_base or only_cand:
-        return None, (
-            f"fixture {fixture_id} inconclusive: metric key sets differ (present only on baseline: {only_base!r}; "
-            f"present only on candidate: {only_cand!r}) - excluded from deltas, no delta fabricated"
-        )
+        return None, (f"fixture {fixture_id} inconclusive: metric key sets differ (present only on baseline: {only_base!r}; present only on candidate: {only_cand!r}) - excluded from deltas, no delta fabricated")
     deltas: dict = {}
     for metric in sorted(base_metrics):
         base_value = base_metrics[metric]
         cand_value = cand_metrics[metric]
         if not _is_comparable_number(base_value) or not _is_comparable_number(cand_value):
-            return None, (
-                f"fixture {fixture_id} inconclusive: non-comparable value(s) {metric} "
-                f"(baseline={base_value!r}, candidate={cand_value!r}; finite numbers required) - "
-                "excluded from deltas, no delta fabricated"
-            )
+            return None, (f"fixture {fixture_id} inconclusive: non-comparable value(s) {metric} (baseline={base_value!r}, candidate={cand_value!r}; finite numbers required) - excluded from deltas, no delta fabricated")
         deltas[metric] = cand_value - base_value
     return deltas, None
 

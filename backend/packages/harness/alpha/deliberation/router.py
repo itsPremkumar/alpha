@@ -289,10 +289,7 @@ class DeliberationRouter:
                             risk=risk,
                             strategy=strategy,
                             roster_models=cls._get_roster_for_strategy(strategy),
-                            rationale=(
-                                f"System One ({result.model}) selected '{strategy.value}' "
-                                f"(difficulty={difficulty.value}, risk={risk.value}) in {result.latency_ms:.0f}ms."
-                            ),
+                            rationale=(f"System One ({result.model}) selected '{strategy.value}' (difficulty={difficulty.value}, risk={risk.value}) in {result.latency_ms:.0f}ms."),
                             worthwhile=worthwhile,
                         )
                     logger.debug("System One deliberation routing below confidence threshold; using deterministic router.")

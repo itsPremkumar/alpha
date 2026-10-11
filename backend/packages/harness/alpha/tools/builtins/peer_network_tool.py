@@ -21,7 +21,8 @@ from langchain.tools import tool
 
 from alpha.peer_network.models import ConversationCreateRequest, MessageCreateRequest
 from alpha.peer_network.service import get_peer_network_service
-from alpha.peer_network.storage import MODEL_PEER_FIELDS, public_peer as _project_peer
+from alpha.peer_network.storage import MODEL_PEER_FIELDS
+from alpha.peer_network.storage import public_peer as _project_peer
 from alpha.tools.types import Runtime
 
 logger = logging.getLogger(__name__)

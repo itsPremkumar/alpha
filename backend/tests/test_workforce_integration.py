@@ -11,15 +11,14 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
-from app.gateway.routers import openai_compat, threads
 from alpha.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaStore
+from app.gateway.routers import openai_compat, threads
 
 
 class _PermissiveThreadMetaStore(MemoryThreadMetaStore):

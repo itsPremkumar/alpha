@@ -27,6 +27,7 @@ class TransactionStage(str, Enum):
 @dataclass
 class CompensationStep:
     """A registered rollback procedure to undo a committed mutation."""
+
     description: str
     undo_fn: Callable[[], Any]
 

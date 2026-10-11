@@ -1,10 +1,15 @@
 """Probe: apply_patch OCC + cancel + approval resolution (real engine)."""
-import sys, os, pathlib
+
+import os  # noqa: E402
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
 os.chdir(pathlib.Path(__file__).resolve().parent.parent.parent)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode, WorkflowRun, WorkflowRunStatus, WorkflowPatch, PatchOperation
-from alpha.workflow.runtime import DynamicWorkflowEngine
+from alpha.workflow.models import NodeType, WorkflowDefinition, WorkflowGraph, WorkflowNode, WorkflowPatch  # noqa: E402
+from alpha.workflow.runtime import DynamicWorkflowEngine  # noqa: E402
+
 
 def make_def():
     g = WorkflowGraph(id="w5", version=1)
@@ -12,6 +17,7 @@ def make_def():
     g.nodes["n1"] = n1
     g.edges = []
     return WorkflowDefinition(id="w5", name="w5", graph=g, variables={}, version=1)
+
 
 def main():
     engine = DynamicWorkflowEngine()
@@ -30,6 +36,7 @@ def main():
     patch2 = WorkflowPatch(workflow_run_id=run2.run_id, base_graph_version=1, operations=[], proposed_by="x")
     g3, v2 = engine.apply_patch(run2.run_id, patch2)
     print("PATCH2 ACCEPTED?", v2.allowed)
+
 
 if __name__ == "__main__":
     main()

@@ -14,9 +14,10 @@ import json
 import logging
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class ToolDefinition:
     description: str
     input_schema: dict[str, Any]
     required_role: RoleTier = RoleTier.READ_ONLY
-    handler: Optional[Callable[..., Any]] = None
+    handler: Callable[..., Any] | None = None
     tags: list[str] = field(default_factory=list)
 
     def to_mcp_dict(self) -> dict[str, Any]:
@@ -84,10 +85,12 @@ class SecretScrubber:
         if isinstance(data, str):
             res = data
             for pattern, name in cls.PATTERNS:
+
                 def replacer(match: re.Match) -> str:
                     secret_val = match.group(0)
                     sig = hashlib.sha256(secret_val.encode()).hexdigest()[:8]
                     return f"[REDACTED_{name}:{sig}]"
+
                 res = pattern.sub(replacer, res)
             return res
         elif isinstance(data, dict):
@@ -113,7 +116,7 @@ class SemanticToolIndex:
         self.tools[tool.name] = tool
         tokens = self._tokenize(f"{tool.name} {tool.description} {' '.join(tool.tags)}")
         self._doc_lens[tool.name] = len(tokens)
-        
+
         tf: dict[str, int] = {}
         for t in tokens:
             tf[t] = tf.get(t, 0) + 1
@@ -180,8 +183,8 @@ class UniversalMCPGateway:
     def __init__(
         self,
         transport: TransportType = TransportType.STDIO,
-        tls_cert_path: Optional[str] = None,
-        tls_key_path: Optional[str] = None,
+        tls_cert_path: str | None = None,
+        tls_key_path: str | None = None,
     ) -> None:
         self.transport = transport
         self.tls_cert_path = tls_cert_path
@@ -197,7 +200,7 @@ class UniversalMCPGateway:
         input_schema: dict[str, Any],
         handler: Callable[..., Any],
         required_role: RoleTier = RoleTier.READ_ONLY,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
     ) -> None:
         """Registers a tool with RBAC requirement and indexes it for semantic discovery."""
         tool = ToolDefinition(
@@ -296,7 +299,7 @@ class UniversalMCPGateway:
                 raw_result = tool.handler(**tool_args) if tool.handler else None
                 if inspect.iscoroutine(raw_result):
                     try:
-                        loop = asyncio.get_running_loop()
+                        asyncio.get_running_loop()
                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                             raw_result = pool.submit(asyncio.run, raw_result).result()
                     except RuntimeError:

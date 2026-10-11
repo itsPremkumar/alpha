@@ -22,6 +22,7 @@ _ATTRIBUTION_RE = re.compile(r"^\[DM from [^\]]+\]\s*")
 
 class LoopDetectedError(RuntimeError):
     """Raised when recursive cross-agent messaging loop is detected."""
+
     pass
 
 
@@ -56,10 +57,7 @@ class BotLoopGuard:
 
         total_exchange = len(self._history[pair_key]) + len(self._history[reverse_key])
         if (total_exchange + 1) >= self.max_exchanges:
-            raise LoopDetectedError(
-                f"Recursive bot messaging loop detected between '{sender}' and '{target}' "
-                f"({total_exchange + 1} messages in {self.window_seconds}s). Halting exchange."
-            )
+            raise LoopDetectedError(f"Recursive bot messaging loop detected between '{sender}' and '{target}' ({total_exchange + 1} messages in {self.window_seconds}s). Halting exchange.")
 
         self._history[pair_key].append(now)
 

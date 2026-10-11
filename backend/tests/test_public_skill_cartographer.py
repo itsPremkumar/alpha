@@ -11,9 +11,7 @@ from alpha.skills.parser import parse_skill_file
 from alpha.skills.skillscan.orchestrator import enforce_static_scan
 from alpha.skills.types import SkillCategory
 
-SKILL_DIR = (
-    Path(__file__).resolve().parents[2] / "skills" / "public" / "project-cartographer"
-)
+SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "public" / "project-cartographer"
 
 FORBIDDEN_SEVERITIES = frozenset({"CRITICAL", "HIGH"})
 
@@ -32,9 +30,5 @@ def test_cartographer_skill_has_no_high_severity_findings(tmp_path):
     staged = tmp_path / "project-cartographer"
     shutil.copytree(SKILL_DIR, staged)
     findings = enforce_static_scan(staged, skill_name="project-cartographer", app_config=None)
-    bad = [
-        (finding["rule_id"], finding["severity"])
-        for finding in findings
-        if finding["severity"] in FORBIDDEN_SEVERITIES
-    ]
+    bad = [(finding["rule_id"], finding["severity"]) for finding in findings if finding["severity"] in FORBIDDEN_SEVERITIES]
     assert bad == []

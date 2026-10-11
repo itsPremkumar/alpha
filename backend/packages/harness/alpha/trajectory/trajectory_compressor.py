@@ -7,16 +7,15 @@ pairs are never orphaned or truncated mid-exchange.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
 class TrajectoryTurn:
     role: str
     content: str
-    tool_call_id: Optional[str] = None
+    tool_call_id: str | None = None
     is_tool_call: bool = False
     is_tool_response: bool = False
 
@@ -66,9 +65,7 @@ class TrajectoryCompactor:
         middle_roles = [t.role for t in middle]
 
         summary_content = (
-            f"[CONTEXT COMPACTION SUMMARY: Compacted {len(middle)} intermediate turns "
-            f"({middle_tool_count} tool invocations executed across {set(middle_roles)}). "
-            f"Key state and prior decisions preserved without context overflow.]"
+            f"[CONTEXT COMPACTION SUMMARY: Compacted {len(middle)} intermediate turns ({middle_tool_count} tool invocations executed across {set(middle_roles)}). Key state and prior decisions preserved without context overflow.]"
         )
         summary_turn = TrajectoryTurn(role="system", content=summary_content)
 

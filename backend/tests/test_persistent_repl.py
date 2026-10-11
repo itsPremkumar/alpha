@@ -106,16 +106,20 @@ isinstance(p, Path)
 async def test_python_repl_tool():
     runtime = _tool_runtime()
 
-    out1 = await python_repl_tool.ainvoke({
-        "code": "a = 50\na * 3",
-        "session_id": "tool_test_session",
-        "runtime": runtime,
-    })
+    out1 = await python_repl_tool.ainvoke(
+        {
+            "code": "a = 50\na * 3",
+            "session_id": "tool_test_session",
+            "runtime": runtime,
+        }
+    )
     assert "150" in out1
 
-    out2 = await python_repl_tool.ainvoke({
-        "code": "a + 20",
-        "session_id": "tool_test_session",
-        "runtime": runtime,
-    })
+    out2 = await python_repl_tool.ainvoke(
+        {
+            "code": "a + 20",
+            "session_id": "tool_test_session",
+            "runtime": runtime,
+        }
+    )
     assert "70" in out2

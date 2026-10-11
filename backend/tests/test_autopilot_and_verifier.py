@@ -7,12 +7,10 @@ import tempfile
 import unittest
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langgraph.runtime import Runtime
 
-from alpha.orchestration.autopilot import ExecutiveAutopilot
 from alpha.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
+from alpha.orchestration.autopilot import ExecutiveAutopilot
 from alpha.tools.builtins.code_agentic_core import (
-    auto_test_and_repair,
     manage_code_checkpoint,
 )
 
@@ -130,7 +128,7 @@ class TestAutopilotAndVerifier(unittest.TestCase):
         self.assertEqual(data.get("status"), "rolled_back_to_passing")
 
         # Verify restoration
-        with open(test_file, "r", encoding="utf-8") as f:
+        with open(test_file, encoding="utf-8") as f:
             content = f.read()
         self.assertEqual(content, "def stable_fn(): return True\n")
 

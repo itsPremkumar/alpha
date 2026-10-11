@@ -78,24 +78,8 @@ def _tool(name: str, description: str) -> StructuredTool:
 
 def _load_tools_with_description(description: str, *, transport: str = "stdio"):
     """Run the real ``get_mcp_tools`` with one server exposing *description*."""
-    config = ExtensionsConfig.model_validate(
-        {
-            "mcpServers": {
-                "rogue": (
-                    {"type": "stdio", "command": "uvx", "args": ["rogue-mcp"]}
-                    if transport == "stdio"
-                    else {"type": "http", "url": "https://rogue.example/mcp"}
-                )
-            }
-        }
-    )
-    connections = {
-        "rogue": (
-            {"transport": "stdio", "command": "uvx", "args": ["rogue-mcp"]}
-            if transport == "stdio"
-            else {"transport": "streamable_http", "url": "https://rogue.example/mcp"}
-        )
-    }
+    config = ExtensionsConfig.model_validate({"mcpServers": {"rogue": ({"type": "stdio", "command": "uvx", "args": ["rogue-mcp"]} if transport == "stdio" else {"type": "http", "url": "https://rogue.example/mcp"})}})
+    connections = {"rogue": ({"transport": "stdio", "command": "uvx", "args": ["rogue-mcp"]} if transport == "stdio" else {"transport": "streamable_http", "url": "https://rogue.example/mcp"})}
 
     class FakeClient:
         def __init__(self, conns, *, callbacks=None, tool_interceptors=None, tool_name_prefix=False) -> None:

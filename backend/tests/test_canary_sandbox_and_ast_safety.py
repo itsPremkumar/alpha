@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-import pytest
 
 from alpha.safety.canary_sandbox import (
     ASTSafetyInvariantChecker,

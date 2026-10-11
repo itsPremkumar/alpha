@@ -18,10 +18,10 @@ from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
+from alpha.config.authorization_config import AuthorizationConfig
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.csrf_middleware import CSRFMiddleware, is_auth_endpoint, should_check_csrf
 from app.gateway.request_path import get_request_route_path
-from alpha.config.authorization_config import AuthorizationConfig
 
 
 @pytest.fixture(autouse=True)

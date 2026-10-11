@@ -41,12 +41,7 @@ from alpha.agents.middlewares.tool_result_meta import (
     split_error_prefix,
 )
 
-REPL_BODY = (
-    "Error (ModuleNotFoundError): No module named 'bash'\n"
-    "Traceback (most recent call last):\n"
-    '  File "session.py", line 562, in _execute_body\n'
-    "    exec(body_code, self.namespace)\n"
-)
+REPL_BODY = "Error (ModuleNotFoundError): No module named 'bash'\nTraceback (most recent call last):\n  File \"session.py\", line 562, in _execute_body\n    exec(body_code, self.namespace)\n"
 
 
 def _meta(body: str, *, status: str = "success", name: str = "python_repl") -> dict:
@@ -99,9 +94,7 @@ def test_a_failing_repl_is_actionable_rather_than_continue():
     """
     failure = _meta(REPL_BODY)
     success = _meta("The file has 5 lines.")
-    assert failure["recommended_next_action"] != success["recommended_next_action"], (
-        "a failure must not be told to continue exactly as a success is"
-    )
+    assert failure["recommended_next_action"] != success["recommended_next_action"], "a failure must not be told to continue exactly as a success is"
     assert failure["recommended_next_action"] in {"try_alternative", "rewrite_query", "stop"}
 
 

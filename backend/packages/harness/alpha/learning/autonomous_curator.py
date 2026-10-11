@@ -15,7 +15,6 @@ import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -206,12 +205,14 @@ class AutonomousSkillCurator:
                     skill.content = repaired_content
                     skill.version += 1
                     skill.recent_errors.clear()
-                    patches.append({
-                        "skill": name,
-                        "version": str(skill.version),
-                        "error_rate": f"{skill.error_rate:.2%}",
-                        "patch_reason": f"Resolved failure hotspot: {error_summary[:80]}",
-                    })
+                    patches.append(
+                        {
+                            "skill": name,
+                            "version": str(skill.version),
+                            "error_rate": f"{skill.error_rate:.2%}",
+                            "patch_reason": f"Resolved failure hotspot: {error_summary[:80]}",
+                        }
+                    )
 
         if patches:
             self._save_ledger()

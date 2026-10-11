@@ -43,18 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Autonomous monitor / diagnose / fix / verify / commit loop.",
     )
     mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--once", action="store_true",
-                      help="Run a single pass and exit (default).")
-    mode.add_argument("--interval", type=float, metavar="SECONDS",
-                      help="Run forever, sleeping SECONDS between passes.")
-    p.add_argument("--repo-root", type=Path, default=None,
-                   help="Repository to operate on (default: nearest .git ancestor).")
-    p.add_argument("--max-fixes", type=int, default=5,
-                   help="Maximum repairs per pass (default 5).")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Report only; do not modify files or commit.")
-    p.add_argument("--json", action="store_true", dest="as_json",
-                   help="Emit the run report as JSON.")
+    mode.add_argument("--once", action="store_true", help="Run a single pass and exit (default).")
+    mode.add_argument("--interval", type=float, metavar="SECONDS", help="Run forever, sleeping SECONDS between passes.")
+    p.add_argument("--repo-root", type=Path, default=None, help="Repository to operate on (default: nearest .git ancestor).")
+    p.add_argument("--max-fixes", type=int, default=5, help="Maximum repairs per pass (default 5).")
+    p.add_argument("--dry-run", action="store_true", help="Report only; do not modify files or commit.")
+    p.add_argument("--json", action="store_true", dest="as_json", help="Emit the run report as JSON.")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose logging.")
     return p
 

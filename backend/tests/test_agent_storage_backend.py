@@ -9,7 +9,6 @@ import pytest
 import yaml
 from sqlalchemy import create_engine
 
-from app.gateway.deps import _validate_agent_storage
 from alpha.config.agent_storage_config import AgentStorageConfig
 from alpha.config.app_config import reset_app_config
 from alpha.config.database_config import DatabaseConfig
@@ -22,6 +21,7 @@ from alpha.persistence.managed_subagents.base import ManagedSubagentDefinition
 from alpha.persistence.managed_subagents.file import FileManagedSubagentStore
 from alpha.persistence.managed_subagents.model import ManagedSubagentRow
 from alpha.persistence.managed_subagents.sql import SqlManagedSubagentStore
+from app.gateway.deps import _validate_agent_storage
 
 
 def _cfg(agent_backend: str, db_backend: str, sqlite_dir: str = "/tmp/agent-store-test") -> SimpleNamespace:

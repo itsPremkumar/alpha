@@ -88,12 +88,14 @@ def test_reproduction_engine_lifecycle(tmp_path):
 
 def test_reproduce_and_verify_tool(tmp_path):
     # Test tool 'prepare' phase with an assertion failure
-    res_prep_str = reproduce_and_verify.invoke({
-        "phase": "prepare",
-        "issue_description": "String uppercase failure",
-        "test_body": "assert 'hello'.upper() == 'WORLD'",
-        "workspace_dir": str(tmp_path),
-    })
+    res_prep_str = reproduce_and_verify.invoke(
+        {
+            "phase": "prepare",
+            "issue_description": "String uppercase failure",
+            "test_body": "assert 'hello'.upper() == 'WORLD'",
+            "workspace_dir": str(tmp_path),
+        }
+    )
     prep_data = json.loads(res_prep_str)
     assert prep_data["bug_reproduced"] is True
     assert prep_data["status"] == "pre_fix_failed"
@@ -102,11 +104,13 @@ def test_reproduce_and_verify_tool(tmp_path):
     # Now rewrite test script to pass and test 'verify' phase
     Path(script_path).write_text("import sys\nsys.exit(0)\n")
 
-    res_ver_str = reproduce_and_verify.invoke({
-        "phase": "verify",
-        "script_path": script_path,
-        "workspace_dir": str(tmp_path),
-    })
+    res_ver_str = reproduce_and_verify.invoke(
+        {
+            "phase": "verify",
+            "script_path": script_path,
+            "workspace_dir": str(tmp_path),
+        }
+    )
     ver_data = json.loads(res_ver_str)
     assert ver_data["is_verified"] is True
     assert ver_data["reproduction_passed"] is True

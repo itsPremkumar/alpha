@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
-from alpha.planning.meta_planner import CognitiveMetaPlanner, MetaPlan, MetaPlanTask
+from alpha.planning.meta_planner import CognitiveMetaPlanner, MetaPlan
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +73,7 @@ class DagSchedule:
         for task in candidates:
             if task.status in ("completed", "running"):
                 continue
-            deps_met = all(
-                self.all_nodes.get(d) and self.all_nodes[d].status == "completed"
-                for d in task.dependencies
-            )
+            deps_met = all(self.all_nodes.get(d) and self.all_nodes[d].status == "completed" for d in task.dependencies)
             if deps_met:
                 task.status = "ready"
                 ready.append(task)

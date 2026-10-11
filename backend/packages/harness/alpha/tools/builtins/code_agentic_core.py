@@ -274,8 +274,7 @@ def auto_test_and_repair(
             cmd if use_shell else shlex.split(cmd),
             shell=use_shell,
             cwd=str(root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=timeout_seconds,
         )
@@ -392,8 +391,7 @@ def create_shadow_checkpoint(
             git_status = subprocess.run(
                 ["git", "status", "--porcelain"],
                 cwd=str(root),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=5,
             )
@@ -418,8 +416,7 @@ def create_shadow_checkpoint(
                     head_res = subprocess.run(
                         ["git", "rev-parse", "HEAD"],
                         cwd=str(root),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        capture_output=True,
                         text=True,
                         timeout=5,
                     )
@@ -428,8 +425,7 @@ def create_shadow_checkpoint(
                         subprocess.run(
                             ["git", "update-ref", ref_name, commit_hash],
                             cwd=str(root),
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
+                            capture_output=True,
                             timeout=5,
                         )
                         git_ref = ref_name

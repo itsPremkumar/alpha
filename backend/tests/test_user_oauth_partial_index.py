@@ -72,9 +72,9 @@ async def test_oauth_identity_uniqueness_enforced_end_to_end():
     assert engine is not None
 
     try:
+        from alpha.persistence.engine import get_session_factory
         from app.gateway.auth.models import User
         from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-        from alpha.persistence.engine import get_session_factory
 
         repo = SQLiteUserRepository(get_session_factory())
 

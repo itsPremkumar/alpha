@@ -7,11 +7,10 @@ property-based invariant fuzzing to uncover edge cases and state anomalies.
 from __future__ import annotations
 
 import ast
-import copy
-import random
-from dataclasses import asdict, dataclass
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any
 
 
 class MutantType(str, Enum):
@@ -70,7 +69,7 @@ class MutationTestingEngine:
     def generate_mutants(self, source_code: str) -> list[MutantCandidate]:
         candidates = []
         try:
-            tree = ast.parse(source_code)
+            ast.parse(source_code)
         except Exception:
             return []
 
@@ -81,7 +80,7 @@ class MutationTestingEngine:
                 mut = source_code.replace(" < ", " <= ", 1)
                 candidates.append(
                     MutantCandidate(
-                        mutant_id=f"mut_{len(candidates)+1}",
+                        mutant_id=f"mut_{len(candidates) + 1}",
                         mutant_type=MutantType.COMPARISON_INVERSION,
                         original_code=source_code,
                         mutated_code=mut,
@@ -93,7 +92,7 @@ class MutationTestingEngine:
                 mut = source_code.replace(" == ", " != ", 1)
                 candidates.append(
                     MutantCandidate(
-                        mutant_id=f"mut_{len(candidates)+1}",
+                        mutant_id=f"mut_{len(candidates) + 1}",
                         mutant_type=MutantType.COMPARISON_INVERSION,
                         original_code=source_code,
                         mutated_code=mut,
@@ -105,7 +104,7 @@ class MutationTestingEngine:
                 mut = source_code.replace(line, "    return None", 1)
                 candidates.append(
                     MutantCandidate(
-                        mutant_id=f"mut_{len(candidates)+1}",
+                        mutant_id=f"mut_{len(candidates) + 1}",
                         mutant_type=MutantType.RETURN_ZEROING,
                         original_code=source_code,
                         mutated_code=mut,
@@ -136,10 +135,7 @@ class MutationTestingEngine:
                 survived_mutants=0,
                 kill_score=None,
                 details=[],
-                disclosure=(
-                    "kill_score is null: no mutants generated (source contains no "
-                    "mutation sites), so no tests were executed."
-                ),
+                disclosure=("kill_score is null: no mutants generated (source contains no mutation sites), so no tests were executed."),
             )
 
         killed = 0
@@ -154,16 +150,15 @@ class MutationTestingEngine:
                 passed = test_runner(m.mutated_code)
             except Exception as e:
                 errored += 1
-                details.append({
-                    "mutant_id": m.mutant_id,
-                    "type": m.mutant_type.value,
-                    "line": m.line_number,
-                    "status": "test_error",
-                    "description": (
-                        f"{m.description}; test run raised {type(e).__name__}: {e} "
-                        "(excluded from kill_score — not an executed test)"
-                    ),
-                })
+                details.append(
+                    {
+                        "mutant_id": m.mutant_id,
+                        "type": m.mutant_type.value,
+                        "line": m.line_number,
+                        "status": "test_error",
+                        "description": (f"{m.description}; test run raised {type(e).__name__}: {e} (excluded from kill_score — not an executed test)"),
+                    }
+                )
                 continue
             if passed:
                 survived += 1
@@ -172,29 +167,23 @@ class MutationTestingEngine:
                 killed += 1
                 status = "killed"
 
-            details.append({
-                "mutant_id": m.mutant_id,
-                "type": m.mutant_type.value,
-                "line": m.line_number,
-                "status": status,
-                "description": m.description,
-            })
+            details.append(
+                {
+                    "mutant_id": m.mutant_id,
+                    "type": m.mutant_type.value,
+                    "line": m.line_number,
+                    "status": status,
+                    "description": m.description,
+                }
+            )
 
         total = killed + survived
         if total == 0:
             kill_score = None
-            disclosure = (
-                f"kill_score is null: tests not executed — all {errored} mutant test "
-                "runs errored, so no kill/survive outcome was observed."
-            )
+            disclosure = f"kill_score is null: tests not executed — all {errored} mutant test runs errored, so no kill/survive outcome was observed."
         else:
             kill_score = round(killed / total, 3)
-            disclosure = (
-                f"{errored} of {len(mutants)} mutant test runs errored and are "
-                "excluded from kill_score."
-                if errored
-                else None
-            )
+            disclosure = f"{errored} of {len(mutants)} mutant test runs errored and are excluded from kill_score." if errored else None
         return MutationAuditReport(
             total_mutants=len(mutants),
             killed_mutants=killed,

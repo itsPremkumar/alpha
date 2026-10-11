@@ -1927,8 +1927,8 @@ def _make_cancel_test_app(mgr: RunManager, *, bridge=None):
     from _router_auth_helpers import make_authed_test_app
     from fastapi.testclient import TestClient
 
-    from app.gateway.routers import thread_runs
     from alpha.runtime import MemoryStreamBridge
+    from app.gateway.routers import thread_runs
 
     app = make_authed_test_app()
     app.include_router(thread_runs.router)

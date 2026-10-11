@@ -6,38 +6,29 @@
 5. Reputation-Aware Task Auction & Bidding Matchmaker
 """
 
-import pytest
 from pathlib import Path
-import tempfile
 
-from alpha.models.cost_governor import (
-    CostGovernor,
-    BudgetConfig,
-    TokenUsageRecord,
-)
-from alpha.projects.pr_synthesizer import (
-    PRSynthesizer,
-    PullRequestPackage,
-    infer_conventional_commit,
-)
-from alpha.projects.standup_engine import (
-    StandupEngine,
-    StandupReport,
-)
 from alpha.deliberation.adversary_deliberator import (
     AdversaryDeliberator,
-    AdversaryCritique,
+)
+from alpha.models.cost_governor import (
+    BudgetConfig,
+    CostGovernor,
 )
 from alpha.projects.auction_engine import (
     AuctionEngine,
-    TaskBid,
 )
 from alpha.projects.contracts import (
     ContractGatekeeper,
     EvidenceReceipt,
 )
 from alpha.projects.locks import get_lock_manager
-from alpha.bots.registry import get_bot_registry
+from alpha.projects.pr_synthesizer import (
+    PRSynthesizer,
+)
+from alpha.projects.standup_engine import (
+    StandupEngine,
+)
 
 
 def test_cost_governor_budget_tracking(tmp_path: Path):
@@ -63,7 +54,7 @@ def test_cost_governor_budget_tracking(tmp_path: Path):
 
     # 3. Record heavy usage pushing spend past 85% ($4.25)
     # 250,000 in ($0.75) + 250,000 out ($3.75) = $4.50
-    rec2 = governor.record_usage(
+    governor.record_usage(
         project_id="proj_hotel",
         bot_name="coder",
         model_name="claude-3-7-sonnet",
@@ -160,7 +151,7 @@ def test_standup_engine_aggregation(tmp_path: Path):
     assert report.project_id == "proj_juliet"
     assert any(t["task_id"] == "TASK-DONE-1" for t in report.completed_tasks)
     assert any(t["task_id"] == "TASK-WORK-2" for t in report.in_progress_tasks)
-    assert any(l["path"] == "src/payments.py" for l in report.active_locks)
+    assert any(lock["path"] == "src/payments.py" for lock in report.active_locks)
 
     md = report.render_markdown()
     assert "# Async Standup Briefing" in md
@@ -189,7 +180,6 @@ No locks are needed because memory is fast. Once written, it directly returns su
 
 def test_auction_engine_bidding_match(tmp_path: Path):
     engine = AuctionEngine("proj_kilo")
-    registry = get_bot_registry()
 
     # Solicit bids for a Python backend engineering task
     bids = engine.solicit_bids(

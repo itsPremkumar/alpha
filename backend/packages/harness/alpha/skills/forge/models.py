@@ -10,6 +10,7 @@ from typing import Any
 @dataclass
 class SkillParameter:
     """A parameter extracted from a concrete execution trace."""
+
     name: str
     description: str = ""
     required: bool = True
@@ -26,6 +27,7 @@ class SkillParameter:
 @dataclass
 class ForgeTestResult:
     """Result of running a forged skill against a validation test case."""
+
     skill_name: str
     test_id: str
     success: bool
@@ -36,6 +38,7 @@ class ForgeTestResult:
 @dataclass
 class Skill:
     """A parameterized, testable, reusable skill."""
+
     name: str
     description: str
     template: str  # text instructions containing {placeholders}
@@ -72,7 +75,7 @@ class Skill:
         lines = [
             "---",
             f"name: {self.name}",
-            f"description: \"{self.description}\"",
+            f'description: "{self.description}"',
             f"version: {self.version}",
             "---",
             "",

@@ -13,16 +13,16 @@ from typing import Any
 
 import httpx
 
-from app.channels.base import Channel
-from app.channels.commands import is_known_channel_command, strip_leading_mentions
-from app.channels.connection_identity import attach_connection_identity
-from app.channels.message_bus import InboundMessage, InboundMessageType, InboundReservation, MessageBus, OutboundMessage, ResolvedAttachment
-from app.channels.sandbox_files import sync_file_to_thread_sandbox
 from alpha.branding import DISPLAY_NAME
 from alpha.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.sandbox.sandbox_provider import get_sandbox_provider
 from alpha.uploads.manager import UnsafeUploadPathError, claim_unique_filename, normalize_filename, write_upload_file_no_symlink
+from app.channels.base import Channel
+from app.channels.commands import is_known_channel_command, strip_leading_mentions
+from app.channels.connection_identity import attach_connection_identity
+from app.channels.message_bus import InboundMessage, InboundMessageType, InboundReservation, MessageBus, OutboundMessage, ResolvedAttachment
+from app.channels.sandbox_files import sync_file_to_thread_sandbox
 
 logger = logging.getLogger(__name__)
 

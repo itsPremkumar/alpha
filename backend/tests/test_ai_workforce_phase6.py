@@ -213,10 +213,7 @@ def test_benchmark_arena_and_leaderboard():
     # bot has measured statistics yet — every stat must be None, never a
     # fabricated number.
     assert all(e.challenges_attempted == 0 for e in board)
-    assert all(
-        e.pass_rate is None and e.avg_duration_seconds is None and e.reputation_score is None
-        for e in board
-    )
+    assert all(e.pass_rate is None and e.avg_duration_seconds is None and e.reputation_score is None for e in board)
     # The simulated run itself stays on record with its disclosure intact.
     recorded_runs = [r for r in arena._runs if r.challenge_id == "swe-01-null-guard"]
     assert len(recorded_runs) >= 1

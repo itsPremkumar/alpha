@@ -787,11 +787,7 @@ def test_default_off_subsystem_inventory_is_derived_from_real_memory_models() ->
     assert paths, "the derived inventory must never be empty"
 
     memory = MemoryConfig()
-    expected = {
-        f"memory.{name}.enabled"
-        for name in MemoryConfig.model_fields
-        if getattr(getattr(memory, name, None), "enabled", None) is False
-    }
+    expected = {f"memory.{name}.enabled" for name in MemoryConfig.model_fields if getattr(getattr(memory, name, None), "enabled", None) is False}
     assert paths == expected
 
     for path in paths:

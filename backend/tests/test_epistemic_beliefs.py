@@ -112,22 +112,26 @@ def test_bayesian_refutation():
 
 def test_evaluate_epistemic_claim_tool():
     # 1. Register claim
-    reg_str = evaluate_epistemic_claim.invoke({
-        "action": "register",
-        "claim_text": "Disk space exhaustion caused build failure",
-        "falsification_test": "df -h shows free space > 10GB",
-    })
+    reg_str = evaluate_epistemic_claim.invoke(
+        {
+            "action": "register",
+            "claim_text": "Disk space exhaustion caused build failure",
+            "falsification_test": "df -h shows free space > 10GB",
+        }
+    )
     reg_data = json.loads(reg_str)
     assert reg_data["status"] == "registered"
     claim_id = reg_data["claim_id"]
 
     # 2. Update claim with evidence
-    upd_str = evaluate_epistemic_claim.invoke({
-        "action": "update",
-        "claim_id": claim_id,
-        "evidence": "df -h shows 0% available on root mount",
-        "is_supporting": True,
-    })
+    upd_str = evaluate_epistemic_claim.invoke(
+        {
+            "action": "update",
+            "claim_id": claim_id,
+            "evidence": "df -h shows 0% available on root mount",
+            "is_supporting": True,
+        }
+    )
     upd_data = json.loads(upd_str)
     assert upd_data["status"] == "updated"
     assert upd_data["posterior_confidence"] > 0.5

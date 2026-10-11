@@ -48,27 +48,18 @@ class BlackboardEngine:
     ) -> None:
         self.session_id = session_id or f"bb_{uuid.uuid4().hex[:12]}"
         self.goal = goal
-        self.goal_classification = (
-            goal_classification
-            if isinstance(goal_classification, GoalClassification)
-            else GoalClassification(goal_classification)
-        )
+        self.goal_classification = goal_classification if isinstance(goal_classification, GoalClassification) else GoalClassification(goal_classification)
         self.current_phase = CognitivePhase.ANALYZE
         self.created_at = time.time()
         self.updated_at = self.created_at
 
         # Initialize all 20 planes into default idle states
-        self.plane_states: dict[str, PlaneState] = {
-            plane_id: PlaneState(plane_id=plane_id, status=PlaneStatus.IDLE)
-            for plane_id in ALL_20_PLANES
-        }
+        self.plane_states: dict[str, PlaneState] = {plane_id: PlaneState(plane_id=plane_id, status=PlaneStatus.IDLE) for plane_id in ALL_20_PLANES}
         self.shared_context: dict[str, Any] = {}
         self.evidence_trail: list[EvidenceItem] = []
 
     def set_phase(self, phase: CognitivePhase | str) -> None:
-        self.current_phase = (
-            phase if isinstance(phase, CognitivePhase) else CognitivePhase(phase)
-        )
+        self.current_phase = phase if isinstance(phase, CognitivePhase) else CognitivePhase(phase)
         self.updated_at = time.time()
 
     def set_plane_state(
@@ -82,9 +73,7 @@ class BlackboardEngine:
             self.plane_states[plane_id] = PlaneState(plane_id=plane_id)
 
         ps = self.plane_states[plane_id]
-        status_enum = (
-            status if isinstance(status, PlaneStatus) else PlaneStatus(status)
-        )
+        status_enum = status if isinstance(status, PlaneStatus) else PlaneStatus(status)
         ps.status = status_enum
         if output is not None:
             ps.output = output

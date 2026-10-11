@@ -247,10 +247,7 @@ class PromotionDecision:
 def _require_safe_id(candidate_id: Any) -> str:
     """Return ``candidate_id`` when it is a safe single-path-component id, else ``ValueError`` with the real rule."""
     if not isinstance(candidate_id, str) or not _SAFE_ID_RE.fullmatch(candidate_id) or ".." in candidate_id:
-        raise ValueError(
-            f"unsafe candidate_id for a promotion decision: {candidate_id!r}; ids must match {_SAFE_ID_RE.pattern} "
-            "(no path separators, no traversal — bundle reads stay inside runtime_home()/rsi/bundles/)."
-        )
+        raise ValueError(f"unsafe candidate_id for a promotion decision: {candidate_id!r}; ids must match {_SAFE_ID_RE.pattern} (no path separators, no traversal — bundle reads stay inside runtime_home()/rsi/bundles/).")
     return candidate_id
 
 
