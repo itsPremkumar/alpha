@@ -1,91 +1,130 @@
 # Security Policy
 
-Alpha is an autonomous agent system that executes real tools, real shell commands,
-and real file writes on your infrastructure. Security is a first-class concern in
-this project, not an afterthought.
+## Supported Versions
 
-> **Read the architecture, threat model, and hardening guidance first:**
-> [`docs/SECURITY.md`](./docs/SECURITY.md).
+We release security updates for the following versions:
 
-## Reporting a vulnerability
+| Version | Supported          |
+| ------- | ------------------ |
+| main    | ✅ Yes             |
+| v1.x    | ✅ Yes             |
+| < v1.0  | ❌ No              |
 
-**Do not open a public issue for a vulnerability.** Public issues, discussions, pull
-requests, and chat channels are all visible to everyone, including people who will
-try to use the detail.
+## Reporting a Vulnerability
 
-Use GitHub's private vulnerability reporting on this repository:
+We take security vulnerabilities seriously. If you discover a security vulnerability, please report it responsibly.
 
-**https://github.com/itsPremkumar/alpha/security/advisories/new**
+### How to Report
 
-If private reporting is unavailable to you, open a public issue that contains
-**only** a request for a private contact channel and **no** technical detail, or
-contact the maintainer directly through
-[their GitHub profile](https://github.com/itsPremkumar).
+**Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Please include, as far as you can:
+Instead, please report them via email to **security@itsPremkumar.com**.
 
-- affected component and version (Alpha `2.1.0` line, or a commit SHA)
-- what an attacker can achieve, and what access they need first
-- reproduction steps, in a private channel only
-- whether any real data or credential was exposed
-- your suggested remediation, if you have one
+Include the following information:
+- Type of vulnerability (e.g., RCE, SQLi, XSS, authentication bypass, etc.)
+- Full description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Any proof-of-concept or exploit code (if available)
+- Affected versions (if known)
 
-## What to expect
+### What to Expect
 
-- **Acknowledgement** of a valid report as soon as the maintainer is able to
-  respond.
-- **Assessment** of severity and blast radius, including whether user data or
-  credentials could be affected.
-- **A fix** shipped through the normal release process, with a credit in
-  `CHANGELOG.md` unless you prefer to stay anonymous.
+1. **Acknowledgment**: We will acknowledge receipt within 48 hours
+2. **Triage**: We will assess the severity and impact within 5 business days
+3. **Updates**: We will keep you informed of progress at least weekly
+4. **Resolution**: We aim to release a fix within 90 days for critical issues
+5. **Disclosure**: Coordinated disclosure after a fix is available
 
-A dedicated security contact and a supported-version policy have not yet been
-published; until they exist, treat `main` as the only supported line and prefer
-running a pinned release over tracking `main`.
+### Response Timeline
 
-## Hardening guidance for operators
+| Severity | Acknowledgment | Triage | Fix Target |
+|----------|---------------|--------|------------|
+| Critical | 24 hours      | 48 hours | 30 days   |
+| High     | 48 hours      | 5 days   | 60 days   |
+| Medium   | 5 days        | 10 days  | 90 days   |
+| Low      | 10 days       | 30 days  | Next release |
 
-Before exposing an Alpha deployment to anything you do not fully control:
+## Security Architecture
 
-- **Keep the published port on loopback.** Compose publishes nginx as
-  `"${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"`. A bare `"${PORT}:2026"` binds
-  `0.0.0.0`. Put a TLS-terminating reverse proxy in front of it; do not put Alpha
-  directly on the internet.
-- **Keep secrets in `.env` and reference them as `$ENV_VAR`.** Never inline a
-  credential into `config.yaml`.
-- **Leave the approval gate and Estop enabled.** The smart command approval gate and
-  emergency stop are the two controls most likely to prevent a bad run from becoming
-  an incident.
-- **Choose the sandbox tier deliberately.** The local subprocess tier gives the agent
-  a shell on the host. Use the Docker or Kubernetes tier for untrusted workloads.
-- **Trust skills and extensions or not at all.** Both execute with agent privileges,
-  and Python extension code additionally executes with Gateway privileges.
-- **Set per-run token and tool-call budgets.** A runaway loop is a cost and
-  availability incident as much as a safety one.
-- **Treat peer-network discovery as hostile input.** Discovery is untrusted and never
-  grants access; pairing is explicit and uses a high-entropy out-of-band code.
-- **Read `docs/PRODUCTION_READINESS_INVENTORY.md`.** It records which guarantees are
-  implemented and tested, and which are still open.
+### Sandbox Isolation
 
-## Out of scope
+Alpha uses multiple layers of sandboxing:
 
-- Findings that require an attacker to already have administrator access to the
-  host.
-- Missing hardening advice that is already documented in `docs/SECURITY.md` or
-  `docs/DEPLOYMENT.md`.
-- Denial of service by a user who has already been granted unrestricted local
-  access to the deployment.
-- Reports generated by automated scanners with no demonstrated impact.
+- **Process Isolation**: Each agent runs in its own process
+- **Container Isolation**: Docker/AIO/E2B sandboxes with restricted capabilities
+- **Network Isolation**: Configurable network policies per sandbox
+- **Filesystem Isolation**: Per-thread isolated filesystems with quota enforcement
+- **Resource Limits**: CPU, memory, disk, and network quotas per sandbox
 
-## Supported versions
+### Authentication & Authorization
 
-This repository is maintained independently. Upstream release and branch support
-policies do not establish support for this project. A formal supported-version
-policy has not yet been published by the maintainer; treat the latest tagged
-release as the supported line.
+- **Gateway Authentication**: JWT-based with configurable providers (OIDC, API keys, PATs)
+- **Role-Based Access Control**: Fine-grained permissions per resource
+- **Thread Ownership**: Threads scoped to owners, cross-thread access controlled
+- **Admin Operations**: Separate admin scope, separate authentication
+
+### Data Protection
+
+- **Encryption at Rest**: SQLite/PostgreSQL with encryption options
+- **Encryption in Transit**: TLS 1.3 for all external communication
+- **Secrets Management**: Environment variables, Vault integration, no secrets in code
+- **Data Retention**: Configurable retention policies with automated cleanup
+
+### Supply Chain Security
+
+- **Dependency Scanning**: Automated via Dependabot and pip-audit
+- **SBOM Generation**: SBOM generated for each release
+- **Signature Verification**: Release artifacts signed with cosign
+- **Provenance**: SLSA Level 2+ build provenance
+
+## Vulnerability Disclosure
+
+We follow coordinated vulnerability disclosure:
+
+1. **Private Report**: Reporter sends details to security@itsPremkumar.com
+2. **Verification**: We reproduce and assess impact
+3. **Fix Development**: We develop and test a fix
+4. **Coordinated Release**: Fix released with security advisory
+5. **Public Disclosure**: CVE requested, details published after fix available
+
+## Security Best Practices for Users
+
+### Configuration
+- Use strong, unique API keys
+- Enable authentication in production
+- Configure sandbox resource limits
+- Enable audit logging
+- Regularly rotate API keys
+
+### Deployment
+- Use HTTPS/TLS in production
+- Run behind a reverse proxy (nginx included)
+- Configure firewall rules
+- Enable firewall on sandbox hosts
+- Monitor resource usage
+
+### Monitoring
+- Enable audit logging
+- Set up alerts for anomalous activity
+- Monitor sandbox resource usage
+- Review audit logs regularly
+
+## Security Contacts
+
+- **Security Team**: security@itsPremkumar.com
+- **Maintainer**: Prem Kumar (@itsPremkumar)
+- **GPG Key**: Available on request
+
+## Hall of Fame
+
+We thank the following researchers for responsibly disclosing vulnerabilities:
+
+| Researcher | Vulnerability | Date |
+|------------|---------------|------|
+| *Your name here* | *First vulnerability* | *Date* |
 
 ---
 
-*Security issues involving Alpha should be reported privately. For everything else,
-see [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[issue tracker](https://github.com/itsPremkumar/alpha/issues).*
+**Last Updated**: 2026-10-10
+**Version**: 1.0

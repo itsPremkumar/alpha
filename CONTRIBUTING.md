@@ -1,16 +1,25 @@
 # Contributing to Alpha
 
-Thank you for your interest in contributing to Alpha! This guide will help you set up your development environment and understand our development workflow.
+> **Thank you for your interest in contributing to Alpha!** This guide will help you set up your development environment and understand our development workflow.
 
-## Working with git worktrees (read this before you commit)
+## 📋 Table of Contents
 
-This repository is large and, on Windows in particular, `git worktree add` can
-produce an **incomplete** working tree **with no error**: files present in the
-index/HEAD are missing on disk. Committing from such a tree is dangerous — a
-naive `git add <dir>` then stages **mass deletions** and can create a commit that
-removes thousands of files.
+1. [Working with Git Worktrees](#working-with-git-worktrees)
+2. [Development Environment Setup](#development-environment-setup)
+3. [Code Style & Quality](#code-style--quality)
+4. [Development Workflow](#development-workflow)
+5. [Testing](#testing)
+6. [Pull Request Process](#pull-request-process)
+7. [AI Assistance Disclosure](#ai-assistance-disclosure)
+8. [Need Help?](#need-help)
 
-Before you stage or commit in any worktree:
+---
+
+## 🌲 Working with Git Worktrees
+
+This repository is large and, on Windows in particular, `git worktree add` can produce an **incomplete** working tree **with no error**: files present in the index/HEAD are missing on disk. Committing from such a tree is dangerous — a naive `git add <dir>` then stages **mass deletions** and can create a commit that removes thousands of files.
+
+### Before You Stage or Commit in Any Worktree
 
 ```bash
 make verify-checkout          # fails loudly on a short checkout
@@ -19,32 +28,27 @@ python scripts/verify_checkout.py
 git ls-files --deleted | wc -l   # must be 0
 ```
 
-Rules:
+### Rules
 
 - **Verify the checkout first** (`make verify-checkout`).
-- **Never `git add <directory>`** — stage **explicit file paths** so a missing
-  file is never silently staged as a deletion.
-- If a worktree is short, repair it with `git checkout -- .` in that worktree
-  (or recreate it) before doing anything else.
+- **Never `git add <directory>`** — stage **explicit file paths** so a missing file is never silently staged as a deletion.
+- If a worktree is short, repair it with `git checkout -- .` in that worktree (or recreate it) before doing anything else.
 - On Windows, ensure `git config --global core.longpaths true`.
 
-## Development Environment Setup
+---
+
+## 🛠️ Development Environment Setup
 
 We offer two development environments. **Docker is recommended** for the most consistent and hassle-free experience.
 
 ### Option 1: Docker Development (Recommended)
 
-Docker provides a consistent, isolated environment with all dependencies pre-configured. No need to install Node.js, Python, or nginx on your local machine.
+Docker provides a consistent, isolated environment with all dependencies pre-configured.
 
 #### Prerequisites
 
 - Docker Desktop or Docker Engine
-- Docker Compose **v2.24 or newer** (check with `docker compose version`). The dev
-  Compose file marks its `env_file` entries optional using the long-form
-  `path`/`required` syntax; older clients reject it with
-  `services.gateway.env_file.0 must be a string`. `make docker-start` verifies the
-  version and tells you to upgrade — direct `docker compose` callers get that raw
-  message instead.
+- Docker Compose **v2.24 or newer** (check with `docker compose version`)
 - pnpm (for caching optimization)
 
 #### Setup Steps
@@ -75,29 +79,20 @@ Docker provides a consistent, isolated environment with all dependencies pre-con
    ```
    `make docker-start` reads `config.yaml` and starts `provisioner` only for provisioner/Kubernetes sandbox mode.
 
-   Prefer this wrapper over invoking Compose yourself: it checks your Compose
-   version, creates the missing `.env` files, and exports `ALPHA_ROOT`.
+   Prefer this wrapper over invoking Compose yourself: it checks your Compose version, creates the missing `.env` files, and exports `ALPHA_ROOT`.
 
-   If you do run Compose directly, run it **from the repository root** and set
-   `ALPHA_ROOT` to the absolute path of your checkout. Compose interpolates
-   that variable into host-side paths (`ALPHA_HOST_BASE_DIR`,
-   `THREADS_HOST_PATH`) that the AIO and provisioner sandbox modes bind-mount;
-   leaving it unset renders them as `/backend/.alpha`, so those mounts
-   silently miss your checkout instead of failing:
+   If you do run Compose directly, run it **from the repository root** and set `ALPHA_ROOT` to the absolute path of your checkout. Compose interpolates that variable into host-side paths (`ALPHA_HOST_BASE_DIR`, `THREADS_HOST_PATH`) that the AIO and provisioner sandbox modes bind-mount; leaving it unset renders them as `/backend/.alpha`, so those mounts silently miss your checkout instead of failing.
 
    ```bash
    # macOS / Linux
    ALPHA_ROOT="$PWD" docker compose -f docker/docker-compose-dev.yaml up --build
-   ```
 
-   ```powershell
    # Windows PowerShell
    $env:ALPHA_ROOT = (Get-Location).Path
    docker compose -f docker/docker-compose-dev.yaml up --build
    ```
 
-   Do not reuse that `-f` path from inside `docker/` — it resolves to
-   `docker/docker/docker-compose-dev.yaml` and fails with a file-not-found error.
+   Do not reuse that `-f` path from inside `docker/` — it resolves to `docker/docker/docker-compose-dev.yaml` and fails with a file-not-found error.
 
    All services will start with hot-reload enabled:
    - Frontend changes are automatically reloaded
@@ -106,98 +101,8 @@ Docker provides a consistent, isolated environment with all dependencies pre-con
 
 4. **Access the application**:
    - Web Interface: http://localhost:2026
-   - API Gateway: http://localhost:2026/api/*
-   - LangGraph-compatible API: http://localhost:2026/api/langgraph/*
-
-#### Docker Commands
-
-```bash
-# Build the custom k3s image (with pre-cached sandbox image)
-make docker-init
-# Start Docker services (mode-aware, localhost:2026)
-make docker-start
-# Stop Docker development services
-make docker-stop
-# View Docker development logs
-make docker-logs
-# View Docker frontend logs
-make docker-logs-frontend
-# View Docker gateway logs
-make docker-logs-gateway
-```
-
-If Docker builds are slow in your network, you can override the default package registries before running `make docker-init` or `make docker-start`:
-
-```bash
-export UV_INDEX_URL=https://pypi.org/simple
-export NPM_REGISTRY=https://registry.npmjs.org
-```
-
-#### Recommended host resources
-
-Use these as practical starting points for development and review environments:
-
-| Scenario | Starting point | Recommended | Notes |
-|---------|-----------|------------|-------|
-| `make dev` on one machine | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Best when Alpha uses hosted model APIs. |
-| `make docker-start` review environment | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Docker image builds and sandbox containers need extra headroom. |
-| Shared Linux test server | 8 vCPU, 16 GB RAM | 16 vCPU, 32 GB RAM | Prefer this for heavier multi-agent runs or multiple reviewers. |
-
-`2 vCPU / 4 GB` environments often fail to start reliably or become unresponsive under normal Alpha workloads.
-
-#### Linux: Docker daemon permission denied
-
-If `make docker-init`, `make docker-start`, or `make docker-stop` fails on Linux with an error like below, your current user likely does not have permission to access the Docker daemon socket:
-
-```text
-unable to get image 'alpha-gateway': permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
-```
-
-Recommended fix: add your current user to the `docker` group so Docker commands work without `sudo`.
-
-1. Confirm the `docker` group exists:
-   ```bash
-   getent group docker
-   ```
-2. Add your current user to the `docker` group:
-   ```bash
-   sudo usermod -aG docker $USER
-   ```
-3. Apply the new group membership. The most reliable option is to log out completely and then log back in. If you want to refresh the current shell session instead, run:
-   ```bash
-   newgrp docker
-   ```
-4. Verify Docker access:
-   ```bash
-   docker ps
-   ```
-5. Retry the Alpha command:
-   ```bash
-   make docker-stop
-   make docker-start
-   ```
-
-If `docker ps` still reports a permission error after `usermod`, fully log out and log back in before retrying.
-
-#### Docker Architecture
-
-```
-Host Machine
-  ↓
-Docker Compose (alpha-dev)
-  ├→ nginx (port 2026) ← Reverse proxy
-  ├→ web (port 3000) ← Frontend with hot-reload
-  ├→ gateway (port 8001) ← Gateway API + LangGraph-compatible runtime with hot-reload
-  └→ provisioner (optional, port 8002) ← Started only in provisioner/K8s sandbox mode
-```
-
-**Benefits of Docker Development**:
-- ✅ Consistent environment across different machines
-- ✅ No need to install Node.js, Python, or nginx locally
-- ✅ Isolated dependencies and services
-- ✅ Easy cleanup and reset
-- ✅ Hot-reload for all services
-- ✅ Production-like environment
+   - API Gateway: http://localhost:8001
+   - LangGraph-compatible API: http://localhost:8001/api/langgraph/*
 
 ### Option 2: Local Development
 
@@ -244,23 +149,22 @@ If you need to start services individually:
    # Terminal 1: Start Gateway API + embedded agent runtime (port 8001)
    cd backend
    make dev
+   ```
 
-   # Terminal 2: Start Frontend (port 3000)
+2. **Start Frontend** (port 3000):
+   ```bash
    cd frontend
    pnpm dev
    ```
 
-2. **Start nginx** (run from the repo root):
+3. **Start nginx** (run from the repo root):
    ```bash
    make nginx
    ```
 
    This runs `scripts/nginx.sh`, which launches nginx in the foreground the same way `scripts/serve.sh` (used by `make dev` / `make start`) does: it pre-creates the `logs/` and `temp/` directories and uses the local dev config at `docker/nginx/nginx.local.conf`.
 
-3. **Access the application**:
-   - Web Interface: http://localhost:2026
-
-#### Nginx Configuration
+### Nginx Configuration
 
 The nginx configuration provides:
 - Unified entry point on port 2026
@@ -271,179 +175,196 @@ The nginx configuration provides:
 - SSE/streaming support for real-time agent responses
 - Optimized timeouts for long-running operations
 
-## Project Structure
+---
 
-```
-alpha/
-├── config.example.yaml      # Configuration template
-├── extensions_config.example.json  # MCP and Skills configuration template
-├── Makefile                 # Build and development commands
-├── scripts/
-│   └── docker.sh           # Docker management script
-├── docker/
-│   ├── docker-compose-dev.yaml  # Docker Compose configuration
-│   └── nginx/
-│       ├── nginx.conf      # Nginx config for Docker
-│       └── nginx.local.conf # Nginx config for local dev
-├── backend/                 # Backend application
-│   ├── packages/harness/   # alpha-harness package (import: alpha.*)
-│   │   └── alpha/ # Agents, tools, sandbox, MCP, skills, config
-│   ├── app/                # FastAPI Gateway + IM channels (import: app.*)
-│   │   ├── gateway/        # Gateway API and LangGraph-compatible runtime (port 8001)
-│   │   └── channels/       # IM channel integrations
-│   ├── docs/               # Backend documentation
-│   └── Makefile            # Backend commands
-├── frontend/               # Frontend application
-│   └── Makefile            # Frontend commands
-└── skills/                 # Agent skills
-    ├── public/             # Public skills
-    └── custom/             # Custom skills
-```
+## 🎨 Code Style & Quality
 
-## Architecture
-
-```
-Browser
-  ↓
-Nginx (port 2026) ← Unified entry point
-  ├→ Frontend (port 3000) ← / (non-API requests)
-  └→ Gateway API (port 8001) ← /api/* and /api/langgraph/* (LangGraph-compatible agent interactions)
-```
-
-## Development Workflow
-
-1. **Create a feature branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make your changes** with hot-reload enabled
-
-3. **Format and lint your code** (CI will reject unformatted code):
-   ```bash
-   # Backend
-   cd backend
-   make format   # ruff check --fix + ruff format
-
-   # Frontend
-   cd frontend
-   pnpm format:write   # Prettier
-   ```
-
-4. **Test your changes** thoroughly
-
-5. **Commit your changes**:
-   ```bash
-   git add .
-   git commit -m "feat: description of your changes"
-   ```
-
-6. **Push and create a Pull Request**:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-## AI assistance disclosure
-
-Alpha is an AI project and we welcome AI-assisted contributions. To help
-reviewers calibrate how closely to read a change, **every pull request must
-complete the "AI assistance" section of the
-[PR template](.github/pull_request_template.md)**:
-
-- which tool(s) you used (or `none`),
-- how you used them, and
-- a confirmation that a human has read, understands, and takes responsibility
-  for the change.
-
-Please don't delete the section. PRs that ignore it may be asked to fill it in
-before review.
-
-## Testing
+### Backend (Python)
+- **Formatter/Linter**: `ruff` (replaces black, isort, flake8)
+- **Line length**: 240 characters
+- **Python**: 3.12+ with type hints
+- **Quotes**: Double quotes
+- **Indentation**: 4 spaces
 
 ```bash
-# Default backend tests (excludes live and blocking-I/O tests)
 cd backend
+make lint          # ruff check
+make format        # ruff format --check
+make typecheck     # mypy (if configured)
+```
+
+### Frontend (TypeScript)
+- **Formatter**: Prettier
+- **Linter**: ESLint (when configured)
+- **TypeScript**: Strict mode
+- **Tailwind**: Utility classes; match density of neighboring components
+
+```bash
+cd frontend
+pnpm format:write   # Prettier format
+pnpm lint           # ESLint (when configured)
+pnpm typecheck      # tsc --noEmit
+pnpm verify         # Typecheck + tests
+```
+
+---
+
+## 🔄 Development Workflow
+
+### 1. Create a Feature Branch
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+### 2. Make Your Changes
+
+Follow the existing patterns and conventions in the codebase. Key principles:
+
+- **No fabricated state** — Every number, status, count must come from a real API response
+- **Failures surface the server's reason** — Never swallow errors into generic messages
+- **Defaults that are off must look off** — Disabled features render as disabled with reason
+- **Silence is not success** — Loading, empty, or unavailable states must be explicit
+
+### 3. Format and Lint
+
+```bash
+# Backend
+cd backend && make format && make lint
+
+# Frontend
+cd frontend && pnpm format:write && pnpm lint
+```
+
+### 4. Test Your Changes
+
+```bash
+# Backend
+cd backend && make test
+
+# Frontend
+cd frontend && pnpm verify
+```
+
+### 5. Commit Your Changes
+
+```bash
+git add <explicit-file-paths>
+git commit -m "feat: description of your changes"
+```
+
+**Commit Message Format**:
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`
+
+---
+
+## 🧪 Testing
+
+### Backend Tests
+
+```bash
+cd backend
+
+# Default offline tests
 make test
 
-# Strict blocking-I/O tests
+# Strict blocking-I/O tests (fails on blocking I/O in async code)
 make test-blocking-io
 
-# Live AlphaClient integration tests (explicit opt-in)
-# Requires a valid root config.yaml and API credentials.
-make test-live
+# Live tests (real APIs, requires credentials)
+ALPHA_RUN_LIVE_TESTS=1 make test-live
 
-# Frontend unit tests (the frontend is pnpm-driven; it has no Makefile)
+# Specific test file
+PYTHONPATH=. uv run pytest tests/test_feature.py -v
+```
+
+**Test Requirements**:
+- Write tests in `backend/tests/` following naming convention `test_<feature>.py`
+- Run both offline targets before and after changes
+- Tests must pass before a feature is considered complete
+- For circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py`
+- Run a specific file with `PYTHONPATH=. uv run pytest tests/test_<feature>.py -v`
+
+### Frontend Tests
+
+```bash
 cd frontend
+
+# TypeScript typecheck
+pnpm typecheck
+
+# Unit tests (plain Node.js, no server required)
+pnpm test
+
+# All verification (typecheck + tests)
 pnpm verify
 ```
 
-`pnpm verify` chains `typecheck`, the `src/lib/*.test.mjs` suite, the branding
-pin, and the reasoning-effort contract. `pnpm test:extra` exists because
-`pnpm test` globs `src/lib/` only, so a suite outside that directory needs its
-own script or it silently never runs.
+**Client Tests** are plain `node --test` files (`*.test.mjs`) that transpile the TS module and run it against a stubbed HTTP layer. They pin real paths/verbs and honesty inversions.
 
-There is no frontend E2E command: the browser suite is not in the tree (no
-`@playwright/*` dependency, no `playwright*.config.ts`, no specs), so
-`.github/workflows/e2e-tests.yml` and the Playwright job in
-`replay-e2e.yml` are disabled.
+---
 
-`make test-live` calls real external APIs and may incur API costs or create
-local sandboxes, artifacts, and files. It is never run by the default backend
-test command or CI. Direct pytest invocations of `tests/test_client_live.py`
-must also set `ALPHA_RUN_LIVE_TESTS=1`.
+## 📤 Pull Request Process
 
-### PR Regression Checks
+### Before Submitting
 
-Every pull request triggers the following CI workflows:
+- [ ] Run `make format` (backend) and `pnpm format:write` (frontend)
+- [ ] Run `make test` and `pnpm verify` — all tests pass
+- [ ] Update documentation if needed
+- [ ] Add tests for new functionality
+- [ ] Ensure no breaking changes without migration path
 
-- **Backend unit tests** — [.github/workflows/backend-unit-tests.yml](.github/workflows/backend-unit-tests.yml)
-- **Frontend unit tests** — [.github/workflows/frontend-unit-tests.yml](.github/workflows/frontend-unit-tests.yml)
-- **Frontend E2E tests** — [.github/workflows/e2e-tests.yml](.github/workflows/e2e-tests.yml) (triggered only when `frontend/` files change)
+### PR Requirements
 
-## Code Style
+1. **Title**: Clear, descriptive, follows conventional commits
+2. **Description**: 
+   - What changed and why
+   - Screenshots for UI changes
+   - Test plan / how to verify
+   - Breaking changes noted
+3. **AI Assistance Section**: Complete the "AI assistance" section of the [PR template](.github/pull_request_template.md):
+   - Which tool(s) you used (or `none`)
+   - How you used them
+   - Confirmation that a human has read, understands, and takes responsibility for the change
+4. **Linked Issues**: Reference related issues (`Fixes #123`, `Relates to #456`)
 
-- **Backend (Python)**: We use `ruff` for linting and formatting. Run `make format` before committing.
-- **Frontend (TypeScript)**: We use ESLint and Prettier. Run `pnpm format:write` before committing.
-- CI enforces formatting — PRs with unformatted code will fail the lint check.
+### Review Process
 
-## Documentation
+1. **Automated Checks**: CI runs lint, typecheck, tests
+2. **Code Review**: At least one maintainer approval required
+3. **Merge**: Squash and merge after approval
 
-- [Configuration Guide](backend/docs/CONFIGURATION.md) - Setup and configuration
-- [Architecture Overview](backend/CLAUDE.md) - Technical architecture
-- [MCP Setup Guide](backend/docs/MCP_SERVER.md) - Model Context Protocol configuration
+---
 
-## Troubleshooting Bundle
+## 🤖 AI Assistance Disclosure
 
-For setup, configuration, sandbox, or runtime issues, generate a redacted support
-summary before filing:
+Alpha is an AI project and we welcome AI-assisted contributions. To help reviewers calibrate how closely to read a change, **every pull request must complete the "AI assistance" section of the [PR template](.github/pull_request_template.md)**:
 
-```bash
-make support-bundle
-```
+- Which tool(s) you used (or `none`)
+- How you used them
+- A confirmation that a human has read, understands, and takes responsibility for the change
 
-The command prints reporter next steps, writes a `*-issue-summary.md` file that
-you can paste into the issue, writes a `*-issue-draft.md` file for AI-assisted
-issue filing, and writes an optional evidence zip under
-`.alpha/support-bundles/`. The zip includes toolchain versions, sanitized
-`config.yaml` and `extensions_config.json` summaries, enabled tool/skill/MCP
-structure, git metadata, and redacted `make doctor` output.
+Please don't delete the section. PRs that ignore it may be asked to fill it in before review.
 
-When filing the issue, paste the generated `*-issue-summary.md` into the issue
-body. If an AI assistant files the issue, start from `*-issue-draft.md` and
-replace every REQUIRED placeholder before filing; the draft intentionally does
-not invent reproduction steps, expected behavior, or a problem summary. Attach
-the zip only if a maintainer asks for the evidence bundle, or if the summary
-alone is not enough to diagnose the issue. Maintainers and AI-assisted triage
-should start with `triage.json`, which contains stable signals such as
-`config_missing`, `node_version_too_old`, `doctor_failed`, and suggested next
-steps. The other JSON files are evidence for follow-up inspection.
+---
 
-It intentionally does **not** include `.env`, raw conversation messages, or the
-contents of files in thread workspaces/uploads/outputs. If you need to include a
-thread, run `cd backend && uv run python ../scripts/support_bundle.py --thread-id
-<thread-id> --include-doctor`; this adds file manifests only. Please still review
-the generated zip before attaching it to a public issue.
+## 🆘 Need Help?
 
-## Need Help?
+- **Documentation**: [docs/](docs/) — Architecture, Configuration, API, Deployment
+- **Discord**: [discord.gg/alpha](https://discord.gg/alpha) — Real-time chat with maintainers
+- **GitHub Discussions**: [github.com/itsPremkumar/alpha/discussions](https://github.com/itsPremkumar/alpha/discussions) — Questions, ideas, announcements
+- **Issues**: [github.com/itsPremkumar/alpha/issues](https://github.com/itsPremkumar/alpha/issues) — Bug reports, feature requests
 
-- Read the [Documentation](backend/docs/)
+---
+
+## 📜 License
+
+By contributing to Alpha, you agree that your contributions will be licensed under the [MIT License](LICENSE).

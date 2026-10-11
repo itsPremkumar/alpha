@@ -1,0 +1,108 @@
+name: Bug Report
+description: Report a bug to help us improve
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below with as much detail as possible.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you've completed these steps
+      options:
+        - label: I've searched existing issues and this isn't a duplicate
+          required: true
+        - [ ] I'm using the latest version (main branch or latest release)
+        - [ ] I've checked the [documentation](https://docs.alpha.itsPremkumar.com) and this isn't a configuration issue
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Alpha is affected?
+      options:
+        - Backend (Gateway, Agent, Tools, Memory, Sandbox)
+        - Frontend (Next.js, Composer, Chat, Messages, etc.)
+        - CLI / TUI
+        - Docker / Deployment
+        - Documentation
+        - CI/CD / Infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Type '/goal create ...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Messages
+      description: Paste relevant logs, error messages, or stack traces
+      render: shell
+      placeholder: |
+        ERROR: Something went wrong
+        at function.call (file.py:123)
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your environment details
+      placeholder: |
+        - OS: Ubuntu 22.04 / Windows 11 / macOS 14
+        - Docker: 24.0.7
+        - Node.js: 22.12.0
+        - Python: 3.12.5
+        - Alpha: main branch (commit abc123)
+        - Deployment: Docker / Local / Kubernetes
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical (System down, data loss, security)
+        - High (Major feature broken, no workaround)
+        - Medium (Feature partially broken, workaround exists)
+        - Low (Minor issue, cosmetic, documentation)
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or information
+      placeholder: Any other information that might help
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md)
+          required: true

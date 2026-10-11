@@ -41,6 +41,7 @@ import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
 from types import ModuleType
+from urllib.parse import unquote
 
 import pytest
 
@@ -62,6 +63,7 @@ def _load_docs_index_generator() -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
 
 # Pure text assertions over committed documents: no Gateway, no auto-created
 # operator, and nothing under `alpha.*` imported.
@@ -137,7 +139,10 @@ def test_docs_index_links_resolve_to_real_files() -> None:
     for target in re.findall(r"\]\(([^)#]+)\)", text):
         if target.startswith(("http://", "https://", "mailto:")):
             continue
-        candidate = (index.parent / target.split("#", 1)[0]).resolve()
+        # The generator percent-encodes link targets, which is correct Markdown
+        # for a filename with a space in it. The filesystem comparison must
+        # decode first, or every such document reads as a dead link.
+        candidate = (index.parent / unquote(target.split("#", 1)[0])).resolve()
         if not candidate.exists():
             missing.append(target)
     assert not missing, "docs/INDEX.md links documents that do not exist (regenerate with scripts/generate_docs_index.py): " + ", ".join(missing)
@@ -157,8 +162,10 @@ def test_index_covers_every_document_in_docs() -> None:
     if not index.is_file():
         pytest.skip("docs/INDEX.md is missing")
     generator = _load_docs_index_generator()
+    # Link targets arrive percent-encoded (a space in a filename is a valid
+    # Markdown link only that way), so decode before comparing to the walk.
     listed = set(re.findall(r"\]\(([^)#]+\.md)\)", _read(index)))
-    listed = {item for item in listed if not item.startswith(("http://", "https://"))}
+    listed = {unquote(item) for item in listed if not item.startswith(("http://", "https://"))}
 
     docs_root = ROOT / "docs"
     on_disk: set[str] = set()

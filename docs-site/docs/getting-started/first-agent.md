@@ -81,9 +81,19 @@ Create a multi-agent swarm:
 
 This creates a swarm of 5 specialized agents that collaborate.
 
+## Using the Slash Command Palette
+
+Type `/` in the composer to see all available commands. The palette now supports:
+
+- **Command families**: Type `/goal` to see all goal-related commands
+- **Subcommand expansion**: Click `→` or press `→` on a parent command to expand subcommands
+- **Real-time filtering**: Type `/g` to filter commands starting with "g"
+- **Server-side preview**: In group chats, see live resolution of @mentions
+
 ## Next Steps
 
 - [Architecture](/architecture) — Understand Alpha's architecture
 - [Tools](/guides/tools/built-in-tools) — Explore available tools
 - [Skills](/guides/skills/creating-skills) — Create custom skills
 - [Memory](/guides/memory/working-with-memory) — Work with persistent memory
+- [Subagents](/guides/agents/spawning-subagents) — Learn about subagent delegation

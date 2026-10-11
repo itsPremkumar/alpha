@@ -1,0 +1,82 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please describe your idea in detail.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I've searched existing issues and this isn't a duplicate
+          required: true
+        - label: I've checked the [roadmap](https://github.com/itsPremkumar/alpha/projects) and this isn't already planned
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this solve? What's the use case?
+      placeholder: I'm trying to do X but currently have to do Y which is painful because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+      placeholder: I'd like to be able to type `/goal create ...` and have it...
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider?
+      placeholder: I considered using /plan but it doesn't support...
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Backend (Gateway, Agent, Tools, Memory, Sandbox)
+        - Frontend (Next.js, Composer, Chat, Messages, etc.)
+        - CLI / TUI
+        - CLI / Commands
+        - Documentation
+        - CI/CD / Infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Low (Nice to have)
+        - Medium (Would significantly improve workflow)
+        - High (Blocks important workflows)
+        - Critical (Required for production use)
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Mockups, diagrams, related issues, or any other context
+      placeholder: Any mockups, diagrams, or references...
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md)
+          required: true
