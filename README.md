@@ -90,7 +90,7 @@ control.
 In one sentence:
 
 > Alpha is a LangGraph-based agent operating system: a Python/FastAPI Gateway runs
-> the agent runtime and 137 native tools, a Next.js 15 workspace and an Electron
+> the agent runtime and 138 native tools, a Next.js 15 workspace and an Electron
 > Windows app are the front ends, and a single Nginx port is the only thing you
 > expose.
 
@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 69 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 71 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -154,7 +154,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["137 tools + 46 middlewares + MCP + 24 skills"]
+        Tools["138 tools + 46 middlewares + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -192,7 +192,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
 | **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed and `X-Trace-Id` correlation on every log line. ⚠️ The trajectory flight recorder's writer is not installed in production, so span-level tracing is off by default and not reachable from `config.yaml`. |
-| **It can't use your tools** | 137 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
+| **It can't use your tools** | 138 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
 | **You can't evaluate it** | A benchmarks registry, a skill quality reviewer, a 5-pass research citation contract, and a generated `feature_manifest.json` that fails CI on registry drift. |
@@ -801,6 +801,17 @@ exactly-once execution.
   Windows restart never becomes a task failure: session lifecycle, connectivity as
   a first-class state, a per-effect `UNKNOWN` + reconciliation ledger, a
   crash-loop-bounded process supervisor, and an ordered, honestly reported shutdown.
+- **Completion engine (acceptance contracts)** — the opt-in subsystem that
+  answers *did the work actually succeed?* An acceptance contract is fixed
+  **before** work starts and validated deterministically (a model is never the
+  sole validator of its own plan), gates come from a typed registry of six
+  reviewed checks rather than free-form shell text, evidence is bound to its
+  definition and inputs (so a pass from 10:00 cannot answer for code edited at
+  10:02), and the finalization guard is the **only** route to `complete`. Three
+  rules are never relaxed: **returned is not verified**, **not run is not
+  passed**, and **observe mode never claims a completion it did not apply** —
+  the decision is computed and recorded with `enforced: false` while the status
+  is left alone.
 - **Workflow fork, dry run & templates** — fork a new run from any point in an
   event history without repeating inherited work, dry-run a graph on a throwaway
   engine (zero side effects, zero tokens, labelled `dry_run_simulation`), and gate
@@ -1079,7 +1090,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 137 tools, 69 routers, 46 middlewares, and 13 supervisor loops. CI fails
+  pins all 138 tools, 71 routers, 46 middlewares, and 13 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
@@ -1118,7 +1129,7 @@ access; pairing is explicit and uses a high-entropy out-of-band code.**
 **A:** An open-source autonomous multi-agent AI operating system: a LangGraph agent
 runtime behind a FastAPI Gateway, with a Next.js 15 workspace and an Electron
 Windows app, running long-horizon work with sandboxed execution, persistent
-memory, 137 native tools, MCP extensions, and 24 public skills. MIT licensed,
+memory, 138 native tools, MCP extensions, and 24 public skills. MIT licensed,
 self-hosted, no proprietary backend.
 
 **Q: How do I install and run it?**

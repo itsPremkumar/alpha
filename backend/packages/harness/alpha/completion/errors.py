@@ -141,3 +141,9 @@ class ScopeStateError(CompletionError):
     """The operation does not apply to the scope's current state."""
 
     code = "scope_state_error"
+
+
+class Forbidden(CompletionError):
+    """The caller is not authorized to perform this action."""
+
+    code = "forbidden"

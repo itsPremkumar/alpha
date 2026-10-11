@@ -413,7 +413,7 @@ def finalize(
         # nothing — an engine that reported a completion it did not apply
         # would be the exact lie this module exists to prevent.
         report.enforced = False
-        prefix = "[observe] " if settings.enforcing else "[disabled] "
+        prefix = "[observe] " if settings.mode == "observe" else "[disabled] "
         report.summary = f"{prefix}{report.summary}"
         scope.final_report = report
         return report

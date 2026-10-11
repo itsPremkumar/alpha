@@ -492,6 +492,24 @@ owns the whole seam:
 Contract: [docs/BOT_MODEL_CONFIG.md](../docs/BOT_MODEL_CONFIG.md). Tests:
 `tests/test_bot_model_config.py`, `tests/test_bot_model_config_wiring.py`.
 
+### Alpha Completion Engine
+
+`packages/harness/alpha/completion/` is the opt-in subsystem that answers *did
+the work actually succeed?* with an acceptance contract fixed **before** work
+starts, a typed registry of six reviewed checks (never free-form shell text
+from a model), evidence bound to its definition and inputs (so a pass from
+10:00 cannot answer for code edited at 10:02), and a finalization guard that is
+the only route to `complete`. It composes existing seams — `alpha.guardrails.command_policy`
+for every argv, an advisory `FileLock` JSON ledger, server-assigned owners,
+actions on one model-facing tool — and never becomes a second run-lifecycle
+owner. Three rules are load-bearing and are never relaxed: a worker's
+*returned* is not *verified*; *not run* is not *passed*; a *waived* gate is a
+blocker. `mode: observe` computes exactly the same decision and records it
+with `enforced: false` rather than claiming a completion it did not apply.
+Contract, refusals and layering: **[packages/harness/alpha/completion/AGENTS.md](packages/harness/alpha/completion/AGENTS.md)**;
+Gateway surface: `app/gateway/routers/completion.py`; tests:
+`tests/test_completion_{contract,state,gates,integration,critic_wiring,router}.py`.
+
 ### Alpha-to-Alpha peer network
 
 `packages/harness/alpha/peer_network/` is the harness-owned, installation-scoped
