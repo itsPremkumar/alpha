@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-12T08:32:09Z",
+ "generated_at": "2026-10-12T14:33:43Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2710,6 +2710,7 @@
    "id": "alpha.rsi",
    "kind": "package",
    "submodules": [
+    "predictive",
     "rrsi"
    ]
   },

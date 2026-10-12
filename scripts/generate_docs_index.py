@@ -163,6 +163,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Operating an arena tournament: the call arithmetic and confirmation gate, profiles and modes, judge blinding, hard gates and the repair loop, and what the engine deliberately does not claim.",
     ),
+    "PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Predictive RSI: the Phase 0 audit of what Alpha's RSI plane already has, the one responsibility it provably lacked (estimating a candidate's outcome before choosing it), and the eleven invariants an advisory forecast layer must hold.",
+    ),
     "CAPABILITY_MESH.md": DocumentSpec(
         "operations",
         "Operating the capability mesh: the 23 library modules by phase, the model's 12 actions, the HTTP routes, the default-off config slice, and the honesty boundaries that make a preview read as a preview.",

@@ -6,8 +6,8 @@
 > hand-maintaining a list that drifts.
 
 - **Packages:** 126
-- **Python files:** 2070
-- **Total lines:** 551742
+- **Python files:** 2076
+- **Total lines:** 553695
 - **Packages with preview/simulated markers:** 29
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -24,13 +24,13 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/workflow` | 53 | 18510 | preview/partial |
 | `alpha/bots` | 35 | 14836 | preview/partial |
 | `alpha/config` | 85 | 13892 | core |
+| `alpha/rsi` | 40 | 12663 | preview/partial |
 | `alpha/capability_mesh` | 26 | 11538 | preview/partial |
 | `alpha/models` | 36 | 11463 | preview/partial |
 | `alpha/observability` | 23 | 11364 | core |
 | `alpha/groups` | 22 | 11351 | core |
 | `alpha/skills` | 57 | 11099 | core |
 | `alpha/sandbox` | 33 | 10764 | core |
-| `alpha/rsi` | 34 | 10710 | preview/partial |
 | `alpha/intelligence` | 25 | 10394 | preview/partial |
 | `alpha/subagents` | 35 | 10364 | core |
 | `alpha/swarm` | 25 | 8801 | core |
