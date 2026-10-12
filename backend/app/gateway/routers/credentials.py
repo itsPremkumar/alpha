@@ -21,9 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from alpha.security.credential_vault import get_credential_vault
 from alpha.utils.thread_id import ThreadId
-from app.gateway.authz import require_thread_owner
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +42,9 @@ async def submit_credential(req: CredentialSubmitRequest, request: Request) -> d
     """Deposit a secret into the in-memory vault for a specific thread."""
     # Write-side capability: a value deposited here is injected into the target
     # thread's sandbox environment, so this must be the owner's own thread.
+    from alpha.security.credential_vault import get_credential_vault
+    from app.gateway.authz import require_thread_owner
+
     await require_thread_owner(request, req.thread_id)
     vault = get_credential_vault()
     vault.deposit_credential(
@@ -64,6 +65,9 @@ async def submit_credential(req: CredentialSubmitRequest, request: Request) -> d
 @router.get("/pending", summary="List Pending Credential Requests")
 async def list_pending_credentials(request: Request, thread_id: ThreadId) -> list[dict[str, Any]]:
     """Query unfulfilled credential prompts for a thread."""
+    from alpha.security.credential_vault import get_credential_vault
+    from app.gateway.authz import require_thread_owner
+
     await require_thread_owner(request, thread_id)
     vault = get_credential_vault()
     return vault.list_pending(thread_id=thread_id)
@@ -74,6 +78,9 @@ async def clear_credentials(request: Request, thread_id: ThreadId) -> dict[str, 
     """Purge all secrets for a finished thread."""
     # Destructive: require the thread row to exist and be owned, so a deleted
     # thread cannot be re-targeted by another user through the missing-row path.
+    from alpha.security.credential_vault import get_credential_vault
+    from app.gateway.authz import require_thread_owner
+
     await require_thread_owner(request, thread_id, require_existing=True)
     vault = get_credential_vault()
     vault.clear_thread(thread_id=thread_id)

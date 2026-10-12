@@ -11,7 +11,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.graph import GraphRuntimeConfig, build_graph_runtime
 from alpha.graph.models import GoalMode
 from alpha.graph.state import GraphStatus
 from app.gateway.deps import get_stream_bridge
@@ -121,6 +120,7 @@ async def create_graph_run(
     The run is executed asynchronously; use GET /api/graph/runs/{run_id}
     to poll for status or use the SSE stream.
     """
+    from alpha.graph import GraphRuntimeConfig, build_graph_runtime
     from alpha.graph.runtime import build_initial_state
 
     config = request.app.state.get("startup_config")

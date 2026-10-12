@@ -27,55 +27,21 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from alpha.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
-from alpha.authz.sandbox_authz import safe_app_config_async
-from alpha.config.paths import get_paths, make_safe_user_id
-from alpha.persistence.network_waits.model import OPEN_NETWORK_WAIT_STATES
-from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
-from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
-from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
-from alpha.runtime.user_context import get_effective_user_id
-from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
-from alpha.utils.thread_id import ThreadId
-from alpha.utils.time import coerce_iso
-from alpha.workspace_changes import get_workspace_changes_response
-from app.gateway.artifact_archive import ArtifactArchiveError, ArtifactArchiveResult, build_artifact_archive
-from app.gateway.authz import require_cancel_permission_if, require_permission
-from app.gateway.checkpoint_lineage import (
-    CheckpointLineageError,
-    CheckpointParentMissingError,
-    checkpoint_configurable,
-    checkpoint_messages,
-    find_checkpoint_before_message,
-    find_checkpoint_before_message_chronologically,
-    is_duration_only_checkpoint,
+from alpha.runtime import (
+    RunRecord,
 )
-from app.gateway.context_usage import build_context_usage
-from app.gateway.deps import get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
-from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.ops_runtime import network_snapshot
-from app.gateway.pagination import trim_run_message_page
+from alpha.utils.thread_id import ThreadId
+from app.gateway.artifact_archive import (
+    ArtifactArchiveResult,
+)
+from app.gateway.authz import (
+    require_permission,
+)
 
 # Cost estimation has exactly one implementation: the operations console's
 # cache-aware pricing helpers. Imported rather than reimplemented so a per-run
 # price can never disagree with `/api/console/usage` for the same tokens.
-from app.gateway.routers.console import (
-    _build_pricing_map,
-    _lookup_pricing,
-    _pricing_currency,
-    _run_cost,
-    _token_cost,
-)
 from app.gateway.run_models import RunCreateRequest
-from app.gateway.services import (
-    abuild_checkpoint_state_accessor,
-    build_thread_checkpoint_state_accessor,
-    sse_consumer,
-    start_run,
-    wait_for_run_completion,
-    with_stream_heartbeats,
-)
-from app.gateway.utils import sanitize_log_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])
@@ -102,6 +68,9 @@ IdempotencyKeyHeader = Annotated[
 
 def _scope_http_run_idempotency_key(request: Request, thread_id: str, key: str | None) -> str | None:
     """Namespace a caller key for the process-wide run idempotency index."""
+    from alpha.runtime.user_context import get_effective_user_id
+    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+
     if not isinstance(key, str):
         return None
     key = key.strip()
@@ -118,6 +87,8 @@ def _scope_http_run_idempotency_key(request: Request, thread_id: str, key: str |
 
 async def _refresh_store_backed_run(run_mgr: Any, record: Any) -> Any:
     """Overlay durable status/error onto a hydrated store-only record."""
+    from alpha.runtime import RunStatus
+
     if not getattr(record, "store_only", False):
         return record
     store = getattr(run_mgr, "_store", None)
@@ -145,6 +116,8 @@ async def _refresh_store_backed_run(run_mgr: Any, record: Any) -> Any:
 
 
 def _is_duration_only_checkpoint(checkpoint_tuple: Any) -> bool:
+    from app.gateway.checkpoint_lineage import is_duration_only_checkpoint
+
     return is_duration_only_checkpoint(checkpoint_tuple)
 
 
@@ -409,10 +382,14 @@ def require_cancel_permission_when_action(request: Request, action: str | None) 
     ``authz.require_cancel_permission_if`` — the shared primitive for every
     request dimension that carries cancel capability.
     """
+    from app.gateway.authz import require_cancel_permission_if
+
     require_cancel_permission_if(request, action is not None)
 
 
 def _cancel_conflict_detail(run_id: str, record: RunRecord) -> str:
+    from alpha.runtime import RunStatus
+
     if record.status in (RunStatus.pending, RunStatus.running):
         return f"Run {run_id} is not active on this worker and cannot be cancelled"
     return f"Run {run_id} is not cancellable (status: {record.status.value})"
@@ -467,6 +444,8 @@ async def _raise_lease_valid_elsewhere(
 
 
 def _record_to_response(record: RunRecord) -> RunResponse:
+    from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
+
     kwargs = dict(record.kwargs or {})
     if "config" in kwargs:
         kwargs["config"] = redact_config_secrets(kwargs["config"])
@@ -526,6 +505,8 @@ def _message_content(message: Any) -> Any:
 
 
 def _message_text(message: Any) -> str:
+    from alpha.utils.messages import message_to_text
+
     return message_to_text(message)
 
 
@@ -565,6 +546,8 @@ def _is_thread_history_hidden_message_row(row: dict[str, Any]) -> bool:
 
 
 def _checkpoint_messages(snapshot: Any) -> list[Any]:
+    from app.gateway.checkpoint_lineage import checkpoint_messages
+
     return checkpoint_messages(snapshot)
 
 
@@ -574,6 +557,8 @@ def _checkpoint_values(snapshot: Any) -> dict[str, Any]:
 
 
 def _checkpoint_configurable(checkpoint_tuple: Any) -> dict[str, Any]:
+    from app.gateway.checkpoint_lineage import checkpoint_configurable
+
     return checkpoint_configurable(checkpoint_tuple)
 
 
@@ -590,6 +575,9 @@ def _checkpoint_response(checkpoint_tuple: Any) -> dict[str, Any]:
 
 
 def _clean_human_message_for_regenerate(message: Any) -> dict[str, Any]:
+    from alpha.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text
+
     additional_kwargs = _message_additional_kwargs(message)
     content = get_original_user_content_text(_message_content(message), additional_kwargs)
     additional_kwargs.pop(ORIGINAL_USER_CONTENT_KEY, None)
@@ -693,6 +681,9 @@ async def _find_target_run_id(
     source_human: Any,
     request: Request,
 ) -> str:
+    from alpha.runtime import RunStatus
+    from app.gateway.deps import get_current_user, get_run_event_store, get_run_manager
+
     event_store = get_run_event_store(request)
     rows = await event_store.list_messages(thread_id, limit=REGENERATE_HISTORY_SCAN_LIMIT)
     for row in reversed(rows):
@@ -733,6 +724,10 @@ async def _find_base_checkpoint_before_human(
     *,
     head_checkpoint: Any | None = None,
 ) -> Any:
+    from app.gateway.checkpoint_lineage import CheckpointLineageError, CheckpointParentMissingError, find_checkpoint_before_message, find_checkpoint_before_message_chronologically
+    from app.gateway.services import build_thread_checkpoint_state_accessor
+    from app.gateway.utils import sanitize_log_param
+
     accessor, base_config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
     if head_checkpoint is not None:
         try:
@@ -787,6 +782,8 @@ async def _find_base_checkpoint_before_human(
 
 
 def _run_status_value(record: Any) -> str | None:
+    from alpha.runtime import RunStatus
+
     status = getattr(record, "status", None)
     if isinstance(status, RunStatus):
         return status.value
@@ -794,6 +791,9 @@ def _run_status_value(record: Any) -> str | None:
 
 
 async def _require_successful_source_run(thread_id: str, run_id: str, request: Request) -> RunRecord:
+    from alpha.runtime import RunStatus
+    from app.gateway.deps import get_current_user, get_run_manager
+
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
     record = await run_mgr.get(run_id, user_id=user_id)
@@ -817,6 +817,9 @@ async def _find_interrupted_target_run_id(
     source_human: Any,
     request: Request,
 ) -> str | None:
+    from alpha.runtime import RunStatus
+    from app.gateway.deps import get_current_user, get_run_manager
+
     source_run_id = _message_additional_kwargs(source_human).get("run_id")
     if not isinstance(source_run_id, str) or not source_run_id:
         return None
@@ -840,6 +843,8 @@ async def _find_interrupted_target_run_id(
 
 
 async def _prepare_regenerate_payload(thread_id: str, message_id: str, request: Request) -> RegeneratePrepareResponse:
+    from app.gateway.services import build_thread_checkpoint_state_accessor
+
     accessor, latest_config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
     try:
         latest_checkpoint = await accessor.aget(latest_config)
@@ -927,6 +932,9 @@ async def _prepare_edit_regenerate_payload(
     replacement_text: str,
     request: Request,
 ) -> EditRegeneratePrepareResponse:
+    from alpha.utils.messages import get_original_user_content_text
+    from app.gateway.services import build_thread_checkpoint_state_accessor
+
     normalized_text = replacement_text.strip()
     if not normalized_text:
         raise HTTPException(status_code=409, detail="Edited message cannot be empty")
@@ -1053,6 +1061,8 @@ async def create_run(
     idempotency_key: IdempotencyKeyHeader = None,
 ) -> RunResponse:
     """Create a background run (returns immediately)."""
+    from app.gateway.services import start_run
+
     record = await start_run(
         body,
         thread_id,
@@ -1076,6 +1086,10 @@ async def stream_run(
     resource URL, matching the LangGraph Platform protocol.  The
     ``useStream`` React hook uses this to extract run metadata.
     """
+    from alpha.runtime import RunStatus
+    from app.gateway.deps import get_run_manager, get_stream_bridge
+    from app.gateway.services import sse_consumer, start_run, with_stream_heartbeats
+
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
     record = await start_run(
@@ -1133,6 +1147,10 @@ async def wait_run(
     status without blocking. A reused completed run also returns durable
     status: the latest thread checkpoint may belong to a later run.
     """
+    from alpha.runtime import serialize_channel_values_for_api
+    from app.gateway.deps import get_run_manager, get_stream_bridge
+    from app.gateway.services import abuild_checkpoint_state_accessor, start_run, wait_for_run_completion
+
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
     record = await start_run(
@@ -1195,6 +1213,8 @@ async def wait_run(
 
 
 def _parse_run_page_created_at(value: str) -> str:
+    from alpha.runtime.runs.store.base import normalize_run_created_at_iso
+
     try:
         normalized = normalize_run_created_at_iso(value)
         datetime.fromisoformat(normalized)
@@ -1207,6 +1227,8 @@ def _parse_run_page_created_at(value: str) -> str:
 @require_permission("runs", "read", owner_check=True)
 async def list_runs(thread_id: ThreadId, request: Request) -> list[RunResponse]:
     """List the newest runs for a thread (default 100, as a bare array)."""
+    from app.gateway.deps import get_current_user, get_run_manager
+
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
     records = await run_mgr.list_by_thread(thread_id, user_id=user_id)
@@ -1227,6 +1249,9 @@ async def list_runs_page(
     Response: { data: [...], has_more: bool, next_before_created_at, next_before_run_id }
     Pass both cursor fields from the previous page's last row to continue.
     """
+    from alpha.runtime.runs.store.base import format_run_cursor_created_at
+    from app.gateway.deps import get_current_user, get_run_manager
+
     if (before_created_at is None) != (before_run_id is None):
         raise HTTPException(
             status_code=422,
@@ -1259,6 +1284,8 @@ async def list_runs_page(
 @require_permission("runs", "read", owner_check=True)
 async def get_run(thread_id: ThreadId, run_id: str, request: Request) -> RunResponse:
     """Get details of a specific run."""
+    from app.gateway.deps import get_current_user, get_run_manager
+
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
     record = await run_mgr.get(run_id, user_id=user_id)
@@ -1287,6 +1314,10 @@ async def cancel_run(
     durably notifies the owner when its lease is live, or takes over and
     terminalizes the run when that lease has expired.
     """
+    from alpha.runtime import CancelOutcome
+    from app.gateway.deps import get_run_manager, get_stream_bridge
+    from app.gateway.services import wait_for_run_completion
+
     run_mgr = get_run_manager(request)
     record = await run_mgr.get(run_id)
     if record is None or record.thread_id != thread_id:
@@ -1333,6 +1364,8 @@ async def _resolve_head_checkpoint_id(request: Request, thread_id: str) -> str |
     Small indirection (instead of inlining the accessor) so tests can stub
     checkpoint resolution without assembling an agent graph.
     """
+    from app.gateway.services import build_thread_checkpoint_state_accessor
+
     try:
         accessor, config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
         snapshot = await accessor.aget(config)
@@ -1363,6 +1396,10 @@ async def resume_run(thread_id: ThreadId, run_id: str, request: Request) -> RunR
       succeeded (send a new message instead), has no resumable checkpoint,
       or the thread has since advanced past it.
     """
+    from alpha.runtime import RunStatus
+    from app.gateway.deps import get_current_user, get_run_manager
+    from app.gateway.services import start_run
+
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
     record = await run_mgr.get(run_id, user_id=user_id)
@@ -1413,6 +1450,9 @@ async def resume_run(thread_id: ThreadId, run_id: str, request: Request) -> RunR
 @require_permission("runs", "read", owner_check=True)
 async def join_run(thread_id: ThreadId, run_id: str, request: Request) -> StreamingResponse:
     """Join an existing run's SSE stream."""
+    from app.gateway.deps import get_run_manager, get_stream_bridge
+    from app.gateway.services import sse_consumer, with_stream_heartbeats
+
     run_mgr = get_run_manager(request)
     record = await run_mgr.get(run_id)
     if record is None or record.thread_id != thread_id:
@@ -1463,6 +1503,10 @@ async def _stream_existing_run(
     cancelled first; the response then streams any remaining buffered events
     so the client observes a clean shutdown.
     """
+    from alpha.runtime import CancelOutcome
+    from app.gateway.deps import get_run_manager, get_stream_bridge
+    from app.gateway.services import sse_consumer, wait_for_run_completion, with_stream_heartbeats
+
     require_cancel_permission_when_action(request, action)
 
     run_mgr = get_run_manager(request)
@@ -1567,6 +1611,8 @@ async def list_thread_messages(
     """Return displayable messages for a thread (across all runs), with feedback attached."""
     # Resolve the caller once; it is needed both to scope the feedback query
     # below and to list the thread's runs for turn-duration injection.
+    from app.gateway.deps import get_current_user, get_feedback_repo, get_run_manager
+
     user_id = await get_current_user(request)
     run_mgr = get_run_manager(request)
     hidden_run_ids = await _default_history_hidden_run_ids(run_mgr, thread_id, user_id=user_id)
@@ -1639,6 +1685,8 @@ async def _scan_visible_thread_messages(
     batch_size: int,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Scan raw message rows until ``limit`` visible rows survive filtering."""
+    from app.gateway.deps import get_run_event_store
+
     event_store = get_run_event_store(request)
     needed = limit + 1 if include_extra else limit
 
@@ -1750,6 +1798,8 @@ async def _scan_thread_message_page(
     user_id: str | None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Select the newest ``limit + 1`` page-eligible rows before a cursor."""
+    from app.gateway.deps import get_run_manager
+
     run_mgr = get_run_manager(request)
     hidden_run_ids = await _default_history_hidden_run_ids(run_mgr, thread_id, user_id=user_id)
     return await _scan_visible_thread_messages(
@@ -1774,6 +1824,8 @@ async def _enrich_thread_message_page(
     user_id: str | None,
 ) -> list[dict[str, Any]]:
     """Attach run-scoped duration and feedback without mutating store rows."""
+    from app.gateway.deps import get_feedback_repo, get_run_event_store, get_run_manager
+
     data = deepcopy(rows)
     if not data:
         return data
@@ -1823,6 +1875,8 @@ async def list_thread_messages_page(
     before_seq: int | None = Query(default=None, ge=1),
 ) -> ThreadMessagesPageResponse:
     """Return a backward page ordered by the thread-global event sequence."""
+    from app.gateway.deps import get_current_user
+
     if "after_seq" in request.query_params:
         raise HTTPException(status_code=422, detail="after_seq is not supported by this backward-only endpoint")
 
@@ -1856,6 +1910,9 @@ async def list_run_messages(
 
     Response: { data: [...], has_more: bool }
     """
+    from app.gateway.deps import get_run_event_store, get_run_manager
+    from app.gateway.pagination import trim_run_message_page
+
     event_store = get_run_event_store(request)
     rows = await event_store.list_messages_by_run(
         thread_id,
@@ -1892,6 +1949,8 @@ async def _build_archive_without_abandoning_worker(
     *,
     extra_reserved_dir_names: set[str],
 ) -> ArtifactArchiveResult:
+    from app.gateway.artifact_archive import ArtifactArchiveError, build_artifact_archive
+
     if _artifact_archive_slots.locked():
         raise ArtifactArchiveError("Too many artifact archives are being created; try again shortly", 429)
     await _artifact_archive_slots.acquire()
@@ -1936,6 +1995,9 @@ def _presented_files_from_delivery(events: list[dict]) -> list[str]:
 
 
 async def _archive_presented_paths(thread_id: ThreadId, run_id: str, request: Request) -> list[str]:
+    from alpha.runtime import RunStatus
+    from app.gateway.deps import get_run_event_store, get_run_store
+
     run = await get_run_store(request).get(run_id)
     if run is None or run.get("thread_id") != thread_id or run.get("operation_kind", "run") != "run":
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
@@ -1974,6 +2036,15 @@ async def create_run_artifact_archive(
     request: Request,
 ) -> StreamingResponse:
     """Download the current contents of the files presented by one terminal run."""
+    from alpha.authz.sandbox_authz import safe_app_config_async
+    from alpha.config.paths import get_paths, make_safe_user_id
+    from alpha.runtime import ConflictError, ThreadOperationKind
+    from alpha.runtime.user_context import get_effective_user_id
+    from app.gateway.artifact_archive import ArtifactArchiveError
+    from app.gateway.deps import get_run_manager
+    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+    from app.gateway.utils import sanitize_log_param
+
     presented_paths = await _archive_presented_paths(thread_id, run_id, request)
 
     raw_owner_user_id = get_trusted_internal_owner_user_id(request)
@@ -2072,6 +2143,9 @@ async def list_run_events(
     filter that changes what a chat client sees. A request that carries no trace
     filter behaves exactly as it did before this route grew them.
     """
+    from alpha.runtime.secret_context import redact_metadata_secrets
+    from app.gateway.deps import get_run_event_store
+
     event_store = get_run_event_store(request)
     types = event_types.split(",") if event_types else None
     events = await event_store.list_events(
@@ -2224,6 +2298,8 @@ async def summarize_run_trace(
     capped read. ``calls_complete`` is the same honesty for the model-call
     breakdown.
     """
+    from app.gateway.deps import get_run_event_store
+
     event_store = get_run_event_store(request)
     rows = await event_store.list_events(thread_id, run_id, limit=limit, after_seq=after_seq)
     from alpha.observability.trace.query import aggregate, count_unreadable_trace_rows, envelopes_from_run_events, matches
@@ -2355,6 +2431,8 @@ def _usage_model_from_message(content: Any) -> str | None:
 
 def _usage_cost(pricing: dict, model: str | None, input_tokens: int, output_tokens: int, cache_read_tokens: int | None) -> float | None:
     """Estimated spend for one row, or ``None`` when the model has no price."""
+    from app.gateway.routers.console import _lookup_pricing, _token_cost
+
     price = _lookup_pricing(pricing, model)
     if price is None:
         return None
@@ -2497,6 +2575,9 @@ async def get_run_usage(thread_id: ThreadId, run_id: str, request: Request) -> R
     ``models[*].pricing`` using the console's cache-aware pricing helpers, and
     stays ``null`` - never zero - when no pricing is configured.
     """
+    from app.gateway.deps import get_current_user, get_run_event_store, get_run_manager
+    from app.gateway.routers.console import _build_pricing_map, _pricing_currency, _run_cost
+
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
     record = await run_mgr.get(run_id, user_id=user_id)
@@ -2548,6 +2629,9 @@ async def get_run_workspace_changes(
     include_diff: bool = Query(default=True),
 ) -> dict:
     """Return workspace/output file changes recorded for one run."""
+    from alpha.workspace_changes import get_workspace_changes_response
+    from app.gateway.deps import get_run_event_store
+
     event_store = get_run_event_store(request)
     return await get_workspace_changes_response(
         event_store,
@@ -2566,6 +2650,9 @@ async def thread_token_usage(
     include_active: bool = Query(default=False, description="Include running run progress snapshots"),
 ) -> ThreadTokenUsageResponse:
     """Thread-level token usage aggregation."""
+    from app.gateway.context_usage import build_context_usage
+    from app.gateway.deps import get_run_store
+
     run_store = get_run_store(request)
     if include_active:
         agg = await run_store.aggregate_tokens_by_thread(thread_id, include_active=True)
@@ -2681,6 +2768,8 @@ def _project_wait_row(row: Mapping[str, Any]) -> dict[str, Any]:
     back to ``None`` so the wire never carries ``""`` for a timestamp.
     """
 
+    from alpha.utils.time import coerce_iso
+
     def _iso(value: Any) -> str | None:
         return coerce_iso(value) or None
 
@@ -2722,6 +2811,9 @@ async def thread_network_waits(thread_id: ThreadId, request: Request) -> ThreadN
       history, and re-parking the UI on a resumed outage would show a live
       "waiting for network" over work that already resumed.
     """
+    from alpha.persistence.network_waits.model import OPEN_NETWORK_WAIT_STATES
+    from app.gateway.ops_runtime import network_snapshot
+
     state = request.app.state
     monitor = getattr(state, "network_monitor", None)
     wait_service = getattr(state, "network_waits", None)

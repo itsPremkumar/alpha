@@ -18,10 +18,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from alpha.config.app_config import AppConfig
-from alpha.subagents.capacity import configured_subagent_max_running
-from app.gateway.browser_capability import browser_capability
 from app.gateway.deps import get_config
-from app.gateway.routers.capability_honesty import advertised_capabilities
 
 router = APIRouter(prefix="/api", tags=["features"])
 
@@ -95,6 +92,10 @@ class FeaturesResponse(BaseModel):
 )
 async def list_features(request: Request, config: AppConfig = Depends(get_config)) -> FeaturesResponse:
     """Return availability of optional frontend features."""
+    from alpha.subagents.capacity import configured_subagent_max_running
+    from app.gateway.browser_capability import browser_capability
+    from app.gateway.routers.capability_honesty import advertised_capabilities
+
     browser = browser_capability(config)
     subagent_batch_worker_running = bool(getattr(request.app.state, "subagent_batches_available", False))
     return FeaturesResponse(

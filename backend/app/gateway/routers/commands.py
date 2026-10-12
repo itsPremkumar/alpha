@@ -17,13 +17,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from alpha.commands import (
-    CommandCategory,
-    LifecyclePhase,
-    autonomous_command_engine,
-    command_registry,
+from alpha.commands.registry import (
+    UNIMPLEMENTED_STATUS,
 )
-from alpha.commands.registry import APPROVAL_CONTEXT_KEY, UNIMPLEMENTED_STATUS
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +57,8 @@ def _execute_timeout_seconds() -> float:
 
 
 def _verdict_for(result: dict[str, Any]) -> str:
+    from alpha.commands import command_registry
+
     status = str(result.get("status") or "").lower()
     verdict = _VERDICTS.get(status, "failed")
     if verdict == "succeeded" and not command_registry.has_handler(str(result.get("command") or "")):
@@ -99,6 +97,8 @@ async def list_commands(
     core_only: bool = Query(default=False, description="Filter only core commands"),
 ) -> dict[str, Any]:
     """Lists all registered slash commands with optional category or core filter."""
+    from alpha.commands import CommandCategory, command_registry
+
     cat_enum: CommandCategory | None = None
     if category:
         try:
@@ -122,6 +122,8 @@ async def list_commands(
 @router.get("/categories")
 async def get_categories() -> dict[str, Any]:
     """Returns all 28 command categories and their command counts."""
+    from alpha.commands import command_registry
+
     categories = await asyncio.to_thread(command_registry.get_categories)
     return {
         "categories": categories,
@@ -134,6 +136,8 @@ async def search_commands(
     q: str = Query(..., min_length=1, description="Search query string"),
 ) -> dict[str, Any]:
     """Searches commands by name, description, or category."""
+    from alpha.commands import command_registry
+
     results = await asyncio.to_thread(command_registry.search, query=q)
     return {
         "query": q,
@@ -145,6 +149,9 @@ async def search_commands(
 @router.post("/execute")
 async def execute_command(payload: CommandExecuteRequest) -> dict[str, Any]:
     """Dispatches a slash command intent to the runtime."""
+    from alpha.commands import command_registry
+    from alpha.commands.registry import APPROVAL_CONTEXT_KEY
+
     context = dict(payload.context or {})
     # An approval grant is an explicit, positive act by a human; refuse to
     # infer it from anything else in the context.
@@ -177,6 +184,8 @@ async def execute_command(payload: CommandExecuteRequest) -> dict[str, Any]:
 @router.post("/auto-trigger")
 async def auto_trigger_command(payload: AutoTriggerRequest) -> dict[str, Any]:
     """Automatically identifies the required slash command and starts executing it at the correct time."""
+    from alpha.commands import LifecyclePhase, autonomous_command_engine
+
     phase_enum = None
     if payload.phase:
         try:
@@ -197,6 +206,8 @@ async def auto_trigger_command(payload: AutoTriggerRequest) -> dict[str, Any]:
 @router.post("/phase-transition")
 async def trigger_phase_transition(payload: PhaseTransitionRequest) -> dict[str, Any]:
     """Executes phase-specific autonomous slash commands at exact lifecycle events (e.g. on error, post-code edit)."""
+    from alpha.commands import LifecyclePhase, autonomous_command_engine
+
     try:
         phase_enum = LifecyclePhase(payload.phase.lower())
     except ValueError:
@@ -214,6 +225,8 @@ async def trigger_phase_transition(payload: PhaseTransitionRequest) -> dict[str,
 @router.get("/lifecycle-rules")
 async def get_lifecycle_rules() -> dict[str, Any]:
     """Returns all active autonomous command trigger rules and their lifecycle phases."""
+    from alpha.commands import autonomous_command_engine
+
     rules = [
         {
             "rule_id": r.rule_id,

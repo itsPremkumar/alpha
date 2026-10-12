@@ -13,52 +13,59 @@ from pydantic import BaseModel, Field
 from starlette.datastructures import FormData, Headers, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
-from alpha.agents.lead_agent.prompt import clear_skills_system_prompt_cache, refresh_skills_system_prompt_cache_async, refresh_user_skills_system_prompt_cache_async
 from alpha.config.app_config import AppConfig
 from alpha.config.extensions_config import (
-    ExtensionsConfig,
-    atomic_write_extensions_config,
-    extensions_config_file_lock,
-    extensions_config_write_lock,
     get_extensions_config,
-    read_raw_extensions_config,
     reload_extensions_config,
-    set_raw_skill_enabled,
-    validate_raw_extensions_config,
 )
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.skills import Skill
-from alpha.skills.export import SkillExportError, build_skill_export, export_manifest
-from alpha.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
 from alpha.skills.proposals import (
-    APPROVED,
-    INSTALLED,
-    PENDING,
-    REJECTED,
     SkillProposal,
     SkillProposalStore,
-    finding_summary,
-    proposals_root,
-    validate_proposal_content,
-    validate_proposal_name,
 )
 from alpha.skills.retrieval import DEFAULT_MIN_SCORE, DEFAULT_TOP_K
-from alpha.skills.retrieval import retrieve_skills as score_skill_retrieval
 from alpha.skills.security_scanner import scan_skill_content
 from alpha.skills.security_static_scanner import (
     StaticFinding,
     StaticScanBlockedError,
-    StaticScannerError,
     enforce_static_scan,
 )
-from alpha.skills.storage import SkillStorage, get_or_new_user_skill_storage
-from alpha.skills.types import SKILL_MD_FILE, SkillCategory
+from alpha.skills.storage import (
+    SkillStorage,
+)
+from alpha.skills.types import (
+    SkillCategory,
+)
 from alpha.utils.thread_id import ThreadId
-from app.gateway.deps import get_config, require_admin_user
-from app.gateway.path_utils import resolve_thread_virtual_path
-from app.gateway.skill_export import ExportClientDisconnected, SkillExportManifestResponse, SkillExportResponse, export_http_error, run_export_work
+from app.gateway.deps import (
+    get_config,
+)
+from app.gateway.skill_export import (
+    SkillExportManifestResponse,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# `alpha.agents.lead_agent.prompt` pulls the whole lead-agent module — and
+# through it the tool graph — into the process, and importing it at module scope
+# made it the largest single contributor to Gateway startup. These two stay
+# module-level names on purpose: the router calls them from many handlers and
+# the test suite patches them at `app.gateway.routers.skills.<name>`, so a
+# function-local binding would be invisible to `monkeypatch.setattr`. The shims
+# resolve the real implementation on first call instead.
+def clear_skills_system_prompt_cache() -> None:
+    from alpha.agents.lead_agent.prompt import clear_skills_system_prompt_cache as _impl
+
+    return _impl()
+
+
+async def refresh_user_skills_system_prompt_cache_async(user_id: str) -> None:
+    from alpha.agents.lead_agent.prompt import refresh_user_skills_system_prompt_cache_async as _impl
+
+    return await _impl(user_id)
+
 
 router = APIRouter(prefix="/api", tags=["skills"])
 
@@ -191,6 +198,9 @@ def _static_scan_http_detail(error: StaticScanBlockedError) -> dict:
 
 
 async def _scan_static_skill_markdown_or_raise(skill_name: str, content: str, *, app_config: AppConfig) -> list[StaticFinding]:
+    from alpha.skills.security_static_scanner import StaticScannerError
+    from alpha.skills.types import SKILL_MD_FILE
+
     def _scan_markdown() -> list[StaticFinding]:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = Path(tmp) / skill_name
@@ -212,6 +222,8 @@ def _get_user_skill_storage(config: AppConfig) -> SkillStorage:
     Uses the effective user_id from the request context (set by auth middleware).
     For public skill reads, the global singleton storage is still used.
     """
+    from alpha.skills.storage import get_or_new_user_skill_storage
+
     return get_or_new_user_skill_storage(get_effective_user_id(), app_config=config)
 
 
@@ -281,6 +293,9 @@ async def _install_skill_archive(archive_path: Path, config: AppConfig, *, user_
         user_id: Install into this user's custom skills. Defaults to the
             request's effective user (proposal approval passes the proposer).
     """
+    from alpha.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
+    from alpha.skills.storage import get_or_new_user_skill_storage
+
     effective_user_id = user_id or get_effective_user_id()
     try:
         storage = get_or_new_user_skill_storage(effective_user_id, app_config=config)
@@ -334,6 +349,9 @@ async def list_skills(config: AppConfig = Depends(get_config)) -> SkillsListResp
     description="Install a skill from a .skill file (ZIP archive) located in the thread's user-data directory.",
 )
 async def install_skill(request: Request, body: SkillInstallRequest, config: AppConfig = Depends(get_config)) -> SkillInstallResponse:
+    from app.gateway.deps import require_admin_user
+    from app.gateway.path_utils import resolve_thread_virtual_path
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         skill_file_path = resolve_thread_virtual_path(body.thread_id, body.path)
@@ -368,6 +386,8 @@ async def upload_and_install_skill(
     request: Request,
     config: AppConfig = Depends(get_config),
 ) -> SkillInstallResponse:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     form: FormData | None = None
@@ -404,6 +424,9 @@ async def upload_and_install_skill(
 )
 async def reload_skills(request: Request) -> SkillReloadResponse:
     """Invalidate process-local skill prompt caches after external file changes."""
+    from alpha.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         await refresh_skills_system_prompt_cache_async()
@@ -480,6 +503,8 @@ def _proposal_finding_to_response(finding: dict) -> SkillProposalFinding:
 
 
 def _proposal_to_response(proposal: SkillProposal) -> SkillProposalResponse:
+    from alpha.skills.proposals import finding_summary
+
     findings = [_proposal_finding_to_response(finding) for finding in proposal.findings]
     return SkillProposalResponse(
         id=proposal.id,
@@ -498,6 +523,8 @@ def _proposal_to_response(proposal: SkillProposal) -> SkillProposalResponse:
 
 
 def _proposal_store() -> SkillProposalStore:
+    from alpha.skills.proposals import proposals_root
+
     return SkillProposalStore(proposals_root())
 
 
@@ -512,6 +539,9 @@ async def list_skill_proposals(
     scope: str = Query(default="mine", description="`mine` or `all` (admin-only)"),
     status: str | None = Query(default=None, description="Filter by status: pending, approved, rejected, installed"),
 ) -> SkillProposalListResponse:
+    from alpha.skills.proposals import APPROVED, INSTALLED, PENDING, REJECTED
+    from app.gateway.deps import require_admin_user
+
     user_id = get_effective_user_id()
     if scope == "all":
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
@@ -532,6 +562,8 @@ async def list_skill_proposals(
     description="Propose a skill as SKILL.md markdown. Scanned immediately (blockers fail without storing); an admin reviews before anything takes effect.",
 )
 async def create_skill_proposal(request: Request, body: SkillProposalCreateRequest, config: AppConfig = Depends(get_config)) -> SkillProposalResponse:
+    from alpha.skills.proposals import validate_proposal_content, validate_proposal_name
+
     user_id = get_effective_user_id()
     try:
         validate_proposal_name(body.name)
@@ -553,6 +585,8 @@ async def create_skill_proposal(request: Request, body: SkillProposalCreateReque
 
 def _stage_proposal_archive(proposal: SkillProposal) -> Path:
     """Materialize a proposal as a `.skill` archive directory layout for install."""
+    from alpha.skills.types import SKILL_MD_FILE
+
     staging = Path(tempfile.mkdtemp(prefix="alpha-proposal-install-"))
     skill_dir = staging / proposal.name
     skill_dir.mkdir(parents=True)
@@ -570,6 +604,10 @@ def _stage_proposal_archive(proposal: SkillProposal) -> Path:
     description="Admin-only: re-scan, install into the proposer's custom skills, and mark installed. Blocked re-scans fail without state changes.",
 )
 async def approve_skill_proposal(proposal_id: str, request: Request, config: AppConfig = Depends(get_config)) -> SkillProposalResponse:
+    from alpha.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
+    from alpha.skills.proposals import APPROVED, INSTALLED, PENDING
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     admin_id = get_effective_user_id()
     store = _proposal_store()
@@ -619,6 +657,9 @@ async def approve_skill_proposal(proposal_id: str, request: Request, config: App
     description="Admin-only: reject with an optional reason. Rejected proposals stay readable but inert.",
 )
 async def reject_skill_proposal(proposal_id: str, request: Request, body: SkillProposalReviewRequest) -> SkillProposalResponse:
+    from alpha.skills.proposals import REJECTED
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     admin_id = get_effective_user_id()
     store = _proposal_store()
@@ -650,6 +691,10 @@ async def list_custom_skills(config: AppConfig = Depends(get_config)) -> SkillsL
 
 @router.get("/skills/custom/{skill_name}/export-manifest", response_model=SkillExportManifestResponse, response_model_exclude_unset=True, summary="Preview Custom Skill Export")
 async def preview_custom_skill_export(skill_name: str, request: Request, response: Response, config: AppConfig = Depends(get_config)) -> SkillExportManifestResponse | Response:
+    from alpha.skills.export import SkillExportError, export_manifest
+    from app.gateway.deps import require_admin_user
+    from app.gateway.skill_export import ExportClientDisconnected, export_http_error, run_export_work
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         result, lease = await run_export_work(lambda cancel: export_manifest(_get_user_skill_storage(config), skill_name, cancel), request)
@@ -675,6 +720,10 @@ async def download_custom_skill_export(
     expected_revision: str = Query(..., pattern=r"^[a-f0-9]{64}$"),
     config: AppConfig = Depends(get_config),
 ) -> Response:
+    from alpha.skills.export import SkillExportError, build_skill_export
+    from app.gateway.deps import require_admin_user
+    from app.gateway.skill_export import ExportClientDisconnected, SkillExportResponse, export_http_error, run_export_work
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         archive, lease = await run_export_work(lambda cancel: build_skill_export(_get_user_skill_storage(config), skill_name, expected_revision, cancel), request)
@@ -691,6 +740,8 @@ async def download_custom_skill_export(
 
 @router.get("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Get Custom Skill Content")
 async def get_custom_skill(skill_name: str, request: Request, config: AppConfig = Depends(get_config)) -> CustomSkillContentResponse:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     return await _read_custom_skill_response(skill_name, config)
 
@@ -713,6 +764,9 @@ async def _read_custom_skill_response(skill_name: str, config: AppConfig) -> Cus
 
 @router.put("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Edit Custom Skill")
 async def update_custom_skill(skill_name: str, body: CustomSkillUpdateRequest, request: Request, config: AppConfig = Depends(get_config)) -> CustomSkillContentResponse:
+    from alpha.skills.types import SKILL_MD_FILE
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
@@ -753,6 +807,9 @@ async def update_custom_skill(skill_name: str, body: CustomSkillUpdateRequest, r
 
 @router.delete("/skills/custom/{skill_name}", summary="Delete Custom Skill")
 async def delete_custom_skill(skill_name: str, request: Request, config: AppConfig = Depends(get_config)) -> dict[str, bool]:
+    from alpha.skills.types import SKILL_MD_FILE
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
@@ -783,6 +840,8 @@ async def delete_custom_skill(skill_name: str, request: Request, config: AppConf
 
 @router.get("/skills/custom/{skill_name}/history", response_model=CustomSkillHistoryResponse, summary="Get Custom Skill History")
 async def get_custom_skill_history(skill_name: str, request: Request, config: AppConfig = Depends(get_config)) -> CustomSkillHistoryResponse:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
@@ -809,6 +868,9 @@ async def get_custom_skill_history(skill_name: str, request: Request, config: Ap
 
 @router.post("/skills/custom/{skill_name}/rollback", response_model=CustomSkillContentResponse, summary="Rollback Custom Skill")
 async def rollback_custom_skill(skill_name: str, body: SkillRollbackRequest, request: Request, config: AppConfig = Depends(get_config)) -> CustomSkillContentResponse:
+    from alpha.skills.types import SKILL_MD_FILE
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         storage = _get_user_skill_storage(config)
@@ -892,6 +954,8 @@ async def retrieve_skills(
     min_score: float = Query(default=DEFAULT_MIN_SCORE, ge=0.0, le=1.0, description="Minimum match_score (heuristic, 0-1) required to be returned."),
     config: AppConfig = Depends(get_config),
 ) -> dict:
+    from alpha.skills.retrieval import score_skill_retrieval
+
     skills = _retrieval_catalog(config)
     return score_skill_retrieval(query, skills, top_k=top_k, min_score=min_score).to_dict()
 
@@ -943,6 +1007,7 @@ def _write_extensions_skill_state(
     """
     from contextlib import nullcontext
 
+    from alpha.config.extensions_config import ExtensionsConfig, atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock, read_raw_extensions_config, set_raw_skill_enabled, validate_raw_extensions_config
     from alpha.skills.projection import skill_projection_mutation
     from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
@@ -984,6 +1049,8 @@ async def update_skill(skill_name: str, body: SkillUpdateRequest, request: Reque
     # refreshes the system prompt for every tenant, so it is a global mutation
     # (there is no per-user skill state). Guard it as admin-only like the other
     # global config writes, matching the MCP router.
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
@@ -1086,6 +1153,8 @@ async def list_skill_tiers() -> dict:
     description="Mark a fresh community skill as quarantined so it cannot load until reviewed.",
 )
 async def quarantine_skill(request: Request, skill_name: str = Query(...)) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
@@ -1102,6 +1171,8 @@ async def quarantine_skill(request: Request, skill_name: str = Query(...)) -> di
     description="Pass review: lift quarantine and assign a trust tier.",
 )
 async def graduate_skill(skill_name: str, request: Request, body: SkillTierRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     if body.tier not in ("trusted", "builtin"):
         raise HTTPException(status_code=422, detail="tier must be trusted|builtin.")
@@ -1175,6 +1246,8 @@ async def skill_curator_report() -> dict:
 async def skill_curator_run(
     request: Request, stale_after_days: float = Query(default=14.0, ge=1.0), archive_after_days: float = Query(default=30.0, ge=1.0), suggest_merges: bool = Query(default=False), dry_run: bool = Query(default=False)
 ) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
@@ -1196,6 +1269,8 @@ async def skill_curator_run(
     description="Pinned skills bypass all curator auto-transitions.",
 )
 async def skill_pin(skill_name: str, request: Request, body: SkillPinRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
@@ -1217,6 +1292,8 @@ async def skill_pin(skill_name: str, request: Request, body: SkillPinRequest) ->
     description="Recover an archived skill back to active.",
 )
 async def skill_restore(skill_name: str, request: Request) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():

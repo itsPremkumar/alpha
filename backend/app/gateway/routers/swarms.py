@@ -11,12 +11,6 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
-from alpha.runtime.user_context import get_effective_user_id
-from alpha.swarm.coordinator import get_swarm_coordinator
-from alpha.swarm.models import SwarmBudget, SwarmMode, is_terminal_swarm_status
-from alpha.utils.time import coerce_iso
-from app.gateway.deps import require_admin_user
-
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/swarms", tags=["swarms"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage swarms."
@@ -50,6 +44,8 @@ def _wire_ts(value: object) -> str | None:
     there is no zero case to translate here and a stored ``0.0`` is coerced as
     the real epoch it claims to be.
     """
+    from alpha.utils.time import coerce_iso
+
     if value is None:
         return None
     return coerce_iso(value)
@@ -215,6 +211,8 @@ class SwarmClaimRequest(BaseModel):
 def _request_owner(request: Request | None) -> str | None:
     """Resolve the server-owned owner for a route without trusting body fields."""
 
+    from alpha.runtime.user_context import get_effective_user_id
+
     if request is None:
         return None
     user = getattr(getattr(request, "state", None), "user", None)
@@ -234,6 +232,8 @@ def _owner_scope(request: Request | None) -> str | None:
 
 
 def _ensure_visible(swarm_id: str, request: Request | None):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
     coordinator = get_swarm_coordinator()
     plan = coordinator.get_swarm(swarm_id, owner_id=_owner_scope(request))
     if plan is None:
@@ -244,6 +244,8 @@ def _ensure_visible(swarm_id: str, request: Request | None):
 @router.post("/evaluate")
 async def evaluate_swarm_feasibility(payload: SwarmEvaluateRequest):
     """Evaluate whether a task warrants a swarm and calculate expected speedup."""
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
 
     coordinator = get_swarm_coordinator()
     decision = await asyncio.to_thread(coordinator.evaluate_intent, payload.goal, payload.items)
@@ -257,6 +259,10 @@ async def create_and_spawn_swarm(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     """Create a validated plan; execution remains an explicit async state transition."""
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from alpha.swarm.models import SwarmBudget, SwarmMode
+    from app.gateway.deps import require_admin_user
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     # FastAPI substitutes the header value only when the request is routed
@@ -297,6 +303,8 @@ async def create_and_spawn_swarm(
 async def list_swarms(limit: int = 20, *, request: Request = None):
     """List owner-visible swarms sorted by creation timestamp."""
 
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
     coordinator = get_swarm_coordinator()
     plans = await asyncio.to_thread(coordinator.list_swarms, max(1, min(int(limit), 100)), owner_id=_owner_scope(request))
     return [_plan_to_wire(plan.to_dict()) for plan in plans]
@@ -314,6 +322,9 @@ async def get_swarm_details(swarm_id: str, request: Request = None):
 async def step_swarm(swarm_id: str, request: Request = None):
     """Advance one scheduler tick without pretending it completes model work."""
 
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -322,6 +333,9 @@ async def step_swarm(swarm_id: str, request: Request = None):
 
 @router.post("/{swarm_id}/pause")
 async def pause_swarm(swarm_id: str, request: Request = None):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -333,6 +347,9 @@ async def pause_swarm(swarm_id: str, request: Request = None):
 
 @router.post("/{swarm_id}/resume")
 async def resume_swarm(swarm_id: str, request: Request = None):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -344,6 +361,9 @@ async def resume_swarm(swarm_id: str, request: Request = None):
 
 @router.post("/{swarm_id}/cancel")
 async def cancel_swarm(swarm_id: str, payload: SwarmCancelRequest, request: Request = None):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -357,6 +377,8 @@ async def cancel_swarm(swarm_id: str, payload: SwarmCancelRequest, request: Requ
 async def get_swarm_events(swarm_id: str, limit: int = 50, *, request: Request = None):
     """Retrieve bounded, ordered audit events for one swarm."""
 
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
     events = await asyncio.to_thread(coordinator.get_events, swarm_id, max(1, min(int(limit), 500)))
@@ -366,6 +388,9 @@ async def get_swarm_events(swarm_id: str, limit: int = 50, *, request: Request =
 @router.get("/{swarm_id}/events/stream")
 async def stream_swarm_events(swarm_id: str, request: Request = None, timeout_seconds: int = 60):
     """Stream ordered swarm audit events until terminal state or timeout."""
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from alpha.swarm.models import is_terminal_swarm_status
 
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -392,6 +417,9 @@ async def stream_swarm_events(swarm_id: str, request: Request = None, timeout_se
 @router.post("/{swarm_id}/tasks/{task_id}/complete")
 async def complete_swarm_task(swarm_id: str, task_id: str, payload: SwarmTaskCompleteRequest, request: Request = None):
     """Record a completion only when the task's current lease/attempt is valid."""
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _coordinator, plan = _ensure_visible(swarm_id, request)
@@ -436,6 +464,9 @@ async def get_swarm_task(swarm_id: str, task_id: str, request: Request = None):
 async def claim_swarm_task(swarm_id: str, task_id: str, payload: SwarmClaimRequest, request: Request = None):
     """Claim a ready task for an external worker with an explicit lease."""
 
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -455,6 +486,10 @@ async def claim_swarm_task(swarm_id: str, task_id: str, payload: SwarmClaimReque
 @router.post("/{swarm_id}/expand")
 async def expand_swarm(swarm_id: str, payload: SwarmExpandRequest, request: Request = None):
     """Inject validated tasks into an active DAG as one bounded transition."""
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from alpha.swarm.models import is_terminal_swarm_status
+    from app.gateway.deps import require_admin_user
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _coordinator, plan = _ensure_visible(swarm_id, request)
@@ -489,6 +524,9 @@ async def replan_swarm(swarm_id: str, payload: SwarmExpandRequest, request: Requ
 @router.post("/{swarm_id}/run-async")
 async def run_swarm_background(swarm_id: str, request: Request = None):
     """Start one idempotent background runner for a non-terminal swarm."""
+
+    from alpha.swarm.models import is_terminal_swarm_status
+    from app.gateway.deps import require_admin_user
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     coordinator, plan = _ensure_visible(swarm_id, request)
@@ -569,6 +607,8 @@ async def get_swarm_messages(
     since_sequence: int = 0,
     limit: int = 50,
 ):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
     messages = await asyncio.to_thread(
@@ -584,6 +624,9 @@ async def get_swarm_messages(
 
 @router.post("/{swarm_id}/messages")
 async def publish_swarm_message(swarm_id: str, payload: SwarmMessageRequest, request: Request = None):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
@@ -607,6 +650,8 @@ async def publish_swarm_message(swarm_id: str, payload: SwarmMessageRequest, req
 
 @router.get("/{swarm_id}/metrics")
 async def get_swarm_metrics(swarm_id: str, request: Request = None):
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
     _ensure_visible(swarm_id, request)
     coordinator = get_swarm_coordinator()
     return _with_budget_to_wire(await asyncio.to_thread(coordinator.metrics, swarm_id))

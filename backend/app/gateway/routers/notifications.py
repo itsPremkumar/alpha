@@ -19,13 +19,6 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from alpha.notifications import (
-    NOTIFICATION_PRIORITIES,
-    NOTIFICATION_TYPES,
-    OPERATOR_USER_ID,
-)
-from alpha.notifications.triggers import NotificationTriggers, get_notification_store
-
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -43,10 +36,14 @@ class PreferenceUpdate(BaseModel):
 
 
 def _store():
+    from alpha.notifications.triggers import get_notification_store
+
     return get_notification_store()
 
 
 def _triggers():
+    from alpha.notifications.triggers import NotificationTriggers
+
     return NotificationTriggers(_store())
 
 
@@ -67,6 +64,8 @@ def _current_user() -> str:
     roster and this route served an inbox nothing had ever written to,
     so the bell was empty no matter how many notifications existed.
     """
+    from alpha.notifications import OPERATOR_USER_ID
+
     return OPERATOR_USER_ID
 
 
@@ -82,6 +81,8 @@ async def list_notifications(
     raised error, never an empty list that reads as "nothing
     happened".
     """
+    from alpha.notifications import NOTIFICATION_PRIORITIES, NOTIFICATION_TYPES
+
     user_id = _current_user()
     wanted = [t.strip() for t in types.split(",") if t.strip()] if types else None
 
@@ -141,6 +142,8 @@ async def mark_all_read() -> dict:
 # the literal first.
 @router.get("/preferences", summary="Notification preferences")
 async def get_preferences() -> dict:
+    from alpha.notifications import NOTIFICATION_PRIORITIES, NOTIFICATION_TYPES
+
     user_id = _current_user()
 
     def _read():

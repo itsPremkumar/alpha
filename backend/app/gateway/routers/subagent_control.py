@@ -13,17 +13,6 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.subagents.executor import run_on_isolated_subagent_loop
-from alpha.subagents.lifecycle import (
-    SubagentContract,
-    SubagentStatusEnum,
-    get_subagent_lifecycle_manager,
-)
-from alpha.subagents.lifecycle_runner import run_registered_subagent
-from alpha.subagents.promotion import get_subagent_promotion_manager
-from alpha.subagents.resilience import get_subagent_resilience_engine
-from app.gateway.deps import require_admin_user
-
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/subagents/control", tags=["subagents-control"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage subagent control plane operations."
@@ -80,6 +69,11 @@ class SubagentPromoteRequest(BaseModel):
 @router.post("/spawn")
 async def spawn_subagent(payload: SpawnSubagentRequest, request: Request):
     """Asynchronously provisions a new task-scoped subagent with an active lease."""
+    from alpha.subagents.executor import run_on_isolated_subagent_loop
+    from alpha.subagents.lifecycle import SubagentContract, get_subagent_lifecycle_manager
+    from alpha.subagents.lifecycle_runner import run_registered_subagent
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     lifecycle = get_subagent_lifecycle_manager()
 
@@ -195,6 +189,8 @@ _KNOWN_SUBAGENT_NAMES: frozenset[str] | None = None
 @router.get("/{subagent_id}")
 async def get_subagent_details(subagent_id: str):
     """Retrieves full metadata, lease validity, and heartbeat status for a subagent."""
+    from alpha.subagents.lifecycle import get_subagent_lifecycle_manager
+
     lifecycle = get_subagent_lifecycle_manager()
     rec = await asyncio.to_thread(lifecycle.get_subagent, subagent_id)
     if not rec:
@@ -205,6 +201,8 @@ async def get_subagent_details(subagent_id: str):
 @router.get("/{subagent_id}/result")
 async def get_subagent_result(subagent_id: str):
     """Retrieves the deliverable findings and artifacts of a completed subagent."""
+    from alpha.subagents.lifecycle import get_subagent_lifecycle_manager
+
     lifecycle = get_subagent_lifecycle_manager()
     rec = await asyncio.to_thread(lifecycle.get_subagent, subagent_id)
     if not rec:
@@ -215,6 +213,8 @@ async def get_subagent_result(subagent_id: str):
 @router.post("/{subagent_id}/heartbeat")
 async def record_subagent_heartbeat(subagent_id: str, payload: SubagentHeartbeatRequest):
     """Emits a liveness heartbeat, updates progress, and extends the worker lease."""
+    from alpha.subagents.lifecycle import get_subagent_lifecycle_manager
+
     lifecycle = get_subagent_lifecycle_manager()
     ok = await asyncio.to_thread(
         lifecycle.record_heartbeat,
@@ -232,6 +232,9 @@ async def record_subagent_heartbeat(subagent_id: str, payload: SubagentHeartbeat
 @router.post("/{subagent_id}/checkpoint")
 async def save_subagent_checkpoint(subagent_id: str, payload: SubagentCheckpointRequest, request: Request):
     """Saves a step checkpoint with intermediate artifacts and decisions."""
+    from alpha.subagents.resilience import get_subagent_resilience_engine
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     resilience = get_subagent_resilience_engine()
 
@@ -250,6 +253,9 @@ async def save_subagent_checkpoint(subagent_id: str, payload: SubagentCheckpoint
 @router.post("/{subagent_id}/replace")
 async def replace_subagent(subagent_id: str, payload: SubagentReplaceRequest, request: Request):
     """Hot-replaces a failed/stalled subagent, restoring the latest checkpoint onto a new worker."""
+    from alpha.subagents.resilience import get_subagent_resilience_engine
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     resilience = get_subagent_resilience_engine()
 
@@ -266,6 +272,9 @@ async def replace_subagent(subagent_id: str, payload: SubagentReplaceRequest, re
 @router.post("/{subagent_id}/cancel")
 async def cancel_subagent(subagent_id: str, payload: SubagentCancelRequest, request: Request):
     """Cancels a subagent and propagates cancellation to all child subagents."""
+    from alpha.subagents.lifecycle import get_subagent_lifecycle_manager
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     lifecycle = get_subagent_lifecycle_manager()
 
@@ -278,6 +287,9 @@ async def cancel_subagent(subagent_id: str, payload: SubagentCancelRequest, requ
 @router.post("/adopt")
 async def adopt_orphans(payload: SubagentAdoptRequest, request: Request):
     """Adopts orphaned subagents whose parent agent crashed."""
+    from alpha.subagents.resilience import get_subagent_resilience_engine
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     resilience = get_subagent_resilience_engine()
 
@@ -296,6 +308,9 @@ async def adopt_orphans(payload: SubagentAdoptRequest, request: Request):
 @router.post("/promote")
 async def promote_subagent_role(payload: SubagentPromoteRequest, request: Request):
     """Promotes a recurring subagent role into a permanent Specialist Bot profile."""
+    from alpha.subagents.promotion import get_subagent_promotion_manager
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     promotion = get_subagent_promotion_manager()
 
@@ -316,6 +331,8 @@ async def list_subagents(
     limit: int = 50,
 ):
     """Lists subagents with optional filtering by parent or status."""
+    from alpha.subagents.lifecycle import SubagentStatusEnum, get_subagent_lifecycle_manager
+
     lifecycle = get_subagent_lifecycle_manager()
     status_filter = SubagentStatusEnum(status.lower().strip()) if status else None
     recs = await asyncio.to_thread(

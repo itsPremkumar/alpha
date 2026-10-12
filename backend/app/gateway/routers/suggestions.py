@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 import alpha.utils.llm_text as llm_text
 from alpha.config.app_config import AppConfig
 from alpha.config.suggestions_config import DEFAULT_MAX_SUGGESTIONS, MAX_SUGGESTIONS_LIMIT
-from alpha.utils.oneshot_llm import run_oneshot_llm
 from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
@@ -108,6 +107,8 @@ async def generate_suggestions(
     request: Request,
     config: AppConfig = Depends(get_config),
 ) -> SuggestionsResponse:
+    from alpha.utils.oneshot_llm import run_oneshot_llm
+
     if not config.suggestions.enabled:
         return SuggestionsResponse(suggestions=[])
     if not body.messages:

@@ -12,29 +12,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from alpha.config.app_config import AppConfig
-from alpha.config.paths import get_paths
-from alpha.runtime.user_context import get_effective_user_id
 from alpha.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
 from alpha.uploads.manager import (
-    UPLOAD_STAGING_PREFIX,
-    UPLOAD_STAGING_SUFFIX,
-    PathTraversalError,
-    UnsafeUploadPathError,
-    claim_unique_filename,
-    delete_file_safe,
-    enrich_file_listing,
     ensure_uploads_dir,
     get_uploads_dir,
-    list_files_in_dir,
-    normalize_filename,
-    upload_artifact_url,
-    upload_virtual_path,
-    validate_upload_destination,
 )
-from alpha.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
-from alpha.utils.file_io import run_file_io
 from alpha.utils.thread_id import ThreadId
-from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
+from app.gateway.authz import (
+    require_permission,
+)
 from app.gateway.deps import get_config
 
 logger = logging.getLogger(__name__)
@@ -179,6 +165,8 @@ def _cleanup_uploaded_paths(paths: list[os.PathLike[str] | str]) -> None:
 
 
 def _prepare_upload_destination(uploads_dir: os.PathLike[str] | str, display_filename: str) -> _UploadTempFile:
+    from alpha.uploads.manager import UPLOAD_STAGING_PREFIX, UPLOAD_STAGING_SUFFIX, validate_upload_destination
+
     uploads_dir_path = Path(uploads_dir)
     file_path = validate_upload_destination(uploads_dir_path, display_filename)
     temp_fd, temp_path_str = tempfile.mkstemp(prefix=UPLOAD_STAGING_PREFIX, suffix=UPLOAD_STAGING_SUFFIX, dir=uploads_dir_path)
@@ -235,6 +223,9 @@ def _sync_upload_to_sandbox(sandbox, file_path: os.PathLike[str] | str, virtual_
 
 
 def _list_uploaded_files_for_thread(thread_id: str, user_id: str) -> dict:
+    from alpha.config.paths import get_paths
+    from alpha.uploads.manager import enrich_file_listing, list_files_in_dir
+
     uploads_dir = get_uploads_dir(thread_id, user_id=user_id)
     result = list_files_in_dir(uploads_dir)
     enrich_file_listing(result, thread_id)
@@ -246,6 +237,9 @@ def _list_uploaded_files_for_thread(thread_id: str, user_id: str) -> dict:
 
 
 def _delete_uploaded_file_for_thread(thread_id: str, filename: str, user_id: str) -> dict:
+    from alpha.uploads.manager import delete_file_safe
+    from alpha.utils.file_conversion import CONVERTIBLE_EXTENSIONS
+
     uploads_dir = get_uploads_dir(thread_id, user_id=user_id)
     return delete_file_safe(uploads_dir, filename, convertible_extensions=CONVERTIBLE_EXTENSIONS)
 
@@ -259,6 +253,8 @@ async def _write_upload_file_with_limits(
     max_total_size: int,
     total_size: int,
 ) -> tuple[os.PathLike[str] | str, int, int]:
+    from alpha.utils.file_io import run_file_io
+
     file_size = 0
     upload_temp: _UploadTempFile | None = None
     try:
@@ -313,6 +309,12 @@ async def upload_files(
     succeeds — files stay in the uploads dir; a sandbox-denied agent cannot
     consume them anyway).
     """
+    from alpha.runtime.user_context import get_effective_user_id
+    from alpha.uploads.manager import UnsafeUploadPathError, claim_unique_filename, normalize_filename, upload_artifact_url, upload_virtual_path
+    from alpha.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
+    from alpha.utils.file_io import run_file_io
+    from app.gateway.authz import SandboxRequestLease, try_acquire_sandbox_for_request
+
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
@@ -492,6 +494,9 @@ async def get_upload_limits(
 @require_permission("threads", "read", owner_check=True)
 async def list_uploaded_files(thread_id: ThreadId, request: Request) -> UploadListResponse:
     """List all files in a thread's uploads directory."""
+    from alpha.runtime.user_context import get_effective_user_id
+    from alpha.utils.file_io import run_file_io
+
     try:
         result = await run_file_io(_list_uploaded_files_for_thread, thread_id, get_effective_user_id())
     except ValueError as e:
@@ -504,6 +509,10 @@ async def list_uploaded_files(thread_id: ThreadId, request: Request) -> UploadLi
 @require_permission("threads", "delete", owner_check=True, require_existing=True)
 async def delete_uploaded_file(thread_id: ThreadId, filename: str, request: Request) -> dict:
     """Delete a file from a thread's uploads directory."""
+    from alpha.runtime.user_context import get_effective_user_id
+    from alpha.uploads.manager import PathTraversalError
+    from alpha.utils.file_io import run_file_io
+
     try:
         return await run_file_io(_delete_uploaded_file_for_thread, thread_id, filename, get_effective_user_id())
     except FileNotFoundError:

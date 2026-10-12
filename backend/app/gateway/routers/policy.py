@@ -12,8 +12,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from alpha.utils.time import coerce_iso
-
 router = APIRouter(prefix="/api/policy", tags=["policy"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage policy."
 
@@ -42,6 +40,8 @@ def _wire_ts(value: object) -> str:
     sentinel to translate. Rendering a stored ``0.0`` as the real epoch it
     claims to be is more honest than inventing a null.
     """
+    from alpha.utils.time import coerce_iso
+
     return coerce_iso(value)
 
 

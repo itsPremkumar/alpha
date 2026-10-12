@@ -25,15 +25,13 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Request
 
-from alpha.runtime.user_context import get_effective_user_id
-from alpha.swarm.coordinator import get_swarm_coordinator
-from alpha.swarm.team import render_team_report_markdown, resolve_roster
-
 router = APIRouter(prefix="/api/teams", tags=["teams"])
 
 
 def _request_owner(request: Request | None) -> str | None:
     """Resolve the server-owned owner for a route without trusting body fields."""
+
+    from alpha.runtime.user_context import get_effective_user_id
 
     if request is None:
         return None
@@ -62,6 +60,8 @@ async def get_specialist_roster(request: Request = None):
     reason, which is the honest answer rather than a 404 or a silent default.
     """
 
+    from alpha.swarm.team import resolve_roster
+
     roster, provenance = await asyncio.to_thread(resolve_roster)
     return {
         "registered": bool(provenance.get("registered")),
@@ -79,6 +79,8 @@ async def get_specialist_roster(request: Request = None):
 async def get_team_report(swarm_id: str, request: Request = None):
     """Who was on the team, what each was asked, what each returned."""
 
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
     coordinator = get_swarm_coordinator()
     report = await asyncio.to_thread(coordinator.team_report, swarm_id, owner_id=_owner_scope(request))
     if report.get("status") == "not_found":
@@ -89,6 +91,9 @@ async def get_team_report(swarm_id: str, request: Request = None):
 @router.get("/{swarm_id}/report.md", response_class=None)
 async def get_team_report_markdown(swarm_id: str, request: Request = None):
     """The same report rendered for a human reading a terminal."""
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
+    from alpha.swarm.team import render_team_report_markdown
 
     coordinator = get_swarm_coordinator()
     report = await asyncio.to_thread(coordinator.team_report, swarm_id, owner_id=_owner_scope(request))
@@ -108,6 +113,8 @@ async def get_team_roster(swarm_id: str, request: Request = None):
     roster: a plan composed before a catalogue reload keeps reporting the team
     it actually ran, which is the only useful answer after the fact.
     """
+
+    from alpha.swarm.coordinator import get_swarm_coordinator
 
     coordinator = get_swarm_coordinator()
     plan = coordinator.get_swarm(swarm_id, owner_id=_owner_scope(request))

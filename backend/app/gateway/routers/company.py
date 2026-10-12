@@ -8,8 +8,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from alpha.company.organization import get_autonomous_company_engine
-
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/company", tags=["company-os"])
 
@@ -44,6 +42,8 @@ class RetrospectiveRequest(BaseModel):
 @router.get("/archetypes")
 async def list_archetypes():
     """Lists supported perpetual organization archetypes and their descriptions."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     return engine.list_archetypes()
 
@@ -51,6 +51,8 @@ async def list_archetypes():
 @router.post("/bootstrap")
 async def bootstrap_company(payload: CompanyBootstrapRequest):
     """Instantiates a complete autonomous organization with departments, specialist bots, and responsibilities."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     state = engine.bootstrap_company(
         prompt=payload.prompt,
@@ -64,6 +66,8 @@ async def bootstrap_company(payload: CompanyBootstrapRequest):
 @router.get("/status")
 async def get_company_status(org_id: str | None = None):
     """Retrieves organizational state, department hierarchy, and active workforce."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     if org_id:
         state = engine.get_company(org_id)
@@ -80,6 +84,8 @@ async def get_company_status(org_id: str | None = None):
 @router.get("/executive-digest")
 async def get_executive_digest(org_id: str | None = None):
     """Generates a high-level executive digest with health score, KPI progress, and explainability."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -92,6 +98,8 @@ async def get_executive_digest(org_id: str | None = None):
 @router.post("/discover-work")
 async def discover_work(payload: WorkDiscoveryRequest):
     """Scans signals for new bugs, security items, and opportunities without inventing pointless work."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -122,6 +130,8 @@ async def discover_work(payload: WorkDiscoveryRequest):
 @router.get("/kpis")
 async def list_kpis(org_id: str | None = None):
     """Lists organization KPIs, targets, and autonomous corrective tasks."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -138,6 +148,8 @@ async def list_kpis(org_id: str | None = None):
 @router.post("/strategy/replan")
 async def replan_strategy(payload: StrategyReplanRequest):
     """Conducts strategic impact analysis and realigns initiatives based on owner directive."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -150,6 +162,8 @@ async def replan_strategy(payload: StrategyReplanRequest):
 @router.post("/responsibilities/transfer")
 async def transfer_responsibility(payload: TransferResponsibilityRequest):
     """Fails over or reassigns an organizational responsibility to backup worker."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -163,6 +177,8 @@ async def transfer_responsibility(payload: TransferResponsibilityRequest):
 @router.post("/retrospective")
 async def run_retrospective(payload: RetrospectiveRequest):
     """Executes an autonomous retrospective and logs to the evolution journal."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -175,6 +191,8 @@ async def run_retrospective(payload: RetrospectiveRequest):
 @router.get("/evolution-journal")
 async def get_evolution_journal(org_id: str | None = None):
     """Retrieves the self-improvement evolution journal."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -203,6 +221,8 @@ class KanbanSyncRequest(BaseModel):
 @router.get("/swarm/bots")
 async def get_swarm_bots(org_id: str | None = None):
     """Discovers and imports local specialist bot profiles."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if target_id:
@@ -220,6 +240,8 @@ async def get_swarm_bots(org_id: str | None = None):
 @router.post("/production-line/submit")
 async def submit_production_line_feature(payload: ProductionLineSubmitRequest):
     """Submits a new feature into the 8-stage enterprise production line."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     prod_line = engine.get_production_line()
     run = prod_line.submit_feature(title=payload.title, feature_spec=payload.feature_spec)
@@ -229,6 +251,8 @@ async def submit_production_line_feature(payload: ProductionLineSubmitRequest):
 @router.post("/production-line/advance")
 async def advance_production_line_stage(payload: ProductionLineAdvanceRequest):
     """Advances a feature through the 8-stage production pipeline."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     prod_line = engine.get_production_line()
     run, artifact = prod_line.advance_stage(run_id=payload.run_id, content=payload.stage_content)
@@ -241,6 +265,8 @@ async def advance_production_line_stage(payload: ProductionLineAdvanceRequest):
 @router.post("/kanban/sync")
 async def sync_kanban(payload: KanbanSyncRequest):
     """Synchronizes active company projects into enterprise SQLite kanban board."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -252,6 +278,8 @@ async def sync_kanban(payload: KanbanSyncRequest):
 
 @router.post("/{org_id}/pause")
 async def pause_company(org_id: str):
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     state = engine.pause_company(org_id)
     return {"status": "paused", "org_id": org_id, "state": state.state.value}
@@ -259,6 +287,8 @@ async def pause_company(org_id: str):
 
 @router.post("/{org_id}/resume")
 async def resume_company(org_id: str):
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     state = engine.resume_company(org_id)
     return {"status": "resumed", "org_id": org_id, "state": state.state.value}
@@ -295,6 +325,8 @@ class CheckAttendanceRequest(BaseModel):
 @router.get("/groups")
 async def list_group_channels(org_id: str | None = None):
     """Lists all company communication channels, default rooms, and member bots without 7-bot limits."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -307,6 +339,8 @@ async def list_group_channels(org_id: str | None = None):
 @router.post("/groups/create")
 async def create_group_channel(payload: CreateGroupChannelRequest):
     """Dynamically creates a sub-team communication channel or squad war-room."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -325,6 +359,8 @@ async def create_group_channel(payload: CreateGroupChannelRequest):
 @router.post("/groups/message")
 async def post_group_message(payload: PostGroupMessageRequest):
     """Posts a message to a group room, automatically extracting @mentions and notifying target bots."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -342,6 +378,8 @@ async def post_group_message(payload: PostGroupMessageRequest):
 @router.get("/groups/{channel_id}/messages")
 async def get_channel_messages(channel_id: str, org_id: str | None = None, limit: int = 50):
     """Retrieves recent message history and mentions for a specific channel."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -354,6 +392,8 @@ async def get_channel_messages(channel_id: str, org_id: str | None = None, limit
 @router.post("/attendance/pulse")
 async def record_attendance_pulse(payload: RecordPulseRequest):
     """Records a silent, non-conversational protocol heartbeat tick for an agent."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -371,6 +411,8 @@ async def record_attendance_pulse(payload: RecordPulseRequest):
 @router.post("/attendance/check-and-heal")
 async def check_attendance_and_heal(payload: CheckAttendanceRequest):
     """Evaluates the silent attendance ledger and automatically dispatches Bot Medic to heal absent or stuck agents."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -387,6 +429,8 @@ async def check_attendance_and_heal(payload: CheckAttendanceRequest):
 @router.get("/attendance/roll-call")
 async def get_roll_call_digest(org_id: str | None = None):
     """Returns a clean executive markdown standup digest of workforce attendance without spamming chat."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -399,6 +443,8 @@ async def get_roll_call_digest(org_id: str | None = None):
 @router.get("/attendance/status")
 async def get_attendance_status(org_id: str | None = None):
     """Retrieves full liveness ledger status for all enrolled bots."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -444,6 +490,8 @@ async def list_kanban_tasks(
     limit: int = 50,
 ):
     """Retrieves tasks from the SQLite Kanban board, filterable by bot assignee and status."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -456,6 +504,8 @@ async def list_kanban_tasks(
 @router.post("/kanban/tasks/{task_id}/update")
 async def update_kanban_task(task_id: str, payload: UpdateKanbanTaskRequest):
     """Updates a Kanban task status and writes an audit event to the activity log."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -475,6 +525,8 @@ async def update_kanban_task(task_id: str, payload: UpdateKanbanTaskRequest):
 @router.post("/kanban/events/log")
 async def add_kanban_log(payload: AddKanbanLogRequest):
     """Records an activity log event for a task."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -493,6 +545,8 @@ async def add_kanban_log(payload: AddKanbanLogRequest):
 @router.get("/kanban/events")
 async def list_kanban_events(org_id: str | None = None, task_id: str | None = None, limit: int = 50):
     """Retrieves operational audit logs and task progress history."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:
@@ -505,6 +559,8 @@ async def list_kanban_events(org_id: str | None = None, task_id: str | None = No
 @router.post("/kanban/agent-check-in")
 async def agent_kanban_check_in(payload: AgentCheckInRequest):
     """Allows an agent to regularly check in on its queue, log progress, claim tasks, and update status."""
+    from alpha.company.organization import get_autonomous_company_engine
+
     engine = get_autonomous_company_engine()
     target_id = payload.org_id or (engine.list_companies()[0].org_id if engine.list_companies() else None)
     if not target_id:

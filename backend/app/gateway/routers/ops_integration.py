@@ -17,9 +17,6 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
-from alpha.ops.event_loop import get_event_loop_sampler
-from alpha.ops.metrics import CONTENT_TYPE, get_metrics_registry, publish_process_metrics
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ops", tags=["ops-integration"])
@@ -152,6 +149,8 @@ def _publish_event_loop_metrics(registry: Any, snapshot: dict[str, Any]) -> None
 @router.get("/event-loop", summary="Event-loop liveness snapshot")
 async def ops_event_loop() -> dict[str, Any]:
     """Return the event-loop delay/CPU snapshot; delay fields are omitted until the first sampling window completes (absence means no signal, never zero)."""
+    from alpha.ops.event_loop import get_event_loop_sampler
+
     sampler = get_event_loop_sampler()
     sampler.ensure_running()
     return sampler.snapshot()
@@ -168,6 +167,9 @@ async def ops_readiness(request: Request) -> dict[str, Any]:
 @router.get("/metrics", summary="Prometheus metrics")
 async def ops_metrics() -> Response:
     """Render the bounded in-process metrics registry as Prometheus text exposition (``text/plain; version=0.0.4``)."""
+    from alpha.ops.event_loop import get_event_loop_sampler
+    from alpha.ops.metrics import CONTENT_TYPE, get_metrics_registry, publish_process_metrics
+
     registry = get_metrics_registry()
     sampler = get_event_loop_sampler()
     sampler.ensure_running()

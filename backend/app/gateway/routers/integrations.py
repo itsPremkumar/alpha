@@ -5,7 +5,6 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from alpha.config.app_config import AppConfig
 from alpha.integrations.lark_cli import (
     LARK_AUTH_COMPLETE_DEFAULT_WAIT_SECONDS,
@@ -17,19 +16,12 @@ from alpha.integrations.lark_cli import (
     LarkCliProbe,
     LarkConfigCompleteResult,
     LarkConfigStartResult,
-    LarkFlowSupersededError,
     LarkInstallResult,
     LarkIntegrationStatus,
-    complete_lark_auth,
-    complete_lark_config,
-    get_lark_integration_status,
-    install_lark_integration,
-    set_lark_app_credentials,
-    start_lark_auth,
-    start_lark_config,
 )
-from alpha.runtime.user_context import get_effective_user_id
-from app.gateway.deps import get_config, require_admin_user
+from app.gateway.deps import (
+    get_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +36,8 @@ async def _is_admin_user(request: Request) -> bool:
     Fails closed: any error (missing middleware state, auth failure) is treated
     as non-admin so host paths are redacted rather than accidentally exposed.
     """
+    from app.gateway.deps import require_admin_user
+
     try:
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     except Exception:
@@ -258,6 +252,9 @@ def _auth_complete_to_response(result: LarkAuthCompleteResult, *, include_host_p
 
 @router.get("/lark/status", response_model=LarkIntegrationStatusResponse, summary="Get Lark/Feishu Integration Status")
 async def get_lark_status(request: Request, config: AppConfig = Depends(get_config)) -> LarkIntegrationStatusResponse:
+    from alpha.integrations.lark_cli import get_lark_integration_status
+    from alpha.runtime.user_context import get_effective_user_id
+
     try:
         status = await asyncio.to_thread(get_lark_integration_status, get_effective_user_id(), config, check_latest=True, check_runtime=True)
         return _status_to_response(status, include_host_paths=await _is_admin_user(request))
@@ -268,6 +265,11 @@ async def get_lark_status(request: Request, config: AppConfig = Depends(get_conf
 
 @router.post("/lark/install", response_model=LarkInstallResponse, summary="Install Lark/Feishu Skill Pack")
 async def install_lark(request: Request, config: AppConfig = Depends(get_config)) -> LarkInstallResponse:
+    from alpha.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
+    from alpha.integrations.lark_cli import install_lark_integration
+    from alpha.runtime.user_context import get_effective_user_id
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         result = await asyncio.to_thread(install_lark_integration, get_effective_user_id(), config)
@@ -286,6 +288,9 @@ async def install_lark(request: Request, config: AppConfig = Depends(get_config)
 
 @router.post("/lark/config/start", response_model=LarkConfigStartResponse, summary="Start Lark/Feishu App Configuration")
 async def start_lark_app_config(body: LarkConfigStartRequest) -> LarkConfigStartResponse:
+    from alpha.integrations.lark_cli import start_lark_config
+    from alpha.runtime.user_context import get_effective_user_id
+
     try:
         result = await asyncio.to_thread(
             start_lark_config,
@@ -306,6 +311,9 @@ async def start_lark_app_config(body: LarkConfigStartRequest) -> LarkConfigStart
 
 @router.post("/lark/config/complete", response_model=LarkConfigCompleteResponse, summary="Complete Lark/Feishu App Configuration")
 async def complete_lark_app_config(request: Request, body: LarkConfigCompleteRequest, config: AppConfig = Depends(get_config)) -> LarkConfigCompleteResponse:
+    from alpha.integrations.lark_cli import LarkFlowSupersededError, complete_lark_config
+    from alpha.runtime.user_context import get_effective_user_id
+
     try:
         result = await asyncio.to_thread(
             complete_lark_config,
@@ -333,6 +341,9 @@ async def complete_lark_app_config(request: Request, body: LarkConfigCompleteReq
 
 @router.post("/lark/config/credentials", response_model=LarkConfigCompleteResponse, summary="Switch Lark/Feishu App Credentials")
 async def switch_lark_app_credentials(request: Request, body: LarkConfigCredentialsRequest, config: AppConfig = Depends(get_config)) -> LarkConfigCompleteResponse:
+    from alpha.integrations.lark_cli import set_lark_app_credentials
+    from alpha.runtime.user_context import get_effective_user_id
+
     try:
         result = await asyncio.to_thread(
             set_lark_app_credentials,
@@ -356,6 +367,9 @@ async def switch_lark_app_credentials(request: Request, body: LarkConfigCredenti
 
 @router.post("/lark/auth/start", response_model=LarkAuthStartResponse, summary="Start Lark/Feishu Browser Authorization")
 async def start_lark_browser_auth(body: LarkAuthStartRequest) -> LarkAuthStartResponse:
+    from alpha.integrations.lark_cli import LarkFlowSupersededError, start_lark_auth
+    from alpha.runtime.user_context import get_effective_user_id
+
     try:
         result = await asyncio.to_thread(
             start_lark_auth,
@@ -381,6 +395,9 @@ async def start_lark_browser_auth(body: LarkAuthStartRequest) -> LarkAuthStartRe
 
 @router.post("/lark/auth/complete", response_model=LarkAuthCompleteResponse, summary="Complete Lark/Feishu Browser Authorization")
 async def complete_lark_browser_auth(request: Request, body: LarkAuthCompleteRequest, config: AppConfig = Depends(get_config)) -> LarkAuthCompleteResponse:
+    from alpha.integrations.lark_cli import LarkFlowSupersededError, complete_lark_auth
+    from alpha.runtime.user_context import get_effective_user_id
+
     try:
         result = await asyncio.to_thread(
             complete_lark_auth,

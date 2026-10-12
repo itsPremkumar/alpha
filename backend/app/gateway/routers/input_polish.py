@@ -4,9 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import alpha.utils.llm_text as llm_text
-from alpha.branding import DISPLAY_NAME
 from alpha.config.app_config import AppConfig
-from alpha.utils.oneshot_llm import run_oneshot_llm
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
 
@@ -38,6 +36,8 @@ def _clean_rewritten_text(text: str) -> str:
 
 
 def _build_system_instruction() -> str:
+    from alpha.branding import DISPLAY_NAME
+
     return (
         f"You are {DISPLAY_NAME}'s pre-send prompt optimizer.\n"
         "Rewrite the user's rough draft into a clearer instruction for an AI agent before it is sent.\n"
@@ -68,6 +68,8 @@ async def polish_input(
     request: Request,
     config: AppConfig = Depends(get_config),
 ) -> InputPolishResponse:
+    from alpha.utils.oneshot_llm import run_oneshot_llm
+
     del request  # Required by the auth decorator.
 
     if not config.input_polish.enabled:

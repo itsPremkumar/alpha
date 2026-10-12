@@ -43,9 +43,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.groups.claims import CLAIM_INTENTS, CLAIM_KINDS
 from app.gateway.authz import require_permission
-from app.gateway.deps import get_run_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/groups", tags=["group-coordination"])
@@ -131,6 +129,8 @@ async def _live_run_facts(request: Request, run_ids: dict[str, str]) -> dict[str
     `absent=True`, not dropped. "No row" and "a row that is still running"
     are different claims, and the derivation treats them differently.
     """
+    from app.gateway.deps import get_run_manager
+
     if not run_ids:
         return {}
 
@@ -244,6 +244,8 @@ async def create_claim(name: str, body: ClaimRequest) -> dict:
     design, because a status dot that could block a write would be switched off
     by the first bad heartbeat and then there would be no visibility either.
     """
+    from alpha.groups.claims import CLAIM_INTENTS, CLAIM_KINDS
+
     key = _validate_room_name(name)
     kind = body.kind.strip().lower()
     if kind not in CLAIM_KINDS:
