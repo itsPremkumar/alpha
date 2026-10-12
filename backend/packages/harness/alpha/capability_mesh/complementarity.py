@@ -14,12 +14,17 @@ Four rules decide the shape of this module:
   to anything, so the constructor refuses it: an unanchored
   measurement is not evidence of anything.
 * **No samples means SPECULATIVE, and SPECULATIVE is half value.**
-  ``sample_count == 0`` forces ``ComplementarityEvidence.SPECULATIVE``;
-  ``OBSERVED`` (and ``CONTRADICTED`` — a measured verdict) requires
-  ``sample_count >= PAIR_MIN_SAMPLES`` (5). Downstream
+  ``sample_count == 0`` *coerces* the evidence to
+  ``ComplementarityEvidence.SPECULATIVE`` — an over-claim is downgraded,
+  never honoured, and the coercion can only ever weaken a verdict, so it
+  cannot fabricate one. ``OBSERVED`` (and ``CONTRADICTED`` — a measured
+  verdict) requires ``sample_count >= PAIR_MIN_SAMPLES`` (5). Downstream
   (:mod:`alpha.capability_mesh.team`) a speculative pair contributes
   at HALF its value and flags the member speculative, so an
   unmeasured hunch can never drive an asserted synergy.
+ * **A pair is two entities, never one.** ``entity_a == entity_b`` is
+  refused by name: a pair with itself measures nothing, so the row
+  cannot be a collaboration estimate.
 * **A contradiction is a measurement, and must look like one.**
   ``CONTRADICTED`` means collaboration measured WORSE than both
   members alone, so it requires enough samples AND
@@ -109,6 +114,8 @@ class PairEstimate:
         for field in ("entity_a", "entity_b", "task_category"):
             if not getattr(self, field):
                 raise ValueError(f"{field} must be non-empty")
+        if self.entity_a == self.entity_b:
+            raise ValueError(f"entity_a and entity_b must be distinct entities, got {self.entity_a!r} on both sides: a pair with itself measures nothing")
         try:
             object.__setattr__(self, "evidence", ComplementarityEvidence(str(self.evidence)))
         except ValueError as error:
@@ -126,10 +133,12 @@ class PairEstimate:
 
         if isinstance(self.sample_count, bool) or not isinstance(self.sample_count, int) or self.sample_count < 0:
             raise ValueError(f"sample_count must be an int >= 0, got {self.sample_count!r}")
-        if self.sample_count == 0 and self.evidence is not ComplementarityEvidence.SPECULATIVE:
-            raise ValueError(f"sample_count == 0 forces evidence SPECULATIVE (no pair synergy without observations), got {self.evidence.value}")
+        if self.sample_count == 0:
+            # An over-claim is downgraded, never honoured: zero
+            # observations cannot support any verdict above SPECULATIVE.
+            object.__setattr__(self, "evidence", ComplementarityEvidence.SPECULATIVE)
         if self.evidence in (ComplementarityEvidence.OBSERVED, ComplementarityEvidence.CONTRADICTED) and self.sample_count < PAIR_MIN_SAMPLES:
-            raise ValueError(f"evidence '{self.evidence.value}' requires sample_count >= {PAIR_MIN_SAMPLES} (sufficient evidence before a pair claim), got {self.sample_count}")
+            raise ValueError(f"evidence '{self.evidence.value}' requires sample_count >= PAIR_MIN_SAMPLES ({PAIR_MIN_SAMPLES}) — sufficient evidence before a pair claim — got {self.sample_count}")
         if self.evidence is ComplementarityEvidence.CONTRADICTED:
             # A contradiction is a measurement: collaboration measured WORSE than both alone.
             if self.together is None or self.together >= self.solo_a or self.together >= self.solo_b:
@@ -335,12 +344,20 @@ def correlated_failure_risk(graph: CapabilityGraph, entity_a: str, entity_b: str
     Each entity's recorded failure modes are the targets of its
     ``OFTEN_MISSES`` edges (what :func:`build_from_memory` derives
     from capability memory). The risk is the Jaccard index of the two
-    mode sets: ``|shared| / |union|``. When either entity has no
-    recorded failure modes the answer is ``risk=0.0, known=False`` —
-    an absence of measurements, never a measurement of independence.
+    mode sets: ``|shared| / |union|``.
+
+    Two very different answers stay distinguishable. An entity that is
+    **not in the graph at all** is refused by name — a typo must not
+    read as an empty result. An entity that is present but has no
+    ``OFTEN_MISSES`` edges yields ``risk=0.0, known=False``: an absence
+    of measurements, never a measurement of independence.
     """
     if not isinstance(graph, CapabilityGraph):
         raise ValueError(f"graph must be a CapabilityGraph, got {graph!r}")
+    for entity in (entity_a, entity_b):
+        node_id = node_id_for(NodeKind.ENTITY, entity)
+        if graph.node(node_id) is None:
+            raise ValueError(f"unknown node {node_id!r}: correlated failure risk is only answerable for entities the graph contains")
     modes_a = _recorded_failure_modes(graph, entity_a)
     modes_b = _recorded_failure_modes(graph, entity_b)
     if not modes_a or not modes_b:

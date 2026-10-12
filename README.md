@@ -9,7 +9,7 @@
 **Alpha is a self-hosted, local-first AI agent platform that plans and executes
 long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
-research, multi-agent swarms, sandboxed code execution, persistent memory, 137 native
+research, multi-agent swarms, sandboxed code execution, persistent memory, 139 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
 proprietary backend.
 
@@ -90,7 +90,7 @@ control.
 In one sentence:
 
 > Alpha is a LangGraph-based agent operating system: a Python/FastAPI Gateway runs
-> the agent runtime and 138 native tools, a Next.js 15 workspace and an Electron
+> the agent runtime and 139 native tools, a Next.js 15 workspace and an Electron
 > Windows app are the front ends, and a single Nginx port is the only thing you
 > expose.
 
@@ -116,19 +116,19 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 71 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 72 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
 | **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
-| **Native tools** | 137 (`contracts/feature_manifest.json`, generated) |
-| **Middleware layers** | 44 |
-| **Background supervisor loops** | 10 |
+| **Native tools** | 139 (`contracts/feature_manifest.json`, generated) |
+| **Middleware layers** | 46 |
+| **Background supervisor loops** | 13 |
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 120 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 123 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -154,7 +154,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["138 tools + 46 middlewares + MCP + 24 skills"]
+        Tools["139 tools + 46 middlewares + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -192,7 +192,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
 | **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed and `X-Trace-Id` correlation on every log line. ⚠️ The trajectory flight recorder's writer is not installed in production, so span-level tracing is off by default and not reachable from `config.yaml`. |
-| **It can't use your tools** | 138 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
+| **It can't use your tools** | 139 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
 | **You can't evaluate it** | A benchmarks registry, a skill quality reviewer, a 5-pass research citation contract, and a generated `feature_manifest.json` that fails CI on registry drift. |
@@ -201,6 +201,23 @@ the parts that decide whether an autonomous agent is usable in production.
 rather than a real execution, or where a guarantee is restart-recoverable for one
 process but not cross-process, the documentation says so. That is a design
 decision, not a gap in the docs.
+
+### Capability mesh — measurement first, routing later
+
+Alpha's **capability mesh** keeps evidence-backed capability records for every
+configuration it could route to (an agent, a model config, a toolset, a skill
+bundle) and shows you who a routing plan *would* pick. Every number it returns
+travels with the evidence level behind it, so `unmeasured` is captioned
+`unmeasured` instead of reading like a bad score, and an unreadable store is an
+error rather than an empty list.
+
+It is **`enabled: false` by default, and even enabled it dispatches nothing** —
+there is no executor wiring, so `route` / `team` / `compose` / `explain` are
+previews (`preview: true`, `dispatched: false`), never work that happened. Reach
+it through the `capability_mesh` model tool (12 actions, one write) or
+`/api/capability-mesh`.
+[Operations guide →](./docs/CAPABILITY_MESH.md) ·
+[engine contract →](./backend/packages/harness/alpha/capability_mesh/AGENTS.md)
 
 ---
 
@@ -849,7 +866,7 @@ exactly-once execution.
 <details>
 <summary><b>Full subsystem map (123 harness engines)</b></summary>
 
-Each of the 120 engine packages under `backend/packages/harness/alpha/` (counted by
+Each of the 123 engine packages under `backend/packages/harness/alpha/` (counted by
 `backend/scripts/generate_feature_manifest.py`; `backend/` and `scratch/` sit there
 but are not engines) is a dedicated engine:
 
@@ -1007,7 +1024,7 @@ it sees that.
 | [docs/USE_CASES.md](docs/USE_CASES.md) | End-to-end jobs and the subsystem behind each |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Runtime planes, middleware chain, engine map |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, resolved order, env vars |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 62 Gateway routers, SSE events, auth |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 72 Gateway routers, SSE events, auth |
 | [docs/SECURITY.md](docs/SECURITY.md) | Enclave, approvals, sandbox boundaries, threat model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Helm, Nginx, Windows installer |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Runbook, probes, `/api/ops/*`, disaster recovery |
@@ -1079,7 +1096,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 138 tools, 71 routers, 46 middlewares, and 13 supervisor loops. CI fails
+  pins all 139 tools, 72 routers, 46 middlewares, and 13 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
@@ -1118,7 +1135,7 @@ access; pairing is explicit and uses a high-entropy out-of-band code.**
 **A:** An open-source autonomous multi-agent AI operating system: a LangGraph agent
 runtime behind a FastAPI Gateway, with a Next.js 15 workspace and an Electron
 Windows app, running long-horizon work with sandboxed execution, persistent
-memory, 138 native tools, MCP extensions, and 24 public skills. MIT licensed,
+memory, 139 native tools, MCP extensions, and 24 public skills. MIT licensed,
 self-hosted, no proprietary backend.
 
 **Q: How do I install and run it?**

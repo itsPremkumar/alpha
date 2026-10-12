@@ -14,9 +14,10 @@ from pathlib import Path
 import pytest
 
 from alpha.capability_mesh.complementarity import (
+    PAIR_ESTIMATES_FILE_NAME,
     PAIR_MIN_SAMPLES,
-    CorrelationRisk,
     ComplementarityEvidence,
+    CorrelationRisk,
     PairEstimate,
     PairMemory,
     PairMemoryStoreError,
@@ -117,8 +118,13 @@ def test_thin_but_nonzero_samples_stay_speculative():
 
 def test_complementarity_value_needs_all_three_means():
     assert _pair(solo_a=0.5, solo_b=0.5, together=None).complementarity_value() is None
-    assert _pair(solo_a=None, solo_b=0.5, together=0.8, evidence=ComplementarityEvidence.SPECULATIVE).complementarity_value() is None
-    assert _pair(solo_a=0.5, solo_b=None, together=0.8, evidence=ComplementarityEvidence.SPECULATIVE).complementarity_value() is None
+    # together without a solo baseline never reaches this method: the
+    # constructor refuses the unanchored record (see the together-without-solo
+    # tests above), so a partial record cannot fabricate a synergy number.
+    with pytest.raises(ValueError, match="solo_a"):
+        _pair(solo_a=None, solo_b=0.5, together=0.8, evidence=ComplementarityEvidence.SPECULATIVE)
+    with pytest.raises(ValueError, match="solo_b"):
+        _pair(solo_a=0.5, solo_b=None, together=0.8, evidence=ComplementarityEvidence.SPECULATIVE)
 
 
 def test_complementarity_value_is_together_minus_best_solo():
@@ -152,7 +158,7 @@ def test_pair_memory_for_entity_includes_both_sides(tmp_path: Path):
     store.record(_pair(entity_a="agent:b", entity_b="agent:c"))
     rows = store.for_entity("agent:a")
     assert sorted({partner for row in rows for partner in (row.entity_a, row.entity_b)} - {"agent:a"}) == ["agent:b", "agent:c"]
-    assert store.for_entity("agent:zzz") == []
+    assert store.for_entity("agent:zzz") == ()
 
 
 def test_pair_memory_record_replaces_the_same_key(tmp_path: Path):
@@ -169,15 +175,20 @@ def test_pair_memory_missing_file_is_empty_not_corrupt(tmp_path: Path):
 
 
 def test_pair_memory_corrupt_file_raises(tmp_path: Path):
-    path = tmp_path / "pair_memory.json"
+    path = tmp_path / PAIR_ESTIMATES_FILE_NAME
     path.write_text("{not json", encoding="utf-8")
     with pytest.raises(PairMemoryStoreError, match="pair memory"):
         PairMemory(tmp_path)
 
 
 def test_pair_memory_refuses_a_dishonest_document(tmp_path: Path):
-    path = tmp_path / "pair_memory.json"
-    path.write_text(json.dumps({"version": 1, "pairs": [{"entity_a": "agent:a", "entity_b": "agent:a", "task_category": "*"}]}), encoding="utf-8")
+    # A pair with itself is refused at construction, so a document still
+    # carrying that row is dishonest rather than merely unusual.
+    path = tmp_path / PAIR_ESTIMATES_FILE_NAME
+    path.write_text(
+        json.dumps({"version": 1, "pairs": {"agent:a|agent:a|*": {"entity_a": "agent:a", "entity_b": "agent:a", "task_category": "*"}}}),
+        encoding="utf-8",
+    )
     with pytest.raises(PairMemoryStoreError, match="invalid"):
         PairMemory(tmp_path)
 
@@ -196,7 +207,10 @@ def _failure_graph(failures: dict[str, tuple[str, ...]]) -> CapabilityGraph:
 
 
 def test_correlated_risk_is_unknown_when_either_side_has_no_failure_modes():
-    graph = _failure_graph({"agent:a": ("timeout",)})
+    # Both entities are in the graph; one of them has never failed, so
+    # nothing was measured about it. (An entity the graph does not contain
+    # at all is a different case — a refusal, see below.)
+    graph = _failure_graph({"agent:a": ("timeout",), "agent:b": ()})
     risk = correlated_failure_risk(graph, "agent:a", "agent:b")
     assert risk == CorrelationRisk(risk=0.0, shared_failure_modes=(), known=False)
     # Unknown is not safe; it is unknown — the flag is how a caller tells them apart.

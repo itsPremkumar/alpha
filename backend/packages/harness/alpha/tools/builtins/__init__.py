@@ -24,6 +24,7 @@ from .bot_roster_tool import bot_roster_tool
 from .boulder_checkpoint_tool import boulder_checkpoint_manage
 from .browser_supervisor_tool import browser_navigate_and_inspect
 from .canvas_widget_tool import canvas_widget_tool
+from .capability_mesh_tool import capability_mesh_tool
 from .clarification_tool import ask_clarification_tool
 from .code_agentic_core import (
     auto_test_and_repair,
@@ -220,6 +221,7 @@ __all__ = [
     "kanban_board_tool",
     "mission_memory",
     "canvas_widget_tool",
+    "capability_mesh_tool",
     "goal_engine_tool",
     "trajectory_audit_tool",
     "code_mode_tool",

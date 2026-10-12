@@ -6,9 +6,9 @@
 > hand-maintaining a list that drifts.
 
 - **Packages:** 123
-- **Python files:** 2030
-- **Total lines:** 537752
-- **Packages with preview/simulated markers:** 28
+- **Python files:** 2041
+- **Total lines:** 543060
+- **Packages with preview/simulated markers:** 29
 
 Tier `preview/partial` means the package's source mentions a preview-only,
 simulated, or unimplemented path — inspect before relying on it as production.
@@ -18,12 +18,13 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/memory` | 152 | 44930 | core |
 | `alpha/agents` | 137 | 43772 | preview/partial |
 | `alpha/runtime` | 118 | 34044 | preview/partial |
-| `alpha/tools` | 167 | 30250 | preview/partial |
+| `alpha/tools` | 168 | 30786 | preview/partial |
 | `alpha/community` | 89 | 27861 | preview/partial |
 | `alpha/persistence` | 105 | 18522 | preview/partial |
 | `alpha/workflow` | 52 | 18181 | preview/partial |
 | `alpha/bots` | 35 | 14834 | preview/partial |
-| `alpha/config` | 82 | 13559 | core |
+| `alpha/config` | 82 | 13569 | core |
+| `alpha/capability_mesh` | 27 | 11544 | preview/partial |
 | `alpha/models` | 36 | 11451 | preview/partial |
 | `alpha/observability` | 23 | 11364 | core |
 | `alpha/groups` | 22 | 11347 | core |
@@ -37,7 +38,6 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/evolution` | 23 | 8433 | preview/partial |
 | `alpha/avo` | 26 | 7298 | core |
 | `alpha/mods` | 24 | 7126 | core |
-| `alpha/capability_mesh` | 17 | 6782 | core |
 | `alpha/apex` | 12 | 6650 | core |
 | `alpha/graph` | 11 | 6461 | core |
 | `alpha/projects` | 32 | 5990 | preview/partial |

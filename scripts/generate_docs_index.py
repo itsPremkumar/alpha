@@ -159,9 +159,17 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Operating an arena tournament: the call arithmetic and confirmation gate, profiles and modes, judge blinding, hard gates and the repair loop, and what the engine deliberately does not claim.",
     ),
+    "CAPABILITY_MESH.md": DocumentSpec(
+        "operations",
+        "Operating the capability mesh: the 23 library modules by phase, the model's 12 actions, the HTTP routes, the default-off config slice, and the honesty boundaries that make a preview read as a preview.",
+    ),
     "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
         "Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.",
+    ),
+    "ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md": DocumentSpec(
+        "plans",
+        "Research-backed blueprint for a hybrid, graph-governed, event-driven multi-agent runtime: separating reasoning, orchestration, execution, evidence and governance across every existing Alpha mode.",
     ),
     "ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md": DocumentSpec(
         "plans",

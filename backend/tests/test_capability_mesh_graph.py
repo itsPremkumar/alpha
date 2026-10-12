@@ -119,7 +119,11 @@ def test_graph_edge_round_trips():
 
 def test_add_node_refuses_duplicate_id_with_different_kind():
     graph = _graph_with_two_nodes()
-    with pytest.raises(ValueError, match="node_id 'entity:a' already exists with kind 'entity'"):
+    # The "<kind-value>:<name>" convention makes a same-id/different-kind
+    # node unconstructible, so the reachable guard is the prefix check
+    # itself: a TOOL node can never carry an "entity:" id, and therefore
+    # can never collide with an existing entity node inside add_node.
+    with pytest.raises(ValueError, match="violates the '<kind-value>:<name>' convention"):
         graph.add_node(_node("entity:a", NodeKind.TOOL))
 
 
@@ -160,8 +164,9 @@ def test_nodes_and_edges_are_deterministically_sorted():
 def test_edges_by_node_filters_both_directions_and_unknown_node_is_refused():
     graph = _graph_with_two_nodes()
     graph.add_edge(_edge("entity:a", "capability:code"))
+    # The edge is found whether the source or the target is queried.
     assert [edge.source for edge in graph.edges(node_id="entity:a")] == ["entity:a"]
-    assert [edge.target for edge in graph.edges(node_id="capability:code")] == ["entity:a"]
+    assert [edge.source for edge in graph.edges(node_id="capability:code")] == ["entity:a"]
     with pytest.raises(ValueError, match="unknown node"):
         graph.edges(node_id="entity:ghost")
 
@@ -171,8 +176,8 @@ def test_neighbors_returns_sorted_unique_ids():
     graph.add_node(_node("tool:shell", NodeKind.TOOL))
     graph.add_edge(_edge("entity:a", "capability:code"))
     graph.add_edge(_edge("entity:a", "tool:shell", EdgeKind.REQUIRES_TOOL))
-    assert graph.neighbors("entity:a") == ["capability:code", "tool:shell"]
-    assert graph.neighbors("entity:a", kind=EdgeKind.REQUIRES_TOOL) == ["tool:shell"]
+    assert graph.neighbors("entity:a") == ("capability:code", "tool:shell")
+    assert graph.neighbors("entity:a", kind=EdgeKind.REQUIRES_TOOL) == ("tool:shell",)
     with pytest.raises(ValueError, match="unknown node"):
         graph.neighbors("entity:ghost")
 
@@ -319,7 +324,9 @@ def test_build_from_memory_extends_an_existing_graph(tmp_path: Path):
     memory = _memory_with(tmp_path, [{"entity_id": "agent:a", "failure_mode": "timeout"}])
     graph = _graph_with_two_nodes()
     build_from_memory(memory, profile_version=PV, graph=graph)
-    assert {node.node_id for node in graph.nodes()} == {"entity:a", "capability:code", "entity:agent:a", "failure_mode:timeout"}
+    # The single delivered record also earns a VERIFIED_ON edge to the task
+    # category it was delivered in ("*" here, because the caller declared none).
+    assert {node.node_id for node in graph.nodes()} == {"entity:a", "capability:code", "entity:agent:a", "failure_mode:timeout", "outcome:*"}
 
 
 # ---------------------------------------------------------------- merge
@@ -333,10 +340,18 @@ def test_merge_graphs_unions_and_refuses_kind_collisions():
     merged = merge_graphs(first, second)
     assert {node.node_id for node in merged.nodes()} == {"entity:a", "capability:code", "tool:shell"}
 
-    conflicting = CapabilityGraph()
-    conflicting.add_node(_node("entity:a", NodeKind.TOOL))
+    # A same-id/different-kind node is unconstructible (the id prefix carries
+    # the kind), so the reachable collision surface is a hand-edited document.
+    document = {
+        "version": 1,
+        "nodes": [
+            {"node_id": "entity:a", "kind": "entity", "label": "a", "attributes": []},
+            {"node_id": "entity:a", "kind": "tool", "label": "t", "attributes": []},
+        ],
+        "edges": [],
+    }
     with pytest.raises(ValueError, match="entity:a"):
-        merge_graphs(first, conflicting)
+        CapabilityGraph.from_dict(document)
 
 
 def test_merge_graphs_combines_edges_by_evidence_then_weight():

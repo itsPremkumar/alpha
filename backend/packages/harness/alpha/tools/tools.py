@@ -37,6 +37,7 @@ from alpha.tools.builtins import (
     cancel_background_task,
     cancel_batch,
     canvas_widget_tool,
+    capability_mesh_tool,
     catalog_tool_call,
     catalog_tool_describe,
     catalog_tool_search,
@@ -175,6 +176,9 @@ BUILTIN_TOOLS = [
     propose_skill_tool,
     ask_clarification_tool,
     arena_tool,
+    # Alpha Capability Mesh: read/preview only. It has no executor wiring, so
+    # every planning action is a locally computed preview and nothing dispatches.
+    capability_mesh_tool,
     review_skill_package,
     # Cross-thread recall: lead-only (denied for subagents by default, see
     # SubagentConfig/CustomSubagentConfig) because it crosses thread

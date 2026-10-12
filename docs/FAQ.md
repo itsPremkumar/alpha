@@ -15,14 +15,14 @@ Alpha is an open-source autonomous multi-agent AI operating system. An asynchron
 Python 3.12+ backend built on LangGraph and served by a FastAPI Gateway, paired with
 a Next.js 15 web workspace and an Electron Windows desktop app. It executes
 long-horizon tasks with sandboxed code execution, persistent memory, subagent
-delegation, 138 native tools, MCP extensions, and 24 public skills, behind a single
+delegation, 139 native tools, MCP extensions, and 24 public skills, behind a single
 Nginx reverse proxy on port `2026`. Maintained by
 [Prem Kumar](https://github.com/itsPremkumar) under the MIT license.
 
 ### Is Alpha a framework or a finished application?
 
 Both. It ships as a finished, self-hostable application, and its agent framework is
-also importable as `alpha-harness` (import name `alpha.*`) with 121 engine
+also importable as `alpha-harness` (import name `alpha.*`) with 123 engine
 modules you can use to build your own runtime.
 
 ### Is Alpha a chatbot?
@@ -138,8 +138,8 @@ Discord, Buzz, and Signal.
 
 ### How many tools, skills, routers, and middlewares ship?
 
-138 native tools, Gateway 71 routers, 46 middleware layers, and 13 background
-supervisor loops, plus 24 public skills and 121 harness engine packages. These
+139 native tools, Gateway 72 routers, 46 middleware layers, and 13 background
+supervisor loops, plus 24 public skills and 123 harness engine packages. These
 numbers are generated into
 [`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and enforced
 by a CI drift gate, so they cannot silently rot.

@@ -57,19 +57,25 @@ These are enforced in code *and* pinned by tests; do not relax any of them:
 
 Phases A and B ship foundations only: value types, the store, UNMEASURED
 derivation, and the measurement instruments (`memory.py`, `calibration.py`,
-`drift.py`). There is still **no model-facing tool, no HTTP router, no
-executor integration, and no measured data anywhere in the tree** — nothing in
-Alpha *reads* a passport or a capability record to make a dispatch decision
-today, and nothing *writes* records from a live run. Later phases (microtask
-routing, team formation, composition) add those surfaces; until each lands,
-describe this package as a tested foundation, never as a capability the agent
-can use. Phase C adds the routing *plane* (`fingerprint.py`,
-`decomposition.py`, `fit.py`, `assignment.py`, `policy.py`) — still with **no
+`drift.py`). There is still **no executor integration, and no measured data
+anywhere in the tree** — nothing in Alpha *reads* a passport or a capability
+record to make a dispatch decision today, and nothing *writes* records from a
+live run. A model-facing tool and an HTTP router now exist (Phase H below), but
+they are **read and preview surfaces over the pure library functions**: they
+expose what the mesh already computes, and they dispatch nothing. Until an
+executor wires them, describe this package as a tested, readable measurement
+plane — never as a capability the agent can use to route work. Phase C adds the
+routing *plane* (`fingerprint.py`, `decomposition.py`, `fit.py`, `assignment.py`, `policy.py`) — still with **no
 tool, no router and no executor wiring**; `route()` is a tested pure function,
 not a dispatch decision anything makes yet. Phase D adds the graph, pair
 complementarity, greedy team selection and gap detection (`graph.py`,
 `complementarity.py`, `team.py`, `gaps.py`); Phase E adds the composition
 compiler (`synthesis.py`) — again all pure functions with no executor wiring.
+Phase F adds correlated-error awareness and independence scoring
+(`independence.py`), shadow routing with canary policy and router
+self-evaluation (`shadow.py` — predictions only, no budget, no policy
+rewrite) and bounded explainability projections (`explain.py`) — still with
+**no tool, no router and no executor wiring**.
 
 ## Phase B — cross-run memory, calibration, drift (`memory.py`, `calibration.py`, `drift.py`)
 
@@ -249,16 +255,23 @@ no tool, no router and no executor wiring**. Four modules, four jobs:
   `build_from_passports()` weights a demonstrated capability by its measured
   quality (the `UNMEASURED_PRIOR` when unmeasured) and stamps
   `evidence_count = sample_count`; `build_from_memory()` derives
-  `OFTEN_MISSES` from recorded failure modes. An edge with zero observations
-  is **speculative** — a hypothesis, never evidence — and callers must honour
-  that.
+  `OFTEN_MISSES` from recorded failure modes and `VERIFIED_ON` from
+  *delivered* outcomes (SELECTED/REPAIRED) keyed by **task category**, so
+  "verified on" is task-relative rather than a permanent label. An edge with
+  zero observations is **speculative** — a hypothesis, never evidence — and
+  callers must honour that. `add_edge` refuses a duplicate
+  `(source, target, kind)` triple, so the *builder* resolves which estimate
+  wins (strongest: most samples, then quality) before adding — a caller's
+  iteration order can never silently decide which observation survives.
 - **`complementarity.py` — measured pair value (plan §4.2).** `PairEstimate`
   (solo A, solo B, together, disagreement usefulness, redundant-call rate,
   added cost/latency) with `PairMemory` behind it. `complementarity_value()`
   returns `together - max(solo_a, solo_b)` **only when all three are
   measurable** — otherwise `None`, never a fabricated synergy number.
-  `correlated_failure_risk()` reports `known=False` when neither entity has
-  recorded failure modes: unknown is not safe.
+  `correlated_failure_risk()` reports `known=False` when both entities are
+  in the graph but neither has recorded failure modes — unknown is not
+  safe — and refuses an entity the graph does not contain, because a typo
+  must not read as an empty result.
 - **`team.py` — the greedy portfolio selector (plan §4.3–§4.5).**
   `select_team()` adds the highest-fit eligible entity as PRIMARY, then the
   candidate with the best *marginal* coverage gain adjusted by measured
@@ -285,7 +298,16 @@ Load-bearing rules for this layer, in addition to every earlier invariant:
   `PAIR_MIN_SAMPLES` the evidence is `SPECULATIVE`, it contributes half
   weight to team selection, and the member it justifies is flagged
   speculative — so the plan is flagged, and a reviewer can see the synergy
-  was a hypothesis.
+  was a hypothesis. A zero-sample estimate *coerces* an over-claimed
+  OBSERVED/CONTRADICTED down to SPECULATIVE rather than honouring it: the
+  coercion can only weaken a verdict, never strengthen one.
+- **A pair is two entities, never one.** `entity_a == entity_b` is refused:
+  a pair with itself measures nothing, so the row cannot be a
+  collaboration estimate at all.
+- **`together` without both solo baselines is refused at construction.**
+  An unanchored combined quality is not evidence of anything, so
+  `complementarity_value()` can never be reached with a partial record —
+  the only `None` it can return is the honest "together was not measured".
 - **Independence is disclosed, never faked.** When every member of a team
   shares a `model_family` or `provider`, `TeamPlan.independence_note`
   says so *and names the shared value*; a single member says
@@ -330,6 +352,197 @@ rule is the one Feature U makes load-bearing:
 - **`QUALITY_FLOOR` (0.5) is a documented constant, not a learned
   threshold**: an artifact below it is `FAILED`, at or above with the evidence
   floor met is `PASSED`, and an unmeasured stream can only reach `UNCERTAIN`.
+
+## Phase F — independence scoring, shadow routing, explainability
+
+Three additive modules (`independence.py`, `shadow.py`, `explain.py`), each
+extending the same contract, and **again no tool, no router and no executor
+wiring** — nothing in Alpha reads any of this to make a dispatch decision yet.
+
+- **`independence.py` — correlated-error awareness and independence scoring
+  (plan §11).** `IndependenceAxis` (MODEL_FAMILY, PROVIDER, PROMPT, CONTEXT,
+  SOURCE, TOOL_PATH, METHOD), `IndependenceScore`, `IndependenceScoreboard`
+  (durable `independence.json`), `independence_score()` combining graph priors,
+  measured shared-failure risk and measured pair value, plus
+  `source_independence()` and `verify_with_independent_method()`.
+- **`shadow.py` — shadow routing, canary policy, router self-evaluation
+  (plan §13).** `ShadowComparison`, `ShadowReport`, `ShadowRunner` (durable
+  `shadow.json`), `CanaryPolicy` — all data, no execution.
+- **`explain.py` — capability-aware UI projections (plan §24).**
+  `explain_plan()` -> `ExplanationBundle`: one bounded panel per plan panel,
+  `MAX_VISIBLE_*` caps, visible `"…+N more"` truncation, derived captions, and
+  `honest_notes`.
+
+Load-bearing rules for this layer, in addition to every earlier invariant:
+
+- **Only two axes may be marked by a prior, and they are documented weak
+  priors.** A shared `model_family` costs `MODEL_FAMILY_PRIOR` (0.6) and a
+  shared `model_provider` costs `PROVIDER_PRIOR` (0.7), read from the graph's
+  ENTITY node attributes. Plan §11.2 allows "known model-family/provider
+  relationships as weak priors **only**" — so PROMPT, CONTEXT, SOURCE,
+  TOOL_PATH and METHOD are never marked shared without an observation, and an
+  undisclosed training-lineage fact is never invented. A prior is not a
+  measurement: a prior-only row carries `known=False`.
+- **`known=False` means nothing was measured, never "safe".** An axis nobody
+  observed is not assumed shared, and a `score` of 0.0 with `known=False` is
+  *unknown* — not independent and not dependent. `NOTHING_MEASURED_BASIS`
+  ("nothing measured; independence unknown") is the answer when no graph
+  attribute, no recorded failure mode and no pair row exists.
+- **Source independence is tracked separately from model independence.**
+  `source_independence()` scores the cited source sets only and returns
+  `None` when either side cited nothing: an empty record is unknown, never
+  independent. Two different models citing the same unsupported blog are not
+  independent factual support, and only this function can see that.
+- **MAJORITY_VOTE is not verification.** `verify_with_independent_method()`
+  returns the §11.3 refusal by name: a vote decides which candidates deserve
+  attention, never factual acceptance. It is a vocabulary member so the
+  refusal is reachable, and `INDEPENDENT_METHODS` excludes it.
+- **The shadow runner is prediction-only.** `ShadowRunner` stores
+  comparisons and never calls a model, never spends budget and never changes a
+  live assignment; the candidate router is an injected callable the CALLER
+  runs. `agrees` is derived from the two assignment passport ids and is never
+  stored, `agreement_rate` is `None` at zero comparisons (never 0.0) and
+  `ShadowReport` refuses a numeric rate over zero comparisons — "agreement 0%"
+  over nothing is a measurement nobody took, so a hand-built report cannot
+  state the lie the runner never would,
+  `better_calls` needs a measured outcome (`measured_quality_delta`), and
+  `better + worse + undecided` must partition the carried comparisons. Every
+  report carries `NO_REPLAY_DATASET_NOTE`: plan §13.2's frozen, versioned
+  replay dataset does not exist yet.
+- **Canary promotion is the CALLER's decision, with the rollback baseline
+  named.** `CanaryPolicy` holds the envelope (`slice` refused outside [0, 1] —
+  bounds are refused, never clamped — plus `allowed_task_categories` and
+  `min_sample_before_promote`) and the known-good `baseline_policy` and
+  `rollback`, which are both REQUIRED. It deliberately names no candidate
+  router: §13.3 forbids the router rewriting its own production policy, so
+  `refuse_promotion()` states the standing refusal and `may_promote()` gates on
+  the report's own numbers only.
+- **Explain panels are bounded projections, never a leaderboard.** Every
+  panel is capped by its `MAX_VISIBLE_*` and every dropped row is reported as
+  `"…+N more"` in `honest_notes`. A capability list truncated *inside* one item
+  has no `honest_notes` to report into, so its last visible entry becomes the
+  marker and the cap holds — a silent cut would render as "these are all of
+  them". `ConfidenceView.caption` is DERIVED from the
+  evidence level and the sample count, so an unmeasured capability reads
+  "unmeasured (0 samples)" and can never be smoothed into "well measured".
+  Unresolved conflicts keep "left as alternatives" or "unresolved".
+  `ResourceView` carries `None` for an unpriced estimate or an unknown budget
+  — never a reassuring 0.0. Task-map titles are microtask ids, because a
+  routing plan carries ids and a title is not invented.
+- **The learning controls are advertised, not implemented.**
+  `LearningControls` (rate a result, opt out of routing experiments, disable
+  cross-run performance memory, clear learned profile updates) names what a
+  real UI must offer; this package has no UI, no route and no runtime, all
+  four flags default to `False`, and setting one changes nothing.
+
+## Phase G — value of information, joint routing, evaluation, feedback
+
+Four planning modules that stay pure and offline. None of them dispatches,
+measures or spends anything — they decide, score and record.
+
+- **`scheduler.py` — what to do next (plan §10).** `CandidateAction`
+  (three expected gains, cost, latency, new failure risk, availability) and
+  `expected_net_value()`, which implements the plan's formula exactly and
+  publishes every term in `VoIEstimate.components`. `choose_next_action()`
+  takes the best remaining action and refuses to re-ask about a settled
+  point; `should_stop()` records *why* it stopped, with the blocking
+  criterion named.
+- **`joint_routing.py` — model + instructions + skills + toolset + context
+  slice + verification method as ONE unit (plan §14).** `JointRouter`
+  resolves each unit to exactly one `Availability` state
+  (`MODEL_LACKS_CAPABILITY`, `ENDPOINT_DOWN`, `TOOL_MISSING`,
+  `PERMISSION_DENIED`, `CREDENTIALS_INVALID`, `RUNTIME_LIMIT`,
+  `VERIFICATION_UNRUNNABLE`) and names the component that failed.
+- **`evaluation.py` — capability-specific evaluation (plan §16), rubric
+  selection (§19), diversity exploration (§17).** `Rubric` +
+  `select_rubric()`, `EvaluationSuite` with a disjoint holdout set, and
+  `evaluate()`, which reports **per task category** and carries
+  `global_rank_available = False` by design.
+- **`feedback.py` — specialist-generated checks (plan §20) and user
+  feedback (§21).** `review_check()` accepts a generated check only when it
+  is deterministic; `FeedbackLedger` stores ratings durably and
+  `to_capability_preference()` returns weight `0.0` with
+  "insufficient feedback" below `FEEDBACK_MIN_SAMPLES`.
+
+Load-bearing rules for this layer:
+
+- **An unpriced action is never free.** `cost_usd`/`latency_seconds` are
+  `None` when unknown; `expected_net_value()` substitutes the documented
+  `UNPRICED_PRIOR` and names the substitution in `components`, because a
+  zero-cost guess would make the cheapest-looking action always win.
+- **A VoI estimate is speculative by construction.**
+  `VoIEstimate.speculative` is `True` whenever any term came from a prior.
+  The docstring says so: this is an estimate, not knowledge of the future.
+- **A rubric version is never silently swapped.** Two rubrics sharing an id
+  under different versions is a refusal, and no match at all is a refusal
+  that names what *was* available — the comparability rule from Phase B
+  applied to rubrics.
+- **A holdout set that overlaps the suite is refused**, so a router cannot
+  be tuned against its own answers.
+- **No global leaderboard.** `EvaluationReport` has no rank field and
+  refuses `global_rank_available=True`; quality is per category, and
+  routing regret is `None` rather than `0.0` when no alternative was
+  measured.
+- **A self-generated test is a proposal until something runs it.**
+  `review_check()` cannot accept a non-deterministic check, and
+  `CheckProvenance` refuses to be hand-built into doing so.
+- **A handful of ratings never reorders routing.** Below
+  `FEEDBACK_MIN_SAMPLES` the preference weight is `0.0` with the reason
+  "insufficient feedback".
+- **Private task content is never stored by default**: the ledger keeps the
+  opaque `task_fingerprint`, never the prompt.
+
+## Phase H — the model tool, the HTTP router, and the config slice
+
+Three surfaces now reach this package, and all three are **read/preview only**:
+
+| Surface | Where | What it is |
+| --- | --- | --- |
+| `CapabilityMeshService` | `capability_mesh/service.py` | The **one** implementation both callers use. Synchronous, because every method touches the filesystem; a second implementation would let "the tool said unmeasured" sit beside "the API said measured" |
+| `capability_mesh` tool | `tools/builtins/capability_mesh_tool.py` | One `@tool` with an `action`: eleven read actions (`passports`, `memory`, `calibration`, `drift`, `policy`, `route`, `team`, `compose`, `explain`, `independence`, `shadow`) and exactly **one** write (`record`) |
+| `/api/capability-mesh` | `app/gateway/routers/capability_mesh.py` | The HTTP mirror: `GET /profiles`, `/memory` (+`?entity_id=`), `/calibration`, `/drift`, `/policy`, `/independence`, `/shadow`; `POST /route`, `/team`, `/compose`, `/records` |
+| `CapabilityMeshConfig` | `capability_mesh/config.py` | `config.yaml -> capability_mesh`, declared next to `arena:` in `config.example.yaml` |
+
+**Both surfaces call the library's pure functions and nothing else. NOTHING
+dispatches a real agent run through the mesh.** There is no executor wiring
+anywhere in this package: `route()`/`select_team()`/`compose_deliverable()`/
+`explain_plan()` are read locally and their results are proposals. Every
+planning reply therefore carries `preview: true`, `dispatched: false` and a
+sentence saying so, and an INTEGRATOR is still never auto-assigned. A claim
+that the mesh routes work would be false today; what exists is a surface that
+*shows* what a plan would look like.
+
+The boundary rules the wiring preserves, restated only where the surface
+could have broken them:
+
+- **A count is reported with its evidence level**, and unmeasured is captioned
+  unmeasured. The tool re-derives `ConfidenceView`'s caption from the
+  evidence level and sample count rather than inventing wording, because the
+  library deliberately does not serialise that derived field.
+- **An unreadable store surfaces the store's own refusal reason** — the tool
+  as `Capability mesh store error: <the store's words>`; the router as `503`
+  with that same text as `detail`. Neither becomes an empty `200` with
+  `count: 0`, because an empty list and a corrupt file drive opposite operator
+  decisions. A *missing* file is still genuinely empty.
+- **The write is validated by the mesh, not by the surface.**
+  `CapabilityMeshService.record` constructs a `CapabilityRecord` and lets the
+  constructor refuse a `quality` with no `profile_version`; the router
+  additionally declares `passed_hard_gate` as `StrictBool` so pydantic cannot
+  coerce `"yes"` into a silent pass one layer earlier.
+- **No task text is stored.** `task_text` exists on both write surfaces only
+  to derive the opaque `fingerprint(text)` the memory contract asks for.
+- **Config is read off the event loop** and the mesh is **`enabled: false` by
+  default**, so a fresh install is inert: the tool refuses with the reason
+  named and the router answers `503` naming `capability_mesh.enabled`.
+  `exploration_budget_fraction` is *reported*, never spent — nothing in this
+  package executes a probe.
+
+The mesh directory is **installation-scoped**, not per-user: one configured
+directory holds this deployment's passports, memory, pair estimates and shadow
+comparisons. The router therefore requires an authenticated caller exactly as
+`routers/arena.py` does, but the payloads are not partitioned per user — a
+capability measurement describes the installation's configuration, not one
+person's data, and nothing served here is per-user private.
 
 ## Storage
 
@@ -383,4 +596,22 @@ refusals, retire default), `test_capability_mesh_synthesis.py` (honest slot
 fields, assumption extraction conservative, conflict-detection boundary cases,
 resolution ordering, `composed_artifact=None` under conflict, alternatives
 per conflict, policy switching, `ArtifactStore` round-trip and corrupt-file
-refusal). All offline, no model calls.
+refusal), `test_capability_mesh_independence.py` (weak-prior-only vs measured
+penalty combination, unknown-axis honesty, SPECULATIVE/foreign-profile-version
+pair exclusion, source-independence `None` on an empty citation set, the
+MAJORITY_VOTE note text, durable round-trip and corrupt-file refusal),
+`test_capability_mesh_shadow.py` (`agreement_rate=None` at zero comparisons,
+derived agreement, the better/worse/undecided partition, durable round-trip,
+corrupt-file refusal, canary slice bounds, `may_promote` gating on sample
+count / measured outcome / agreement) and `test_capability_mesh_explain.py`
+(bounded truncation markers, confidence captions by evidence level and sample
+count, disagreement rows for conflicts, resource view `None`-when-unpriced,
+learning-controls defaults advertised-not-implemented, panels over a real
+routed plan). Phase H's surfaces are covered by
+`test_capability_mesh_tool.py` (every action, the preview labelling, the
+unmeasured caption, the store-error surface, `record` refusing an invalid
+record, and a behavioural no-blocking-I/O guard that fails if a store read or
+a config read runs on the event loop) and `test_capability_mesh_router.py`
+(every route, auth on each, the preview labels over HTTP, `503` for a corrupt
+store instead of an empty `200`, the disabled-mesh refusal, and the same
+off-loop guard). All offline, no model calls.

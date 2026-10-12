@@ -60,6 +60,7 @@
 - [AUTHORITY_MODEL.md](AUTHORITY_MODEL.md) — Generated authority-model audit: capability, gate, and unknown census — a static scan, never a grant of authority.
 - [AUTONOMY_TRUTH.md](AUTONOMY_TRUTH.md) — Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure classification, and bounded recovery briefs.
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
+- [CAPABILITY_MESH.md](CAPABILITY_MESH.md) — Operating the capability mesh: the 23 library modules by phase, the model's 12 actions, the HTTP routes, the default-off config slice, and the honesty boundaries that make a preview read as a preview.
 - [COMMAND_HONESTY.md](COMMAND_HONESTY.md) — Command honesty: why a slash command that did nothing must not report success, and how that is gated.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference for files, settings, and environment.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment models and deployment procedures.
@@ -126,6 +127,7 @@
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
+- [ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md](ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md) — Research-backed blueprint for a hybrid, graph-governed, event-driven multi-agent runtime: separating reasoning, orchestration, execution, evidence and governance across every existing Alpha mode.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md](ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md) — Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.

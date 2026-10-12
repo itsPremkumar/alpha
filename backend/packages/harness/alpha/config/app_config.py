@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from alpha.arena.config import ArenaConfig
+from alpha.capability_mesh.config import CapabilityMeshConfig
 from alpha.config.acp_config import ACPAgentConfig, load_acp_config_from_dict
 from alpha.config.agent_preset_config import AgentPresetConfig
 from alpha.config.agent_storage_config import AgentStorageConfig
@@ -442,6 +443,15 @@ class AppConfig(BaseModel):
             "runs, large runs need an explicit confirm, and measured spend is charged against "
             "declared ceilings. Ceiling fields here are the defaults a run may only lower, or "
             "raise with confirm=True."
+        ),
+    )
+    capability_mesh: CapabilityMeshConfig = Field(
+        default_factory=CapabilityMeshConfig,
+        description=(
+            "Alpha Capability Mesh (alpha.capability_mesh): evidence-backed capability records for every "
+            "dispatchable configuration, plus the read/preview surfaces over them. Default OFF, and even "
+            "enabled it is READ/PREVIEW ONLY - there is no executor wiring anywhere in the package, so a "
+            "routing plan, team plan, composition or explanation is a proposal, never a dispatch."
         ),
     )
     gro: GroConfig = Field(

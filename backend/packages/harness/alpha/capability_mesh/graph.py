@@ -21,7 +21,10 @@ Five rules decide the shape of this module:
 * **Edges validate their endpoints at add time.** An edge whose source
   or target is absent is refused by name — "add them explicitly or
   refuse by name". A dangling edge is a fabrication about a node that
-  does not exist.
+  does not exist. There is exactly one edge per ``(source, target,
+  kind)`` triple and a duplicate triple is refused by name, so a caller
+  can neither double-count an observation nor silently downgrade one:
+  builders resolve which estimate wins *before* adding.
 * **An edge with no observations is a hypothesis.** ``evidence_count
   == 0`` edges travel with ``speculative=True`` in :meth:`to_dict`
   (and :func:`is_speculative` exposes it), and ``evidence_count > 0``
@@ -205,6 +208,12 @@ class GraphEdge:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GraphEdge:
+        # A lying marker is refused by name: the flag is DERIVED from
+        # evidence_count, so a document claiming "not speculative" on a
+        # zero-evidence edge is arguing an observation away that never
+        # happened.
+        if "speculative" in data and bool(data["speculative"]) != (int(data.get("evidence_count", 0)) == 0):
+            raise ValueError(f"speculative marker {data['speculative']!r} contradicts evidence_count {data.get('evidence_count', 0)!r}: the marker is derived, never a claim")
         return cls(
             source=str(data["source"]),
             target=str(data["target"]),
@@ -234,9 +243,11 @@ class CapabilityGraph:
 
     Mutation is explicit and validated: :meth:`add_node` refuses a
     duplicate id carrying a different kind, and :meth:`add_edge`
-    refuses endpoints that were never added. Adding the same
-    ``(source, target, kind)`` edge twice replaces it — the newest
-    observation wins, and there is exactly one edge per triple.
+    refuses endpoints that were never added and an edge triple that
+    already exists — nothing is silently merged or replaced, because a
+    second observation of the same relationship is a claim the caller
+    must resolve (the builders pick the strongest estimate) before it
+    becomes one row.
     """
 
     def __init__(self) -> None:
@@ -280,16 +291,25 @@ class CapabilityGraph:
         An edge whose source or target was never added is refused by
         name — add the endpoints explicitly, or do not add the edge.
         There is exactly one edge per ``(source, target, kind)``
-        triple: adding the same triple again replaces it (the newest
-        observation wins).
+        triple: adding the same triple again is refused by name, so a
+        caller cannot accidentally double-count — or silently
+        downgrade — an existing observation (builders must resolve
+        which estimate wins *before* adding).
         """
         if not isinstance(edge, GraphEdge):
             raise ValueError(f"add_edge expects a GraphEdge, got {edge!r}")
         missing = [endpoint for endpoint in (edge.source, edge.target) if endpoint not in self._nodes]
         if missing:
-            raise ValueError(f"edge ({edge.source!r} -> {edge.target!r}, {edge.kind.value}) references absent node(s): {', '.join(missing)} — add them explicitly or refuse by name")
-        self._edges[(edge.source, edge.target, edge.kind)] = edge
+            raise ValueError(f"edge ({edge.source!r} -> {edge.target!r}, {edge.kind.value}) has missing endpoint(s): {', '.join(missing)} — add them explicitly or refuse by name")
+        key = (edge.source, edge.target, edge.kind)
+        if key in self._edges:
+            raise ValueError(f"duplicate edge ({edge.source!r} -> {edge.target!r}, {edge.kind.value}): one edge per triple — resolve which observation wins before adding")
+        self._edges[key] = edge
         return edge
+
+    def is_speculative(self, edge: GraphEdge) -> bool:
+        """True when this edge rests on zero observations (see :func:`is_speculative`)."""
+        return is_speculative(edge)
 
     def edges(
         self,
@@ -382,6 +402,13 @@ def build_from_passports(
     back-fills an edge's provenance when the estimate carried none; a
     measured estimate's own ``profile_version`` always wins, because a
     score is traceable to the rubric that produced it.
+
+    A capability declared more than once (one estimate per task
+    category, say) resolves to the **strongest** estimate — most
+    samples, then highest measured quality — *before* the edge is
+    added, because :meth:`CapabilityGraph.add_edge` refuses a duplicate
+    triple rather than letting the caller's iteration order decide
+    which observation survives.
     """
     if not profile_version:
         raise ValueError("build_from_passports requires a non-empty profile_version (no score without its profile version)")
@@ -403,8 +430,9 @@ def build_from_passports(
             attributes=tuple(attributes),
         )
         result.add_node(entity_node)
-        for estimate in passport.capabilities:
-            capability = estimate.capability
+        strongest = _strongest_per_capability(passport.capabilities)
+        for capability in sorted(strongest):
+            estimate = strongest[capability]
             result.add_node(GraphNode(node_id=node_id_for(NodeKind.CAPABILITY, capability), kind=NodeKind.CAPABILITY, label=capability))
             measured = estimate.quality_mean is not None
             # No measured quality -> the unmeasured prior (0.25), never a fabricated strength.
@@ -421,7 +449,7 @@ def build_from_passports(
                     profile_version=version,
                 )
             )
-        for tool in passport.required_tools:
+        for tool in dict.fromkeys(passport.required_tools):
             result.add_node(GraphNode(node_id=node_id_for(NodeKind.TOOL, tool), kind=NodeKind.TOOL, label=tool))
             result.add_edge(
                 GraphEdge(
@@ -437,6 +465,24 @@ def build_from_passports(
     return result
 
 
+def _strongest_per_capability(capabilities: tuple) -> dict[str, Any]:
+    """The strongest estimate per capability (most samples, then quality).
+
+    A passport may carry one estimate per task category; the graph holds
+    one edge per (entity, capability), so the winner must be chosen by a
+    rule rather than by whichever row the caller iterated last.
+    """
+    strongest: dict[str, Any] = {}
+    for estimate in capabilities:
+        current = strongest.get(estimate.capability)
+        if current is None or (estimate.sample_count, estimate.quality_mean if estimate.quality_mean is not None else -1.0) > (
+            current.sample_count,
+            current.quality_mean if current.quality_mean is not None else -1.0,
+        ):
+            strongest[estimate.capability] = estimate
+    return strongest
+
+
 def build_from_memory(
     memory: CapabilityMemory,
     *,
@@ -448,9 +494,10 @@ def build_from_memory(
     ``OFTEN_MISSES`` (entity -> failure_mode) edges carry the number of
     records that failed with that mode as ``evidence_count`` and the
     observed miss rate (occurrences / the entity's records) as the
-    weight. ``VERIFIED_ON`` (entity -> outcome-category) edges do the
-    same for SELECTED and REPAIRED records — the outcomes in which the
-    contribution made it into the deliverable and was kept or fixed.
+    weight. ``VERIFIED_ON`` (entity -> task_category) edges count the
+    records whose contribution was actually delivered — SELECTED or
+    REPAIRED — in each task category, so "verified on" names the
+    *situation* the entity was proven in, not the label of the outcome.
 
     The profile-version-comparability rule holds: only records measured
     under ``profile_version`` (or records carrying no profile version at
@@ -495,9 +542,12 @@ def build_from_memory(
             )
         verified: dict[str, int] = {}
         for row in rows:
-            # SELECTED/REPAIRED: the contribution was delivered and kept or fixed (plan §4.1).
+            # SELECTED/REPAIRED: the contribution was delivered and kept or
+            # fixed (plan §4.1). The edge names the situation it was
+            # delivered in — the task category — so "verified on" is
+            # task-relative rather than a permanent label.
             if row.outcome in (OutcomeKind.SELECTED, OutcomeKind.REPAIRED):
-                verified[row.outcome.value] = verified.get(row.outcome.value, 0) + 1
+                verified[row.task_category] = verified.get(row.task_category, 0) + 1
         for category in sorted(verified):
             count = verified[category]
             target = node_id_for(NodeKind.OUTCOME, category)

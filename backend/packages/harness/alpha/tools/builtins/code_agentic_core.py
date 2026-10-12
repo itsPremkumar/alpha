@@ -264,15 +264,21 @@ def auto_test_and_repair(
                 },
                 indent=2,
             )
-        use_shell = True
+        # Run as a single argv: an attacker-supplied string such as
+        # `&& del /q /f C:\*` must never reach a shell. Windows resolves
+        # shell=True through %COMSPEC% (cmd.exe) and applies its own %VAR%
+        # and ${VAR} quoting, so the string would otherwise be parsed as
+        # multiple commands instead of executed as one argv.
+        cmd = shlex.split(cmd)
+        execution = "argv"
     else:
-        use_shell = False
-
+        cmd = shlex.split(cmd)
+        execution = "argv"
     start_time = time.time()
     try:
         res = subprocess.run(
-            cmd if use_shell else shlex.split(cmd),
-            shell=use_shell,
+            cmd,
+            shell=False,
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -303,7 +309,7 @@ def auto_test_and_repair(
             {
                 "status": "passed" if passed else "failed",
                 "command": cmd,
-                "execution": "shell" if use_shell else "argv",
+                "execution": execution,
                 "exit_code": exit_code,
                 "duration_seconds": elapsed,
                 "failure_count": len(failures),

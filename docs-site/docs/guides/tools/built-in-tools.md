@@ -1,13 +1,13 @@
 ---
 sidebar_position: 1
 title: Built-in Tools
-description: Complete reference of Alpha's 138 built-in tools
+description: Complete reference of Alpha's 139 built-in tools
 slug: /guides/tools/built-in-tools
 ---
 
 # Built-in Tools
 
-Alpha ships with 138 built-in tools organized by category.
+Alpha ships with 139 built-in tools organized by category.
 
 ## Core Tools
 

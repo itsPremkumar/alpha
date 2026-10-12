@@ -30,7 +30,7 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 61
+config_version: 62
 
 # ============================================================================
 # Logging
@@ -4724,6 +4724,30 @@ arena:
   max_wall_seconds_per_run: 7200.0 # default wall-clock budget (caller may lower)
   max_judge_attempts: 2       # judge retries per match before run fails honestly
   reasoning_bank_seed: true    # record match outcomes into alpha.reasoning_bank
+
+# ============================================================================
+# Alpha Capability Mesh (alpha.capability_mesh)
+# Evidence-backed capability records for every runnable configuration Alpha can
+# dispatch to — an agent, a model config, a tool, a skill bundle — plus the
+# read/preview surfaces over them: passports, cross-run outcome memory,
+# calibration, drift, the decision-policy table, routing, team selection,
+# composition, explanation panels, independence scoring and shadow routing.
+#
+# DEFAULT OFF, and READ/PREVIEW ONLY even when on. There is NO executor wiring
+# anywhere in the package: a routing plan, team plan, composition or explanation
+# is computed locally and nothing is dispatched. Turning this on makes a
+# tested read surface reachable; it never starts an agent run.
+#
+# Durability is single-process JSON/JSONL: atomic against a crash in one
+# process, never cross-process exactly-once. An unreadable store is reported as
+# such (HTTP 503) and never answered as "nothing recorded".
+# ============================================================================
+capability_mesh:
+  enabled: false                # bind the `capability_mesh` tool and /api/capability-mesh; off = refused with the reason named
+  directory: ""                 # passports.json / capability_memory.jsonl live here; empty = runtime_home()/capability_mesh
+  max_records: 10000            # bounded retention for the memory JSONL tail; refused below 1, never clamped
+  default_profile_version: "v1" # the rubric every aggregation is scoped to; a v1 sample never earns a v2 answer
+  exploration_budget_fraction: 0.1  # declared share for probing an under-measured candidate; REPORTED, never spent (nothing here probes)
 
 # ============================================================================
 # Group-Relative Orchestration (GRO): one objective, a bounded group of candidates

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-11T12:59:24Z",
+ "generated_at": "2026-10-11T23:23:17Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -31,6 +31,14 @@
    "id": "arena_tool",
    "module": "alpha.tools.builtins.arena_tool",
    "symbol": "arena_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "capability_mesh_tool",
+   "module": "alpha.tools.builtins.capability_mesh_tool",
+   "symbol": "capability_mesh_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1200,6 +1208,14 @@
   {
    "id": "app.gateway.routers.browser",
    "module": "app.gateway.routers.browser",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.capability_mesh",
+   "module": "app.gateway.routers.capability_mesh",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,

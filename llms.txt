@@ -21,8 +21,9 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 - **Persistent Memory**: DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall
 - **Subagent Delegation**: Spawn specialized agents (`/subagent spawn`), manage swarms (`/swarm`), delegate with acceptance criteria
 - **Arena Tournaments**: N sub-agents solve one task with distinct strategy cards, then attack, defend, and judge in a durable single-elimination bracket until one solution survives
-- **Group-Relative Orchestration (GRO)**: A bounded group of candidate attempts executed under distinct strategies, selected by absolute acceptance gates first (relative rank only ranks the eligible; `unknown` is never a pass) with one bounded repair round and an explicit UNVERIFIED partial result when nothing passes — default off behind `gro.enabled`, driven by the `swarm` tool's `compete`/`compete_status` actions
-- **Extensible Tooling**: 138 built-in tools + MCP servers + custom skills + community extensions
+- **Group-Relative Orchestration (GRO)**: A bounded group of candidate attempts executed under distinct strategies, selected by absolute acceptance gates first (relative rank only ranks the eligible; `unknown` is never a pass) with one bounded repair round and an explicit UNVERIFIED partial result when nothing passes - default off behind `gro.enabled`, driven by the `swarm` tool's `compete`/`compete_status` actions
+- **Capability Mesh**: Evidence-backed capability records for every dispatchable configuration, with every count reported beside its evidence level (`unmeasured` reads as `unmeasured`) - `capability_mesh` tool (12 actions, one write) and `/api/capability-mesh`; off by default behind `capability_mesh.enabled`, and a read/preview plane that dispatches nothing even when enabled
+- **Extensible Tooling**: 139 built-in tools + MCP servers + custom skills + community extensions
 - **Per-Thread Isolation**: Every conversation gets its own sandbox, memory, and tool namespace
 - **IM Bridges**: Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway
 - **Observability**: Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts

@@ -33,6 +33,7 @@ from app.gateway.routers import (
     benchmarks,
     bots,
     browser,
+    capability_mesh,
     channel_connections,
     channels,
     checkpoints,
@@ -1254,6 +1255,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(peer_network.public_router)
     # Arena tournament engine.
     app.include_router(arena.router)
+    # Alpha Capability Mesh: the read/preview plane. It exposes the mesh's pure
+    # library functions and dispatches nothing — there is no executor wiring.
+    app.include_router(capability_mesh.router)
     app.include_router(swarms.router)
     # The team read plane. Mounted here rather than inside `create_swarm` so the
     # roster and report are reachable for a swarm that already exists; the

@@ -2,7 +2,7 @@
 
 > Technical documentation for **Alpha**, the open-source autonomous multi-agent AI
 > operating system. A LangGraph agent runtime behind a FastAPI Gateway, with a
-> Next.js 15 workspace and an Electron Windows desktop app. 138 native tools, MCP
+> Next.js 15 workspace and an Electron Windows desktop app. 139 native tools, MCP
 > extensions, 24 public skills, sandboxed execution, persistent memory, and nine
 > messaging channels. Self-hosted, MIT licensed.
 
@@ -25,8 +25,9 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## Architecture
 
-- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 121 harness engine packages.
+- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 123 harness engine packages.
 - [Arena tournaments](https://github.com/itsPremkumar/alpha/blob/main/docs/ARENA.md): one task, N strategy-carded sub-agents, a durable single-elimination bracket with the call arithmetic, confirmation gate, judge blinding, hard gates, and the honest limits of what a tournament proves.
+- [Capability mesh](https://github.com/itsPremkumar/alpha/blob/main/docs/CAPABILITY_MESH.md): the 23 library modules by phase, the 12 model-tool actions (one write), the `/api/capability-mesh` routes, the `enabled: false` config slice, and the honesty boundaries — a read/preview plane where nothing is dispatched.
 - [Group-relative orchestration](ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md): a bounded group of candidate attempts under distinct strategies, absolute-gate eligibility (relative rank only ranks the eligible), one bounded repair round, and an explicit UNVERIFIED partial result when nothing passes; `swarm` tool `compete`/`compete_status`, off by default behind `gro.enabled`.
 - [Dynamic workflows](DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
 - [APEX Autopilot](https://github.com/itsPremkumar/alpha/blob/main/docs/APEX_AUTOPILOT.md): goal sessions, Gateway RunManager dispatch, run/token observation, registered acceptance probes for measured criteria, owner evidence when probes are absent/inconclusive, unlimited token/tool-call/runtime ceilings in enabled profiles, bounded admin replans after terminal failure with explicit side-effect acknowledgement, APEX active-agent/parallel caps on ordinary `task` delegation, and separate durable `batch_task` limits.
