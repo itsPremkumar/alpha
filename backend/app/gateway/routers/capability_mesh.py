@@ -41,11 +41,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictBool
 
 from alpha.capability_mesh.complementarity import PairMemoryStoreError
+from alpha.capability_mesh.config import capability_mesh_config
 from alpha.capability_mesh.independence import IndependenceStoreError
 from alpha.capability_mesh.memory import MemoryStoreError
+from alpha.capability_mesh.service import CapabilityMeshService
 from alpha.capability_mesh.shadow import ShadowStoreError
 from alpha.capability_mesh.store import PassportStoreError
 from alpha.capability_mesh.synthesis import ArtifactStoreError
+from alpha.config import get_app_config
 from app.gateway.deps import get_current_user_from_request
 
 router = APIRouter(prefix="/api/capability-mesh", tags=["capability-mesh"])
@@ -121,10 +124,6 @@ async def _run(method: str, /, **kwargs) -> Any:
     with the store's reason attached, because "could not read" is never an
     empty answer.
     """
-    from alpha.capability_mesh.config import capability_mesh_config
-    from alpha.capability_mesh.service import CapabilityMeshService
-    from alpha.config import get_app_config
-
     app_config = await asyncio.to_thread(get_app_config)
     config = capability_mesh_config(app_config)
     if not config.enabled:

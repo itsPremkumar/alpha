@@ -62,6 +62,8 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from app.gateway.config import get_gateway_config
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["ops"])
@@ -120,8 +122,6 @@ async def ops_version() -> VersionResponse:
 )
 async def ops_status() -> StatusResponse:
     """Return Gateway runtime status."""
-    from app.gateway.config import get_gateway_config
-
     return StatusResponse(
         service="alpha-gateway",
         status="ok",

@@ -15,12 +15,17 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from alpha.config.runtime_paths import runtime_home
+from alpha.skills.authoring import validate_skill_draft
 from alpha.skills.evolution_engine import (
+    InvalidTransitionError,
+    SkillEvolutionDisabledError,
     SkillEvolutionEngine,
+    UnknownProposalError,
 )
-from app.gateway.deps import (
-    get_config,
-)
+from alpha.skills.skillscan.orchestrator import StaticScanBlockedError
+from alpha.skills.workshop import SkillDraft, SkillWorkshopEngine
+from app.gateway.deps import get_config, require_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +56,6 @@ class PublishRequest(BaseModel):
 @router.post("/distill", summary="Distill Execution Trace into Reusable Skill Draft")
 def distill_skill(req: DistillRequest) -> dict[str, Any]:
     """Extract, parameterize, and structure a skill draft from steps."""
-    from alpha.skills.workshop import SkillWorkshopEngine
-
     try:
         draft = SkillWorkshopEngine.distill_from_trace(
             name=req.name,
@@ -72,10 +75,6 @@ def distill_skill(req: DistillRequest) -> dict[str, Any]:
 @router.post("/publish", summary="Validate and Publish Skill Draft to Custom Skills Directory")
 def publish_skill(req: PublishRequest) -> dict[str, Any]:
     """Validate and persist the skill draft as a custom skill."""
-    from alpha.skills.authoring import validate_skill_draft
-    from alpha.skills.skillscan.orchestrator import StaticScanBlockedError
-    from alpha.skills.workshop import SkillDraft, SkillWorkshopEngine
-
     findings = validate_skill_draft(req.name, req.description, req.markdown_content)
     if findings:
         raise HTTPException(
@@ -158,8 +157,6 @@ def _build_evolution_engine(config: Any) -> SkillEvolutionEngine:
     Store: ``runtime_home()/skill_evolution``; skills root:
     ``runtime_home()/skills`` (same root the curator maintains).
     """
-    from alpha.config.runtime_paths import runtime_home
-
     home = runtime_home()
     return SkillEvolutionEngine(
         store_dir=home / "skill_evolution",
@@ -170,8 +167,6 @@ def _build_evolution_engine(config: Any) -> SkillEvolutionEngine:
 
 def _evolution_http_error(exc: Exception) -> HTTPException:
     """Map engine errors to honest HTTP statuses carrying the real reason."""
-    from alpha.skills.evolution_engine import InvalidTransitionError, SkillEvolutionDisabledError, UnknownProposalError
-
     if isinstance(exc, UnknownProposalError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, SkillEvolutionDisabledError):
@@ -206,8 +201,6 @@ async def propose_evolution_candidate(body: EvolutionProposeRequest, request: Re
 
 @router.get("/evolution", summary="List Skill-Evolution Proposals")
 async def list_evolution_proposals(request: Request, status: str | None = Query(default=None), config: Any = Depends(get_config)) -> dict[str, Any]:
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_EVOLUTION_ADMIN_DETAIL)
 
     def _do() -> list[dict[str, Any]]:
@@ -221,8 +214,6 @@ async def list_evolution_proposals(request: Request, status: str | None = Query(
 
 @router.get("/evolution/{proposal_id}", summary="Get One Skill-Evolution Proposal Record")
 async def get_evolution_proposal(proposal_id: str, request: Request, config: Any = Depends(get_config)) -> dict[str, Any]:
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_EVOLUTION_ADMIN_DETAIL)
 
     def _do() -> dict[str, Any]:
@@ -244,8 +235,6 @@ async def evaluate_evolution_proposal(proposal_id: str, request: Request, config
     and ``security_fail_closed`` decides what an evaluation error means.
     """
 
-    from app.gateway.deps import require_admin_user
-
     def _do() -> dict[str, Any]:
         return _build_evolution_engine(config).evaluate(proposal_id).to_dict()
 
@@ -264,8 +253,6 @@ async def promote_evolution_proposal(proposal_id: str, body: EvolutionReviewRequ
     proposal stays ``validated`` with a hold note - nothing is written.
     A gate failure returns ``promoted=false`` plus the real ``reason``.
     """
-
-    from app.gateway.deps import require_admin_user
 
     def _do() -> dict[str, Any]:
         record = _build_evolution_engine(config).promote(
@@ -289,8 +276,6 @@ async def promote_evolution_proposal(proposal_id: str, body: EvolutionReviewRequ
 @router.post("/evolution/{proposal_id}/rollback", summary="Roll Back a Promoted Skill-Evolution Candidate")
 async def rollback_evolution_proposal(proposal_id: str, body: EvolutionRollbackRequest, request: Request, config: Any = Depends(get_config)) -> dict[str, Any]:
     """Restore the retained pre-promotion body; refuses to clobber later edits."""
-
-    from app.gateway.deps import require_admin_user
 
     def _do() -> dict[str, Any]:
         record = _build_evolution_engine(config).rollback(

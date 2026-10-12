@@ -43,6 +43,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from alpha.intelligence.self_inventory import INVENTORY_SECTIONS
+
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
 #: Default page size for journal-style listings. Bounded so a single request
@@ -132,7 +134,6 @@ async def intelligence_inventory(
     ``limit`` and by :data:`_MAX_INVENTORY_QUERY`.
     """
     from alpha.intelligence.self_inventory import (
-        INVENTORY_SECTIONS,
         MAX_SEARCH_RESULTS,
         build_self_inventory,
         search_inventory,

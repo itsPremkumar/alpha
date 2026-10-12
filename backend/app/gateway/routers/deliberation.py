@@ -14,6 +14,10 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from alpha.deliberation.engine import get_master_deliberation_engine
+from alpha.deliberation.models import DeliberationStrategy
+from alpha.deliberation.router import DeliberationRouter
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/deliberation", tags=["deliberation"])
 
@@ -32,8 +36,6 @@ class DeliberationRunRequest(BaseModel):
 @router.post("/evaluate")
 async def evaluate_deliberation_feasibility(payload: DeliberationEvaluateRequest):
     """Evaluates whether deliberation is worthwhile and recommends the optimal multi-model strategy."""
-    from alpha.deliberation.router import DeliberationRouter
-
     eval_res = await DeliberationRouter.aclassify(payload.prompt)
     return eval_res.to_dict()
 
@@ -41,9 +43,6 @@ async def evaluate_deliberation_feasibility(payload: DeliberationEvaluateRequest
 @router.post("/run")
 async def run_deliberation(payload: DeliberationRunRequest):
     """Executes multi-model deliberation via Single, Ensemble, Anonymous Council, or Sparse Debate."""
-    from alpha.deliberation.engine import get_master_deliberation_engine
-    from alpha.deliberation.models import DeliberationStrategy
-
     engine = get_master_deliberation_engine()
 
     try:

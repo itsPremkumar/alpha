@@ -21,6 +21,16 @@ from alpha.persistence.storekit.atomic import atomic_write_bytes
 HarnessKind = Literal["prompt", "memory", "skill", "subagent"]
 HarnessScope = Literal["local", "global"]
 
+
+class HarnessStateError(RuntimeError):
+    """A HarnessState operation was refused because the persisted state is
+    degraded or unreadable. Mutating a degraded store would silently overwrite
+    its (possibly partial) contents, so the caller must treat it as unwritable.
+    """
+
+    pass
+
+
 _DEFAULT_FILE_NAME = "harness_state.json"
 _DEFAULT_DIR_NAME = ".alpha"
 _KINDS: tuple[HarnessKind, ...] = ("prompt", "memory", "skill", "subagent")
@@ -174,6 +184,20 @@ class HarnessState:
         self._loaded_mtime = self._disk_mtime()
         self.load_error = None
 
+    def _fail_closed(self) -> None:
+        """Refuse every mutating operation while the persisted state is
+        degraded or unreadable.
+
+        A store that could not be read used to be answered exactly like one
+        that had nothing learned in it, so `add_entry` / `update_entry` /
+        `remove_entry` / `record_refinement` / `save` would silently overwrite
+        the truncated set that the failed parse left behind.  The repair loop
+        (`add_entry` -> `save`) must therefore fail closed, not persist a
+        half-populated state.
+        """
+        if self.load_error is not None:
+            raise HarnessStateError(f"harness state is degraded: {self.load_error}")
+
     @property
     def is_degraded(self) -> bool:
         """Whether persisted state could not be read.
@@ -184,6 +208,8 @@ class HarnessState:
         return self.load_error is not None
 
     def save(self) -> None:
+        if self.load_error is not None:
+            raise HarnessStateError(f"harness state is degraded: {self.load_error}")
         if self.file_path is None:
             return
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -240,6 +266,7 @@ class HarnessState:
             source=source,
         )
         self.entries[kind][eid] = entry
+        self._fail_closed()
         self.save()
         return entry
 
@@ -252,6 +279,8 @@ class HarnessState:
         metadata: dict[str, Any] | None = None,
         enabled: bool | None = None,
     ) -> HarnessEntry | None:
+        if self.load_error is not None:
+            raise HarnessStateError(f"harness state is degraded: {self.load_error}")
         entry = self.get_entry(entry_id)
         if entry is None:
             return None
@@ -275,6 +304,8 @@ class HarnessState:
         return None
 
     def remove_entry(self, entry_id: str) -> bool:
+        if self.load_error is not None:
+            raise HarnessStateError(f"harness state is degraded: {self.load_error}")
         for kind in _KINDS:
             if entry_id in self.entries[kind]:
                 del self.entries[kind][entry_id]
@@ -304,6 +335,8 @@ class HarnessState:
         evidence: str = "",
         outcome: str = "",
     ) -> RefinementEvent:
+        if self.load_error is not None:
+            raise HarnessStateError(f"harness state is degraded: {self.load_error}")
         event = RefinementEvent(
             id=f"refine_{uuid4().hex[:12]}",
             trigger=trigger,

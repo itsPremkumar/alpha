@@ -8,14 +8,21 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from alpha.agents.memory.manager import get_memory_manager
+from alpha.config.agents_api_config import get_agents_api_config
 from alpha.config.agents_config import (
     AgentConfig,
     AgentDisplayName,
     AgentModelSettings,
+    list_custom_agents,
+    load_agent_config,
+    load_agent_soul,
+    preserve_non_managed_fields,
 )
-from alpha.persistence.agents import (
-    AgentDeleteOutcome,
-)
+from alpha.config.app_config import get_app_config
+from alpha.config.paths import get_paths
+from alpha.persistence.agents import AgentDeleteOutcome, AgentExistsError, get_agent_store
+from alpha.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["agents"])
@@ -106,8 +113,6 @@ def _normalize_agent_name(name: str) -> str:
 
 def _require_agents_api_enabled() -> None:
     """Reject access unless the custom-agent management API is explicitly enabled."""
-    from alpha.config.agents_api_config import get_agents_api_config
-
     if not get_agents_api_config().enabled:
         raise HTTPException(
             status_code=403,
@@ -127,8 +132,6 @@ def _validate_model_exists(model: str | None) -> None:
     disk in a bare/test deployment), skip the check rather than failing the
     write — the runtime still falls back to the default for an unknown model.
     """
-    from alpha.config.app_config import get_app_config
-
     if not model:
         return
     try:
@@ -184,8 +187,6 @@ def _apply_model_behavior(config_data: dict, source: BaseModel, existing: AgentC
 
 def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False, *, user_id: str | None = None) -> AgentResponse:
     """Convert AgentConfig to AgentResponse."""
-    from alpha.config.agents_config import load_agent_soul
-
     soul: str | None = None
     if include_soul:
         soul = load_agent_soul(agent_cfg.name, user_id=user_id) or ""
@@ -217,9 +218,6 @@ async def list_agents() -> AgentsListResponse:
     Returns:
         List of all custom agents with their metadata and soul content.
     """
-    from alpha.config.agents_config import list_custom_agents
-    from alpha.runtime.user_context import get_effective_user_id
-
     _require_agents_api_enabled()
 
     user_id = get_effective_user_id()
@@ -255,9 +253,6 @@ async def check_agent_name(name: str) -> dict:
     Raises:
         HTTPException: 422 if the name is invalid.
     """
-    from alpha.persistence.agents import get_agent_store
-    from alpha.runtime.user_context import get_effective_user_id
-
     _require_agents_api_enabled()
     _validate_agent_name(name)
     normalized = _normalize_agent_name(name)
@@ -291,9 +286,6 @@ async def get_agent(name: str) -> AgentResponse:
     Raises:
         HTTPException: 404 if agent not found.
     """
-    from alpha.config.agents_config import load_agent_config
-    from alpha.runtime.user_context import get_effective_user_id
-
     _require_agents_api_enabled()
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
@@ -332,10 +324,6 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
     Raises:
         HTTPException: 409 if agent already exists, 422 if name is invalid.
     """
-    from alpha.config.agents_config import load_agent_config
-    from alpha.persistence.agents import AgentExistsError, get_agent_store
-    from alpha.runtime.user_context import get_effective_user_id
-
     _require_agents_api_enabled()
     _validate_agent_name(request.name)
     _validate_model_exists(request.model)
@@ -395,11 +383,6 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
     Raises:
         HTTPException: 404 if agent not found.
     """
-    from alpha.config.agents_config import load_agent_config, preserve_non_managed_fields
-    from alpha.config.paths import get_paths
-    from alpha.persistence.agents import get_agent_store
-    from alpha.runtime.user_context import get_effective_user_id
-
     _require_agents_api_enabled()
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
@@ -532,8 +515,6 @@ async def get_user_profile() -> UserProfileResponse:
     Returns:
         UserProfileResponse with content=None if USER.md does not exist yet.
     """
-    from alpha.config.paths import get_paths
-
     _require_agents_api_enabled()
 
     try:
@@ -562,8 +543,6 @@ async def update_user_profile(request: UserProfileUpdateRequest) -> UserProfileR
     Returns:
         UserProfileResponse with the saved content.
     """
-    from alpha.config.paths import get_paths
-
     _require_agents_api_enabled()
 
     try:
@@ -593,8 +572,6 @@ async def delete_agent(name: str) -> None:
         HTTPException: 404 if no per-user copy exists; 409 if only a legacy
             shared copy exists (suggesting the migration script).
     """
-    from alpha.runtime.user_context import get_effective_user_id
-
     _require_agents_api_enabled()
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
@@ -632,8 +609,6 @@ def _delete_agent_with_memory_cancel(name: str, user_id: str | None) -> AgentDel
     rmtree; post-success cancel covers work enqueued mid-delete. A rejected
     delete may still drop buffered work; that update is re-fed on the next turn.
     """
-    from alpha.persistence.agents import get_agent_store
-
     store = get_agent_store()
     _cancel_pending_memory_for_agent(name, user_id)
     outcome = store.delete(name, user_id=user_id)
@@ -652,8 +627,6 @@ def _cancel_pending_memory_for_agent(name: str, user_id: str | None) -> None:
 
     Callers must run this off the event loop (blocking config/manager I/O).
     """
-    from alpha.agents.memory.manager import get_memory_manager
-
     try:
         cancelled = get_memory_manager().cancel_by_agent(name, user_id=user_id)
         if cancelled:

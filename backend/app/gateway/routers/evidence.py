@@ -49,6 +49,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from alpha.utils.thread_id import validate_thread_id
+from alpha.utils.time import coerce_iso
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["evidence", "action-ledger"])
@@ -77,8 +80,6 @@ def _ts(value: object) -> str:
     there is no sentinel to translate — and inventing one would be worse than
     the honest reading of what was recorded.
     """
-    from alpha.utils.time import coerce_iso
-
     return coerce_iso(value)
 
 
@@ -209,8 +210,6 @@ async def list_action_intents(
     status: str | None = Query(None, description="Optional status filter (pending | succeeded | failed | denied)"),
     limit: int = Query(100, ge=1, le=500),
 ) -> dict:
-    from alpha.utils.thread_id import validate_thread_id
-
     try:
         # Optional *filter*: absence means "no filter", but a supplied value
         # must still satisfy `^[A-Za-z0-9_-]{1,64}$`. The ledger's own filter
@@ -249,8 +248,6 @@ async def list_action_receipts(
     intent_id: str | None = Query(None, description="Optional exact intent id"),
     limit: int = Query(100, ge=1, le=500),
 ) -> dict:
-    from alpha.utils.thread_id import validate_thread_id
-
     try:
         # Optional *filter*, validated like `list_action_intents` above: a
         # rejected id must not answer the page a real-but-empty thread would.

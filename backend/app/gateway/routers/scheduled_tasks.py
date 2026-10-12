@@ -9,11 +9,27 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import AwareDatetime, BaseModel, Field
 
-from alpha.config.agents_config import (
-    load_agent_config,
+from alpha.config.agents_config import AGENT_NAME_PATTERN, load_agent_config
+from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
+from alpha.scheduler.schedules import (
+    MAX_INTERVAL_SECONDS,
+    normalize_cron_expression,
+    parse_interval_seconds,
+    validate_timezone,
+)
+from alpha.scheduler.schedules import (
+    next_run_at as compute_next_run_at,
 )
 from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
+from app.gateway.deps import (
+    get_config,
+    get_optional_user_from_request,
+    get_scheduled_task_repo,
+    get_scheduled_task_run_repo,
+    get_scheduled_task_service,
+    get_thread_store,
+)
 from app.scheduler.queue_health import collect_queue_health
 
 router = APIRouter(prefix="/api", tags=["scheduled-tasks"])
@@ -29,8 +45,6 @@ def _active_occurrence_conflict_detail(status: str) -> str:
 
 
 def _validate_interval_seconds(schedule_spec: dict[str, Any], min_seconds: int) -> int:
-    from alpha.scheduler.schedules import MAX_INTERVAL_SECONDS, parse_interval_seconds
-
     every_seconds = parse_interval_seconds(schedule_spec)
     if every_seconds < min_seconds:
         raise HTTPException(
@@ -51,8 +65,6 @@ async def resolve_scheduled_task_assistant_id(raw: str | None, *, user_id: str) 
     Custom names are normalized the same way IM/run creation already does
     (lowercase, underscore to hyphen) and must exist for this owner.
     """
-    from alpha.config.agents_config import AGENT_NAME_PATTERN
-
     if raw is None:
         return _DEFAULT_ASSISTANT_ID
     value = raw.strip()
@@ -133,8 +145,6 @@ class CronPreviewResponse(BaseModel):
 
 def _preview_cron(body: CronPreviewRequest, reference: datetime) -> CronPreviewResponse:
     """Calculate advisory occurrences with the same semantics as scheduling."""
-    from alpha.scheduler.schedules import compute_next_run_at, normalize_cron_expression, validate_timezone
-
     try:
         cron = normalize_cron_expression(body.cron)
         zone = ZoneInfo(validate_timezone(body.timezone))
@@ -156,8 +166,6 @@ def _preview_cron(body: CronPreviewRequest, reference: datetime) -> CronPreviewR
 @require_permission("threads", "read")
 async def preview_cron_schedule(request: Request, body: CronPreviewRequest):
     """Preview future cron instants without creating or dispatching a task."""
-    from app.gateway.deps import get_optional_user_from_request
-
     user = await get_optional_user_from_request(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -168,8 +176,6 @@ async def preview_cron_schedule(request: Request, body: CronPreviewRequest):
 @router.get("/scheduled-tasks")
 @require_permission("threads", "read")
 async def list_scheduled_tasks(request: Request):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:
@@ -191,8 +197,6 @@ async def scheduled_task_queue_health(request: Request):
     ``app.state`` (not the raising dep) so a disabled scheduler reports
     ``poller: not_configured`` instead of 503.
     """
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo, get_scheduled_task_run_repo
-
     user = await get_optional_user_from_request(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -206,9 +210,6 @@ async def scheduled_task_queue_health(request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def create_scheduled_task(request: Request, body: ScheduledTaskCreateRequest):
-    from alpha.scheduler.schedules import compute_next_run_at, normalize_cron_expression, validate_timezone
-    from app.gateway.deps import get_config, get_optional_user_from_request, get_scheduled_task_repo, get_thread_store
-
     config = get_config()
     repo = get_scheduled_task_repo(request)
     thread_store = get_thread_store(request)
@@ -274,8 +275,6 @@ async def create_scheduled_task(request: Request, body: ScheduledTaskCreateReque
 @router.get("/scheduled-tasks/{task_id}")
 @require_permission("threads", "read")
 async def get_scheduled_task(task_id: str, request: Request):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:
@@ -290,10 +289,6 @@ async def get_scheduled_task(task_id: str, request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def update_scheduled_task(task_id: str, request: Request, body: ScheduledTaskUpdateRequest):
-    from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
-    from alpha.scheduler.schedules import compute_next_run_at, normalize_cron_expression, parse_interval_seconds, validate_timezone
-    from app.gateway.deps import get_config, get_optional_user_from_request, get_scheduled_task_repo, get_thread_store
-
     config = get_config()
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
@@ -406,8 +401,6 @@ async def update_scheduled_task(task_id: str, request: Request, body: ScheduledT
 @router.post("/scheduled-tasks/{task_id}/pause")
 @require_permission("threads", "write")
 async def pause_scheduled_task(task_id: str, request: Request):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:
@@ -440,9 +433,6 @@ async def pause_scheduled_task(task_id: str, request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def resume_scheduled_task(task_id: str, request: Request):
-    from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:
@@ -472,8 +462,6 @@ async def resume_scheduled_task(task_id: str, request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def trigger_scheduled_task(task_id: str, request: Request):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo, get_scheduled_task_service
-
     repo = get_scheduled_task_repo(request)
     service = get_scheduled_task_service(request)
     user = await get_optional_user_from_request(request)
@@ -495,8 +483,6 @@ async def trigger_scheduled_task(task_id: str, request: Request):
 @router.delete("/scheduled-tasks/{task_id}")
 @require_permission("threads", "write")
 async def delete_scheduled_task(task_id: str, request: Request):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:
@@ -525,8 +511,6 @@ async def list_scheduled_task_runs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo, get_scheduled_task_run_repo
-
     task_repo = get_scheduled_task_repo(request)
     run_repo = get_scheduled_task_run_repo(request)
     user = await get_optional_user_from_request(request)
@@ -541,8 +525,6 @@ async def list_scheduled_task_runs(
 @router.get("/threads/{thread_id}/scheduled-tasks")
 @require_permission("threads", "read", owner_check=True)
 async def list_thread_scheduled_tasks(thread_id: ThreadId, request: Request):
-    from app.gateway.deps import get_optional_user_from_request, get_scheduled_task_repo
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:

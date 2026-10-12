@@ -70,9 +70,7 @@ import threading
 import time
 from typing import Any
 
-from alpha.capabilities.honesty import (
-    WiringReport,
-)
+from alpha.capabilities.honesty import WiringReport, audit_registered_claims
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +94,6 @@ def _cache_enabled() -> bool:
 
 def _run_audit() -> None:
     """Worker-thread body: compute the reports and publish them."""
-    from alpha.capabilities.honesty import audit_registered_claims
-
     global _CACHE, _STATE, _LAST_FAILURE_AT
     try:
         reports = audit_registered_claims()

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
+from app.gateway.deps import get_current_user, get_mcp_task_repo, get_mcp_task_service
 
 router = APIRouter(prefix="/api/threads/{thread_id}/mcp-tasks", tags=["mcp-tasks"])
 
@@ -56,8 +57,6 @@ def _detail(record: dict[str, Any], *, threshold: int) -> dict[str, Any]:
 
 
 async def _current_user_id(request: Request) -> str:
-    from app.gateway.deps import get_current_user
-
     user_id = await get_current_user(request)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -71,8 +70,6 @@ async def list_mcp_tasks(
     request: Request,
     limit: int = Query(default=50, ge=1, le=100),
 ) -> list[dict[str, Any]]:
-    from app.gateway.deps import get_mcp_task_repo, get_mcp_task_service
-
     repository = get_mcp_task_repo(request)
     service = get_mcp_task_service(request)
     user_id = await _current_user_id(request)
@@ -92,8 +89,6 @@ async def get_mcp_task(
     task_id: str,
     request: Request,
 ) -> dict[str, Any]:
-    from app.gateway.deps import get_mcp_task_repo, get_mcp_task_service
-
     repository = get_mcp_task_repo(request)
     service = get_mcp_task_service(request)
     user_id = await _current_user_id(request)
@@ -113,8 +108,6 @@ async def cancel_mcp_task(
     task_id: str,
     request: Request,
 ) -> dict[str, Any]:
-    from app.gateway.deps import get_mcp_task_service
-
     service = get_mcp_task_service(request)
     user_id = await _current_user_id(request)
     if not getattr(request.app.state, "mcp_tasks_available", False):

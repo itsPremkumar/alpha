@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from alpha.agents.memory import MemoryConflictError, MemoryCorruptionError, MemoryManager, get_memory_manager
 from alpha.config.memory_config import get_memory_config
+from alpha.config.paths import make_safe_user_id
 from alpha.runtime.user_context import get_effective_user_id
+from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +35,6 @@ def _resolve_memory_user_id(request: Request) -> str:
     memory bucket aligned with the owner's file/upload bucket and avoids a 500 when
     the raw id contains characters ``_validate_user_id`` would reject.
     """
-    from alpha.config.paths import make_safe_user_id
-    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-
     raw_owner = get_trusted_internal_owner_user_id(request)
     if raw_owner:
         return make_safe_user_id(raw_owner)
@@ -643,10 +642,8 @@ class ProceduralSkillCreateRequest(BaseModel):
 def _cognitive_system_for_request(request: Request):
     from contextlib import contextmanager
 
-    from alpha.config.paths import make_safe_user_id
     from alpha.memory.cognitive import get_cognitive_memory_system
     from alpha.runtime.user_context import require_current_user
-    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 
     @contextmanager
     def operation():

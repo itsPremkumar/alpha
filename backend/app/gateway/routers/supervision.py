@@ -39,7 +39,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from alpha.supervision import (
+    AnomalyReport,
+    AnomalyType,
     DeterministicWatchdog,
+    HeartbeatRecord,
     WatchdogRecoveryManager,
 )
 
@@ -79,8 +82,6 @@ class AdoptOrphansRequest(BaseModel):
 @router.post("/heartbeat")
 async def ingest_heartbeat(payload: HeartbeatIngestRequest):
     """Ingest heartbeat and evaluate liveness and progress deltas."""
-    from alpha.supervision import HeartbeatRecord
-
     rec = HeartbeatRecord(
         worker_id=payload.worker_id,
         task_id=payload.task_id,
@@ -166,8 +167,6 @@ async def get_anomalies(worker_id: str | None = None):
 @router.post("/recover")
 async def trigger_recovery(payload: TriggerRecoveryRequest):
     """Triggers automated self-healing / hot-replacement for an anomalous worker."""
-    from alpha.supervision import AnomalyReport, AnomalyType
-
     reports = _GLOBAL_WATCHDOG.inspect_anomalies(worker_id=payload.worker_id)
     if not reports:
         dummy_anomaly = AnomalyReport(

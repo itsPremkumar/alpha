@@ -7,17 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Path as PathParameter
 from pydantic import BaseModel, ConfigDict, JsonValue
 
-from alpha.goals import (
-    AttemptStatus,
-    GoalContract,
-    GoalStore,
-    PlanVersion,
-    TaskAttempt,
-)
+from alpha.config.paths import get_paths, make_safe_user_id
+from alpha.goals import AttemptStatus, GoalContract, GoalStore, InvalidTransitionError, PlanVersion, RecordNotFoundError, StoreCorruptionError, TaskAttempt
 from alpha.goals.models import NonEmptyString
-from app.gateway.authz import (
-    require_permission,
-)
+from alpha.utils.file_io import run_file_io
+from app.gateway.auth_disabled import AUTH_SOURCE_PAT
+from app.gateway.authz import require_cancel_permission_if, require_permission
+from app.gateway.deps import get_current_user_from_request
 
 router = APIRouter(prefix="/api/goals/contracts", tags=["goal-contracts"])
 _stores: dict[Path, GoalStore] = {}
@@ -25,9 +21,6 @@ _stores_lock = Lock()
 
 
 async def _goal_owner(request: Request) -> str:
-    from app.gateway.auth_disabled import AUTH_SOURCE_PAT
-    from app.gateway.deps import get_current_user_from_request
-
     user = await get_current_user_from_request(request)
     if getattr(request.state, "auth_source", None) == AUTH_SOURCE_PAT:
         raise HTTPException(status_code=403, detail="PAT credentials are not permitted on this route")
@@ -59,10 +52,6 @@ class AttemptTransitionRequest(_RequestModel):
 
 
 async def _operate[T](owner_id: str, operation: Callable[[GoalStore], T]) -> T:
-    from alpha.config.paths import get_paths, make_safe_user_id
-    from alpha.goals import InvalidTransitionError, RecordNotFoundError, StoreCorruptionError
-    from alpha.utils.file_io import run_file_io
-
     def execute() -> T:
         storage_dir = (get_paths().user_dir(make_safe_user_id(owner_id)) / "goal_contracts").resolve()
         with _stores_lock:
@@ -109,8 +98,6 @@ async def create_plan(contract_id: str, payload: PlanCreateRequest, request: Req
 @router.post("/{contract_id}/plans/{version}/approve", response_model=PlanVersion)
 @require_permission("runs", "create")
 async def approve_plan(contract_id: str, version: Annotated[int, PathParameter(ge=1)], request: Request, owner_id: str = Depends(_goal_owner)) -> PlanVersion:
-    from alpha.goals import RecordNotFoundError
-
     def approve(store: GoalStore) -> PlanVersion:
         for plan in store.list_plans(contract_id, owner_id=owner_id):
             if plan.version == version:
@@ -123,8 +110,6 @@ async def approve_plan(contract_id: str, version: Annotated[int, PathParameter(g
 @router.post("/{contract_id}/attempts", response_model=TaskAttempt, status_code=201)
 @require_permission("runs", "create")
 async def create_attempt(contract_id: str, payload: AttemptCreateRequest, request: Request, owner_id: str = Depends(_goal_owner)) -> TaskAttempt:
-    from alpha.goals import RecordNotFoundError
-
     def create(store: GoalStore) -> TaskAttempt:
         store.get_contract(contract_id, owner_id=owner_id)
         plan = store.get_plan(payload.plan_id, owner_id=owner_id)
@@ -138,9 +123,6 @@ async def create_attempt(contract_id: str, payload: AttemptCreateRequest, reques
 @router.post("/{contract_id}/attempts/{attempt_id}/transition", response_model=TaskAttempt)
 @require_permission("runs", "create")
 async def transition_attempt(contract_id: str, attempt_id: str, payload: AttemptTransitionRequest, request: Request, owner_id: str = Depends(_goal_owner)) -> TaskAttempt:
-    from alpha.goals import RecordNotFoundError
-    from app.gateway.authz import require_cancel_permission_if
-
     require_cancel_permission_if(request, payload.status == "cancelled")
 
     def transition(store: GoalStore) -> TaskAttempt:

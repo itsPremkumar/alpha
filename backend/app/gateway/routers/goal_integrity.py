@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from alpha.planning.integrity import GoalIntegrityEngine
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/goal-integrity", tags=["goal-integrity"])
 
@@ -20,8 +22,6 @@ class GoalAuditRequest(BaseModel):
 @router.post("/audit")
 async def audit_goal_integrity(payload: GoalAuditRequest):
     """Audits subtasks against the core mission for semantic drift, scope creep, and overengineering."""
-    from alpha.planning.integrity import GoalIntegrityEngine
-
     report = GoalIntegrityEngine.audit_plan(
         mission_goal=payload.mission_goal,
         subtasks=payload.subtasks,

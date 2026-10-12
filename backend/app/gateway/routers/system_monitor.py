@@ -41,6 +41,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.gateway.system_monitor_service import get_system_monitor
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -551,8 +553,6 @@ async def system_vitals() -> SystemVitalsResponse:
     The monitor service remains the source of truth. The router only
     normalizes the response into the public API contract.
     """
-    from app.gateway.system_monitor_service import get_system_monitor
-
     try:
         raw = get_system_monitor().get_vitals()
         return SystemVitalsResponse(**raw)
@@ -578,8 +578,6 @@ async def system_history(
     ),
 ) -> SystemHistoryResponse:
     """Return compact time-series data suitable for dashboard charts."""
-    from app.gateway.system_monitor_service import get_system_monitor
-
     try:
         raw_points = get_system_monitor().get_history(minutes=minutes)
     except Exception:
@@ -637,8 +635,6 @@ async def system_history(
 )
 async def system_alerts() -> SystemAlertsResponse:
     """Return active system health alerts."""
-    from app.gateway.system_monitor_service import get_system_monitor
-
     try:
         alerts = get_system_monitor().get_alerts()
     except Exception:
@@ -677,8 +673,6 @@ async def system_processes(
     The underlying monitor omits command lines, environment variables,
     credentials, executable paths, and other sensitive process metadata.
     """
-    from app.gateway.system_monitor_service import get_system_monitor
-
     monitor = get_system_monitor()
 
     try:
@@ -718,8 +712,6 @@ async def system_processes(
 )
 async def network_interfaces() -> NetworkInterfacesResponse:
     """Return per-interface network state and counters."""
-    from app.gateway.system_monitor_service import get_system_monitor
-
     monitor = get_system_monitor()
 
     try:
@@ -756,8 +748,6 @@ async def network_interfaces() -> NetworkInterfacesResponse:
 )
 async def system_capabilities() -> CapabilitiesResponse:
     """Report which optional system-monitoring capabilities are available."""
-    from app.gateway.system_monitor_service import get_system_monitor
-
     monitor = get_system_monitor()
 
     try:

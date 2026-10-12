@@ -216,3 +216,55 @@ def test_snapshot_create_survives_a_corrupt_manifest(tmp_path: Path) -> None:
     snapshot_id = manager.create_snapshot(description="after corruption")
     assert snapshot_id is not None
     assert (snaps / f"{snapshot_id}.json").exists()
+
+
+def test_harness_state_refuses_every_mutation_while_degraded(tmp_path: Path) -> None:
+    """A degraded store must refuse writes, not persist the last view that parsed.
+
+    ``load()`` stages into a local mapping and adopts it only on full success, so
+    after a corrupt read ``entries`` still holds whatever last parsed cleanly.
+    A write that ran anyway would replace a file that may merely be truncated
+    with one that is confidently short - silent destruction of the rules the
+    agent had already been given.
+
+    The guard is asserted on every mutating entry point, not just ``add_entry``:
+    ``update_entry``, ``remove_entry``, ``record_refinement`` and a direct
+    ``save()`` all reach the same state.
+    """
+    from alpha.harness.continual.state import HarnessStateError
+
+    path = tmp_path / "harness.json"
+    good = HarnessState(path)
+    good.save()
+    entry_id = good.add_entry(kind="skill", title="keep me", content="a learned rule").id
+    assert path.exists()
+
+    path.write_text("{{{ not valid json", encoding="utf-8")
+    degraded = HarnessState(path)
+    assert degraded.is_degraded, "a corrupt file must be a degraded read, not an empty one"
+
+    with pytest.raises(HarnessStateError):
+        degraded.save()
+    with pytest.raises(HarnessStateError):
+        degraded.add_entry(kind="skill", title="new", content="new")
+    with pytest.raises(HarnessStateError):
+        degraded.update_entry(entry_id, title="renamed")
+    with pytest.raises(HarnessStateError):
+        degraded.remove_entry(entry_id)
+    with pytest.raises(HarnessStateError):
+        degraded.record_refinement(trigger="repair", changes=["x"])
+
+    # The refusal has to mean the bytes on disk are untouched, not merely that
+    # an exception surfaced.
+    assert path.read_text(encoding="utf-8") == "{{{ not valid json"
+
+
+def test_a_healthy_harness_state_is_not_refused_by_the_guard(tmp_path: Path) -> None:
+    """Fail-closed must not become fail-always."""
+
+    state = HarnessState(tmp_path / "harness.json")
+    state.save()
+    entry = state.add_entry(kind="prompt", title="t", content="c")
+    assert state.update_entry(entry.id, title="t2") is not None
+    assert state.remove_entry(entry.id) is True
+    assert not state.is_degraded

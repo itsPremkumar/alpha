@@ -9,11 +9,23 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from alpha.config.extensions_config import (
+    ExtensionsConfig,
     McpRoutingConfig,
     McpTaskToolsetConfig,
     McpToolOverride,
+    atomic_write_extensions_config,
+    extensions_config_file_lock,
+    extensions_config_write_lock,
+    get_extensions_config,
+    normalize_mcp_transport_alias,
+    read_raw_extensions_config,
+    reload_extensions_config,
+    validate_raw_extensions_config,
 )
+from alpha.config.runtime_paths import project_root
 from alpha.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
+from alpha.mcp.cache import reset_mcp_tools_cache
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["mcp"])
@@ -473,8 +485,6 @@ class McpServerConfigResponse(BaseModel):
     @classmethod
     def _accept_transport_alias(cls, data: Any) -> Any:
         """Keep API parsing aligned with the runtime MCP config model."""
-        from alpha.config.extensions_config import normalize_mcp_transport_alias
-
         return normalize_mcp_transport_alias(data)
 
 
@@ -1124,8 +1134,6 @@ async def get_mcp_configuration(request: Request) -> McpConfigResponse:
         }
         ```
     """
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     raw_servers = await asyncio.to_thread(_load_raw_mcp_server_responses)
@@ -1157,8 +1165,6 @@ def _mcp_server_response_from_raw(server_name: str, raw_server: Any) -> McpServe
 
 def _validate_extensions_config_candidate(raw_data: dict) -> None:
     """Reject a runtime-invalid candidate without changing its placeholders."""
-    from alpha.config.extensions_config import validate_raw_extensions_config
-
     try:
         validate_raw_extensions_config(raw_data)
     except ValidationError as exc:
@@ -1176,9 +1182,6 @@ def _apply_mcp_config_update(body: McpConfigUpdateRequest) -> dict:
     """
     # Resolve before entering the critical section so every writer locks the
     # same sidecar path for the complete read-modify-write cycle.
-    from alpha.config.extensions_config import ExtensionsConfig, atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock, get_extensions_config, reload_extensions_config
-    from alpha.config.runtime_paths import project_root
-
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         config_path = project_root() / "extensions_config.json"
@@ -1235,8 +1238,6 @@ def _apply_mcp_config_update(body: McpConfigUpdateRequest) -> dict:
 
 def _apply_mcp_server_state_update(body: McpServerStateUpdateRequest) -> dict:
     """Update one server state while preserving the raw extensions config."""
-    from alpha.config.extensions_config import ExtensionsConfig, atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock, reload_extensions_config
-
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         raise HTTPException(
@@ -1279,9 +1280,6 @@ def _apply_mcp_server_state_update(body: McpServerStateUpdateRequest) -> dict:
 
 def _mcp_config_path(*, create: bool) -> Path:
     """Resolve the shared extensions config path for a targeted mutation."""
-    from alpha.config.extensions_config import ExtensionsConfig
-    from alpha.config.runtime_paths import project_root
-
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         if create:
@@ -1296,8 +1294,6 @@ def _mcp_config_path(*, create: bool) -> Path:
 
 
 def _load_raw_extensions_config(config_path: Path, *, create: bool) -> dict:
-    from alpha.config.extensions_config import read_raw_extensions_config
-
     if config_path.exists():
         try:
             return read_raw_extensions_config(config_path)
@@ -1325,8 +1321,6 @@ def _mcp_server_responses_from_raw(raw_data: dict) -> dict[str, McpServerConfigR
 
 def _load_raw_mcp_server_responses() -> dict[str, McpServerConfigResponse]:
     """Read editable MCP server definitions under the shared config lock."""
-    from alpha.config.extensions_config import ExtensionsConfig, extensions_config_file_lock, extensions_config_write_lock
-
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         return {}
@@ -1337,8 +1331,6 @@ def _load_raw_mcp_server_responses() -> dict[str, McpServerConfigResponse]:
 
 
 def _ensure_skills_key(raw_data: dict) -> None:
-    from alpha.config.extensions_config import get_extensions_config
-
     if isinstance(raw_data.get("skills"), dict):
         return
     current_config = get_extensions_config()
@@ -1347,8 +1339,6 @@ def _ensure_skills_key(raw_data: dict) -> None:
 
 def _apply_mcp_servers_create(body: McpConfigUpdateRequest) -> dict:
     """Atomically add servers without replacing entries already on disk."""
-    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock, reload_extensions_config
-
     config_path = _mcp_config_path(create=True)
     with extensions_config_write_lock, extensions_config_file_lock(config_path):
         raw_data = _load_raw_extensions_config(config_path, create=True)
@@ -1375,8 +1365,6 @@ def _apply_mcp_servers_create(body: McpConfigUpdateRequest) -> dict:
 
 def _apply_mcp_server_config_update(body: McpServerConfigUpdateRequest) -> dict:
     """Atomically replace one server while preserving concurrent sibling edits."""
-    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock, reload_extensions_config
-
     config_path = _mcp_config_path(create=False)
     with extensions_config_write_lock, extensions_config_file_lock(config_path):
         raw_data = _load_raw_extensions_config(config_path, create=False)
@@ -1406,8 +1394,6 @@ def _apply_mcp_server_config_update(body: McpServerConfigUpdateRequest) -> dict:
 
 def _apply_mcp_server_delete(server_name: str) -> dict:
     """Atomically remove one server while preserving every sibling entry."""
-    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock, reload_extensions_config
-
     config_path = _mcp_config_path(create=False)
     with extensions_config_write_lock, extensions_config_file_lock(config_path):
         raw_data = _load_raw_extensions_config(config_path, create=False)
@@ -1441,9 +1427,6 @@ async def reset_mcp_tools_cache_endpoint(request: Request) -> McpCacheResetRespo
     servers. This affects all threads and users in the current Gateway process,
     and avoids relying on extensions_config.json mtime changes.
     """
-    from alpha.mcp.cache import reset_mcp_tools_cache
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     reset_mcp_tools_cache()
     return McpCacheResetResponse(
@@ -1490,9 +1473,6 @@ async def update_mcp_configuration(request: Request, body: McpConfigUpdateReques
         }
         ```
     """
-    from alpha.mcp.cache import reset_mcp_tools_cache
-    from app.gateway.deps import require_admin_user
-
     try:
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
         _validate_mcp_update_request(body)
@@ -1523,9 +1503,6 @@ async def update_mcp_configuration(request: Request, body: McpConfigUpdateReques
 )
 async def create_mcp_servers(request: Request, body: McpConfigUpdateRequest) -> McpConfigResponse:
     """Add servers atomically and reject names that already exist."""
-    from alpha.mcp.cache import reset_mcp_tools_cache
-    from app.gateway.deps import require_admin_user
-
     try:
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
         _validate_mcp_update_request(body)
@@ -1549,9 +1526,6 @@ async def create_mcp_servers(request: Request, body: McpConfigUpdateRequest) -> 
 )
 async def update_mcp_server(request: Request, body: McpServerConfigUpdateRequest) -> McpConfigResponse:
     """Update one existing server and reload the MCP tool cache."""
-    from alpha.mcp.cache import reset_mcp_tools_cache
-    from app.gateway.deps import require_admin_user
-
     try:
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
         _validate_mcp_update_request(
@@ -1578,9 +1552,6 @@ async def update_mcp_server(request: Request, body: McpServerConfigUpdateRequest
 )
 async def delete_mcp_server(request: Request, server_name: str) -> McpConfigResponse:
     """Delete one existing server and reload the MCP tool cache."""
-    from alpha.mcp.cache import reset_mcp_tools_cache
-    from app.gateway.deps import require_admin_user
-
     try:
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
         reloaded_servers = await asyncio.to_thread(_apply_mcp_server_delete, server_name)
@@ -1603,9 +1574,6 @@ async def delete_mcp_server(request: Request, server_name: str) -> McpConfigResp
 )
 async def update_mcp_server_state(request: Request, body: McpServerStateUpdateRequest) -> McpConfigResponse:
     """Enable or disable one MCP server and reload the MCP tool cache."""
-    from alpha.mcp.cache import reset_mcp_tools_cache
-    from app.gateway.deps import require_admin_user
-
     try:
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
         reloaded_servers = await asyncio.to_thread(_apply_mcp_server_state_update, body)

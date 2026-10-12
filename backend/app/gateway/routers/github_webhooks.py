@@ -34,6 +34,8 @@ from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
+from app.gateway.github.dispatcher import fanout_event
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -215,8 +217,6 @@ async def receive_github_webhook(
     the explicit unverified opt-in, return 503 rather than accept a
     forgeable delivery.
     """
-    from app.gateway.github.dispatcher import fanout_event
-
     body = await request.body()
 
     secret = _get_webhook_secret()

@@ -44,9 +44,25 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from alpha.apex.store import (
-    ApexSessionState,
+from alpha.apex.contract import (
+    AutonomyProfile,
+    ContractViolation,
+    contract_from_snapshot,
+    narrow_contract,
+    profile_for,
 )
+from alpha.apex.executive import run_cycle
+from alpha.apex.goals import (
+    GoalState,
+    IllegalGoalTransition,
+    get_goal_store,
+)
+from alpha.apex.invariants import invariant_summary
+from alpha.apex.mode import DEFAULT_SCOPE as DEFAULT_APEX_SCOPE
+from alpha.apex.mode import get_apex_mode_store, set_mode
+from alpha.apex.status import SUPERVISOR_STATUS_PATH, apex_status, contract_status
+from alpha.apex.store import APEX_EVENTS, ApexSessionState, get_apex_store
+from app.gateway.deps import is_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -192,8 +208,6 @@ async def _caller(request: Request) -> tuple[str, bool]:
       owners in every store this router queries, so an unauthenticated caller
       must be 401 rather than an owner-less read that lists everyone's rows.
     """
-    from app.gateway.deps import is_admin_user
-
     user = getattr(request.state, "user", None)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
@@ -216,8 +230,6 @@ async def _require_admin(request: Request) -> str:
 
 
 def _contract_for(profile: str, *, mission_id: str = "") -> Any:
-    from alpha.apex.contract import AutonomyProfile, profile_for
-
     try:
         return profile_for(profile, mission_id=mission_id)
     except ValueError as exc:
@@ -226,8 +238,6 @@ def _contract_for(profile: str, *, mission_id: str = "") -> Any:
 
 def _session_contract(session: Any) -> Any:
     """Load the validated frozen policy, retaining compatibility for old rows."""
-    from alpha.apex.contract import ContractViolation, contract_from_snapshot
-
     snapshot = getattr(session, "contract_snapshot", None)
     if snapshot is None:
         return _contract_for(session.profile, mission_id=session.mission_id)
@@ -246,8 +256,6 @@ def _supervisor_provider() -> Callable[[], dict[str, Any]]:
     the projection reports as unavailable with its reason rather than as a
     healthy empty status.
     """
-    from alpha.apex.status import SUPERVISOR_STATUS_PATH
-
     module_path, _, attr = SUPERVISOR_STATUS_PATH.partition(":")
     try:
         # The path names the singleton *accessor*, so it is called and its
@@ -267,8 +275,6 @@ async def _session_or_404(request: Request, session_id: str) -> Any:
     and a row belonging to someone else is *also* 404 — the same detail — so a
     foreign id cannot be used to probe which ids exist.
     """
-    from alpha.apex.store import get_apex_store
-
     store = get_apex_store()
     if store.is_degraded:
         raise HTTPException(status_code=503, detail=f"APEX session store unreadable: {store.load_error}")
@@ -295,8 +301,6 @@ async def _resolve_scope(request: Request, requested: str) -> tuple[str, str]:
     response, because a client that asked about a scope nobody configured needs
     to distinguish "not enabled" from "I created it".
     """
-    from alpha.apex.mode import DEFAULT_APEX_SCOPE
-
     owner, is_admin = await _caller(request)
     scope = str(requested or "").strip() or owner or DEFAULT_APEX_SCOPE
     if requested and scope != owner and not is_admin:
@@ -305,9 +309,6 @@ async def _resolve_scope(request: Request, requested: str) -> tuple[str, str]:
 
 
 def _mode_body(scope_key: str, *, changed: bool, durable: bool | None = None, reason: str = "") -> dict[str, Any]:
-    from alpha.apex.mode import get_apex_mode_store
-    from alpha.apex.store import get_apex_store
-
     store = get_apex_mode_store()
     record = store.for_scope(scope_key)
     contract = record.contract()
@@ -375,8 +376,6 @@ async def enable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]:
     rather than falling back to one, so a typo cannot silently grant a
     different authority than the caller asked for.
     """
-    from alpha.apex.mode import set_mode
-
     owner = await _require_admin(request)
     scope, _resolved_owner = await _resolve_scope(request, payload.scope_key)
     try:
@@ -395,8 +394,6 @@ async def disable_apex(payload: ModeRequest, request: Request) -> dict[str, Any]
     acted. Mission state is untouched — disabling APEX stops the executive from
     choosing, it does not cancel work an existing engine already admitted.
     """
-    from alpha.apex.mode import set_mode
-
     owner = await _require_admin(request)
     scope, _resolved_owner = await _resolve_scope(request, payload.scope_key)
     try:
@@ -425,8 +422,6 @@ class ScopeRequest(BaseModel):
 
 def _control_transition(scope_key: str, target: ApexSessionState, reason: str) -> dict[str, Any]:
     """Move the active session for a scope, or say there is none to move."""
-    from alpha.apex.store import get_apex_store
-
     store = get_apex_store()
     session = store.active_for_scope(scope_key)
     if session is None:
@@ -537,8 +532,6 @@ async def _goal_or_404(request: Request, goal_id: str) -> Any:
     source is *unknown*, never empty), and a foreign goal answers 404 with the
     same detail an absent one does.
     """
-    from alpha.apex.goals import get_goal_store
-
     store = get_goal_store()
     if store.is_degraded:
         raise HTTPException(status_code=503, detail=f"APEX goal store unreadable: {store.load_error}")
@@ -560,8 +553,6 @@ async def create_goal(payload: GoalCreateRequest, request: Request) -> dict[str,
     ``COMPLETED`` is unreachable from here (or anywhere else) without
     measured evidence — creation only ever starts the clock.
     """
-    from alpha.apex.goals import IllegalGoalTransition, get_goal_store
-
     owner, _is_admin = await _caller(request)
     store = get_goal_store()
     if store.is_degraded:
@@ -604,8 +595,6 @@ async def list_goals(
     limit: int = Query(default=200, ge=1, le=500),
 ) -> dict[str, Any]:
     """Goals for the caller (all, for an admin), newest-priority first."""
-    from alpha.apex.goals import get_goal_store
-
     owner, is_admin = await _caller(request)
     store = get_goal_store()
     if store.is_degraded:
@@ -624,8 +613,6 @@ async def list_goals(
 
 @router.get("/goals/{goal_id}", summary="One APEX goal and its subtree")
 async def get_goal(goal_id: str, request: Request) -> dict[str, Any]:
-    from alpha.apex.goals import get_goal_store
-
     store = get_goal_store()
     goal = await _goal_or_404(request, goal_id)
     return {"goal": goal.to_dict(), "tree": store.tree(goal_id)}
@@ -634,8 +621,6 @@ async def get_goal(goal_id: str, request: Request) -> dict[str, Any]:
 @router.post("/goals/{goal_id}/steer", summary="Record a constraint on a goal")
 async def steer_goal(goal_id: str, payload: GoalSteerRequest, request: Request) -> dict[str, Any]:
     """Attach one steering constraint (spec §57). A constraint, not a rewrite."""
-    from alpha.apex.goals import get_goal_store
-
     await _goal_or_404(request, goal_id)
     store = get_goal_store()
     updated = store.add_constraint(goal_id, payload.instruction, source=payload.source)
@@ -649,8 +634,6 @@ async def steer_goal(goal_id: str, payload: GoalSteerRequest, request: Request) 
 @router.post("/goals/{goal_id}/replan", summary="Move a goal back to replanning")
 async def replan_goal(goal_id: str, request: Request) -> dict[str, Any]:
     """Spec §37's escalation: a stop is not a dead end."""
-    from alpha.apex.goals import GoalState, IllegalGoalTransition, get_goal_store
-
     await _goal_or_404(request, goal_id)
     store = get_goal_store()
     try:
@@ -669,8 +652,6 @@ async def verify_goal(goal_id: str, request: Request) -> dict[str, Any]:
     criterion that measured false is named in the 409 — a partial is
     reported as partial, never folded into a completion.
     """
-    from alpha.apex.goals import IllegalGoalTransition, get_goal_store
-
     await _goal_or_404(request, goal_id)
     store = get_goal_store()
     try:
@@ -683,8 +664,6 @@ async def verify_goal(goal_id: str, request: Request) -> dict[str, Any]:
 @router.get("/goals/{goal_id}/tasks", summary="A goal's decomposition")
 async def goal_tasks(goal_id: str, request: Request) -> dict[str, Any]:
     """The goal's children — the subgoals a decomposition created."""
-    from alpha.apex.goals import get_goal_store
-
     await _goal_or_404(request, goal_id)
     store = get_goal_store()
     children = store.children(goal_id)
@@ -736,8 +715,6 @@ async def goal_events(
     limit: int = Query(default=DEFAULT_EVENT_LIMIT, ge=1, le=MAX_EVENT_LIMIT),
 ) -> dict[str, Any]:
     """Replay the goal's journal — real history, bounded."""
-    from alpha.apex.store import get_apex_store
-
     await _goal_or_404(request, goal_id)
     events = get_apex_store().read_events(goal_id, after_seq=after_seq)[:limit]
     return {"goal_id": goal_id, "count": len(events), "events": [e.to_dict() for e in events]}
@@ -751,8 +728,6 @@ async def goal_decisions(goal_id: str, request: Request) -> dict[str, Any]:
     session link has no cycle decisions, and says so rather than implying
     an empty history it never had.
     """
-    from alpha.apex.store import get_apex_store
-
     goal = await _goal_or_404(request, goal_id)
     if not goal.session_id:
         return {
@@ -813,8 +788,6 @@ async def goal_failures(goal_id: str, request: Request) -> dict[str, Any]:
     blocked reason and a FAILED state are failures too. An empty list is
     a real answer: nothing has failed yet.
     """
-    from alpha.apex.goals import GoalState
-
     goal = await _goal_or_404(request, goal_id)
     latest = goal.latest_evidence()
     failures: list[dict[str, Any]] = [
@@ -855,8 +828,6 @@ async def list_approvals(
     smaller backlog than the gate is actually holding. ``returned`` and
     ``truncated`` say which of the two the caller is looking at.
     """
-    from alpha.apex.store import get_apex_store
-
     owner, is_admin = await _caller(request)
     store = get_apex_store()
     if store.is_degraded:
@@ -878,8 +849,6 @@ async def list_approvals(
 
 def _decide_approval_route(approval_id: str, verdict: str, operator: str, note: str) -> dict[str, Any]:
     """Apply one verdict, distinguishing a missing id from a decided one."""
-    from alpha.apex.store import get_apex_store
-
     store = get_apex_store()
     outcome = store.decide_approval(approval_id, verdict=verdict, operator=operator, note=note)
     if outcome is None:
@@ -926,9 +895,6 @@ async def create_session(payload: SessionCreateRequest, request: Request) -> dic
     Returns the contract and the first decision. It does **not** start work: the
     response says what the executive would do, and the host adapter performs it.
     """
-    from alpha.apex.contract import ContractViolation, narrow_contract
-    from alpha.apex.store import get_apex_store
-
     owner = await _require_admin(request)
     contract = _contract_for(payload.profile, mission_id=payload.mission_id)
     if payload.authority or payload.budget:
@@ -965,8 +931,6 @@ async def list_sessions(
     state: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
-    from alpha.apex.store import get_apex_store
-
     owner, is_admin = await _caller(request)
     store = get_apex_store()
     if store.is_degraded:
@@ -1007,10 +971,6 @@ async def status(
     ``scope_key`` is resolved by the same helper the toggle uses, so a
     non-admin naming another scope is 403 here exactly as it is on ``/mode``.
     """
-    from alpha.apex.mode import get_apex_mode_store
-    from alpha.apex.status import apex_status
-    from alpha.apex.store import get_apex_store
-
     scope, _owner = await _resolve_scope(request, scope_key)
     if session_id:
         session = await _session_or_404(request, session_id)
@@ -1037,8 +997,6 @@ async def policy(profile: str = Query(default="off")) -> dict[str, Any]:
     sees that a delegated policy kernel is absent rather than trusting that APEX
     enforces it.
     """
-    from alpha.apex.status import contract_status
-
     return contract_status(_contract_for(profile))
 
 
@@ -1049,8 +1007,6 @@ async def invariants() -> dict[str, Any]:
     Module and symbol presence is a structural probe only; it does not prove
     that runtime paths invoke the guard. ``live`` stays for API compatibility.
     """
-    from alpha.apex.invariants import invariant_summary
-
     return {"schema": "alpha.apex.invariants.v1", **invariant_summary()}
 
 
@@ -1064,8 +1020,6 @@ async def steer(session_id: str, payload: SteerRequest, request: Request) -> dic
     owner of a session may always make it stricter — but it is still the
     owner's session to narrow.
     """
-    from alpha.apex.store import get_apex_store
-
     store = get_apex_store()
     await _session_or_404(request, session_id)
     constraint = store.record_constraint(session_id, payload.instruction, priority=payload.priority)
@@ -1090,9 +1044,6 @@ async def submit_session_acceptance(
     journaled and selects a fresh recovery dispatch; only the acceptance gate
     can complete the session.
     """
-    from alpha.apex.executive import run_cycle
-    from alpha.apex.store import get_apex_store
-
     store = get_apex_store()
     session = await _session_or_404(request, session_id)
     if session.state is ApexSessionState.BLOCKED:
@@ -1159,9 +1110,6 @@ async def cycle(session_id: str, payload: CycleRequest, request: Request) -> dic
     decision implies one, a session state transition. It executes no domain
     work, so this endpoint is an observation surface, not a work surface.
     """
-    from alpha.apex.executive import run_cycle
-    from alpha.apex.store import get_apex_store
-
     await _require_admin(request)
     store = get_apex_store()
     session = await _session_or_404(request, session_id)
@@ -1202,8 +1150,6 @@ async def replan_failed_session(
     as a mission constraint. It only makes the session dispatchable; the
     existing supervisor remains the sole owner of the next run admission.
     """
-    from alpha.apex.store import get_apex_store
-
     await _require_admin(request)
     session = await _session_or_404(request, session_id)
     if not payload.acknowledge_possible_side_effects:
@@ -1283,9 +1229,6 @@ async def cycle_all(payload: CycleRequest, request: Request) -> dict[str, Any]:
     Admin-gated like the other control actions: driving the executive forward
     over every session is an operator act, not a self-service one.
     """
-    from alpha.apex.executive import run_cycle
-    from alpha.apex.store import get_apex_store
-
     await _require_admin(request)
     store = get_apex_store()
     results = []
@@ -1315,8 +1258,6 @@ async def session_events(
     read touches disk), then a subscriber queue with per-event dedupe, a bounded
     lifetime, and an unsubscribe in ``finally``.
     """
-    from alpha.apex.store import APEX_EVENTS, get_apex_store
-
     await _session_or_404(request, session_id)
     store = get_apex_store()
 
@@ -1388,8 +1329,6 @@ async def set_state(session_id: str, payload: dict[str, Any], request: Request) 
     that state directly would reopen the false-completion hole spec §46 exists
     to close.
     """
-    from alpha.apex.store import get_apex_store
-
     await _require_admin(request)
     store = get_apex_store()
     await _session_or_404(request, session_id)
@@ -1425,8 +1364,6 @@ async def delete_session(session_id: str, request: Request) -> dict[str, Any]:
     the same owner-scoped lookup first, so a foreign id answers 404 rather
     than telling the caller it exists.
     """
-    from alpha.apex.store import get_apex_store
-
     await _require_admin(request)
     await _session_or_404(request, session_id)
     if not get_apex_store().delete(session_id):

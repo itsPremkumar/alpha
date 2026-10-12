@@ -21,13 +21,16 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from alpha.groups.activity import RunEvidence
+from alpha.groups.presence import resolve_room_presence
 from alpha.groups.room import (
+    GROUP_CATEGORIES,
+    GROUP_LINK_TYPES,
     REACTION_EMOJI,
     VALID_INTENTS,
 )
-from alpha.groups.scope import (
-    MAX_HOP,
-)
+from alpha.groups.roster import VALID_RULE_FIELDS, VALID_RULE_OPS, RosterError
+from alpha.groups.scope import MAX_DEPTH, MAX_HOP, ScopeError, children_of, descendants_of
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/groups", tags=["groups"])
@@ -159,8 +162,6 @@ async def list_rooms() -> dict:
 
 @router.post("", status_code=201, summary="Get or create room")
 async def create_room(body: RoomCreateRequest) -> dict:
-    from alpha.groups.scope import ScopeError
-
     name = _validate_room_name(body.name)
     members = _validate_members(body.members)
     mode = body.mode.strip().lower()
@@ -318,8 +319,6 @@ async def create_subgroup(name: str, body: SubgroupRequest) -> dict:
     staffed; membership gained by the parent afterwards arrives through
     inheritance at read time, not by another write.
     """
-    from alpha.groups.scope import ScopeError
-
     child_name = _validate_room_name(body.name)
     members = _validate_members(body.members)
     key = _validate_room_name(name)
@@ -338,8 +337,6 @@ async def create_subgroup(name: str, body: SubgroupRequest) -> dict:
 
 @router.get("/{name}/children", summary="Direct nested groups")
 async def list_children(name: str) -> dict:
-    from alpha.groups.scope import children_of
-
     key = _validate_room_name(name)
 
     def _read():
@@ -360,8 +357,6 @@ async def list_children(name: str) -> dict:
 @router.get("/{name}/ancestors", summary="Breadcrumb chain")
 async def list_ancestors(name: str) -> dict:
     """Root-first ancestor chain for the header breadcrumb."""
-    from alpha.groups.scope import MAX_DEPTH
-
     key = _validate_room_name(name)
 
     def _read():
@@ -377,8 +372,6 @@ async def list_ancestors(name: str) -> dict:
 
 @router.get("/{name}/descendants", summary="Whole subtree")
 async def list_descendants(name: str) -> dict:
-    from alpha.groups.scope import descendants_of
-
     key = _validate_room_name(name)
 
     def _read():
@@ -386,6 +379,8 @@ async def list_descendants(name: str) -> dict:
         room = svc.get_room(key)
         if room is None:
             return None
+        from alpha.groups.scope import descendants_of
+
         ids = descendants_of(svc._scopes, room.room_id)
         return [_room_to_response(next((r for r in svc._rooms.values() if r.room_id == i), room)) for i in ids]
 
@@ -397,8 +392,6 @@ async def list_descendants(name: str) -> dict:
 
 @router.patch("/{name}/lifecycle", summary="Change lifecycle state")
 async def set_lifecycle(name: str, body: LifecycleRequest) -> dict:
-    from alpha.groups.scope import ScopeError
-
     key = _validate_room_name(name)
 
     def _set():
@@ -415,8 +408,6 @@ async def set_lifecycle(name: str, body: LifecycleRequest) -> dict:
 
 @router.patch("/{name}/policy", summary="Change relay policy / authority parent")
 async def set_policy(name: str, body: RoomPolicyRequest) -> dict:
-    from alpha.groups.scope import ScopeError
-
     key = _validate_room_name(name)
 
     def _set():
@@ -443,8 +434,6 @@ async def set_policy(name: str, body: RoomPolicyRequest) -> dict:
 
 @router.post("/{name}/move", summary="Re-parent a group")
 async def move_group(name: str, body: MoveRequest) -> dict:
-    from alpha.groups.scope import ScopeError
-
     key = _validate_room_name(name)
 
     def _move():
@@ -529,8 +518,6 @@ async def get_roster(name: str) -> dict:
 @router.post("/{name}/members", status_code=201, summary="Add or borrow a member")
 async def add_member(name: str, body: MemberRequest) -> dict:
     """Add a member, or borrow one in with an expiry (a temporary squad)."""
-    from alpha.groups.roster import RosterError
-
     key = _validate_room_name(name)
     member = body.bot_name.lower().strip()
     if not _BOT_NAME_RE.match(member):
@@ -556,8 +543,6 @@ async def remove_member(name: str, bot_name: str) -> dict:
     naming that source — deleting the row would leave them visibly present with
     no explanation.
     """
-    from alpha.groups.roster import RosterError
-
     key = _validate_room_name(name)
 
     def _remove():
@@ -599,8 +584,6 @@ async def add_rule(name: str, body: RuleRequest) -> dict:
     The response reports the rule's current matches, because a mistyped rule
     that matches nobody is indistinguishable from a group nobody joined.
     """
-    from alpha.groups.roster import RosterError
-
     key = _validate_room_name(name)
 
     def _add():
@@ -631,8 +614,6 @@ async def preview_roster_rules(name: str) -> dict:
     Exists because a mistyped rule that matches nobody looks exactly like a
     room nobody joined, and the operator cannot tell them apart otherwise.
     """
-    from alpha.groups.roster import VALID_RULE_FIELDS, VALID_RULE_OPS
-
     key = _validate_room_name(name)
 
     def _preview():
@@ -650,8 +631,6 @@ async def preview_roster_rules(name: str) -> dict:
 
 @router.delete("/{name}/rules/{rule_id}", summary="Remove a membership rule")
 async def remove_rule(name: str, rule_id: str) -> dict:
-    from alpha.groups.roster import RosterError
-
     key = _validate_room_name(name)
 
     def _remove():
@@ -1105,8 +1084,6 @@ async def get_group_profile(name: str) -> dict:
     Absent fields are `null`, never defaults — a group without a
     description is a real state, not a missing one.
     """
-    from alpha.groups.room import GROUP_CATEGORIES
-
     key = _validate_room_name(name)
 
     def _read():
@@ -1176,8 +1153,6 @@ async def update_group_profile(name: str, body: GroupProfileUpdate) -> dict:
 
 @router.get("/{name}/links", summary="Group reference links")
 async def list_group_links(name: str) -> dict:
-    from alpha.groups.room import GROUP_LINK_TYPES
-
     key = _validate_room_name(name)
 
     def _read():
@@ -1192,8 +1167,6 @@ async def list_group_links(name: str) -> dict:
 
 @router.post("/{name}/links", status_code=201, summary="Add a group link")
 async def add_group_link(name: str, body: GroupLinkCreate) -> dict:
-    from alpha.groups.room import GROUP_LINK_TYPES
-
     key = _validate_room_name(name)
     if body.link_type not in GROUP_LINK_TYPES:
         raise HTTPException(status_code=422, detail=f"link_type must be one of {list(GROUP_LINK_TYPES)}")
@@ -1344,8 +1317,6 @@ async def clone_group(name: str, body: CloneRequest) -> dict:
     The transcript is never copied — two rooms sharing a history
     would make reactions and edits ambiguous across the boundary.
     """
-    from alpha.groups.scope import ScopeError
-
     key = _validate_room_name(name)
     new_name = _validate_room_name(body.new_name)
 
@@ -1785,8 +1756,6 @@ async def list_room_members(name: str) -> dict:
     member no owning system knows reads as `unknown`, which is a different
     claim from `offline`.
     """
-    from alpha.groups.presence import resolve_room_presence
-
     key = _validate_room_name(name)
 
     def _read():
@@ -1933,9 +1902,6 @@ async def cancel_group_run(name: str, run_id: str) -> dict:
 
 @router.delete("/{name}", status_code=204, summary="Delete group room (admin)")
 async def delete_room(name: str, request: Request, cascade: bool = False) -> None:
-    from alpha.groups.scope import children_of, descendants_of
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_room_name(name)
 
@@ -1945,6 +1911,7 @@ async def delete_room(name: str, request: Request, cascade: bool = False) -> Non
             room = svc._rooms.get(key.lower())
             if room is None:
                 return False, [], 0
+            from alpha.groups.scope import children_of
 
             kids = children_of(svc._scopes, room.room_id)
             # The whole subtree, not just direct children: `cascade=true` is
