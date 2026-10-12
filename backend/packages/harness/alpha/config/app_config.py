@@ -22,6 +22,7 @@ from alpha.config.autonomy_config import AutonomyConfig
 from alpha.config.capabilities_config import CapabilitiesConfig
 from alpha.config.channel_connections_config import ChannelConnectionsConfig
 from alpha.config.checkpointer_config import CheckpointerConfig, load_checkpointer_config_from_dict
+from alpha.config.completion_config import CompletionConfig
 from alpha.config.context_window_config import ContextWindowConfig
 from alpha.config.database_config import DatabaseConfig
 from alpha.config.dedupe_storage_config import DedupeStorageConfig
@@ -60,6 +61,7 @@ from alpha.config.skill_evolution_config import SkillEvolutionConfig
 from alpha.config.skill_scan_config import SkillScanConfig
 from alpha.config.skills_config import SkillsConfig
 from alpha.config.specialist_config import SpecialistCatalogConfig, SpecialistConfig
+from alpha.config.spend_config_schema import SpendConfig
 from alpha.config.stream_bridge_config import StreamBridgeConfig, load_stream_bridge_config_from_dict
 from alpha.config.subagent_batches_config import SubagentBatchesConfig
 from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
@@ -360,6 +362,16 @@ class AppConfig(BaseModel):
             "model still gets a cost estimate instead of none."
         ),
     )
+    spend: SpendConfig = Field(
+        default_factory=SpendConfig,
+        description=(
+            "How much this deployment may spend. `mode: zero_cost` refuses a paid model at construction, in "
+            "code, via alpha.budgets.spend.refuse_paid_model called from create_chat_model -- not a prompt "
+            "instruction. `budgeted` (the default, and the behaviour when this section is absent) meters tokens "
+            "and trips the cost_governor daily/scope breaker but refuses nothing at construction. A model that "
+            "no pricing namespace declares is treated as PAID: absence of a price is not a price of zero."
+        ),
+    )
     sandbox: SandboxConfig = Field(
         description=format_field_description(
             "sandbox",
@@ -400,6 +412,12 @@ class AppConfig(BaseModel):
         description="Context-window pressure bands and reserves. `models[].context_window` is an INPUT window; the usable window is derived by subtracting the reserves below.",
     )
     task_continuity: TaskContinuityConfig = Field(default_factory=TaskContinuityConfig, description="Thread-local notes and compacted-source recall")
+    completion: CompletionConfig = Field(
+        default_factory=CompletionConfig,
+        description=(
+            "Alpha Completion Engine: acceptance contracts, typed gates, evidence freshness and the finalization guard. Opt-in per request — enabling this never taxes a normal chat turn. Hot-reloaded (applies on the next engine call)."
+        ),
+    )
     deepagent: DeepAgentConfig = Field(default_factory=DeepAgentConfig, description="Deep-agent working plane: a thread-scoped virtual filesystem in graph state (deepagents' StateBackend)")
     memory: MemoryConfig = Field(default_factory=MemoryConfig, description="Memory subsystem configuration")
     agents_api: AgentsApiConfig = Field(default_factory=AgentsApiConfig, description="Custom-agent management API configuration")

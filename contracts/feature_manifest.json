@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-12T01:54:06Z",
+ "generated_at": "2026-10-12T08:32:09Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1270,6 +1270,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.completion",
+   "module": "app.gateway.routers.completion",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.console",
    "module": "app.gateway.routers.console",
    "symbol": "router",
@@ -2190,6 +2198,11 @@
    "submodules": []
   },
   {
+   "id": "alpha.budgets",
+   "kind": "package",
+   "submodules": []
+  },
+  {
    "id": "alpha.canvas",
    "kind": "package",
    "submodules": []
@@ -2265,6 +2278,11 @@
   },
   {
    "id": "alpha.company_os",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.completion",
    "kind": "package",
    "submodules": []
   },
@@ -2820,6 +2838,11 @@
   },
   {
    "id": "alpha.system1",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.tasks",
    "kind": "package",
    "submodules": []
   },

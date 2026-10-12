@@ -358,6 +358,29 @@ the template's, and that every succeeded node carried real evidence. `promote`
 refuses a draft. `instantiate` deep-copies, so patching one caller's run cannot
 corrupt the library.
 
+**Two blueprints ship as code, not as a captured run.**
+`alpha.workflow.builtin_templates` declares `code_change` (plan → implement →
+test → review → accept) and `bug_fix` (reproduce → diagnose → fix →
+regression-test → review → accept) as `WorkflowTemplate`s that
+`get_template_store()` seeds on first construction. Each carries a bounded
+repair loop (`RetryPolicy`), a declared `verification_cmd` on its verification
+node (which reports `not_run` until a host binds a verification executor — it
+is a declaration, not a subprocess this module spawns), and a `GOAL_GATE`
+acceptance criterion written in the safe-AST expression form the runtime
+evaluates (an unevaluable required criterion counts as NOT met, fail-closed).
+
+The distinction that matters: these ship as DRAFT with
+`provenance.source == "builtin"`, and `instantiate` may start a **builtin**
+draft (tagging the result `[builtin blueprint, unverified]`) but still refuses
+any **captured** draft. A captured draft is a graph taken from a run that has
+not been re-checked — starting it would lend a never-executed graph the
+appearance of authority; a builtin blueprint is reviewed, unit-tested code
+here. Reaching `promoted` stays evidence-gated for both: a blueprint cannot
+promote itself. Seeding is idempotent and non-destructive — an id already
+present (edited, verified, promoted) is left exactly as the store holds it, so
+a later boot never overwrites an operator's state.
+Tests: `backend/tests/test_builtin_workflow_templates.py`.
+
 `alpha.workflow.self_improvement` turns measured signals into typed proposals.
 **A suggestion is a proposal, never an action** — nothing in it mutates a run, a
 graph, or a template, and applying one produces a normal typed patch that must

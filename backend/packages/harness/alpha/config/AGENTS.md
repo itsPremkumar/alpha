@@ -152,6 +152,42 @@ Configuration priority:
 
 Extensions are optional only in the fallback *search* mode (priority 3-4 above): `ExtensionsConfig.resolve_config_path()` returns `None` when neither an explicit `config_path` nor `ALPHA_EXTENSIONS_CONFIG_PATH` is given and the search locations find nothing. An explicit `config_path` argument or a set `ALPHA_EXTENSIONS_CONFIG_PATH` (priority 1-2) is an operator assertion that one particular file must be used, so a missing file in either of those modes raises `FileNotFoundError` instead — including when the file existed earlier and has since been deleted. The MCP tools cache's staleness check (`alpha.mcp.cache._resolve_config_path`) is a narrow, deliberate exception to that rule: it catches that `FileNotFoundError` locally and treats it as "unconfigured" so a previously-valid config disappearing mid-run degrades the cache to serving its last-known-good tools instead of raising out of a per-request hot path (see the MCP System section below).
 
+### The depth/fan-out limit authority (`alpha/config/limits.py`)
+
+`alpha.config.limits` is the single owner of every depth/fan-out/fan-in ceiling
+a subsystem *enforces mechanically*: delegation depth (3), children per parent
+(10), fan-out per node (4), delegation hops (6), native subagent concurrency
+(default 3 / hard 64), workflow wave concurrency (default 4 / ceiling 32 —
+shared by the wave executor and the `SWARM` node, which are the same fan-out
+mechanism), the group axis (nesting depth 4, relay hops 8, parallel
+members 3), and the swarm *plan* ceiling (64 — the Gateway router's
+`max_concurrency` refusal paired with `SwarmCoordinator.create_swarm`'s
+downstream clamp, which must be the same number or a request the router
+accepts is silently clamped later). Before this module the same concepts were
+re-declared in half a dozen files and disagreed; a reader asking "how deep may
+this go" had no answer that was true everywhere.
+
+Two rules hold for it:
+
+- **One number, one value, stdlib-free.** Consumers import a name and never
+  re-state the literal. The module imports nothing heavier than `__future__`
+  and `typing`, because it is loaded at module scope by config models, the
+  subagent lifecycle manager, workflow execution and the groups scope — a stray
+  `from alpha...` there is the import cycle the layout exists to prevent.
+- **Policy is not mechanics.** A *profile* bound — an APEX autonomy contract's
+  `max_delegation_depth`, a bot model-config's fallback-count bound — is a
+  policy value intersected against these engine ceilings at read time, never
+  merged into them. `alpha.apex.agents.resolve_delegation_limits` is where that
+  intersection happens for APEX, and it names both numbers in its refusal.
+  Merging the two would turn a tunable policy knob into a hard engine refusal
+  (or worse, the reverse).
+
+The values are unchanged from what each consumer enforced before the move, so
+centralising them changed no behaviour; changing a ceiling is now a one-file,
+reviewable edit. Drift is pinned by
+`backend/tests/test_limit_authority_consistency.py`, which asserts every
+consumer site's value equals the constant imported here.
+
 ### Config Schema
 
 **`config.yaml`** key sections:

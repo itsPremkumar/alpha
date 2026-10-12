@@ -4,14 +4,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from alpha.config import limits
+
 
 class SubagentRuntimeConfig(BaseModel):
     """Process-local admission and execution limits shared by all subagents."""
 
     max_running: int = Field(
-        default=3,
+        default=limits.DEFAULT_CONCURRENT_NATIVE_SUBAGENTS,
         ge=1,
-        le=64,
+        le=limits.MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD,
         description="Maximum native subagents that may execute concurrently in one Gateway process.",
     )
     max_queued: int = Field(

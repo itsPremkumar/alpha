@@ -37,6 +37,7 @@ from enum import StrEnum
 from typing import Any
 
 from alpha.bots.failure_reasons import HANDOFF_REQUESTED, UNKNOWN
+from alpha.config import limits
 
 # Guard refusal codes. These are deliberately *not* provider codes: they answer
 # "why was no child created", which the failure taxonomy does not model.
@@ -90,12 +91,12 @@ class TreeStatus(StrEnum):
 class DelegationLimits:
     """Hard ceilings for one delegation tree. Inherited, never widened."""
 
-    max_depth: int = 3
-    max_fanout: int = 4
-    max_hops: int = 6
+    max_depth: int = limits.MAX_DELEGATION_DEPTH
+    max_fanout: int = limits.MAX_FANOUT_PER_NODE
+    max_hops: int = limits.MAX_DELEGATION_HOPS
     token_budget: int = 200_000
     cost_budget_usd: float = 5.0
-    max_children_per_node: int = 4
+    max_children_per_node: int = limits.MAX_FANOUT_PER_NODE
     #: Fraction of the parent's remaining token budget a single child may take.
     #: Guarantees a deep tree converges instead of every level asking for
     #: everything it has left.

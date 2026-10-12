@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 72 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 73 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -128,7 +128,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 123 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 126 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -331,7 +331,7 @@ subsystem.
 | :--- | :--- | :--- |
 | **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
 | **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, submit measured evidence for every acceptance criterion, and let an administrator request a bounded replan after reviewing a terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined. Automatic evidence collectors are not included | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
+| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, submit measured evidence for every acceptance criterion, and let an administrator request a bounded replan after reviewing a terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined. Command and artifact evidence collectors exist, but nothing selects one for a criterion automatically | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
 | **Event-driven execution governance** | The Alpha Mod Kernel runs ordered policy middleware on lead-agent tool and model lifecycle events, with first-party emergency-stop, risk, evidence, routing, and failure controllers. Held actions are persisted with an admin approve/reject flow, and a static manifest report shows what each mod declares versus what it is wired to. Kernel journal replay/dead-letter processing is not implemented; see the [production inventory](docs/PRODUCTION_READINESS_INVENTORY.md) | [docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) |
 | **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
 | **A community of agent groups** | Nest group rooms inside group rooms at any time, staff them by rule instead of by name, inherit membership from a parent, and split direct / inherited / rule-matched members in the roster | [AGENTS.md](AGENTS.md#nested-groups-the-community-shape) |
@@ -864,9 +864,9 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (123 harness engines)</b></summary>
+<summary><b>Full subsystem map (126 harness engines)</b></summary>
 
-Each of the 123 engine packages under `backend/packages/harness/alpha/` (counted by
+Each of the 126 engine packages under `backend/packages/harness/alpha/` (counted by
 `backend/scripts/generate_feature_manifest.py`; `backend/` and `scratch/` sit there
 but are not engines) is a dedicated engine:
 
@@ -1096,7 +1096,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 139 tools, 72 routers, 46 middlewares, and 13 supervisor loops. CI fails
+  pins all 139 tools, 73 routers, 46 middlewares, and 13 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing

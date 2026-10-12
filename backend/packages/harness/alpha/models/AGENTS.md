@@ -14,6 +14,41 @@
 - **Credit exhaustion is a typed, routed condition.** `models/fallback.py::CreditExhaustedError` normalizes HTTP 402 / `insufficient_quota` / "out of credits" (rate-limit phrasing is excluded so a throttle is not misread as billing), counts as retryable, and moves the chain forward; an exhausted chain sets `budget_status="CREDIT_EXHAUSTED"`. Provider switches are recorded as `FailoverEvent`s (`get_last_failover_events()`, optional `on_failover` callback) instead of only being logged, and an empty member response fails over too.
 - **Cost accounting is wired.** `FallbackChatModel` charges the provider-reported usage of the member that actually served the call to `CostGovernor.record_usage` via `cost_governor.record_token_usage`, attributed through `usage_attribution(...)` / `ALPHA_COST_PROJECT_ID`. Accounting never fails an answer: a tripped breaker is recorded as a `budget_exhausted` `FailoverEvent`. Tests: `tests/test_byo_model_egress_policy.py`, `tests/test_credit_exhaustion_failover.py`.
 
+### Zero-cost refusal is a construction gate (`alpha.budgets.spend`)
+
+`create_chat_model` refuses a **paid** model before any client is built, when
+`config.yaml -> spend.mode: zero_cost`. This is the only point where a spend
+decision can be airtight: past this line a provider client exists and a call can
+happen. It is a code refusal (`PaidCallRefused`), never a prompt instruction.
+
+Three properties are load-bearing, and each is a defect if it changes:
+
+- **Every chain member is checked, not just the primary.** A free primary with a
+  paid fallback spends nothing until the fallback fires; a gate inspecting only
+  the primary would enforce nothing exactly when it matters most.
+- **The default is inert.** No `spend:` section means `SpendMode.BUDGETED`,
+  which is today's behaviour. A misspelled mode is a **load error**
+  (`spend_config_schema.SpendConfig`), not a silent fallback to the permissive
+  reading.
+- **An unpriced model is PAID.** `is_model_free` checks four namespaces in
+  authority order (local name fragment, declared `free_gateways` model or
+  `:free` suffix, zero price on **both** axes, everything else) and `unpriced`
+  is not free. Absence of a price is not a price of zero.
+
+**Two pricing namespaces, one trap.** Both are per million tokens and differ
+only in key names: `models[].pricing` uses `input_per_million` /
+`output_per_million`, top-level `model_pricing:` uses `input` / `output`.
+Reading one shape for both is how a configured price silently prices nothing.
+`estimate_cost_usd` accepts both and returns **`None`** when nothing prices the
+model, never `0.0` — "costs nothing" and "we do not know" point opposite ways.
+
+`CostGovernor.MODEL_COST_PER_1K` still falls back to a hardcoded `"default"`
+rate for enforcement; that is unchanged. The governor charges a (possibly
+estimated) figure, while the *admission* decision refuses rather than guessing.
+Do not "reconcile" the two by making either report a fabricated zero. Contract:
+[`packages/harness/alpha/budgets/AGENTS.md`](../budgets/AGENTS.md). Tests:
+`tests/test_spend_policy.py`.
+
 ### Model catalog data lives in `config.yaml`, never in code
 
 `provider_manager.PROVIDER_SPECS` and `free_router.PROVIDERS` used to be ~550

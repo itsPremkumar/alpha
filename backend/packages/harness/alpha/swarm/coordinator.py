@@ -13,6 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from alpha.config import limits
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.cnp_auction import LeaderCandidate, LeaderElection, elect_leader
 from alpha.swarm.communication import SwarmMessage, SwarmMessageBus
@@ -253,7 +254,7 @@ class SwarmCoordinator:
         if normalized_key and len(normalized_key) > 256:
             raise ValueError("idempotency_key is too long")
         effective_budget = budget if isinstance(budget, SwarmBudget) else SwarmBudget.from_dict(budget)
-        effective_concurrency = min(max(1, int(max_concurrency)), 64)
+        effective_concurrency = min(max(1, int(max_concurrency)), limits.MAX_SWARM_PLAN_CONCURRENCY)
         fingerprint = _admission_fingerprint(
             goal=goal,
             mode=mode,

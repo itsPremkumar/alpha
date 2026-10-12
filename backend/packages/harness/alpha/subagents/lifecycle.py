@@ -23,6 +23,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from alpha.config import limits
+
 logger = logging.getLogger(__name__)
 
 _GLOBAL_LIFECYCLE_MANAGER: SubagentLifecycleManager | None = None
@@ -231,8 +233,8 @@ def get_subagent_lifecycle_manager(storage_dir: Path | str | None = None) -> Sub
 class SubagentLifecycleManager:
     """Master controller managing asynchronous subagent lifecycle, heartbeats, and leases."""
 
-    DEFAULT_MAX_DEPTH = 3
-    DEFAULT_MAX_CHILDREN_PER_PARENT = 10
+    DEFAULT_MAX_DEPTH = limits.MAX_DELEGATION_DEPTH
+    DEFAULT_MAX_CHILDREN_PER_PARENT = limits.MAX_CHILDREN_PER_PARENT
 
     def __init__(self, storage_dir: Path | str | None = None):
         if storage_dir:

@@ -5,9 +5,9 @@
 > `backend/packages/harness/alpha/`; `AGENTS.md` should point here rather than
 > hand-maintaining a list that drifts.
 
-- **Packages:** 123
-- **Python files:** 2041
-- **Total lines:** 543060
+- **Packages:** 126
+- **Python files:** 2070
+- **Total lines:** 551742
 - **Packages with preview/simulated markers:** 29
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -16,33 +16,34 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | Package | Files | Lines | Tier |
 |---|---:|---:|---|
 | `alpha/memory` | 152 | 44930 | core |
-| `alpha/agents` | 137 | 43772 | preview/partial |
+| `alpha/agents` | 137 | 43872 | preview/partial |
 | `alpha/runtime` | 118 | 34044 | preview/partial |
-| `alpha/tools` | 168 | 30786 | preview/partial |
+| `alpha/tools` | 168 | 30917 | preview/partial |
 | `alpha/community` | 89 | 27861 | preview/partial |
 | `alpha/persistence` | 105 | 18522 | preview/partial |
-| `alpha/workflow` | 52 | 18181 | preview/partial |
-| `alpha/bots` | 35 | 14834 | preview/partial |
-| `alpha/config` | 82 | 13569 | core |
-| `alpha/capability_mesh` | 27 | 11544 | preview/partial |
-| `alpha/models` | 36 | 11451 | preview/partial |
+| `alpha/workflow` | 53 | 18510 | preview/partial |
+| `alpha/bots` | 35 | 14836 | preview/partial |
+| `alpha/config` | 85 | 13892 | core |
+| `alpha/capability_mesh` | 26 | 11538 | preview/partial |
+| `alpha/models` | 36 | 11463 | preview/partial |
 | `alpha/observability` | 23 | 11364 | core |
-| `alpha/groups` | 22 | 11347 | core |
+| `alpha/groups` | 22 | 11351 | core |
 | `alpha/skills` | 57 | 11099 | core |
 | `alpha/sandbox` | 33 | 10764 | core |
 | `alpha/rsi` | 34 | 10710 | preview/partial |
 | `alpha/intelligence` | 25 | 10394 | preview/partial |
-| `alpha/subagents` | 35 | 10362 | core |
-| `alpha/swarm` | 25 | 8800 | core |
+| `alpha/subagents` | 35 | 10364 | core |
+| `alpha/swarm` | 25 | 8801 | core |
 | `alpha/safety` | 26 | 8678 | core |
 | `alpha/evolution` | 23 | 8433 | preview/partial |
 | `alpha/avo` | 26 | 7298 | core |
 | `alpha/mods` | 24 | 7126 | core |
-| `alpha/apex` | 12 | 6650 | core |
+| `alpha/apex` | 12 | 6654 | core |
 | `alpha/graph` | 11 | 6461 | core |
+| `alpha/completion` | 20 | 6159 | core |
 | `alpha/projects` | 32 | 5990 | preview/partial |
+| `alpha/mission` | 18 | 5498 | core |
 | `alpha/peer_network` | 12 | 5415 | core |
-| `alpha/mission` | 17 | 5116 | core |
 | `alpha/arena` | 18 | 5070 | preview/partial |
 | `alpha/mcp` | 19 | 4903 | preview/partial |
 | `alpha/reasoning` | 16 | 4757 | core |
@@ -70,21 +71,22 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/deliberation` | 12 | 1862 | core |
 | `alpha/errors` | 3 | 1852 | preview/partial |
 | `alpha/knowledge` | 5 | 1798 | core |
-| `alpha/guardrails` | 7 | 1751 | core |
+| `alpha/guardrails` | 7 | 1755 | core |
 | `alpha/research` | 5 | 1751 | core |
 | `alpha/metacompiler` | 7 | 1705 | preview/partial |
 | `alpha/evaluation` | 4 | 1641 | core |
 | `alpha/utils` | 13 | 1620 | core |
 | `alpha/script_bridge_child` | 3 | 1489 | core |
-| `alpha/capabilities` | 5 | 1403 | core |
+| `alpha/capabilities` | 5 | 1421 | core |
+| `alpha/harness` | 10 | 1341 | core |
 | `alpha/blackboard` | 6 | 1323 | core |
-| `alpha/harness` | 10 | 1308 | core |
 | `alpha/lineage` | 3 | 1283 | core |
 | `alpha/deepagent` | 5 | 1239 | preview/partial |
 | `alpha/workspace_changes` | 7 | 1233 | core |
 | `alpha/system1` | 5 | 1202 | core |
 | `alpha/authz` | 10 | 1108 | core |
 | `alpha/scheduler` | 9 | 911 | core |
+| `alpha/tasks` | 3 | 815 | core |
 | `alpha/context` | 11 | 810 | core |
 | `alpha/testing` | 2 | 720 | core |
 | `alpha/notifications` | 2 | 707 | core |
@@ -111,6 +113,7 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/state` | 3 | 383 | core |
 | `alpha/missions` | 2 | 375 | core |
 | `alpha/automations` | 2 | 373 | core |
+| `alpha/budgets` | 2 | 369 | core |
 | `alpha/trajectory` | 4 | 357 | preview/partial |
 | `alpha/egress` | 2 | 352 | core |
 | `alpha/metacognition` | 4 | 333 | core |

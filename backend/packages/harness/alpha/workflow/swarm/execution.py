@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha.config import limits
 from alpha.workflow.models import WorkflowNode, WorkflowRun
 from alpha.workflow.swarm.ledger import AggregationPolicy, SwarmLedger, SwarmMember
 
@@ -39,7 +40,7 @@ SwarmMemberRunner = Callable[[str, str], dict[str, Any]]
 
 #: Hard ceiling on concurrent members. A typo'd ``max_concurrency`` must not
 #: turn a swarm into a thread bomb against the shared Gateway process.
-MAX_SWARM_CONCURRENCY = 32
+MAX_SWARM_CONCURRENCY = limits.MAX_WAVE_CONCURRENCY_CEILING
 
 
 @dataclass
@@ -49,7 +50,7 @@ class SwarmConfig:
     members: list[dict[str, Any]] = field(default_factory=list)
     aggregation: AggregationPolicy = AggregationPolicy.ALL
     quorum: int = 1
-    max_concurrency: int = 4
+    max_concurrency: int = limits.DEFAULT_WAVE_CONCURRENCY
 
     @classmethod
     def from_node(cls, node: WorkflowNode) -> SwarmConfig:

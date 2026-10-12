@@ -235,6 +235,8 @@ class TestInvariantsEndpoint:
         for row in client.get("/api/apex/invariants").json()["invariants"]:
             assert row["module"]
             assert row["symbol"]
+            assert row["probe_scope"] == "module_symbol_presence"
+            assert row["runtime_enforcement_verified"] is False
             assert row["spec_section"].startswith("§188-")
 
 

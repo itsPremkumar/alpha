@@ -163,6 +163,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Operating the capability mesh: the 23 library modules by phase, the model's 12 actions, the HTTP routes, the default-off config slice, and the honesty boundaries that make a preview read as a preview.",
     ),
+    "ADVANCED_MULTI_AGENT_BUILD_PLAN.md": DocumentSpec(
+        "plans",
+        "Gap analysis and build plan derived from the advanced multi-agent architecture plan: what Alpha already has with paths, the seven competing schedulers, a ranked gap register, and nine phases that wire and unify rather than rebuild.",
+    ),
+    "ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Prime Agent–inspired implementation plan: recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, bounded autonomous continuation and verification-driven task state machines, kept in Python.",
+    ),
     "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
         "Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.",
@@ -311,6 +319,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "audits/ORCHESTRATION_PROBES.md": DocumentSpec(
         "operations",
         "Orchestration probe record: ten probes across swarms, subagent delegation, the ralph loop, bot roster and group rosters, plus the grounding-gate defect that made delegation succeed or fail depending on model prose.",
+    ),
+    "architecture/multi-agent-baseline.md": DocumentSpec(
+        "architecture",
+        "Phase 0 multi-agent baseline: the seven live schedulers, the three incompatible task vocabularies, a feature matrix separating what is operated from what merely exists, and the nine deliberate refusals that must not be 'fixed'.",
     ),
     "audits/BOT_FORGE_VERIFICATION.md": DocumentSpec(
         "operations",
@@ -491,6 +503,26 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "MEMORY_FABRIC_PLAN.md": DocumentSpec("memory", "Memory fabric plan, boundaries, and deferred work."),
     "MEMORY_TYPES.md": DocumentSpec("memory", "Canonical memory taxonomy and Alpha coverage."),
     "MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md": DocumentSpec("plans", "Enhanced multi-agent project collaboration plan."),
+    "PRIME_INSPIRED_CAPABILITY_AUDIT.md": DocumentSpec(
+        "plans",
+        "Capability-by-capability audit against the Prime Agent design note: verified, partial, documented-only and missing verdicts with test evidence.",
+    ),
+    "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Research-backed plan for advanced LangGraph engineering: graph structure, subgraphs, checkpointing and resilience.",
+    ),
+    "ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Research-backed plan for multi-agent graph orchestration across Alpha's bot, subagent and swarm modes.",
+    ),
+    "alpha-arena-advanced-implementation-plan.md": DocumentSpec(
+        "plans",
+        "Alpha Arena+ implementation specification: multi-agent candidate generation, attack/defend, synthesis and verification.",
+    ),
+    "alpha-arena-new-capability-mesh-features-plan.md": DocumentSpec(
+        "plans",
+        "Additive capability-mesh expansion plan extending Alpha Arena+ with routing, mixture-of-agents and cost-aware features.",
+    ),
     "PRODUCTION.md": DocumentSpec("operations", "Production runbook for monitoring, incidents, and maintenance."),
     "PRODUCTION_READINESS_INVENTORY.md": DocumentSpec("operations", "Production-readiness status, owners, and test evidence."),
     "PRODUCTION_READINESS_TRANSFER_GUIDE.md": DocumentSpec("operations", "Production foundations and readiness transfer guidance."),
@@ -589,9 +621,13 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
 # are reported as one skip for the directory, so node_modules cannot make the
 # walk unbounded.  Symlinks are reported rather than followed.  Temporary
 # Markdown files are excluded by filename; every other Markdown file must be
-# classified.
+# classified.  The ` (1).md` pattern is a browser-download duplicate of a
+# document already in the index — byte-identical to
+# ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md — so indexing it
+# twice (with a percent-encoded link no reader can follow) would be noise, not
+# coverage.
 SKIP_DIRECTORY_NAMES = frozenset({"node_modules", ".git", "__pycache__"})
-SKIP_FILE_PATTERNS = ("*.tmp.md",)
+SKIP_FILE_PATTERNS = ("*.tmp.md", "* (1).md")
 SKIP_FILE_NAMES = frozenset({"INDEX.md"})
 
 

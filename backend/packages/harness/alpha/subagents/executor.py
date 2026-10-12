@@ -29,7 +29,7 @@ from langgraph.errors import GraphRecursionError
 from alpha.agents.middlewares.audit_context import LOOP_DETECTION_RECORDER_CONTEXT_KEY, TOOL_PROMOTION_RECORDER_CONTEXT_KEY
 from alpha.agents.thread_state import SandboxState, ThreadDataState, ThreadState
 from alpha.authz.principal import normalize_authz_attributes
-from alpha.config import get_app_config
+from alpha.config import get_app_config, limits
 from alpha.config.app_config import AppConfig
 from alpha.models import create_chat_model
 from alpha.runtime.user_context import DEFAULT_USER_ID
@@ -1958,7 +1958,7 @@ class SubagentExecutor:
         return execution_id
 
 
-MAX_CONCURRENT_SUBAGENTS = 3
+MAX_CONCURRENT_SUBAGENTS = limits.DEFAULT_CONCURRENT_NATIVE_SUBAGENTS
 
 
 def request_cancel_background_task(execution_id: str) -> None:

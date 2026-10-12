@@ -51,10 +51,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha.config import limits
+
 # Bounded so a pathological graph cannot spawn one OS thread per ready node.
-DEFAULT_MAX_CONCURRENCY = 4
+DEFAULT_MAX_CONCURRENCY = limits.DEFAULT_WAVE_CONCURRENCY
 MIN_CONCURRENCY = 1
-MAX_CONCURRENCY_CEILING = 32
+MAX_CONCURRENCY_CEILING = limits.MAX_WAVE_CONCURRENCY_CEILING
 
 
 def clamp_concurrency(value: Any, *, default: int = DEFAULT_MAX_CONCURRENCY) -> int:

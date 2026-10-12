@@ -47,6 +47,7 @@ from typing import Any
 
 from alpha.bots.authority_ceiling import AuthorityViolation
 from alpha.bots.governance_ledger import ACTION_DELEGATED, record_governance_action
+from alpha.config import limits
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +109,8 @@ class AutonomyBounds:
     These come from the operator (or the ceiling), never from a plan.
     """
 
-    max_depth: int = 3
-    max_children_per_parent: int = 10
+    max_depth: int = limits.MAX_DELEGATION_DEPTH
+    max_children_per_parent: int = limits.MAX_CHILDREN_PER_PARENT
     max_attempts_per_task: int = 3
     max_wall_clock_seconds: float = 1800.0
     max_total_tasks: int = 200

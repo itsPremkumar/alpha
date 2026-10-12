@@ -29,10 +29,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from alpha.config import limits
+
 #: Maximum nesting depth. Four is deliberate: deeper makes the rendered ``path``
 #: unreadable in a sidebar, and relay fan-out becomes a cost problem rather
 #: than a feature. A room created below this is refused, not clamped.
-MAX_DEPTH = 4
+MAX_DEPTH = limits.MAX_GROUP_NESTING_DEPTH
 
 RoomState = Literal["draft", "active", "parked", "archived", "dissolved"]
 #: Every state a room may be in, and the legal transitions between them. A
@@ -64,7 +66,7 @@ VALID_OUTBOUND: tuple[str, ...] = ("none", "parents", "siblings", "org")
 #: ping-pong forever without a hop ceiling, and a relay storm is far worse than
 #: a missed message.
 DEFAULT_MAX_HOP = 3
-MAX_HOP = 8
+MAX_HOP = limits.MAX_GROUP_RELAY_HOPS
 
 
 class ScopeError(ValueError):

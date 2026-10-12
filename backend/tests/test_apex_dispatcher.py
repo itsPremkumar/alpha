@@ -219,6 +219,16 @@ async def test_apex_execution_tick_reaches_sessions_after_the_first_page(tmp_pat
         )
         store._rows[placeholder.session_id] = placeholder
 
+    # The placeholders are injected instead of persisted so this regression does
+    # not become 200 unrelated persistence writes, but ApexStore.list() re-reads
+    # the snapshot from disk under a cross-process lock before it returns rows -
+    # a read that exists so another Gateway worker's writes are visible. That
+    # refresh rebuilds _rows from the file alone and drops any row that was never
+    # persisted, so without this the injected page is silently discarded: the
+    # tick sees a single session, the assertion below fails, and the keyset
+    # cursor this test exists to exercise is never reached at all.
+    monkeypatch.setattr(store, "_refresh_rows_from_disk", lambda: None)
+
     monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
     monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
     monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)

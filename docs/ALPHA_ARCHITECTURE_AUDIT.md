@@ -294,9 +294,10 @@ capability matrix in §3.
   `test_evidence_action_rest_api.py`, `test_atomic_write_cleanup_masking.py`,
   `test_dormant_wiring_p3.py`.
 - **Known limitation** (per `PRODUCTION_READINESS_INVENTORY.md`):
-  evidence verification is **partial** — trusted collectors for
-  tests, artifacts, HTTP checks and reviewer approvals are not yet
-  added.
+  evidence verification is **partial** — command and artifact collectors
+  exist (`alpha.mission.collectors`), but HTTP-check and reviewer-approval
+  collectors are not yet added, and nothing selects a collector for a
+  criterion automatically.
 
 ### 2.7 Research engine (`alpha/research/`, `community/agent_eye/`)
 
@@ -670,7 +671,7 @@ closed. The CRITICAL-class risks below are therefore stated as HIGH.)
 | R-10 | Four overlapping multi-agent systems (subagents, swarm, enterprise, company_os) plus group war rooms — duplicated coordination semantics and maintenance surface. | §2.14 |
 | R-11 | Secrets lifecycle partial: redaction exists; no rotation/revocation inventory or secret-scanning regression suite. | Inventory row "Secrets lifecycle" |
 | R-12 | Multi-tenant isolation partial: per-owner stores and route checks exist; no CI matrix of cross-owner attempts against every query and artifact path. | Inventory row "Multi-tenant isolation" |
-| R-13 | Evidence verification partial: no trusted collectors for tests, artifacts, HTTP checks, reviewer approvals. | Inventory row "Evidence verification" |
+| R-13 | Evidence verification partial: command/artifact collectors exist (`alpha.mission.collectors`); HTTP-check and reviewer-approval collectors missing, and no automatic collector selection per criterion. | Inventory row "Evidence verification" |
 | R-14 | Self-repair is observation-only (honest refusal); there is no governed path that applies a verified fix automatically. | `selfrepair/engine.py` contract |
 
 ### LOW
