@@ -373,6 +373,27 @@ in another layer; follow the pointer.
   give no multi-process coherence; retained persistent records (not display
   pages) belong in snapshots, working memory stays ephemeral. See also
   **[docs/MEMORY.md](docs/MEMORY.md)**.
+- **Alpha Completion Engine** — the opt-in subsystem that answers *did the work
+  actually succeed?* with an acceptance contract fixed before work starts, a
+  typed registry of six reviewed checks (never free-form shell text from a
+  model), evidence bound to its definition and inputs, and a finalization guard
+  that is the **only** route to `complete`. **Additive and deliberately thin**:
+  `RunManager` stays the sole run-lifecycle owner, every argv is judged by
+  `alpha.guardrails.command_policy` (the same policy that gates `bash`), the
+  ledger is JSON under an advisory `FileLock` — single-process and
+  restart-recoverable, never cross-process exactly-once — and the model-facing
+  surface is actions on one existing tool rather than a new tool name. Three
+  vocabulary rules are load-bearing and are never relaxed: **returned is not
+  verified** (only a task's own gates verify it); **not run is not passed**
+  (`NOT_RUN`/`PENDING`/`WAIVED` can never satisfy a required gate); and
+  **observe mode never claims a completion it did not apply** — the decision is
+  computed and recorded with `enforced: false` while the status is left alone.
+  Owners are server-assigned and every Gateway mutation is admin-gated, because
+  writing this ledger is what decides whether work counts as done. Contract,
+  refusals and layering:
+  **[backend/packages/harness/alpha/completion/AGENTS.md](backend/packages/harness/alpha/completion/AGENTS.md)**;
+  Gateway surface: `app/gateway/routers/completion.py`. Tests:
+  `backend/tests/test_completion_*.py`.
 - **Durable runtime** — makes "a process, UI, network, provider or Windows
   restart must not become a task failure" true. **Additive**: `RunManager` stays
   the sole lifecycle owner, `SafeRunRecoveryService` the only safe-continuation

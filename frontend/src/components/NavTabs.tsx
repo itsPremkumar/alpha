@@ -38,8 +38,19 @@ import {
   Gauge,
   ScrollText,
   ListOrdered,
+  ClipboardCheck,
 } from "lucide-react";
 
+// Every member of this union is one quarter of the four-place wiring rule: a
+// view id must exist here, in a WORKSPACE_TABS row below, in
+// WORKSPACE_VIEW_IDS (lib/workspace-view.ts), and in ChatView's lazy import
+// plus render case — a view declared in only some of them renders nothing
+// while the nav still offers it. The completion engine view follows the same
+// placement rule as the ids at the bottom of the union: above the sentinel /
+// effects / reliability triple, never inside it and never after reliability.
+// No quoted ids in this comment: `unionIds()` in `workspace-nav.test.mjs`
+// reads every quoted token from `export type WorkspaceView` to the first
+// semicolon and would report it as a duplicate union member.
 export type WorkspaceView =
   | "overview"
   | "chat"
@@ -83,6 +94,7 @@ export type WorkspaceView =
   // `unionIds()` in `workspace-nav.test.mjs` reads every quoted token between
   // `export type WorkspaceView` and the first semicolon, so a comment quoting
   // an id reports it as a duplicate union member.)
+  | "completion"
   | "mods"
   | "sentinel"
   | "effects"
@@ -143,6 +155,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "intelligence", label: "Intelligence", icon: <Gauge className="size-3.5" />, blurb: "Control plane: loop health, evidence, metrics & honesty basis", category: "system" },
   { id: "sentinel", label: "Sentinel", icon: <ShieldAlert className="size-3.5" />, blurb: "Repair loop: observed faults, verified fixes, reverts & human handoffs", category: "system" },
   { id: "effects", label: "Effects", icon: <ScrollText className="size-3.5" />, blurb: "Effect journal: external effects, digests & reconciliation verdicts", category: "system" },
+  { id: "completion", label: "Completion", icon: <ClipboardCheck className="size-3.5" />, blurb: "Acceptance contracts: scope, gates, evidence & the finalization guard", category: "system" },
   { id: "mods", label: "Mods", icon: <ListOrdered className="size-3.5" />, blurb: "Mod kernel: ordered policy chain, commands, audit ledger, holds & impact preview", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];

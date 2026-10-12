@@ -40,6 +40,7 @@ from app.gateway.routers import (
     commands,
     companies,
     company,
+    completion,
     console,
     council,
     credentials,
@@ -1305,6 +1306,11 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # `deps.py` installs (SQL backend only; memory installs none and the routes
     # say so with 503 rather than an empty list).
     app.include_router(side_effects.router)
+    # The completion engine: acceptance contracts, gates, evidence and the
+    # finalization guard over `alpha.completion`. Read routes are owner-scoped;
+    # every mutation is admin-gated, because writing this ledger is what decides
+    # whether work counts as done.
+    app.include_router(completion.router)
     app.include_router(checkpoints.router)
     app.include_router(skills_workshop.router)
     app.include_router(credentials.router)

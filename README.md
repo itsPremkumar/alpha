@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 72 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 73 routers |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -128,7 +128,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 123 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 126 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -864,9 +864,9 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (123 harness engines)</b></summary>
+<summary><b>Full subsystem map (126 harness engines)</b></summary>
 
-Each of the 123 engine packages under `backend/packages/harness/alpha/` (counted by
+Each of the 126 engine packages under `backend/packages/harness/alpha/` (counted by
 `backend/scripts/generate_feature_manifest.py`; `backend/` and `scratch/` sit there
 but are not engines) is a dedicated engine:
 
@@ -1096,7 +1096,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 139 tools, 72 routers, 46 middlewares, and 13 supervisor loops. CI fails
+  pins all 139 tools, 73 routers, 46 middlewares, and 13 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
