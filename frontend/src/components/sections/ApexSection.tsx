@@ -51,8 +51,9 @@ import { fetchRun, type RunInfo } from "@/lib/runs";
  * reported zeroes for something it could not read is worse than no panel,
  * because it looks like a working system.
  *
- * **`all_live` and `live/declared` travel together.** Rendering "12 invariants"
- * over 9 live sites would be a fabricated count, so the badge states both.
+ * **Invariant evidence stays scoped.** The invariant probe checks that the
+ * named module and symbol are importable; it does not prove that each runtime
+ * path invokes the guard. The panel labels this as site presence, not a pass.
  *
  * **Dispatch is explicit.** Creating and dispatching an objective starts a
  * real run through the Gateway adapter. "Run one cycle" still records a

@@ -412,7 +412,7 @@ export function mapStatus(v: unknown): ApexStatus {
       declared: optNum(inv.declared) ?? 0,
       live: optNum(inv.live) ?? 0,
       all_live: bool(inv.all_live),
-      probe_scope: str(inv.probe_scope),
+      probe_scope: str(inv.probe_scope) || "module_symbol_presence",
       runtime_enforcement_verified: bool(inv.runtime_enforcement_verified),
       invariants: (Array.isArray(inv.invariants) ? inv.invariants : []).map(
         (row) => {
@@ -424,7 +424,7 @@ export function mapStatus(v: unknown): ApexStatus {
             module: str(item.module),
             symbol: str(item.symbol),
             reason: str(item.reason),
-            probe_scope: str(item.probe_scope),
+            probe_scope: str(item.probe_scope) || "module_symbol_presence",
             runtime_enforcement_verified: bool(
               item.runtime_enforcement_verified,
             ),

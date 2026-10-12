@@ -497,6 +497,8 @@ test("invariant rows carry live:false and the reason when a site is absent", asy
       declared: 12,
       live: 11,
       all_live: false,
+      probe_scope: "module_symbol_presence",
+      runtime_enforcement_verified: false,
       invariants: [
         {
           id: "I6",
@@ -514,6 +516,8 @@ test("invariant rows carry live:false and the reason when a site is absent", asy
   assert.equal(report.all_live, false);
   assert.equal(report.live, 11);
   assert.equal(report.declared, 12);
+  assert.equal(report.probe_scope, "module_symbol_presence");
+  assert.equal(report.runtime_enforcement_verified, false);
   assert.equal(report.invariants[0].live, false);
   assert.match(report.invariants[0].reason, /ModuleNotFoundError/);
 });
@@ -1591,6 +1595,12 @@ test("a failed host dispatch is shown beside the still-active session state", ()
   assert.match(source, /fetchRun\(threadId, runId\)/);
   assert.match(source, /Run diagnostic:/);
   assert.match(source, /Details unavailable/);
+});
+
+test("APEX invariant UI labels the symbol probe without implying runtime verification", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /sites present/);
+  assert.match(source, /runtime enforcement is not\s+verified by this probe/);
 });
 
 test("a mode with no bound session keeps active_session null", async () => {

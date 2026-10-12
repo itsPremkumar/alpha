@@ -422,6 +422,8 @@ def test_apex_status_is_read_only(registry) -> None:
 
     assert result.data["read_only"] is True
     assert "ON" in result.output
+    assert result.data["invariants"]["runtime_enforcement_verified"] is False
+    assert "runtime enforcement not verified" in result.output
 
 
 def test_apex_status_reports_an_unreadable_fleet_as_refusing_work(registry, monkeypatch: pytest.MonkeyPatch) -> None:

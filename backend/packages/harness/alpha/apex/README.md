@@ -41,6 +41,7 @@ not runtime enforcement:
 ```bash
 curl -s localhost:8001/api/apex/policy | jq .policy_sites_missing   # delegated kernels that are absent
 curl -s localhost:8001/api/apex/invariants | jq '{declared,live,probe_scope,runtime_enforcement_verified}'
+# `live` is a module/symbol presence probe; it does not prove runtime wiring.
 ```
 
 The invariant endpoint's `live` field is retained for compatibility and means
