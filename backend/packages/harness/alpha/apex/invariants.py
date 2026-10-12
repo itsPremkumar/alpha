@@ -6,8 +6,9 @@ so "APEX has twelve invariants" was an aspiration rather than a claim a test
 could check. This module is the statement.
 
 **The design rule that keeps this honest.** An :class:`Invariant` row names the
-module that enforces it, and :func:`check_invariants` reports ``live=True``
-only when that module actually imports *and* exposes the named symbol. A row
+module intended to enforce it, and :func:`check_invariants` reports ``live=True``
+only when that module imports *and* exposes the named symbol. This is a code-
+presence probe, not evidence that a runtime call path invokes the guard. A row
 whose enforcement site is missing reports ``live=False`` with the reason. It does
 not report a pass, and it does not report ``0`` for "could not look" — the same
 rule the self-inventory plane applies to an unreadable source, for the same
@@ -181,6 +182,8 @@ class InvariantReport:
             "symbol": self.symbol,
             "spec_section": self.spec_section,
             "reason": self.reason,
+            "probe_scope": "module_symbol_presence",
+            "runtime_enforcement_verified": False,
         }
 
 
@@ -230,12 +233,13 @@ def _probe(check: InvariantCheck) -> InvariantReport:
 
 
 def check_invariants(checks: tuple[InvariantCheck, ...] | None = None) -> list[InvariantReport]:
-    """Probe every invariant and report which enforcement site is live.
+    """Probe every invariant and report which named enforcement site is present.
 
     Returns one report per declared invariant, in declaration order. A caller
     that wants an aggregate should read :attr:`InvariantReport.live` itself —
     ``check_invariants`` deliberately does not collapse "12 declared" into a
-    single number, because 12 declared and 12 live are different claims.
+    single number, because declared and present sites are different claims;
+    neither count is runtime enforcement verification.
     """
     return [_probe(check) for check in (checks or INVARIANTS)]
 
@@ -253,6 +257,8 @@ def invariant_summary(reports: list[InvariantReport] | None = None) -> dict[str,
     return {
         "declared": len(resolved),
         "live": len(live),
+        "probe_scope": "module_symbol_presence",
+        "runtime_enforcement_verified": False,
         "live_ids": [r.id for r in live],
         "missing_ids": [r.id for r in missing],
         "all_live": bool(resolved) and not missing,

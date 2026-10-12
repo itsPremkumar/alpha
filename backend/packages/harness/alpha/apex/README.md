@@ -39,7 +39,8 @@ twelve invariants — so both claims are checkable rather than asserted:
 
 ```bash
 curl -s localhost:8001/api/apex/policy | jq .policy_sites_missing   # delegated kernels that are absent
-curl -s localhost:8001/api/apex/invariants | jq '{declared,live}'   # 12 declared, N live
+curl -s localhost:8001/api/apex/invariants | jq '{declared,live,probe_scope,runtime_enforcement_verified}'
+# `live` is a module/symbol presence probe; it does not prove runtime wiring.
 ```
 
 ## The three rules

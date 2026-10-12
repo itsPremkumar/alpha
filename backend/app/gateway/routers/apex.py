@@ -963,14 +963,14 @@ async def policy(profile: str = Query(default="off")) -> dict[str, Any]:
     return contract_status(_contract_for(profile))
 
 
-@router.get("/invariants", summary="The §188 invariant set and its live enforcement sites")
+@router.get("/invariants", summary="The §188 invariant set and named-site presence checks")
 async def invariants() -> dict[str, Any]:
     """One row per declared invariant.
 
-    ``live`` reflects whether the named enforcement module imports and exposes
-    the named symbol. A missing site reports ``live=False`` with the reason; it
-    never reports a pass, and the aggregate never collapses "12 declared" into a
-    single number.
+    ``live`` reflects only whether the named module imports and exposes the
+    named symbol. It does not prove that runtime paths invoke the guard. A
+    missing site reports ``live=False`` with the reason; the aggregate carries
+    this evidence scope explicitly for clients.
     """
     reports = check_invariants()
     live = [r for r in reports if r.live]
@@ -979,6 +979,8 @@ async def invariants() -> dict[str, Any]:
         "declared": len(reports),
         "live": len(live),
         "all_live": bool(reports) and len(live) == len(reports),
+        "probe_scope": "module_symbol_presence",
+        "runtime_enforcement_verified": False,
         "invariants": [r.to_dict() for r in reports],
     }
 

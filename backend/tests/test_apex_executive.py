@@ -574,6 +574,8 @@ class TestInvariantSet:
         report = check_invariants((bogus,))[0]
         assert report.live is False
         assert report.status is InvariantStatus.MISSING
+        assert report.to_dict()["runtime_enforcement_verified"] is False
+        assert report.to_dict()["probe_scope"] == "module_symbol_presence"
         assert "ModuleNotFoundError" in report.reason
 
     def test_a_missing_symbol_on_a_real_module_is_reported(self) -> None:
@@ -594,6 +596,8 @@ class TestInvariantSet:
         summary = invariant_summary()
         assert summary["declared"] == 12
         assert summary["live"] == 12
+        assert summary["probe_scope"] == "module_symbol_presence"
+        assert summary["runtime_enforcement_verified"] is False
         assert summary["live_ids"] and summary["missing_ids"] == []
 
     def test_summary_of_a_partial_set_reports_both_counts(self) -> None:
