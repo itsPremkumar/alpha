@@ -427,6 +427,24 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Projects graph-plane tasks onto the swarm runtime's specialist team composition (hard capability filter, recorded reasons, honest capability gaps).",
         kind="utility",
     ),
+    "task_contract": CapabilitySpec(
+        module="alpha.tasks.contracts",
+        target="TaskContract",
+        description="Canonical task contract every orchestration engine projects onto: one neutral vocabulary, per-engine adapters, and an unmappable status refused rather than defaulted.",
+        kind="utility",
+    ),
+    "task_contract_adapters": CapabilitySpec(
+        module="alpha.tasks.adapters",
+        target="graph_task_to_contract",
+        description="Per-engine projections onto and off the canonical task contract (graph, dynamic workflow engine, swarm). Pure functions; they own no lifecycle.",
+        kind="utility",
+    ),
+    "spend_policy": CapabilitySpec(
+        module="alpha.budgets.spend",
+        target="refuse_paid_model",
+        description="Zero-cost spend policy: is this model free (with the config namespace that decided), what does it cost (None when unpriced, never 0.0), and may it be constructed at all.",
+        kind="guard",
+    ),
 }
 
 

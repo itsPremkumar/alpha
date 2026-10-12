@@ -28,6 +28,7 @@
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
 - [architecture/durable-runtime.md](architecture/durable-runtime.md) — Architecture and subsystem documentation.
+- [architecture/multi-agent-baseline.md](architecture/multi-agent-baseline.md) — Phase 0 multi-agent baseline: the seven live schedulers, the three incompatible task vocabularies, a feature matrix separating what is operated from what merely exists, and the nine deliberate refusals that must not be 'fixed'.
 - [deep-agent-working-plane.md](deep-agent-working-plane.md) — Deep-agent working plane: Alpha's port of deepagents' state backend, why a long run needs a scratch space that survives compaction, the tool surface, its bounds, and where it applies.
 
 ## API Reference
@@ -124,6 +125,7 @@
 ## Plans & Roadmaps
 
 - [ADVANCED_GROUP_MESSAGING_PLAN.md](ADVANCED_GROUP_MESSAGING_PLAN.md) — Group profiles, links, goals, pinning, threading, receipts and notifications — design record plus a per-feature shipped/not-shipped map.
+- [ADVANCED_MULTI_AGENT_BUILD_PLAN.md](ADVANCED_MULTI_AGENT_BUILD_PLAN.md) — Gap analysis and build plan derived from the advanced multi-agent architecture plan: what Alpha already has with paths, the seven competing schedulers, a ranked gap register, and nine phases that wire and unify rather than rebuild.
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.

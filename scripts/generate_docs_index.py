@@ -163,6 +163,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "operations",
         "Operating the capability mesh: the 23 library modules by phase, the model's 12 actions, the HTTP routes, the default-off config slice, and the honesty boundaries that make a preview read as a preview.",
     ),
+    "ADVANCED_MULTI_AGENT_BUILD_PLAN.md": DocumentSpec(
+        "plans",
+        "Gap analysis and build plan derived from the advanced multi-agent architecture plan: what Alpha already has with paths, the seven competing schedulers, a ranked gap register, and nine phases that wire and unify rather than rebuild.",
+    ),
+    "ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Prime Agent–inspired implementation plan: recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, bounded autonomous continuation and verification-driven task state machines, kept in Python.",
+    ),
     "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
         "Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.",
@@ -311,6 +319,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "audits/ORCHESTRATION_PROBES.md": DocumentSpec(
         "operations",
         "Orchestration probe record: ten probes across swarms, subagent delegation, the ralph loop, bot roster and group rosters, plus the grounding-gate defect that made delegation succeed or fail depending on model prose.",
+    ),
+    "architecture/multi-agent-baseline.md": DocumentSpec(
+        "architecture",
+        "Phase 0 multi-agent baseline: the seven live schedulers, the three incompatible task vocabularies, a feature matrix separating what is operated from what merely exists, and the nine deliberate refusals that must not be 'fixed'.",
     ),
     "audits/BOT_FORGE_VERIFICATION.md": DocumentSpec(
         "operations",

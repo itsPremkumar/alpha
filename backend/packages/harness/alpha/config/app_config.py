@@ -60,6 +60,7 @@ from alpha.config.skill_evolution_config import SkillEvolutionConfig
 from alpha.config.skill_scan_config import SkillScanConfig
 from alpha.config.skills_config import SkillsConfig
 from alpha.config.specialist_config import SpecialistCatalogConfig, SpecialistConfig
+from alpha.config.spend_config_schema import SpendConfig
 from alpha.config.stream_bridge_config import StreamBridgeConfig, load_stream_bridge_config_from_dict
 from alpha.config.subagent_batches_config import SubagentBatchesConfig
 from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
@@ -358,6 +359,16 @@ class AppConfig(BaseModel):
             "Fallback price per model name, per 1M tokens, used when a `models[]` entry omits `pricing`. "
             "Keep `models[].pricing` authoritative for anything you actually run; this is so an unpriced "
             "model still gets a cost estimate instead of none."
+        ),
+    )
+    spend: SpendConfig = Field(
+        default_factory=SpendConfig,
+        description=(
+            "How much this deployment may spend. `mode: zero_cost` refuses a paid model at construction, in "
+            "code, via alpha.budgets.spend.refuse_paid_model called from create_chat_model -- not a prompt "
+            "instruction. `budgeted` (the default, and the behaviour when this section is absent) meters tokens "
+            "and trips the cost_governor daily/scope breaker but refuses nothing at construction. A model that "
+            "no pricing namespace declares is treated as PAID: absence of a price is not a price of zero."
         ),
     )
     sandbox: SandboxConfig = Field(
