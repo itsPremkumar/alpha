@@ -44,6 +44,14 @@ This is the part that matters, and it is enforced in code, not in a comment.
   install or start command, never as "0 routes failed".
 - **Exit codes are meaningful.** `0` only for `pass`. `fail` and `blocked` both
   exit non-zero, so a CI gate or a wrapping agent cannot miss them.
+- **The settle is measured, and it is not a guarantee.** Each route waits until
+  the page stops issuing requests for the whole `--settle` window instead of
+  sleeping a fixed amount, so a section that fetches late is still observed.
+  But server-side Next.js dev compilation produces *client* quiet, so a route
+  that has to compile can close the window mid-compile and then fetch. Two runs
+  of the same sweep against the same Gateway reported 4 and 2 failing routes on
+  different routes — so treat a single run as one sample, and leave the frontend
+  sources untouched for the duration when you need a number you can quote.
 
 Nothing existing is ever overwritten. Both scripts allocate a fresh
 `docs/evidence/<domain>/<date>/<time>-<n>/` directory and refuse to reuse one.
@@ -124,7 +132,7 @@ requests, HTTP error responses, and its own verdict.
 | `--domain NAME` | evidence subdirectory |
 | `--list` | print the route list and exit |
 | `--check` | parse and list only, never launch a browser |
-| `--settle MS` | post-load settle time (default 2500) |
+| `--settle MS` | how long the network must stay quiet before a route counts as loaded (default 2500) |
 | `--timeout S` | navigation timeout (default 45) |
 | `--allow-console-errors` | report, but do not fail, on console errors |
 | `--chromium PATH` | use a specific browser executable |
