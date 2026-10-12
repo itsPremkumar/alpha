@@ -827,6 +827,79 @@ mappers, the clamp, the local refusals, `failureText`) and
 `src/lib/effects-view.test.mjs` (the four-place wiring and every rendering
 above).
 
+## Completion engine panel (`completion` workspace view)
+
+`lib/completion.ts` + `components/sections/CompletionSection.tsx`, over
+`GET /completion/health`, `/checks`, `/scopes`, `/scopes/{id}` (+ `/contract`,
+`/events`, `/reconciliation`, `/finalization/preview`, `/gates/{gid}/approval`)
+and the POST lifecycle verbs — router `backend/app/gateway/routers/completion.py`,
+contract `backend/packages/harness/alpha/completion/AGENTS.md`. The `completion`
+id follows the four-place wiring rule: the `WorkspaceView` union in `NavTabs.tsx`,
+the `WORKSPACE_TABS` row, `WORKSPACE_VIEW_IDS` in `lib/workspace-view.ts`, and
+`ChatView.tsx`'s lazy import plus render case, policed by `workspace-nav.test.mjs`
+and `completion-view.test.mjs`. The union entry must sit **above** `mods`,
+because `mods-view.test.mjs` pins `mods → sentinel → effects → reliability` as
+adjacent members and `reliability-view.test.mjs` pins `reliability` last.
+
+The panel answers "did the work actually succeed?" — the question a chat
+transcript cannot answer — so the ledger's vocabulary stays three-valued and
+nothing else may look like success:
+
+| Server says | Panel shows |
+| --- | --- |
+| `readable: false` | the ledger's own reason, and *not reported* for every count |
+| an absent count | *not reported* — never `0`, which reads as "nothing recorded" |
+| `scopes: null` | "The Gateway sent no scope list" — not "no scopes" |
+| `scopes: []` | "No scopes match this filter" |
+| `passed` with `current` evidence | the only state that satisfies a requirement |
+| a gate at `waived` | grey with the owner's waiver reason — still a blocker |
+| evidence marked `stale` | "a pass from before the last edit cannot answer for work done since" |
+| a gate with no evidence | "never been checked" — distinct from a check that failed |
+| a task at `returned` | *returned*, never *verified* — only its own gates do that |
+| a report with `enforced: false` | "decision recorded, status unchanged" |
+| `complete` absent | *complete not reported* — read `=== true`, never truthily |
+| a 403 on a mutation | the server's own sentence, verbatim |
+
+Rules that must keep:
+
+- **Absent counts are `null`, never `0`.** An unreadable ledger shows the reason
+  it gave and leaves every count unreported — `?? 0` would turn "could not look"
+  into "nothing recorded" — and `scopes: null` stays "no list arrived", not `[]`.
+- **The three reads fail independently.** Posture, list and detail each own their
+  own load and their own `Notice`; the `Promise.all`s only fan out over loaders
+  that record their own failure, so none of them can blank a read that answered.
+- **Enum strings are preserved verbatim.** An unknown scope status, gate status
+  or task state renders in a grey badge — the tone helpers fall through to grey
+  rather than snapping to a word this build knows.
+- **Waived is not passed.** `PASSED_TONES` / `VERIFIED_TONES` are the only
+  renderings allowed to look like success: a waiver shows its owner's reason, a
+  stale pass the sentence above, no evidence "never been checked" — none green.
+- **A task at `returned` is never verified.** Only the task's own gates reach the
+  one green task state; the panel repeats that distinction rather than inferring
+  verification from a finished dispatch.
+- **Observe mode claims nothing it did not apply.** `enforced: false` renders
+  "decision recorded, status unchanged"; `complete` is read `=== true`, so an
+  absent flag is *not reported*, not `false`.
+- **Nothing is painted from a click.** Every mutation awaits the route and then
+  re-reads the projection, the preview and the list; a refused write fires
+  nothing and leaves the row exactly where it was.
+- **Authorisation is server-owned.** There is no client-side admin check: the
+  buttons appear for every caller and a member's 403 is rendered through
+  `failureText`, because `errMsg` paraphrases 403s and would destroy the answer.
+- **`finalize` is the only route to `complete`.** Its button is gated on an
+  acknowledgement that starts unchecked, with the safety model printed beside
+  it: enforce moves the scope, observe records `enforced: false` and leaves the
+  status alone, and required gates are re-run first so a stale pass cannot
+  answer.
+- **The panel never starts a run.** It reads, dispatches and records; the ledger
+  is an advisory single-process JSON file — restart-recoverable, never
+  cross-process exactly-once — and the footer says so beside the routes.
+
+Coverage: `src/lib/completion.test.mjs` (routes, verbs, the null-preserving
+mappers, the local refusals, `failureText`) and
+`src/lib/completion-view.test.mjs` (the four-place wiring and every rendering
+above).
+
 ## Mod kernel panel (`mods` workspace view)
 
 `lib/mods.ts` + `components/sections/ModsSection.tsx`, over

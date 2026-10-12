@@ -335,6 +335,13 @@ const IntelligenceSection = dynamic(
     })),
   { loading: () => <SectionFallback /> },
 );
+const CompletionSection = dynamic(
+  () =>
+    import("@/components/sections/CompletionSection").then((m) => ({
+      default: m.CompletionSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 const EffectsSection = dynamic(
   () =>
     import("@/components/sections/EffectsSection").then((m) => ({
@@ -3368,6 +3375,10 @@ export default function ChatView({
             ) : view === "intelligence" ? (
               <Suspense fallback={<SectionFallback />}>
                 <IntelligenceSection />
+              </Suspense>
+            ) : view === "completion" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <CompletionSection />
               </Suspense>
             ) : view === "effects" ? (
               <Suspense fallback={<SectionFallback />}>
