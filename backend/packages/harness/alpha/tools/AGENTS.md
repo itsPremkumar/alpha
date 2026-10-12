@@ -27,6 +27,38 @@ a malformed declaration fails agent assembly. Tests:
 `tests/test_tool_governance.py`,
 `tests/test_governance_guardrail.py`.
 
+**The registries are lazy, and that is a measured constraint, not a style.**
+`BUILTIN_TOOLS` and `SUBAGENT_TOOLS` are built by `_build_registries()` on first
+attribute access (PEP 562 `__getattr__` in `tools/tools.py`), not at import time:
+building them at import pulled in every builtin tool module and, through each one,
+its subsystem — measured at 97.4s for `import alpha.tools.tools` on a loaded
+Windows host, and 86.5s when measured in-process. The registry literal, its order
+and the `_deduplicate_tools` pass are unchanged, so `contracts/feature_manifest.json`
+and every capability count stay exactly as they were. The rules that keep it lazy:
+
+* No `alpha.tools.builtins` import at module scope in `tools/tools.py`. The
+  module now imports in **13.4s / 501 modules** (was 3149); every symbol a
+  builtin needs is imported by `_build_registries` or by `get_available_tools`,
+  at the point of use. `langchain.tools.BaseTool` is lazy for the same reason
+  (`from __future__ import annotations` + a TYPE_CHECKING import) and is still
+  resolvable as `alpha.tools.tools.BaseTool` through the same `__getattr__`.
+* The resolved list is cached in the module namespace, so `from
+  alpha.tools.tools import BUILTIN_TOOLS`, attribute access, and
+  `patch("alpha.tools.tools.BUILTIN_TOOLS", …)` all read (and can override) the
+  same object `get_available_tools` reads. The accessors go through `globals()`
+  for exactly that reason — re-deriving the list behind a caller's override would
+  silently ignore the override.
+* The generator (`scripts/generate_feature_manifest.py::registry_literal`) and
+  `tests/test_feature_manifest_wiring.py` both locate the literal inside
+  `_build_registries`, with the old module-level `BUILTIN_TOOLS = [...]` shape
+  still accepted. The generator now raises rather than emitting an empty
+  `tools` section, which would satisfy every drift check while describing nothing.
+
+Note what this does **not** buy: the builtins are still imported the first time a
+process assembles a tool list. The cost is deferred, not removed — only processes
+that import the module without building tools (the recovery watchdog's probe,
+CLI inspection, registry reads) skip it.
+
 `get_available_tools(groups, include_mcp, model_name, subagent_enabled)` assembles:
 1. **Config-defined tools** - Resolved from `config.yaml` via `resolve_variable()`
 2. **MCP tools** - From enabled MCP servers (lazy initialized, cached with resolved-path + content-signature invalidation)

@@ -1,380 +1,50 @@
+"""Builtin tool registry assembly.
+
+``BUILTIN_TOOLS`` and ``SUBAGENT_TOOLS`` are built on first access (PEP 562)
+instead of at import time. Building them at import time pulled in every builtin
+tool module and, through each one, the subsystem behind it: measured at 97.4s on
+a loaded Windows host, which by itself was enough to keep the Gateway from
+booting inside the recovery watchdog's budget. Nothing about the registries
+changed — same tools, same order, same de-duplication, same names — only the
+moment they are constructed.
+
+Two consequences the next reader must not undo:
+
+* Every ``alpha.tools.builtins`` import lives inside the builder or inside the
+  assembly function that uses it, never at module scope. A module-level import
+  here is what put 3000+ modules back on the import path.
+* The registries resolve through the module namespace, so module-level callers
+  are unaffected: ``from alpha.tools.tools import BUILTIN_TOOLS``,
+  ``alpha.tools.tools.BUILTIN_TOOLS`` and
+  ``patch("alpha.tools.tools.BUILTIN_TOOLS", ...)`` all read the same cached
+  list that ``get_available_tools`` reads, and a patched registry is honoured.
+
+``BaseTool`` is lazy for the same reason — ``langchain.tools`` measured 24s of
+import on this host — but it is still reachable as ``alpha.tools.tools.BaseTool``
+and as ``from alpha.tools.tools import BaseTool``, so code that relied on this
+module importing LangChain transitively keeps working.
+"""
+
+from __future__ import annotations
+
 import logging
 import threading
-
-from langchain.tools import BaseTool
+from typing import TYPE_CHECKING
 
 from alpha.config import get_app_config
 from alpha.config.app_config import AppConfig
-from alpha.mcp.tasks.runtime import is_mcp_task_runtime_available
 from alpha.reflection import resolve_variable
 from alpha.sandbox.security import is_host_bash_allowed, is_in_process_repl_allowed
-from alpha.subagents.batch_runtime import is_subagent_batch_runtime_available
-from alpha.tools.builtins import (
-    a2a_tool,
-    agent_message_tool,
-    agent_observe_tool,
-    alpha_capability,
-    alpha_peer_network_tool,
-    analyze_semantic_git_delta,
-    arena_tool,
-    ask_clarification_tool,
-    ask_oracle,
-    ast_grep_rewrite,
-    ast_grep_search,
-    astra_security_manage,
-    audit_finish_first_evidence,
-    auto_test_and_repair,
-    autonomy_control,
-    await_task_event,
-    batch_status,
-    batch_task,
-    blackboard_query,
-    blackboard_record_evidence,
-    bot_roster_tool,
-    boulder_checkpoint_manage,
-    browser_navigate_and_inspect,
-    build_autonomous_plan,
-    cancel_background_task,
-    cancel_batch,
-    canvas_widget_tool,
-    capability_mesh_tool,
-    catalog_tool_call,
-    catalog_tool_describe,
-    catalog_tool_search,
-    check_metacognitive_health,
-    check_or_set_autonomy_profile,
-    code_mode_tool,
-    cognitive_memory_tool,
-    cognitive_plan,
-    company_tool,
-    compile_cognitive_plan,
-    compile_five_pass_search,
-    compile_mission,
-    compile_problem_model,
-    compute_program_slice,
-    consolidate_cognitive_memory,
-    consolidate_memory_dream,
-    consult_experience,
-    consult_plan_gap_analysis,
-    create_workflow_checkpoint,
-    cronjob_manage,
-    deep_research,
-    deep_web_search,
-    delegate_to_deep_agent,
-    deliberate_artifact_quality,
-    deliberation_tool,
-    desktop_inspect_ui_tree_tool,
-    desktop_keyboard_action_tool,
-    desktop_mouse_action_tool,
-    # Free local-first OS computer use (Module C):
-    desktop_screenshot_tool,
-    desktop_system_one_action_tool,
-    desktop_window_manage_tool,
-    diagnose_and_heal_environment,
-    dispatch_discipline_worker,
-    emergency_stop_manage,
-    # Frontier autonomous software engineering engines:
-    emit_stigmergic_event,
-    enterprise_security_manage,
-    evaluate_agent_competence,
-    evaluate_epistemic_claim,
-    execute_sandboxed_computer_action,
-    execute_slash_command_tool,
-    execute_transactional_action,
-    forge_skill_from_trace,
-    generate_curriculum_plan,
-    generate_repo_map,
-    goal_engine_tool,
-    goal_integrity_tool,
-    group_chat_tool,
-    harness_refine_tool,
-    hashline_edit,
-    hashline_read,
-    hyperplan_review_manage,
-    identify_autonomous_command_tool,
-    inspect_deep_agent_telemetry,
-    inspect_repo_twin,
-    invoke_python_skill_tool,
-    job_tool,
-    kanban_board_tool,
-    keyless_web_search,
-    kibitzer_nudge_manage,
-    learning_graph_manage,
-    list_available_deep_agents,
-    list_background_tasks,
-    list_dynamic_tools,
-    list_uploaded_files,
-    manage_code_checkpoint,
-    manage_context_data,
-    manage_durable_orchestration,
-    manage_mission_hierarchy,
-    manage_model_performance_registry,
-    manage_reflexion_memory,
-    mission_memory,
-    moa_multi_model_reasoning,
-    present_file_tool,
-    process_handle_tool,
-    propose_skill_tool,
-    python_repl_tool,
-    query_contrastive_memory,
-    query_knowledge_graph,
-    query_language_server_symbol,
-    query_stigmergic_traces,
-    ralph_loop_tool,
-    recall_agent_memory,
-    reconcile_structural_ast_conflicts,
-    record_trajectory_outcome,
-    reproduce_and_verify,
-    request_secure_credential,
-    reversible_delete,
-    review_plan_invariant_gate,
-    review_skill_package,
-    run_autonomous_benchmark_eval,
-    run_avo_variation,
-    run_differential_regression_oracle,
-    run_introspective_tree_search,
-    run_nvidia_avo_step,
-    run_rsi_cycle,
-    run_task_evaluation_benchmark,
-    run_variation_operator_step,
-    schedule_work_queue,
-    search_project_docs,
-    # P4: register the canonical past-session memory search (was defined in
-    # code_agentic_core but never exported/registered, so unreachable).
-    search_session_memory,
-    self_heal_diagnose,
-    self_improvement_loop_tool,
-    session_search_tool,
-    simulate_consequences,
-    skills_hub_manage,
-    subagent_control,
-    subagent_registry_tool,
-    supervision_tool,
-    swarm_tool,
-    synthesize_reusable_skill,
-    synthesize_runtime_tool,
-    task_tool,
-    tom_consult,
-    trace_artifact_lineage,
-    trajectory_audit_tool,
-    update_progress_card,
-    verify_command_approval,
-    verify_web_ui_visual_regression,
-    view_image_tool,
-    visual_verify_artifact,
-    war_room_tool,
-    workflow_dag_manage,
-)
-from alpha.tools.builtins.deepagent_tool import append_deepagent_tools
-from alpha.tools.mcp_metadata import tag_mcp_tool
-from alpha.tools.sync import make_sync_tool_wrapper
+
+if TYPE_CHECKING:
+    from langchain.tools import BaseTool
 
 logger = logging.getLogger(__name__)
 
-BUILTIN_TOOLS = [
-    present_file_tool,
-    propose_skill_tool,
-    ask_clarification_tool,
-    arena_tool,
-    # Alpha Capability Mesh: read/preview only. It has no executor wiring, so
-    # every planning action is a locally computed preview and nothing dispatches.
-    capability_mesh_tool,
-    review_skill_package,
-    # Cross-thread recall: lead-only (denied for subagents by default, see
-    # SubagentConfig/CustomSubagentConfig) because it crosses thread
-    # boundaries by design.
-    session_search_tool,
-    # Prime Agent RLM & Continual Harness extensions:
-    python_repl_tool,
-    harness_refine_tool,
-    process_handle_tool,
-    invoke_python_skill_tool,
-    # Ultra-Advanced Bot Mode & Collaborative Kanban extensions:
-    bot_roster_tool,
-    group_chat_tool,
-    alpha_peer_network_tool,
-    kanban_board_tool,
-    # Autonomous Continuous Goal, Canvas & Trajectory extensions:
-    goal_engine_tool,
-    canvas_widget_tool,
-    trajectory_audit_tool,
-    code_mode_tool,
-    catalog_tool_search,
-    catalog_tool_describe,
-    catalog_tool_call,
-    cognitive_memory_tool,
-    consolidate_memory_dream,
-    update_progress_card,
-    synthesize_reusable_skill,
-    request_secure_credential,
-    await_task_event,
-    # Bounded Recursive Self-Improvement Loop:
-    self_improvement_loop_tool,
-    ralph_loop_tool,
-    # Multi-Agent Swarm Intelligence & Continuous Skills Hub:
-    learning_graph_manage,
-    verify_command_approval,
-    moa_multi_model_reasoning,
-    emergency_stop_manage,
-    skills_hub_manage,
-    subagent_registry_tool,
-    cronjob_manage,
-    browser_navigate_and_inspect,
-    # Resilient Multi-Session Workflow & Boulder Checkpointing Engine:
-    hashline_read,
-    hashline_edit,
-    workflow_dag_manage,
-    boulder_checkpoint_manage,
-    kibitzer_nudge_manage,
-    hyperplan_review_manage,
-    ast_grep_search,
-    ast_grep_rewrite,
-    build_autonomous_plan,
-    # Autonomous Organization & Advanced Agentic OS Builtins:
-    cognitive_plan,
-    deliberation_tool,
-    company_tool,
-    a2a_tool,
-    goal_integrity_tool,
-    job_tool,
-    supervision_tool,
-    swarm_tool,
-    self_heal_diagnose,
-    blackboard_record_evidence,
-    blackboard_query,
-    # Frontier Autonomous Software Engineering Engines:
-    query_language_server_symbol,
-    emit_stigmergic_event,
-    query_stigmergic_traces,
-    synthesize_runtime_tool,
-    list_dynamic_tools,
-    run_autonomous_benchmark_eval,
-    analyze_semantic_git_delta,
-    consolidate_cognitive_memory,
-    recall_agent_memory,
-    # High-End Cognitive, Deliberation, Epistemics & Evolution Engines:
-    execute_transactional_action,
-    evaluate_epistemic_claim,
-    simulate_consequences,
-    evaluate_agent_competence,
-    run_rsi_cycle,
-    run_variation_operator_step,
-    run_nvidia_avo_step,
-    inspect_repo_twin,
-    check_metacognitive_health,
-    deliberate_artifact_quality,
-    compile_five_pass_search,
-    forge_skill_from_trace,
-    # Declared by the ``deep-research`` subagent category in
-    # alpha.subagents.categories and named in that category's prompt. Without
-    # registration here the subagent allowlist filters it out silently (see
-    # ``_filter_tools``), so the subagent is told to use a tool it cannot reach.
-    deep_research,
-    # Core Code Agentic Tools:
-    generate_repo_map,
-    auto_test_and_repair,
-    manage_code_checkpoint,
-    # P4: canonical past-session memory search. The historical duplicate was a
-    # bash-based memory tool; this Python implementation (SQLite FTS5 + BM25
-    # with cron demotion, in code_agentic_core) is the canonical one and was
-    # previously defined but never registered, leaving it unreachable. Nothing
-    # is deleted — the bash name stays an alias wherever it still exists.
-    search_session_memory,
-    # Enterprise Security Enclave & Multi-Modal Boundary Enforcement:
-    enterprise_security_manage,
-    astra_security_manage,
-    reversible_delete,
-    # Strategic Discipline Council & Invariant Gates:
-    consult_plan_gap_analysis,
-    review_plan_invariant_gate,
-    dispatch_discipline_worker,
-    # Mission Hierarchy & Universal Work Queue:
-    manage_mission_hierarchy,
-    schedule_work_queue,
-    # Durable mission memory -- the re-read spec/plan/status/scratchpad that stops
-    # long-horizon drift; records + verifies the per-thread objective.
-    mission_memory,
-    trace_artifact_lineage,
-    # Knowledge, Benchmark & Performance Evaluation:
-    query_knowledge_graph,
-    search_project_docs,
-    # Self-knowledge: one bounded call reports the whole capability inventory
-    # (tools, skills, MCP, models, bots, commands, engines, wiring, identity)
-    # and its configuration gaps. Keep this adjacent to search_project_docs —
-    # both answer "what is true about this system", from registries and from docs
-    # respectively, and a reader looking for one should see the other.
-    alpha_capability,
-    autonomy_control,
-    run_task_evaluation_benchmark,
-    manage_model_performance_registry,
-    # Durable Replay, Computer Fabric & Context Control:
-    manage_durable_orchestration,
-    execute_sandboxed_computer_action,
-    manage_context_data,
-    check_or_set_autonomy_profile,
-    audit_finish_first_evidence,
-    # Epistemic Oracle, Experience & Curiosity:
-    tom_consult,
-    ask_oracle,
-    reproduce_and_verify,
-    consult_experience,
-    compile_mission,
-    compile_cognitive_plan,
-    run_avo_variation,
-    generate_curriculum_plan,
-    create_workflow_checkpoint,
-    visual_verify_artifact,
-    # Structural visual-regression diff over parsed accessibility trees
-    # (real element-parity math in alpha.verification.visual_e2e_engine,
-    # covered by tests/test_visual_e2e_engine.py). Defined in
-    # code_agentic_core but never exported or registered until now, which
-    # made it unreachable.
-    verify_web_ui_visual_regression,
-    manage_reflexion_memory,
-    compile_problem_model,
-    # SOTA Frontier Agentic Software Engineering Tools:
-    run_introspective_tree_search,
-    compute_program_slice,
-    run_differential_regression_oracle,
-    diagnose_and_heal_environment,
-    reconcile_structural_ast_conflicts,
-    query_contrastive_memory,
-    record_trajectory_outcome,
-    # Deep Agent Fleet with clean-context isolation:
-    delegate_to_deep_agent,
-    list_available_deep_agents,
-    inspect_deep_agent_telemetry,
-    # Master Slash Command catalog (418 commands across 28 categories) and the
-    # lifecycle-phase router that picks one. Both were implemented, exported
-    # from ``alpha.tools.builtins`` and imported above, but never named here —
-    # so the registry dropped them and no agent could reach either one.
-    execute_slash_command_tool,
-    identify_autonomous_command_tool,
-    # Keyless web search ported from AgentEye: keyless_web_search runs the
-    # httpx-first fallback chain; deep_web_search runs multi-query research on
-    # top of it. Honest ok/no_results/failed statuses; optional ddgs absence
-    # names the real package instead of fabricating results.
-    keyless_web_search,
-    deep_web_search,
-    # Free local-first OS computer use & laptop automation (Module C):
-    # zero-token accessibility grounding + sentinel-guarded desktop input.
-    desktop_screenshot_tool,
-    desktop_inspect_ui_tree_tool,
-    desktop_mouse_action_tool,
-    desktop_keyboard_action_tool,
-    desktop_window_manage_tool,
-    desktop_system_one_action_tool,
-    # War room: staged, clock-bounded group deliberation, plus the bot
-    # lifecycle (hire/clone/rescope/archive) and the fenced capability
-    # acquisition pipeline. Present in BUILTIN_TOOLS so every agent can open a
-    # room; the governance and authority checks live inside the tool, not here.
-    #
-    # The deep-agent working plane tool is deliberately NOT in this literal. It
-    # is appended by ``append_deepagent_tools`` inside ``get_available_tools``
-    # when ``deepagent.enabled`` is true, exactly as ``task_note`` is gated on
-    # ``task_continuity.enabled``. Listing it here would make it unconditional.
-    war_room_tool,
-]
+# Tool assembly may run on worker threads concurrently (the registries are
+# process-wide singletons), so the first resolution is made single-shot. The
+# wrapped objects themselves are guarded separately by _sync_invocable_tool_lock.
+_registry_lock = threading.RLock()
 
 
 def _deduplicate_tools(tools: list[BaseTool]) -> list[BaseTool]:
@@ -382,7 +52,7 @@ def _deduplicate_tools(tools: list[BaseTool]) -> list[BaseTool]:
 
     Several builtin modules export backwards-compatible aliases (for example
     ``run_nvidia_avo_step`` re-exports ``run_variation_operator_step``), so the
-    literal above can name a single tool object more than once.
+    registry literal can name a single tool object more than once.
     ``get_available_tools`` de-duplicates by name before binding, but keeping the
     registry itself unique makes the reported built-in count accurate and
     protects any caller that consumes ``BUILTIN_TOOLS`` directly.
@@ -398,20 +68,457 @@ def _deduplicate_tools(tools: list[BaseTool]) -> list[BaseTool]:
     return unique
 
 
-BUILTIN_TOOLS = _deduplicate_tools(BUILTIN_TOOLS)
+def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
+    """Construct ``BUILTIN_TOOLS`` and ``SUBAGENT_TOOLS``.
 
-SUBAGENT_TOOLS = [
-    task_tool,
-    subagent_control,
-    # Direct agent-to-agent communication (Prime Agent roster & messaging):
-    agent_message_tool,
-    agent_observe_tool,
-    group_chat_tool,
-    kanban_board_tool,
-    a2a_tool,
-    swarm_tool,
-    company_tool,
-]
+    This function is the only place the builtin tool modules — and the heavy
+    subsystems behind them — are imported. It runs at most once per process, and
+    only when a registry is actually read, so an import of
+    ``alpha.tools.tools`` no longer pays for 3000+ modules nobody asked for.
+    """
+    from alpha.tools.builtins import (
+        a2a_tool,
+        agent_message_tool,
+        agent_observe_tool,
+        alpha_capability,
+        alpha_peer_network_tool,
+        analyze_semantic_git_delta,
+        arena_tool,
+        ask_clarification_tool,
+        ask_oracle,
+        ast_grep_rewrite,
+        ast_grep_search,
+        astra_security_manage,
+        audit_finish_first_evidence,
+        auto_test_and_repair,
+        autonomy_control,
+        await_task_event,
+        blackboard_query,
+        blackboard_record_evidence,
+        bot_roster_tool,
+        boulder_checkpoint_manage,
+        browser_navigate_and_inspect,
+        build_autonomous_plan,
+        canvas_widget_tool,
+        capability_mesh_tool,
+        catalog_tool_call,
+        catalog_tool_describe,
+        catalog_tool_search,
+        check_metacognitive_health,
+        check_or_set_autonomy_profile,
+        code_mode_tool,
+        cognitive_memory_tool,
+        cognitive_plan,
+        company_tool,
+        compile_cognitive_plan,
+        compile_five_pass_search,
+        compile_mission,
+        compile_problem_model,
+        compute_program_slice,
+        consolidate_cognitive_memory,
+        consolidate_memory_dream,
+        consult_experience,
+        consult_plan_gap_analysis,
+        create_workflow_checkpoint,
+        cronjob_manage,
+        deep_research,
+        deep_web_search,
+        delegate_to_deep_agent,
+        deliberate_artifact_quality,
+        deliberation_tool,
+        desktop_inspect_ui_tree_tool,
+        desktop_keyboard_action_tool,
+        desktop_mouse_action_tool,
+        # Free local-first OS computer use (Module C):
+        desktop_screenshot_tool,
+        desktop_system_one_action_tool,
+        desktop_window_manage_tool,
+        diagnose_and_heal_environment,
+        dispatch_discipline_worker,
+        emergency_stop_manage,
+        # Frontier autonomous software engineering engines:
+        emit_stigmergic_event,
+        enterprise_security_manage,
+        evaluate_agent_competence,
+        evaluate_epistemic_claim,
+        execute_sandboxed_computer_action,
+        execute_slash_command_tool,
+        execute_transactional_action,
+        forge_skill_from_trace,
+        generate_curriculum_plan,
+        generate_repo_map,
+        goal_engine_tool,
+        goal_integrity_tool,
+        group_chat_tool,
+        harness_refine_tool,
+        hashline_edit,
+        hashline_read,
+        hyperplan_review_manage,
+        identify_autonomous_command_tool,
+        inspect_deep_agent_telemetry,
+        inspect_repo_twin,
+        invoke_python_skill_tool,
+        job_tool,
+        kanban_board_tool,
+        keyless_web_search,
+        kibitzer_nudge_manage,
+        learning_graph_manage,
+        list_available_deep_agents,
+        list_dynamic_tools,
+        manage_code_checkpoint,
+        manage_context_data,
+        manage_durable_orchestration,
+        manage_mission_hierarchy,
+        manage_model_performance_registry,
+        manage_reflexion_memory,
+        mission_memory,
+        moa_multi_model_reasoning,
+        present_file_tool,
+        process_handle_tool,
+        propose_skill_tool,
+        python_repl_tool,
+        query_contrastive_memory,
+        query_knowledge_graph,
+        query_language_server_symbol,
+        query_stigmergic_traces,
+        ralph_loop_tool,
+        recall_agent_memory,
+        reconcile_structural_ast_conflicts,
+        record_trajectory_outcome,
+        reproduce_and_verify,
+        request_secure_credential,
+        reversible_delete,
+        review_plan_invariant_gate,
+        review_skill_package,
+        run_autonomous_benchmark_eval,
+        run_avo_variation,
+        run_differential_regression_oracle,
+        run_introspective_tree_search,
+        run_nvidia_avo_step,
+        run_rsi_cycle,
+        run_task_evaluation_benchmark,
+        run_variation_operator_step,
+        schedule_work_queue,
+        search_project_docs,
+        # P4: register the canonical past-session memory search (was defined in
+        # code_agentic_core but never exported/registered, so unreachable).
+        search_session_memory,
+        self_heal_diagnose,
+        self_improvement_loop_tool,
+        session_search_tool,
+        simulate_consequences,
+        skills_hub_manage,
+        subagent_control,
+        subagent_registry_tool,
+        supervision_tool,
+        swarm_tool,
+        synthesize_reusable_skill,
+        synthesize_runtime_tool,
+        task_tool,
+        tom_consult,
+        trace_artifact_lineage,
+        trajectory_audit_tool,
+        update_progress_card,
+        verify_command_approval,
+        verify_web_ui_visual_regression,
+        visual_verify_artifact,
+        war_room_tool,
+        workflow_dag_manage,
+    )
+
+    builtin_tools = _deduplicate_tools(
+        [
+            present_file_tool,
+            propose_skill_tool,
+            ask_clarification_tool,
+            arena_tool,
+            # Alpha Capability Mesh: read/preview only. It has no executor wiring, so
+            # every planning action is a locally computed preview and nothing dispatches.
+            capability_mesh_tool,
+            review_skill_package,
+            # Cross-thread recall: lead-only (denied for subagents by default, see
+            # SubagentConfig/CustomSubagentConfig) because it crosses thread
+            # boundaries by design.
+            session_search_tool,
+            # Prime Agent RLM & Continual Harness extensions:
+            python_repl_tool,
+            harness_refine_tool,
+            process_handle_tool,
+            invoke_python_skill_tool,
+            # Ultra-Advanced Bot Mode & Collaborative Kanban extensions:
+            bot_roster_tool,
+            group_chat_tool,
+            alpha_peer_network_tool,
+            kanban_board_tool,
+            # Autonomous Continuous Goal, Canvas & Trajectory extensions:
+            goal_engine_tool,
+            canvas_widget_tool,
+            trajectory_audit_tool,
+            code_mode_tool,
+            catalog_tool_search,
+            catalog_tool_describe,
+            catalog_tool_call,
+            cognitive_memory_tool,
+            consolidate_memory_dream,
+            update_progress_card,
+            synthesize_reusable_skill,
+            request_secure_credential,
+            await_task_event,
+            # Bounded Recursive Self-Improvement Loop:
+            self_improvement_loop_tool,
+            ralph_loop_tool,
+            # Multi-Agent Swarm Intelligence & Continuous Skills Hub:
+            learning_graph_manage,
+            verify_command_approval,
+            moa_multi_model_reasoning,
+            emergency_stop_manage,
+            skills_hub_manage,
+            subagent_registry_tool,
+            cronjob_manage,
+            browser_navigate_and_inspect,
+            # Resilient Multi-Session Workflow & Boulder Checkpointing Engine:
+            hashline_read,
+            hashline_edit,
+            workflow_dag_manage,
+            boulder_checkpoint_manage,
+            kibitzer_nudge_manage,
+            hyperplan_review_manage,
+            ast_grep_search,
+            ast_grep_rewrite,
+            build_autonomous_plan,
+            # Autonomous Organization & Advanced Agentic OS Builtins:
+            cognitive_plan,
+            deliberation_tool,
+            company_tool,
+            a2a_tool,
+            goal_integrity_tool,
+            job_tool,
+            supervision_tool,
+            swarm_tool,
+            self_heal_diagnose,
+            blackboard_record_evidence,
+            blackboard_query,
+            # Frontier Autonomous Software Engineering Engines:
+            query_language_server_symbol,
+            emit_stigmergic_event,
+            query_stigmergic_traces,
+            synthesize_runtime_tool,
+            list_dynamic_tools,
+            run_autonomous_benchmark_eval,
+            analyze_semantic_git_delta,
+            consolidate_cognitive_memory,
+            recall_agent_memory,
+            # High-End Cognitive, Deliberation, Epistemics & Evolution Engines:
+            execute_transactional_action,
+            evaluate_epistemic_claim,
+            simulate_consequences,
+            evaluate_agent_competence,
+            run_rsi_cycle,
+            run_variation_operator_step,
+            run_nvidia_avo_step,
+            inspect_repo_twin,
+            check_metacognitive_health,
+            deliberate_artifact_quality,
+            compile_five_pass_search,
+            forge_skill_from_trace,
+            # Declared by the ``deep-research`` subagent category in
+            # alpha.subagents.categories and named in that category's prompt. Without
+            # registration here the subagent allowlist filters it out silently (see
+            # ``_filter_tools``), so the subagent is told to use a tool it cannot reach.
+            deep_research,
+            # Core Code Agentic Tools:
+            generate_repo_map,
+            auto_test_and_repair,
+            manage_code_checkpoint,
+            # P4: canonical past-session memory search. The historical duplicate was a
+            # bash-based memory tool; this Python implementation (SQLite FTS5 + BM25
+            # with cron demotion, in code_agentic_core) is the canonical one and was
+            # previously defined but never registered, leaving it unreachable. Nothing
+            # is deleted — the bash name stays an alias wherever it still exists.
+            search_session_memory,
+            # Enterprise Security Enclave & Multi-Modal Boundary Enforcement:
+            enterprise_security_manage,
+            astra_security_manage,
+            reversible_delete,
+            # Strategic Discipline Council & Invariant Gates:
+            consult_plan_gap_analysis,
+            review_plan_invariant_gate,
+            dispatch_discipline_worker,
+            # Mission Hierarchy & Universal Work Queue:
+            manage_mission_hierarchy,
+            schedule_work_queue,
+            # Durable mission memory -- the re-read spec/plan/status/scratchpad that stops
+            # long-horizon drift; records + verifies the per-thread objective.
+            mission_memory,
+            trace_artifact_lineage,
+            # Knowledge, Benchmark & Performance Evaluation:
+            query_knowledge_graph,
+            search_project_docs,
+            # Self-knowledge: one bounded call reports the whole capability inventory
+            # (tools, skills, MCP, models, bots, commands, engines, wiring, identity)
+            # and its configuration gaps. Keep this adjacent to search_project_docs —
+            # both answer "what is true about this system", from registries and from docs
+            # respectively, and a reader looking for one should see the other.
+            alpha_capability,
+            autonomy_control,
+            run_task_evaluation_benchmark,
+            manage_model_performance_registry,
+            # Durable Replay, Computer Fabric & Context Control:
+            manage_durable_orchestration,
+            execute_sandboxed_computer_action,
+            manage_context_data,
+            check_or_set_autonomy_profile,
+            audit_finish_first_evidence,
+            # Epistemic Oracle, Experience & Curiosity:
+            tom_consult,
+            ask_oracle,
+            reproduce_and_verify,
+            consult_experience,
+            compile_mission,
+            compile_cognitive_plan,
+            run_avo_variation,
+            generate_curriculum_plan,
+            create_workflow_checkpoint,
+            visual_verify_artifact,
+            # Structural visual-regression diff over parsed accessibility trees
+            # (real element-parity math in alpha.verification.visual_e2e_engine,
+            # covered by tests/test_visual_e2e_engine.py). Defined in
+            # code_agentic_core but never exported or registered until now, which
+            # made it unreachable.
+            verify_web_ui_visual_regression,
+            manage_reflexion_memory,
+            compile_problem_model,
+            # SOTA Frontier Agentic Software Engineering Tools:
+            run_introspective_tree_search,
+            compute_program_slice,
+            run_differential_regression_oracle,
+            diagnose_and_heal_environment,
+            reconcile_structural_ast_conflicts,
+            query_contrastive_memory,
+            record_trajectory_outcome,
+            # Deep Agent Fleet with clean-context isolation:
+            delegate_to_deep_agent,
+            list_available_deep_agents,
+            inspect_deep_agent_telemetry,
+            # Master Slash Command catalog (418 commands across 28 categories) and the
+            # lifecycle-phase router that picks one. Both were implemented, exported
+            # from ``alpha.tools.builtins`` and imported above, but never named here —
+            # so the registry dropped them and no agent could reach either one.
+            execute_slash_command_tool,
+            identify_autonomous_command_tool,
+            # Keyless web search ported from AgentEye: keyless_web_search runs the
+            # httpx-first fallback chain; deep_web_search runs multi-query research on
+            # top of it. Honest ok/no_results/failed statuses; optional ddgs absence
+            # names the real package instead of fabricating results.
+            keyless_web_search,
+            deep_web_search,
+            # Free local-first OS computer use & laptop automation (Module C):
+            # zero-token accessibility grounding + sentinel-guarded desktop input.
+            desktop_screenshot_tool,
+            desktop_inspect_ui_tree_tool,
+            desktop_mouse_action_tool,
+            desktop_keyboard_action_tool,
+            desktop_window_manage_tool,
+            desktop_system_one_action_tool,
+            # War room: staged, clock-bounded group deliberation, plus the bot
+            # lifecycle (hire/clone/rescope/archive) and the fenced capability
+            # acquisition pipeline. Present in BUILTIN_TOOLS so every agent can open a
+            # room; the governance and authority checks live inside the tool, not here.
+            #
+            # The deep-agent working plane tool is deliberately NOT in this literal. It
+            # is appended by ``append_deepagent_tools`` inside ``get_available_tools``
+            # when ``deepagent.enabled`` is true, exactly as ``task_note`` is gated on
+            # ``task_continuity.enabled``. Listing it here would make it unconditional.
+            war_room_tool,
+        ]
+    )
+
+    subagent_tools = [
+        task_tool,
+        subagent_control,
+        # Direct agent-to-agent communication (Prime Agent roster & messaging):
+        agent_message_tool,
+        agent_observe_tool,
+        group_chat_tool,
+        kanban_board_tool,
+        a2a_tool,
+        swarm_tool,
+        company_tool,
+    ]
+    return builtin_tools, subagent_tools
+
+
+def _builtin_tools() -> list[BaseTool]:
+    """Return ``BUILTIN_TOOLS``, building and caching it on first access.
+
+    The lookup goes through ``globals()`` on purpose: a test or an operator that
+    assigns ``alpha.tools.tools.BUILTIN_TOOLS`` (directly, or through
+    ``unittest.mock.patch``) must be the registry ``get_available_tools`` reads,
+    not a value this accessor keeps re-deriving behind their back.
+    """
+    tools = globals().get("BUILTIN_TOOLS")
+    if tools is not None:
+        return tools
+    with _registry_lock:
+        tools = globals().get("BUILTIN_TOOLS")
+        if tools is None:
+            tools = _build_registries()[0]
+            globals()["BUILTIN_TOOLS"] = tools
+    return tools
+
+
+def _subagent_tools() -> list[BaseTool]:
+    """Return ``SUBAGENT_TOOLS``, building and caching it on first access.
+
+    Resolved independently of ``BUILTIN_TOOLS`` so that overriding one registry
+    never silently rebuilds or discards the other.
+    """
+    tools = globals().get("SUBAGENT_TOOLS")
+    if tools is not None:
+        return tools
+    with _registry_lock:
+        tools = globals().get("SUBAGENT_TOOLS")
+        if tools is None:
+            tools = _build_registries()[1]
+            globals()["SUBAGENT_TOOLS"] = tools
+    return tools
+
+
+def _langchain_base_tool() -> type:
+    """Return ``langchain.tools.BaseTool``, importing it on first access.
+
+    The module's annotations are why the import can be deferred at all
+    (``from __future__ import annotations`` plus the TYPE_CHECKING import); this
+    resolver is why the name is still a real module attribute rather than a
+    missing one.
+    """
+    from langchain.tools import BaseTool
+
+    return BaseTool
+
+
+_LAZY_ATTRIBUTES = {"BUILTIN_TOOLS": _builtin_tools, "SUBAGENT_TOOLS": _subagent_tools, "BaseTool": _langchain_base_tool}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the lazy attributes on first access (PEP 562).
+
+    Anything else still raises ``AttributeError`` with the standard message, so a
+    typo is an error here rather than a ``None`` that fails somewhere else.
+    """
+    resolver = _LAZY_ATTRIBUTES.get(name)
+    if resolver is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = resolver()
+    # Cache in the module namespace so the next read is a plain global lookup,
+    # and so unittest.mock.patch can save and restore what it replaced.
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """List the lazy attributes too, so ``dir()`` does not under-report them."""
+    return sorted({*globals(), *_LAZY_ATTRIBUTES})
 
 
 def _is_host_bash_tool(tool: object) -> bool:
@@ -436,6 +543,8 @@ def _ensure_sync_invocable_tool(tool: BaseTool) -> BaseTool:
     worker threads concurrently; double-checked locking makes the in-place
     ``tool.func`` wrap explicitly single-shot instead of incidental.
     """
+    from alpha.tools.sync import make_sync_tool_wrapper
+
     if getattr(tool, "func", None) is not None or getattr(tool, "coroutine", None) is None:
         return tool
     with _sync_invocable_tool_lock:
@@ -471,6 +580,28 @@ def get_available_tools(
     Returns:
         List of available tools.
     """
+    # Conditional builtins are imported here rather than at module scope: they
+    # are bound only on some configurations, so nothing outside this function
+    # needs them, and importing them eagerly would put their subsystems back on
+    # the import path of every process that touches alpha.tools.tools. The same
+    # goes for the runtime probes and the MCP tagger: all three are read only
+    # while assembling a tool list, and alpha.mcp alone measured 15.7s.
+    from langchain.tools import BaseTool
+
+    from alpha.mcp.tasks.runtime import is_mcp_task_runtime_available
+    from alpha.subagents.batch_runtime import is_subagent_batch_runtime_available
+    from alpha.tools.builtins import (
+        batch_status,
+        batch_task,
+        cancel_background_task,
+        cancel_batch,
+        list_background_tasks,
+        list_uploaded_files,
+        view_image_tool,
+    )
+    from alpha.tools.builtins.deepagent_tool import append_deepagent_tools
+    from alpha.tools.mcp_metadata import tag_mcp_tool
+
     config = app_config or get_app_config()
     tool_configs = [tool for tool in config.tools if groups is None or tool.group in groups]
 
@@ -496,7 +627,7 @@ def get_available_tools(
     loaded_tools = [_ensure_sync_invocable_tool(t) for _, t in loaded_tools_raw]
 
     # Conditionally add tools based on config
-    builtin_tools = BUILTIN_TOOLS.copy()
+    builtin_tools = _builtin_tools().copy()
     if is_mcp_task_runtime_available():
         builtin_tools.extend((list_background_tasks, cancel_background_task))
     if include_upload_tool:
@@ -518,14 +649,14 @@ def get_available_tools(
         builtin_tools = [t for t in builtin_tools if getattr(t, "name", None) != "python_repl"]
 
     # The deep-agent working plane is gated on ``deepagent.enabled``, the same
-    # way task_continuity gates ``task_note`` below. The tool object is imported
-    # at module scope but never bound here while the flag is off, so the tool
+    # way task_continuity gates ``task_note`` below. The tool is imported where
+    # it is bound and never bound here while the flag is off, so the tool
     # registry and its reported count describe what the deployment actually has.
     append_deepagent_tools(builtin_tools, config)
 
     # Add subagent tools only if enabled via runtime parameter
     if subagent_enabled:
-        builtin_tools.extend(SUBAGENT_TOOLS)
+        builtin_tools.extend(_subagent_tools())
         if is_subagent_batch_runtime_available():
             builtin_tools.extend((batch_task, batch_status, cancel_batch))
         logger.info("Including native subagent tools")

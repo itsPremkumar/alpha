@@ -36,19 +36,33 @@ def test_manifest_versions_and_sections(manifest: dict) -> None:
     assert manifest["excluded_local_only"], "local-only exclusions must be recorded"
 
 
+def _registered_tool_symbols(tree: ast.AST) -> set[str]:
+    """Tool symbols named by the BUILTIN_TOOLS registry literal in *tree*.
+
+    The registry is resolved lazily (PEP 562), so the literal lives inside
+    ``_build_registries`` and is passed straight to ``_deduplicate_tools``; a
+    module-level ``BUILTIN_TOOLS = [...]`` assignment is still accepted because it
+    describes the same registry. This stays a source-level check on purpose: it
+    must not import tools.py, and it must not share code with the generator whose
+    output it is checking.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "_build_registries":
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id == "_deduplicate_tools" and inner.args and isinstance(inner.args[0], ast.List):
+                    return {elt.id for elt in inner.args[0].elts if isinstance(elt, ast.Name)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "BUILTIN_TOOLS" for t in node.targets):
+            if isinstance(node.value, ast.List):
+                return {elt.id for elt in node.value.elts if isinstance(elt, ast.Name)}
+    return set()
+
+
 def test_every_builtin_tool_is_in_the_manifest(manifest: dict) -> None:
     source = (BACKEND / "packages" / "harness" / "alpha" / "tools" / "tools.py").read_text(encoding="utf-8")
     # Source-level check (no heavy import): every tool symbol registered in code
     # must appear as a manifest entry id.
-    import ast
-
-    tree = ast.parse(source)
-    registered: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "BUILTIN_TOOLS" for t in node.targets):
-            if isinstance(node.value, ast.List):
-                registered = {elt.id for elt in node.value.elts if isinstance(elt, ast.Name)}
-            break
+    registered = _registered_tool_symbols(ast.parse(source))
     assert registered, "BUILTIN_TOOLS registry disappeared from tools.py"
     missing = registered - _ids(manifest, "tools")
     assert not missing, f"tools missing from the manifest (regenerate it): {sorted(missing)}"

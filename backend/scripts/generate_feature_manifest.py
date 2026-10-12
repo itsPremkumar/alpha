@@ -71,6 +71,31 @@ def wired_symbols(path: Path) -> set[str]:
     return names
 
 
+def registry_literal(tree: ast.AST) -> ast.List | None:
+    """Locate the ``BUILTIN_TOOLS`` registry literal in a parsed tools.py.
+
+    The registry is resolved lazily (PEP 562), so the literal now lives inside
+    ``_build_registries`` — passed straight to ``_deduplicate_tools`` — instead of
+    being a module-level assignment evaluated at import time. Both shapes are
+    accepted, because a module-level ``BUILTIN_TOOLS = [...]`` is still a complete
+    description of the registry (the hermetic drift-gate fixture is exactly that).
+
+    Returns ``None`` when neither shape is found, so the caller can fail loudly:
+    an empty ``tools`` section would satisfy every downstream drift check while
+    describing nothing.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "_build_registries":
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id == "_deduplicate_tools" and inner.args and isinstance(inner.args[0], ast.List):
+                    return inner.args[0]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "BUILTIN_TOOLS" for target in node.targets):
+            if isinstance(node.value, ast.List):
+                return node.value
+    return None
+
+
 def collect_tools() -> list[dict[str, object]]:
     """Parse BUILTIN_TOOLS in alpha/tools/tools.py + the builtins import map."""
     tools_py = ALPHA / "tools" / "tools.py"
@@ -90,23 +115,22 @@ def collect_tools() -> list[dict[str, object]]:
                     symbol_map.setdefault(alias.name, module)
 
     entries: list[dict[str, object]] = []
-    for node in ast.walk(ast.parse(read(tools_py))):
-        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "BUILTIN_TOOLS" for target in node.targets):
-            if isinstance(node.value, ast.List):
-                for element in node.value.elts:
-                    if isinstance(element, ast.Name):
-                        symbol = element.id
-                        entries.append(
-                            {
-                                "id": symbol,
-                                "module": symbol_map.get(symbol, ""),
-                                "symbol": symbol,
-                                "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
-                                "wired": True,
-                                "state": "wired",
-                            }
-                        )
-            break
+    literal = registry_literal(ast.parse(read(tools_py)))
+    if literal is None:
+        raise SystemExit(f"no BUILTIN_TOOLS registry literal found in {tools_py} — the registry is neither a module-level assignment nor _deduplicate_tools([...]) inside _build_registries()")
+    for element in literal.elts:
+        if isinstance(element, ast.Name):
+            symbol = element.id
+            entries.append(
+                {
+                    "id": symbol,
+                    "module": symbol_map.get(symbol, ""),
+                    "symbol": symbol,
+                    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+                    "wired": True,
+                    "state": "wired",
+                }
+            )
     return entries
 
 
