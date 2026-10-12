@@ -439,6 +439,54 @@ tiers), `test_swarm_deliberation.py` (SPRT, guards),
 `test_swarm_stigmergy_telemetry.py` (traces, telemetry, coordinator wiring).
 
 
+## Canonical task contract (`tasks/`)
+
+`alpha.tasks` is the **neutral projection target** that lets a task be
+described, budgeted, handed off and verified the same way whichever engine ran
+it. It exists because Alpha grew **seven** schedulers and **three**
+incompatible task vocabularies — `WorkflowNode.status` (12 values),
+`SwarmTaskNode` (a typed `TaskNodeState` enum **and** a bare `status: str`
+carrying 10 more, on one object), and `graph.TaskNode.status` (10) — with
+nothing translating between them. The measured baseline is
+`docs/architecture/multi-agent-baseline.md`.
+
+It is **additive and owns no lifecycle**. `RunManager` remains the sole
+run-lifecycle owner, `alpha.mission.acceptance` remains the only producer of a
+terminal *passed*, `alpha.errors.registry` remains the sole owner of error
+codes, and each engine keeps its own task model **and** its own scheduler. The
+contract is a shape, not a seventh scheduler, and
+`tasks/tests`-level `TestPackageBoundary` asserts the first three against the
+parsed AST — a text grep cannot tell a docstring recording *who owns what* from
+an actual import.
+
+Three properties are load-bearing:
+
+- **An unmappable status refuses, never defaults.**
+  `UnmappableStatus` names the engine *and* the offending value. The
+  alternative — defaulting to `pending` — turns a state nobody recognises into
+  a task that looks **ready to run**, which is the exact failure the package
+  exists to remove.
+- **The status maps are exhaustive by construction.** Each adapter covers every
+  member of its engine's live enum, and the tests enumerate those enums
+  (including both swarm vocabularies) and fail on a gap. A gap turns an
+  ordinary state change into a refusal mid-run.
+- **The vocabulary is the narrowest common core, not the union.** A union drifts
+  toward whichever engine grew last. `native_status` / `native_type` preserve
+  what the engine actually said, so a projection is **lossless**: swarm's
+  `completed` becomes `succeeded` in the contract and comes back as `completed`.
+  `SwarmTaskNode`'s `partial_success` maps to `RUNNING`, never to `FAILED` or
+  `SUCCEEDED`, because the engine never reached a terminal verdict.
+
+Bounds are refused, not clamped; `max_cost_usd=0.0` is a **real ceiling**
+meaning paid calls are blocked, and `UNBOUNDED` is a distinct sentinel from
+`None` ("explicitly unbounded" vs "unstated") so no caller can encode
+unboundedness as `0`. The contract is frozen, so `with_status()` /
+`with_attempt()` return new values and two engines cannot overwrite each other.
+Full contract: [packages/harness/alpha/tasks/AGENTS.md](tasks/AGENTS.md). Tests:
+`tests/test_task_contract.py`. Declared in `alpha.capabilities.catalog` as
+`task_contract` / `task_contract_adapters`.
+
+
 ## Group-Relative Orchestration (`gro/`)
 
 `alpha.gro` implements the GRPO-inspired orchestration plan

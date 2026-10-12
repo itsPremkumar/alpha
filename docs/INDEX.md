@@ -28,6 +28,7 @@
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
 - [architecture/durable-runtime.md](architecture/durable-runtime.md) — Architecture and subsystem documentation.
+- [architecture/multi-agent-baseline.md](architecture/multi-agent-baseline.md) — Phase 0 multi-agent baseline: the seven live schedulers, the three incompatible task vocabularies, a feature matrix separating what is operated from what merely exists, and the nine deliberate refusals that must not be 'fixed'.
 - [deep-agent-working-plane.md](deep-agent-working-plane.md) — Deep-agent working plane: Alpha's port of deepagents' state backend, why a long run needs a scratch space that survives compaction, the tool surface, its bounds, and where it applies.
 
 ## API Reference
@@ -96,6 +97,7 @@
 - [audits/SYSTEM_MAP_2026-10-08.md](audits/SYSTEM_MAP_2026-10-08.md) — Code-evidenced service, execution, persistence, self-inventory, and workspace view map from the 2026-10-08 audit, with environment limits.
 - [audits/WRITE_PATH_VERIFICATION.md](audits/WRITE_PATH_VERIFICATION.md) — Write-path verification record: the group nesting probes are green after the MAX_DEPTH cap was found absent from the subgroup creation route and wired in, with the inheritance projection, the depth and delete refusals, and the probe's own wrong assumptions all pinned.
 - [audits/screenshots/2026-10-05/bots-after-fix.md](audits/screenshots/2026-10-05/bots-after-fix.md) — Operations, deployment, and reliability documentation.
+- [audits/screenshots/2026-10-11/README.md](audits/screenshots/2026-10-11/README.md) — Operations, deployment, and reliability documentation.
 - [reliability/ALPHA_SYSTEM_MAP.md](reliability/ALPHA_SYSTEM_MAP.md) — Verified runtime map: process, package, port, health check, persistence, failure mode and recovery owner per component.
 - [reliability/ERROR_CATALOG.md](reliability/ERROR_CATALOG.md) — Stable error codes with severity, retry policy, recovery action and the user-facing wording each code owns.
 - [reliability/FAILURE_RECOVERY_MATRIX.md](reliability/FAILURE_RECOVERY_MATRIX.md) — Per-failure detection, classification, retry decision, recovery strategy and the evidence each one leaves behind.
@@ -122,9 +124,11 @@
 ## Plans & Roadmaps
 
 - [ADVANCED_GROUP_MESSAGING_PLAN.md](ADVANCED_GROUP_MESSAGING_PLAN.md) — Group profiles, links, goals, pinning, threading, receipts and notifications — design record plus a per-feature shipped/not-shipped map.
+- [ADVANCED_MULTI_AGENT_BUILD_PLAN.md](ADVANCED_MULTI_AGENT_BUILD_PLAN.md) — Gap analysis and build plan derived from the advanced multi-agent architecture plan: what Alpha already has with paths, the seven competing schedulers, a ranked gap register, and nine phases that wire and unify rather than rebuild.
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
+- [ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md](ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md) — Research-backed blueprint for a hybrid graph-governed, event-driven multi-agent runtime: task contracts, DAG scheduling, capability routing, artifact blackboard, layered verification, durable recovery, bounded budgets and an observability surface.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
 - [ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md](ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md) — Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.
@@ -132,6 +136,7 @@
 - [ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) — Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.
 - [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN (1).md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN%20%281%29.md) — Unchanged duplicate copy of the multi-agent graph orchestration plan kept in the tree; the canonical document is ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md.
 - [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md) — Plan for cooperating multiple Alpha agents through explicit, observable, bounded, recoverable graphs, with an honesty note that the proposals are unimplemented research rather than shipped features.
+- [ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md](ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md) — Prime Agent–inspired implementation plan: recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, bounded autonomous continuation and verification-driven task state machines, kept in Python.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md](ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md) — Plan selectively adapting unlazy's completion discipline to Alpha's agent, bot, subagent and swarm workflows; design only, implying no source changes by itself.
 - [FRONTEND_UX_PLAN.md](FRONTEND_UX_PLAN.md) — The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.
