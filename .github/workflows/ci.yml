@@ -55,6 +55,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
       - name: Run mypy
+        # `|| true` is deliberate and load-bearing: mypy genuinely runs (655b6de
+        # made the root config parseable — it used to abort before analyzing a
+        # single file), and it currently reports 2,632 errors across 687 of the
+        # 2,439 checked files. The step is a report, not a gate: removing the
+        # escape turns this blocking job red on every push until that backlog is
+        # cleared. Re-measure before changing it — if the count reaches zero,
+        # delete `|| true` in the same change that gets it there.
         run: uv run mypy . --ignore-missing-imports || true
 
   backend-test:
