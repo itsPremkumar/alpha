@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
@@ -167,6 +168,75 @@ def _module_name(path: Path, root: Path) -> str | None:
     return ".".join(parts) or None
 
 
+@lru_cache(maxsize=4)
+def _git_ignored(rel_paths: tuple[str, ...]) -> frozenset[str]:
+    """Return which repo-relative POSIX paths git would refuse to track.
+
+    This guard's whole claim is about *the repository*. A fresh clone contains
+    only what git tracks, so a module that git ignores can never be shipped and
+    CI can never see it — yet scanning the raw filesystem made the local verdict
+    disagree with CI's. Twenty ad-hoc ``scan_*.py`` scripts hidden by
+    ``.gitignore`` (``/backend/app/gateway/routers/scan_*.py`` and friends) tripped
+    this test on every local ``make test`` while a fresh clone stayed green:
+    hiding a file from git does not hide it from ``Path.rglob``.
+
+    One ``git check-ignore --stdin`` call answers the whole batch. The payload is
+    written as **bytes, never text**: on Windows, Python's text-mode stdin wraps
+    every ``\n`` in ``\r\n``, so git received ``scan_shadow.py\r``, matched no
+    pattern, answered "nothing is ignored", and the guard silently reverted to
+    the filesystem-blind behaviour it is meant to remove — measured here as rc=1
+    with empty output for a path that plainly matches ``scan_*.py``. The paths are
+    matched against patterns without needing to exist, so a clean clone gets the
+    same answer as a working tree full of scratch.
+
+    Every failure mode returns "nothing is ignored", which falls back to the
+    stricter pre-existing behaviour rather than quietly checking nothing: a
+    missing git, a non-repo working tree, a path outside the repository
+    (``git`` exits 128) or a timeout all leave the guard doing *more* work, never
+    less.
+    """
+    if not rel_paths:
+        return frozenset()
+    try:
+        proc = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "check-ignore", "--stdin"],
+            input="\n".join(rel_paths).encode("utf-8"),
+            capture_output=True,
+            cwd=ROOT,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    # 0 = at least one path ignored, 1 = none ignored, 2+ = fatal/usage error.
+    if proc.returncode not in (0, 1):
+        return frozenset()
+    return frozenset(line.decode("utf-8", "replace") for line in proc.stdout.split(b"\n") if line)
+
+
+def _shippable(paths: list[Path]) -> list[Path]:
+    """Drop the paths git would not track, keeping every path git could.
+
+    Both scan entry points funnel through here so the reference index and the
+    orphan sweep always see the same tree. Skipping ignored files in the
+    *reference* scan matters just as much as skipping them in the orphan sweep:
+    a gitignored scratch file importing ``alpha.foo`` would otherwise mark
+    ``alpha.foo`` referenced and mask a real orphan that CI does catch.
+    """
+    in_repo: dict[str, Path] = {}
+    keep: list[Path] = []
+    for path in paths:
+        try:
+            in_repo[path.relative_to(ROOT).as_posix()] = path
+        except ValueError:
+            # Outside the repository git has no opinion; it ships nothing, so
+            # leave it under the guard's scrutiny exactly as before.
+            keep.append(path)
+    ignored = _git_ignored(tuple(sorted(in_repo)))
+    keep.extend(p for key, p in in_repo.items() if key not in ignored)
+    return keep
+
+
 @lru_cache(maxsize=1)
 def _referenced_modules() -> set[str]:
     referenced: set[str] = set()
@@ -175,6 +245,7 @@ def _referenced_modules() -> set[str]:
         if base.exists():
             files.extend(p for p in base.rglob("*.py") if not _skip(p))
     files.extend(p for p in SCAN_TEXT_FILES if p.exists())
+    files = _shippable(files)
 
     for path in files:
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -303,9 +374,8 @@ def test_no_orphan_modules() -> None:
 
     orphans: list[str] = []
     for root, base in ((ALPHA, HARNESS), (APP, BACKEND)):
-        for path in root.rglob("*.py"):
-            if _skip(path) or path.name == "__init__.py":
-                continue
+        candidates = _shippable([p for p in root.rglob("*.py") if not _skip(p) and p.name != "__init__.py"])
+        for path in candidates:
             module = _module_name(path, base)
             if not module:
                 continue
@@ -416,3 +486,58 @@ def test_dotted_string_references_are_indexed() -> None:
     ]
     for module, target in expected:
         assert _normalize_target(target) in referenced, f"dotted loader target {target!r} was not indexed — the scan regexes are broken again, so {module} would be reported as an orphan"
+
+
+def test_gitignored_paths_are_excluded_from_the_guard() -> None:
+    """A path git would refuse to track is not part of the repository's modules.
+
+    `.gitignore` carries rules such as `/backend/app/gateway/routers/scan_*.py`,
+    and twenty ad-hoc scanner scripts were sitting behind them. They exist only
+    in a working tree: a fresh clone cannot contain them, so CI cannot fail on
+    them, so this guard reporting them made the local verdict a lie. Matching is
+    done against the pattern alone, which is why the probe path below does not
+    have to exist — a clean clone gets the same answer.
+    """
+    gitignored = ROOT / "backend" / "app" / "gateway" / "routers" / "scan_absent_for_test.py"
+    tracked = Path(__file__).resolve()
+
+    kept = _shippable([gitignored, tracked])
+
+    assert gitignored not in kept, "a gitignored scratch file was still judged as part of the shipped tree"
+    assert tracked in kept, "a tracked module must never be dropped by the gitignore filter"
+
+
+def test_shippable_keeps_paths_git_has_no_opinion_about() -> None:
+    """Outside the repository git exits 128; that must not lose the path.
+
+    `git check-ignore` fatals on a path outside the work tree, so asking it
+    about one would return "ignored: nothing" for the whole batch. `_shippable`
+    therefore never hands git an out-of-repo path — and this pins that a path it
+    leaves alone still comes back out.
+    """
+    outside = ROOT.parent / "definitely_not_in_this_repo" / "orphan.py"
+    assert _shippable([outside]) == [outside]
+
+
+def test_git_lookup_failure_keeps_every_path(monkeypatch) -> None:
+    """No git, no repo, or a timeout must fall back to checking EVERYTHING.
+
+    The filter's only safe failure is to do more work than asked: returning an
+    empty "nothing is ignored" would silently restore the exact filesystem-blind
+    behaviour this fix exists to remove, and a broken checkout would then report
+    a clean bill of health it has not earned.
+    """
+    probe = ROOT / "backend" / "app" / "gateway" / "routers" / "scan_absent_for_test.py"
+    _git_ignored.cache_clear()
+    try:
+
+        def _boom(*_args, **_kwargs):
+            raise OSError("git is not installed")
+
+        monkeypatch.setattr(subprocess, "run", _boom)
+
+        assert _shippable([probe]) == [probe], "a failed git lookup must not drop paths"
+    finally:
+        # _git_ignored is lru_cached: leaving the OSError result behind would
+        # poison every later caller in this session, including the real guard.
+        _git_ignored.cache_clear()

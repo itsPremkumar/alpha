@@ -276,6 +276,13 @@ backend/.tmp/
 /backend/app/gateway/backend/
 /backend/app/gateway/routers/scan_*.py
 /backend/app/gateway/routers/routes.txt
+# Two further route/auth audit scripts that the `scan_*` rule above does not
+# match by name. They are the same class of scratch and they reference each
+# other (`verify_auth_boundary` names `correct_shadow.py`), so ignoring only one
+# would simply turn the other into a new orphan. Left visible to git, `git add -A`
+# would ship them and `test_no_orphan_modules` would fail in CI, not just locally.
+/backend/app/gateway/routers/correct_shadow.py
+/backend/app/gateway/routers/verify_auth_boundary.py
 
 # Probes dropped into the harness package itself, and their scratch directories.
 /backend/packages/harness/alpha/_probe*.py
