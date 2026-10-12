@@ -12,6 +12,8 @@ from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
 from app.gateway.deps import (
     get_current_user,
+    get_subagent_batch_repo,
+    get_subagent_batch_service,
 )
 
 router = APIRouter(prefix="/api/threads/{thread_id}/subagent-batches", tags=["subagent-batches"])
@@ -26,8 +28,6 @@ async def _user_id(request: Request) -> str:
 
 
 async def _owned_batch(request: Request, thread_id: str, batch_id: str) -> tuple[object, str, dict]:
-    from app.gateway.deps import get_subagent_batch_repo
-
     repo = get_subagent_batch_repo(request)
     user_id = await _user_id(request)
     batch = await repo.get_batch(batch_id, user_id=user_id)
@@ -39,8 +39,6 @@ async def _owned_batch(request: Request, thread_id: str, batch_id: str) -> tuple
 @router.get("")
 @require_permission("threads", "read", owner_check=True)
 async def list_batches(thread_id: ThreadId, request: Request, limit: int = Query(20, ge=1, le=100)) -> list[dict]:
-    from app.gateway.deps import get_subagent_batch_repo
-
     repo = get_subagent_batch_repo(request)
     return await repo.list_by_thread(thread_id, user_id=await _user_id(request), limit=limit)
 
@@ -85,8 +83,6 @@ async def resume_batch(thread_id: ThreadId, batch_id: str, request: Request) -> 
 @router.post("/{batch_id}/cancel")
 @require_permission("threads", "write", owner_check=True)
 async def cancel_batch(thread_id: ThreadId, batch_id: str, request: Request) -> dict:
-    from app.gateway.deps import get_subagent_batch_service
-
     if not getattr(request.app.state, "subagent_batches_available", False):
         raise HTTPException(status_code=503, detail="Subagent batch worker is not running")
     _repo, user_id, _batch = await _owned_batch(request, thread_id, batch_id)

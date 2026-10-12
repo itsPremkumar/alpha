@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from alpha.mods.approvals import get_hold_store
+from alpha.mods.audit import AuditLedgerMod
+from alpha.mods.kernel import ModKernel, get_mod_kernel
+from alpha.mods.middleware import list_mod_commands, run_mod_command
 from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
@@ -32,26 +36,11 @@ _ADMIN_HOLDS_DETAIL = "Admin privileges are required to review or decide held ac
 _ADMIN_STATE_DETAIL = "Admin privileges are required to read mod state."
 
 
-# `ModKernel` and `AuditLedgerMod` are named only in the return and parameter
-# annotations of two module-level helpers — never in a route signature and never
-# at module scope. This module carries `from __future__ import annotations`, so
-# those annotations are strings and are never evaluated; the types are imported
-# where they are used instead. That keeps the mod kernel (and the tool graph it
-# reaches) out of Gateway startup.
-if TYPE_CHECKING:
-    from alpha.mods.audit import AuditLedgerMod
-    from alpha.mods.kernel import ModKernel
-
-
 def _kernel() -> ModKernel:
-    from alpha.mods.kernel import get_mod_kernel
-
     return get_mod_kernel()
 
 
 def _audit_mod(kernel: ModKernel) -> AuditLedgerMod | None:
-    from alpha.mods.audit import AuditLedgerMod
-
     mod = kernel.get_mod("audit_ledger")
     return mod if isinstance(mod, AuditLedgerMod) else None
 
@@ -175,8 +164,6 @@ async def list_holds(request: Request, decision: str | None = Query(default=None
     The store is durable under ``runtime_home()`` but single-process: a decision
     taken here is not coordinated across Gateway workers.
     """
-    from alpha.mods.approvals import get_hold_store
-
     await require_admin_user(request, detail=_ADMIN_HOLDS_DETAIL)
     store = get_hold_store()
     records = await asyncio.to_thread(lambda: store.list_holds(decision=decision, limit=limit))
@@ -192,8 +179,6 @@ async def approve_hold(hold_id: str, payload: HoldDecisionRequest, request: Requ
     """Approve one held action. Admin-only, and the operator identity is the
     authenticated caller — never a body-supplied name, which would let a client
     attribute a decision to somebody else."""
-    from alpha.mods.approvals import get_hold_store
-
     await require_admin_user(request, detail=_ADMIN_HOLDS_DETAIL)
     user = getattr(request.state, "user", None)
     operator = str(getattr(user, "id", "") or "unknown")
@@ -207,8 +192,6 @@ async def approve_hold(hold_id: str, payload: HoldDecisionRequest, request: Requ
 @router.post("/holds/{hold_id}/reject")
 async def reject_hold(hold_id: str, payload: HoldDecisionRequest, request: Request) -> dict[str, Any]:
     """Reject one held action, recording the authenticated operator and reason."""
-    from alpha.mods.approvals import get_hold_store
-
     await require_admin_user(request, detail=_ADMIN_HOLDS_DETAIL)
     user = getattr(request.state, "user", None)
     operator = str(getattr(user, "id", "") or "unknown")
@@ -244,8 +227,6 @@ async def get_mod_state(request: Request) -> dict[str, Any]:
 @router.get("/commands")
 async def get_mod_commands(request: Request) -> dict[str, Any]:
     """Commands mods contributed — each runs with no model turn and no tokens."""
-    from alpha.mods.middleware import list_mod_commands
-
     await _require_authenticated(request)
     commands = await asyncio.to_thread(list_mod_commands, _kernel())
     return {"total": len(commands), "commands": commands}
@@ -261,8 +242,6 @@ async def post_mod_command(command_name: str, payload: ModCommandRunRequest, req
     approval flow, and executing an approval-gated command from an unguarded
     HTTP call would defeat the flag the registering mod set.
     """
-    from alpha.mods.middleware import run_mod_command
-
     await _require_authenticated(request)
     kernel = _kernel()
     resolved = kernel.commands.resolve(command_name)

@@ -52,15 +52,19 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from alpha.runtime.side_effects.ledger import (
-    SideEffectLedger,
-)
+from alpha.persistence.side_effects import SideEffectTransitionLost
+from alpha.runtime.side_effects import get_side_effect_recorder
+from alpha.runtime.side_effects.ledger import ReconciliationResult, SideEffectLedger
 from alpha.runtime.side_effects.statuses import (
+    IllegalSideEffectTransition,
     ReconciliationVerdict,
     SideEffectEntry,
     SideEffectLevel,
     SideEffectStatus,
 )
+from alpha.utils.thread_id import validate_thread_id
+from alpha.utils.time import coerce_iso
+from app.gateway.deps import is_admin_user
 
 router = APIRouter(tags=["side-effects"])
 
@@ -110,8 +114,6 @@ async def _caller(request: Request) -> tuple[str, bool]:
     is what suppresses the admin signal for a PAT), and no caller resolves to
     "every owner", because owner-less reads list everyone's rows.
     """
-    from app.gateway.deps import is_admin_user
-
     user = getattr(request.state, "user", None)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
@@ -132,8 +134,6 @@ def _entry_to_wire(entry: SideEffectEntry) -> dict[str, Any]:
     onto the wire by default. Timestamps are ISO 8601 (the wire contract every
     evidence/ops surface keeps); digests are the only payload-shaped values.
     """
-    from alpha.utils.time import coerce_iso
-
     return {
         "tool_call_id": entry.tool_call_id,
         "tool_name": entry.tool_name,
@@ -194,9 +194,6 @@ async def _read_entries(ledger: SideEffectLedger) -> list[SideEffectEntry] | JSO
     ),
 )
 async def side_effect_summary(request: Request) -> Any:
-    from alpha.runtime.side_effects import get_side_effect_recorder
-    from alpha.utils.time import coerce_iso
-
     caller, is_admin = await _caller(request)
     ledger = get_side_effect_recorder().ledger
     if ledger is None:
@@ -247,9 +244,6 @@ async def list_side_effects(
     user_id: str | None = Query(None, description="Owner filter (admins only; members are always scoped to themselves)"),
     limit: int = Query(_LIST_LIMIT_DEFAULT, ge=1, le=_LIST_LIMIT_MAX, description="Maximum rows returned"),
 ) -> Any:
-    from alpha.runtime.side_effects import get_side_effect_recorder
-    from alpha.utils.thread_id import validate_thread_id
-
     caller, is_admin = await _caller(request)
     if status is not None and status not in _STATUSES:
         return _error(422, INVALID_FILTER_CODE, f"unknown status {status!r}; expected one of {list(_STATUSES)}")
@@ -323,8 +317,6 @@ async def list_side_effects(
     description="Explicit projection of a single ledger row: digests, lease, verdict. Absent id is 404 with `code: side_effect_not_found`.",
 )
 async def get_side_effect(request: Request, tool_call_id: str) -> Any:
-    from alpha.runtime.side_effects import get_side_effect_recorder
-
     caller, is_admin = await _caller(request)
     ledger = get_side_effect_recorder().ledger
     if ledger is None:
@@ -355,11 +347,6 @@ async def get_side_effect(request: Request, tool_call_id: str) -> Any:
     ),
 )
 async def reconcile_side_effect(request: Request, tool_call_id: str, body: ReconcileRequest) -> Any:
-    from alpha.persistence.side_effects import SideEffectTransitionLost
-    from alpha.runtime.side_effects import get_side_effect_recorder
-    from alpha.runtime.side_effects.ledger import ReconciliationResult
-    from alpha.runtime.side_effects.statuses import IllegalSideEffectTransition
-
     caller, is_admin = await _caller(request)
     if not is_admin:
         return _error(403, FORBIDDEN_CODE, f"reconciliation requires an administrator (caller {caller!r} is a member)")

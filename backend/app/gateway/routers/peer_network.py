@@ -19,12 +19,25 @@ from alpha.peer_network import (
     PeerPairRequest,
     PeerPairResponse,
     PeerStatus,
+    get_peer_network_service,
 )
+from alpha.peer_network.github import GitHubRendezvousError
+from alpha.peer_network.models import utc_now
+from alpha.peer_network.storage import NETWORK_OWNER, public_peer
+from alpha.peer_network.transcript import (
+    MAX_TRANSCRIPT_ENTRIES,
+    MAX_TURN_EVENTS,
+    interleave,
+    peer_message_entry,
+    peer_run_metadata,
+    public_peer_summary,
+    runs_for_conversation,
+    transcript_summary,
+    turn_detail,
+)
+from alpha.peer_network.transport import PeerTransportError
 from app.gateway.authz import require_permission
-from app.gateway.deps import (
-    get_run_event_store,
-    get_run_manager,
-)
+from app.gateway.deps import get_run_event_store, get_run_manager, require_admin_user
 
 logger = logging.getLogger(__name__)
 _MAX_PUBLIC_BODY_BYTES = 512 * 1024
@@ -74,8 +87,6 @@ class ReadBody(BaseModel):
 
 
 def _service():
-    from alpha.peer_network import get_peer_network_service
-
     return get_peer_network_service()
 
 
@@ -127,9 +138,6 @@ def _check_public_body_size(request: Request) -> None:
 
 
 def _http_error(exc: Exception) -> HTTPException:
-    from alpha.peer_network.github import GitHubRendezvousError
-    from alpha.peer_network.transport import PeerTransportError
-
     if isinstance(exc, KeyError):
         return HTTPException(status_code=404, detail=f"Peer network record '{exc.args[0]}' not found")
     if isinstance(exc, PeerTransportError):
@@ -158,8 +166,6 @@ async def get_status(request: Request = None) -> PeerStatus:
     # without an admin gate any authenticated low-privilege caller could read
     # the credential that opens the inbound plane. This mirrors the gate
     # `github/publish` below already uses: permission AND admin.
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(
         request,
         detail=_ADMIN_REQUIRED_DETAIL,
@@ -189,8 +195,6 @@ async def publish_github_card(request: Request) -> dict[str, Any]:
     # every call rather than authorising anyone. No test exercised it, which is
     # why it survived; test_peer_network_admin_gate.py now covers both admin
     # call sites on this router.
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(
         request,
         detail="Admin role required to publish this installation's agent card.",
@@ -218,8 +222,6 @@ async def rotate_pairing_code(request: Request) -> dict[str, Any]:
     # admin-gated for exactly that reason; leaving the rotate route at bare
     # `threads:write` published the same credential one route over at a lower
     # auth level. Permission AND admin, like its two siblings.
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     code = await _call(_service().rotate_pairing_code())
     return {"status": "rotated", "pairing_code": code}
@@ -238,8 +240,6 @@ async def build_invite(request: Request, include_secret: bool = True, ttl_second
     # `remote/pair` and `inbound/messages` routes as a paired peer. Leaving it at
     # bare `threads:read` would publish that credential to the widest role that
     # can currently merely *look* at the peer list.
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(
         request,
         detail="Admin role is required to mint a connection string containing this installation's pairing code.",
@@ -264,8 +264,6 @@ async def get_peer(agent_id: str) -> dict[str, Any]:
     # sibling is safe because every sibling is two segments deep. The response is
     # the allowlisted projection (no `owner_id`, no outbound token, no raw card),
     # matching what the model-facing tool has always been allowed to see.
-    from alpha.peer_network.storage import public_peer
-
     peer = await _call(_service().get_peer(agent_id))
     if not peer:
         raise HTTPException(status_code=404, detail=f"Peer '{agent_id}' not found")
@@ -289,8 +287,6 @@ async def set_peer_auto_reply(agent_id: str, body: AutoReplyBody, request: Reque
     # low-privilege user hand a remote peer the ability to spend this
     # installation's model budget and drive its tools. Revoking is admin-gated
     # too, so a user cannot disable the control to hide a peer's activity.
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(
         request,
         detail="Admin role is required to let a peer start Agent turns.",
@@ -403,7 +399,6 @@ async def _assert_peer_network_scope(request: Request) -> None:
     caller own the peer". There is no per-peer tenancy to compare against.
     """
 
-    from alpha.peer_network.storage import NETWORK_OWNER
     from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
 
     assert NETWORK_OWNER == "installation", "peer scope assumes a single installation owner"
@@ -427,7 +422,6 @@ async def _peer_runs_for_conversation(request: Request, conversation_id: str) ->
     """
 
     from alpha.peer_network.agent_dispatch import peer_thread_id
-    from alpha.peer_network.transcript import MAX_TURN_EVENTS, peer_run_metadata, runs_for_conversation
 
     run_manager = get_run_manager(request)
     event_store = get_run_event_store(request)
@@ -513,8 +507,6 @@ async def search_transcripts(
     conversation_id: str | None = None,
     direction: str | None = None,
 ) -> dict[str, Any]:
-    from alpha.peer_network.transcript import peer_message_entry
-
     await _assert_peer_network_scope(request)
     service = _service()
     messages = await _call(
@@ -547,8 +539,6 @@ async def transcript_analytics(request: Request) -> dict[str, Any]:
 @router.get("/transcripts", summary="List cross-installation conversations with measured counts")
 @require_permission("threads", "read")
 async def list_transcripts(request: Request, limit: int = 50) -> dict[str, Any]:
-    from alpha.peer_network.transcript import transcript_summary
-
     await _assert_peer_network_scope(request)
     service = _service()
     conversations = await _call(service.list_conversations())
@@ -577,8 +567,6 @@ async def list_transcripts(request: Request, limit: int = 50) -> dict[str, Any]:
 @router.get("/transcripts/{conversation_id}", summary="Read one conversation's full cross-installation transcript")
 @require_permission("threads", "read")
 async def get_transcript(conversation_id: str, request: Request, limit: int = 1000) -> dict[str, Any]:
-    from alpha.peer_network.transcript import MAX_TRANSCRIPT_ENTRIES, interleave, public_peer_summary
-
     await _assert_peer_network_scope(request)
     service = _service()
     conversation = await _call(service.get_conversation(conversation_id))
@@ -647,8 +635,6 @@ async def get_turn_trace(conversation_id: str, run_id: str, request: Request, li
 @router.get("/transcripts/{conversation_id}/turns/{run_id}", summary="Read one peer turn in full: events, tools, tokens")
 @require_permission("threads", "read")
 async def get_transcript_turn(conversation_id: str, run_id: str, request: Request) -> dict[str, Any]:
-    from alpha.peer_network.transcript import turn_detail
-
     await _assert_peer_network_scope(request)
     turns = await _peer_runs_for_conversation(request, conversation_id)
     for row in turns:
@@ -661,8 +647,6 @@ async def get_transcript_turn(conversation_id: str, run_id: str, request: Reques
 @router.get("/transcripts/{conversation_id}/export", summary="Export one conversation's transcript as bounded JSON")
 @require_permission("threads", "read")
 async def export_transcript(conversation_id: str, request: Request, limit: int = 1000) -> dict[str, Any]:
-    from alpha.peer_network.models import utc_now
-
     await _assert_peer_network_scope(request)
     payload = await get_transcript(conversation_id, request, limit=limit)
     payload["exported_at"] = utc_now()
@@ -733,8 +717,6 @@ async def remote_pair(request: Request, body: PeerPairRequest) -> PeerPairRespon
 
 @public_router.post("/api/peer-network/inbound/messages", summary="Receive a paired peer message")
 async def inbound_message(request: Request, body: PeerEnvelope) -> dict[str, Any]:
-    from alpha.peer_network.transport import PeerTransportError
-
     _check_public_body_size(request)
     token = request.headers.get("x-alpha-peer-token", "").strip()
     if not token:
@@ -749,8 +731,6 @@ async def inbound_message(request: Request, body: PeerEnvelope) -> dict[str, Any
 
 @public_router.websocket("/api/peer-network/ws")
 async def peer_websocket(websocket: WebSocket) -> None:
-    from alpha.peer_network.transport import PeerTransportError
-
     token = websocket.headers.get("x-alpha-peer-token", "").strip()
     if not token:
         await websocket.close(code=1008, reason="X-Alpha-Peer-Token is required")

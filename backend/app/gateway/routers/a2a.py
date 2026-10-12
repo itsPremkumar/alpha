@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from alpha.protocols.a2a import (
+    A2ADelegationRequest,
     A2AProtocolAdapter,
     AgentCapabilityCard,
 )
@@ -82,8 +83,6 @@ async def register_capability_card(card: AgentCapabilityCard):
 @router.post("/delegate")
 async def delegate_task(payload: DelegateTaskRequest):
     """Dispatches a task delegation request to a target agent using the A2A protocol."""
-    from alpha.protocols.a2a import A2ADelegationRequest
-
     req = A2ADelegationRequest(
         sender_agent_id=payload.sender_agent_id,
         target_agent_id=payload.target_agent_id,

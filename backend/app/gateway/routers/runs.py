@@ -12,14 +12,18 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from alpha.runtime import serialize_channel_values_for_api
+from alpha.utils.thread_id import resolve_thread_id
 from app.gateway.authz import require_permission
-from app.gateway.deps import (
-    get_run_manager,
-    get_stream_bridge,
-)
+from app.gateway.deps import get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
+from app.gateway.pagination import trim_run_message_page
 from app.gateway.run_models import RunCreateRequest
 from app.gateway.services import (
+    abuild_checkpoint_state_accessor,
+    sse_consumer,
     start_run,
+    wait_for_run_completion,
+    with_stream_heartbeats,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,8 +32,6 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 def _resolve_thread_id(body: RunCreateRequest) -> str:
     """Return the thread_id from the request body, or generate a new one."""
-    from alpha.utils.thread_id import resolve_thread_id
-
     thread_id = ((body.config or {}).get("configurable") or {}).get("thread_id")
     return resolve_thread_id(thread_id)
 
@@ -43,8 +45,6 @@ async def stateless_stream(body: RunCreateRequest, request: Request) -> Streamin
     on the given thread so that conversation history is preserved.
     Otherwise a new temporary thread is created.
     """
-    from app.gateway.services import sse_consumer, with_stream_heartbeats
-
     thread_id = _resolve_thread_id(body)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
@@ -71,9 +71,6 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
     on the given thread so that conversation history is preserved.
     Otherwise a new temporary thread is created.
     """
-    from alpha.runtime import serialize_channel_values_for_api
-    from app.gateway.services import abuild_checkpoint_state_accessor, wait_for_run_completion
-
     thread_id = _resolve_thread_id(body)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
@@ -107,8 +104,6 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
 
 async def _resolve_run(run_id: str, request: Request) -> dict:
     """Fetch run by run_id with user ownership check. Raises 404 if not found."""
-    from app.gateway.deps import get_run_store
-
     run_store = get_run_store(request)
     record = await run_store.get(run_id)  # user_id=AUTO filters by contextvar
     if record is None:
@@ -134,9 +129,6 @@ async def run_messages(
 
     Response: { data: [...], has_more: bool }
     """
-    from app.gateway.deps import get_run_event_store
-    from app.gateway.pagination import trim_run_message_page
-
     run = await _resolve_run(run_id, request)
     event_store = get_run_event_store(request)
     rows = await event_store.list_messages_by_run(
@@ -154,8 +146,6 @@ async def run_messages(
 @require_permission("runs", "read")
 async def run_feedback(run_id: str, request: Request) -> list[dict]:
     """Return all feedback for a run."""
-    from app.gateway.deps import get_feedback_repo
-
     run = await _resolve_run(run_id, request)
     feedback_repo = get_feedback_repo(request)
     return await feedback_repo.list_by_run(run["thread_id"], run_id)

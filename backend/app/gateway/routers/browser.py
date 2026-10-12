@@ -7,8 +7,11 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from alpha.config.paths import get_paths
+from alpha.runtime.user_context import get_effective_user_id, reset_current_user, set_current_user
 from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
+from app.gateway.browser_capability import browser_capability
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,6 @@ def _browser_tools_enabled() -> bool:
     server-side browser control the operator never turned on.
     """
     from alpha.config import get_app_config
-    from app.gateway.browser_capability import browser_capability
 
     with contextlib.suppress(Exception):
         capability = browser_capability(get_app_config())
@@ -77,9 +79,6 @@ async def _browser_thread_owned_by(thread_store, thread_id: str, user_id: str) -
 )
 @require_permission("threads", "write", owner_check=True, require_existing=True)
 async def navigate_browser(thread_id: ThreadId, body: BrowserNavigateRequest, request: Request) -> BrowserNavigateResponse:
-    from alpha.config.paths import get_paths
-    from alpha.runtime.user_context import get_effective_user_id
-
     user_id = str(request.state.auth.user.id)
     thread_store = getattr(request.app.state, "thread_store", None)
     if thread_store is None or not await _browser_thread_owned_by(thread_store, thread_id, user_id):
@@ -213,8 +212,6 @@ async def browser_stream(websocket: WebSocket, thread_id: ThreadId) -> None:
     metadata remain JSON. Client → server: input events (click, move, down, up,
     wheel, key, text, navigate) that drive the live page.
     """
-    from alpha.runtime.user_context import reset_current_user, set_current_user
-
     user = await _authenticate_ws(websocket)
     if user is None:
         await websocket.close(code=4401)

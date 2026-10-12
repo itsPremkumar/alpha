@@ -11,7 +11,6 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
-from alpha.config import limits
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.models import SwarmBudget, SwarmMode, is_terminal_swarm_status
@@ -158,7 +157,7 @@ class SwarmCreateRequest(BaseModel):
     objective: str | None = Field(default=None, min_length=3, max_length=32_000)
     mode: str = "auto"
     items: list[str] | None = Field(default=None, max_length=512)
-    max_concurrency: int = Field(default=8, ge=1, le=limits.MAX_SWARM_PLAN_CONCURRENCY)
+    max_concurrency: int = Field(default=8, ge=1, le=64)
     budget: SwarmBudgetRequest | None = None
     auto_replan: bool = False
     requires_consensus: bool = False

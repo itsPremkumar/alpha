@@ -9,17 +9,19 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from alpha.agents.memory.manager import get_memory_manager
+from alpha.config.agents_api_config import get_agents_api_config
 from alpha.config.agents_config import (
     AgentConfig,
     AgentDisplayName,
     AgentModelSettings,
+    list_custom_agents,
+    load_agent_config,
+    load_agent_soul,
+    preserve_non_managed_fields,
 )
 from alpha.config.app_config import get_app_config
 from alpha.config.paths import get_paths
-from alpha.persistence.agents import (
-    AgentDeleteOutcome,
-    get_agent_store,
-)
+from alpha.persistence.agents import AgentDeleteOutcome, AgentExistsError, get_agent_store
 from alpha.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
@@ -111,8 +113,6 @@ def _normalize_agent_name(name: str) -> str:
 
 def _require_agents_api_enabled() -> None:
     """Reject access unless the custom-agent management API is explicitly enabled."""
-    from alpha.config.agents_api_config import get_agents_api_config
-
     if not get_agents_api_config().enabled:
         raise HTTPException(
             status_code=403,
@@ -187,8 +187,6 @@ def _apply_model_behavior(config_data: dict, source: BaseModel, existing: AgentC
 
 def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False, *, user_id: str | None = None) -> AgentResponse:
     """Convert AgentConfig to AgentResponse."""
-    from alpha.config.agents_config import load_agent_soul
-
     soul: str | None = None
     if include_soul:
         soul = load_agent_soul(agent_cfg.name, user_id=user_id) or ""
@@ -220,8 +218,6 @@ async def list_agents() -> AgentsListResponse:
     Returns:
         List of all custom agents with their metadata and soul content.
     """
-    from alpha.config.agents_config import list_custom_agents
-
     _require_agents_api_enabled()
 
     user_id = get_effective_user_id()
@@ -290,8 +286,6 @@ async def get_agent(name: str) -> AgentResponse:
     Raises:
         HTTPException: 404 if agent not found.
     """
-    from alpha.config.agents_config import load_agent_config
-
     _require_agents_api_enabled()
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
@@ -330,9 +324,6 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
     Raises:
         HTTPException: 409 if agent already exists, 422 if name is invalid.
     """
-    from alpha.config.agents_config import load_agent_config
-    from alpha.persistence.agents import AgentExistsError
-
     _require_agents_api_enabled()
     _validate_agent_name(request.name)
     _validate_model_exists(request.model)
@@ -392,8 +383,6 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
     Raises:
         HTTPException: 404 if agent not found.
     """
-    from alpha.config.agents_config import load_agent_config, preserve_non_managed_fields
-
     _require_agents_api_enabled()
     _validate_agent_name(name)
     name = _normalize_agent_name(name)

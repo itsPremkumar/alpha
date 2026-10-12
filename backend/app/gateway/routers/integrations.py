@@ -17,6 +17,7 @@ from alpha.integrations.lark_cli import (
     LarkCliProbe,
     LarkConfigCompleteResult,
     LarkConfigStartResult,
+    LarkFlowSupersededError,
     LarkInstallResult,
     LarkIntegrationStatus,
     complete_lark_auth,
@@ -305,8 +306,6 @@ async def start_lark_app_config(body: LarkConfigStartRequest) -> LarkConfigStart
 
 @router.post("/lark/config/complete", response_model=LarkConfigCompleteResponse, summary="Complete Lark/Feishu App Configuration")
 async def complete_lark_app_config(request: Request, body: LarkConfigCompleteRequest, config: AppConfig = Depends(get_config)) -> LarkConfigCompleteResponse:
-    from alpha.integrations.lark_cli import LarkFlowSupersededError
-
     try:
         result = await asyncio.to_thread(
             complete_lark_config,
@@ -357,8 +356,6 @@ async def switch_lark_app_credentials(request: Request, body: LarkConfigCredenti
 
 @router.post("/lark/auth/start", response_model=LarkAuthStartResponse, summary="Start Lark/Feishu Browser Authorization")
 async def start_lark_browser_auth(body: LarkAuthStartRequest) -> LarkAuthStartResponse:
-    from alpha.integrations.lark_cli import LarkFlowSupersededError
-
     try:
         result = await asyncio.to_thread(
             start_lark_auth,
@@ -384,8 +381,6 @@ async def start_lark_browser_auth(body: LarkAuthStartRequest) -> LarkAuthStartRe
 
 @router.post("/lark/auth/complete", response_model=LarkAuthCompleteResponse, summary="Complete Lark/Feishu Browser Authorization")
 async def complete_lark_browser_auth(request: Request, body: LarkAuthCompleteRequest, config: AppConfig = Depends(get_config)) -> LarkAuthCompleteResponse:
-    from alpha.integrations.lark_cli import LarkFlowSupersededError
-
     try:
         result = await asyncio.to_thread(
             complete_lark_auth,

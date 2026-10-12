@@ -7,7 +7,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
+from alpha.runtime.secret_context import redact_metadata_secrets
+from alpha.utils.time import coerce_iso
 from app.gateway.authz import require_permission
+from app.gateway.deps import get_project_repo, get_thread_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -94,8 +97,6 @@ class ProjectThreadResponse(BaseModel):
     @field_validator("metadata", mode="before", check_fields=False)
     @classmethod
     def _redact_metadata_secrets(cls, value: Any) -> Any:
-        from alpha.runtime.secret_context import redact_metadata_secrets
-
         return redact_metadata_secrets(value)
 
 
@@ -119,8 +120,6 @@ def _not_found() -> HTTPException:
 @router.post("", response_model=ProjectResponse, status_code=201)
 @require_permission("projects", "write")
 async def create_project(body: ProjectCreateRequest, request: Request) -> ProjectResponse:
-    from app.gateway.deps import get_project_repo
-
     repo = get_project_repo(request)
     row = await repo.create(name=body.name, instructions=body.instructions, presentation=body.presentation)
 
@@ -142,8 +141,6 @@ async def create_project(body: ProjectCreateRequest, request: Request) -> Projec
 @router.get("", response_model=ProjectListResponse)
 @require_permission("projects", "read")
 async def list_projects(request: Request, status: ProjectStatus | None = None) -> ProjectListResponse:
-    from app.gateway.deps import get_project_repo
-
     repo = get_project_repo(request)
     return ProjectListResponse(projects=[_to_response(r) for r in await repo.list(status=status)])
 
@@ -151,8 +148,6 @@ async def list_projects(request: Request, status: ProjectStatus | None = None) -
 @router.get("/{project_id}", response_model=ProjectResponse)
 @require_permission("projects", "read")
 async def get_project(project_id: str, request: Request) -> ProjectResponse:
-    from app.gateway.deps import get_project_repo
-
     row = await get_project_repo(request).get(project_id)
     if row is None:
         raise _not_found()
@@ -162,8 +157,6 @@ async def get_project(project_id: str, request: Request) -> ProjectResponse:
 @router.patch("/{project_id}", response_model=ProjectResponse)
 @require_permission("projects", "write")
 async def patch_project(project_id: str, body: ProjectPatchRequest, request: Request) -> ProjectResponse:
-    from app.gateway.deps import get_project_repo
-
     row = await get_project_repo(request).patch(project_id, name=body.name, instructions=body.instructions, presentation=body.presentation)
     if row is None:
         raise _not_found()
@@ -173,8 +166,6 @@ async def patch_project(project_id: str, body: ProjectPatchRequest, request: Req
 @router.post("/{project_id}/archive", response_model=ProjectResponse)
 @require_permission("projects", "write")
 async def archive_project(project_id: str, request: Request) -> ProjectResponse:
-    from app.gateway.deps import get_project_repo
-
     row = await get_project_repo(request).set_status(project_id, "archived")
     if row is None:
         raise _not_found()
@@ -184,8 +175,6 @@ async def archive_project(project_id: str, request: Request) -> ProjectResponse:
 @router.post("/{project_id}/restore", response_model=ProjectResponse)
 @require_permission("projects", "write")
 async def restore_project(project_id: str, request: Request) -> ProjectResponse:
-    from app.gateway.deps import get_project_repo
-
     row = await get_project_repo(request).set_status(project_id, "active")
     if row is None:
         raise _not_found()
@@ -195,8 +184,6 @@ async def restore_project(project_id: str, request: Request) -> ProjectResponse:
 @router.delete("/{project_id}", status_code=204)
 @require_permission("projects", "delete")
 async def delete_project(project_id: str, request: Request) -> None:
-    from app.gateway.deps import get_project_repo
-
     if not await get_project_repo(request).delete(project_id):
         raise _not_found()
 
@@ -205,9 +192,6 @@ async def delete_project(project_id: str, request: Request) -> None:
 @require_permission("projects", "read")
 @require_permission("threads", "read")
 async def list_project_threads(project_id: str, request: Request, limit: int = Query(default=100, ge=1, le=1000), offset: int = Query(default=0, ge=0)) -> list[ProjectThreadResponse]:
-    from alpha.utils.time import coerce_iso
-    from app.gateway.deps import get_project_repo, get_thread_store
-
     if await get_project_repo(request).get(project_id) is None:
         raise _not_found()
     # Active members only, mirroring the sidebar's `archived: false` lists:
@@ -238,8 +222,6 @@ async def list_project_threads(project_id: str, request: Request, limit: int = Q
 
 
 async def _require_project(project_id: str, request: Request) -> None:
-    from app.gateway.deps import get_project_repo
-
     if await get_project_repo(request).get(project_id) is None:
         raise _not_found()
 
@@ -767,8 +749,6 @@ async def accept_handoff(project_id: str, handoff_id: str, body: AcceptHandoffRe
 @router.get("/{project_id}/events")
 @require_permission("projects", "read")
 async def read_project_events(project_id: str, request: Request, after_seq: int = Query(default=0, ge=0), limit: int = Query(default=200, ge=1, le=1000), q: str | None = Query(default=None, max_length=200)) -> dict:
-    from alpha.utils.time import coerce_iso
-
     await _require_project(project_id, request)
 
     def _do():

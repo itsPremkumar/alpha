@@ -10,26 +10,47 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.orchestrator.executors import (
-    bind_default_executors,
+from alpha.config.runtime_paths import runtime_home
+from alpha.orchestrator.executors import COMPENSATION_EXECUTOR, bind_default_executors, get_executor_registry
+from alpha.orchestrator.loop import ExecutionKernel, TurnContext, run_turn
+from alpha.orchestrator.replay import replay_run
+from alpha.workflow.drift import (
+    DEFAULT_DRIFT_THRESHOLD,
+    DRIFT_THRESHOLD_KEY,
+    GOAL_DRIFT_SAMPLES_KEY,
+    evaluate_trajectory,
+    resolve_goal,
+    samples_from_dicts,
 )
-from alpha.orchestrator.loop import (
-    ExecutionKernel,
-)
-from alpha.workflow.event_log import (
-    DurableEventLog,
-)
+from alpha.workflow.event_log import DurableEventLog, DurableEventLogError
 from alpha.workflow.events import WorkflowEvent, get_event_dispatcher
+from alpha.workflow.graph_diff import diff_plan_versions
 from alpha.workflow.models import (
+    PatchOperation,
+    WorkflowDefinition,
     WorkflowGraph,
+    WorkflowPatch,
+    WorkflowRunStatus,
 )
-from alpha.workflow.plan_graph import (
-    PlanGraphStore,
-)
+from alpha.workflow.plan_graph import PlanGraphError, PlanGraphStore, PlanVersionConflict
+from alpha.workflow.quarantine import QuarantineStatus, QuarantineStoreError
 from alpha.workflow.runtime import DynamicWorkflowEngine
-from alpha.workflow.triggers import (
-    TriggerStore,
+from alpha.workflow.time_travel import (
+    ForkError,
+    fork_run,
+    run_history,
+    run_report,
+    simulate_run,
 )
+from alpha.workflow.triggers import (
+    TriggerKind,
+    TriggerStore,
+    TriggerStoreError,
+    WorkflowTrigger,
+    cron_next_after,
+    fire_trigger_on_engine,
+)
+from alpha.workflow.worktrees import WorktreeStoreError
 from app.gateway.authz import require_permission
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -58,8 +79,6 @@ _DURABLE_LOGS: dict[str, DurableEventLog] = {}
 
 
 def _durable_event_sink(event: WorkflowEvent) -> None:
-    from alpha.config.runtime_paths import runtime_home
-
     root = runtime_home() / "workflow_store"
     key = str(root)
     log = _DURABLE_LOGS.get(key)
@@ -139,9 +158,6 @@ def _ensure_plan_base(
     same-version, same-graph record is idempotent; a different graph is never
     overwritten.
     """
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.workflow.plan_graph import PlanVersionConflict
-
     store = PlanGraphStore(runtime_home() / "workflow_store" / "plans")
     try:
         store.record_revision(
@@ -229,8 +245,6 @@ class WorkflowReplanRequest(BaseModel):
 @router.post("", status_code=201)
 @require_permission("runs", "create")
 async def register_workflow(body: WorkflowCreateRequest, request: Request) -> dict[str, Any]:
-    from alpha.workflow.models import WorkflowDefinition
-
     engine = get_workflow_engine()
     graph = WorkflowGraph(**body.graph) if body.graph else WorkflowGraph()
     if not graph.nodes:
@@ -438,10 +452,6 @@ async def perceive_dynamic_workflow(body: DynamicPerceiveRequest, request: Reque
 @router.post("/dynamic/execute", status_code=201)
 @require_permission("runs", "create")
 async def execute_dynamic_workflow(body: DynamicExecuteRequest, request: Request) -> dict[str, Any]:
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.orchestrator.executors import get_executor_registry
-    from alpha.workflow.plan_graph import PlanGraphError
-
     writable, durability_detail = await asyncio.to_thread(_store().probe_writable)
     if not writable:
         raise HTTPException(status_code=503, detail=f"workflow durability unavailable: {durability_detail}")
@@ -457,6 +467,7 @@ async def execute_dynamic_workflow(body: DynamicExecuteRequest, request: Request
     def _execute() -> dict[str, Any]:
         from alpha.bots.cloning import get_bot_clone_engine
         from alpha.bots.registry import get_bot_registry
+        from alpha.orchestrator.executors import get_executor_registry
         from alpha.skills.hub.discovery import get_skills_hub
         from alpha.skills.mcp_lifecycle import SkillMcpLifecycleManager
         from alpha.workflow.dynamic_assembler import DynamicResourceAssembler
@@ -609,8 +620,6 @@ async def get_workflow_run_history(run_id: str, request: Request) -> dict[str, A
     Indexes are 1-based and stable, so a client can quote one back to
     ``POST /runs/{run_id}/fork`` to branch from that exact point.
     """
-    from alpha.workflow.time_travel import ForkError, run_history
-
     engine = get_workflow_engine()
     run = engine.get_run(run_id)
     if not run:
@@ -632,8 +641,6 @@ async def get_workflow_run_report(run_id: str, request: Request) -> dict[str, An
     verified remains the executor evidence contract, and a completed run is never
     presented as verified here.
     """
-    from alpha.workflow.time_travel import ForkError, run_report
-
     engine = get_workflow_engine()
     run = engine.get_run(run_id)
     if not run:
@@ -659,8 +666,6 @@ async def fork_workflow_run(run_id: str, body: WorkflowForkRequest, request: Req
     engine's idempotency keys are per-run and cannot protect them here, and the
     response says so.
     """
-    from alpha.workflow.time_travel import ForkError, fork_run
-
     engine = get_workflow_engine()
     run = engine.get_run(run_id)
     if not run:
@@ -697,8 +702,6 @@ async def simulate_workflow(body: WorkflowSimulateRequest, request: Request) -> 
     ``dry_run_simulation`` and reports no acceptance: it says which nodes the
     scheduler would reach, never that any work was done.
     """
-    from alpha.workflow.time_travel import ForkError, simulate_run
-
     engine = get_workflow_engine()
     definition = engine.get_definition(body.workflow_id)
     if not definition:
@@ -838,8 +841,6 @@ def get_workflow_trigger_store() -> TriggerStore:
     that redirects ``ALPHA_HOME`` gets its own store and can never write into
     the real workspace's schedules.
     """
-    from alpha.config.runtime_paths import runtime_home
-
     root = runtime_home() / "workflow_store"
     key = str(root)
     store = _TRIGGER_STORES.get(key)
@@ -878,8 +879,6 @@ async def create_workflow_trigger(body: WorkflowTriggerCreateRequest, request: R
     trigger with no name are all refusals naming the real reason, so nothing
     is stored that could never fire. Firing stays host-owned.
     """
-    from alpha.workflow.triggers import TriggerKind, TriggerStoreError, WorkflowTrigger, cron_next_after
-
     engine = get_workflow_engine()
     owner = _workflow_owner(request)
     definition = engine.get_definition(body.workflow_id)
@@ -923,8 +922,6 @@ async def create_workflow_trigger(body: WorkflowTriggerCreateRequest, request: R
 @require_permission("runs", "read")
 async def list_workflow_triggers(request: Request) -> dict[str, Any]:
     """This owner's schedules. ``owner_id=None`` is the unscoped administrative read."""
-    from alpha.workflow.triggers import TriggerStoreError
-
     owner = _workflow_owner(request)
     try:
         triggers = _trigger_store().list(owner_id=owner)
@@ -941,8 +938,6 @@ async def due_workflow_triggers(request: Request, limit: int = 50) -> dict[str, 
     Event triggers are never returned: they have no time basis, so a caller
     asking "what is due?" must not be handed a trigger it cannot decide about.
     """
-    from alpha.workflow.triggers import TriggerStoreError
-
     owner = _workflow_owner(request)
     try:
         due = _trigger_store().due_triggers(limit=limit)
@@ -955,8 +950,6 @@ async def due_workflow_triggers(request: Request, limit: int = 50) -> dict[str, 
 @router.get("/triggers/{trigger_id}")
 @require_permission("runs", "read")
 async def get_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
-    from alpha.workflow.triggers import TriggerStoreError
-
     store = _trigger_store()
     try:
         trigger = store.get(trigger_id)
@@ -979,8 +972,6 @@ async def fire_workflow_trigger(trigger_id: str, request: Request) -> dict[str, 
     reports the started run or the real refusal; it never claims work that
     did not run.
     """
-    from alpha.workflow.triggers import TriggerStoreError, fire_trigger_on_engine
-
     engine = get_workflow_engine()
     store = _trigger_store()
     try:
@@ -999,8 +990,6 @@ async def fire_workflow_trigger(trigger_id: str, request: Request) -> dict[str, 
 @router.post("/triggers/{trigger_id}/arm")
 @require_permission("runs", "create")
 async def arm_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
-    from alpha.workflow.triggers import TriggerStoreError
-
     store = _trigger_store()
     try:
         trigger = store.get(trigger_id)
@@ -1019,8 +1008,6 @@ async def arm_workflow_trigger(trigger_id: str, request: Request) -> dict[str, A
 @require_permission("runs", "create")
 async def disarm_workflow_trigger(trigger_id: str, request: Request, reason: str = "disarmed by operator") -> dict[str, Any]:
     """Hold a schedule without deleting it. The reason is recorded."""
-    from alpha.workflow.triggers import TriggerStoreError
-
     store = _trigger_store()
     try:
         trigger = store.get(trigger_id)
@@ -1038,8 +1025,6 @@ async def disarm_workflow_trigger(trigger_id: str, request: Request, reason: str
 @router.delete("/triggers/{trigger_id}")
 @require_permission("runs", "create")
 async def delete_workflow_trigger(trigger_id: str, request: Request) -> dict[str, Any]:
-    from alpha.workflow.triggers import TriggerStoreError
-
     store = _trigger_store()
     try:
         trigger = store.get(trigger_id)
@@ -1067,8 +1052,6 @@ async def list_quarantined_nodes(request: Request, status: str | None = None, li
     anything, and replaying one applies a real typed patch through the
     engine's own optimistic-concurrency check.
     """
-    from alpha.workflow.quarantine import QuarantineStatus, QuarantineStoreError
-
     engine = get_workflow_engine()
     owner = _workflow_owner(request)
     parsed: QuarantineStatus | None = None
@@ -1087,8 +1070,6 @@ async def list_quarantined_nodes(request: Request, status: str | None = None, li
 @router.get("/quarantine/{record_id}")
 @require_permission("runs", "read")
 async def get_quarantined_node(record_id: str, request: Request) -> dict[str, Any]:
-    from alpha.workflow.quarantine import QuarantineStoreError
-
     engine = get_workflow_engine()
     try:
         record = engine.quarantine.get(record_id)
@@ -1116,9 +1097,6 @@ async def replay_quarantined_node(record_id: str, body: QuarantineReplayRequest,
     on the record as a refusal — a refused replay leaves the record open,
     because closing it would lose the work.
     """
-    from alpha.workflow.models import PatchOperation, WorkflowPatch
-    from alpha.workflow.quarantine import QuarantineStoreError
-
     engine = get_workflow_engine()
     try:
         record = engine.quarantine.get(record_id)
@@ -1165,8 +1143,6 @@ class QuarantineDiscardRequest(BaseModel):
 @require_permission("runs", "cancel")
 async def discard_quarantined_node(record_id: str, body: QuarantineDiscardRequest, request: Request) -> dict[str, Any]:
     """Close a record as deliberately not replayed. A reason is required."""
-    from alpha.workflow.quarantine import QuarantineStoreError
-
     engine = get_workflow_engine()
     try:
         record = engine.quarantine.get(record_id)
@@ -1195,8 +1171,6 @@ async def get_workflow_run_drift(run_id: str, request: Request) -> dict[str, Any
     with the real count. The verdict changes nothing — it is a measurement an
     operator (or an approved replan) acts on, never an action the engine took.
     """
-    from alpha.workflow.drift import DEFAULT_DRIFT_THRESHOLD, DRIFT_THRESHOLD_KEY, GOAL_DRIFT_SAMPLES_KEY, evaluate_trajectory, resolve_goal, samples_from_dicts
-
     engine = get_workflow_engine()
     run = engine.get_run(run_id)
     if not run:
@@ -1224,8 +1198,6 @@ async def get_workflow_run_drift(run_id: str, request: Request) -> dict[str, Any
 @require_permission("runs", "read")
 async def list_run_worktrees(run_id: str, request: Request) -> dict[str, Any]:
     """This run's worktree claims: what was checked out, where, and at what head."""
-    from alpha.workflow.worktrees import WorktreeStoreError
-
     engine = get_workflow_engine()
     run = engine.get_run(run_id)
     if not run:
@@ -1272,7 +1244,6 @@ async def list_workflow_executors(request: Request) -> dict[str, Any]:
     accident at import time.
     """
     from alpha.orchestrator.domain_executors import DOMAIN_EXECUTORS
-    from alpha.orchestrator.executors import get_executor_registry
 
     registry = get_executor_registry()
     bound = list(registry.names())
@@ -1380,10 +1351,6 @@ async def cancel_workflow_run(
 @router.post("/runs/{run_id}/patch")
 @require_permission("runs", "create")
 async def patch_workflow_run(run_id: str, patch_data: dict[str, Any], request: Request) -> dict[str, Any]:
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.workflow.models import WorkflowPatch
-    from alpha.workflow.plan_graph import PlanGraphError
-
     try:
         run = get_workflow_engine().get_run(run_id)
         if not run:
@@ -1431,9 +1398,6 @@ async def patch_workflow_run(run_id: str, patch_data: dict[str, Any], request: R
 @router.post("/runs/{run_id}/replan")
 @require_permission("runs", "create")
 async def replan_workflow_run(run_id: str, body: WorkflowReplanRequest, request: Request) -> dict[str, Any]:
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.workflow.models import WorkflowRunStatus
-    from alpha.workflow.plan_graph import PlanGraphError
     from alpha.workflow.replanner import RuntimeReplanner
 
     engine = get_workflow_engine()
@@ -1523,7 +1487,6 @@ async def replan_workflow_run(run_id: str, body: WorkflowReplanRequest, request:
 @require_permission("runs", "create")
 async def compensate_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     """Execute only real saga callbacks; never manufacture a rollback receipt."""
-    from alpha.orchestrator.executors import COMPENSATION_EXECUTOR, get_executor_registry
     from alpha.workflow.models import NodeStatus, NodeType, WorkflowRunStatus
 
     engine = get_workflow_engine()
@@ -1649,8 +1612,6 @@ async def run_workflow_turn(body: WorkflowTurnRequest, request: Request) -> dict
     mode mapper refuses starts NO run and surfaces the mapper's exact reason as
     a 400 — never a silent success.
     """
-    from alpha.orchestrator.loop import TurnContext, run_turn
-
     if body.dynamic:
         from alpha.orchestrator.dynamic_service import DynamicRequest, DynamicWorkflowService
         from alpha.orchestrator.executors import DIGEST_EXECUTOR
@@ -1725,8 +1686,6 @@ async def replay_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     values on both sides). ``events_emitted_during_replay`` must be 0: replay
     reads the shared log and never writes to it.
     """
-    from alpha.orchestrator.replay import replay_run
-
     engine = get_workflow_engine()
     live = engine.get_run(run_id)
     if not live:
@@ -1779,10 +1738,6 @@ async def recover_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     The report says what was folded, what was reconciled and what a live
     worker still owns. A rebuilt run is not a verified run.
     """
-    from alpha.orchestrator.replay import replay_run
-    from alpha.workflow.event_log import DurableEventLogError
-    from alpha.workflow.models import WorkflowDefinition
-
     await _assert_persisted_run_owner(run_id, request)
     engine = get_workflow_engine()
 
@@ -1857,8 +1812,6 @@ async def recover_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
 
 def _store() -> DurableEventLog:
     """The durable store for the CURRENT runtime home (env-resolved per call)."""
-    from alpha.config.runtime_paths import runtime_home
-
     root = runtime_home() / "workflow_store"
     key = str(root)
     log = _DURABLE_LOGS.get(key)
@@ -1931,8 +1884,6 @@ async def _assert_persisted_run_owner(run_id: str, request: Request) -> None:
     legacy records without an owner remain readable under the repository's
     historical shared-resource rule.  Corrupt logs fail closed.
     """
-    from alpha.workflow.event_log import DurableEventLogError
-
     live = get_workflow_engine().get_run(run_id)
     if live is not None:
         _assert_workflow_owner(live, request)
@@ -2014,8 +1965,6 @@ async def get_durable_workflow_events(run_id: str, request: Request) -> dict[str
 @require_permission("runs", "create")
 async def project_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     """Materialize the live run's projection so a fresh process can hydrate it."""
-    from alpha.workflow.event_log import DurableEventLogError
-
     engine = get_workflow_engine()
     live = engine.get_run(run_id)
     if not live:
@@ -2075,9 +2024,6 @@ async def hydrate_workflow_engine(request: Request) -> dict[str, Any]:
 @require_permission("runs", "read")
 async def list_workflow_plans(workflow_id: str, request: Request) -> dict[str, Any]:
     """Durable graph-revision history for a workflow (plan-graph store)."""
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.workflow.plan_graph import PlanGraphError
-
     definition = get_workflow_engine().get_definition(workflow_id)
     if definition:
         _assert_workflow_owner(definition, request)
@@ -2106,9 +2052,6 @@ async def record_workflow_plan(workflow_id: str, request: Request) -> dict[str, 
     Refuses when that version already exists (``PlanVersionConflict``) — history
     is append-only, never rewritten in place.
     """
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.workflow.plan_graph import PlanGraphError, PlanVersionConflict
-
     engine = get_workflow_engine()
     definition = engine.get_definition(workflow_id)
     if not definition:
@@ -2158,10 +2101,6 @@ async def diff_workflow_plan(workflow_id: str, version: int, request: Request, b
     reported as a 400 naming the reason rather than as an empty "identical"
     diff, which would assert an equality nobody measured.
     """
-    from alpha.config.runtime_paths import runtime_home
-    from alpha.workflow.graph_diff import diff_plan_versions
-    from alpha.workflow.plan_graph import PlanGraphError
-
     owner = _workflow_owner(request)
     base_version = version - 1 if base is None else base
 

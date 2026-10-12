@@ -9,8 +9,13 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import AwareDatetime, BaseModel, Field
 
-from alpha.config.agents_config import (
-    load_agent_config,
+from alpha.config.agents_config import AGENT_NAME_PATTERN, load_agent_config
+from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
+from alpha.scheduler.schedules import (
+    MAX_INTERVAL_SECONDS,
+    normalize_cron_expression,
+    parse_interval_seconds,
+    validate_timezone,
 )
 from alpha.scheduler.schedules import (
     next_run_at as compute_next_run_at,
@@ -40,8 +45,6 @@ def _active_occurrence_conflict_detail(status: str) -> str:
 
 
 def _validate_interval_seconds(schedule_spec: dict[str, Any], min_seconds: int) -> int:
-    from alpha.scheduler.schedules import MAX_INTERVAL_SECONDS, parse_interval_seconds
-
     every_seconds = parse_interval_seconds(schedule_spec)
     if every_seconds < min_seconds:
         raise HTTPException(
@@ -62,8 +65,6 @@ async def resolve_scheduled_task_assistant_id(raw: str | None, *, user_id: str) 
     Custom names are normalized the same way IM/run creation already does
     (lowercase, underscore to hyphen) and must exist for this owner.
     """
-    from alpha.config.agents_config import AGENT_NAME_PATTERN
-
     if raw is None:
         return _DEFAULT_ASSISTANT_ID
     value = raw.strip()
@@ -144,8 +145,6 @@ class CronPreviewResponse(BaseModel):
 
 def _preview_cron(body: CronPreviewRequest, reference: datetime) -> CronPreviewResponse:
     """Calculate advisory occurrences with the same semantics as scheduling."""
-    from alpha.scheduler.schedules import normalize_cron_expression, validate_timezone
-
     try:
         cron = normalize_cron_expression(body.cron)
         zone = ZoneInfo(validate_timezone(body.timezone))
@@ -211,8 +210,6 @@ async def scheduled_task_queue_health(request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def create_scheduled_task(request: Request, body: ScheduledTaskCreateRequest):
-    from alpha.scheduler.schedules import normalize_cron_expression, validate_timezone
-
     config = get_config()
     repo = get_scheduled_task_repo(request)
     thread_store = get_thread_store(request)
@@ -292,9 +289,6 @@ async def get_scheduled_task(task_id: str, request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def update_scheduled_task(task_id: str, request: Request, body: ScheduledTaskUpdateRequest):
-    from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
-    from alpha.scheduler.schedules import normalize_cron_expression, parse_interval_seconds, validate_timezone
-
     config = get_config()
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
@@ -439,8 +433,6 @@ async def pause_scheduled_task(task_id: str, request: Request):
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def resume_scheduled_task(task_id: str, request: Request):
-    from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
-
     repo = get_scheduled_task_repo(request)
     user = await get_optional_user_from_request(request)
     if user is None:

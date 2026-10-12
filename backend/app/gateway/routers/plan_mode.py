@@ -14,6 +14,10 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from alpha.planning.bridge import AutonomousDispatchBridge
+from alpha.planning.meta_planner import CognitiveMetaPlanner
+from app.gateway.deps import require_admin_user
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan-mode", tags=["plan-mode"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to trigger autonomous dispatch."
@@ -37,8 +41,6 @@ class PlanDispatchRequest(BaseModel):
 @router.post("/evaluate")
 async def evaluate_plan_mode(payload: PlanEvaluateRequest):
     """Evaluates the user prompt across all 8 strategic dimensions and returns the compiled MetaPlan."""
-    from alpha.planning.meta_planner import CognitiveMetaPlanner
-
     plan = await asyncio.to_thread(
         CognitiveMetaPlanner.evaluate_and_plan,
         prompt=payload.prompt,
@@ -51,10 +53,6 @@ async def evaluate_plan_mode(payload: PlanEvaluateRequest):
 @router.post("/dispatch")
 async def dispatch_plan_mode(payload: PlanDispatchRequest, request: Request):
     """Evaluates the prompt and immediately executes autonomous dispatch to the target subsystem."""
-    from alpha.planning.bridge import AutonomousDispatchBridge
-    from alpha.planning.meta_planner import CognitiveMetaPlanner
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     plan = await asyncio.to_thread(
@@ -158,8 +156,6 @@ async def set_execution_mode(payload: ExecutionModeRequest, request: Request):
     been re-read and proven to contain the mode. A failed write returns a 5xx
     carrying ``persisted: false`` plus the real error; an unknown mode is 422.
     """
-    from app.gateway.deps import require_admin_user
-
     await require_admin_user(request, detail=_MODE_ADMIN_REQUIRED_DETAIL)
 
     from alpha.runtime.execution_mode import set_mode

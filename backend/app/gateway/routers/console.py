@@ -22,7 +22,10 @@ from sqlalchemy import func, select
 
 from alpha.config import get_app_config
 from alpha.config.agents_config import list_custom_agents
+from alpha.config.model_catalog_schema import ModelPricing
 from alpha.persistence.engine import get_session_factory
+from alpha.persistence.run.model import RunRow
+from alpha.persistence.thread_meta.model import ThreadMetaRow
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_current_user
 
@@ -179,8 +182,6 @@ def _build_pricing_map() -> dict[str, _ModelPricing]:
     model that declares no ``pricing``. It is applied with ``setdefault`` so a
     per-model entry always wins, which is what both schema descriptions promise.
     """
-    from alpha.config.model_catalog_schema import ModelPricing
-
     try:
         config = get_app_config()
         models = config.models
@@ -345,9 +346,6 @@ def _run_cost(
 @require_permission("runs", "read")
 async def console_stats(request: Request) -> ConsoleStatsResponse:
     """Return the dashboard's headline counters."""
-    from alpha.persistence.run.model import RunRow
-    from alpha.persistence.thread_meta.model import ThreadMetaRow
-
     sf = _session_factory_or_503()
     user_id = await get_current_user(request)
     run_where = (RunRow.operation_kind == "run",)
@@ -435,9 +433,6 @@ async def console_runs(
     status: str | None = Query(default=None, description="Filter by run status (e.g. running, success, error)"),
 ) -> ConsoleRunsResponse:
     """Return a page of the user's runs across all threads."""
-    from alpha.persistence.run.model import RunRow
-    from alpha.persistence.thread_meta.model import ThreadMetaRow
-
     sf = _session_factory_or_503()
     user_id = await get_current_user(request)
 
@@ -508,8 +503,6 @@ async def console_usage(
     tz_offset_minutes: int = Query(default=0, ge=-840, le=840, description="Local-time offset from UTC for day bucketing"),
 ) -> ConsoleUsageResponse:
     """Aggregate token usage by local day and by model."""
-    from alpha.persistence.run.model import RunRow
-
     sf = _session_factory_or_503()
     user_id = await get_current_user(request)
 
@@ -607,7 +600,6 @@ async def console_insights(
 ) -> dict:
     """Aggregate recent runs through the insights summarizer."""
     from alpha.learning.insights import format_text, summarize
-    from alpha.persistence.run.model import RunRow
 
     sf = _session_factory_or_503()
     user_id = await get_current_user(request)
