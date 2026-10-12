@@ -313,6 +313,11 @@ def test_the_surface_list_covers_every_nginx_config_in_the_repository() -> None:
     # that must never be committed as a routing surface.
     import os  # noqa: PLC0415
 
+    # ``.worktrees`` and ``.claude`` hold git worktrees — checkouts of *this*
+    # repository, not distinct deployment surfaces. Walking into them re-enumerates
+    # the very files the scan already covers once per worktree and then reports
+    # them as undeclared, so the failure is an artefact of how many worktrees a
+    # developer happens to have checked out, not a real drift in routing.
     prune = {
         ".git",
         ".tools",
@@ -325,6 +330,8 @@ def test_the_surface_list_covers_every_nginx_config_in_the_repository() -> None:
         "tests",
         "backend",
         "frontend",
+        ".worktrees",
+        ".claude",
     }
     tracked: list[Path] = []
     for root in ("docker", "deploy", "build", "scripts", "."):
