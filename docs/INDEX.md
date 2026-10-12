@@ -7,6 +7,7 @@
 
 ## Architecture
 
+- [AGENT_RESPONSE_UI.md](AGENT_RESPONSE_UI.md) — Design record for the chat transcript's agent-response surfaces: kind-specialised tool cards, terminal, diff and subagent blocks, and the honesty contract that keeps an unmeasured field rendering nothing rather than zero.
 - [ALPHA-WORKFLOW-ARCHITECTURE.md](ALPHA-WORKFLOW-ARCHITECTURE.md) — Dynamic workflow engine architecture: layer ownership, attempt/lease lifecycle, orphan recovery, and the honesty boundaries.
 - [ALPHA_ARCHITECTURE_AUDIT.md](ALPHA_ARCHITECTURE_AUDIT.md) — Phase 0 discovery audit: confirmed system map, component cards, capability matrix, and a code-evidenced risk register.
 - [APEX_INTEGRATION_MAP.md](APEX_INTEGRATION_MAP.md) — Phase 0 inventory: which APEX specification sections already exist in this repository, which enforcement site owns each invariant, and what was deliberately not built.

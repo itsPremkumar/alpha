@@ -155,6 +155,10 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "AGENT_RESPONSE_UI.md": DocumentSpec(
+        "architecture",
+        "Design record for the chat transcript's agent-response surfaces: kind-specialised tool cards, terminal, diff and subagent blocks, and the honesty contract that keeps an unmeasured field rendering nothing rather than zero.",
+    ),
     "ARENA.md": DocumentSpec(
         "operations",
         "Operating an arena tournament: the call arithmetic and confirmation gate, profiles and modes, judge blinding, hard gates and the repair loop, and what the engine deliberately does not claim.",
