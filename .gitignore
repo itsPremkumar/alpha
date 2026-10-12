@@ -308,3 +308,24 @@ backend/.tmp/
 # written beside generated output (`*.bak` matches no tracked file).
 /nul
 *.bak
+/scripts/scan_routes.py
+
+# Windows reserved-name file created by a mistyped redirect, and backup copies
+# written beside generated output (`*.bak` matches no tracked file).
+/nul
+*.bak
+
+# --- Captured UI evidence -----------------------------------------------------
+# scripts/e2e/screenshots.mjs writes a PNG per route plus report.json into
+# docs/evidence/<domain>/<date>/<run>/. A 38-route sweep is ~3.4 MB of PNG and a
+# ~280 KB report, and every re-run adds another dated directory, so the output
+# grows without bound and each run records this machine's absolute paths.
+# The capture is evidence while a defect is being measured, not a tracked
+# artifact: nothing links to these files, and a screenshot is only meaningful
+# alongside the run that produced it.
+#
+# Brand assets are deliberately NOT matched by this. frontend/public/ and
+# electron/assets/ hold the tracked logo crops, and the root guide requires them
+# to be regenerated and committed together with the poster.
+/screenshots/
+/docs/evidence/
