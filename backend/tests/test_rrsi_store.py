@@ -187,7 +187,7 @@ def test_absent_is_not_corrupt(tmp_path):
 
 def test_a_refused_save_is_reported_not_raised(tmp_path):
     store = _store(tmp_path)
-    write = store.save({"round": 1})  # type: ignore[arg-type] - the refusal is the contract under test
+    write = store.save({"round": 1})  # type: ignore[arg-type]  # the refusal is the contract under test
     assert isinstance(write, DurableWrite)
     assert write.ok is False
     assert "takes a RoundState" in (write.error or "")

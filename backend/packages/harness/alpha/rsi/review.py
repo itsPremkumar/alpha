@@ -407,7 +407,7 @@ def open_review(
     request = ApprovalQueue(project_id).request_approval(
         bot_name=BOT_NAME,
         action_type=ACTION_TYPE,
-        risk_level=RISK_LEVELS[risk],  # type: ignore[arg-type] — validated against RISK_LEVELS above
+        risk_level=RISK_LEVELS[risk],  # type: ignore[arg-type]  # validated against RISK_LEVELS above
         details={
             "candidate_id": candidate_id,
             "risk": risk,
