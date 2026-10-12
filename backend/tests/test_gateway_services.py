@@ -1916,15 +1916,22 @@ def test_inject_authenticated_user_context_overrides_client_user_id():
     assert config["context"]["user_id"] == "auth-user-42"
 
 
-def test_merge_run_context_overrides_propagates_user_id():
-    """Regression for PR #3294: ``user_id`` from ``body.context`` must land in
-    ``config['context']`` so non-web callers (e.g. IM channels) keep their identity
-    on ``ToolRuntime.context``.
-    """
+def test_merge_run_context_overrides_does_not_trust_external_user_id():
+    """A public caller cannot select another principal through body.context."""
     from app.gateway.services import build_run_config, merge_run_context_overrides
 
     config = build_run_config("thread-1", None, None)
     merge_run_context_overrides(config, {"user_id": "channel-user-7"})
+
+    assert "user_id" not in config["context"]
+
+
+def test_internal_context_overrides_preserve_resolved_channel_user_id():
+    """Trusted internal adapters may carry their resolved end-user identity."""
+    from app.gateway.services import build_run_config, merge_run_context_overrides
+
+    config = build_run_config("thread-1", None, None)
+    merge_run_context_overrides(config, {"user_id": "channel-user-7"}, internal=True)
 
     assert config["context"]["user_id"] == "channel-user-7"
 
@@ -2178,10 +2185,9 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
             )
             await record.task
 
-        # The run is additionally stamped with the server-issued trace id;
-        # the caller's own keys pass through untouched, and both metadata forks
-        # agree. Thread metadata is not run-scoped -- one thread spans many
-        # runs and many trace ids -- so it keeps only what the caller sent.
+        # The run is stamped with a server-issued trace id and strips APEX host
+        # metadata supplied by an ordinary caller; only the validated internal
+        # APEX path may bind a run to an executive session.
         assert record.metadata[ALPHA_TRACE_METADATA_KEY]
         expected_run_metadata = {key: value for key, value in metadata.items() if not key.startswith("apex_")}
         assert record.metadata == {
@@ -2189,7 +2195,7 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
             ALPHA_TRACE_METADATA_KEY: record.metadata[ALPHA_TRACE_METADATA_KEY],
         }
         assert captured["config"]["metadata"] == record.metadata
-        assert (await thread_store.get(thread_id))["metadata"] == metadata
+        assert (await thread_store.get(thread_id))["metadata"] == expected_run_metadata
 
     asyncio.run(_scenario())
 

@@ -701,24 +701,36 @@ _INTERNAL_ONLY_CONTEXT_KEYS: frozenset[str] = _CONTEXT_INTERNAL_CALLER_KEYS | _C
 def strip_internal_context_keys(config: dict[str, Any]) -> None:
     """Drop internal-only keys a non-internal caller smuggled into the run config.
 
-    Gating :func:`merge_run_context_overrides` is not enough on its own:
-    ``build_run_config`` copies a client-supplied ``body.config['context']`` /
-    ``body.config['configurable']`` verbatim, and a client-supplied
-    ``body.config`` key falls through to the top-level ``config`` dict. So the
-    same keys must be scrubbed from the two sections and from the top level
-    of the assembled config.
+    ``build_run_config`` copies a client-supplied ``body.config['context']``
+    / ``body.config['configurable']`` verbatim into these sub-dicts, and
+    ``merge_run_context_overrides`` may have added caller-controlled copies
+    of server-owned keys (``user_id``, ``thread_id``, ``run_id``,
+    ``run``) alongside them. ``build_run_config`` also re-writes the
+    thread_id into ``configurable`` from the URL path, so the copy that
+    lives in ``context`` is the one a client can forge.
+
+    Scrubbing must therefore reach the same objects that were assembled
+    from the client payload: the ``configurable`` and ``context`` sub-dicts,
+    AND the top level of the assembled config, must never carry a
+    client-supplied copy of a key the server owns.
     """
-    for section in ("context", "configurable"):
+    for section in ("configurable", "context"):
         value = config.get(section)
         if isinstance(value, dict):
             for key in _INTERNAL_ONLY_CONTEXT_KEYS:
                 value.pop(key, None)
-    for key in _INTERNAL_ONLY_CONTEXT_KEYS | {
-        "run",
-        "run_id",
-        "thread_id",
-        "user_id",
-    }:
+            for key in _SERVER_OWNED_RUNTIME_CONTEXT_KEYS:
+                value.pop(key, None)
+    for key in (
+        _INTERNAL_ONLY_CONTEXT_KEYS
+        | _SERVER_OWNED_RUNTIME_CONTEXT_KEYS
+        | {
+            "run",
+            "run_id",
+            "thread_id",
+            "user_id",
+        }
+    ):
         config.pop(key, None)
 
 
@@ -728,11 +740,10 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
     to LangGraph ``ToolRuntime.context`` consumers (e.g. the ``setup_agent`` tool —
     see issue #2677).
 
-    ``user_id`` is intentionally propagated into ``config['context']`` in addition to
-    the whitelisted keys, so non-web callers (e.g. IM channels) that supply identity in
-    ``body.context`` keep it on ``ToolRuntime.context``. It is merged with
-    ``setdefault`` so a server-authenticated id stamped by
-    :func:`inject_authenticated_user_context` always wins over the client-supplied one.
+    ``user_id`` is propagated into ``config['context']`` only for trusted internal
+    callers, so channel/scheduler adapters can preserve their server-resolved end-user
+    identity. External callers never reach that branch; their identity is stamped from
+    Gateway authentication by :func:`inject_authenticated_user_context`.
 
     :data:`_CONTEXT_INTERNAL_CALLER_KEYS` are also forwarded when ``internal``
     is True; for non-internal callers those keys are dropped from client requests
@@ -763,8 +774,11 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
         for key in _CONTEXT_RUNTIME_ONLY_KEYS:
             if key in context and isinstance(runtime_context, dict):
                 runtime_context.setdefault(key, context[key])
-    if "user_id" in context and isinstance(runtime_context, dict):
-        runtime_context.setdefault("user_id", context["user_id"])
+        # Only the Gateway's authenticated internal channel/scheduler path may
+        # carry the end-user identity it resolved before dispatch. External
+        # callers never reach this branch; their user_id is stamped from auth.
+        if "user_id" in context and isinstance(runtime_context, dict):
+            runtime_context.setdefault("user_id", context["user_id"])
 
 
 async def resolve_trusted_internal_owner_for_attribution(request: Request, owner_user_id: str | None) -> Any | None:

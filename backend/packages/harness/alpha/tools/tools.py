@@ -150,7 +150,6 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         goal_engine_tool,
         goal_integrity_tool,
         group_chat_tool,
-        harness_refine_tool,
         hashline_edit,
         hashline_read,
         hyperplan_review_manage,
@@ -224,6 +223,7 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         war_room_tool,
         workflow_dag_manage,
     )
+    from alpha.tools.builtins.harness_refine_tool import harness_refine_tool
 
     # This export has the same name as its submodule. If the submodule was
     # imported first, Python exposes the module on the package object and a

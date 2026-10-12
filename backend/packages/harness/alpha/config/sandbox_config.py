@@ -1,5 +1,5 @@
 import ipaddress
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -136,6 +136,26 @@ class VolumeMountConfig(BaseModel):
 class SandboxConfig(BaseModel):
     """Config section for a sandbox.
 
+    Note on naming: the old combined key ``allow_host_bash`` used to carry
+    *both* host-side switches, ``allow_host_bash`` (a subprocess kill switch)
+    and ``allow_in_process_repl`` (an in-process ``exec()`` kill switch).
+
+    These are two independent levers with different blast radii and different
+    defaults, and they must not be conflated:
+
+    * ``allow_host_bash`` - whether the ``bash`` tool may run host commands via
+      ``subprocess``. Default ``False``.
+    * ``allow_in_process_repl`` - whether the ``python_repl`` tool may run
+      Python via ``exec()`` inside the Gateway process. Default ``False``.
+
+    Attempts to set ``allow_host_bash`` to a value that plausibly meant the
+    combined key (non-``bool``) are refused. Setting a single boolean for the
+    combined key no longer reproduces the pre-split behaviour: an operator who
+    had ``allow_host_bash: true`` and expected ``python_repl`` to be enabled
+    must now set ``allow_in_process_repl: true`` explicitly. The REPL has no
+    sandbox boundary at all and cannot be confined by environment scrubbing, so
+    it never inferred ``True`` from the bash switch.
+
     Common options:
         use: Class path of the sandbox provider (required)
         allow_host_bash: Enable host-side bash execution for LocalSandboxProvider.
@@ -144,8 +164,8 @@ class SandboxConfig(BaseModel):
     AioSandboxProvider, BoxliteProvider, E2BSandboxProvider, and OpenSandboxProvider shared options:
         image: Sandbox image to use (Docker/AIO, BoxLite OCI, or OpenSandbox image)
         replicas: Positive provider capacity. E2B shares it across Gateway
-            workers when ownership uses Redis; other modes/providers keep
-            process-local accounting.
+        workers when ownership uses Redis; other modes/providers keep
+        process-local accounting.
         idle_timeout: Idle timeout in seconds before released warm sandboxes/VMs are stopped (default: 600 = 10 minutes). Set to 0 to disable.
         environment: Environment variables to inject into the sandbox (values starting with $ are resolved from host env)
 
@@ -161,7 +181,7 @@ class SandboxConfig(BaseModel):
 
     AioSandboxProvider and E2BSandboxProvider shared options:
         ownership: Cross-instance sandbox ownership store (memory | redis). Multi-instance
-            deployments sharing a sandbox backend need redis; see SandboxOwnershipConfig.
+        deployments sharing a sandbox backend need redis; see SandboxOwnershipConfig.
 
     OpenSandboxProvider specific options:
         api_key, domain, protocol, request_timeout, use_server_proxy: OpenSandbox
@@ -192,6 +212,30 @@ class SandboxConfig(BaseModel):
             "trusted local environments."
         ),
     )
+
+    @field_validator("allow_host_bash", "allow_in_process_repl", mode="before")
+    @classmethod
+    def _reject_bool_strings(cls, value: Any) -> Any:
+        """Refuse string booleans at the field boundary.
+
+        Pydantic coerces ``"true"``/``"false"`` (and ``1``/``0``/``yes``/``no``)
+        into a bool *after* the field validator runs, so a value that the old
+        single-key config carried (``allow_host_bash: true``) would otherwise be
+        accepted as a legitimately typed bool. The two switches are independent:
+        an operator who had ``allow_host_bash: true`` and expected
+        ``python_repl`` to be enabled must now set
+        ``allow_in_process_repl: true`` explicitly. A value that is not an
+        actual bool is a config error and must fail closed at startup rather
+        than silently produce a half-field.
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in {"true", "false", "1", "0", "yes", "no"}:
+            raise ValueError(f"expected a boolean for the sandbox switch, got {value!r}; allow_host_bash and allow_in_process_repl are independent switches and must be set to an explicit true or false value.")
+        if not isinstance(value, bool):
+            raise ValueError(f"expected a boolean for the sandbox switch, got {type(value).__name__}; allow_host_bash and allow_in_process_repl are independent switches and must be set to an explicit true or false value.")
+        return value
+
     workspace_roots: list[str] = Field(
         default_factory=list,
         description=(

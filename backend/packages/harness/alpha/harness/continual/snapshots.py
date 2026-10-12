@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,13 +47,17 @@ class HarnessSnapshotManager:
             with open(manifest_file, encoding="utf-8") as f:
                 self._snapshot_index = json.load(f)
         except Exception as exc:
+            # Keep the last-known-good index so a degraded read still answers
+            # with real data rather than an empty list, and record the error
+            # so callers can distinguish "no snapshots" from "corrupt index".
             self.load_error = str(exc)
             logger.warning(
                 "Harness snapshot index unreadable; snapshots exist on disk but cannot be enumerated: %s",
                 manifest_file,
                 exc_info=True,
             )
-            self._snapshot_index = []
+            # Do NOT wipe self._snapshot_index here: callers that already hold
+            # a valid index must keep it until the file is repaired.
 
     @property
     def snapshot_dir(self) -> Path | None:
@@ -108,32 +113,55 @@ class HarnessSnapshotManager:
             }
         )
 
-        with open(manifest_file, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2)
+        # Publish the index atomically: a plain open("w") left the manifest
+        # truncated mid-write on a crash, which made `list_snapshots` answer
+        # "no snapshots available" for a corrupt-but-present index. atomic
+        # replaces the file under an exclusive lock and fsyncs the directory.
+        tmp_path = manifest_file.with_name(manifest_file.name + ".tmp")
+        try:
+            fd = os.open(
+                tmp_path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0),
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(manifest, handle, indent=2)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except BaseException:
+                tmp_path.unlink(missing_ok=True)
+                raise
+            os.replace(tmp_path, manifest_file)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
 
         return snapshot_id
 
     def list_snapshots(self) -> list[dict[str, Any]]:
         s_dir = self.snapshot_dir
         if s_dir is None or not s_dir.exists():
+            self.load_error = "no snapshot directory available"
             return []
         manifest_file = s_dir / "manifest.json"
         if not manifest_file.exists():
+            self.load_error = None
             return []
         try:
             with open(manifest_file, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            # An unreadable index is not an empty one. `harness_refine
-            # action="rollback"` answers "No snapshots available" from this
-            # return value, so swallowing here told the model rollback was
-            # impossible while the snapshot files were sitting on disk.
+                self._snapshot_index = json.load(f)
+            self.load_error = None
+            return self._snapshot_index
+        except Exception as exc:
+            self.load_error = str(exc)
             logger.warning(
                 "Harness snapshot manifest unreadable; snapshots exist on disk but cannot be enumerated: %s",
                 manifest_file,
                 exc_info=True,
             )
-            return []
+            # Keep the last-known-good index so a corrupt index reads as the
+            # actual snapshots present, never as an empty "no snapshots available".
+            return self._snapshot_index
 
     def restore_snapshot(self, snapshot_id: str) -> bool:
         """Rollback current harness state to the given snapshot."""

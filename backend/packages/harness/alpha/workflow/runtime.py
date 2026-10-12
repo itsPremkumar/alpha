@@ -1589,6 +1589,7 @@ class DynamicWorkflowEngine:
             run.run_id,
             node_id=node.id,
             idempotency_key=event_key,
+            attempt_key=attempt_key,
             **failure_payload,
         )
 
