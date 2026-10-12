@@ -274,8 +274,10 @@ A run ending is not objective completion. A completed run enters
 silently re-dispatched. The session owner can submit one measured result with
 evidence for every declared criterion through
 `POST /api/apex/sessions/{id}/acceptance`. Alpha does not infer criterion
-results from the model's summary and does not yet ship automatic test, artifact,
-or HTTP evidence collectors; the submitted evidence must identify the actual
+results from the model's summary. Automatic command and artifact collectors
+exist (`alpha.mission.collectors`, fail-closed to `UNVERIFIED`) but nothing
+selects one for a criterion automatically, and HTTP-check collectors are not
+shipped; the submitted evidence must identify the actual
 check or artifact. A report that passes closes through the executive acceptance
 gate. A complete report with a failed criterion is journaled and selects a new
 dispatch generation for recovery. The usage projection still lacks estimated
@@ -337,7 +339,7 @@ provenance:
 | `detail` | The measured fact itself — `exit_code=0 passed=12`, `bytes=100 sha256=…`. |
 | `recorded_at` | When it was measured. A timestamp in the future is refused as forged rather than accepted as fresh. |
 
-Two collectors ship, and both **read something that already exists** —
+Two readers ship, and both **read something that already exists** —
 neither runs a test suite, and neither is wired into a run automatically:
 
 ```python
@@ -352,6 +354,26 @@ records = [
 report = evaluate_trusted_acceptance(criteria, records)
 ```
 
+**Producers exist too.** `alpha.mission.collectors` is the side that runs a
+measurement instead of reading one:
+
+```python
+from alpha.mission.collectors import CommandCheck, CommandEvidenceCollector, collect_and_evaluate
+
+report = collect_and_evaluate(
+    ["backend suite passes"],
+    [CommandEvidenceCollector(check=CommandCheck(
+        criterion="backend suite passes", command="python -m pytest -q",
+    ))],
+)   # the same AcceptanceReport the HTTP gate already accepts
+```
+
+Exit `0` measures pass, a real non-zero exit measures fail, and a timeout, a
+spawn error, an empty command, a missing exit code, or exit `126`/`127` all
+yield `UNVERIFIED` — the shell never ran, so reporting a failure would be a
+lie. A collector that raises produces a note plus `UNVERIFIED`, never an
+exception that fails the run.
+
 The refusals are the point. A missing, unreadable or malformed source returns
 `None` and the criterion stays `UNVERIFIED`; `measured` must be a real boolean,
 so a truthy string is refused instead of counted as a pass; an artifact path
@@ -362,8 +384,9 @@ let duplicate evidence win the verdict. The assembled report is the ordinary
 one, so `assert_acceptance_passed` remains the only path to `COMPLETED`.
 
 **What this does not do:** it cannot decide an arbitrary natural-language
-criterion. Alpha still ships no collector that runs a suite, fetches an HTTP
-endpoint, or infers an outcome from a model's summary.
+criterion. Nothing selects a collector for a criterion automatically — a
+caller chooses one — Alpha ships no collector that fetches an HTTP endpoint,
+and no collector infers an outcome from a model's summary.
 
 The HTTP state route refuses **every** terminal value with a 409, not just
 `COMPLETED` — a request body that could assert `failed` or `cancelled` would be

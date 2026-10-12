@@ -126,13 +126,16 @@
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
+- [ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md](ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md) — Research-backed plan for advanced LangGraph engineering: graph structure, subgraphs, checkpointing and resilience.
 - [ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) — Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.
+- [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md) — Research-backed plan for multi-agent graph orchestration across Alpha's bot, subagent and swarm modes.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [FRONTEND_UX_PLAN.md](FRONTEND_UX_PLAN.md) — The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.
 - [GIT_INTEGRATION_PLAN.md](GIT_INTEGRATION_PLAN.md) — Git and per-task worktree integration plan, corrected against the existing WorktreeManager and release gate.
 - [GROK_VS_ALPHA_GAP_ANALYSIS.md](GROK_VS_ALPHA_GAP_ANALYSIS.md) — Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.
 - [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md) — Living implementation status matrix for production work.
 - [MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md) — Enhanced multi-agent project collaboration plan.
+- [PRIME_INSPIRED_CAPABILITY_AUDIT.md](PRIME_INSPIRED_CAPABILITY_AUDIT.md) — Capability-by-capability audit against the Prime Agent design note: verified, partial, documented-only and missing verdicts with test evidence.
 - [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) — Live research: computer-use and browser agents, with a benchmark-trust audit.
 - [RESEARCH_CODING_AGENTS.md](RESEARCH_CODING_AGENTS.md) — Live research: terminal- and IDE-first coding agents, mapped against Alpha.
 - [RESEARCH_COMPUTER_USE_CUA.md](RESEARCH_COMPUTER_USE_CUA.md) — Research: full-desktop computer control — Alpha's native sentinel-guarded stack, the open CUA landscape, and the disabled-by-default Cua Driver MCP integration with its licensing, governance and honesty boundaries.
@@ -146,6 +149,8 @@
 - [TEAM_WIRING_AUDIT.md](TEAM_WIRING_AUDIT.md) — Which team and coordination mechanisms are live, partial, or inert, with caller counts.
 - [WIRING_AUDIT.md](WIRING_AUDIT.md) — Measured audit of implemented-but-uncalled capabilities: what was wired, what was not, and the remaining inert surface.
 - [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.
+- [alpha-arena-advanced-implementation-plan.md](alpha-arena-advanced-implementation-plan.md) — Alpha Arena+ implementation specification: multi-agent candidate generation, attack/defend, synthesis and verification.
+- [alpha-arena-new-capability-mesh-features-plan.md](alpha-arena-new-capability-mesh-features-plan.md) — Additive capability-mesh expansion plan extending Alpha Arena+ with routing, mixture-of-agents and cost-aware features.
 - [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
 - [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
 - [asi/03_agentic_architecture.md](asi/03_agentic_architecture.md) — Roadmaps, plans, and implementation tracking.

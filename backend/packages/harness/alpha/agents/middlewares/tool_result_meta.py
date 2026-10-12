@@ -3,6 +3,21 @@
 Every tool result that passes through ToolErrorHandlingMiddleware gets a
 ``alpha_tool_meta`` entry in additional_kwargs. Downstream consumers
 (ToolProgressMiddleware, etc.) read this key instead of parsing text.
+
+The envelope answers five questions and no more: did it work (``status``),
+what kind of failure was it (``error_type``), can the model do anything about
+it (``recoverable_by_model``), what should it do next
+(``recommended_next_action``), and who decided (``source``). A sixth key,
+``retry_after_seconds``, is present **only** when the provider's own wording
+reported a wait for one of the two error classes where waiting is a real
+option — it is a measurement out of the text, never a default, so it is
+absent rather than ``None``-valued and a consumer reads it with ``.get()``.
+
+There is deliberately no ``ok`` boolean. ``status`` already carries the fact,
+and every producer reaches it through ``_make_meta`` *except* the ones that
+hand-write the dict, which is precisely where a second, fully derivable
+encoding of the same fact would be free to disagree with the first. Pinned by
+``test_status_is_the_envelope_s_only_ok_fact``.
 """
 
 from __future__ import annotations
@@ -80,6 +95,11 @@ class ToolResultMeta:
     recoverable_by_model: bool
     recommended_next_action: Literal["continue", "rewrite_query", "try_alternative", "summarize", "stop"]
     source: Literal["exception", "tool_return", "content_analysis", "progress_middleware"]
+    #: Seconds the provider itself said to wait, for the two error classes where
+    #: waiting is a real option. ``None`` means "nothing was reported" — it is
+    #: never a default and never a guess, so a consumer must treat it the same
+    #: as the key being absent from the raw dict.
+    retry_after_seconds: float | None = None
 
 
 _ERROR_RULES: list[tuple[list[str], dict[str, object]]] = [
@@ -122,6 +142,84 @@ _UNKNOWN_ERROR: dict[str, object] = {
     "recoverable_by_model": True,
     "recommended_next_action": "try_alternative",
 }
+
+
+# --------------------------------------------------------------------------- #
+# Measured retry delay
+#
+# Two facts were missing from the envelope. `status` already answers "did this
+# work", so an `ok` twin beside it would be a second, fully derivable encoding
+# of the same fact — and every producer that hand-writes the dict
+# (ToolProgressMiddleware's blocked message, a tool's own pre-stamped meta)
+# would be free to disagree with the first. That field is deliberately not
+# added; this test-pinned decision lives in `test_status_is_the_envelope_s_only_ok_fact`.
+#
+# The other fact genuinely had no home. A rate-limited tool result said "you
+# may not retry this yourself" and nothing about *when* retrying would work, so
+# the model's only option was to invent a wait — and inventing a wait is a
+# decision, not an observation. The delay below is measured out of the
+# provider's own wording, it is bounded, and it is attached only to the two
+# error classes where waiting is a real option.
+# --------------------------------------------------------------------------- #
+
+#: Error classes where "try again later" is a genuine option. Attached nowhere
+#: else: a `not_found` that says "retry after 30 seconds" is noise, not a
+#: schedule, and forwarding it would manufacture patience for a permanent
+#: failure.
+_RETRY_HINT_ERROR_TYPES: frozenset[str] = frozenset({"rate_limited", "transient"})
+
+#: A reported delay beyond this is not a delay a run can act on, so it is
+#: refused rather than forwarded. It also bounds the model-visible value: an
+#: unbounded parse of provider prose is how a "retry in 99999999 seconds"
+#: becomes an answer.
+MAX_RETRY_AFTER_SECONDS: float = 3600.0
+
+# Phrase, then a number, then an optional unit. Longest/most-specific unit
+# first so "250 ms" is not read as 250 minutes, and "seconds"/"secs" are not
+# read as the bare `s`.
+_RETRY_AFTER_RE = re.compile(
+    r"(?:retry[-_\s]?after|retry in|try again in|wait(?: for)?)\D{0,12}?(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>ms|seconds?|secs?|minutes?|mins?|s|m)?\b",
+    re.IGNORECASE,
+)
+
+
+def _measure_retry_after(text: str) -> float | None:
+    """Return the delay *the text itself reported*, in seconds, or ``None``.
+
+    No fallback value: an unparseable, non-positive or absurd delay all return
+    ``None``, which keeps the key absent rather than inventing a wait. A unit
+    is optional because the dominant shapes are a bare ``Retry-After: 30``
+    header echo and a plain "retry after 30 seconds" sentence, and both are
+    seconds.
+    """
+    match = _RETRY_AFTER_RE.search(text)
+    if match is None:
+        return None
+    value = float(match.group("value"))
+    unit = (match.group("unit") or "s").lower()
+    if unit == "ms":
+        value /= 1000.0
+    elif unit.startswith("m"):
+        value *= 60.0
+    if value <= 0 or value > MAX_RETRY_AFTER_SECONDS:
+        return None
+    return value
+
+
+def _with_retry_hint(meta: dict[str, object], text: str) -> dict[str, object]:
+    """Add ``retry_after_seconds`` to *meta* only when it is a measured delay.
+
+    Returns the same object when there is nothing to add, so a success, a
+    permanent failure and a rate limit with no reported wait all keep the exact
+    envelope they had before this field existed.
+    """
+    if meta.get("status") != "error" or meta.get("error_type") not in _RETRY_HINT_ERROR_TYPES:
+        return meta
+    hint = _measure_retry_after(text)
+    if hint is None:
+        return meta
+    return {**meta, "retry_after_seconds": hint}
+
 
 # Tool names whose result content is a *rendered remote page* rather than a tool's
 # own message. Name-based, mirroring ToolResultSanitizationMiddleware's
@@ -319,7 +417,7 @@ def stamp_exception_meta(msg: ToolMessage, exc_info: str) -> ToolMessage:
     """
     attrs = _classify_error_text(exc_info)
     updated_kwargs = dict(msg.additional_kwargs or {})
-    updated_kwargs[TOOL_META_KEY] = _make_meta(status="error", source="exception", **attrs)
+    updated_kwargs[TOOL_META_KEY] = _with_retry_hint(_make_meta(status="error", source="exception", **attrs), exc_info)
     msg.additional_kwargs = updated_kwargs
     return msg
 
@@ -347,7 +445,7 @@ def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
         attrs = _classify_error_text(str(error_text))
         meta = _make_meta(status="error", source="tool_return", **attrs)
         updated_kwargs = dict(kwargs)
-        updated_kwargs[TOOL_META_KEY] = meta
+        updated_kwargs[TOOL_META_KEY] = _with_retry_hint(meta, str(error_text))
         msg.additional_kwargs = updated_kwargs
         return msg
 
@@ -400,7 +498,9 @@ def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
         meta = _make_meta(status="success", source="content_analysis")
 
     updated_kwargs = dict(msg.additional_kwargs or {})
-    updated_kwargs[TOOL_META_KEY] = meta
+    # Last step, after every classification branch: a measured delay rides
+    # along with whichever verdict already landed, and adds nothing otherwise.
+    updated_kwargs[TOOL_META_KEY] = _with_retry_hint(meta, content)
     msg.additional_kwargs = updated_kwargs
     return msg
 

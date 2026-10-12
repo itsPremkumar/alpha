@@ -9,6 +9,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from alpha.agents.middlewares.tool_result_meta import (
+    MAX_RETRY_AFTER_SECONDS,
     TOOL_META_KEY,
     ToolResultMeta,
     normalize_tool_message,
@@ -524,3 +525,109 @@ def test_normalize_tool_result_command_task_failures(subagent_status: str):
     assert isinstance(result, Command)
     stamped = result.update["messages"][0]
     assert _meta(stamped)["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# Measured retry delay — the one fact the envelope could not answer
+#
+# A rate-limited result used to say "this failed, and you may not retry it
+# yourself" and nothing more, so the only thing a model could do was pick a
+# wait out of the air. The delay below is *measured from the provider's own
+# wording*: it is never defaulted, never extrapolated, and the key is absent
+# unless the text really carried one.
+
+
+def test_a_rate_limit_without_a_reported_delay_carries_no_retry_hint() -> None:
+    msg = _make_msg("Error: 429 rate limit exceeded", status="error")
+
+    m = _meta(normalize_tool_message(msg))
+
+    assert m["status"] == "error"
+    assert m["error_type"] == "rate_limited"
+    assert "retry_after_seconds" not in m
+
+
+def test_a_reported_retry_delay_is_measured_into_the_envelope() -> None:
+    msg = _make_msg("Error: 429 rate limit exceeded; retry after 30 seconds", status="error")
+
+    m = _meta(normalize_tool_message(msg))
+
+    assert m["retry_after_seconds"] == 30.0
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("Error: 429 rate limit exceeded, Retry-After: 5", 5.0),
+        ("Error: rate limited; try again in 2 minutes", 120.0),
+        ("Error: rate limit exceeded, wait 0.5s", 0.5),
+        ("Error: rate limit, please retry in 250 ms", 0.25),
+    ],
+    ids=["header-shape", "minutes", "fractional-seconds", "milliseconds"],
+)
+def test_retry_delay_units_are_normalised_to_seconds(body: str, expected: float) -> None:
+    msg = _make_msg(body, status="error")
+
+    assert _meta(normalize_tool_message(msg))["retry_after_seconds"] == expected
+
+
+def test_a_retry_delay_on_an_error_that_is_not_retryable_is_not_forwarded() -> None:
+    """A "retry after" next to a permanent failure is noise, not a schedule."""
+    msg = _make_msg("Error: file not found; retry after 10 seconds", status="error")
+
+    m = _meta(normalize_tool_message(msg))
+
+    assert m["error_type"] == "not_found"
+    assert "retry_after_seconds" not in m
+
+
+def test_an_absurd_retry_delay_is_refused_rather_than_forwarded() -> None:
+    body = f"Error: rate limited; retry after {int(MAX_RETRY_AFTER_SECONDS) + 1} seconds"
+
+    m = _meta(normalize_tool_message(_make_msg(body, status="error")))
+
+    assert "retry_after_seconds" not in m
+
+
+def test_a_successful_result_never_carries_a_retry_delay() -> None:
+    msg = _make_msg("Fetched the page. Note: earlier it said retry after 30 seconds.")
+
+    m = _meta(normalize_tool_message(msg))
+
+    assert m["status"] == "success"
+    assert "retry_after_seconds" not in m
+
+
+def test_an_exception_stamped_rate_limit_carries_the_delay() -> None:
+    msg = _make_msg("placeholder", status="error")
+
+    m = _meta(stamp_exception_meta(msg, "RateLimitError: 429 rate limit exceeded; retry after 60 seconds"))
+
+    assert m["source"] == "exception"
+    assert m["error_type"] == "rate_limited"
+    assert m["retry_after_seconds"] == 60.0
+
+
+def test_the_dataclass_round_trip_carries_the_delay() -> None:
+    msg = _make_msg("Error: rate limited; retry after 45 seconds", status="error")
+
+    meta = ToolResultMeta(**_meta(normalize_tool_message(msg)))
+
+    assert meta.retry_after_seconds == 45.0
+
+
+def test_status_is_the_envelope_s_only_ok_fact() -> None:
+    """No ``ok`` twin is written beside ``status``.
+
+    ``status`` already answers the question, and every producer reaches it
+    through ``_make_meta`` — except the ones that hand-write the dict
+    (``ToolProgressMiddleware._make_blocked_message``, a producer's own
+    pre-stamped meta), which is exactly where a second, fully derivable field
+    would be free to disagree with the first. A field that can be stale is
+    worse than one a consumer has to derive.
+    """
+    success = _meta(normalize_tool_message(_make_msg("A" * 200)))
+    failure = _meta(normalize_tool_message(_make_msg("Error: 429 rate limit exceeded", status="error")))
+
+    assert "ok" not in success
+    assert "ok" not in failure

@@ -256,8 +256,10 @@ lifecycle. The session records a dispatch generation, linked run id/status, and
 deduplicated measured token totals. `RunManager` terminal status is observed,
 but not treated as proof that the objective passed.
 
-The APEX session now has an owner-scoped acceptance-report control, but Alpha
-still has no automatic test/artifact/HTTP evidence collectors. Safe run recovery
+The APEX session now has an owner-scoped acceptance-report control, and Alpha
+ships command and artifact evidence collectors (`alpha.mission.collectors`,
+fail-closed to `UNVERIFIED`) — but nothing selects one for a criterion
+automatically, and there are no HTTP evidence collectors. Safe run recovery
 continues only validated model/agent checkpoint nodes and compare-and-set links
 the recovered RunManager id back to the APEX session, including restart recovery
 after admission-before-link crashes; ambiguous side effects and
