@@ -439,6 +439,12 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Per-engine projections onto and off the canonical task contract (graph, dynamic workflow engine, swarm). Pure functions; they own no lifecycle.",
         kind="utility",
     ),
+    "spend_policy": CapabilitySpec(
+        module="alpha.budgets.spend",
+        target="refuse_paid_model",
+        description="Zero-cost spend policy: is this model free (with the config namespace that decided), what does it cost (None when unpriced, never 0.0), and may it be constructed at all.",
+        kind="guard",
+    ),
 }
 
 

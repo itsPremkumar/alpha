@@ -1517,6 +1517,32 @@ free_gateways:
   auth_header: []
   documented_models: []
   openai_compat: false
+# Spend policy. Absent by default, and absent means `budgeted` - exactly today's
+# behaviour, so this section changes nothing for an existing deployment.
+#
+# mode:
+#   budgeted              (default) tokens are metered and the daily/scope
+#                          circuit breaker in alpha.models.cost_governor trips.
+#                          No paid model is refused at construction.
+#   zero_cost             a paid model is REFUSED at construction, in code, by
+#                          alpha.budgets.spend.refuse_paid_model via
+#                          create_chat_model. Not a prompt instruction.
+#   unrestricted_by_budget no ceiling; still subject to permissions and policy.
+#
+# "Paid" means anything not free by one of four namespaces, checked in this
+# order: a local model name (ollama/, vllm/, ...), a `free_gateways` documented
+# model or `:free` suffix, pricing of zero on BOTH input and output, and
+# anything else. A model that nothing prices is treated as PAID - absence of a
+# price is not a price of zero.
+#
+# max_cost_usd_per_run / max_daily_cost_usd are declared here for operator
+# visibility; the enforced daily and per-scope ceilings remain
+# cost_governor.BudgetConfig. A ceiling of 0 is a real ceiling, never "unknown".
+spend:
+  mode: budgeted
+  max_cost_usd_per_run: null
+  max_daily_cost_usd: null
+
 # Fallback per-model prices, per 1M tokens. Consulted only for a model that
 # omits an inline `models[].pricing`; an inline block always wins. This table is
 # keyed by bare model name and carries no currency, so it uses `input`/`output`

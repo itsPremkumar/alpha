@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from langchain.chat_models import BaseChatModel
 from langchain_openai.chat_models.base import BaseChatOpenAI
 
+from alpha.budgets.spend import refuse_paid_model, resolve_spend_policy
 from alpha.config import get_app_config
 from alpha.config.app_config import AppConfig
 from alpha.config.model_config import ModelConfig
@@ -405,6 +406,17 @@ def create_chat_model(
     if name is None:
         raise ValueError("No models are configured. Add at least one entry under `models:` in config.yaml.") from None
     chain = _resolve_chain_configs(name, config, fallbacks)
+    # Spend policy gate (`alpha.budgets.spend`). Inert unless an operator wrote a
+    # `spend:` section with `mode: zero_cost`, in which case this is the point
+    # that makes the promise real: it raises, so a paid model is never
+    # *constructed* and therefore never called. Every member of the chain is
+    # checked, not just the primary -- a `primary: gpt-4o` with a free fallback
+    # still spends money on the first attempt, and a gate that inspected only
+    # the primary would read as a policy while enforcing nothing.
+    _spend_policy = resolve_spend_policy(config)
+    if _spend_policy.forbids_paid_models:
+        for _member in chain:
+            refuse_paid_model(_member.name, policy=_spend_policy, config=config)
     if thinking_enabled:
         supported = [member for member in chain if member.supports_thinking]
         if not supported:
