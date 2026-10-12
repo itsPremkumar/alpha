@@ -315,6 +315,16 @@ backend/.tmp/
 /nul
 *.bak
 
+/nul
+*.bak
+
+# Agent scratch space. Specific patterns were already ignored below, but 64
+# files outside them were committed to the repo anyway, so the whole directory
+# is ignored and the tracked leftovers are removed. It holds one-off audit
+# probes whose output is evidence only while a defect is being measured, and
+# several record this machine's absolute paths.
+/scratch/
+
 # --- Captured UI evidence -----------------------------------------------------
 # scripts/e2e/screenshots.mjs writes a PNG per route plus report.json into
 # docs/evidence/<domain>/<date>/<run>/. A 38-route sweep is ~3.4 MB of PNG and a
