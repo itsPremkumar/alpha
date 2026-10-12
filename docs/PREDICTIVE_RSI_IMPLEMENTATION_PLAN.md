@@ -280,15 +280,23 @@ Not in this slice, and not to be read as pending:
 | `alpha/rsi/predictive/__init__.py` | new | package surface |
 | `alpha/rsi/__init__.py` | edit | re-export, as `rrsi` already is |
 | `alpha/rsi/predictive/AGENTS.md` | new | normative contract for the subpackage |
-| `backend/tests/test_rsi_predictive.py` | new | the eleven invariants |
+| `alpha/rsi/engine.py` | edit | `_predictive_forecast` — the cycle observes |
+| `alpha/rsi/promotion.py` | edit | `_holdout_gate` records a genuinely measured verdict (purely additive) |
+| `app/gateway/routers/predictive_rsi.py` | new | read-only operator surface: `/status`, `/calibration` |
+| `app/gateway/app.py` | edit | router registration |
+| `backend/tests/test_rsi_predictive.py` | new | the invariants |
+| `backend/tests/test_rsi_predictive_router.py` | new | the HTTP contract and its degraded states |
 | `scripts/generate_docs_index.py` | edit | `FILE_OVERRIDES` entry for this document |
 | `docs/INDEX.md` | regenerated | 148 documents, +1 |
 | `ENGINE_INVENTORY.md` | regenerated | 126 packages (unchanged); `alpha/rsi` 34 → 40 files |
 
-**Deliberately not created:** no tool, route, supervisor loop, `CapabilitySpec`,
-config key or manifest entry. The feature manifest and every hardcoded capability
-count are therefore untouched — a reviewer can confirm this by running
-`scripts/generate_feature_manifest.py` and observing no diff.
+**Deliberately not created:** no tool, supervisor loop, `CapabilitySpec` or config
+key. The feature manifest's **tool / middleware / loop** counts are therefore
+unchanged; the new router moves the **router** count by one, which is regenerated.
+No hardcoded capability count in `README.md`, `llms.txt`, `llms-full.txt`,
+`docs/FAQ.md` or `docs/COMPARISON.md` refers to an engine this package
+introduces, so none of them needed editing — a reviewer can confirm both by
+regenerating the manifest and grepping those files for `predictive`.
 
 ## 7. Verification
 

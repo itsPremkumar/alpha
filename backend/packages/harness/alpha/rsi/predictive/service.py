@@ -38,13 +38,14 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from alpha.rsi.predictive.calibration import CalibrationReport, calibration_report
 from alpha.rsi.predictive.contracts import (
+    MEASURED_EVIDENCE_KIND,
     CandidateFeatures,
     ObservedOutcome,
     OutcomePrediction,
@@ -63,12 +64,18 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_MODE",
+    "DETERMINISTIC_BACKEND",
     "MODE_ORDER",
     "PredictiveMode",
     "PredictiveRSIService",
     "RankingResult",
     "assert_mode_transition",
+    "record_holdout_verdict",
 ]
+
+#: The Tier 0 baseline backend name, declared once so the engine's cycle wiring
+#: and the promotion-verdict bridge cannot drift into two different spellings.
+DETERMINISTIC_BACKEND = "deterministic"
 
 
 class PredictiveMode(str, Enum):
@@ -390,3 +397,59 @@ class PredictiveRSIService:
             "promotion_authority": False,
             "note": "Forecasts are advisory. This service cannot admit a candidate, gate a promotion or roll anything back; evidence_kind='forecast' is refused by the existing RSI gates by construction.",
         }
+
+
+def record_holdout_verdict(candidate_id: str, payload: Mapping[str, Any] | None) -> bool | None:
+    """Record a **genuinely measured** holdout verdict as a predictor outcome.
+
+    This is the one bridge that closes the calibration loop, and it exists
+    because Alpha already produces real measured verdicts:
+    :func:`alpha.rsi.holdout.run_holdout` returns ``evidence_kind="measured"``
+    from a suite that actually executed, and :func:`alpha.rsi.promotion.decide`
+    reads that payload through ``_holdout_gate``. Until such a verdict exists,
+    ``brier`` is honestly ``None``.
+
+    Returns ``True`` when an outcome was recorded, ``False`` when the record
+    could not be persisted, and ``None`` when the payload was **not** measured —
+    the common case, and the one that matters most. A ``simulated`` or
+    ``unverified`` payload, a payload without integer pass/fail counts, or a
+    missing payload all return ``None`` and write nothing, so a preview's
+    placeholder numbers can never become training data.
+
+    ``success`` is the holdout's own verdict: a clean pass over at least one
+    executed case. Counts that do not add up to a positive total are treated as
+    *unmeasured* rather than as a failure, because "nothing executed" is not
+    "it failed".
+
+    Never raises — it is called from inside a promotion gate, and a telemetry
+    failure must neither fail nor alter that gate.
+    """
+    if not isinstance(candidate_id, str) or not candidate_id:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    if payload.get("evidence_kind") != MEASURED_EVIDENCE_KIND:
+        return None
+    passed = payload.get("passed")
+    failed = payload.get("failed")
+    if isinstance(passed, bool) or isinstance(failed, bool) or not isinstance(passed, int) or not isinstance(failed, int):
+        return None
+    if passed < 0 or failed < 0 or passed + failed <= 0:
+        return None
+
+    try:
+        service = PredictiveRSIService(backend=DETERMINISTIC_BACKEND, mode=PredictiveMode.OBSERVE_ONLY, ledger=ForecastLedger())
+        write = service.record_outcome(
+            ObservedOutcome(
+                candidate_id=candidate_id,
+                success=failed == 0,
+                component=str(payload.get("component") or ""),
+                regime=str(payload.get("regime") or ""),
+                evidence_kind=MEASURED_EVIDENCE_KIND,
+                verifier_id="holdout",
+            )
+        )
+        return bool(write)
+    except Exception as exc:  # noqa: BLE001 - a promotion gate must never fail over telemetry
+        logger.warning("Predictive RSI could not record the holdout verdict for %r: %s", candidate_id, exc, exc_info=True)
+        return False

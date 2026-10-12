@@ -26,6 +26,7 @@ from alpha.rsi.predictive import (
     PredictiveRSIService,
     RankingResult,
     assert_mode_transition,
+    record_holdout_verdict,
 )
 from alpha.rsi.rrsi import (
     RrsiParams,
@@ -75,6 +76,7 @@ __all__ = [
     "PredictiveRSIService",
     "RankingResult",
     "assert_mode_transition",
+    "record_holdout_verdict",
     "rrsi",
     "RrsiParams",
     "RrsiRoundStore",

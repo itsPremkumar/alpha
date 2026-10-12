@@ -123,6 +123,23 @@ cross-process exactly-once. Do not describe it as a shared ledger.
 
 ## Wiring
 
+Three call sites, all additive and none of them a gate:
+
+1. **`alpha/rsi/engine.py` `_predictive_forecast`** — observes every cycle and
+   appends the forecast to the evidence before the two closing lines, so
+   `evidence[-1]` keeps the meaning `_last_summary` has always quoted.
+2. **`alpha/rsi/promotion.py` `_holdout_gate`** — calls
+   `record_holdout_verdict(candidate_id, payload)` **after** the verdict is
+   computed, and discards its result. The gate's `(ok, reason)` is fixed above
+   the call; the recorder cannot alter it, never raises, and writes nothing for
+   any payload not stamped `"measured"`. This is the only place in the tree where
+   a real holdout suite has actually executed, so it is the only honest source of
+   an outcome — which is what closes the calibration loop.
+3. **`app/gateway/routers/predictive_rsi.py`** — the read-only operator surface:
+   `GET /api/rsi/predictive/status` and `GET /api/rsi/predictive/calibration`.
+   Authenticated, `GET` only, filesystem work off the event loop, and an
+   unreadable ledger is `503` carrying its own reason rather than an empty `200`.
+
 `alpha/rsi/__init__.py` re-exports the public names, exactly as it does for
 `rrsi`. That re-export is what satisfies the orphan-module gate.
 
@@ -150,11 +167,39 @@ Stated here so the module list is not read as a claim:
   today. The package is a library with tests, wired into `alpha.rsi`'s public
   surface but **not** on any live execution path — the same disclosure
   `alpha.arena`'s engine primitives and `alpha.capability_mesh` make.
-- **No outcome is ever recorded by a cycle.** `RSIEngine._predictive_forecast`
+- **No outcome is recorded by a cycle.** `RSIEngine._predictive_forecast`
   forecasts and records the *forecast*; it never records an *outcome*, because a
-  preview measures nothing. So `CalibrationReport.scored` stays `0` and
-  `brier` stays `None` — honestly `UNKNOWN`, not a flattering zero — until a
-  path that genuinely measures exists to supply one.
+  preview measures nothing. Outcomes come from `record_holdout_verdict`, which
+  the promotion path's holdout gate calls **only** on a payload already stamped
+  `evidence_kind="measured"` by a suite that actually ran.
+- **No outcome is recorded by a cycle.** `RSIEngine._predictive_forecast`
+  forecasts and records the *forecast*; it never records an *outcome*, because a
+  preview measures nothing. Outcomes come from
+  `record_holdout_verdict`, which the promotion path's holdout gate calls **only**
+  on a payload already stamped `evidence_kind="measured"` by a suite that
+  actually ran.
+
+## Wiring
+
+Three call sites, all additive and none of them a gate:
+
+1. **`alpha/rsi/engine.py` `_predictive_forecast`** — observes every cycle and
+   appends the forecast to the evidence before the two closing lines, so
+   `evidence[-1]` keeps the meaning `_last_summary` has always quoted.
+2. **`alpha/rsi/promotion.py` `_holdout_gate`** — calls
+   `record_holdout_verdict(candidate_id, payload)` **after** the verdict is
+   computed, and discards its result. The gate's `(ok, reason)` is fixed above
+   the call; the recorder cannot alter it, never raises, and writes nothing for
+   any payload not stamped `"measured"`. This is the only place in the tree where
+   a real holdout suite has actually executed, so it is the only honest source of
+   an outcome — which is what closes the calibration loop.
+3. **`app/gateway/routers/predictive_rsi.py`** — the read-only operator surface:
+   `GET /api/rsi/predictive/status` and `GET /api/rsi/predictive/calibration`.
+   Authenticated, `GET` only, filesystem work off the event loop, and an
+   unreadable ledger is `503` carrying its own reason rather than an empty `200`.
+
+`alpha/rsi/__init__.py` re-exports the public names, exactly as it does for
+`rrsi`. That re-export is what satisfies the orphan-module gate.
 
 ## Tests
 

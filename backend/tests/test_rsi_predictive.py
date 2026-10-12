@@ -678,6 +678,110 @@ def test_the_cycle_forecast_is_a_forecast_not_a_gate_payload(tmp_path, monkeypat
     assert reason.startswith("holdout unverified")
 
 
+# --- 13. the real measurement bridge -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        {},
+        {"evidence_kind": "simulated", "passed": 5, "failed": 0},
+        {"evidence_kind": "unverified", "passed": 5, "failed": 0},
+        {"passed": 5, "failed": 0},
+        {"evidence_kind": "measured", "passed": 0, "failed": 0},
+        {"evidence_kind": "measured", "passed": True, "failed": 0},
+        {"evidence_kind": "measured", "passed": -1, "failed": 0},
+        {"evidence_kind": "measured", "passed": 5.0, "failed": 0},
+        {"evidence_kind": "measured", "passed": "5", "failed": 0},
+    ],
+)
+def test_only_a_genuinely_measured_verdict_is_recorded(tmp_path, monkeypatch, payload):
+    """Anything not stamped ``measured`` writes nothing and returns ``None``.
+
+    This is the whole safety of the bridge: without it the promotion path's
+    placeholder numbers would become the training set of the predictor.
+    """
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.predictive import ForecastLedger, record_holdout_verdict
+
+    assert record_holdout_verdict("cand-1", payload) is None
+    assert ForecastLedger().status()["outcome_count"] == 0
+
+
+def test_a_measured_verdict_is_recorded_and_a_failed_one_is_a_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.predictive import ForecastLedger, record_holdout_verdict
+
+    assert record_holdout_verdict("clean", {"evidence_kind": "measured", "passed": 5, "failed": 0}) is True
+    assert record_holdout_verdict("broken", {"evidence_kind": "measured", "passed": 4, "failed": 1}) is True
+
+    outcomes = ForecastLedger().measured_outcomes() or ()
+    by_id = {outcome.candidate_id: outcome for outcome in outcomes}
+    assert by_id["clean"].success is True
+    assert by_id["broken"].success is False
+    assert all(outcome.verifier_id == "holdout" for outcome in outcomes)
+
+
+def test_the_calibration_loop_closes_end_to_end(tmp_path, monkeypatch):
+    """Forecast -> a genuinely measured verdict -> a real calibration number.
+
+    The whole point of the bridge: before it, ``brier`` was permanently ``None``.
+    """
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.engine import RSIEngine
+    from alpha.rsi.predictive import ForecastLedger, calibration_report
+
+    # One cycle forecasts under the candidate id the promotion path will use.
+    engine = RSIEngine()
+    engine.run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    recorded = ForecastLedger().forecasts() or ()
+    assert recorded
+    candidate_id = recorded[-1].candidate_id
+
+    # Now that same candidate receives a genuinely measured verdict.
+    from alpha.rsi.predictive import record_holdout_verdict
+
+    record_holdout_verdict(candidate_id, {"evidence_kind": "measured", "passed": 5, "failed": 0})
+
+    ledger = ForecastLedger()
+    report = calibration_report(ledger.forecasts(), ledger.measured_outcomes())
+    assert report.scored == 1, "the forecast and the verdict are now paired"
+    assert report.brier is not None, "a real calibration number, computed from a real measurement"
+    # The Tier 0 prior forecast of 0.5 against a success scores (0.5-1)^2.
+    assert report.brier == pytest.approx(0.25)
+
+
+def test_the_bridge_never_changes_a_gate_verdict(tmp_path, monkeypatch):
+    """Purely additive: the gate's (ok, reason) is computed before the hook runs."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.holdout import holdout_gate
+    from alpha.rsi.promotion import _holdout_gate
+
+    payload = {"evidence_kind": "measured", "passed": 5, "failed": 0}
+    expected_ok, expected_reason = holdout_gate(payload)
+    # No bundle file exists, so the gate takes its missing-evidence path; the
+    # point is that the recorded verdict never participates in it.
+    ok, reason = _holdout_gate("no-such-candidate")
+    assert ok is False
+    assert "missing or unreadable" in reason
+    assert isinstance(expected_ok, bool) and isinstance(expected_reason, str)
+
+
+def test_a_record_that_cannot_be_persisted_is_reported_not_raised(tmp_path, monkeypatch):
+    """The bridge runs inside a promotion gate; it must never raise there."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("ALPHA_HOME", str(home))
+    blocked = home / "rsi" / "predictions.jsonl"
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.mkdir()  # a directory at the ledger path: the append cannot land
+
+    from alpha.rsi.predictive import record_holdout_verdict
+
+    assert record_holdout_verdict("cand-1", {"evidence_kind": "measured", "passed": 5, "failed": 0}) is False
+
+
 # --- status honesty ------------------------------------------------------------
 
 

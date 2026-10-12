@@ -60,11 +60,13 @@ from alpha.rsi.predictive.predictor import (
     wilson_interval,
 )
 from alpha.rsi.predictive.service import (
+    DETERMINISTIC_BACKEND,
     MODE_ORDER,
     PredictiveMode,
     PredictiveRSIService,
     RankingResult,
     assert_mode_transition,
+    record_holdout_verdict,
 )
 from alpha.rsi.predictive.store import ForecastLedger, LedgerWrite, forecast_ledger_path
 
@@ -99,10 +101,12 @@ __all__ = [
     "score_forecast",
     # service
     "MODE_ORDER",
+    "DETERMINISTIC_BACKEND",
     "PredictiveMode",
     "PredictiveRSIService",
     "RankingResult",
     "assert_mode_transition",
+    "record_holdout_verdict",
     # store
     "ForecastLedger",
     "LedgerWrite",
