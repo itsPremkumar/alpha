@@ -225,7 +225,7 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 Alpha is a LangGraph-based AI super agent system. The backend provides a "super
 agent" with sandbox execution, persistent memory, subagent delegation and
 extensible tool integration, all in per-thread isolated environments. The
-four-service topology (Gateway 8003, Frontend 3000, Nginx 2026, optional
+four-service topology (Gateway 8001, Frontend 3000, Nginx 2026, optional
 Provisioner 8002) and loopback-by-default publish rule: root guide's
 [Service Topology](../AGENTS.md#service-topology).
 
@@ -275,8 +275,8 @@ family, `detect-thread-boundaries`, …) are listed once in the root guide's
 **Backend directory** (for backend development only):
 ```bash
 make install            # Install backend dependencies
-make dev                # Gateway API, reload (port 8003)
-make gateway            # Gateway API only (port 8003)
+make dev                # Gateway API, reload (port 8001)
+make gateway            # Gateway API only (port 8001)
 make test               # offline tests (no live/blocking-io)
 make test-live          # live tests (real APIs)
 make test-blocking-io   # strict Blockbuster gate on tests/blocking_io/
@@ -377,9 +377,9 @@ application available at `http://localhost:2026`. The full startup-mode matrix
 (local foreground/daemon, Docker dev/prod) and the nginx routing table are in
 [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md#agent-guidance-reference-all-startup-modes).
 
-**Nginx routing**: `/api/langgraph/*` → Gateway embedded runtime (8003), rewritten
-to `/api/*`; all other `/api/*` → Gateway API (8003); `/` (non-API) → Frontend
-(3000). Direct Gateway access without nginx: `http://localhost:8003`. The
+**Nginx routing**: `/api/langgraph/*` → Gateway embedded runtime (8001), rewritten
+to `/api/*`; all other `/api/*` → Gateway API (8001); `/` (non-API) → Frontend
+(3000). Direct Gateway access without nginx: `http://localhost:8001`. The
 frontend reaches the backend through a single variable,
 `NEXT_PUBLIC_GATEWAY_URL`, which `src/lib/api-client.ts` normalizes into
 `GATEWAY_BASE`: unset (the default) or a bare path means the relative `/api`,

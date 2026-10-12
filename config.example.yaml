@@ -30,7 +30,13 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
-config_version: 62
+# 63: `model_routing:` is no longer commented out. The shipped `specialists`
+# declare routing slots (`category:deep`, `category:writing`, `tier:frontier`,
+# `tier:coding`, `tier:fast`), so an install with no `model_routing` table
+# resolved every one of them to no model and booted with a WARNING saying so.
+# A merge-only upgrade cannot add the key to a file that already sits at the
+# previous version, so this needs its own version to reach existing installs.
+config_version: 63
 
 # ============================================================================
 # Logging
@@ -311,18 +317,49 @@ default_model: alpha-free
 # (frontier, coding, fast, local); values are ordered `models[]` names, index 0
 # primary and the rest fallbacks.
 #
-# Leaving this out is fine - the routers then fall back to advisory suggestion
-# chains that name no runnable model, and a routed request degrades honestly
-# instead of quietly running on your most expensive model.
-# model_routing:
-#   enabled: true
-#   default_model: null            # null = the configured `default_model`
-#   categories:
-#     quick: [cheap-model]
-#     deep: [flagship-model, cheap-model]
-#   tiers:
-#     fast: [cheap-model]
-#     frontier: [flagship-model]
+# Every declared name is checked against `models` AT LOAD, so a typo is a
+# startup error rather than a request-time surprise. Once this table is
+# populated, a specialist (or a routed task) naming a slot the table omits is a
+# LOAD ERROR too - a specialist that reads as routed and is not is exactly the
+# silent degradation this table exists to remove. That is why every routing slot
+# the shipped specialists declare - eight of them, across `deep`, `writing`,
+# `frontier`, `coding` and `fast` - is declared below rather than left to
+# chance.
+#
+# `local` is deliberately NOT declared. It means "offline, air-gapped,
+# zero-cost fallback", and neither model in `models` below can honour that:
+# `alpha-free` is the keyless *public internet* router. An undeclared tier keeps
+# the router's own advisory behaviour (a suggestion chain naming no runnable
+# model), which is honest, where claiming `local: [alpha-free]` would not be.
+# Add a real Ollama / LM Studio entry and declare it when you want that tier.
+#
+# ORDER IS THE DECLARATION. Index 0 is the model that runs; the rest are
+# fallbacks tried on a RETRYABLE failure only - 429, 402/credit exhaustion, 5xx,
+# timeout or transport (`models/fallback.py::is_retryable_llm_error`). A
+# deterministic failure never fails over, and an authentication failure is
+# deterministic: with no `$OPENROUTER_API_KEY` at all, OpenRouter answers 401,
+# and with a key that has no credit it answers 402. Both surface immediately
+# rather than moving to the next chain entry.
+#
+# So read the four `union-alpha`-first chains below as "you have a funded
+# OpenRouter key". On a keyless install, move `alpha-free` to the FRONT of
+# `frontier`, `coding`, `deep` and `writing` - the same choice `default_model`
+# above already makes, and for the same reason.
+model_routing:
+  enabled: true
+  default_model: null # null = the configured `default_model` (`alpha-free`)
+  categories:
+    # `deep`      - deep autonomous work: algorithms, backend logic, complex refactors
+    # `writing`   - documentation, specs, technical prose
+    deep: [union-alpha, alpha-free]
+    writing: [union-alpha, alpha-free]
+  tiers:
+    # `fast`      - research, review, summary, docs, triage (the "$" tier)
+    # `coding`    - code generation, refactoring, test synthesis ("$$")
+    # `frontier`  - deep reasoning, architecture, security, postmortem ("$$$")
+    fast: [alpha-free]
+    coding: [union-alpha, alpha-free]
+    frontier: [union-alpha, alpha-free]
 
 models:
   - name: union-alpha
