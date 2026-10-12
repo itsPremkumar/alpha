@@ -11,7 +11,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from alpha.branding import DISPLAY_NAME
 from alpha.config.channel_connections_config import ChannelConnectionsConfig
 from alpha.persistence.channel_connections import ChannelConnectionRepository
 from alpha.persistence.engine import get_session_factory
@@ -20,7 +19,6 @@ from app.channels.runtime_config_store import (
     apply_runtime_connection_config,
     merge_runtime_channel_configs,
 )
-from app.gateway.deps import require_admin_user
 
 router = APIRouter(prefix="/api/channels", tags=["channel-connections"])
 logger = logging.getLogger(__name__)
@@ -463,6 +461,8 @@ async def _create_state(
 
 
 def _connect_instruction(provider: str, code: str) -> str:
+    from alpha.branding import DISPLAY_NAME
+
     if provider == "telegram":
         return f"Send /start {code} to the {DISPLAY_NAME} Telegram bot."
     meta = _PROVIDER_META.get(provider)
@@ -696,6 +696,8 @@ async def disconnect_channel_connection(connection_id: str, request: Request) ->
 
 @router.delete("/{provider}/runtime-config", response_model=ChannelProviderResponse)
 async def disconnect_channel_provider_runtime(provider: str, request: Request) -> ChannelProviderResponse:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     config = await _get_channel_connections_config(request)
     if not config.enabled:
@@ -782,6 +784,8 @@ async def configure_channel_provider_runtime(
     body: ChannelRuntimeConfigRequest,
     request: Request,
 ) -> ChannelProviderResponse:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     config = await _get_channel_connections_config(request)
     if not config.enabled:

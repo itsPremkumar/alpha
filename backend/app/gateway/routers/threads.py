@@ -24,60 +24,61 @@ from langgraph.types import Overwrite
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 
-from alpha.agents.thread_state import THREAD_STATE_REDUCER_FIELDS
 from alpha.config.paths import Paths, get_paths
 from alpha.config.summarization_config import ContextSize
-from alpha.persistence.thread_meta import PROJECT_FILTER_UNSET, THREAD_ARCHIVED_METADATA_KEY, THREAD_PINNED_METADATA_KEY, THREAD_PROJECT_METADATA_KEY, ThreadOwnershipConflictError
-from alpha.runtime import ThreadOperationKind, serialize_channel_values_for_api
-from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError, CheckpointModeReconfigurationError
-from alpha.runtime.checkpoint_state import graph_reducer_channels, graph_state_schema, graph_writable_channels
-from alpha.runtime.context_compaction import (
-    ContextCompactionDisabled,
-    ContextCompactionFailed,
-    ThreadCompactionResult,
-    compact_thread_context,
+from alpha.persistence.thread_meta import (
+    THREAD_PROJECT_METADATA_KEY,
 )
-from alpha.runtime.events.message_seq import stamp_messages_with_seq
+from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError, CheckpointModeReconfigurationError
+from alpha.runtime.checkpoint_state import (
+    graph_reducer_channels,
+)
+from alpha.runtime.context_compaction import (
+    ThreadCompactionResult,
+)
 from alpha.runtime.goal import (
     DEFAULT_MAX_GOAL_CONTINUATIONS,
-    build_goal_state,
-    ensure_thread_checkpoint,
-    goal_thread_lock,
-    read_thread_goal,
-    write_thread_goal,
 )
-from alpha.runtime.journal import build_branch_history_seed_events
-from alpha.runtime.runs.manager import ConflictError
-from alpha.runtime.runs.worker import RUN_MESSAGE_IDS_METADATA_KEY, valid_duration_entry, valid_run_message_id_entry
-from alpha.runtime.secret_context import redact_metadata_secrets
 from alpha.runtime.user_context import get_effective_user_id
-from alpha.utils.file_io import run_file_io
-from alpha.utils.thread_id import ThreadId, resolve_thread_id, validate_thread_id
-from alpha.utils.time import coerce_iso, now_iso
+from alpha.utils.thread_id import (
+    ThreadId,
+)
 from app.gateway.authz import require_permission
-from app.gateway.checkpoint_lineage import (
-    CheckpointLineageError,
-    CheckpointParentMissingError,
-    find_checkpoint_before_message,
-    find_checkpoint_before_message_chronologically,
-    is_duration_only_checkpoint,
-)
-from app.gateway.deps import get_checkpointer, get_run_event_store, get_run_manager
-from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.services import (
-    abuild_checkpoint_state_accessor,
-    build_checkpoint_state_mutation_accessor,
-    build_thread_checkpoint_state_accessor,
-    build_thread_checkpoint_state_mutation_accessor,
-    reserve_checkpoint_write,
-    strip_server_owned_state_metadata,
-)
-from app.gateway.utils import sanitize_log_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["threads"])
 
 _CHECKPOINT_MODE_ERRORS = (CheckpointModeMismatchError, CheckpointModeReconfigurationError)
+
+
+# `app.gateway.services` is the heaviest Gateway module (it reaches the agent
+# runtime, the run manager and the lead agent) and this router was the last
+# thing importing it at module scope. These four stay module-level names because
+# the state-endpoint tests patch them at `app.gateway.routers.threads.<name>`,
+# so a function-local binding would be invisible to `monkeypatch.setattr`; the
+# shims resolve the real implementation on first call instead.
+async def abuild_checkpoint_state_accessor(request: Request, **kwargs) -> Any:
+    from app.gateway.services import abuild_checkpoint_state_accessor as _impl
+
+    return await _impl(request, **kwargs)
+
+
+def build_checkpoint_state_mutation_accessor(*args, **kwargs) -> Any:
+    from app.gateway.services import build_checkpoint_state_mutation_accessor as _impl
+
+    return _impl(*args, **kwargs)
+
+
+async def build_thread_checkpoint_state_accessor(request: Request, **kwargs) -> Any:
+    from app.gateway.services import build_thread_checkpoint_state_accessor as _impl
+
+    return await _impl(request, **kwargs)
+
+
+def build_thread_checkpoint_state_mutation_accessor(*args, **kwargs) -> Any:
+    from app.gateway.services import build_thread_checkpoint_state_mutation_accessor as _impl
+
+    return _impl(*args, **kwargs)
 
 
 def _optional_run_event_store(request: Request) -> Any:
@@ -141,6 +142,8 @@ def _strip_reserved_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
 
 def _is_organization_metadata_patch(metadata: dict[str, Any]) -> bool:
     """Recognize list-organization writes that must preserve activity time."""
+    from alpha.persistence.thread_meta import THREAD_ARCHIVED_METADATA_KEY, THREAD_PINNED_METADATA_KEY
+
     return bool(metadata) and set(metadata) <= {THREAD_PINNED_METADATA_KEY, THREAD_ARCHIVED_METADATA_KEY} and all(isinstance(value, bool) for value in metadata.values())
 
 
@@ -237,6 +240,9 @@ async def _find_branch_checkpoint(
     config: dict[str, Any],
     target_message_ids: set[str],
 ) -> Any:
+    from app.gateway.checkpoint_lineage import is_duration_only_checkpoint
+    from app.gateway.utils import sanitize_log_param
+
     try:
         for snapshot in await accessor.ahistory(config, limit=_BRANCH_HISTORY_RAW_SCAN_LIMIT):
             if is_duration_only_checkpoint(snapshot):
@@ -258,6 +264,9 @@ async def _branch_targets_latest_turn(
     target_message_ids: set[str],
 ) -> bool:
     """Return whether the target turn is the final visible turn."""
+    from app.gateway.checkpoint_lineage import is_duration_only_checkpoint
+    from app.gateway.utils import sanitize_log_param
+
     try:
         for snapshot in await accessor.ahistory(config, limit=_BRANCH_HISTORY_RAW_SCAN_LIMIT):
             if is_duration_only_checkpoint(snapshot):
@@ -283,6 +292,9 @@ async def _find_branch_replay_base(
     target_human_id: str,
 ) -> Any | None:
     """Resolve a replay base while preserving unlinked legacy histories."""
+
+    from app.gateway.checkpoint_lineage import CheckpointLineageError, CheckpointParentMissingError, find_checkpoint_before_message, find_checkpoint_before_message_chronologically
+    from app.gateway.utils import sanitize_log_param
 
     try:
         return await find_checkpoint_before_message(
@@ -350,6 +362,9 @@ def _copy_branch_user_data_sync(paths: Paths, source_thread_id: str, target_thre
 
 
 async def _copy_branch_user_data(source_thread_id: str, target_thread_id: str) -> str:
+    from alpha.utils.file_io import run_file_io
+    from app.gateway.utils import sanitize_log_param
+
     paths = get_paths()
     user_id = get_effective_user_id()
     try:
@@ -442,6 +457,8 @@ class _MetadataRedactingResponse(BaseModel):
     @field_validator("metadata", mode="before", check_fields=False)
     @classmethod
     def _redact_legacy_metadata_secret(cls, value: Any) -> Any:
+        from alpha.runtime.secret_context import redact_metadata_secrets
+
         return redact_metadata_secrets(value)
 
 
@@ -528,6 +545,8 @@ class ThreadPatchRequest(BaseModel):
     @field_validator("metadata")
     @classmethod
     def validate_archive_flag(cls, value: dict[str, Any]) -> dict[str, Any]:
+        from alpha.persistence.thread_meta import THREAD_ARCHIVED_METADATA_KEY
+
         if THREAD_ARCHIVED_METADATA_KEY in value and not isinstance(value[THREAD_ARCHIVED_METADATA_KEY], bool):
             raise ValueError("alpha_archived must be a boolean")
         return value
@@ -628,6 +647,8 @@ class ThreadBranchResponse(BaseModel):
 
 def _delete_thread_data(thread_id: str, paths: Paths | None = None, *, user_id: str | None = None) -> ThreadDeleteResponse:
     """Delete local persisted filesystem data for a thread."""
+    from app.gateway.utils import sanitize_log_param
+
     path_manager = paths or get_paths()
     try:
         path_manager.delete_thread_dir(thread_id, user_id=user_id)
@@ -685,7 +706,10 @@ def _derive_thread_status(snapshot: Any, pending_writes: list[Any], *, fallback_
 
 async def _ensure_thread_for_goal(thread_id: str, request: Request) -> None:
     """Ensure a thread_meta row and root checkpoint exist for goal commands."""
-    from app.gateway.deps import get_thread_store
+    from alpha.runtime.goal import ensure_thread_checkpoint
+    from app.gateway.deps import get_checkpointer, get_thread_store
+    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+    from app.gateway.utils import sanitize_log_param
 
     thread_store = get_thread_store(request)
     checkpointer = get_checkpointer(request)
@@ -727,6 +751,11 @@ async def delete_thread_data(thread_id: str, request: Request) -> ThreadDeleteRe
     and removes the thread_meta row from the configured ThreadMetaStore
     (sqlite or memory).
     """
+    from alpha.runtime import ThreadOperationKind
+    from alpha.runtime.goal import goal_thread_lock
+    from alpha.runtime.runs.manager import ConflictError
+    from app.gateway.deps import get_run_manager
+
     run_manager = get_run_manager(request)
     try:
         async with goal_thread_lock(thread_id):
@@ -745,7 +774,9 @@ async def delete_thread_data(thread_id: str, request: Request) -> ThreadDeleteRe
 
 async def _delete_thread_data_with_reservation(thread_id: str, request: Request) -> ThreadDeleteResponse:
     """Delete a thread while its durable exclusive reservation is held."""
+    from alpha.utils.thread_id import validate_thread_id
     from app.gateway.deps import get_thread_store
+    from app.gateway.utils import sanitize_log_param
 
     # Legacy IDs may predate the canonical filesystem-safe contract. They can
     # still be removed from metadata/checkpoint stores, but must never be
@@ -823,6 +854,8 @@ async def _resolve_existing_thread(
 
 
 def _existing_thread_response(thread_id: str, record: dict) -> ThreadResponse:
+    from alpha.utils.time import coerce_iso
+
     return ThreadResponse(
         thread_id=thread_id,
         status=record.get("status", "idle"),
@@ -841,7 +874,12 @@ async def create_thread(body: ThreadCreateRequest, request: Request) -> ThreadRe
     and an empty checkpoint (so state endpoints work immediately).
     Idempotent: returns the existing record when ``thread_id`` already exists.
     """
-    from app.gateway.deps import get_thread_store
+    from alpha.persistence.thread_meta import ThreadOwnershipConflictError
+    from alpha.utils.thread_id import resolve_thread_id
+    from alpha.utils.time import now_iso
+    from app.gateway.deps import get_checkpointer, get_thread_store
+    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+    from app.gateway.utils import sanitize_log_param
 
     checkpointer = get_checkpointer(request)
     thread_store = get_thread_store(request)
@@ -923,6 +961,11 @@ async def create_thread(body: ThreadCreateRequest, request: Request) -> ThreadRe
 @require_permission("threads", "write", owner_check=True, require_existing=True)
 async def branch_thread(thread_id: ThreadId, body: ThreadBranchRequest, request: Request) -> ThreadBranchResponse:
     """Create a new main-thread branch from a completed assistant turn."""
+    from alpha.runtime import ThreadOperationKind
+    from alpha.runtime.goal import goal_thread_lock
+    from alpha.runtime.runs.manager import ConflictError
+    from app.gateway.deps import get_run_manager
+
     try:
         async with goal_thread_lock(thread_id):
             async with get_run_manager(request).reserve_thread_operation(
@@ -948,6 +991,11 @@ async def undo_last_turn(thread_id: ThreadId, request: Request) -> ThreadBranchR
     Continue in the returned thread to proceed as if the last turn never
     happened. 409 when there is no previous turn to return to.
     """
+    from alpha.runtime import ThreadOperationKind
+    from alpha.runtime.goal import goal_thread_lock
+    from alpha.runtime.runs.manager import ConflictError
+    from app.gateway.deps import get_run_manager
+
     try:
         async with goal_thread_lock(thread_id):
             async with get_run_manager(request).reserve_thread_operation(
@@ -965,7 +1013,9 @@ async def undo_last_turn(thread_id: ThreadId, request: Request) -> ThreadBranchR
 
 async def _undo_with_reservation(thread_id: ThreadId, request: Request) -> ThreadBranchResponse:
     """Find the previous turn's assistant ids, then reuse the branch writer."""
+    from app.gateway.checkpoint_lineage import is_duration_only_checkpoint
     from app.gateway.deps import get_thread_store
+    from app.gateway.utils import sanitize_log_param
 
     thread_store = get_thread_store(request)
     source_record = await thread_store.get(thread_id)
@@ -1008,7 +1058,13 @@ async def _branch_thread_with_reservation(
     request: Request,
 ) -> ThreadBranchResponse:
     """Create a branch while holding the source thread's exclusive reservation."""
-    from app.gateway.deps import get_thread_store
+    from alpha.agents.thread_state import THREAD_STATE_REDUCER_FIELDS
+    from alpha.runtime.checkpoint_state import graph_state_schema
+    from alpha.runtime.journal import build_branch_history_seed_events
+    from alpha.utils.time import now_iso
+    from app.gateway.deps import get_run_event_store, get_thread_store
+    from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+    from app.gateway.utils import sanitize_log_param
 
     thread_store = get_thread_store(request)
 
@@ -1210,7 +1266,8 @@ async def search_threads(body: ThreadSearchRequest, request: Request) -> list[Th
     Delegates to the configured ThreadMetaStore implementation
     (SQL-backed for sqlite/postgres, Store-backed for memory mode).
     """
-    from alpha.persistence.thread_meta import InvalidMetadataFilterError
+    from alpha.persistence.thread_meta import PROJECT_FILTER_UNSET, InvalidMetadataFilterError
+    from alpha.utils.time import coerce_iso
     from app.gateway.deps import get_thread_store
 
     repo = get_thread_store(request)
@@ -1273,6 +1330,9 @@ async def search_thread_content(body: ThreadContentSearchRequest, request: Reque
     backends substring-scan. Human/model turns rank above tool output, then
     recency. Snippets are bounded excerpts, never full messages.
     """
+    from app.gateway.deps import get_run_event_store
+    from app.gateway.utils import sanitize_log_param
+
     store = get_run_event_store(request)
     user_id = get_effective_user_id()
     hits = await store.search_message_content(
@@ -1303,7 +1363,9 @@ async def search_thread_content(body: ThreadContentSearchRequest, request: Reque
 @require_permission("threads", "write", owner_check=True, require_existing=True)
 async def patch_thread(thread_id: ThreadId, body: ThreadPatchRequest, request: Request) -> ThreadResponse:
     """Merge metadata into a thread record."""
+    from alpha.utils.time import coerce_iso
     from app.gateway.deps import get_thread_store
+    from app.gateway.utils import sanitize_log_param
 
     thread_store = get_thread_store(request)
     record = await thread_store.get(thread_id)
@@ -1343,6 +1405,7 @@ class ThreadMoveRequest(BaseModel):
 async def move_thread(thread_id: ThreadId, body: ThreadMoveRequest, request: Request) -> ThreadResponse:
     """Move a thread between projects (or out). Organizational only: history,
     run state, and per-thread files are untouched (RFC v2 §6)."""
+    from alpha.utils.time import coerce_iso
     from app.gateway.deps import get_thread_store
 
     thread_store = get_thread_store(request)
@@ -1363,7 +1426,10 @@ async def move_thread(thread_id: ThreadId, body: ThreadMoveRequest, request: Req
 @require_permission("threads", "read", owner_check=True)
 async def get_thread(thread_id: ThreadId, request: Request) -> ThreadResponse:
     """Get thread info from metadata plus the graph's materialized state."""
-    from app.gateway.deps import get_thread_store
+    from alpha.runtime import serialize_channel_values_for_api
+    from alpha.utils.time import coerce_iso
+    from app.gateway.deps import get_checkpointer, get_thread_store
+    from app.gateway.utils import sanitize_log_param
 
     thread_store = get_thread_store(request)
     checkpointer = get_checkpointer(request)
@@ -1416,6 +1482,10 @@ async def get_thread(thread_id: ThreadId, request: Request) -> ThreadResponse:
 @require_permission("threads", "read", owner_check=True)
 async def get_thread_goal(thread_id: ThreadId, request: Request) -> ThreadGoalResponse:
     """Return the active Claude-style goal for a thread, if any."""
+    from alpha.runtime.goal import read_thread_goal
+    from app.gateway.deps import get_checkpointer
+    from app.gateway.utils import sanitize_log_param
+
     checkpointer = get_checkpointer(request)
     try:
         goal = await read_thread_goal(checkpointer, thread_id)
@@ -1433,6 +1503,12 @@ async def set_thread_goal(thread_id: ThreadId, body: ThreadGoalRequest, request:
     ``/chats/new`` pages already hold a generated UUID before the first run, so
     this endpoint creates the missing thread checkpoint on demand.
     """
+    from alpha.runtime.goal import build_goal_state, write_thread_goal
+    from alpha.runtime.runs.manager import ConflictError
+    from app.gateway.deps import get_checkpointer
+    from app.gateway.services import reserve_checkpoint_write
+    from app.gateway.utils import sanitize_log_param
+
     checkpointer = get_checkpointer(request)
     try:
         goal = build_goal_state(body.objective, max_continuations=body.max_continuations)
@@ -1455,6 +1531,12 @@ async def set_thread_goal(thread_id: ThreadId, body: ThreadGoalRequest, request:
 @require_permission("threads", "write", owner_check=True)
 async def clear_thread_goal(thread_id: ThreadId, request: Request) -> ThreadGoalResponse:
     """Clear the active goal for a thread."""
+    from alpha.runtime.goal import write_thread_goal
+    from alpha.runtime.runs.manager import ConflictError
+    from app.gateway.deps import get_checkpointer
+    from app.gateway.services import reserve_checkpoint_write
+    from app.gateway.utils import sanitize_log_param
+
     checkpointer = get_checkpointer(request)
     try:
         async with reserve_checkpoint_write(request, thread_id, user_id=get_effective_user_id()):
@@ -1490,6 +1572,11 @@ async def compact_thread(thread_id: ThreadId, body: ThreadCompactRequest, reques
     # every other channel — including middleware-contributed ones — is carried
     # forward by checkpoint fork inheritance, so the base-schema mutation
     # graph is sufficient (and avoids building the full lead graph per call).
+    from alpha.runtime.context_compaction import ContextCompactionDisabled, ContextCompactionFailed, compact_thread_context
+    from alpha.runtime.runs.manager import ConflictError
+    from app.gateway.services import reserve_checkpoint_write
+    from app.gateway.utils import sanitize_log_param
+
     try:
         accessor, _ = build_checkpoint_state_mutation_accessor(
             request,
@@ -1535,6 +1622,11 @@ async def get_thread_state(thread_id: ThreadId, request: Request) -> ThreadState
     """Get the latest materialized graph state for a thread."""
     # Resolve through the thread's assistant so custom middleware channels
     # appear in the response instead of being dropped by the default schema.
+    from alpha.runtime import serialize_channel_values_for_api
+    from alpha.runtime.events.message_seq import stamp_messages_with_seq
+    from alpha.utils.time import coerce_iso
+    from app.gateway.utils import sanitize_log_param
+
     try:
         accessor, config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
     except _CHECKPOINT_MODE_ERRORS as exc:
@@ -1582,7 +1674,14 @@ async def get_thread_state(thread_id: ThreadId, request: Request) -> ThreadState
 @require_permission("threads", "write", owner_check=True, require_existing=True)
 async def update_thread_state(thread_id: ThreadId, body: ThreadStateUpdateRequest, request: Request) -> ThreadStateResponse:
     """Replace selected thread-state fields through the materialized graph."""
-    from app.gateway.deps import get_thread_store
+    from alpha.agents.thread_state import THREAD_STATE_REDUCER_FIELDS
+    from alpha.runtime import serialize_channel_values_for_api
+    from alpha.runtime.checkpoint_state import graph_writable_channels
+    from alpha.runtime.runs.manager import ConflictError
+    from alpha.utils.time import coerce_iso
+    from app.gateway.deps import get_checkpointer, get_thread_store
+    from app.gateway.services import reserve_checkpoint_write, strip_server_owned_state_metadata
+    from app.gateway.utils import sanitize_log_param
 
     thread_store = get_thread_store(request)
     if body.checkpoint_id is not None:
@@ -1680,6 +1779,8 @@ async def update_thread_state(thread_id: ThreadId, body: ThreadStateUpdateReques
 
 
 def _checkpoint_run_durations(metadata: Any) -> dict[str, int]:
+    from alpha.runtime.runs.worker import valid_duration_entry
+
     raw_durations = metadata.get("run_durations") if isinstance(metadata, dict) else None
     if not isinstance(raw_durations, dict):
         return {}
@@ -1687,6 +1788,8 @@ def _checkpoint_run_durations(metadata: Any) -> dict[str, int]:
 
 
 def _checkpoint_run_message_ids(metadata: Any) -> dict[str, str]:
+    from alpha.runtime.runs.worker import RUN_MESSAGE_IDS_METADATA_KEY, valid_run_message_id_entry
+
     raw_message_run_ids = metadata.get(RUN_MESSAGE_IDS_METADATA_KEY) if isinstance(metadata, dict) else None
     if not isinstance(raw_message_run_ids, dict):
         return {}
@@ -1733,7 +1836,11 @@ async def _persist_run_history_metadata_background(
     audited_message_ids: set[str],
 ) -> None:
     """Best-effort history migration behind durable checkpoint admission."""
-    from alpha.runtime.runs.worker import persist_run_history_metadata
+    from alpha.runtime.runs.manager import ConflictError
+    from alpha.runtime.runs.worker import persist_run_history_metadata, valid_run_message_id_entry
+    from app.gateway.deps import get_run_event_store, get_run_manager
+    from app.gateway.services import reserve_checkpoint_write
+    from app.gateway.utils import sanitize_log_param
 
     try:
         async with reserve_checkpoint_write(request, thread_id, user_id=user_id):
@@ -1789,6 +1896,13 @@ async def get_thread_history(
     Only the latest (first) checkpoint carries the ``messages`` key to
     avoid duplicating the complete conversation across every entry.
     """
+    from alpha.runtime import serialize_channel_values_for_api
+    from alpha.runtime.events.message_seq import stamp_messages_with_seq
+    from alpha.runtime.runs.worker import RUN_MESSAGE_IDS_METADATA_KEY
+    from alpha.utils.time import coerce_iso
+    from app.gateway.deps import get_checkpointer, get_run_event_store, get_run_manager
+    from app.gateway.utils import sanitize_log_param
+
     checkpointer = get_checkpointer(request)
     try:
         accessor, config = await build_thread_checkpoint_state_accessor(

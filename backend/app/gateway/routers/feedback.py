@@ -12,16 +12,16 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.persistence.feedback.model import FEEDBACK_CATEGORIES
 from alpha.utils.thread_id import ThreadId
 from app.gateway.authz import require_permission
-from app.gateway.deps import get_current_user, get_feedback_repo, get_run_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["feedback"])
 
 
 def _validate_category(category: str | None) -> str | None:
+    from alpha.persistence.feedback.model import FEEDBACK_CATEGORIES
+
     if category is None:
         return None
     if category not in FEEDBACK_CATEGORIES:
@@ -81,6 +81,8 @@ async def upsert_feedback(
     request: Request,
 ) -> dict[str, Any]:
     """Create or update feedback for a run (idempotent)."""
+    from app.gateway.deps import get_current_user, get_feedback_repo, get_run_store
+
     if body.rating not in (1, -1):
         raise HTTPException(status_code=400, detail="rating must be +1 or -1")
     category = _validate_category(body.category)
@@ -113,6 +115,8 @@ async def delete_run_feedback(
     request: Request,
 ) -> dict[str, bool]:
     """Delete the current user's feedback for a run."""
+    from app.gateway.deps import get_current_user, get_feedback_repo
+
     user_id = await get_current_user(request)
     feedback_repo = get_feedback_repo(request)
     deleted = await feedback_repo.delete_by_run(
@@ -134,6 +138,8 @@ async def create_feedback(
     request: Request,
 ) -> dict[str, Any]:
     """Submit feedback (thumbs-up/down) for a run."""
+    from app.gateway.deps import get_current_user, get_feedback_repo, get_run_store
+
     if body.rating not in (1, -1):
         raise HTTPException(status_code=400, detail="rating must be +1 or -1")
     category = _validate_category(body.category)
@@ -168,6 +174,8 @@ async def list_feedback(
     request: Request,
 ) -> list[dict[str, Any]]:
     """List all feedback for a run."""
+    from app.gateway.deps import get_feedback_repo
+
     feedback_repo = get_feedback_repo(request)
     return await feedback_repo.list_by_run(thread_id, run_id)
 
@@ -180,6 +188,8 @@ async def feedback_stats(
     request: Request,
 ) -> dict[str, Any]:
     """Get aggregated feedback stats (positive/negative counts, per-category breakdown) for a run."""
+    from app.gateway.deps import get_feedback_repo
+
     feedback_repo = get_feedback_repo(request)
     return await feedback_repo.aggregate_by_run(thread_id, run_id, by_category=True)
 
@@ -193,6 +203,8 @@ async def delete_feedback(
     request: Request,
 ) -> dict[str, bool]:
     """Delete a feedback record."""
+    from app.gateway.deps import get_feedback_repo
+
     feedback_repo = get_feedback_repo(request)
     # Verify feedback belongs to the specified thread/run before deleting
     existing = await feedback_repo.get(feedback_id)

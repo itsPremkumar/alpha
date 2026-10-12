@@ -29,21 +29,16 @@ from pydantic import BaseModel, Field
 from alpha.config.app_config import AppConfig
 from alpha.config.voice_config import VOICE_ID_PATTERN, StreamingConfig, VoiceConfig
 from alpha.media.stt import MAX_AUDIO_MB, SUPPORTED_SUFFIXES
-from alpha.multimodal import chain
 from alpha.multimodal.endpointing import (
-    EndpointEvent,
-    EndpointingConfig,
     ProcessSessionLimiter,
-    SpeechDetectorUnavailable,
-    StreamingEndpointDetector,
     WebRtcSpeechDetector,
 )
 from alpha.multimodal.errors import MultimodalUnavailableError
-from alpha.multimodal.wakeword import InvalidFrameError, WakeWordSession
-from alpha.multimodal.wav import WavError, pcm16_to_wav
 from app.gateway.authz import require_permission, resolve_route_permissions
 from app.gateway.deps import get_config
-from app.gateway.routers.browser import _authenticate_ws, _ws_origin_allowed
+from app.gateway.routers.browser import (
+    _authenticate_ws,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +150,8 @@ async def capabilities(request: Request) -> dict[str, Any]:
       honest disclosure shape the WebSocket leg already uses rather than a bare
       500.
     """
+    from alpha.multimodal import chain
+
     del request  # Required by the auth decorator.
     try:
         return await asyncio.wait_for(
@@ -181,6 +178,8 @@ async def capabilities(request: Request) -> dict[str, Any]:
 )
 @require_permission("runs", "create")
 async def tts(body: TtsRequest, request: Request, config: AppConfig = Depends(get_config)) -> Response:
+    from alpha.multimodal import chain
+
     del request  # Required by the auth decorator.
     _require_voice_enabled(config)
 
@@ -242,6 +241,8 @@ async def tts(body: TtsRequest, request: Request, config: AppConfig = Depends(ge
 )
 @require_permission("runs", "create")
 async def stt(request: Request, config: AppConfig = Depends(get_config), audio: UploadFile = File(...)) -> dict[str, Any]:
+    from alpha.multimodal import chain
+
     del request  # Required by the auth decorator.
     _require_voice_enabled(config)
 
@@ -283,6 +284,8 @@ async def stt(request: Request, config: AppConfig = Depends(get_config), audio: 
 )
 @require_permission("runs", "create")
 async def ocr(request: Request, image: UploadFile = File(...)) -> dict[str, Any]:
+    from alpha.multimodal import chain
+
     del request  # Required by the auth decorator.
 
     suffix = Path(image.filename or "").suffix.lower()
@@ -312,6 +315,8 @@ async def ocr(request: Request, image: UploadFile = File(...)) -> dict[str, Any]
 )
 @require_permission("runs", "create")
 async def image_gen(body: ImageGenRequest, request: Request) -> dict[str, Any]:
+    from alpha.multimodal import chain
+
     del request  # Required by the auth decorator.
 
     prompt = body.prompt.strip()
@@ -363,6 +368,9 @@ def _observed_voice_config() -> VoiceConfig:
 
 def _transcribe_pcm(pcm: bytes, voice: VoiceConfig) -> Any:
     """Sync wake/PTT/conversation handoff: PCM16 -> WAV -> chain STT."""
+    from alpha.multimodal import chain
+    from alpha.multimodal.wav import pcm16_to_wav
+
     wav_bytes = pcm16_to_wav(pcm, sample_rate=voice.streaming.sample_rate)
     if len(wav_bytes) > MAX_AUDIO_BYTES:
         raise ValueError(f"audio exceeds {MAX_AUDIO_MB:.0f} MiB after wrapping")
@@ -419,6 +427,12 @@ async def voice_websocket(websocket: WebSocket) -> None:
     metadata-only; the browser submits a final transcript through the existing
     thread-run/SSE path rather than this socket constructing a parallel run.
     """
+
+    from alpha.multimodal import chain
+    from alpha.multimodal.endpointing import EndpointEvent, EndpointingConfig, SpeechDetectorUnavailable, StreamingEndpointDetector
+    from alpha.multimodal.wakeword import InvalidFrameError, WakeWordSession
+    from alpha.multimodal.wav import WavError
+    from app.gateway.routers.browser import _ws_origin_allowed
 
     user = await _authenticate_ws(websocket)
     if user is None:

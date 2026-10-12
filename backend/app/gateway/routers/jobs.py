@@ -8,15 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from alpha.jobs import (
-    JobPriority,
-    JobSpec,
-    JobStatus,
     PersistentJobQueue,
 )
 from alpha.jobs.runner import ExternalJobRunner
-from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
 from app.gateway.authz import require_permission
-from app.gateway.deps import get_current_user_from_request, require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -26,6 +21,9 @@ _GLOBAL_RUNNER = ExternalJobRunner(queue=_GLOBAL_QUEUE)
 
 
 async def _job_owner(request: Request) -> str:
+    from app.gateway.auth_disabled import AUTH_SOURCE_PAT
+    from app.gateway.deps import get_current_user_from_request
+
     user = await get_current_user_from_request(request)
     if getattr(request.state, "auth_source", None) == AUTH_SOURCE_PAT:
         raise HTTPException(status_code=403, detail="PAT credentials are not permitted on this route")
@@ -49,6 +47,10 @@ class JobSubmitRequest(BaseModel):
 @require_permission("runs", "create")
 async def submit_job(payload: JobSubmitRequest, request: Request, owner_id: str = Depends(_job_owner)):
     """Submits a decoupled background job for execution."""
+    from alpha.jobs import JobPriority, JobSpec
+    from app.gateway.auth_disabled import AUTH_SOURCE_SESSION
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail="Authenticated operator permission is required for host jobs")
     if getattr(request.state, "auth_source", None) != AUTH_SOURCE_SESSION:
         raise HTTPException(status_code=403, detail="Host jobs require an authenticated operator session")
@@ -86,6 +88,8 @@ async def submit_job(payload: JobSubmitRequest, request: Request, owner_id: str 
 @require_permission("runs", "read")
 async def list_jobs(request: Request, status: str | None = None, tag: str | None = None, limit: int = Query(default=50, ge=1, le=100), owner_id: str = Depends(_job_owner)):
     """Lists registered background jobs with optional status/tag filtering."""
+    from alpha.jobs import JobStatus
+
     s_enum = None
     if status:
         try:

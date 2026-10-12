@@ -13,14 +13,8 @@ from alpha.config.extensions_config import (
     McpRoutingConfig,
     McpTaskToolsetConfig,
     McpToolOverride,
-    atomic_write_extensions_config,
-    extensions_config_file_lock,
-    extensions_config_write_lock,
     get_extensions_config,
-    normalize_mcp_transport_alias,
-    read_raw_extensions_config,
     reload_extensions_config,
-    validate_raw_extensions_config,
 )
 from alpha.config.runtime_paths import project_root
 from alpha.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
@@ -485,6 +479,8 @@ class McpServerConfigResponse(BaseModel):
     @classmethod
     def _accept_transport_alias(cls, data: Any) -> Any:
         """Keep API parsing aligned with the runtime MCP config model."""
+        from alpha.config.extensions_config import normalize_mcp_transport_alias
+
         return normalize_mcp_transport_alias(data)
 
 
@@ -1165,6 +1161,8 @@ def _mcp_server_response_from_raw(server_name: str, raw_server: Any) -> McpServe
 
 def _validate_extensions_config_candidate(raw_data: dict) -> None:
     """Reject a runtime-invalid candidate without changing its placeholders."""
+    from alpha.config.extensions_config import validate_raw_extensions_config
+
     try:
         validate_raw_extensions_config(raw_data)
     except ValidationError as exc:
@@ -1182,6 +1180,8 @@ def _apply_mcp_config_update(body: McpConfigUpdateRequest) -> dict:
     """
     # Resolve before entering the critical section so every writer locks the
     # same sidecar path for the complete read-modify-write cycle.
+    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock
+
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         config_path = project_root() / "extensions_config.json"
@@ -1238,6 +1238,8 @@ def _apply_mcp_config_update(body: McpConfigUpdateRequest) -> dict:
 
 def _apply_mcp_server_state_update(body: McpServerStateUpdateRequest) -> dict:
     """Update one server state while preserving the raw extensions config."""
+    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock
+
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         raise HTTPException(
@@ -1294,6 +1296,8 @@ def _mcp_config_path(*, create: bool) -> Path:
 
 
 def _load_raw_extensions_config(config_path: Path, *, create: bool) -> dict:
+    from alpha.config.extensions_config import read_raw_extensions_config
+
     if config_path.exists():
         try:
             return read_raw_extensions_config(config_path)
@@ -1321,6 +1325,8 @@ def _mcp_server_responses_from_raw(raw_data: dict) -> dict[str, McpServerConfigR
 
 def _load_raw_mcp_server_responses() -> dict[str, McpServerConfigResponse]:
     """Read editable MCP server definitions under the shared config lock."""
+    from alpha.config.extensions_config import extensions_config_file_lock, extensions_config_write_lock
+
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path is None:
         return {}
@@ -1339,6 +1345,8 @@ def _ensure_skills_key(raw_data: dict) -> None:
 
 def _apply_mcp_servers_create(body: McpConfigUpdateRequest) -> dict:
     """Atomically add servers without replacing entries already on disk."""
+    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock
+
     config_path = _mcp_config_path(create=True)
     with extensions_config_write_lock, extensions_config_file_lock(config_path):
         raw_data = _load_raw_extensions_config(config_path, create=True)
@@ -1365,6 +1373,8 @@ def _apply_mcp_servers_create(body: McpConfigUpdateRequest) -> dict:
 
 def _apply_mcp_server_config_update(body: McpServerConfigUpdateRequest) -> dict:
     """Atomically replace one server while preserving concurrent sibling edits."""
+    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock
+
     config_path = _mcp_config_path(create=False)
     with extensions_config_write_lock, extensions_config_file_lock(config_path):
         raw_data = _load_raw_extensions_config(config_path, create=False)
@@ -1394,6 +1404,8 @@ def _apply_mcp_server_config_update(body: McpServerConfigUpdateRequest) -> dict:
 
 def _apply_mcp_server_delete(server_name: str) -> dict:
     """Atomically remove one server while preserving every sibling entry."""
+    from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock, extensions_config_write_lock
+
     config_path = _mcp_config_path(create=False)
     with extensions_config_write_lock, extensions_config_file_lock(config_path):
         raw_data = _load_raw_extensions_config(config_path, create=False)

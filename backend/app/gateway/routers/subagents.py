@@ -8,18 +8,12 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from alpha.config.app_config import get_app_config
 from alpha.persistence.managed_subagents import (
-    ManagedSubagentDefinition,
-    ManagedSubagentExistsError,
     get_managed_subagent_store,
 )
 from alpha.persistence.managed_subagents.base import (
     MANAGED_SUBAGENT_NAME_PATTERN,
-    normalize_managed_subagent_name,
 )
-from alpha.subagents.builtins import BUILTIN_SUBAGENTS
-from app.gateway.deps import is_admin_user, require_admin_user
 
 router = APIRouter(prefix="/api/subagents", tags=["subagents"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage subagents."
@@ -99,6 +93,8 @@ def _validate_model(model: str, app_config) -> None:
 
 
 def _validate_path_name(name: str) -> str:
+    from alpha.persistence.managed_subagents.base import normalize_managed_subagent_name
+
     try:
         return normalize_managed_subagent_name(name)
     except ValueError as exc:
@@ -120,6 +116,9 @@ def _explicit_overrides(name: str, app_config) -> dict[str, Any]:
 
 
 def _catalog(include_system_prompt: bool) -> SubagentsListResponse:
+    from alpha.config.app_config import get_app_config
+    from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+
     app_config = get_app_config()
     config_names = set(app_config.subagents.custom_agents)
     reserved_names = set(BUILTIN_SUBAGENTS) | config_names
@@ -180,12 +179,19 @@ def _catalog(include_system_prompt: bool) -> SubagentsListResponse:
 @router.get("", response_model=SubagentsListResponse, summary="List Subagents")
 async def list_subagents(request: Request) -> SubagentsListResponse:
     """List the runtime catalog; prompts remain visible only to admins."""
+    from app.gateway.deps import is_admin_user
+
     include_system_prompt = await is_admin_user(request)
     return await asyncio.to_thread(_catalog, include_system_prompt)
 
 
 @router.post("", response_model=SubagentResponse, status_code=201, summary="Create Managed Subagent")
 async def create_managed_subagent(request: Request, body: ManagedSubagentCreateRequest) -> SubagentResponse:
+    from alpha.config.app_config import get_app_config
+    from alpha.persistence.managed_subagents import ManagedSubagentDefinition, ManagedSubagentExistsError
+    from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
         definition = ManagedSubagentDefinition(**body.model_dump(exclude_none=True))
@@ -211,6 +217,11 @@ async def create_managed_subagent(request: Request, body: ManagedSubagentCreateR
 
 @router.put("/{name}", response_model=SubagentResponse, summary="Update Managed Subagent")
 async def update_managed_subagent(name: str, request: Request, body: ManagedSubagentUpdateRequest) -> SubagentResponse:
+    from alpha.config.app_config import get_app_config
+    from alpha.persistence.managed_subagents import ManagedSubagentDefinition
+    from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     name = _validate_path_name(name)
     app_config = await asyncio.to_thread(get_app_config)
@@ -247,6 +258,9 @@ async def update_managed_subagent(name: str, request: Request, body: ManagedSuba
 
 @router.delete("/{name}", status_code=204, summary="Delete Managed Subagent")
 async def delete_managed_subagent(name: str, request: Request) -> None:
+    from alpha.config.app_config import get_app_config
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     name = _validate_path_name(name)
     app_config = await asyncio.to_thread(get_app_config)

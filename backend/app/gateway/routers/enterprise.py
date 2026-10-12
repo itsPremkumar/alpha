@@ -9,18 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from alpha.enterprise import (
-    get_council_quorum_engine,
-    get_department_treasury,
-    get_discovery_and_optimization_engine,
-    get_enterprise_heartbeat_coordinator,
-    get_enterprise_hierarchy,
-    get_mission_pipeline,
-    get_rfc_protocol,
-)
 from alpha.enterprise.models import (
-    CONFIDENCE_BASIS_CALLER_SUPPLIED,
-    CONFIDENCE_BASIS_NEUTRAL,
     NEUTRAL_CONFIDENCE_BASELINE,
 )
 
@@ -115,6 +104,8 @@ class SignReleaseRequest(BaseModel):
 @router.get("/hierarchy")
 async def get_enterprise_hierarchy_chart() -> dict[str, Any]:
     """Retrieves full interactive organization chart tree for the War Room UI."""
+    from alpha.enterprise import get_enterprise_hierarchy
+
     engine = get_enterprise_hierarchy()
     return await asyncio.to_thread(engine.get_full_org_chart)
 
@@ -122,6 +113,8 @@ async def get_enterprise_hierarchy_chart() -> dict[str, Any]:
 @router.get("/csuite")
 async def get_csuite_swarm() -> dict[str, Any]:
     """Retrieves all 4 C-Suite leadership roles."""
+    from alpha.enterprise import get_enterprise_hierarchy
+
     engine = get_enterprise_hierarchy()
     csuite = await asyncio.to_thread(engine.get_csuite)
     return {"csuite": {k: v.model_dump() for k, v in csuite.items()}}
@@ -130,6 +123,8 @@ async def get_csuite_swarm() -> dict[str, Any]:
 @router.post("/departments", status_code=201)
 async def synthesize_department(payload: SynthesizeDepartmentRequest) -> dict[str, Any]:
     """Dynamically synthesizes a new sub-department with capability contracts."""
+    from alpha.enterprise import get_enterprise_hierarchy
+
     engine = get_enterprise_hierarchy()
     dept = await asyncio.to_thread(
         engine.synthesize_custom_subdepartment,
@@ -149,6 +144,8 @@ async def synthesize_department(payload: SynthesizeDepartmentRequest) -> dict[st
 @router.get("/rfcs")
 async def list_rfcs(status: str | None = None) -> list[dict[str, Any]]:
     """Lists cross-department RFCs, filterable by status."""
+    from alpha.enterprise import get_rfc_protocol
+
     protocol = get_rfc_protocol()
     rfcs = await asyncio.to_thread(protocol.list_rfcs, status=status)
     return [r.model_dump() for r in rfcs]
@@ -157,6 +154,8 @@ async def list_rfcs(status: str | None = None) -> list[dict[str, Any]]:
 @router.post("/rfcs", status_code=201)
 async def create_rfc(payload: CreateRFCRequest) -> dict[str, Any]:
     """Proposes a new formal RFC on the Enterprise Blackboard."""
+    from alpha.enterprise import get_rfc_protocol
+
     protocol = get_rfc_protocol()
     rfc = await asyncio.to_thread(
         protocol.create_rfc,
@@ -173,6 +172,8 @@ async def create_rfc(payload: CreateRFCRequest) -> dict[str, Any]:
 @router.get("/rfcs/{rfc_id}")
 async def get_rfc(rfc_id: str) -> dict[str, Any]:
     """Retrieves RFC details including reviews and debate thread."""
+    from alpha.enterprise import get_rfc_protocol
+
     protocol = get_rfc_protocol()
     rfc = await asyncio.to_thread(protocol.get_rfc, rfc_id)
     if not rfc:
@@ -183,6 +184,9 @@ async def get_rfc(rfc_id: str) -> dict[str, Any]:
 @router.post("/rfcs/{rfc_id}/review", status_code=201)
 async def submit_rfc_review(rfc_id: str, payload: SubmitRFCReviewRequest) -> dict[str, Any]:
     """Submits a multi-agent review on an active RFC."""
+    from alpha.enterprise import get_rfc_protocol
+    from alpha.enterprise.models import CONFIDENCE_BASIS_CALLER_SUPPLIED, CONFIDENCE_BASIS_NEUTRAL
+
     protocol = get_rfc_protocol()
     try:
         review = await asyncio.to_thread(
@@ -203,6 +207,9 @@ async def submit_rfc_review(rfc_id: str, payload: SubmitRFCReviewRequest) -> dic
 @router.post("/rfcs/{rfc_id}/debate", status_code=201)
 async def submit_debate_argument(rfc_id: str, payload: SubmitDebateArgumentRequest) -> dict[str, Any]:
     """Submits an argument into the RFC epistemic debate thread."""
+    from alpha.enterprise import get_rfc_protocol
+    from alpha.enterprise.models import CONFIDENCE_BASIS_CALLER_SUPPLIED, CONFIDENCE_BASIS_NEUTRAL
+
     protocol = get_rfc_protocol()
     try:
         arg = await asyncio.to_thread(
@@ -225,6 +232,8 @@ async def submit_debate_argument(rfc_id: str, payload: SubmitDebateArgumentReque
 @router.post("/rfcs/{rfc_id}/gate")
 async def evaluate_rfc_gating(rfc_id: str) -> dict[str, Any]:
     """Evaluates consensus gating for an RFC."""
+    from alpha.enterprise import get_rfc_protocol
+
     protocol = get_rfc_protocol()
     try:
         passed, score, reason = await asyncio.to_thread(protocol.evaluate_consensus_gating, rfc_id)
@@ -244,6 +253,8 @@ async def evaluate_rfc_gating(rfc_id: str) -> dict[str, Any]:
 @router.get("/missions/pipeline")
 async def get_missions_pipeline() -> dict[str, Any]:
     """Retrieves all missions, epics, specs, and dynamic DAG sprints."""
+    from alpha.enterprise import get_mission_pipeline
+
     pipeline = get_mission_pipeline()
     epics = await asyncio.to_thread(pipeline.list_epics)
     sprints = await asyncio.to_thread(pipeline.list_sprints)
@@ -256,6 +267,8 @@ async def get_missions_pipeline() -> dict[str, Any]:
 @router.post("/missions/decompose", status_code=201)
 async def decompose_mission(payload: DecomposeMissionRequest) -> dict[str, Any]:
     """Decomposes a strategic enterprise mission into cross-department epics and technical specs."""
+    from alpha.enterprise import get_mission_pipeline
+
     pipeline = get_mission_pipeline()
     epics = await asyncio.to_thread(
         pipeline.decompose_strategic_mission,
@@ -276,6 +289,8 @@ async def decompose_mission(payload: DecomposeMissionRequest) -> dict[str, Any]:
 @router.post("/sprints/compile", status_code=201)
 async def compile_sprint(payload: CompileSprintRequest) -> dict[str, Any]:
     """Compiles a technical specification into an executable Dynamic DAG Sprint."""
+    from alpha.enterprise import get_mission_pipeline
+
     pipeline = get_mission_pipeline()
     try:
         sprint = await asyncio.to_thread(pipeline.compile_dynamic_dag_sprint, payload.spec_id)
@@ -287,6 +302,8 @@ async def compile_sprint(payload: CompileSprintRequest) -> dict[str, Any]:
 @router.post("/sprints/{sprint_id}/step")
 async def step_sprint(sprint_id: str) -> dict[str, Any]:
     """Advances task execution across topological layers in the DAG sprint."""
+    from alpha.enterprise import get_mission_pipeline
+
     pipeline = get_mission_pipeline()
     try:
         res = await asyncio.to_thread(pipeline.step_sprint_dag, sprint_id)
@@ -301,6 +318,8 @@ async def step_sprint(sprint_id: str) -> dict[str, Any]:
 @router.get("/treasury")
 async def get_treasury_status() -> dict[str, Any]:
     """Retrieves department budget allocations, burn rate monitoring, and circuit breaker states."""
+    from alpha.enterprise import get_department_treasury
+
     treasury = get_department_treasury()
     return await asyncio.to_thread(treasury.get_overall_telemetry)
 
@@ -308,6 +327,8 @@ async def get_treasury_status() -> dict[str, Any]:
 @router.post("/treasury/allocate")
 async def allocate_treasury_tokens(payload: TreasuryAllocateRequest) -> dict[str, Any]:
     """Allocates or replenishes token budget for a department."""
+    from alpha.enterprise import get_department_treasury
+
     treasury = get_department_treasury()
     alloc = await asyncio.to_thread(treasury.allocate_tokens, payload.dept_id, payload.tokens)
     return alloc.model_dump()
@@ -316,6 +337,8 @@ async def allocate_treasury_tokens(payload: TreasuryAllocateRequest) -> dict[str
 @router.post("/treasury/reset-breaker")
 async def reset_circuit_breaker(payload: ResetCircuitBreakerRequest) -> dict[str, Any]:
     """Authoritatively resets a tripped circuit breaker for a department."""
+    from alpha.enterprise import get_department_treasury
+
     treasury = get_department_treasury()
     try:
         alloc = await asyncio.to_thread(treasury.reset_circuit_breaker, payload.dept_id, payload.new_threshold_tpm)
@@ -330,6 +353,8 @@ async def reset_circuit_breaker(payload: ResetCircuitBreakerRequest) -> dict[str
 @router.get("/council/releases")
 async def list_releases() -> list[dict[str, Any]]:
     """Lists release candidates and active production releases with cryptographic signatures."""
+    from alpha.enterprise import get_council_quorum_engine
+
     council = get_council_quorum_engine()
     releases = await asyncio.to_thread(council.list_releases)
     return [r.model_dump() for r in releases]
@@ -338,6 +363,8 @@ async def list_releases() -> list[dict[str, Any]]:
 @router.post("/council/stage", status_code=201)
 async def stage_release(payload: StageReleaseRequest) -> dict[str, Any]:
     """Stages a new candidate release for holdout benchmarking and multi-sig verification."""
+    from alpha.enterprise import get_council_quorum_engine
+
     council = get_council_quorum_engine()
     candidate = await asyncio.to_thread(
         council.stage_candidate_release,
@@ -357,6 +384,8 @@ async def run_release_benchmark(release_id: str) -> dict[str, Any]:
     benchmark run, so this response reports evidence_kind alongside the score
     and explicitly declines to emit a pass verdict derived from it.
     """
+    from alpha.enterprise import get_council_quorum_engine
+
     council = get_council_quorum_engine()
     try:
         score = await asyncio.to_thread(council.run_holdout_benchmark, release_id)
@@ -380,6 +409,8 @@ async def run_release_benchmark(release_id: str) -> dict[str, Any]:
 @router.post("/council/releases/{release_id}/sign")
 async def sign_release(release_id: str, payload: SignReleaseRequest) -> dict[str, Any]:
     """Applies a cryptographic signature from CTO_ARCH, SWE_BENCHMARK, or CISO_ASTRA."""
+    from alpha.enterprise import get_council_quorum_engine
+
     council = get_council_quorum_engine()
     try:
         sig = await asyncio.to_thread(council.sign_release, release_id, payload.role, payload.bot_name)
@@ -398,6 +429,8 @@ async def sign_release(release_id: str, payload: SignReleaseRequest) -> dict[str
 @router.post("/council/releases/{release_id}/promote")
 async def promote_release(release_id: str) -> dict[str, Any]:
     """Promotes a multi-sig verified release to active production with zero-downtime hot-swap."""
+    from alpha.enterprise import get_council_quorum_engine
+
     council = get_council_quorum_engine()
     try:
         promoted = await asyncio.to_thread(council.promote_release_zero_downtime, release_id)
@@ -414,6 +447,8 @@ async def promote_release(release_id: str) -> dict[str, Any]:
 @router.get("/discovery")
 async def get_discovery_overview() -> dict[str, Any]:
     """Returns discovered feature gaps, latency profiles, and AST security scan reports."""
+    from alpha.enterprise import get_discovery_and_optimization_engine
+
     disc = get_discovery_and_optimization_engine()
     gaps = await asyncio.to_thread(disc.discover_feature_gaps)
     latencies = await asyncio.to_thread(disc.profile_latencies)
@@ -428,6 +463,8 @@ async def get_discovery_overview() -> dict[str, Any]:
 @router.post("/heartbeat")
 async def trigger_heartbeat() -> dict[str, Any]:
     """Executes an atomic enterprise heartbeat cycle."""
+    from alpha.enterprise import get_enterprise_heartbeat_coordinator
+
     coordinator = get_enterprise_heartbeat_coordinator()
     result = await asyncio.to_thread(coordinator.step_heartbeat_cycle)
     return result
@@ -436,6 +473,8 @@ async def trigger_heartbeat() -> dict[str, Any]:
 @router.get("/telemetry")
 async def get_telemetry() -> dict[str, Any]:
     """Retrieves real-time telemetry for the live War Room dashboard."""
+    from alpha.enterprise import get_enterprise_heartbeat_coordinator
+
     coordinator = get_enterprise_heartbeat_coordinator()
     telemetry = await asyncio.to_thread(coordinator.get_telemetry)
     return telemetry.model_dump()

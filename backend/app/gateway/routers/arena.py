@@ -14,9 +14,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from alpha.arena.config import arena_config
-from alpha.arena.service import ArenaConfirmationRequired, ArenaRunError, ArenaService
-from alpha.config import get_app_config
+from alpha.arena.service import (
+    ArenaService,
+)
 from app.gateway.deps import get_current_user_from_request, require_admin_user
 
 router = APIRouter(prefix="/api/arena", tags=["arena"])
@@ -73,6 +73,9 @@ class ArenaCardRequest(BaseModel):
 @router.get("/config")
 async def get_config() -> dict[str, Any]:
     """The effective arena configuration."""
+    from alpha.arena.config import arena_config
+    from alpha.config import get_app_config
+
     config = arena_config(get_app_config())
     return {
         "enabled": config.enabled,
@@ -186,6 +189,8 @@ async def _executing_service(user: str, thread_id: str | None) -> ArenaService:
     the request's event loop. The run's own ``thread_id`` rides the
     factory so competitors share the run's sandbox/workspace.
     """
+    from alpha.arena.config import arena_config
+    from alpha.config import get_app_config
     from alpha.subagents.config import SubagentConfig
     from alpha.subagents.executor import SubagentExecutor
     from alpha.tools import get_available_tools
@@ -224,6 +229,8 @@ async def start_run(
     If the projected call count exceeds the confirmation
     ceiling, ``confirm=true`` is required.
     """
+    from alpha.arena.service import ArenaConfirmationRequired, ArenaRunError
+
     service = get_service()
     try:
         # Gate first: a refusal must cost no tool assembly.
@@ -247,6 +254,8 @@ async def resume_run(
     Terminal runs (completed, stopped, failed, budget_exhausted)
     cannot be resumed.
     """
+    from alpha.arena.service import ArenaRunError
+
     service = get_service()
     try:
         # Gate first: refusing a terminal run must cost no tool assembly.
@@ -277,6 +286,8 @@ async def get_winner(
     user: str = Depends(get_current_user_from_request),
 ) -> dict[str, Any]:
     """The champion, its card, and the final check."""
+    from alpha.arena.service import ArenaRunError
+
     service = get_service()
     try:
         return service.winner(run_id, owner_id=user)
@@ -304,6 +315,8 @@ async def stop_run(
     user: str = Depends(get_current_user_from_request),
 ) -> dict[str, Any]:
     """Stop a running run."""
+    from alpha.arena.service import ArenaRunError
+
     service = get_service()
     try:
         return service.stop(run_id, owner_id=user)
@@ -318,6 +331,8 @@ async def delete_run(
     _admin: None = Depends(require_admin_user),
 ) -> dict[str, str]:
     """Delete a run and its work files. Admin-only."""
+    from alpha.arena.service import ArenaRunError
+
     service = get_service()
     try:
         service.delete(run_id, owner_id=user)

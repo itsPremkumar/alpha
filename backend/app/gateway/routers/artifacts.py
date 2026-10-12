@@ -16,16 +16,17 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from alpha.authz.sandbox_authz import safe_app_config
-from alpha.config.paths import make_safe_user_id
-from alpha.runtime import ConflictError, ThreadOperationKind
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.sandbox.sandbox_provider import get_sandbox_provider
 from alpha.utils.thread_id import ThreadId
-from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
-from app.gateway.deps import get_run_manager
+from app.gateway.authz import (
+    require_permission,
+)
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.path_utils import normalize_outputs_virtual_path, resolve_outputs_confined_path, resolve_thread_virtual_path
+from app.gateway.path_utils import (
+    resolve_outputs_confined_path,
+    resolve_thread_virtual_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,9 @@ class ArtifactUpdateResponse(BaseModel):
 @asynccontextmanager
 async def reserve_artifact_write(request: Request, thread_id: str, *, user_id: str) -> AsyncIterator[None]:
     """Serialize an artifact edit against runs and other thread mutations."""
+    from alpha.runtime import ThreadOperationKind
+    from app.gateway.deps import get_run_manager
+
     run_manager = get_run_manager(request)
     async with run_manager.reserve_thread_operation(
         thread_id,
@@ -77,6 +81,8 @@ def _normalize_editable_artifact_path(path: str) -> str:
     # and ``resolve_outputs_confined_path`` re-checks the resolved host path, so
     # neither an encoded ``..`` nor a symlink planted in ``outputs/`` can
     # redirect the edit to a sibling ``user-data/`` directory.
+    from app.gateway.path_utils import normalize_outputs_virtual_path
+
     virtual_path = normalize_outputs_virtual_path(path)
     if ".skill/" in virtual_path or virtual_path.endswith(".skill"):
         raise HTTPException(status_code=415, detail="Skill archives cannot be edited in the artifacts panel")
@@ -414,6 +420,8 @@ async def get_artifact(thread_id: ThreadId, path: str, request: Request, downloa
     # file pipeline and the memory router apply), so resolution uses the
     # normalized id. Browser/API callers get None here and fall back to the
     # effective user.
+    from alpha.config.paths import make_safe_user_id
+
     raw_owner_user_id = get_trusted_internal_owner_user_id(request)
     owner_user_id = make_safe_user_id(raw_owner_user_id) if raw_owner_user_id else None
 
@@ -535,6 +543,11 @@ async def update_artifact(
     ``sandbox:execute`` skips that sandbox sync (the host-side update still
     completes).
     """
+    from alpha.authz.sandbox_authz import safe_app_config
+    from alpha.config.paths import make_safe_user_id
+    from alpha.runtime import ConflictError
+    from app.gateway.authz import SandboxRequestLease, try_acquire_sandbox_for_request
+
     virtual_path = _normalize_editable_artifact_path(path)
     raw_owner_user_id = get_trusted_internal_owner_user_id(request)
     effective_user_id = make_safe_user_id(raw_owner_user_id) if raw_owner_user_id else get_effective_user_id()

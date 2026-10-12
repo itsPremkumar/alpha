@@ -27,16 +27,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from alpha.config.paths import get_paths
-from alpha.runtime.user_context import get_effective_user_id
-from alpha.tools.builtins.code_agentic_core import (
-    create_shadow_checkpoint,
-    get_all_checkpoints,
-    get_checkpoint_diff,
-    rollback_to_checkpoint,
-)
-from alpha.utils.time import coerce_iso
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/checkpoints", tags=["checkpoints"])
@@ -54,6 +44,8 @@ def _wire_ts(value: object) -> str:
     exists purely so a client can parse the field as a date, like every other
     Gateway route.
     """
+    from alpha.utils.time import coerce_iso
+
     return coerce_iso(value)
 
 
@@ -89,6 +81,9 @@ class CheckpointResponse(BaseModel):
 
 def _caller_area() -> Path:
     """The only directory tree a checkpoint request may reach."""
+    from alpha.config.paths import get_paths
+    from alpha.runtime.user_context import get_effective_user_id
+
     return get_paths().user_dir(get_effective_user_id()).resolve()
 
 
@@ -147,6 +142,8 @@ def list_checkpoints() -> list[dict[str, Any]]:
     # ``_ACTIVE_CHECKPOINTS`` is a process-global registry shared by every
     # authenticated user, so a checkpoint rooted in another area must not be
     # listed here: its label and absolute host root are not this caller's data.
+    from alpha.tools.builtins.code_agentic_core import get_all_checkpoints
+
     area = _caller_area()
     return [{**row, "created_at": _wire_ts(row.get("created_at"))} for row in get_all_checkpoints() if _is_inside_area(row.get("root_path") or "", area)]
 
@@ -154,6 +151,8 @@ def list_checkpoints() -> list[dict[str, Any]]:
 @router.post("", response_model=dict)
 def create_checkpoint(req: CheckpointCreateRequest) -> dict[str, Any]:
     """Create a new lightweight checkpoint capturing the current workspace state."""
+    from alpha.tools.builtins.code_agentic_core import create_shadow_checkpoint
+
     root = _resolve_confined_root(req.root_path)
     target_files = _confined_target_files(root, req.target_files)
     try:
@@ -180,6 +179,8 @@ def create_checkpoint(req: CheckpointCreateRequest) -> dict[str, Any]:
 @router.post("/{checkpoint_id}/rollback")
 def rollback_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict[str, Any]:
     """Restore the workspace to the specified checkpoint state."""
+    from alpha.tools.builtins.code_agentic_core import rollback_to_checkpoint
+
     root = _resolve_confined_root(root_path)
     res = rollback_to_checkpoint(checkpoint_id=checkpoint_id, root_path=str(root))
     if res.get("status") == "error":
@@ -190,6 +191,8 @@ def rollback_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict[str, A
 @router.get("/{checkpoint_id}/diff")
 def preview_checkpoint_diff(checkpoint_id: str, root_path: str = ".") -> dict[str, Any]:
     """Preview file diffs between current workspace files and the checkpoint state."""
+    from alpha.tools.builtins.code_agentic_core import get_checkpoint_diff
+
     root = _resolve_confined_root(root_path)
     diff = get_checkpoint_diff(checkpoint_id=checkpoint_id, root_path=str(root))
     if "error" in diff:

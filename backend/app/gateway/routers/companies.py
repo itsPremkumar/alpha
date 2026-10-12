@@ -21,9 +21,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from alpha.company_os.models import ApprovalStatus, AutonomyTier, CompanyState
-from alpha.company_os.service import get_company_service
-from alpha.company_os.store import CompanyNotFound, CompanyStoreUnreadable
+from alpha.company_os.models import (
+    AutonomyTier,
+    CompanyState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,9 @@ def _owner(request: Request) -> str:
 
 
 def _load(company_id: str, request: Request):
+    from alpha.company_os.service import get_company_service
+    from alpha.company_os.store import CompanyNotFound, CompanyStoreUnreadable
+
     try:
         return get_company_service().require(company_id, _owner(request))
     except CompanyNotFound as exc:
@@ -219,6 +223,8 @@ class DecisionRequest(BaseModel):
 @router.get("/archetypes")
 async def list_archetypes() -> dict[str, Any]:
     """The bundled organization archetypes an operator can start from."""
+    from alpha.company_os.service import get_company_service
+
     return {"archetypes": get_company_service().archetypes()}
 
 
@@ -229,6 +235,8 @@ async def preview_blueprint(payload: PreviewRequest, request: Request) -> dict[s
     Previewing first is what makes onboarding safe: the operator sees every
     planned hire, unit, role and duty before a single bot profile exists.
     """
+    from alpha.company_os.service import get_company_service
+
     service = get_company_service()
     return await asyncio.to_thread(
         service.preview_blueprint,
@@ -244,6 +252,8 @@ async def preview_blueprint(payload: PreviewRequest, request: Request) -> dict[s
 @router.get("")
 async def list_companies(request: Request) -> dict[str, Any]:
     """Every company owned by the caller."""
+    from alpha.company_os.service import get_company_service
+
     service = get_company_service()
     companies = await asyncio.to_thread(service.list_companies, _owner(request))
     return {"companies": [c.model_dump(mode="json") for c in companies], "count": len(companies)}
@@ -252,6 +262,8 @@ async def list_companies(request: Request) -> dict[str, Any]:
 @router.post("", status_code=201)
 async def create_company(payload: CreateCompanyRequest, request: Request) -> dict[str, Any]:
     """Create a company, optionally hiring its workforce."""
+    from alpha.company_os.service import get_company_service
+
     service = get_company_service()
     company, hire = await asyncio.to_thread(
         service.create_company,
@@ -279,6 +291,8 @@ async def get_company(company_id: str, request: Request) -> dict[str, Any]:
 
 @router.patch("/{company_id}/charter")
 async def patch_charter(company_id: str, body: CharterPatch, request: Request) -> dict[str, Any]:
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(get_company_service().update_charter, company_id, _owner(request), **body.model_dump(exclude_none=True))
     return {"company": company.model_dump(mode="json")}
@@ -286,6 +300,8 @@ async def patch_charter(company_id: str, body: CharterPatch, request: Request) -
 
 @router.post("/{company_id}/state")
 async def set_state(company_id: str, body: StateRequest, request: Request) -> dict[str, Any]:
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(get_company_service().set_state, company_id, _owner(request), body.state)
     return {"company": company.model_dump(mode="json")}
@@ -294,6 +310,8 @@ async def set_state(company_id: str, body: StateRequest, request: Request) -> di
 @router.post("/{company_id}/archive")
 async def archive_company(company_id: str, request: Request) -> dict[str, Any]:
     """Archive a company and disable its loop. Archiving is the normal removal."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(get_company_service().archive, company_id, _owner(request))
     return {"company": company.model_dump(mode="json")}
@@ -302,12 +320,16 @@ async def archive_company(company_id: str, request: Request) -> dict[str, Any]:
 @router.get("/{company_id}/overview")
 async def overview(company_id: str, request: Request) -> dict[str, Any]:
     """The full briefing: charter, measured metrics, health, cost, loop state."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     return await asyncio.to_thread(get_company_service().digest, company_id, _owner(request))
 
 
 @router.get("/{company_id}/metrics")
 async def metrics(company_id: str, request: Request) -> dict[str, Any]:
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     m = await asyncio.to_thread(get_company_service().metrics, company_id, _owner(request))
     return {"metrics": m.model_dump(mode="json")}
@@ -316,6 +338,8 @@ async def metrics(company_id: str, request: Request) -> dict[str, Any]:
 @router.get("/{company_id}/org")
 async def org_chart(company_id: str, request: Request) -> dict[str, Any]:
     """The reporting tree, built from real employments."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     return await asyncio.to_thread(get_company_service().org_chart, company_id, _owner(request))
 
@@ -327,6 +351,8 @@ async def org_chart(company_id: str, request: Request) -> dict[str, Any]:
 
 @router.post("/{company_id}/objectives", status_code=201)
 async def add_objective(company_id: str, body: ObjectiveRequest, request: Request) -> dict[str, Any]:
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(
         get_company_service().add_objective,
@@ -342,6 +368,8 @@ async def add_objective(company_id: str, body: ObjectiveRequest, request: Reques
 
 @router.delete("/{company_id}/objectives/{objective_id}")
 async def delete_objective(company_id: str, objective_id: str, request: Request) -> dict[str, Any]:
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(get_company_service().delete_objective, company_id, _owner(request), objective_id)
     return {"company": company.model_dump(mode="json")}
@@ -355,6 +383,8 @@ async def delete_objective(company_id: str, objective_id: str, request: Request)
 @router.post("/{company_id}/employees", status_code=201)
 async def hire_employee(company_id: str, body: HireRequest, request: Request) -> dict[str, Any]:
     """Hire one employee, creating a real bot profile in the shared roster."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, outcome = await asyncio.to_thread(
         get_company_service().hire,
@@ -375,6 +405,8 @@ async def hire_employee(company_id: str, body: HireRequest, request: Request) ->
 @router.post("/{company_id}/employees/clone", status_code=201)
 async def clone_employee(company_id: str, body: CloneRequest, request: Request) -> dict[str, Any]:
     """Specialise an existing employee by cloning their real profile."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, outcome = await asyncio.to_thread(
         get_company_service().clone_employee,
@@ -396,6 +428,8 @@ async def clone_employee(company_id: str, body: CloneRequest, request: Request) 
 @router.post("/{company_id}/employees/terminate")
 async def terminate_employee(company_id: str, body: HandleRequest, request: Request) -> dict[str, Any]:
     """Retire a real profile and re-point anything that depended on it."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, outcome = await asyncio.to_thread(get_company_service().terminate_employee, company_id, _owner(request), body.handle)
     if not outcome.get("ok"):
@@ -405,6 +439,8 @@ async def terminate_employee(company_id: str, body: HandleRequest, request: Requ
 
 @router.post("/{company_id}/employees/promote")
 async def promote_employee(company_id: str, body: HandleRequest, request: Request) -> dict[str, Any]:
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, outcome = await asyncio.to_thread(get_company_service().promote_employee, company_id, _owner(request), body.handle)
     if not outcome.get("ok"):
@@ -415,6 +451,8 @@ async def promote_employee(company_id: str, body: HandleRequest, request: Reques
 @router.post("/{company_id}/employees/review")
 async def review_employee(company_id: str, body: ReviewRequest, request: Request) -> dict[str, Any]:
     """Record a performance review. A null score is recorded as unmeasured."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, outcome = await asyncio.to_thread(get_company_service().review_employee, company_id, _owner(request), body.handle, score=body.score, note=body.note)
     if not outcome.get("ok"):
@@ -462,6 +500,8 @@ async def list_employees(company_id: str, request: Request) -> dict[str, Any]:
 @router.post("/{company_id}/projects", status_code=201)
 async def attach_project(company_id: str, body: AttachProjectRequest, request: Request) -> dict[str, Any]:
     """Link an existing real project into the company's portfolio."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(
         get_company_service().attach_project,
@@ -477,6 +517,8 @@ async def attach_project(company_id: str, body: AttachProjectRequest, request: R
 @router.post("/{company_id}/projects/index")
 async def index_projects(company_id: str, body: IndexProjectsRequest, request: Request) -> dict[str, Any]:
     """Refresh the project index from rows the caller read from its repository."""
+    from alpha.company_os.service import get_company_service
+
     company = await asyncio.to_thread(_load, company_id, request)
     from alpha.company_os import portfolio
 
@@ -499,6 +541,8 @@ async def list_work(company_id: str, request: Request) -> dict[str, Any]:
 @router.post("/{company_id}/work", status_code=201)
 async def create_work_item(company_id: str, body: CreateWorkItemRequest, request: Request) -> dict[str, Any]:
     """Create a real Kanban card on the company's board."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, result = await asyncio.to_thread(
         get_company_service().create_work_item,
@@ -519,6 +563,8 @@ async def create_work_item(company_id: str, body: CreateWorkItemRequest, request
 @router.post("/{company_id}/work/{task_id}/move")
 async def move_work_item(company_id: str, task_id: str, body: MoveWorkItemRequest, request: Request) -> dict[str, Any]:
     """Transition a real card. The board store is the authority."""
+    from alpha.company_os.service import get_company_service
+
     company = await asyncio.to_thread(_load, company_id, request)
     from alpha.company_os import portfolio
 
@@ -532,6 +578,8 @@ async def move_work_item(company_id: str, task_id: str, body: MoveWorkItemReques
 @router.post("/{company_id}/groups", status_code=201)
 async def create_group(company_id: str, body: CreateGroupRequest, request: Request) -> dict[str, Any]:
     """Create a real group room and index it."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, result = await asyncio.to_thread(
         get_company_service().create_group,
@@ -549,6 +597,8 @@ async def create_group(company_id: str, body: CreateGroupRequest, request: Reque
 @router.post("/{company_id}/announce")
 async def announce(company_id: str, body: AnnounceRequest, request: Request) -> dict[str, Any]:
     """Post a company announcement to one of its real rooms."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     result = await asyncio.to_thread(
         get_company_service().announce,
@@ -566,6 +616,8 @@ async def announce(company_id: str, body: AnnounceRequest, request: Request) -> 
 @router.post("/{company_id}/schedules", status_code=201)
 async def attach_schedule(company_id: str, body: AttachScheduleRequest, request: Request) -> dict[str, Any]:
     """Index an existing real schedule. The company never fires it."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(
         get_company_service().attach_schedule,
@@ -589,6 +641,8 @@ async def attach_schedule(company_id: str, body: AttachScheduleRequest, request:
 @router.patch("/{company_id}/loop")
 async def set_loop_policy(company_id: str, body: LoopPolicyRequest, request: Request) -> dict[str, Any]:
     """Change the loop's cadence, bounds and autonomy gates."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company = await asyncio.to_thread(
         get_company_service().set_loop_policy,
@@ -606,6 +660,8 @@ async def run_tick(company_id: str, request: Request) -> dict[str, Any]:
     Model-free by design, so this is safe to call synchronously. A refusal is a
     normal answer carrying a reason, not an error.
     """
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     view = await asyncio.to_thread(get_company_service().run_tick, company_id, _owner(request))
     return view.as_dict()
@@ -618,6 +674,8 @@ async def loop_history(
     limit: int = Query(default=25, ge=1, le=200),
 ) -> dict[str, Any]:
     """The recent tick ledger, newest first."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     ticks = await asyncio.to_thread(get_company_service().loop_history, company_id, _owner(request), limit)
     return {"ticks": ticks, "count": len(ticks)}
@@ -626,6 +684,8 @@ async def loop_history(
 @router.get("/{company_id}/loop/rituals")
 async def loop_rituals(company_id: str, request: Request) -> dict[str, Any]:
     """Which cadenced rituals are due, and when each last ran."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     return await asyncio.to_thread(get_company_service().rituals, company_id, _owner(request))
 
@@ -652,6 +712,8 @@ async def list_approvals(
 @router.post("/{company_id}/approvals/{approval_id}/approve")
 async def approve(company_id: str, approval_id: str, body: DecisionRequest, request: Request) -> dict[str, Any]:
     """Approve a pending proposal. The only path by which one becomes real."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, result = await asyncio.to_thread(get_company_service().approve, company_id, _owner(request), approval_id, note=body.note)
     if not result.get("ok"):
@@ -662,6 +724,8 @@ async def approve(company_id: str, approval_id: str, body: DecisionRequest, requ
 @router.post("/{company_id}/approvals/{approval_id}/reject")
 async def reject(company_id: str, approval_id: str, body: DecisionRequest, request: Request) -> dict[str, Any]:
     """Decline a proposal. The record is kept so the decision stays auditable."""
+    from alpha.company_os.service import get_company_service
+
     _load(company_id, request)
     company, result = await asyncio.to_thread(get_company_service().reject, company_id, _owner(request), approval_id, note=body.note)
     if not result.get("ok"):
@@ -671,6 +735,8 @@ async def reject(company_id: str, approval_id: str, body: DecisionRequest, reque
 
 @router.get("/{company_id}/approvals/{approval_id}")
 async def get_approval(company_id: str, approval_id: str, request: Request) -> dict[str, Any]:
+    from alpha.company_os.models import ApprovalStatus
+
     company = await asyncio.to_thread(_load, company_id, request)
     target = next((a for a in company.approvals if a.approval_id == approval_id), None)
     if target is None:

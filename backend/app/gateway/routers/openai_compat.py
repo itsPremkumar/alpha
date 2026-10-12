@@ -17,10 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
-from app.gateway.deps import get_thread_store
 from app.gateway.routers.thread_runs import wait_run
-from app.gateway.routers.threads import ThreadCreateRequest, create_thread
-from app.gateway.run_models import RunCreateRequest
 
 router = APIRouter(prefix="/api/compat/openai", tags=["openai-compat"])
 
@@ -97,6 +94,10 @@ def openai_chat_response(model: str, text: str, *, thread_id: str) -> dict[str, 
 @require_permission("threads", "write")
 @require_permission("runs", "create")
 async def chat_completions(body: ChatCompletionsRequest, request: Request) -> dict:
+    from app.gateway.deps import get_thread_store
+    from app.gateway.routers.threads import ThreadCreateRequest, create_thread
+    from app.gateway.run_models import RunCreateRequest
+
     if not body.messages:
         raise HTTPException(status_code=422, detail="messages must not be empty.")
     run_input = openai_messages_to_run_input(body.messages)

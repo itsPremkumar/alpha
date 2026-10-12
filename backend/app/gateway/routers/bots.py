@@ -18,12 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from alpha.bots.inbox import roster_activity
-from alpha.bots.profile import _now
-from alpha.persistence.run.model import RunRow
-from alpha.persistence.thread_meta.model import ThreadMetaRow
 from app.gateway.authz import require_permission
-from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bots", tags=["bots"])
@@ -300,6 +295,8 @@ async def get_bots_working() -> dict:
     the liveness it does have instead of blanking.
     """
     from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.run.model import RunRow
+    from alpha.persistence.thread_meta.model import ThreadMetaRow
 
     # Imported rather than re-typed so this route and the console reporting layer
     # cannot disagree about which statuses are still live work — the same rule
@@ -408,6 +405,8 @@ async def get_org_chart() -> dict:
 
 @router.post("/generate-org", summary="Dynamically generate team organization from goal")
 async def generate_org(request: Request, body: GenerateOrgRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _gen():
@@ -430,6 +429,8 @@ async def get_kill_switch() -> dict:
 
 @router.post("/kill-switch", summary="Engage or disengage global kill switch")
 async def set_kill_switch(request: Request, body: KillSwitchRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _set():
@@ -442,6 +443,8 @@ async def set_kill_switch(request: Request, body: KillSwitchRequest) -> dict:
 
 @router.post("/handoff", summary="Execute structured task handoff between bots")
 async def handle_task_handoff(request: Request, body: TaskHandoffRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _handoff():
@@ -516,6 +519,8 @@ async def get_org_events(
 
 @router.get("", summary="List bots")
 async def list_bots(status: str | None = None, department: str | None = None, activity: bool = False) -> dict:
+    from alpha.bots.inbox import roster_activity
+
     if status is not None:
         from alpha.bots.templates import BOT_STATUSES
 
@@ -552,6 +557,8 @@ async def get_bot(name: str) -> dict:
 
 @router.post("/{name}/ensure", status_code=200, summary="Get or auto-provision bot")
 async def ensure_bot(name: str, request: Request, body: BotEnsureRequest | None = None) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
     payload = body or BotEnsureRequest()
@@ -591,6 +598,8 @@ async def clone_bot(name: str, request: Request, body: BotCloneRequest) -> dict:
 
     Memory is never cloned: the copy starts with a fresh identity.
     """
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
     source = _validate_bot_name(body.source)
@@ -619,6 +628,8 @@ async def clone_bot(name: str, request: Request, body: BotCloneRequest) -> dict:
 
 @router.patch("/{name}", summary="Update bot profile")
 async def update_bot(name: str, request: Request, body: BotUpdateRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -742,6 +753,7 @@ async def put_bot_model_config(name: str, request: Request, body: BotModelConfig
     same "empty means unset" convention the rest of the profile uses.
     """
     from alpha.bots.model_config import BotModelConfigError, validate_bot_model_config
+    from app.gateway.deps import require_admin_user
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
@@ -776,6 +788,8 @@ async def put_bot_model_config(name: str, request: Request, body: BotModelConfig
 @router.delete("/{name}/model-config", summary="Clear the per-bot model configuration")
 async def delete_bot_model_config(name: str, request: Request) -> dict:
     """Remove the block: the bot inherits primary/chain/sampling from global config."""
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -824,6 +838,9 @@ async def preview_bot_model_config(name: str, body: BotModelConfigPreviewRequest
 @router.post("/{name}/match", summary="Update match-time tracking (last_active, version bump)")
 async def match_bot(name: str, request: Request) -> dict:
     """Update last_active to now and bump version — call when bot is invoked in a run."""
+    from alpha.bots.profile import _now
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -864,6 +881,8 @@ async def record_heartbeat(name: str, body: HeartbeatRequest | None = None) -> d
 
 @router.post("/{name}/pause", summary="Pause execution for a specific bot")
 async def pause_specific_bot(name: str, request: Request, body: BotPauseRequest | None = None) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
     payload = body or BotPauseRequest()
@@ -878,6 +897,8 @@ async def pause_specific_bot(name: str, request: Request, body: BotPauseRequest 
 
 @router.post("/{name}/resume", summary="Resume execution for a paused bot")
 async def resume_specific_bot(name: str, request: Request) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -906,6 +927,8 @@ async def get_performance(name: str) -> dict:
 
 @router.post("/{name}/record-task", summary="Record task outcome and update reputation score")
 async def record_task(name: str, request: Request, body: RecordTaskOutcomeRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -932,6 +955,8 @@ async def record_task(name: str, request: Request, body: RecordTaskOutcomeReques
 
 @router.post("/{name}/claim", summary="Claim a task with a time-bound lease")
 async def claim_task_endpoint(name: str, request: Request, body: TaskClaimRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -953,6 +978,8 @@ async def claim_task_endpoint(name: str, request: Request, body: TaskClaimReques
 
 @router.post("/{name}/escalate", summary="Escalate task to bot's reporting manager")
 async def escalate_task_endpoint(name: str, request: Request, body: EscalateTaskRequest) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -1024,6 +1051,8 @@ class DMSendRequest(BaseModel):
 @router.post("/{name}/dm", summary="Send a fire-and-forget DM to a teammate bot")
 async def send_dm_endpoint(name: str, request: Request, body: DMSendRequest) -> dict:
     """Bot Mode DM: roster-validated, server-side attribution, inbox delivery, no reply."""
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -1073,6 +1102,8 @@ async def list_inbox(name: str, unread_only: bool = False, limit: int = 50) -> d
 
 @router.post("/{name}/inbox/{delivery_id}/ack", summary="Ack a DM as handled")
 async def ack_inbox_message(name: str, delivery_id: str, request: Request) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -1131,6 +1162,8 @@ async def bot_chat(name: str, limit: int = 20) -> dict:
 
 @router.post("/{name}/soul/backfill", summary="Backfill DM protocol into roster SOULs")
 async def backfill_soul_protocol(name: str, request: Request) -> dict:
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
 
@@ -1173,6 +1206,8 @@ class BotEvolveApiRequest(BaseModel):
 
 @router.post("/{name}/clone-engine", summary="Clone or fork a bot via the clone engine")
 async def clone_bot_endpoint(name: str, body: BotCloneApiRequest, request: Request) -> dict:
+    from app.gateway.deps import require_admin_user
+
     if isinstance(request, Request):
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
@@ -1204,6 +1239,8 @@ async def clone_bot_endpoint(name: str, body: BotCloneApiRequest, request: Reque
 
 @router.post("/{name}/evolve", summary="Evolve a bot to a new generation")
 async def evolve_bot_endpoint(name: str, body: BotEvolveApiRequest, request: Request) -> dict:
+    from app.gateway.deps import require_admin_user
+
     if isinstance(request, Request):
         await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
@@ -1249,6 +1286,8 @@ async def run_bot_workflow_endpoint(
     ``auto_execute`` can complete; otherwise the service returns the exact
     missing-executor failure instead of treating inbox acceptance as work.
     """
+    from app.gateway.deps import require_admin_user
+
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
     profile = _registry().get_bot(key)

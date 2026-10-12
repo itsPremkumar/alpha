@@ -17,27 +17,14 @@ from starlette.responses import RedirectResponse
 from alpha.config.auth_config import OIDCProviderConfig
 from app.gateway.auth import (
     UserResponse,
-    create_access_token,
 )
-from app.gateway.auth.config import get_auth_config
-from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
-from app.gateway.auth.oidc import OIDCError, OIDCService
-from app.gateway.auth.oidc_state import (
-    OIDCStatePayload,
-    compute_code_challenge,
-    delete_state_cookie,
-    generate_code_verifier,
-    generate_nonce,
-    generate_oidc_state,
-    get_state_cookie,
-    set_state_cookie,
+from app.gateway.auth.oidc import (
+    OIDCService,
 )
 from app.gateway.auth.pat import PAT_MAX_NAME_LENGTH
-from app.gateway.auth.session_cookie import ACCESS_TOKEN_COOKIE_NAME, SESSION_PERSISTENCE_COOKIE_NAME, set_session_cookie
-from app.gateway.auth.session_cookie_state import SKIP_AUTH_CSRF_COOKIE_STATE_ATTR
-from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
-from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, _request_origin, auth_csrf_cookie_settings, generate_csrf_token, is_secure_request
-from app.gateway.deps import get_current_user_from_request, get_local_provider
+from app.gateway.deps import (
+    get_local_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +143,8 @@ class MessageResponse(BaseModel):
 
 def _set_session_cookie(response: Response, token: str, request: Request, *, remember_me: bool | None = None) -> None:
     """Set the access_token HttpOnly cookie on the response."""
+    from app.gateway.auth.session_cookie import set_session_cookie
+
     set_session_cookie(response, request, token, remember_me=remember_me)
 
 
@@ -407,6 +396,10 @@ async def login_local(
     remember_me: bool = Form(default=True),
 ):
     """Local email/password login."""
+    from app.gateway.auth import create_access_token
+    from app.gateway.auth.config import get_auth_config
+    from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+
     client_ip = _get_client_ip(request)
     await _check_rate_limit(client_ip)
 
@@ -463,6 +456,9 @@ async def register(request: Request, response: Response, body: RegisterRequest):
 
     Returns 403 when ``auth.local.allow_registration`` is false.
     """
+    from app.gateway.auth import create_access_token
+    from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+
     if not _local_registration_enabled():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -486,6 +482,10 @@ async def register(request: Request, response: Response, body: RegisterRequest):
 @router.post("/logout", response_model=MessageResponse)
 async def logout(request: Request, response: Response):
     """Logout current user by clearing the cookie."""
+    from app.gateway.auth.session_cookie import ACCESS_TOKEN_COOKIE_NAME, SESSION_PERSISTENCE_COOKIE_NAME
+    from app.gateway.auth.session_cookie_state import SKIP_AUTH_CSRF_COOKIE_STATE_ATTR
+    from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, is_secure_request
+
     is_https = is_secure_request(request)
     response.delete_cookie(key=ACCESS_TOKEN_COOKIE_NAME, secure=is_https, samesite="lax")
     response.delete_cookie(key=CSRF_COOKIE_NAME, secure=is_https, samesite="strict")
@@ -504,8 +504,11 @@ async def change_password(request: Request, response: Response, body: ChangePass
     - Always increments token_version to invalidate old sessions
     - Re-issues session cookie with new token_version
     """
+    from app.gateway.auth import create_access_token
+    from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
     from app.gateway.auth.password import hash_password_async, verify_password_async
     from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED, AUTH_SOURCE_PAT
+    from app.gateway.deps import get_current_user_from_request
 
     user = await get_current_user_from_request(request)
 
@@ -561,6 +564,8 @@ async def change_password(request: Request, response: Response, body: ChangePass
 @router.get("/me", response_model=UserResponse)
 async def get_me(request: Request):
     """Get current authenticated user info, including effective permissions."""
+    from app.gateway.deps import get_current_user_from_request
+
     user = await get_current_user_from_request(request)
     auth = getattr(getattr(request, "state", None), "auth", None)
     if auth is not None:
@@ -658,7 +663,7 @@ async def create_pat(request: Request, body: PATCreateRequest):
     from datetime import UTC, datetime, timedelta
 
     from app.gateway.auth.pat import generate_pat_token, pat_token_digest, validate_scopes
-    from app.gateway.deps import get_pat_repo
+    from app.gateway.deps import get_current_user_from_request, get_pat_repo
 
     user = await get_current_user_from_request(request)
     try:
@@ -688,7 +693,7 @@ async def create_pat(request: Request, body: PATCreateRequest):
 @router.get("/pats", response_model=list[PATSummaryResponse], dependencies=[Depends(require_session_source)])
 async def list_pats(request: Request):
     """List the session user's tokens. Never returns digests or raw tokens."""
-    from app.gateway.deps import get_pat_repo
+    from app.gateway.deps import get_current_user_from_request, get_pat_repo
 
     user = await get_current_user_from_request(request)
     records = await get_pat_repo(request).list_for_user(str(user.id))
@@ -698,7 +703,7 @@ async def list_pats(request: Request):
 @router.delete("/pats/{pat_id}", response_model=MessageResponse, dependencies=[Depends(require_session_source)])
 async def revoke_pat(request: Request, pat_id: str):
     """Revoke one of the session user's tokens. Revocation is immediate."""
-    from app.gateway.deps import get_pat_repo
+    from app.gateway.deps import get_current_user_from_request, get_pat_repo
 
     user = await get_current_user_from_request(request)
     revoked = await get_pat_repo(request).revoke(pat_id, str(user.id))
@@ -795,6 +800,9 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
     On success, the admin account is created with ``needs_setup=False`` and
     the session cookie is set.
     """
+    from app.gateway.auth import create_access_token
+    from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+
     admin_count = await get_local_provider().count_admin_users()
     if admin_count > 0:
         raise HTTPException(
@@ -843,6 +851,8 @@ async def close_oidc_service() -> None:
 
 def _set_csrf_cookie(response: Response, request: Request) -> None:
     """Set the CSRF double-submit cookie (needed for GET-based OIDC callback)."""
+    from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, auth_csrf_cookie_settings, generate_csrf_token
+
     csrf_token = generate_csrf_token()
     secure, max_age = auth_csrf_cookie_settings(request)
     response.set_cookie(
@@ -864,6 +874,8 @@ def _resolve_oidc_redirect_uri(request: Request, provider_id: str, provider_conf
     Prefers the explicitly configured ``redirect_uri``. Falls back to
     constructing one from the request's own base URL for development.
     """
+    from app.gateway.csrf_middleware import _request_origin
+
     if provider_config.redirect_uri:
         return provider_config.redirect_uri
 
@@ -918,6 +930,8 @@ async def oauth_login(
     redirect after successful login (default: /workspace).
     """
     from alpha.config.app_config import get_app_config
+    from app.gateway.auth.oidc import OIDCError
+    from app.gateway.auth.oidc_state import OIDCStatePayload, compute_code_challenge, generate_code_verifier, generate_nonce, generate_oidc_state, set_state_cookie
 
     app_config = get_app_config()
     oidc_config = app_config.auth.oidc
@@ -1000,6 +1014,10 @@ async def oauth_callback(
     session cookie.
     """
     from alpha.config.app_config import get_app_config
+    from app.gateway.auth import create_access_token
+    from app.gateway.auth.oidc import OIDCError
+    from app.gateway.auth.oidc_state import delete_state_cookie, get_state_cookie
+    from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
 
     app_config = get_app_config()
     oidc_config = app_config.auth.oidc

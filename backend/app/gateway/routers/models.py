@@ -5,18 +5,15 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from alpha.authz.provider import AuthzDecision, AuthzRequest
-from alpha.community.url_safety import ModelEndpointBlockedError
 from alpha.config.app_config import AppConfig
 from alpha.config.reasoning_effort import CANONICAL_EFFORTS, EFFORT_LABELS
-from alpha.models.effort_translation import effective_effort_support
 from app.gateway.authz import (
-    _AuthorizationUnavailable,
-    _is_internal_caller,
     require_permission,
-    resolve_model_authorization,
 )
-from app.gateway.deps import get_config, get_optional_user_from_request, require_admin_user
+from app.gateway.deps import (
+    get_config,
+    get_optional_user_from_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -279,6 +276,7 @@ async def list_discovered_models(
 )
 async def refresh_discovered_models(request: Request, body: RefreshDiscoveryRequest) -> DiscoveryProviderResponse:
     from alpha.models import discovery
+    from app.gateway.deps import require_admin_user
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     try:
@@ -338,6 +336,9 @@ async def list_models(
         }
         ```
     """
+    from alpha.models.effort_translation import effective_effort_support
+    from app.gateway.authz import _AuthorizationUnavailable, _is_internal_caller, resolve_model_authorization
+
     visible_models = config.models
     fail_closed = config.authorization.fail_closed
 
@@ -810,6 +811,10 @@ async def get_model(
         }
         ```
     """
+    from alpha.authz.provider import AuthzDecision, AuthzRequest
+    from alpha.models.effort_translation import effective_effort_support
+    from app.gateway.authz import _AuthorizationUnavailable, _is_internal_caller, resolve_model_authorization
+
     model = config.get_model_config(model_name)
     if model is None:
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
@@ -965,6 +970,7 @@ class ConfigureProviderRequest(BaseModel):
 async def configure_provider_endpoint(body: ConfigureProviderRequest) -> dict:
     import asyncio as _asyncio
 
+    from alpha.community.url_safety import ModelEndpointBlockedError
     from alpha.models.provider_manager import configure_provider
 
     def _sync():

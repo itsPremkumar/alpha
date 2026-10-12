@@ -18,7 +18,9 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
 from alpha.ops.event_loop import get_event_loop_sampler
-from alpha.ops.metrics import CONTENT_TYPE, get_metrics_registry, publish_process_metrics
+from alpha.ops.metrics import (
+    get_metrics_registry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +170,8 @@ async def ops_readiness(request: Request) -> dict[str, Any]:
 @router.get("/metrics", summary="Prometheus metrics")
 async def ops_metrics() -> Response:
     """Render the bounded in-process metrics registry as Prometheus text exposition (``text/plain; version=0.0.4``)."""
+    from alpha.ops.metrics import CONTENT_TYPE, publish_process_metrics
+
     registry = get_metrics_registry()
     sampler = get_event_loop_sampler()
     sampler.ensure_running()
