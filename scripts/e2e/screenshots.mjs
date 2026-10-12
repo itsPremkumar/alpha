@@ -338,13 +338,35 @@ async function captureRoute(browser, route, args, outDir) {
     verdict_reason: "",
   };
 
+  // Count every request this page issues so the settle below can wait for the
+  // network to actually stop rather than for a fixed wall-clock guess.
+  let requestCount = 0;
+  page.on("request", () => {
+    requestCount += 1;
+  });
+
   try {
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: args.timeout });
     record.http_status = response ? response.status() : null;
-    await page.waitForLoadState("networkidle", { timeout: args.settle }).catch(() => {
-      /* networkidle is best-effort; long-polling surfaces keep it open */
-    });
-    await page.waitForTimeout(args.settle);
+
+    // Deterministic settle. `waitForLoadState("networkidle")` resolves after
+    // roughly 500ms of quiet, which is SHORTER than a lazily-loaded workspace
+    // section takes to hydrate and then fetch: a 404 fired after that window was
+    // invisible to this gate, so the same sweep scored 28/39 and 39/39 on two
+    // runs against the same Gateway. Wait instead until the page has issued no
+    // new request for `settle` ms, bounded by the navigation timeout.
+    const deadline = Date.now() + args.timeout;
+    let quietSince = null;
+    while (Date.now() < deadline) {
+      const seen = requestCount;
+      await page.waitForTimeout(200);
+      if (requestCount === seen) {
+        if (quietSince === null) quietSince = Date.now();
+        if (Date.now() - quietSince >= args.settle) break;
+      } else {
+        quietSince = null;
+      }
+    }
   } catch (err) {
     record.navigation_error = `${err.name}: ${err.message}`;
   }
