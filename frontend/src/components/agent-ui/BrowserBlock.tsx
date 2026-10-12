@@ -53,64 +53,56 @@ export function BrowserBlock({
       className="my-2 overflow-hidden rounded-lg border border-blue-500/25 bg-muted/30 text-xs"
       data-browser-block
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/60 transition-colors"
-      >
-        <Globe className="size-3.5 shrink-0 text-blue-500" aria-hidden="true" />
-        {action ? (
-          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-px font-mono text-[10px] font-semibold text-blue-500">
-            {action}
-          </span>
-        ) : (
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            browser
-          </span>
-        )}
-        {url ? (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/80 hover:text-primary hover:underline"
-            title={url}
-          >
-            {url}
-          </a>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-            no URL reported
-          </span>
-        )}
-        {coords && (
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-muted/60 transition-colors"
+        >
+          <Globe className="size-3.5 shrink-0 text-blue-500" aria-hidden="true" />
+          {action ? (
+            <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-px font-mono text-[10px] font-semibold text-blue-500">
+              {action}
+            </span>
+          ) : (
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              browser
+            </span>
+          )}
           <span
-            className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-muted-foreground"
-            title="Click coordinates the run reported"
+            className={`min-w-0 flex-1 truncate font-mono text-[11px] ${url ? "text-foreground/80" : "text-muted-foreground"}`}
+            title={url || undefined}
           >
-            <MousePointerClick className="size-3" aria-hidden="true" />
-            {coords}
+            {url || "no URL reported"}
           </span>
-        )}
-        {duration && (
-          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-            {duration}
-          </span>
-        )}
-        {running && (
-          <CircleDashed
-            className="size-3.5 shrink-0 animate-spin text-sky-400"
-            aria-label="Browser action running"
+          {coords && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-muted-foreground"
+              title="Click coordinates the run reported"
+            >
+              <MousePointerClick className="size-3" aria-hidden="true" />
+              {coords}
+            </span>
+          )}
+          {duration && (
+            <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+              {duration}
+            </span>
+          )}
+          {running && (
+            <CircleDashed
+              className="size-3.5 shrink-0 animate-spin text-sky-400"
+              aria-label="Browser action running"
+            />
+          )}
+          <ChevronDown
+            className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
+            aria-hidden="true"
           />
-        )}
+        </button>
         <CopyButton text={url} label="Copy URL" />
-        <ChevronDown
-          className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
-          aria-hidden="true"
-        />
-      </button>
+      </div>
 
       {open && (
         <div className="border-t border-border/50">
