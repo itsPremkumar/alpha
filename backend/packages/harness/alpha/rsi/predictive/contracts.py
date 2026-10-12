@@ -323,7 +323,7 @@ class OutcomePrediction:
         """One operator-facing line: the abstention reason, or the probability."""
         if self.usable:
             uncertainty = None if self.uncertainty is None else round(self.uncertainty, 3)
-            return f"forecast p={self.predicted_success_probability:.3f} by {self.identity.predictor_id} v{self.identity.version} (support={self.support}, uncertainty={uncertainty})"
+            return f"forecast p={self.predicted_success_probability:.3f} by {self.identity.predictor_id} {self.identity.version} (support={self.support}, uncertainty={uncertainty})"
         return f"forecast {self.status.value}: {self.abstain_reason}"
 
     def to_dict(self) -> dict[str, Any]:

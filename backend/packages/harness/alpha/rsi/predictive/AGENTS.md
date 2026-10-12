@@ -150,6 +150,11 @@ Stated here so the module list is not read as a claim:
   today. The package is a library with tests, wired into `alpha.rsi`'s public
   surface but **not** on any live execution path — the same disclosure
   `alpha.arena`'s engine primitives and `alpha.capability_mesh` make.
+- **No outcome is ever recorded by a cycle.** `RSIEngine._predictive_forecast`
+  forecasts and records the *forecast*; it never records an *outcome*, because a
+  preview measures nothing. So `CalibrationReport.scored` stays `0` and
+  `brier` stays `None` — honestly `UNKNOWN`, not a flattering zero — until a
+  path that genuinely measures exists to supply one.
 
 ## Tests
 

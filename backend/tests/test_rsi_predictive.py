@@ -576,6 +576,108 @@ def test_append_reports_whether_the_write_landed(tmp_path):
     assert refused.ok is False and "OutcomePrediction" in (refused.error or "")
 
 
+# --- 12. the RSI cycle observes (live wiring) ---------------------------------
+
+
+def test_a_live_cycle_records_a_forecast_without_changing_any_verdict(tmp_path, monkeypatch):
+    """The wiring that makes calibration possible at all.
+
+    A predictor no live cycle ever calls can never be calibrated, so
+    ``run_rsi_cycle`` observes. ``observe_only`` is provably inert, so the
+    verdict, the stage and the evidence kind must be exactly what they were
+    before the forecast existed.
+    """
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.engine import RSIEngine
+
+    engine = RSIEngine()
+    result = engine.run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    text = " ".join(result.evidence)
+
+    assert "Predictive RSI forecast (observe_only, evidence_kind='forecast')" in text
+    assert "This is a forecast made BEFORE execution, not a measurement of it." in text
+    # Nothing about the verdict may move.
+    assert result.promoted is False
+    assert result.stage.value == "preview"
+    assert result.evidence_kind == "simulated"
+    assert result.ab_test is not None and result.ab_test.candidate_score is None
+    assert result.holdout is not None and result.holdout.regressed is None
+    # The forecast must land before the closing lines, so evidence[-1] keeps the
+    # meaning _last_summary has always quoted.
+    forecast_lines = [index for index, line in enumerate(result.evidence) if "Predictive RSI forecast" in line]
+    promotion_lines = [index for index, line in enumerate(result.evidence) if line.startswith("Promotion blocked")]
+    assert forecast_lines and promotion_lines
+    assert forecast_lines[0] < promotion_lines[0]
+    assert result.evidence[-1].startswith("To obtain a real verdict")
+
+
+def test_a_live_cycle_may_not_smuggle_a_fabricated_score_back_in(tmp_path, monkeypatch):
+    """The existing fabricated-score ban applies to forecast lines too."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.engine import RSIEngine
+
+    result = RSIEngine().run_rsi_cycle(bottleneck="Latency", target_component="tool_router")
+    text = " ".join(result.evidence + result.holdout.evidence)
+    for fabricated in ("0.88", "0.89", "0.72", "0.80", "0.92"):
+        assert fabricated not in text
+
+
+def test_a_live_cycle_records_no_outcome_because_it_measures_nothing(tmp_path, monkeypatch):
+    """A preview must not put a fabricated label into the calibrating ledger."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.engine import RSIEngine
+    from alpha.rsi.predictive import ForecastLedger
+
+    RSIEngine().run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    ledger = ForecastLedger()
+    assert ledger.status()["forecast_count"] == 1, "the forecast is recorded"
+    assert ledger.status()["outcome_count"] == 0, "no outcome exists, because nothing measured this candidate"
+
+
+def test_cycles_accumulate_forecasts_across_restarts(tmp_path, monkeypatch):
+    """Calibration needs history that outlives the process."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.engine import RSIEngine
+    from alpha.rsi.predictive import ForecastLedger
+
+    RSIEngine().run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    RSIEngine().run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    assert ForecastLedger().status()["forecast_count"] == 2
+
+
+def test_a_degraded_forecast_store_is_disclosed_not_dropped(tmp_path, monkeypatch):
+    """A missing forecast must say so; returning [] would read as 'nothing to say'."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("ALPHA_HOME", str(home))
+    # A directory at the ledger's path makes the read fail.
+    blocked = home / "rsi" / "predictions.jsonl"
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.mkdir()
+
+    from alpha.rsi.engine import RSIEngine
+
+    result = RSIEngine().run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    text = " ".join(result.evidence)
+    assert "unreadable" in text
+    assert result.promoted is False, "a broken ledger must not fail or alter the cycle"
+
+
+def test_the_cycle_forecast_is_a_forecast_not_a_gate_payload(tmp_path, monkeypatch):
+    """The recorded forecast must itself be refused by the holdout gate."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    from alpha.rsi.engine import RSIEngine
+    from alpha.rsi.holdout import holdout_gate
+    from alpha.rsi.predictive import ForecastLedger
+
+    RSIEngine().run_rsi_cycle(bottleneck="Context bloat", target_component="compaction")
+    forecasts = ForecastLedger().forecasts() or ()
+    assert forecasts
+    passed, reason = holdout_gate(forecasts[0].to_dict())
+    assert passed is False
+    assert reason.startswith("holdout unverified")
+
+
 # --- status honesty ------------------------------------------------------------
 
 

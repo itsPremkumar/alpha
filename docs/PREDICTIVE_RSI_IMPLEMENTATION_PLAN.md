@@ -202,6 +202,30 @@ refuses `active` without an explicit promotion token. Config cannot jump
 counted**; `entries is None` while unreadable; `append()` returns whether the
 write landed rather than raising.
 
+### 3.6 Wiring — why the cycle observes even though the default is `disabled`
+
+`RSIEngine._predictive_forecast` asks the service for a forecast on every cycle
+and appends the result to the evidence **before** the two closing lines, exactly
+where `_rrsi_proposal_plan` inserts the RRSI plan. Four properties:
+
+* **It forecasts; it never measures.** No outcome is recorded, because a preview
+  measures nothing. Recording one would put a fabricated label into the very
+  ledger that calibrates the predictor.
+* **It is a forecast, not a result.** Every line says so, and the numbers are
+  `predicted_*`.
+* **It cannot change a verdict.** `promoted` stays `False`, the stage stays
+  `preview`, `evidence_kind` stays `"simulated"`, and `evidence[-1]` keeps the
+  meaning `_last_summary` has always quoted.
+* **A gap is disclosed.** An unreadable ledger or a raising predictor produces
+  its own line rather than an empty list.
+
+`observe_only` is used here although the service's own constructor default is
+`disabled`, because `observe_only` is **provably inert** — `influenced_selection`
+is `False` in every shipped mode, pinned against every member of `MODE_ORDER`.
+A predictor no live cycle ever calls can never be calibrated, so a cycle that
+changes nothing and spends no token is the only way the evidence arrives. The
+`disabled` default is unchanged for any other caller.
+
 ---
 
 ## 4. Invariants — each one is a test
