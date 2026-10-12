@@ -1890,11 +1890,14 @@ export default function ChatView({
     updateLion("thinking", "Paw-sing the request...");
 
     let threadId = activeThreadId;
-    if (!threadId) {
+    let threadAdmissionError: unknown = null;
+    if (!threadId || threadId.startsWith("local-")) {
       // The first real prompt commits the draft to both the complete local
-      // archive and the Gateway. Merely opening New Chat never creates a row.
-      const localId = `local-${Date.now()}`;
-      const draft: Thread = {
+      // archive and the Gateway. A local-only thread is also re-admitted here
+      // on Retry; it is never a valid server run target.
+      const localId = threadId || `local-${Date.now()}`;
+      const existingDraft = threads.find((thread) => thread.thread_id === localId);
+      const draft: Thread = existingDraft ?? {
         thread_id: localId,
         title: content.slice(0, 30),
         created_at: new Date().toISOString(),
@@ -1906,8 +1909,10 @@ export default function ChatView({
         () => upsertLocalThread(draft),
         "The new chat could not be saved on this computer.",
       );
-      setThreads((previous) => [draft, ...previous]);
-      setActiveThreadId(localId);
+      if (!threadId) {
+        setThreads((previous) => [draft, ...previous]);
+        setActiveThreadId(localId);
+      }
       threadId = localId;
       let serverId: string | null = null;
       try {
@@ -1915,8 +1920,8 @@ export default function ChatView({
           botName: activeBot?.name ?? null,
           projectId: pendingProjectId,
         });
-      } catch {
-        /* Keep the first prompt locally; the next reconnect can reconcile it. */
+      } catch (error) {
+        threadAdmissionError = error;
       }
       if (serverId) {
         const serverThread: Thread = { ...draft, thread_id: serverId };
@@ -2063,6 +2068,22 @@ export default function ChatView({
         );
       }
     };
+
+    // A local draft id is not a Gateway thread. Do not append a user turn or
+    // POST a run against it when server-side conversation admission failed.
+    if (threadAdmissionError || threadId.startsWith("local-")) {
+      const failure = threadAdmissionError;
+      await showRequestFailure(
+        failure instanceof ApiClientError && failure.kind === "http"
+          ? { kind: "http", status: failure.status, detail: failure.detail }
+          : { kind: "network" },
+      );
+      setIsLoading(false);
+      setStreamReconnect(null);
+      abortRef.current = null;
+      runLock.current = false;
+      return false;
+    }
 
     try {
       // The admission POST rides an idempotency key, so a transport
@@ -2275,7 +2296,7 @@ export default function ChatView({
           : !responseStarted &&
               error instanceof ApiClientError &&
               error.kind === "http"
-            ? { kind: "http", status: error.status, supportId }
+            ? { kind: "http", status: error.status, detail: error.detail, supportId }
             : { kind: responseStarted ? "stream" : "network", supportId },
       );
     } finally {
@@ -2346,9 +2367,10 @@ export default function ChatView({
     activeRunRef.current = true;
     cancelSpeech();
     let currentThreadId = activeThreadId;
-    if (!currentThreadId) {
-      const localId = `local-${Date.now()}`;
-      const draft: Thread = {
+    if (!currentThreadId || currentThreadId.startsWith("local-")) {
+      const localId = currentThreadId || `local-${Date.now()}`;
+      const existingDraft = threads.find((thread) => thread.thread_id === localId);
+      const draft: Thread = existingDraft ?? {
         thread_id: localId,
         title: command.slice(0, 30),
         created_at: new Date().toISOString(),
@@ -2360,8 +2382,10 @@ export default function ChatView({
         () => upsertLocalThread(draft),
         "The shortcut chat could not be saved on this computer.",
       );
-      setThreads((prev) => [draft, ...prev]);
-      setActiveThreadId(localId);
+      if (!currentThreadId) {
+        setThreads((prev) => [draft, ...prev]);
+        setActiveThreadId(localId);
+      }
       currentThreadId = localId;
       let serverId: string | null = null;
       try {
@@ -2369,8 +2393,12 @@ export default function ChatView({
           botName: activeBot?.name ?? null,
           projectId: pendingProjectId,
         });
-      } catch {
-        /* Keep the command in the local archive while offline. */
+      } catch (error) {
+        flash(`Could not create a server chat, so the shortcut was not run. ${errMsg(error)}`);
+        setInput(command);
+        setIsLoading(false);
+        activeRunRef.current = false;
+        return;
       }
       if (serverId) {
         const serverThread: Thread = { ...draft, thread_id: serverId };
@@ -2388,6 +2416,13 @@ export default function ChatView({
         setActiveThreadId(serverId);
         setPendingProjectId(null);
         currentThreadId = serverId;
+      }
+      if (!serverId) {
+        flash("Could not create a server chat, so the shortcut was not run. The command is still in the composer.");
+        setInput(command);
+        setIsLoading(false);
+        activeRunRef.current = false;
+        return;
       }
     }
     const tid = currentThreadId;
@@ -2606,10 +2641,13 @@ export default function ChatView({
     const draftProjectId = pendingProjectId;
     let draftLocalId: string | null = null;
     let draftServerId: string | null = null;
-    if (!threadId) {
-      const localId = `local-${Date.now()}`;
+    if (!threadId || threadId.startsWith("local-")) {
+      const localId = threadId || `local-${Date.now()}`;
+      const existingDraft = threadId
+        ? threads.find((thread) => thread.thread_id === threadId)
+        : undefined;
       draftLocalId = localId;
-      const draft: Thread = {
+      const draft: Thread = existingDraft ?? {
         thread_id: localId,
         title: `Files: ${files[0]?.name || "uploads"}`,
         created_at: new Date().toISOString(),
@@ -2621,8 +2659,10 @@ export default function ChatView({
         () => upsertLocalThread(draft),
         "The upload chat could not be saved on this computer.",
       );
-      setThreads((prev) => [draft, ...prev]);
-      setActiveThreadId(localId);
+      if (!threadId) {
+        setThreads((prev) => [draft, ...prev]);
+        setActiveThreadId(localId);
+      }
       threadId = localId;
       let serverId: string | null = null;
       try {
@@ -2630,8 +2670,10 @@ export default function ChatView({
           botName: activeBot?.name ?? null,
           projectId: draftProjectId,
         });
-      } catch {
-        /* Keep the upload draft locally; upload it after reconnecting. */
+      } catch (error) {
+        flash(`Could not create a server chat, so the files were not uploaded. ${errMsg(error)}`);
+        setUploading(false);
+        return;
       }
       if (serverId) {
         draftServerId = serverId;
@@ -2650,6 +2692,11 @@ export default function ChatView({
         setActiveThreadId(serverId);
         setPendingProjectId(null);
         threadId = serverId;
+      }
+      if (!serverId) {
+        flash("Could not create a server chat, so the files were not uploaded.");
+        setUploading(false);
+        return;
       }
     }
     setUploading(true);

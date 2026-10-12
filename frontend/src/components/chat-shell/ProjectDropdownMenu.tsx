@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Project } from "@/lib/projects";
+import { projectOptionLabel } from "@/lib/project-labels";
 import { threadTitle } from "@/lib/threads-ext";
 import type { Thread } from "@/types/chat";
 import type { WorkspaceView } from "@/lib/workspace-view";
@@ -87,7 +88,9 @@ export function ProjectDropdownMenu({
     };
   }, [open]);
 
-  const projectName = project ? project.name : "Standalone Chat";
+  const projectName = project
+    ? projectOptionLabel(project, projects)
+    : "Standalone Chat";
   const threadCount = projectThreads.length;
 
   return (
@@ -384,7 +387,7 @@ export function ProjectDropdownMenu({
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Folder className="size-3.5 shrink-0" />
-                        <span className="truncate">{p.name || p.id}</span>
+                        <span className="truncate">{projectOptionLabel(p, projects)}</span>
                       </div>
                       <span className="text-[10px] opacity-75">{p.status || "active"}</span>
                     </button>

@@ -130,6 +130,19 @@ def _should_persist_human_input_message(message: BaseMessage) -> bool:
     return response is not None and response["source"] in _PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES
 
 
+def _normalize_tool_message_for_journal(message: ToolMessage) -> ToolMessage:
+    """Use the shared tool-result classifier before projecting a callback result.
+
+    LangChain emits ``on_tool_end`` inside the tool handler, before the outer
+    ``ToolErrorHandlingMiddleware`` has a chance to stamp ``alpha_tool_meta``.
+    Calling the same normalizer here keeps live events and final checkpoint
+    messages on the one canonical classification path.
+    """
+    from alpha.agents.middlewares.tool_result_meta import normalize_tool_message
+
+    return normalize_tool_message(message)
+
+
 #: Statuses that a stamped ``alpha_tool_meta`` may report. ``success`` is the
 #: only one that means "the tool did what it was asked to do"; the rest are
 #: failures or partials, and each is a real state rather than a flavour of one.
@@ -254,7 +267,7 @@ def _build_history_seed_events(
             # Same status correction the live journal applies, so a seeded row is
             # indistinguishable from a journaled one - including for a tool that
             # reported failure by returning an error string.
-            content = _with_honest_tool_status(message.model_dump())
+            content = _with_honest_tool_status(_normalize_tool_message_for_journal(message).model_dump())
             metadata = dict(seed_metadata)
         else:
             # System / remove / summary artifacts never enter the thread feed.
@@ -1022,6 +1035,8 @@ class RunJournal(BaseCallbackHandler):
             self._current_run_tool_call_names[tool_call_id] = str(name or "")
 
     def _persist_tool_result_message(self, message: BaseMessage) -> None:
+        if isinstance(message, ToolMessage):
+            message = _normalize_tool_message_for_journal(message)
         payload = message.model_dump()
         self._put(
             event_type=LLM_TOOL_RESULT_EVENT.event_type,

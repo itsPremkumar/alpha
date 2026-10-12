@@ -295,6 +295,15 @@ authoritative run token summary, but it cannot mutate the append-only message ev
 caller attribution, fallback state, or tool-call bookkeeping. Closed journals return
 from `on_llm_end` before inspecting the response or touching any run state.
 
+**Tool-result event status** (`runtime/journal.py`): LangChain's `on_tool_end`
+fires inside the tool handler, before the outer `ToolErrorHandlingMiddleware`
+adds `alpha_tool_meta`. The journal therefore calls the shared
+`normalize_tool_message()` classifier before persisting a live tool callback or a
+history-seeded tool row. Keep that one classifier as the source of status; do not
+add a second journal-only parser. This prevents a returned
+`Error: File not found` body from being recorded as a successful call. Regression:
+`tests/test_run_failure_is_not_reported_as_success.py`.
+
 **Run delivery receipts** (`runtime/journal.py` + `runs/worker.py`):
 `RunJournal` records each non-empty artifact update once per tool `Command` for
 the terminal `run.delivery` event. When a command contains multiple messages, a

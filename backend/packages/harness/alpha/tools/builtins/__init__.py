@@ -1,194 +1,169 @@
-from .a2a_tool import a2a_tool
-from .action_transaction_tool import execute_transactional_action
-from .adaptive_autonomy_tool import check_or_set_autonomy_profile
-from .agency_competence_tool import evaluate_agent_competence
-from .agent_message_tool import agent_message_tool, agent_observe_tool
-from .alpha_capability_tool import alpha_capability
-from .arena_tool import arena_tool
-from .artifact_lineage_tool import trace_artifact_lineage
-from .ask_oracle_tool import ask_oracle
-from .ast_grep_tool import ast_grep_rewrite, ast_grep_search
-from .autonomous_benchmark_tool import run_autonomous_benchmark_eval
-from .autonomous_command_tool import execute_slash_command_tool, identify_autonomous_command_tool
-from .autonomy_control_tool import autonomy_control
+"""Lazy public exports for builtin tools.
 
-# Autonomous one-prompt planner: raw prompt -> fully decided execution plan
-from .autoplan_tool import build_autonomous_plan
-from .avo_lineage_tool import run_avo_variation
-from .background_tasks_tool import cancel_background_task, list_background_tasks
-from .batch_task_tool import batch_status, batch_task, cancel_batch
+Importing the package must not load every builtin and its subsystem. Public
+symbols resolve on first access, while ``__all__`` remains a concrete list for
+registry and API introspection.
+"""
 
-# Enterprise Operating System & Cognitive Collaboration Tools
-from .blackboard_tool import blackboard_query, blackboard_record_evidence
-from .bot_roster_tool import bot_roster_tool
-from .boulder_checkpoint_tool import boulder_checkpoint_manage
-from .browser_supervisor_tool import browser_navigate_and_inspect
-from .canvas_widget_tool import canvas_widget_tool
-from .capability_mesh_tool import capability_mesh_tool
-from .clarification_tool import ask_clarification_tool
-from .code_agentic_core import (
-    auto_test_and_repair,
-    generate_repo_map,
-    manage_code_checkpoint,
-    # P4: canonical past-session memory search (FTS5 + BM25 with cron demotion).
-    # It was defined here but never re-exported, which left the tool
-    # unreachable; the historical bash-based memory tool stays an alias.
-    search_session_memory,
-    verify_web_ui_visual_regression,
-)
-from .code_mode_tool import code_mode_tool
-from .cognitive_compiler_tool import compile_cognitive_plan
-from .cognitive_memory_tiering_tool import (
-    consolidate_cognitive_memory,
-    recall_agent_memory,
-)
-from .cognitive_memory_tool import cognitive_memory_tool
+from __future__ import annotations
 
-# Cognitive Plan Mode: 8-Dimensional Strategic Evaluation & Autonomous Dispatch
-from .cognitive_plan_tool import cognitive_plan
-from .company_tool import company_tool
+from importlib import import_module
+from typing import Any
 
-# Strategic Autonomous Control Plane Tools
-from .compile_mission_tool import compile_mission
-from .computer_system_one_tool import desktop_system_one_action_tool
-from .computer_worker_tool import execute_sandboxed_computer_action
-from .consequence_tool import simulate_consequences
-from .context_as_data_tool import manage_context_data
-from .contrastive_trajectory_replay_tool import (
-    query_contrastive_memory,
-    record_trajectory_outcome,
-)
-from .credential_request_tool import request_secure_credential
-from .cronjob_manage_tool import cronjob_manage
-from .curriculum_tool import generate_curriculum_plan
-from .deep_agent_tool import delegate_to_deep_agent, inspect_deep_agent_telemetry, list_available_deep_agents
-from .deep_research_tool import deep_research
-
-# Keyless web search ported from AgentEye: httpx-first fallback chain with an
-# optional ddgs fallback whose absence is reported honestly (never faked).
-from .deep_web_search_tool import deep_web_search
-from .deliberation_tool import deliberation_tool
-from .delta_checkpoint_tool import create_workflow_checkpoint
-from .differential_invariant_fuzzer_tool import run_differential_regression_oracle
-
-# Strategic Discipline Council (Multi-Perspective Governance Profile)
-from .discipline_team_tool import (
-    consult_plan_gap_analysis,
-    dispatch_discipline_worker,
-    review_plan_invariant_gate,
-)
-from .dreaming_tool import consolidate_memory_dream
-from .durable_replay_tool import manage_durable_orchestration
-from .dynamic_tool_synthesizer_tool import list_dynamic_tools, synthesize_runtime_tool
-
-# Enterprise Security Enclave & Telemetry Plane
-from .enclave_security_tool import astra_security_manage, enterprise_security_manage
-from .environment_auto_healer_tool import diagnose_and_heal_environment
-from .epistemic_belief_tool import evaluate_epistemic_claim
-from .estop_tool import emergency_stop_manage
-from .evaluation_benchmark_tool import run_task_evaluation_benchmark
-from .evidence_matrix_tool import audit_finish_first_evidence
-from .executable_skill_tool import invoke_python_skill_tool
-from .experience_tool import consult_experience
-from .five_pass_search_tool import compile_five_pass_search
-from .goal_engine_tool import goal_engine_tool
-from .goal_integrity_tool import goal_integrity_tool
-from .group_chat_tool import group_chat_tool
-from .harness_refine_tool import harness_refine_tool
-
-# Persistent Task Execution & Multi-Session Boulder Tools
-from .hashline_tool import hashline_edit, hashline_read
-from .hyperplan_tool import hyperplan_review_manage
-
-# Frontier Autonomous Software Engineering Suite Tools
-from .introspective_tree_search_tool import run_introspective_tree_search
-from .job_tool import job_tool
-from .kanban_board_tool import kanban_board_tool
-from .keyless_web_search_tool import keyless_web_search
-from .kibitzer_tool import kibitzer_nudge_manage
-from .knowledge_graph_tool import query_knowledge_graph
-from .learning_graph_tool import learning_graph_manage
-from .list_uploaded_files_tool import list_uploaded_files
-from .lsp_intelligence_tool import query_language_server_symbol
-from .metacognitive_tool import check_metacognitive_health
-
-# Mission Hierarchy, Work Queue DAG & Universal Artifact Lineage
-from .mission_hierarchy_tool import manage_mission_hierarchy, schedule_work_queue
-from .mission_memory_tool import mission_memory
-from .moa_reasoning_tool import moa_multi_model_reasoning
-
-# Free local-first OS computer use & laptop automation (Module C): guarded
-# desktop screenshot / UI-tree / mouse / keyboard / window tools.
-from .os_computer_tool import (
-    desktop_inspect_ui_tree_tool,
-    desktop_keyboard_action_tool,
-    desktop_mouse_action_tool,
-    desktop_screenshot_tool,
-    desktop_window_manage_tool,
-)
-from .peer_network_tool import alpha_peer_network_tool
-
-# Enterprise Harness Expansion
-from .performance_registry_tool import manage_model_performance_registry
-from .present_file_tool import present_file_tool
-from .problem_model_tool import compile_problem_model
-from .process_handle_tool import process_handle_tool
-from .program_slicing_tool import compute_program_slice
-from .progress_card_tool import update_progress_card
-from .propose_skill_tool import propose_skill_tool
-from .python_repl_tool import python_repl_tool
-
-# Frontier Governance, Context Superintelligence & Truth Engine
-from .quality_council_tool import deliberate_artifact_quality
-from .reflexion_tool import manage_reflexion_memory
-from .repo_twin_tool import inspect_repo_twin
-
-# Autonomous Reproduction and Experience Memory Tools
-from .reproduction_tool import reproduce_and_verify
-from .reversible_delete_tool import reversible_delete
-from .review_skill_package_tool import review_skill_package
-from .rsi_engine_tool import run_rsi_cycle
-from .self_documentation_tool import search_project_docs
-from .self_heal_tool import self_heal_diagnose
-
-# Bounded Recursive Self-Improvement Loop
-from .self_improvement_tool import ralph_loop_tool, self_improvement_loop_tool
-from .semantic_git_delta_tool import analyze_semantic_git_delta
-from .session_search_tool import session_search_tool
-from .setup_agent_tool import setup_agent
-
-# Autonomous Skill Synthesis & Swarm Orchestration Tools
-from .skill_forge_tool import forge_skill_from_trace
-from .skill_workshop_tool import synthesize_reusable_skill
-from .skills_hub_tool import skills_hub_manage
-from .smart_approval_tool import verify_command_approval
-
-# Frontier autonomous engineering engines: stigmergic mesh, LSP intelligence,
-# dynamic tool metacompiler, autonomous benchmarking, semantic git delta and
-# tiered cognitive memory.
-from .stigmergic_mesh_tool import emit_stigmergic_event, query_stigmergic_traces
-from .structural_ast_reconciler_tool import reconcile_structural_ast_conflicts
-from .subagent_control_tool import subagent_control
-from .subagent_registry_tool import subagent_registry_tool
-from .supervision_tool import supervision_tool
-from .swarm_tool import swarm_tool
-from .task_tool import task_tool
-
-# Environment Interaction & Perception Fabric
-from .tom_consult_tool import tom_consult
-from .tool_search_tool import catalog_tool_call, catalog_tool_describe, catalog_tool_search
-from .trajectory_audit_tool import trajectory_audit_tool
-from .update_agent_tool import update_agent
-
-# Autonomous Agentic Variation Operators (AVO) Optimization Plane
-from .variation_operator_tool import run_nvidia_avo_step, run_variation_operator_step
-from .view_image_tool import view_image_tool
-from .visual_verification_tool import visual_verify_artifact
-from .wake_gate_tool import await_task_event
-
-# War Room: staged, clock-bounded group deliberation and the bot lifecycle
-from .war_room_tool import war_room_tool
-from .workflow_dag_tool import workflow_dag_manage
+_EXPORT_MODULES = {
+    "a2a_tool": "a2a_tool",
+    "agent_message_tool": "agent_message_tool",
+    "agent_observe_tool": "agent_message_tool",
+    "alpha_capability": "alpha_capability_tool",
+    "alpha_peer_network_tool": "peer_network_tool",
+    "analyze_semantic_git_delta": "semantic_git_delta_tool",
+    "arena_tool": "arena_tool",
+    "ask_clarification_tool": "clarification_tool",
+    "ask_oracle": "ask_oracle_tool",
+    "ast_grep_rewrite": "ast_grep_tool",
+    "ast_grep_search": "ast_grep_tool",
+    "astra_security_manage": "enclave_security_tool",
+    "audit_finish_first_evidence": "evidence_matrix_tool",
+    "auto_test_and_repair": "code_agentic_core",
+    "autonomy_control": "autonomy_control_tool",
+    "await_task_event": "wake_gate_tool",
+    "batch_status": "batch_task_tool",
+    "batch_task": "batch_task_tool",
+    "blackboard_query": "blackboard_tool",
+    "blackboard_record_evidence": "blackboard_tool",
+    "bot_roster_tool": "bot_roster_tool",
+    "boulder_checkpoint_manage": "boulder_checkpoint_tool",
+    "browser_navigate_and_inspect": "browser_supervisor_tool",
+    "build_autonomous_plan": "autoplan_tool",
+    "cancel_background_task": "background_tasks_tool",
+    "cancel_batch": "batch_task_tool",
+    "canvas_widget_tool": "canvas_widget_tool",
+    "capability_mesh_tool": "capability_mesh_tool",
+    "catalog_tool_call": "tool_search_tool",
+    "catalog_tool_describe": "tool_search_tool",
+    "catalog_tool_search": "tool_search_tool",
+    "check_metacognitive_health": "metacognitive_tool",
+    "check_or_set_autonomy_profile": "adaptive_autonomy_tool",
+    "code_mode_tool": "code_mode_tool",
+    "cognitive_memory_tool": "cognitive_memory_tool",
+    "cognitive_plan": "cognitive_plan_tool",
+    "company_tool": "company_tool",
+    "compile_cognitive_plan": "cognitive_compiler_tool",
+    "compile_five_pass_search": "five_pass_search_tool",
+    "compile_mission": "compile_mission_tool",
+    "compile_problem_model": "problem_model_tool",
+    "compute_program_slice": "program_slicing_tool",
+    "consolidate_cognitive_memory": "cognitive_memory_tiering_tool",
+    "consolidate_memory_dream": "dreaming_tool",
+    "consult_experience": "experience_tool",
+    "consult_plan_gap_analysis": "discipline_team_tool",
+    "create_workflow_checkpoint": "delta_checkpoint_tool",
+    "cronjob_manage": "cronjob_manage_tool",
+    "deep_research": "deep_research_tool",
+    "deep_web_search": "deep_web_search_tool",
+    "delegate_to_deep_agent": "deep_agent_tool",
+    "deliberate_artifact_quality": "quality_council_tool",
+    "deliberation_tool": "deliberation_tool",
+    "desktop_inspect_ui_tree_tool": "os_computer_tool",
+    "desktop_keyboard_action_tool": "os_computer_tool",
+    "desktop_mouse_action_tool": "os_computer_tool",
+    "desktop_screenshot_tool": "os_computer_tool",
+    "desktop_system_one_action_tool": "computer_system_one_tool",
+    "desktop_window_manage_tool": "os_computer_tool",
+    "diagnose_and_heal_environment": "environment_auto_healer_tool",
+    "dispatch_discipline_worker": "discipline_team_tool",
+    "emergency_stop_manage": "estop_tool",
+    "emit_stigmergic_event": "stigmergic_mesh_tool",
+    "enterprise_security_manage": "enclave_security_tool",
+    "evaluate_agent_competence": "agency_competence_tool",
+    "evaluate_epistemic_claim": "epistemic_belief_tool",
+    "execute_sandboxed_computer_action": "computer_worker_tool",
+    "execute_slash_command_tool": "autonomous_command_tool",
+    "execute_transactional_action": "action_transaction_tool",
+    "forge_skill_from_trace": "skill_forge_tool",
+    "generate_curriculum_plan": "curriculum_tool",
+    "generate_repo_map": "code_agentic_core",
+    "goal_engine_tool": "goal_engine_tool",
+    "goal_integrity_tool": "goal_integrity_tool",
+    "group_chat_tool": "group_chat_tool",
+    "harness_refine_tool": "harness_refine_tool",
+    "hashline_edit": "hashline_tool",
+    "hashline_read": "hashline_tool",
+    "hyperplan_review_manage": "hyperplan_tool",
+    "identify_autonomous_command_tool": "autonomous_command_tool",
+    "inspect_deep_agent_telemetry": "deep_agent_tool",
+    "inspect_repo_twin": "repo_twin_tool",
+    "invoke_python_skill_tool": "executable_skill_tool",
+    "job_tool": "job_tool",
+    "kanban_board_tool": "kanban_board_tool",
+    "keyless_web_search": "keyless_web_search_tool",
+    "kibitzer_nudge_manage": "kibitzer_tool",
+    "learning_graph_manage": "learning_graph_tool",
+    "list_available_deep_agents": "deep_agent_tool",
+    "list_background_tasks": "background_tasks_tool",
+    "list_dynamic_tools": "dynamic_tool_synthesizer_tool",
+    "list_uploaded_files": "list_uploaded_files_tool",
+    "manage_code_checkpoint": "code_agentic_core",
+    "manage_context_data": "context_as_data_tool",
+    "manage_durable_orchestration": "durable_replay_tool",
+    "manage_mission_hierarchy": "mission_hierarchy_tool",
+    "manage_model_performance_registry": "performance_registry_tool",
+    "manage_reflexion_memory": "reflexion_tool",
+    "mission_memory": "mission_memory_tool",
+    "moa_multi_model_reasoning": "moa_reasoning_tool",
+    "present_file_tool": "present_file_tool",
+    "process_handle_tool": "process_handle_tool",
+    "propose_skill_tool": "propose_skill_tool",
+    "python_repl_tool": "python_repl_tool",
+    "query_contrastive_memory": "contrastive_trajectory_replay_tool",
+    "query_knowledge_graph": "knowledge_graph_tool",
+    "query_language_server_symbol": "lsp_intelligence_tool",
+    "query_stigmergic_traces": "stigmergic_mesh_tool",
+    "ralph_loop_tool": "self_improvement_tool",
+    "recall_agent_memory": "cognitive_memory_tiering_tool",
+    "reconcile_structural_ast_conflicts": "structural_ast_reconciler_tool",
+    "record_trajectory_outcome": "contrastive_trajectory_replay_tool",
+    "reproduce_and_verify": "reproduction_tool",
+    "request_secure_credential": "credential_request_tool",
+    "reversible_delete": "reversible_delete_tool",
+    "review_plan_invariant_gate": "discipline_team_tool",
+    "review_skill_package": "review_skill_package_tool",
+    "run_autonomous_benchmark_eval": "autonomous_benchmark_tool",
+    "run_avo_variation": "avo_lineage_tool",
+    "run_differential_regression_oracle": "differential_invariant_fuzzer_tool",
+    "run_introspective_tree_search": "introspective_tree_search_tool",
+    "run_nvidia_avo_step": "variation_operator_tool",
+    "run_rsi_cycle": "rsi_engine_tool",
+    "run_task_evaluation_benchmark": "evaluation_benchmark_tool",
+    "run_variation_operator_step": "variation_operator_tool",
+    "schedule_work_queue": "mission_hierarchy_tool",
+    "search_project_docs": "self_documentation_tool",
+    "search_session_memory": "code_agentic_core",
+    "self_heal_diagnose": "self_heal_tool",
+    "self_improvement_loop_tool": "self_improvement_tool",
+    "session_search_tool": "session_search_tool",
+    "setup_agent": "setup_agent_tool",
+    "simulate_consequences": "consequence_tool",
+    "skills_hub_manage": "skills_hub_tool",
+    "subagent_control": "subagent_control_tool",
+    "subagent_registry_tool": "subagent_registry_tool",
+    "supervision_tool": "supervision_tool",
+    "swarm_tool": "swarm_tool",
+    "synthesize_reusable_skill": "skill_workshop_tool",
+    "synthesize_runtime_tool": "dynamic_tool_synthesizer_tool",
+    "task_tool": "task_tool",
+    "tom_consult": "tom_consult_tool",
+    "trace_artifact_lineage": "artifact_lineage_tool",
+    "trajectory_audit_tool": "trajectory_audit_tool",
+    "update_agent": "update_agent_tool",
+    "update_progress_card": "progress_card_tool",
+    "verify_command_approval": "smart_approval_tool",
+    "verify_web_ui_visual_regression": "code_agentic_core",
+    "view_image_tool": "view_image_tool",
+    "visual_verify_artifact": "visual_verification_tool",
+    "war_room_tool": "war_room_tool",
+    "workflow_dag_manage": "workflow_dag_tool",
+}
 
 __all__ = [
     "setup_agent",
@@ -344,3 +319,16 @@ __all__ = [
     "desktop_system_one_action_tool",
     "war_room_tool",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(f".{module_name}", __name__), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

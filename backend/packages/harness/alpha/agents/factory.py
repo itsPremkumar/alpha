@@ -372,7 +372,7 @@ def _assemble_from_features(
                     max_total=max_total,
                 )
             )
-        from alpha.tools.builtins import task_tool
+        from alpha.tools.builtins.task_tool import task_tool
 
         if subagent_runtime is None:
             extra_tools.append(task_tool)

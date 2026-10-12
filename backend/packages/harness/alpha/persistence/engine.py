@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 # Recycle pooled Postgres connections before stale idle sockets can hang
@@ -141,13 +142,11 @@ async def init_engine(
         await asyncio.to_thread(os.makedirs, sqlite_dir or ".", exist_ok=True)
         _engine = create_async_engine(url, echo=echo, json_serializer=_json_serializer)
 
-        # Enable WAL on every new connection. SQLite PRAGMA settings are
-        # per-connection, so we wire the listener instead of running PRAGMA
-        # once at startup. WAL gives concurrent reads + writers without
-        # blocking and is the standard recommendation for any production
-        # SQLite deployment (TC-UPG-06 in AUTH_TEST_PLAN.md). The companion
-        # ``synchronous=NORMAL`` is the safe-and-fast pairing — fsync only
-        # at WAL checkpoint boundaries instead of every commit.
+        # WAL mode is persistent for the database file, so enable it once
+        # below. Re-running `PRAGMA journal_mode=WAL` on every new connection
+        # takes a write lock and can stall readiness while another process is
+        # bootstrapping or checkpointing. The remaining settings are
+        # connection-local and stay in the listener.
         # We also widen ``busy_timeout`` to 30s here. Python's sqlite3 driver
         # defaults to 5s, which is fine for transient row contention but too
         # tight for cross-process bootstrap: the second-N-th Gateway process
@@ -160,12 +159,17 @@ async def init_engine(
         def _enable_sqlite_wal(dbapi_conn, _record):  # noqa: ARG001 — SQLAlchemy contract
             cursor = dbapi_conn.cursor()
             try:
-                cursor.execute("PRAGMA journal_mode=WAL;")
                 cursor.execute("PRAGMA synchronous=NORMAL;")
                 cursor.execute("PRAGMA foreign_keys=ON;")
                 cursor.execute("PRAGMA busy_timeout=30000;")
             finally:
                 cursor.close()
+
+        # WAL gives concurrent readers and writers without serializing every
+        # connection open. Set it before schema bootstrap, then let SQLite
+        # retain the mode in the database header.
+        async with _engine.connect() as connection:
+            await connection.execute(text("PRAGMA journal_mode=WAL"))
     elif backend == "postgres":
         from alpha.persistence.postgres_schema import build_asyncpg_connect_args
 

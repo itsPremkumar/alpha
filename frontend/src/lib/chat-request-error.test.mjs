@@ -71,10 +71,13 @@ async function send(
     abort = false,
     failPostStream = false,
     navigateMidStream = false,
+    activeThreadId = "thread-1",
+    failCreateThread = false,
   } = {},
 ) {
   const state = {
     messages: [],
+    threads: [],
     saved: [],
     input: draft,
     error: null,
@@ -83,6 +86,8 @@ async function send(
     followUps: 0,
     runs: 0,
     autoplay: 0,
+    fetchCalls: 0,
+    createThreadCalls: 0,
   };
   const setter = (key) => (value) => {
     state[key] = typeof value === "function" ? value(state[key]) : value;
@@ -98,13 +103,14 @@ async function send(
   state.lastByteAtRef = lastByteAtRef;
   let controllerAborted = false;
   const dependencies = {
-    activeThreadId: "thread-1",
+    activeThreadId,
     isLoading: false,
     activeBot: null,
     selectedModel: "model",
     planMode: false,
     suggestionsOn: true,
     messages: [],
+    threads: state.threads,
     abortRef,
     runGenerationRef,
     lastByteAtRef,
@@ -142,6 +148,19 @@ async function send(
     // for `reasoningEffort`. Only the setter is injected: the state value is
     // read once, in the render, never inside `sendMessage`.
     setStreamReconnect: setter("streamReconnect"),
+    setThreads: setter("threads"),
+    setActiveThreadId: setter("activeThreadId"),
+    pendingProjectId: null,
+    localThreadMetaRef: { current: {} },
+    upsertLocalThread: async () => {},
+    remapThreadId: async () => null,
+    createThread: async () => {
+      state.createThreadCalls++;
+      if (failCreateThread) throw new Error("Gateway unavailable");
+      return "server-thread";
+    },
+    flash: (message) => { state.flash = message; },
+    errMsg: (error) => error.message,
     emptyTodoPlan,
     autoTriggerCommand: async () => null,
     appendLocalMessages: (_tid, messages) => state.saved.push(...messages),
@@ -176,6 +195,7 @@ async function send(
     },
     updateLion: () => {},
     fetch: async (url, init) => {
+      state.fetchCalls++;
       if (newerDraft) state.input = newerDraft;
       if (abort) abortRef.current.abort();
       if (navigateMidStream) runGenerationRef.current += 1;
@@ -256,6 +276,53 @@ for (const status of [400, 401, 403, 404, 429, 500, 502, 503]) {
     assert.doesNotMatch(state.error.message, /secret|evaluated the workflow/);
   });
 }
+
+test("Gateway 5xx errors identify a server failure and direct users to Runs", () => {
+  const message = chatRequestErrorMessage({ kind: "http", status: 500 });
+  assert.match(message, /Gateway failed \(HTTP 500\)/);
+  assert.match(message, /Your draft is preserved/);
+  assert.match(message, /Check Runs.*before retrying/);
+  assert.doesNotMatch(message, /Review your draft/);
+});
+
+test("a failed first-thread admission preserves the draft and never posts a run to a local id", async () => {
+  const state = await send(
+    () => { throw new Error("the run endpoint must not be called"); },
+    { activeThreadId: null, failCreateThread: true },
+  );
+  assert.equal(state.fetchCalls, 0);
+  assert.equal(state.runs, 0);
+  assert.equal(state.saved.length, 1);
+  assert.equal(state.saved[0].role, "user");
+  assert.equal(state.input, "  retry me  ");
+  assert.match(state.error.message, /request could not be completed/i);
+  assert.match(state.error.threadId, /^local-/);
+});
+
+test("retrying a local-only draft re-attempts server admission before any run request", async () => {
+  const state = await send(
+    () => { throw new Error("the run endpoint must not be called"); },
+    { activeThreadId: "local-retry", failCreateThread: true },
+  );
+  assert.equal(state.createThreadCalls, 1);
+  assert.equal(state.fetchCalls, 0);
+  assert.equal(state.runs, 0);
+  assert.equal(state.input, "  retry me  ");
+});
+
+test("Gateway error details are shown safely and credential values are redacted", () => {
+  const message = chatRequestErrorMessage({
+    kind: "http",
+    status: 404,
+    detail: "Run route missing. Bearer abc123 api_key=private <script>bad</script>",
+  });
+  assert.match(message, /Reason: Run route missing\./);
+  assert.match(message, /Bearer \[redacted\]/);
+  assert.match(message, /api_key=\[redacted\]/);
+  assert.doesNotMatch(message, /abc123|private|<script>|bad/);
+  const tooLong = chatRequestErrorMessage({ kind: "http", status: 500, detail: "x".repeat(400) });
+  assert.ok(tooLong.length < 700);
+});
 
 test("invalid statuses and untrusted details cannot enter the message", () => {
   for (const status of [

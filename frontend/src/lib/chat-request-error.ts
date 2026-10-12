@@ -3,6 +3,7 @@ import { chatSupportLine, type ChatSupportId } from "./chat-support-id";
 export type ChatRequestFailure = {
   kind: "http" | "network" | "stream" | "empty" | "stopped";
   status?: number;
+  detail?: string | null;
   partialArchived?: boolean;
   /**
    * The run's support identity (`code` + correlation id), when the Gateway sent
@@ -25,6 +26,22 @@ function withSupport(base: string, failure: ChatRequestFailure): string {
   return line ? `${base} ${line}.` : base;
 }
 
+/** Keep useful Gateway diagnostics while removing markup, control chars, and credential-shaped values. */
+function safeGatewayDetail(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const detail = value
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [redacted]")
+    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password|authorization)(\s*[:=]\s*)[^\s,;]+/gi, "$1$2[redacted]")
+    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+  return detail || null;
+}
+
 export function chatRequestErrorMessage(failure: ChatRequestFailure): string {
   switch (failure.kind) {
     case "http": {
@@ -32,8 +49,12 @@ export function chatRequestErrorMessage(failure: ChatRequestFailure): string {
       const label = typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
         ? ` (HTTP ${status})`
         : "";
+      const serverFailure = typeof status === "number" && status >= 500 && status <= 599;
+      const detail = safeGatewayDetail(failure.detail);
       return withSupport(
-        `Request failed${label}. No assistant response was received. Review your draft and try again.`,
+        serverFailure
+          ? `The Gateway failed${label}. No assistant response was received.${detail ? ` Reason: ${detail}.` : ""} Your draft is preserved. Check Runs to see whether the request was recorded before retrying.`
+          : `The Gateway rejected the request${label}.${detail ? ` Reason: ${detail}.` : ""} No assistant response was received. Your draft is preserved; check the request settings before retrying.`,
         failure,
       );
     }

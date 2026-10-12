@@ -213,8 +213,7 @@ function InvariantsCard({
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">
-        Module and symbol availability only; runtime enforcement is not verified
-        by this probe.
+        Module and symbol availability only; runtime enforcement is not verified by this probe.
       </p>
       <ul className="space-y-1 text-xs">
         {report.invariants.map((invariant) => (

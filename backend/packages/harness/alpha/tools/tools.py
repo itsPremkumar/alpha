@@ -214,7 +214,6 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         swarm_tool,
         synthesize_reusable_skill,
         synthesize_runtime_tool,
-        task_tool,
         tom_consult,
         trace_artifact_lineage,
         trajectory_audit_tool,
@@ -225,6 +224,11 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         war_room_tool,
         workflow_dag_manage,
     )
+
+    # This export has the same name as its submodule. If the submodule was
+    # imported first, Python exposes the module on the package object and a
+    # package-level import returns that module instead of the LangChain tool.
+    from alpha.tools.builtins.task_tool import task_tool
 
     builtin_tools = _deduplicate_tools(
         [

@@ -12,7 +12,7 @@ run can still have a checkpoint row, so the projection came back empty and the
 terminal state was dropped. A client could not distinguish that from a
 successful, empty conversation.
 
-**2. Every failed tool call was persisted with ``status: "success"``.**
+**2. Failed tool callbacks were persisted with ``status: "success"``.**
 The run's event feed recorded, verbatim:
 
     seq=4  read_file  STATUS='success'  :: Error: File not found: /mnt/user-data/workspace/README.md
@@ -21,11 +21,11 @@ The run's event feed recorded, verbatim:
 
 `ToolMessage.status` is LangChain's field and defaults to `"success"`. Alpha's
 file/glob/permission tools report failure by *returning* an error string rather
-than raising, so the run can continue — which left the feed claiming three
-succeeded calls that had all failed, contradicting what the model was told.
-`ToolErrorHandlingMiddleware` had already classified each one and stamped the
-verdict into `additional_kwargs["alpha_tool_meta"]`; only the persisted
-projection ignored it.
+than raising, so the run can continue. LangChain's `on_tool_end` callback runs
+inside that handler, before the outer `ToolErrorHandlingMiddleware` adds
+`alpha_tool_meta`; the journal persisted the unstamped default and claimed failed
+calls succeeded. The journal now runs the shared canonical normalizer at this
+callback boundary before projecting the event.
 """
 
 from __future__ import annotations
@@ -143,6 +143,17 @@ class TestSeededRowsMatchJournaledOnes:
         assert tool_events, "no seeded tool-result event was produced"
         assert tool_events[0]["content"]["status"] == "error"
 
+    def test_an_unstamped_error_is_classified_before_seeding(self) -> None:
+        events = _build_history_seed_events(
+            [ToolMessage(content="Error: File not found: /missing", name="read_file", tool_call_id="seed-err")],
+            thread_id="t1",
+            run_id_prefix="branch-seed-0",
+            seed_metadata={},
+        )
+        tool_events = [event for event in events if event["event_type"] == "llm.tool.result"]
+        assert len(tool_events) == 1
+        assert tool_events[0]["content"]["status"] == "error"
+
 
 class TestWaitRunAlwaysCarriesTheTerminalStatus:
     """`/runs/wait` must not answer a dead run with an empty object.
@@ -233,6 +244,27 @@ class TestRealMiddlewareToJournalPath:
         event = tool_events[0]
         # The critical assertion: the persisted event must have status="error"
         assert event["content"]["status"] == "error", f"Persisted event has status={event['content']['status']}, expected error. The alpha_tool_meta stamp was lost in transit!"
+
+    @pytest.mark.anyio
+    async def test_live_tool_callback_normalizes_before_persisting(self):
+        """LangChain fires on_tool_end before the outer middleware stamps its result."""
+        store = MemoryRunEventStore()
+        journal = RunJournal(run_id="r-live", thread_id="t-live", event_store=store)
+        raw_result = ToolMessage(
+            content="Error: File not found: /mnt/user-data/workspace/missing.txt",
+            tool_call_id="call_live",
+            name="read_file",
+            status="success",
+        )
+
+        journal.on_tool_end(raw_result, run_id="tool-run-live")
+        await journal.flush()
+
+        events = await store.list_events("t-live", "r-live")
+        tool_events = [event for event in events if event["event_type"] == "llm.tool.result"]
+        assert len(tool_events) == 1
+        assert tool_events[0]["content"]["status"] == "error"
+        assert tool_events[0]["content"]["additional_kwargs"]["alpha_tool_meta"]["status"] == "error"
 
     @pytest.mark.anyio
     async def test_tool_error_handling_middleware_stamp_reaches_journal_permission_denied(self):

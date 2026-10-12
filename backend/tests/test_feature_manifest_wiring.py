@@ -261,6 +261,10 @@ def _relative_exported_symbols(path: Path) -> set[str]:
             for alias in node.names:
                 if alias.name != "*":
                     symbols.add(alias.name)
+        # Lazy package facades keep the complete public map in a literal so
+        # wiring checks stay source-only and do not import every builtin.
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_EXPORT_MODULES" for target in node.targets) and isinstance(node.value, ast.Dict):
+            symbols.update(key.value for key in node.value.keys if isinstance(key, ast.Constant) and isinstance(key.value, str))
     return symbols
 
 
