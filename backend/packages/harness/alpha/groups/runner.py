@@ -30,9 +30,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from alpha.config import limits
+
 logger = logging.getLogger(__name__)
 
-_MAX_PARALLEL_MEMBERS = 3
+_MAX_PARALLEL_MEMBERS = limits.MAX_GROUP_PARALLEL_MEMBERS
 _POLL_SECONDS = 2.0
 _MAX_RUNS_KEPT = 100
 _MAX_OBJECTIVE_CHARS = 20000

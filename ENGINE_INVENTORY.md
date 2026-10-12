@@ -6,8 +6,8 @@
 > hand-maintaining a list that drifts.
 
 - **Packages:** 126
-- **Python files:** 2067
-- **Total lines:** 550601
+- **Python files:** 2070
+- **Total lines:** 551574
 - **Packages with preview/simulated markers:** 29
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -16,24 +16,24 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | Package | Files | Lines | Tier |
 |---|---:|---:|---|
 | `alpha/memory` | 152 | 44930 | core |
-| `alpha/agents` | 137 | 43772 | preview/partial |
+| `alpha/agents` | 137 | 43872 | preview/partial |
 | `alpha/runtime` | 118 | 34044 | preview/partial |
 | `alpha/tools` | 168 | 30786 | preview/partial |
 | `alpha/community` | 89 | 27861 | preview/partial |
 | `alpha/persistence` | 105 | 18522 | preview/partial |
-| `alpha/workflow` | 52 | 18181 | preview/partial |
-| `alpha/bots` | 35 | 14834 | preview/partial |
-| `alpha/config` | 84 | 13739 | core |
+| `alpha/workflow` | 53 | 18510 | preview/partial |
+| `alpha/bots` | 35 | 14836 | preview/partial |
+| `alpha/config` | 85 | 13892 | core |
 | `alpha/capability_mesh` | 26 | 11538 | preview/partial |
 | `alpha/models` | 36 | 11463 | preview/partial |
 | `alpha/observability` | 23 | 11364 | core |
-| `alpha/groups` | 22 | 11347 | core |
+| `alpha/groups` | 22 | 11351 | core |
 | `alpha/skills` | 57 | 11099 | core |
 | `alpha/sandbox` | 33 | 10764 | core |
 | `alpha/rsi` | 34 | 10710 | preview/partial |
 | `alpha/intelligence` | 25 | 10394 | preview/partial |
-| `alpha/subagents` | 35 | 10362 | core |
-| `alpha/swarm` | 25 | 8800 | core |
+| `alpha/subagents` | 35 | 10364 | core |
+| `alpha/swarm` | 25 | 8801 | core |
 | `alpha/safety` | 26 | 8678 | core |
 | `alpha/evolution` | 23 | 8433 | preview/partial |
 | `alpha/avo` | 26 | 7298 | core |
@@ -42,8 +42,8 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/graph` | 11 | 6461 | core |
 | `alpha/completion` | 20 | 6159 | core |
 | `alpha/projects` | 32 | 5990 | preview/partial |
+| `alpha/mission` | 18 | 5498 | core |
 | `alpha/peer_network` | 12 | 5415 | core |
-| `alpha/mission` | 17 | 5116 | core |
 | `alpha/arena` | 18 | 5070 | preview/partial |
 | `alpha/mcp` | 19 | 4903 | preview/partial |
 | `alpha/reasoning` | 16 | 4757 | core |

@@ -11,6 +11,16 @@ from alpha.mission.acceptance import (
     get_acceptance_registry,
     unevaluated_report,
 )
+from alpha.mission.collectors import (
+    ArtifactEvidenceCollector,
+    CommandCheck,
+    CommandEvidenceCollector,
+    EvidenceCollection,
+    EvidenceCollector,
+    Measurement,
+    collect_and_evaluate,
+    collect_evidence,
+)
 from alpha.mission.compiler import MissionCompiler
 from alpha.mission.hierarchy import (
     ActionNode,
@@ -90,6 +100,15 @@ __all__ = [
     "evaluate_acceptance",
     "get_acceptance_registry",
     "unevaluated_report",
+    # Automatic evidence collection (a collector measures or reports it could not)
+    "ArtifactEvidenceCollector",
+    "CommandCheck",
+    "CommandEvidenceCollector",
+    "EvidenceCollection",
+    "EvidenceCollector",
+    "Measurement",
+    "collect_and_evaluate",
+    "collect_evidence",
     # Mission lifecycle + live event feed
     "GATED_TERMINAL_PHASE",
     "MISSION_TRANSITIONS",

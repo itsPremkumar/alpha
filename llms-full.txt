@@ -202,7 +202,13 @@ selects a fresh dispatch generation. After a run completes, registered
 `AcceptanceRegistry` probes may submit fully measured reports; absent or
 inconclusive probes leave the session awaiting owner evidence. Alpha ships no
 default probe for arbitrary natural-language criteria and does not infer
-success from model summaries.
+success from model summaries. Producers exist for two evidence kinds —
+`alpha.mission.collectors` runs a check command through the shared gate
+runner (exit 0 measures pass, a real non-zero exit measures fail, and a
+timeout, spawn error, empty command, missing exit code or exit 126/127 stay
+`UNVERIFIED` because the shell never ran) or hashes an artifact — but a caller
+must choose the collector; nothing selects one for a criterion automatically,
+and there is no HTTP-check collector.
 Every enabled APEX profile has unlimited token, tool-call, and runtime spending ceilings
 while engine capacity, approvals, and the emergency stop remain. The ordinary
 `task` tool enforces persisted active-agent and parallel-task ceilings. An

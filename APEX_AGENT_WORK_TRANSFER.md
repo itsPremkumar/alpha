@@ -338,7 +338,10 @@ non-future timestamp. `collect_test_exit_report` and
 `collect_artifact_digest` **read** an existing exit report or stat/hash a
 confined artifact and return `None` — unverified — when the source cannot be
 read; nothing runs a suite and nothing is wired into a run, so "no automatic
-evidence collectors" remains true. `evaluate_trusted_acceptance` decides a
+evidence collectors" remains true.
+*(Superseded: `alpha.mission.collectors` now exists — see
+`docs/PRIME_INSPIRED_CAPABILITY_AUDIT.md` §6. The "nothing is wired into a run"
+half remains true.)* `evaluate_trusted_acceptance` decides a
 criterion from exactly one record, leaves a criterion with no record
 `UNVERIFIED`, and leaves one with **two or more** records `UNVERIFIED` as a
 disclosed conflict rather than picking a row. 23 new tests in
@@ -365,6 +368,9 @@ disclosed conflict rather than picking a row. 23 new tests in
   is cross-host exactly-once.
 - No automatic collector runs a suite, fetches an endpoint, or infers an outcome
   from a model summary.
+  *(Superseded: command and artifact collectors now run a suite/hash an artifact
+  when called — `alpha.mission.collectors`. Still true: no collector fetches an
+  endpoint, none infers from a model summary, and none is selected automatically.)*
 - The drill ran one objective, once, on one host, with one free model. It is not
   evidence of soak, multi-worker or long-running behaviour, and no uptime or
   universal-capability claim follows from it.

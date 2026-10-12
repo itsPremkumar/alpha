@@ -165,9 +165,8 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   measured report that covers every declared criterion exactly once; criteria
   without a report mean work has not reached verification yet. Keep report
   coverage and restart persistence tests when changing this path. The API does
-  not infer results from model summaries; automatic evidence collectors remain
-  unimplemented.
-- **Acceptance evidence carries provenance, and the collectors only read what
+  not infer results from model summaries.
+- **Acceptance evidence carries provenance, and the readers only read what
   already exists.** `alpha.mission.acceptance` accepts a caller-supplied
   `criterion -> bool` mapping and, alongside it, provenance-bearing
   `EvidenceRecord`s. An `EvidenceRecord` refuses construction without a known
@@ -175,9 +174,7 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   source and a timestamp that is not in the future. `collect_test_exit_report`
   and `collect_artifact_digest` are **readers**: they parse a test exit report or
   stat/hash an artifact inside a confined root and return `None` — unverified,
-  never a guess — when the source is missing, unreadable or malformed. Nothing
-  there runs a suite, and nothing wires a collector into a run automatically, so
-  "no automatic evidence collectors" is still true.
+  never a guess — when the source is missing, unreadable or malformed.
   `evaluate_trusted_acceptance` builds the same report the gate already accepts:
   one record decides a criterion, no record leaves it `UNVERIFIED`, and **two or
   more records for one criterion decide nothing** and are disclosed as a
@@ -186,6 +183,52 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   following the escape. Tests: `tests/test_apex_acceptance_evidence.py`; the
   pre-existing semantics stay pinned by
   `tests/test_mission_acceptance_and_live_feed.py`.
+- **Automatic evidence collectors exist — nothing wires them into a run
+  yet.** `alpha.mission.collectors` is the producer side of the acceptance
+  contract: an `EvidenceCollector` is any object with a `criterion` and a
+  `measure()` returning a `Measurement` — either a real `EvidenceRecord`
+  (`measured`) or a `reason` and no record (`UNVERIFIED`) — so a collector can
+  never invent a number. `CommandEvidenceCollector` reuses
+  `goalloop.gates.GateRunner` with an injectable `ProcessRunner` (so tests
+  never shell out): exit 0 measures pass, a real non-zero exit measures fail,
+  and `TIMEOUT`/`ERROR`/an empty command/no exit code/exit 126/127 all
+  yield `UNVERIFIED`, because the shell never ran and "failed" would be a
+  lie. A raising collector produces a note plus `UNVERIFIED`, never an
+  exception that fails the run; `collect_evidence` refuses a bad batch whole
+  and never short-circuits it. `ArtifactEvidenceCollector` wraps
+  `collect_artifact_digest`; `collect_evidence` splits a pass into
+  `records`/`notes`, and `collect_and_evaluate` assembles the same
+  `AcceptanceReport` `evaluate_trusted_acceptance` already accepts.
+  What remains true: **nothing selects and invokes a collector for a run
+  automatically** — wiring a collector to an acceptance criterion is still a
+  caller's decision. Tests: `tests/test_mission_evidence_collectors.py`.
+- **One authority for depth/fan-out ceilings** — `alpha.config.limits` owns
+  every mechanically-enforced depth/fan-out number (delegation depth 3,
+  children per parent 10, fan-out per node 4, hops 6, native subagent
+  concurrency 3/64, wave concurrency 4/32 shared by the wave executor and the
+  `SWARM` node, the group axis 4/8/3, and the swarm *plan* ceiling 64 that
+  pairs the router's refusal with the coordinator's clamp). Consumers import a
+  name and never re-state the literal, so two modules that must agree cannot
+  disagree. The module is **stdlib-free on purpose** — it loads at module
+  scope in config models, the subagent lifecycle manager, workflow execution
+  and the groups scope. A *profile* bound (APEX's `max_delegation_depth`, a
+  bot model-config bound) is policy intersected against these ceilings at read
+  time by `alpha.apex.agents.resolve_delegation_limits`, never merged into
+  them. Values are unchanged from before the move; drift is pinned by
+  `tests/test_limit_authority_consistency.py`.
+- **Two builtin workflow-template blueprints ship as code, not a captured run**
+  — `alpha.workflow.builtin_templates` declares `code_change` (plan →
+  implement → test → review → accept) and `bug_fix` (reproduce → diagnose → fix
+  → regression-test → review → accept), seeded by `get_template_store()` on
+  first construction. Each carries a bounded repair `RetryPolicy`, a declared
+  `verification_cmd` (a declaration, never a spawned subprocess), and a
+  `GOAL_GATE` acceptance criterion in the safe-AST expression form. They are
+  DRAFT templates with `provenance.source == "builtin"`: `instantiate` may
+  start a **builtin** draft (tagging it `[builtin blueprint, unverified]`) but
+  still refuses any **captured** draft, because a captured draft is a graph
+  taken from a run that has not been re-checked. Promotion stays evidence-gated
+  for both — a blueprint cannot promote itself. Seeding is idempotent and
+  non-destructive. Tests: `tests/test_builtin_workflow_templates.py`.
 - **APEX goal ownership follows its graph and session links.** A subgoal must
   retain its parent's owner, and a goal's linked session must have that same
   owner. The goal-decision projection rechecks the persisted session row before

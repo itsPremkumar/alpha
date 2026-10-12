@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from alpha.config import limits
 from alpha.groups.activity import RunEvidence
 from alpha.groups.presence import resolve_room_presence
 from alpha.groups.room import (
@@ -1805,7 +1806,7 @@ class GroupRunRequest(BaseModel):
     objective: str = Field(min_length=1, max_length=20000)
     members: list[str] | None = Field(default=None, max_length=50)
     moderator: str | None = Field(default=None, max_length=64)
-    max_parallel: int = Field(default=3, ge=1, le=3)
+    max_parallel: int = Field(default=limits.MAX_GROUP_PARALLEL_MEMBERS, ge=1, le=limits.MAX_GROUP_PARALLEL_MEMBERS)
 
 
 @router.post("/{name}/runs", status_code=202, summary="Start autonomous team run")

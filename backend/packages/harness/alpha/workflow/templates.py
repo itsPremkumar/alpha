@@ -35,17 +35,20 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from alpha.config.runtime_paths import runtime_home
 from alpha.workflow.models import NodeStatus, WorkflowDefinition, WorkflowGraph
 from alpha.workflow.runtime import DynamicWorkflowEngine
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateState(StrEnum):
@@ -67,6 +70,15 @@ class TemplateProvenance:
     ``verifying_run_ids`` are the runs that actually completed this graph. Keeping
     the list (rather than a boolean) means a later reader can re-check the claim,
     and a template's strength is visible: one success is one success.
+
+    ``source`` distinguishes two trust stories that the lifecycle must treat
+    differently. ``captured`` (the default, and what every pre-existing record
+    reads back as) means the graph was taken from a run — its draft is unproven
+    work, and instantiating it would start a graph that never ran with the
+    appearance of authority. ``builtin`` means the graph is a blueprint shipped
+    as code in this repository — reviewed and unit-tested here, so it may be
+    instantiated while still tagged ``[builtin blueprint, unverified]``. Promotion
+    to ``promoted`` is evidence-gated for both and unchanged.
     """
 
     source_run_ids: list[str] = field(default_factory=list)
@@ -74,6 +86,7 @@ class TemplateProvenance:
     created_at: str = ""
     verified_at: str | None = None
     promoted_at: str | None = None
+    source: Literal["captured", "builtin"] = "captured"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +95,7 @@ class TemplateProvenance:
             "created_at": self.created_at,
             "verified_at": self.verified_at,
             "promoted_at": self.promoted_at,
+            "source": self.source,
         }
 
     @classmethod
@@ -89,12 +103,16 @@ class TemplateProvenance:
         if not isinstance(payload, dict):
             return cls()
         run_ids = payload.get("source_run_ids")
+        raw_source = payload.get("source")
         return cls(
             source_run_ids=[str(item) for item in run_ids] if isinstance(run_ids, list) else [],
             created_from_run_id=payload.get("created_from_run_id"),
             created_at=str(payload.get("created_at") or ""),
             verified_at=payload.get("verified_at"),
             promoted_at=payload.get("promoted_at"),
+            # A record written before the field existed (or with a garbage
+            # value) reads back as ``captured`` — the conservative default.
+            source=raw_source if raw_source in ("captured", "builtin") else "captured",
         )
 
 
@@ -369,10 +387,14 @@ class TemplateStore:
     ) -> WorkflowDefinition:
         """Build a fresh, independent definition from a template.
 
-        Only a ``promoted`` template may be instantiated by a caller that did not
-        create it; a draft can still be instantiated explicitly by passing
-        ``allow_unpromoted`` semantics through the owner check below, which keeps
-        the authoring loop usable without letting an unproven graph look endorsed.
+        ``promoted`` and ``verified`` templates instantiate directly. A
+        ``DRAFT`` may also instantiate in exactly one case: when its
+        ``provenance.source`` is ``builtin`` — a blueprint shipped as reviewed,
+        unit-tested code in this repository — and the resulting definition is
+        tagged ``[builtin blueprint, unverified]`` so its unproven status stays
+        visible. Any other draft is refused: a graph captured from a run that
+        has not been re-checked must not start with the appearance of
+        authority.
         """
         with self._lock:
             template = self.get(template_id)
@@ -384,6 +406,12 @@ class TemplateStore:
                 # Verified but not published: usable, and the payload says so.
                 definition = template.to_definition(definition_id, owner_id=owner_id)
                 definition.description = f"{definition.description} [verified, not promoted]"
+            elif template.provenance.source == "builtin":
+                # A builtin blueprint ships as reviewed, unit-tested code here,
+                # so its draft may start — but it is not evidence, and the
+                # description says so. Promotion still requires verify().
+                definition = template.to_definition(definition_id, owner_id=owner_id)
+                definition.description = f"{definition.description} [builtin blueprint, unverified]"
             else:
                 raise TemplateError(f"template '{template_id}' is an unverified draft ({template.state.value}); verify and promote it before instantiating")
             if variable_overrides:
@@ -391,6 +419,20 @@ class TemplateStore:
             if register and engine is not None:
                 engine.register_definition(definition, allow_replace=True)
             return definition
+
+    def seed_builtins(self) -> list[str]:
+        """Ensure every shipped builtin blueprint exists in this store.
+
+        Delegates to :func:`alpha.workflow.builtin_templates.seed_builtin_templates`
+        through a **lazy import** so ``builtin_templates`` (which imports this
+        module) never participates in a cycle at module load. Idempotent and
+        non-destructive: an id already present — edited, verified, promoted or
+        deleted-by-hand-and-reseeded-never — is left exactly as the store holds
+        it. Returns the ids actually seeded this call.
+        """
+        from alpha.workflow.builtin_templates import seed_builtin_templates
+
+        return seed_builtin_templates(self)
 
     def stats(self) -> dict[str, Any]:
         with self._lock:
@@ -441,11 +483,22 @@ _DEFAULT_STORE_LOCK = threading.Lock()
 
 
 def get_template_store() -> TemplateStore:
-    """The process-wide template library seam."""
+    """The process-wide template library seam.
+
+    The first construction seeds the builtin blueprints (``code_change``,
+    ``bug_fix``) so a fresh install ships them without a capture step. Seeding
+    only fills absent ids, so an operator's edits, promotions or deletions are
+    never overwritten on a later boot.
+    """
     global _DEFAULT_STORE
     with _DEFAULT_STORE_LOCK:
         if _DEFAULT_STORE is None:
-            _DEFAULT_STORE = TemplateStore()
+            store = TemplateStore()
+            try:
+                store.seed_builtins()
+            except Exception:  # noqa: BLE001 - seeding must never break store access
+                logger.warning("failed to seed builtin workflow templates", exc_info=True)
+            _DEFAULT_STORE = store
         return _DEFAULT_STORE
 
 

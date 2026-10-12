@@ -12,6 +12,56 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **prime-limit-authority:** `alpha.config.limits` is now the single owner of
+  every mechanically-enforced depth/fan-out ceiling — delegation depth (3),
+  children per parent (10), fan-out per node (4), delegation hops (6), native
+  subagent concurrency (default 3 / hard 64), workflow wave concurrency
+  (default 4 / ceiling 32, shared by the wave executor and the `SWARM` node),
+  the group axis (nesting depth 4, relay hops 8, parallel members 3), and the
+  swarm *plan* ceiling (64, pairing the `max_concurrency` router refusal with
+  `SwarmCoordinator.create_swarm`'s clamp). Consumers
+  (`subagents/lifecycle.py`, `bots/autonomy_guard.py`, `bots/delegation.py`,
+  `workflow/execution.py`, `workflow/swarm/execution.py`,
+  `subagents/executor.py`, `config/subagent_runtime_config.py`,
+  `groups/scope.py`, `groups/runner.py`, `swarm/coordinator.py`, and the
+  groups + swarms routers' request-field bounds) import a name instead of
+  re-stating the literal, so modules that must agree cannot disagree. The
+  values are unchanged, so this is behaviour-neutral; a *profile* bound (APEX's
+  `max_delegation_depth`) stays policy intersected against these ceilings by
+  `resolve_delegation_limits`, never merged. Drift is pinned by
+  `tests/test_limit_authority_consistency.py`. 15 new tests.
+
+- **prime-builtin-workflow-templates:** `alpha.workflow.builtin_templates` ships
+  two workflow-template blueprints as code: `code_change` (plan → implement →
+  test → review → accept) and `bug_fix` (reproduce → diagnose → fix →
+  regression-test → review → accept), each with a bounded repair
+  `RetryPolicy`, a declared `verification_cmd` (a declaration, not a spawned
+  subprocess), and a `GOAL_GATE` acceptance criterion written in the safe-AST
+  expression form. `get_template_store()` seeds them on first construction.
+  They are DRAFT templates with `provenance.source == "builtin"` — a new
+  `TemplateProvenance.source` field (`captured` by default, so every existing
+  record reads back unchanged) — and `instantiate` may start a **builtin**
+  draft (tagging it `[builtin blueprint, unverified]`) while still refusing any
+  **captured** draft. Promotion stays evidence-gated for both; seeding is
+  idempotent and never overwrites an operator's edit. 18 new tests.
+
+- **prime-evidence-collectors:** `alpha.mission.collectors` adds the producer
+  side of acceptance evidence: an `EvidenceCollector` (`criterion` +
+  `measure() -> Measurement`) measures a criterion or explains why it could not.
+  `CommandEvidenceCollector` runs a check through the shared
+  `goalloop.gates.GateRunner` with an injectable `ProcessRunner` (tests never
+  shell out): exit `0` measures pass, a real non-zero exit measures fail, and
+  timeout/spawn-error/empty-command/no-exit-code/exit `126`/`127` all stay
+  `UNVERIFIED`, because a shell that never ran cannot have failed. A raising
+  collector becomes a note, never an exception; `collect_evidence` refuses a
+  malformed batch whole and never short-circuits it; `collect_and_evaluate`
+  assembles the `AcceptanceReport` the HTTP gate already accepts.
+  `ArtifactEvidenceCollector` wraps `collect_artifact_digest`. **Still true:**
+  nothing selects a collector for a criterion automatically. Also adds
+  `retry_after_seconds` to the tool-result envelope — measured from provider
+  responses, clamped, present only when measured — and a Prime-inspired
+  capability audit (`docs/PRIME_INSPIRED_CAPABILITY_AUDIT.md`). 32 new tests.
+
 - **network-wait-unbounded:** A network-parked session now waits **indefinitely**
   by default. `config.yaml -> network_wait.max_attempts` defaults to `0`
   (unbounded) rather than a finite count, because a wait is a parked task, not a
@@ -62,8 +112,9 @@ This section accumulates work toward the **2.1.0** milestone
   `collect_artifact_digest`) read an existing exit report or stat/hash a
   confined artifact and return nothing at all when the source cannot be read.
   A criterion with no record, or with two conflicting records, stays
-  unverified. These are explicit caller-invoked measurements: nothing runs a
-  suite and no criterion is decided automatically.
+  unverified. These are explicit caller-invoked measurements: no criterion is
+  decided automatically. *(The readers still run nothing; the producers that
+  do run a suite now live in `alpha.mission.collectors`.)*
 
 - **apex-goal-persistence:** Serialize goal snapshots across workers sharing a
   local runtime directory, commit child creation and parent linkage together,
