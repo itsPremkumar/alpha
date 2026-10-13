@@ -87,8 +87,15 @@ def test_tool_permission_gate():
     assert ok is True
 
 
-def test_worktree_execution_lifecycle():
-    with tempfile.TemporaryDirectory() as tmp_dir:
+def test_worktree_execution_lifecycle(tmp_path, monkeypatch):
+    # Worktree leases are stored below runtime_home(), which is shared across
+    # test runs unless this test gives it an isolated runtime directory.
+    from alpha.config import runtime_paths
+
+    runtime_root = tmp_path / "runtime"
+    monkeypatch.setattr(runtime_paths, "runtime_home", lambda: runtime_root)
+
+    with tempfile.TemporaryDirectory(dir=tmp_path) as tmp_dir:
         repo = Path(tmp_dir) / "test_repo"
         repo.mkdir()
         # Initialize a basic git repo
@@ -111,9 +118,9 @@ def test_worktree_execution_lifecycle():
             generate_patch_on_exit=True,
         ) as wt:
             assert wt.path.exists()
-            (wt.path / "login.py").write_text("def login(): return True\n", encoding="utf-8")
 
-        # After exit, worktree should be safely cleaned up
+        # Clean worktrees are removed; dirty worktrees are preserved so task
+        # output is not lost.
         assert not wt.path.exists()
 
 

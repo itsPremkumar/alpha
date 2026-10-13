@@ -17,6 +17,7 @@ intentionally expose the stack behind their own TLS/auth front door.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -34,13 +35,27 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: enumeration is now derived from the tree and
 #: `test_compose_enumeration_covers_every_compose_file` fails when one is added
 #: that the table below does not name.
-def _discover_compose_files() -> dict[str, Path]:
+_PRUNED_DIRECTORIES = {".git", ".worktrees", "worktrees", "node_modules", ".venv", "venv", "site-packages"}
+
+
+def _discover_compose_files(root: Path = REPO_ROOT) -> dict[str, Path]:
+    """Find compose files without descending into vendored or auxiliary trees.
+
+    ``Path.rglob`` cannot prune a directory after matching a path, so filtering
+    its results still walks every file under each Git worktree and
+    ``node_modules`` tree. Walk top-down and remove excluded directories before
+    descent; only the active checkout is part of this repository's compose
+    surface.
+    """
     found: dict[str, Path] = {}
-    for pattern in ("docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml"):
-        for path in REPO_ROOT.rglob(pattern):
-            if any(part in {".git", "node_modules", ".venv", "site-packages"} for part in path.parts):
+    for current, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = [name for name in directories if name not in _PRUNED_DIRECTORIES]
+        for filename in filenames:
+            lowered = filename.lower()
+            if not lowered.endswith((".yml", ".yaml")) or not lowered.startswith(("docker-compose", "compose")):
                 continue
-            found[str(path.relative_to(REPO_ROOT)).replace("\\", "/")] = path
+            path = Path(current) / filename
+            found[str(path.relative_to(root)).replace("\\", "/")] = path
     return found
 
 
@@ -101,6 +116,18 @@ def test_compose_enumeration_covers_every_compose_file():
 
     assert not missing, f"compose file(s) not covered by the loopback rules: {sorted(missing)}; add them to COMPOSE_PATHS"
     assert not vanished, f"COMPOSE_PATHS names file(s) that no longer exist: {sorted(vanished)}; remove them"
+
+
+def test_compose_discovery_prunes_worktrees_and_vendored_directories(tmp_path: Path) -> None:
+    """Auxiliary checkouts cannot become part of the active checkout's surface."""
+    expected = tmp_path / "docker-compose.yaml"
+    expected.write_text("services: {}\n", encoding="utf-8")
+    for directory in (".worktrees/feature", "backend/worktrees/project", "node_modules/pkg"):
+        path = tmp_path / directory / "docker-compose-extra.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text("services: {}\n", encoding="utf-8")
+
+    assert _discover_compose_files(tmp_path) == {"docker-compose.yaml": expected}
 
 
 def test_every_compose_file_publishes_nothing_unbound():
