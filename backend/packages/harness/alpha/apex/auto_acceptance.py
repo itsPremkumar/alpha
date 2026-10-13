@@ -9,6 +9,7 @@ path.
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -150,6 +151,7 @@ def evaluate_tool_readback_criteria(
                 criterion=criterion,
                 verdict=CriterionVerdict.MET if met else CriterionVerdict.NOT_MET,
                 evidence=evidence,
+                evaluated_at=time.time(),
             )
         )
     return AcceptanceReport(criteria=results, evaluator="run_tool_readback")

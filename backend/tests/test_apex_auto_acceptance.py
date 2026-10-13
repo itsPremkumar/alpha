@@ -43,6 +43,7 @@ def test_explicit_exact_file_readback_is_measured_from_tool_events() -> None:
     assert report.evaluator == "run_tool_readback"
     assert report.passed is True
     assert "readback matched the declared exact text" in report.criteria[0].evidence
+    assert report.criteria[0].evaluated_at is not None
 
 
 def test_readback_mismatch_is_measured_not_passed() -> None:
