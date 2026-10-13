@@ -150,3 +150,11 @@ gates stay live, because a gate is a correctness check and not a feature.
 * `tests/test_grounding_wiring.py` — wiring, and the chain-membership test that
   fails if `GroundingMiddleware` is removed from `build_middlewares`. Every other
   test in the package passes with the middleware deleted; that one does not.
+
+The side-effect classification in `gates.py` is also a reachability contract:
+every registered model-facing tool must be classified at its actual effect
+boundary. `skills_hub_manage` is a reversible write because acquisition is
+user-scoped, digest-pinned, reviewed, and passed through the normal skill
+scanners; this classification lets Forge reach those checks and does not skip
+them. Keep its regression in `tests/test_grounding_layer.py` aligned. Unknown
+tools remain blocked, as do irreversible execution and external publication.

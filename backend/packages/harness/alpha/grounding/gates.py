@@ -197,6 +197,12 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "write_todos": SideEffectClass.REVERSIBLE_WRITE,
     "goal_engine": SideEffectClass.REVERSIBLE_WRITE,
     "bot_roster": SideEffectClass.REVERSIBLE_WRITE,
+    # Skills Hub discovery, inspection and user-scoped installation. Installs
+    # are durable local custom-skill writes, but can be removed through the
+    # caller's skill storage and are bounded by digest pinning, package review,
+    # and the normal archive/content scanners. Leaving this registered tool
+    # UNKNOWN made the autonomous Forge path fail before those controls ran.
+    "skills_hub_manage": SideEffectClass.REVERSIBLE_WRITE,
     "war_room": SideEffectClass.REVERSIBLE_WRITE,
     "swarm": SideEffectClass.REVERSIBLE_WRITE,
     "workflow_dag_manage": SideEffectClass.REVERSIBLE_WRITE,

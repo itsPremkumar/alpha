@@ -534,6 +534,11 @@ class TestGates:
         assert DEFAULT_SIDE_EFFECTS["present_files"] is SideEffectClass.REVERSIBLE_WRITE
         assert check_side_effect(GateSubject(tool_calls=("present_files",))).blocked is False
 
+    def test_skills_hub_is_classified_as_reversible(self) -> None:
+        """Forge can reach its reviewed, user-scoped skill acquisition path."""
+        assert DEFAULT_SIDE_EFFECTS["skills_hub_manage"] is SideEffectClass.REVERSIBLE_WRITE
+        assert check_side_effect(GateSubject(tool_calls=("skills_hub_manage",))).blocked is False
+
     def test_unplanned_irreversible_is_refused_when_confirmation_allowed(self) -> None:
         result = check_side_effect(GateSubject(tool_calls=("bash",), planned_tools=(), forbid_unconfirmed_side_effects=False))
         assert result.blocked is False  # no plan declared -> nothing to compare against
