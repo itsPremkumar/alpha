@@ -1359,11 +1359,44 @@ The same work removed four invented facts, each pinned in
   its always-emerald dot is gone: a colour asserted a liveness verdict on a
   field the server may never have filled in.
 
-Coverage: `src/lib/project-hub.test.mjs` — routes, the delegation to the
-existing clients, every table row above driven through the stubbed transport,
-the pure helpers (`unionProjectSkills`, `projectBoardCards`, `boardColumns`)
-driven directly, and source pins on the three deep links, the room-name rule
-and the four removed placeholders.
+### The second pass: shortcuts that land, and the agent-side loop
+
+- **The hub row's chips are destinations, not a hint.** `ProjectInspectorSection`
+  takes an `initialTab`, and the card's **Memory** and **Conversations**
+  buttons open the hub *on that tab* through `openInspector(projectId, tab)`.
+  The sentence "Memory, skills, conversations and company live in the hub"
+  named four destinations and offered none of them, making the operator do the
+  second half of the trip by hand. `openInspector` is the only way in, so a tab
+  left behind by one chip can never be the tab the next `View more` opens on.
+  The **Company** chip renders only with both a handler *and* an answered
+  reverse read — an unread attribution must not offer a "no company" trip.
+- **The loop closes on the bot's own page.** `GET /api/bots/{name}/projects`
+  is now read into `fetchBotDetail`'s per-section bundle and rendered as a
+  **Projects** section: each row carries the server's own status, this bot's
+  role and membership status, a link back to that project's hub, and any
+  project the crew scan could not read **named with its reason**. `projects` is
+  `null` (not `[]`) when the payload carried no list at all. The link is
+  `/?view=projects&project=<id>`, and `ChatView` folds that parameter into the
+  same one-shot `projectDetailRequest` rather than into a second mechanism —
+  the bot page is a different route, so the URL is the only channel there is.
+- **A filter deep-linked to a project that the list does not carry is shown
+  for what it is.** `KanbanSection`'s project `<select>` previously fell back
+  to displaying `All projects` while filtering to one id whenever the project
+  list had not loaded (or the project was deleted after the link was made):
+  the control and its rows disagreed about what was being displayed. It now
+  renders an option for the id in play, labelled from the board's own cards
+  when they carry the name and from the raw id otherwise.
+- **Every surface that lists a project's agents reaches the agent.** The
+  inspector's crew rows, the expanded card's staff chips and
+  `ProjectCrewPanel`'s member rows all link to `/bots/{name}` — a project UI
+  that names a bot with no route to its soul, capabilities, skills, model and
+  performance is the gap the second pass closed.
+
+Coverage: `src/lib/project-hub.test.mjs` (the chips' destinations, the company
+gate, the three bot links, the filter option, the bot page's own route and
+link), `src/lib/bot-detail.test.mjs` (`normalizeProjects`: null-vs-empty,
+verbatim words, timestamps, the named unreadable reason, junk rows) and
+`src/lib/project-deep-links.test.mjs` (the URL entry point and its ordering).
 
 ## Alpha Network client boundary
 

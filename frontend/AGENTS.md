@@ -365,6 +365,20 @@ was not reported, never `0`); and a join claims only what it matched.
   shortcuts. The company badge renders only when the reverse read answered — a
   failed attribution read must not paint "no company" over every card, and a
   failed scan says so once (`company partly unread`).
+- **The hub row's shortcuts land, and the loop closes.** The card's **Memory**
+  and **Conversations** buttons open the hub *on that tab*
+  (`openInspector(projectId, tab)` → the inspector's `initialTab`); the
+  **Company** button needs both a handler and an answered reverse read. The
+  bot's own page reads `GET /api/bots/{name}/projects` into its per-section
+  bundle and links each project back with
+  `/?view=projects&project=<id>`, which `ChatView` folds into the same
+  one-shot `projectDetailRequest` — a bot page is a different route, so the
+  URL is the only channel there is, and one handler still decides which
+  project is open. An unread project is named with its reason, and an absent
+  project list is `null`, not "no projects".
+- **A board filter that names a project the list does not carry is shown by
+  its id.** `All projects` displaying while the filter held one id was a control
+  and its rows disagreeing about what was on screen.
 - **Project status is a lifecycle label, not a health verdict.** `toProject`
   maps an absent status to `""` (it used to invent `"active"`), so
   `projectStatusText` renders "status not reported" and the one tone helper,

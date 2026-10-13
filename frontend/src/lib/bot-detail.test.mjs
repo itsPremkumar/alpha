@@ -46,7 +46,7 @@ function load(name, dependencies = {}) {
 
 // `bot-detail` needs `apiFetch` and `normalizeBot` only as collaborators; the
 // mapping helpers under test are pure and never call them.
-const { normalizeInbox, detailValue, enumOrUnknown } = load("bot-detail", {
+const { normalizeInbox, normalizeProjects, detailValue, enumOrUnknown } = load("bot-detail", {
   "./api-client": { apiFetch: async () => ({}) },
   "./bots": { normalizeBot: (raw) => raw },
 });
@@ -119,4 +119,90 @@ test("enumOrUnknown reports a non-string status as unreported, never as 'active'
   const res = enumOrUnknown(null, ["active", "paused", "disabled"]);
   assert.equal(res.value, "not reported");
   assert.equal(res.known, false);
+});
+
+// ---------------------------------------------------- GET /bots/{name}/projects
+
+test("normalizeProjects keeps an absent project list null, not empty", () => {
+  // "The Gateway sent no project list" and "this bot is on no project" are
+  // opposite conclusions, and only the second one was measured.
+  const view = normalizeProjects({});
+  assert.equal(view.projects, null);
+  assert.equal(view.unreadable, null);
+  assert.equal(view.memory_scoped, null);
+  assert.equal(view.memory_note, null);
+});
+
+test("normalizeProjects preserves a measured empty list as empty", () => {
+  const view = normalizeProjects({ projects: [], unreadable: [] });
+  assert.deepEqual(view.projects, [], "the server answered: no projects");
+  assert.deepEqual(view.unreadable, []);
+});
+
+test("normalizeProjects keeps every row's own words", () => {
+  const view = normalizeProjects({
+    projects: [
+      {
+        id: "p1",
+        name: "Website rebuild",
+        status: "active",
+        role: "lead",
+        member_status: "active",
+        updated_at: "2026-01-02T03:04:05Z",
+      },
+    ],
+    unreadable: [],
+    memory_scoped: "project",
+    memory_note: "memory lives with the project",
+  });
+  assert.equal(view.projects.length, 1);
+  const [row] = view.projects;
+  assert.equal(row.name, "Website rebuild");
+  assert.equal(row.status, "active");
+  assert.equal(row.role, "lead");
+  assert.equal(row.member_status, "active");
+  assert.equal(row.updated_at, "2026-01-02T03:04:05Z");
+  assert.equal(view.memory_scoped, "project");
+  assert.equal(view.memory_note, "memory lives with the project");
+});
+
+test("normalizeProjects maps a missing field to an empty value, not to a default", () => {
+  // The route sends "" for an unset status/role. Inventing "active" or
+  // "worker" here would put a claim on the page the Gateway never made.
+  const view = normalizeProjects({ projects: [{ id: "p1" }], unreadable: [] });
+  const [row] = view.projects;
+  assert.equal(row.status, "");
+  assert.equal(row.role, "");
+  assert.equal(row.member_status, "");
+  assert.equal(row.updated_at, null, "an absent timestamp stays unreported");
+});
+
+test("normalizeProjects keeps a numeric timestamp rather than dropping it", () => {
+  const view = normalizeProjects({ projects: [{ id: "p1", updated_at: 1735784645 }] });
+  assert.equal(view.projects[0].updated_at, "1735784645");
+});
+
+test("normalizeProjects keeps an unreadable project with the server's reason", () => {
+  // Dropping the row would quietly shrink the list — "this bot is on fewer
+  // projects" — when the truth is "one of them could not be read".
+  const view = normalizeProjects({
+    projects: [],
+    unreadable: [{ id: "p2", name: "Ops", reason: "crew view raised" }],
+  });
+  assert.equal(view.unreadable.length, 1);
+  assert.equal(view.unreadable[0].reason, "crew view raised");
+  assert.equal(view.unreadable[0].name, "Ops");
+});
+
+test("normalizeProjects reports a row without a reason instead of inventing one", () => {
+  const view = normalizeProjects({ projects: [], unreadable: [{ id: "p3" }] });
+  assert.equal(view.unreadable[0].reason, "no reason reported");
+});
+
+test("normalizeProjects survives junk rows without throwing", () => {
+  // A malformed payload must still open the section; the page can then say
+  // what arrived rather than failing the whole detail read.
+  const view = normalizeProjects({ projects: [null, "nonsense", { id: "p4" }] });
+  assert.equal(view.projects.length, 1);
+  assert.equal(view.projects[0].id, "p4");
 });

@@ -18,7 +18,7 @@
  *
  * Why a separate module and not an extension of `lib/bots.ts`: `lib/bots.ts`
  * owns the fleet roster read (`GET /api/bots`) and stays cheap. This one fans
- * out to six per-bot routes, and a page should be allowed to fail per-section
+ * out to seven per-bot routes, and a page should be allowed to fail per-section
  * without the roster client dragging it down.
  */
 
@@ -39,6 +39,7 @@ export interface BotDetailBundle {
   chat: DetailState<Record<string, unknown>>;
   fleetHealth: DetailState<Record<string, unknown>>;
   organization: DetailState<Record<string, unknown>>;
+  projects: DetailState<BotProjects>;
 }
 
 export interface BotInboxMessage {
@@ -57,6 +58,40 @@ export interface BotInbox {
    * measured zero, so it must not render as "0 unread".
    */
   unread_count: number | null;
+}
+
+/** One project this bot is a member of, exactly as `GET /bots/{name}/projects` sent it. */
+export interface BotProjectRow {
+  id: string;
+  /** `""` when the project row carried no name — the id still resolves it. */
+  name: string;
+  /** The project's own lifecycle status, verbatim (may be `""` = unreported). */
+  status: string;
+  /** This bot's role *in that project*. */
+  role: string;
+  /** This bot's membership status in that project, verbatim. */
+  member_status: string;
+  updated_at: string | null;
+}
+
+/** A project the route could NOT read for this bot — named, never dropped. */
+export interface BotProjectUnreadable {
+  id: string;
+  name: string;
+  reason: string;
+}
+
+export interface BotProjects {
+  /**
+   * `null` when the payload carried no list at all — "the Gateway sent no
+   * project list" is a different fact from "the server reported no projects".
+   */
+  projects: BotProjectRow[] | null;
+  unreadable: BotProjectUnreadable[] | null;
+  /** The server's own scoping word (`project`), verbatim, or `null`. */
+  memory_scoped: string | null;
+  /** The server's sentence about where this bot's memory lives, or `null`. */
+  memory_note: string | null;
 }
 
 const asString = (v: unknown): string | null => (typeof v === "string" ? v : null);
@@ -83,13 +118,14 @@ export async function fetchBotDetail(name: string): Promise<BotDetailBundle> {
   // here only runs on a real success envelope.
   const json = (path: string) => apiFetch(path).then((res) => res.json() as Promise<Record<string, unknown>>);
 
-  const [profile, performance, inbox, chat, fleetHealth, organization] = await Promise.allSettled([
+  const [profile, performance, inbox, chat, fleetHealth, organization, projects] = await Promise.allSettled([
     json(`/bots/${key}`).then((raw) => normalizeBot(raw)),
     json(`/bots/${key}/performance`),
     json(`/bots/${key}/inbox`).then(normalizeInbox),
     json(`/bots/${key}/chat`),
     json("/bots/health/overview"),
     json("/bots/organization-chart"),
+    json(`/bots/${key}/projects`).then(normalizeProjects),
   ]);
 
   const settle = <T,>(result: PromiseSettledResult<T>): DetailState<T> =>
@@ -104,6 +140,7 @@ export async function fetchBotDetail(name: string): Promise<BotDetailBundle> {
     chat: settle(chat),
     fleetHealth: settle(fleetHealth),
     organization: settle(organization),
+    projects: settle(projects),
   };
 }
 
@@ -113,6 +150,63 @@ export function normalizeInbox(raw: Record<string, unknown>): BotInbox {
   return {
     messages,
     unread_count: asNumber(raw.unread_count),
+  };
+}
+
+/**
+ * Map `GET /api/bots/{name}/projects` onto a typed shape (exported for tests).
+ *
+ * Two states this mapper exists to keep apart:
+ *
+ *  - an **absent** `projects` key maps to `null`, not `[]`. "The Gateway sent
+ *    no project list" and "this bot is on no project" lead to opposite
+ *    conclusions, and only one of them was measured.
+ *  - an `unreadable` row keeps its `reason`, so a project the crew scan could
+ *    not read is named with the server's own words instead of quietly
+ *    shrinking the list (which would read as "this bot is on fewer projects").
+ *
+ * A row with no `id` is still reported — it just carries `""`, and the page
+ * withholds a link that would point nowhere rather than inventing a target.
+ */
+export function normalizeProjects(raw: Record<string, unknown>): BotProjects {
+  const projectRows = Array.isArray(raw.projects)
+    ? (raw.projects as unknown[]).flatMap((row): BotProjectRow[] => {
+        if (!row || typeof row !== "object") return [];
+        const r = row as Record<string, unknown>;
+        const at = r.updated_at;
+        return [
+          {
+            id: asString(r.id) ?? "",
+            name: asString(r.name) ?? "",
+            status: asString(r.status) ?? "",
+            role: asString(r.role) ?? "",
+            member_status: asString(r.member_status) ?? "",
+            updated_at:
+              typeof at === "string" && at ? at : typeof at === "number" ? String(at) : null,
+          },
+        ];
+      })
+    : null;
+
+  const unreadableRows = Array.isArray(raw.unreadable)
+    ? (raw.unreadable as unknown[]).flatMap((row): BotProjectUnreadable[] => {
+        if (!row || typeof row !== "object") return [];
+        const r = row as Record<string, unknown>;
+        return [
+          {
+            id: asString(r.id) ?? "",
+            name: asString(r.name) ?? "",
+            reason: asString(r.reason) ?? "no reason reported",
+          },
+        ];
+      })
+    : null;
+
+  return {
+    projects: projectRows,
+    unreadable: unreadableRows,
+    memory_scoped: asString(raw.memory_scoped),
+    memory_note: asString(raw.memory_note),
   };
 }
 

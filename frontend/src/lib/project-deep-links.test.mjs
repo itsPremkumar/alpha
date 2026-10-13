@@ -69,7 +69,7 @@ test("one handler carries the project id across views", () => {
 });
 
 test("the requested project is opened once, then acknowledged", () => {
-  const open = section.indexOf("setInspectedProjectId(request.projectId)");
+  const open = section.indexOf("openInspector(request.projectId)");
   assert.notEqual(open, -1, "the section must open the project the request names");
 
   const ack = section.indexOf("onOpenProjectRequestHandled?.()", open);
@@ -206,4 +206,32 @@ test("a control that could open nothing is not offered", () => {
 
   // And the row itself needs a project to open.
   assert.match(menu, /project && onOpenDetails &&/);
+});
+
+test("a project id in the URL is an entry point — the cross-route case", () => {
+  // The bot's own page (`/bots/[name]`) is a *different route*: none of the
+  // in-memory requests above survive that jump, so the URL is the only
+  // channel there is. It is folded into the same one-shot request rather than
+  // into a second mechanism, so there stays exactly one owner of the answer
+  // to "which project is open" — and the nonce/acknowledge contract above is
+  // inherited instead of reimplemented.
+  assert.match(
+    chat,
+    /new URLSearchParams\(window\.location\.search\)\.get\("project"\)/,
+    "the shell reads the parameter the bot page links with",
+  );
+  assert.match(
+    chat,
+    /if \(projectId\) openProjectDetails\(projectId\)/,
+    "and hands it to the same handler every other surface uses",
+  );
+
+  // Declared after `openProjectDetails`, so the effect body closes over an
+  // initialised binding, and it runs post-hydration for the reason the view
+  // seed documents: reading `window` during the first render is the SSR
+  // mismatch that discarded the server-rendered tree.
+  const declared = chat.indexOf("const openProjectDetails = ");
+  const seed = chat.indexOf('get("project")');
+  assert.notEqual(declared, -1, "the handler must exist");
+  assert.ok(declared !== -1 && seed > declared, "the seed must be declared after the handler");
 });

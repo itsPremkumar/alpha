@@ -844,6 +844,27 @@ export default function ChatView({
     setCompanyOpenRequest({ companyId, nonce: companyOpenNonceRef.current });
     setView("company");
   };
+  /**
+   * A `?project=` query opens that project's full read.
+   *
+   * Cross-route navigation cannot use the in-memory request above: the bot
+   * detail page (`/bots/[name]`) is a separate route, and the only thing that
+   * survives the jump is the URL. So the parameter is folded into the *same*
+   * one-shot request the shell already owns rather than into a second
+   * mechanism — one place decides which project is open, and the nonce/ack
+   * contract (a request left standing re-fires on every later mount) is
+   * inherited instead of reimplemented.
+   *
+   * It runs once, after hydration, for the same reason the view seed above
+   * does: reading `window` during the first render is what caused the SSR
+   * mismatch documented there. The parameter is deliberately left in the URL,
+   * so reloading or copying the link lands on the same project again.
+   */
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project");
+    if (projectId) openProjectDetails(projectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const voiceViewRef = useRef(view);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "models" | "connectivity" | "appearance" | "diagnostics"

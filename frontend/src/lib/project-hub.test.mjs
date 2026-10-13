@@ -504,3 +504,109 @@ test("no surface coaxes an empty status into the word active", () => {
     );
   }
 });
+
+// ---------------------------------------- source pins: the shortcuts that land
+//
+// The first pass made each destination reachable from the project. This pass
+// made the chips actually *land* where they named, closed the loop on the
+// agent's own page, and removed the one control whose label disagreed with
+// what it filtered.
+
+const crewPanel = readFileSync(
+  new URL("../components/sections/ProjectCrewPanel.tsx", import.meta.url),
+  "utf8",
+);
+const botDetailView = readFileSync(
+  new URL("../components/bots/BotDetailView.tsx", import.meta.url),
+  "utf8",
+);
+const botDetailLib = readFileSync(new URL("./bot-detail.ts", import.meta.url), "utf8");
+
+test("the hub row's Memory and Conversations chips are destinations, not a hint", () => {
+  assert.match(
+    projects,
+    /openInspector\(p\.id, "memory"\)/,
+    "the chip opens the hub ON the memory tab",
+  );
+  assert.match(
+    projects,
+    /openInspector\(p\.id, "conversations"\)/,
+    "the chip opens the hub ON the conversations tab",
+  );
+  assert.match(
+    projects,
+    /initialTab=\{inspectedTab\}/,
+    "the requested tab travels with the project id into the inspector",
+  );
+  assert.match(
+    inspector,
+    /initialTab\?: InspectorTab/,
+    "the inspector accepts a destination tab instead of hardcoding Overview",
+  );
+  // The text that used to stand in for those controls is gone: a hint naming
+  // four destinations while offering none of them made the operator do the
+  // second half of the trip by hand.
+  assert.doesNotMatch(
+    projects,
+    /Memory, skills, conversations and company live in the hub\./,
+    "a sentence listing what the row could not reach is not a control",
+  );
+});
+
+test("the Company chip opens a company only when one is actually linked", () => {
+  assert.match(
+    projects,
+    /props\.onOpenCompany && companiesByProject/,
+    "both the handler and an answered reverse read are required",
+  );
+  assert.match(projects, /companiesByProject\?\.get\(p\.id\)\?\.\[0\]/, "it names the first linked company");
+});
+
+test("every surface that lists a project's agents links to the agent", () => {
+  for (const [name, src] of [
+    ["ProjectsSection", projects],
+    ["ProjectCrewPanel", crewPanel],
+  ]) {
+    assert.match(
+      src,
+      /\/bots\/\$\{encodeURIComponent\(member\.bot_name\)\}/,
+      `${name} renders a project's agents without a route to their own page`,
+    );
+  }
+});
+
+test("a board filter set by a deep link cannot display a different project than it filters", () => {
+  assert.match(
+    kanbanSection,
+    /!projects\.some\(\(p\) => p\.id === projectFilter\)/,
+    "the option list covers the value the select is actually holding",
+  );
+  assert.match(
+    kanbanSection,
+    /`project \$\{projectFilter\}`/,
+    "an id with no resolved name is shown by id rather than hidden",
+  );
+});
+
+test("the bot's own page reaches back to the projects it is on", () => {
+  assert.match(
+    botDetailLib,
+    /\/bots\/\$\{key\}\/projects/,
+    "the real route — the project side already reaches the agent",
+  );
+  assert.match(
+    botDetailView,
+    /\/\?view=projects&project=/,
+    "the link lands on the drill-down, not on the project list",
+  );
+  assert.match(
+    botDetailView,
+    /The server reported no projects for this bot/,
+    "an empty list is the server's answer, stated as one",
+  );
+  assert.match(
+    botDetailView,
+    /could not be read/,
+    "a project the crew scan could not read is named, never dropped",
+  );
+});

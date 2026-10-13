@@ -368,6 +368,24 @@ export function KanbanSection(props: {
                 {p.name}
               </option>
             ))}
+            {/*
+              A filter set from a deep link can name a project this list does
+              not carry — the project list failed to load, or the project was
+              deleted after the link was made. Without this option the select
+              would fall back to displaying "All projects" while filtering to
+              one id: the control and the rows it shows would disagree about
+              what is being displayed. The label comes from the board's own
+              cards when they carry the name, and falls back to the raw id
+              rather than to a name nobody sent.
+            */}
+            {projectFilter !== "all" &&
+              projectFilter !== "" &&
+              !projects.some((p) => p.id === projectFilter) && (
+                <option value={projectFilter}>
+                  {cards.find((c) => c.projectId === projectFilter && c.projectName)?.projectName ||
+                    `project ${projectFilter}`}
+                </option>
+              )}
           </select>
           {/* The board answers "what is queued"; the drill-down answers "what is
               this project". It appears only on a single-project filter —

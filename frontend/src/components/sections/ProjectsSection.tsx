@@ -26,10 +26,12 @@ import { moveThread } from "@/lib/threads-ext";
 import { Thread } from "@/types/chat";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash, ChevronRight, Settings2, CheckCheck, Building2, LayoutGrid, Brain, Wrench } from "lucide-react";
+import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, MessageSquareText, Hash, ChevronRight, Settings2, CheckCheck, Building2, LayoutGrid, Brain, Wrench } from "lucide-react";
 import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
 import { ProjectOverviewPanel } from "@/components/sections/ProjectOverviewPanel";
 import { ProjectInspectorSection } from "@/components/sections/ProjectInspectorSection";
+import type { InspectorTab } from "@/components/sections/ProjectInspectorSection";
+import Link from "next/link";
 import { projectCompanyIndex, projectRooms, ProjectCompanyRef } from "@/lib/project-hub";
 import { projectStatusText, projectStatusTone } from "@/lib/chat-shell";
 
@@ -200,6 +202,21 @@ export function ProjectsSection(props: {
    * had fetched", which was the gap that made the deep state unreachable.
    */
   const [inspectedProjectId, setInspectedProjectId] = useState<string | null>(null);
+  /**
+   * The inspector tab the drill-down opens on.
+   *
+   * The hub row's Memory / Conversations chips are a *destination*, not a
+   * hint: landing on Overview and making the operator find the tab the chip
+   * named would be a link that only half works. Every path into the
+   * drill-down goes through `openInspector`, which always sets both pieces of
+   * state together, so a tab left behind by one chip cannot leak into the next
+   * open — "View more" and a deep link always start at Overview.
+   */
+  const [inspectedTab, setInspectedTab] = useState<InspectorTab>("overview");
+  const openInspector = (projectId: string, tab: InspectorTab = "overview") => {
+    setInspectedTab(tab);
+    setInspectedProjectId(projectId);
+  };
   /** "all" | "crew" | "solo" — a view filter, never a claim about the data. */
   const [shapeFilter, setShapeFilter] = useState<"all" | "crew" | "solo">("all");
   /**
@@ -380,7 +397,7 @@ export function ProjectsSection(props: {
   useEffect(() => {
     const request = props.openProjectRequest;
     if (!request) return;
-    setInspectedProjectId(request.projectId);
+    openInspector(request.projectId);
     props.onOpenProjectRequestHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.openProjectRequest]);
@@ -553,6 +570,7 @@ export function ProjectsSection(props: {
     return (
       <ProjectInspectorSection
         projectId={inspectedProjectId}
+        initialTab={inspectedTab}
         onOpenThread={props.onOpenThread}
         onClose={() => setInspectedProjectId(null)}
         onOpenLiveProject={props.onOpenLiveProject}
@@ -976,7 +994,7 @@ export function ProjectsSection(props: {
                         */}
                         <button
                           type="button"
-                          onClick={() => setInspectedProjectId(p.id)}
+                          onClick={() => openInspector(p.id)}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
                           title={`Read every detail the Gateway knows about ${p.name}`}
                         >
@@ -995,13 +1013,16 @@ export function ProjectsSection(props: {
                     project has no room, a project in no company has no company
                     to open, and a control pointing nowhere is worse than its
                     absence.
+
+                    Memory and Conversations are *destinations*, not hints —
+                    they open the hub on that tab. The text hint that used to
+                    say "these live in the hub" made the operator do the second
+                    half of the trip themselves.
                   */}
                   <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label={`Jump into ${p.name}`}>
                     <Btn
                       variant="ghost"
-                      onClick={() => {
-                        setInspectedProjectId(p.id);
-                      }}
+                      onClick={() => openInspector(p.id)}
                       title={`Read every detail of ${p.name}: crew, room, board, memory, skills and company`}
                     >
                       <Sparkles className="size-3.5" /> Open hub
@@ -1022,8 +1043,37 @@ export function ProjectsSection(props: {
                     >
                       <LayoutGrid className="size-3.5" /> Board
                     </Btn>
+                    <Btn
+                      variant="ghost"
+                      onClick={() => openInspector(p.id, "memory")}
+                      title={`Open ${p.name}'s shared memory in the hub`}
+                    >
+                      <Brain className="size-3.5" /> Memory
+                    </Btn>
+                    <Btn
+                      variant="ghost"
+                      onClick={() => openInspector(p.id, "conversations")}
+                      title={`Open the conversations belonging to ${p.name} in the hub`}
+                    >
+                      <MessageSquareText className="size-3.5" /> Conversations
+                    </Btn>
+                    {/*
+                      The first linked company, and only while the reverse read
+                      answered: a failed attribution read must not present
+                      itself as "no company to open". The card's own badges
+                      carry the full list when there is more than one.
+                    */}
+                    {props.onOpenCompany && companiesByProject?.get(p.id)?.[0] ? (
+                      <Btn
+                        variant="ghost"
+                        onClick={() => props.onOpenCompany?.(companiesByProject.get(p.id)![0].company_id)}
+                        title={`Open ${companiesByProject.get(p.id)![0].name || companiesByProject.get(p.id)![0].company_id} in Companies`}
+                      >
+                        <Building2 className="size-3.5" /> Company
+                      </Btn>
+                    ) : null}
                     <span className="text-[10px] text-muted-foreground">
-                      Memory, skills, conversations and company live in the hub.
+                      Skills and crew are on the hub&apos;s Overview.
                     </span>
                   </div>
                   {/*
@@ -1061,7 +1111,21 @@ export function ProjectsSection(props: {
                       <div className="flex flex-wrap gap-1.5">
                         {members.map((member) => (
                           <span key={member.bot_name} className="inline-flex items-center gap-1 rounded-lg border border-border/70 bg-card px-2 py-1 text-[11px]">
-                            <strong>{botLabel(member.bot_name)}</strong>
+                            {/*
+                              A staff chip is a project UI, so picking an agent
+                              here has to reach that agent's full record —
+                              soul, capabilities, skills, model, performance —
+                              which lives on its own page. The name is the
+                              link; the remove control stays a separate target
+                              so the two can never be confused.
+                            */}
+                            <Link
+                              href={`/bots/${encodeURIComponent(member.bot_name)}`}
+                              className="font-semibold hover:text-primary hover:underline"
+                              title={`Open ${botLabel(member.bot_name)}'s full profile: soul, capabilities, skills, model and performance`}
+                            >
+                              {botLabel(member.bot_name)}
+                            </Link>
                             <span className="text-muted-foreground">{member.role_in_project}</span>
                             <Badge tone={member.status === "active" ? "green" : "gray"}>{member.status}</Badge>
                             <button

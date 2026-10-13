@@ -24,7 +24,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Building2, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Building2, ExternalLink, RefreshCw } from "lucide-react";
 
 import { botDisplayName, botInitials } from "@/types/bots";
 import {
@@ -396,6 +397,89 @@ export function BotDetailView({ name }: { name: string }) {
                 <Row label="Paused" value={detailValue(h, "paused")} />
                 <Row label="Disabled" value={detailValue(h, "disabled")} />
                 <Row label="Avg reputation" value={detailValue(h, "avg_reputation")} />
+              </div>
+            );
+          }}
+        </Section>
+
+        {/* ---- Projects this bot belongs to ----
+            The other half of the project hub: from a project you can reach the
+            agent, and from the agent you can reach the project. The link lands
+            on the Projects tab with the drill-down already open (`?project=`),
+            because a bare `?view=projects` would only reach the list. */}
+        <Section title="Projects" state={bundle?.projects ?? { state: "loading" }}>
+          {(p) => {
+            if (p.projects === null) {
+              return (
+                <p className="text-sm text-muted-foreground">
+                  The Gateway sent no project list for this bot — so whether it belongs to any project is
+                  unknown, not empty.
+                </p>
+              );
+            }
+            return (
+              <div className="space-y-3">
+                {p.projects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    The server reported no projects for this bot.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {p.projects.map((row) => (
+                      <li
+                        key={row.id || row.name}
+                        className="rounded-lg border border-border/60 p-2 text-xs space-y-1"
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-medium">
+                            {row.name || (row.id ? row.id : "(project with no name reported)")}
+                          </span>
+                          <span className="text-muted-foreground font-mono">
+                            {row.status || "status not reported"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {row.role || "no role reported"} · membership {row.member_status || "not reported"}
+                          {row.updated_at ? ` · updated ${row.updated_at}` : ""}
+                        </p>
+                        {/*
+                          Withhold rather than invent: a row with no id has
+                          nowhere to link to, and a control pointing at an
+                          empty query is worse than its absence.
+                        */}
+                        {row.id ? (
+                          <Link
+                            href={`/?view=projects&project=${encodeURIComponent(row.id)}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-semibold hover:bg-muted"
+                            title={`Open ${row.name || row.id}'s full read: crew, room, board, memory, skills and company`}
+                          >
+                            <ExternalLink className="size-3" /> Open project hub
+                          </Link>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {(p.unreadable?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200 space-y-1">
+                    <p className="font-medium">
+                      {p.unreadable!.length} project{p.unreadable!.length === 1 ? "" : "s"} could not be read:
+                    </p>
+                    {p.unreadable!.map((row, i) => (
+                      <p key={row.id || i} className="font-mono text-[11px]">
+                        {row.name || row.id || "(unnamed)"} — {row.reason}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {p.memory_note && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {p.memory_note}
+                    {p.memory_scoped ? ` (scope: ${p.memory_scoped})` : ""}
+                  </p>
+                )}
               </div>
             );
           }}

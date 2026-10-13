@@ -1968,11 +1968,21 @@ export function ProjectInspectorSection(props: {
   onOpenProjectBoard?: (projectId: string) => void;
   /** Open the company this project is linked to, in the Companies view. */
   onOpenCompany?: (companyId: string) => void;
+  /**
+   * The tab to open on, instead of Overview.
+   *
+   * The hub row's Memory / Conversations chips name a *destination*: landing
+   * on Overview and making the operator find the tab would be a link that
+   * only half works. Every caller passes it explicitly (defaulting to
+   * Overview), so a tab left behind by one chip cannot leak into the next
+   * open.
+   */
+  initialTab?: InspectorTab;
 }) {
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<InspectorTab>("overview");
+  const [tab, setTab] = useState<InspectorTab>(props.initialTab ?? "overview");
   const [botRole, setBotRole] = useState("worker");
   // Refresh is a repeated action, so it disables itself while a read is in
   // flight — a double-click must not open two reads of the same subsystem.
@@ -1996,9 +2006,11 @@ export function ProjectInspectorSection(props: {
 
   useEffect(() => {
     setLoading(true);
-    setTab("overview");
+    setTab(props.initialTab ?? "overview");
     void load();
-    // Re-reads when the opened project or the inspected role changes.
+    // Re-reads when the opened project or the inspected role changes. The tab
+    // is reset alongside so a project switch never keeps the previous
+    // project's destination tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.projectId, botRole]);
 
