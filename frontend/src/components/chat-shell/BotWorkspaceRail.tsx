@@ -201,7 +201,6 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     <div
       className="flex flex-col h-full select-none divide-y divide-border/40"
       data-shell="bot-workspace"
-      data-lion-pet-keepout=""
     >
       {/* ── 1. Roster summary ───────────────────────────────────────────
           The scrolling "AI Agents (N)" profile list was removed here. It
@@ -299,6 +298,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
       {/* ── 3. Standalone Conversations (Outside Any Project) ────────── */}
       <section
+        data-lion-pet-keepout=""
         className="p-3 space-y-1.5"
         aria-label="Standalone conversations"
       >
@@ -395,6 +395,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
       {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
       <section
+        data-lion-pet-keepout=""
         className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto"
         aria-label="Projects"
       >
