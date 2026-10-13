@@ -711,15 +711,27 @@ export function projectQuickActions(projectId: string | null, phase: string | nu
 /**
  * A project's own `status` string, read as a string.
  *
- * `toProject` in `lib/projects.ts` substitutes the server's own default
- * (`"active"`) when the field is absent, so this cannot distinguish "the server
- * said active" from "the server said nothing and the client filled in active".
- * That is why the UI shows the literal word and does not colour it: a colour
- * would assert a liveness verdict the read did not support.
+ * `toProject` in `lib/projects.ts` maps an absent status to `""`, so this
+ * renders "status not reported" rather than inventing a word. The word is
+ * deliberately uncoloured: a colour would assert a liveness verdict the read
+ * did not support, which is how an emerald dot came to sit on a field the
+ * server had never filled in.
  */
 export function projectStatusText(status: string | null | undefined): string {
   const text = typeof status === "string" ? status.trim() : "";
   return text || "status not reported";
+}
+
+/**
+ * The tone for a project status word, or `undefined` when none is earned.
+ *
+ * Only `"active"` earns green. Every other word — including an absent one,
+ * which reaches here as `""` — is grey, because the Gateway's project status
+ * is a lifecycle label, not a health verdict: `"paused"` and `"done"` are
+ * both fine states and neither is a warning.
+ */
+export function projectStatusTone(status: string | null | undefined): "green" | undefined {
+  return typeof status === "string" && status.trim() === "active" ? "green" : undefined;
 }
 
 /**

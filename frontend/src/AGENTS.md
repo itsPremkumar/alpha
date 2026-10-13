@@ -1284,6 +1284,87 @@ inheriting the bot roster would label an installation with 2 projects "42".
   for the cross-surface redirect (the request's order, the one-shot
   acknowledgement, every entry point and every withheld control).
 
+## The project hub (`lib/project-hub.ts`)
+
+A project is a **folder**: opening one has to reach its message rooms, its
+board, its shared memory, the skills of its crew, its conversations and the
+company it sits under. `lib/project-hub.ts` is the join, and the inspector is
+where it renders (a `board` tab, plus `ProjectRoomsPanel` / `CompanyPanel` /
+`SkillsPanel` on Overview and the room block on Crew).
+
+**There is no "project hub" endpoint and this module must not invent one.**
+Every function joins a read that already exists, so each fact has one answer
+rather than a second projection that drifts from the surface it claims to
+summarise. The module reaches the network only through `lib/http`, and it
+*delegates* the company and bot reads to `lib/company.ts` / `lib/bots.ts`
+rather than re-writing those routes — a second mapper for the same payload is
+how two panels end up disagreeing.
+
+Four joins, four rules, each with a plausible wrong reading:
+
+| Server says | Panel shows |
+| --- | --- |
+| `rooms: []` for a project | "no room is bound … opens once the crew reaches two agents" |
+| the rooms read rejected | its reason, never an empty list |
+| `count` absent | `null` — never `rooms.length`, which would claim a measured zero |
+| a company whose own read failed | **named** in `unreadable`, and the panel says attribution may be partial |
+| no company links the project | "not linked to any company" — only after a read that answered |
+| an agent's profile failed or resolved `null` | named in `unreadable`; its skills are *unknown*, not absent |
+| the server board rejected | the local cards, **with the failure printed above them** |
+| a card with no `projectId` | not shown — it belongs to no project and folding it in would claim work |
+
+Rules that must keep:
+
+- **A room name is the server's to give.** `projectRooms()` reads
+  `GET /groups/by-project/{id}`; nothing composes `project-{id}` in the client,
+  because the crew service can rename or park the room. `ProjectsSection`'s
+  own Room shortcut therefore resolves through `openProjectRoom(p)` — an async
+  read, not a template string.
+- **A skill keeps the agent that carries it.** `unionProjectSkills` returns
+  `{ skill, agents[] }`, so the panel can say *which* agent brings a skill
+  rather than implying the project owns one. Sorting is `localeCompare`, so two
+  panels list the same union in the same order.
+- **The board is shared and narrowed, never copied.** `loadProjectBoard` merges
+  the local board with `GET /kanban/tasks` and then filters by `projectId`; a
+  second per-project board would drift from the one work is actually moved on.
+  `boardColumns` keeps the board's own column order and its empty columns, so
+  an empty column reads as "nothing here yet", not as a missing state.
+- **The company scan is bounded** (`MAX_COMPANIES_SCANNED`) because attribution
+  is a fan-out of one `getCompany` per company; the bound is disclosed by the
+  `unreadable` list rather than hidden in a slice.
+
+### The deep links, and the placeholders that are gone
+
+`ChatView` owns three more one-shot requests beside `projectDetailRequest` —
+`projectBoardRequest`, `roomOpenRequest`, `companyOpenRequest` — each with its
+nonce and a single handler (`openProjectBoard` → `kanban`,
+`openRoomDetail` → `messages`, `openCompany` → `company`). `KanbanSection`,
+`MessagesSection` and `CompanySection` each consume and clear through
+`onOpen…RequestHandled`: a request left standing re-fires on every later mount,
+which would silently yank the operator out of whatever they had since opened.
+A company a request names that the registry does not carry is **reported**
+rather than ignored — the previous selection is not the one that was asked for
+and must not be presented as it.
+
+The same work removed four invented facts, each pinned in
+`project-hub.test.mjs` so a "temporary" value cannot return:
+
+- `toProject` maps an absent status to `""`, not `"active"` — "the Gateway said
+  nothing" and "the Gateway said active" are now different values, which is what
+  `projectStatusText`'s own docstring had been asking for.
+- `projectStatusTone` is the one place a project status earns a colour, and
+  only `active` earns green. The card badge, the in-chat panel and the dropdowns
+  all read it (or `projectStatusText`) instead of a local `|| "active"`.
+- The in-chat inspector's fabricated `Apr 26, 2025` renders `not reported`, and
+  its always-emerald dot is gone: a colour asserted a liveness verdict on a
+  field the server may never have filled in.
+
+Coverage: `src/lib/project-hub.test.mjs` — routes, the delegation to the
+existing clients, every table row above driven through the stubbed transport,
+the pure helpers (`unionProjectSkills`, `projectBoardCards`, `boardColumns`)
+driven directly, and source pins on the three deep links, the room-name rule
+and the four removed placeholders.
+
 ## Alpha Network client boundary
 
 The `peers` workspace view is a separate session from local bot/group messages.

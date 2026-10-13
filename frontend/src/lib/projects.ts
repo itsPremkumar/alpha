@@ -40,7 +40,13 @@ function toProject(p: Record<string, unknown>): Project {
       p.presentation && typeof p.presentation === "object"
         ? (p.presentation as Record<string, unknown>)
         : {},
-    status: String(pick(p, ["status"], "active")),
+    // An absent status is an absent status. `pick`'s fallback used to be
+    // `"active"`, which made "the Gateway reported nothing" indistinguishable
+    // from "the Gateway said active" at every surface that renders this field
+    // — `projectStatusText` said so in its own docstring, and the in-chat
+    // panel painted an emerald dot on it. The empty string is the honest
+    // absence, and `projectStatusText` renders it as "status not reported".
+    status: String(pick(p, ["status"], "")),
     created_at: String(pick(p, ["created_at"], "")),
     updated_at: String(pick(p, ["updated_at"], "")),
   };

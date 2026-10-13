@@ -327,13 +327,21 @@ export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
                           day: "numeric",
                           year: "numeric",
                         })
-                      : "Apr 26, 2025"}
+                      : "not reported"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Status</span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500">
-                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                  {/*
+                    The word, never a colour. `projectStatusText`'s contract is
+                    explicit: `toProject` substitutes the server's own default
+                    when the field is absent, so this cannot tell "the server
+                    said active" from "the server said nothing and the client
+                    filled it in" — and a green dot asserts a liveness verdict
+                    the read did not support. A fabricated date sat in the row
+                    above for the same reason and is gone.
+                  */}
+                  <span className="text-[11px] font-medium text-muted-foreground">
                     {projectStatusText(project.status)}
                   </span>
                 </div>

@@ -322,6 +322,59 @@ and `workspace-nav.test.mjs` fails on it.
   crew-type classification, the drill-down wiring, and the rendered claims) and
   `src/lib/project-deep-links.test.mjs` (the cross-surface redirect).
 
+## The project hub: a project is a folder, not a row
+
+Opening a project has to reach *everything the project owns* — its message
+rooms, its board, its shared memory, the skills of its crew, its conversations
+and the company it sits under — and each of those has to lead somewhere real.
+`src/lib/project-hub.ts` is the join that makes that possible, and the inspector
+is where it renders.
+
+**The Gateway has no "project hub" endpoint, and the module deliberately does
+not invent one.** Every panel is a join over a read that already exists, so
+there is one answer per fact rather than a second projection that drifts from
+the surface it claims to summarise. Four joins, four rules:
+
+| Join | Source read | The rule it keeps |
+| --- | --- | --- |
+| rooms | `GET /groups/by-project/{id}` | the room name is the server's to give; composing `project-{id}` breaks on a rename |
+| company | `listCompanies()` + `getCompany()` per company | the link lives on the *company*, so attribution is a reverse lookup, and an unreadable company is **named**, never dropped |
+| skills | `fetchBot()` per crew member | a skill belongs to an agent, so the union keeps *which* agent carries each one |
+| board | `loadCards()` + `GET /kanban/tasks`, then narrowed | a card naming no project is never claimed by one |
+
+Three shapes hold across all four: a failed read is never an empty answer
+(every loader returns the reason, or names the rows it could not read, beside
+the data it did get); counts travel with their basis (`count` is `null` when it
+was not reported, never `0`); and a join claims only what it matched.
+
+- **Three one-shot deep links, same contract as `projectDetailRequest`.**
+  `ChatView` owns `projectBoardRequest` / `roomOpenRequest` /
+  `companyOpenRequest`, each `{ …, nonce }`, each with a single handler
+  (`openProjectBoard`, `openRoomDetail`, `openCompany`) that records it and
+  switches view. The receivers (`KanbanSection`, `MessagesSection`,
+  `CompanySection`) consume and clear through `onOpen…RequestHandled`, because
+  a request left standing re-fires on every later mount. A company a request
+  names that the registry does not carry is **reported**, not silently ignored:
+  keeping the previous selection would present it as the one asked for.
+- **The inspector gained a Board tab plus three panels** — rooms (with subgroups,
+  each with its own Open), company, and project skills — and its crew rows now
+  link to `/bots/{name}`, so an agent on a project is one click from that
+  agent's full record. The board tab only *reads*: moving a card belongs to the
+  Kanban view, which owns the write.
+- **The project card states its company** and offers Room / Board / hub
+  shortcuts. The company badge renders only when the reverse read answered — a
+  failed attribution read must not paint "no company" over every card, and a
+  failed scan says so once (`company partly unread`).
+- **Project status is a lifecycle label, not a health verdict.** `toProject`
+  maps an absent status to `""` (it used to invent `"active"`), so
+  `projectStatusText` renders "status not reported" and the one tone helper,
+  `projectStatusTone`, awards green to `active` and nothing else. The in-chat
+  panel's fabricated `Apr 26, 2025` and its always-emerald dot are gone; both
+  are pinned in the suite.
+- Regression coverage: `src/lib/project-hub.test.mjs` (routes, delegation to
+  the existing clients, every honesty inversion above, the pure helpers driven
+  directly, and source pins on the wiring and the removed placeholders).
+
 ## Testing (required for client changes)
 
 ```

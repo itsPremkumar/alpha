@@ -800,6 +800,50 @@ export default function ChatView({
     setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current });
     setView("projects");
   };
+  /**
+   * One-shot request to open ONE project's board in the Kanban view.
+   *
+   * The board is shared across projects, so a bare view switch would land on
+   * every project at once and the operator would have to re-pick the filter.
+   * `KanbanSection` consumes this and clears it through the acknowledgement,
+   * the same discipline as `projectDetailRequest`: a request left standing
+   * re-fires on every later mount of the view.
+   */
+  const [projectBoardRequest, setProjectBoardRequest] = useState<{
+    projectId: string;
+    nonce: number;
+  } | null>(null);
+  const projectBoardNonceRef = useRef(0);
+  const openProjectBoard = (projectId: string) => {
+    projectBoardNonceRef.current += 1;
+    setProjectBoardRequest({ projectId, nonce: projectBoardNonceRef.current });
+    setView("kanban");
+  };
+  /**
+   * One-shot request to open ONE message room in the Messages view.
+   *
+   * A project's room is named by the crew service, not by the client, so the
+   * caller passes the name the server gave. Same nonce/acknowledge contract as
+   * the two requests above.
+   */
+  const [roomOpenRequest, setRoomOpenRequest] = useState<{ name: string; nonce: number } | null>(null);
+  const roomOpenNonceRef = useRef(0);
+  const openRoomDetail = (name: string) => {
+    roomOpenNonceRef.current += 1;
+    setRoomOpenRequest({ name, nonce: roomOpenNonceRef.current });
+    setView("messages");
+  };
+  /** One-shot request to open ONE company in the Companies view. */
+  const [companyOpenRequest, setCompanyOpenRequest] = useState<{
+    companyId: string;
+    nonce: number;
+  } | null>(null);
+  const companyOpenNonceRef = useRef(0);
+  const openCompany = (companyId: string) => {
+    companyOpenNonceRef.current += 1;
+    setCompanyOpenRequest({ companyId, nonce: companyOpenNonceRef.current });
+    setView("company");
+  };
   const voiceViewRef = useRef(view);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "models" | "connectivity" | "appearance" | "diagnostics"
@@ -3322,6 +3366,8 @@ export default function ChatView({
                 <MessagesSection
                   threadId={activeThreadId}
                   botNames={bots.map((b) => b.display_name || b.name)}
+                  openRoomRequest={roomOpenRequest}
+                  onOpenRoomRequestHandled={() => setRoomOpenRequest(null)}
                 />
               </Suspense>
             ) : view === "peers" ? (
@@ -3341,11 +3387,18 @@ export default function ChatView({
                     avatar: b.avatar,
                   }))}
                   onOpenProjectDetails={openProjectDetails}
+                  openProjectRequest={projectBoardRequest}
+                  onOpenProjectRequestHandled={() => setProjectBoardRequest(null)}
                 />
               </Suspense>
             ) : view === "company" ? (
               <Suspense fallback={<SectionFallback />}>
-                <CompanySection onOpenProjectDetails={openProjectDetails} />
+                <CompanySection
+                  onOpenProjectDetails={openProjectDetails}
+                  onOpenProjectBoard={openProjectBoard}
+                  openCompanyRequest={companyOpenRequest}
+                  onOpenCompanyRequestHandled={() => setCompanyOpenRequest(null)}
+                />
               </Suspense>
             ) : view === "runs" ? (
               <Suspense fallback={<SectionFallback />}>
@@ -3418,6 +3471,9 @@ export default function ChatView({
                   }}
                   openProjectRequest={projectDetailRequest}
                   onOpenProjectRequestHandled={() => setProjectDetailRequest(null)}
+                  onOpenRoom={openRoomDetail}
+                  onOpenProjectBoard={openProjectBoard}
+                  onOpenCompany={openCompany}
                   onThreadsChanged={() => {
                     void reloadThreads().catch((error) =>
                       flash(`Could not refresh chat history. ${errMsg(error)}`),

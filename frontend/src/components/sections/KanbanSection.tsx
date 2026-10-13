@@ -73,6 +73,16 @@ export function KanbanSection(props: {
    * a link named after no project would be a control pointing nowhere.
    */
   onOpenProjectDetails?: (projectId: string) => void;
+  /**
+   * One-shot request from another surface (a project card, its hub, a company
+   * row) to open the board ALREADY filtered to that project.
+   *
+   * The filter is local state, so a bare view switch would land on every
+   * project at once and the operator would have to find the filter and re-pick.
+   */
+  openProjectRequest?: { projectId: string; nonce: number } | null;
+  /** Acknowledge the request above, so it cannot re-fire on the next mount. */
+  onOpenProjectRequestHandled?: () => void;
 }) {
   const [cards, setCards] = useState<Card[]>([]);
   const [projects, setProjects] = useState<BoardProject[]>([]);
@@ -132,6 +142,22 @@ export function KanbanSection(props: {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Apply a board request from another surface, then acknowledge it.
+   *
+   * The acknowledgement is the same one-shot discipline the project drill-down
+   * uses: a request left standing re-fires on every later mount, so coming
+   * back to the Board tab would silently snap the filter to a project the
+   * operator had already navigated away from.
+   */
+  useEffect(() => {
+    const request = props.openProjectRequest;
+    if (!request) return;
+    setProjectFilter(request.projectId);
+    props.onOpenProjectRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openProjectRequest]);
 
   const botName = (name: string | null) =>
     !name

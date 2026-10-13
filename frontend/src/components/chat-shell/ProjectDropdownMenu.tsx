@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Project } from "@/lib/projects";
 import { projectOptionLabel } from "@/lib/project-labels";
+import { projectStatusText } from "@/lib/chat-shell";
 import { threadTitle } from "@/lib/threads-ext";
 import type { Thread } from "@/types/chat";
 import type { WorkspaceView } from "@/lib/workspace-view";
@@ -181,7 +182,7 @@ export function ProjectDropdownMenu({
             </div>
             {project && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold uppercase tracking-wider shrink-0">
-                {project.status || "active"}
+                {projectStatusText(project.status)}
               </span>
             )}
           </div>
@@ -427,7 +428,7 @@ export function ProjectDropdownMenu({
                         <Folder className="size-3.5 shrink-0" />
                         <span className="truncate">{projectOptionLabel(p, projects)}</span>
                       </div>
-                      <span className="text-[10px] opacity-75">{p.status || "active"}</span>
+                      <span className="text-[10px] opacity-75">{projectStatusText(p.status)}</span>
                     </button>
                   );
                 })}
