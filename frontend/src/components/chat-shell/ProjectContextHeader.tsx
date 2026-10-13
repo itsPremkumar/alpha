@@ -42,7 +42,7 @@ export interface ProjectContextHeaderProps {
   onSwitchProject: (projectId: string | null) => void;
   onSelectBot: (bot: BotProfile | null) => void;
   onSelectThread?: (threadId: string) => void;
-  onNewConversation: () => void;
+  onNewConversation: (projectId: string | null) => void;
   onNewProject?: () => void;
   onOpenView: (view: WorkspaceView) => void;
   activeTab?: WorkspaceContextTab;
@@ -96,7 +96,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
           bots={bots}
           activeBot={bot}
           onSelectBot={onSelectBot}
-          onNewConversation={onNewConversation}
+          onNewConversation={() => onNewConversation(project?.id ?? null)}
           onNewProject={onNewProject || (() => onOpenView("projects"))}
           onViewConversations={() => {}}
           onViewProjects={() => onOpenView("projects")}
@@ -180,7 +180,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
           {/* New Conversation Button */}
           <button
             type="button"
-            onClick={onNewConversation}
+            onClick={() => onNewConversation(project?.id ?? null)}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border/70 bg-card/60 hover:bg-muted text-foreground text-xs font-medium transition-colors elev-1 cursor-pointer"
             title="Start new conversation"
           >

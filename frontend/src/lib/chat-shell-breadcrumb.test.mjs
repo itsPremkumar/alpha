@@ -43,6 +43,7 @@ const header = readFileSync(
   new URL("../components/chat-shell/ProjectContextHeader.tsx", import.meta.url),
   "utf8",
 );
+const chatView = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
 
 /**
  * The lead-agent branch of the ternary: from `<LeadGlyph />` up to the
@@ -106,6 +107,25 @@ test("the description beside the name is the element allowed to truncate", () =>
   // size go to zero so the truncation can actually happen.
   assert.match(descSpan[1], /truncate/, "the description must carry truncate");
   assert.match(descSpan[1], /min-w-0/, "the description must carry min-w-0 so it can shrink below its content width");
+});
+
+test("new project conversations keep scope on the draft instead of moving the old thread", () => {
+  const newChat = chatView.match(/const handleNewChat = \(projectId: string \| null = null\) => \{([\s\S]*?)\n  \};/);
+  assert.ok(newChat, "new-chat handler accepts the project scope explicitly");
+  assert.match(newChat[1], /setPendingProjectId\(projectId\)/);
+  assert.match(newChat[1], /setActiveThreadId\(null\)/);
+
+  assert.match(
+    chatView,
+    /onNewConversation=\{\(projectId\) => handleNewChat\(projectId\)\}/,
+    "the project rail passes its project id directly to the new draft",
+  );
+  assert.doesNotMatch(
+    chatView,
+    /onNewConversation=\{\(projectId\) => \{\s*handleNewChat\(\);\s*if \(projectId !== null\) void handlePickProject\(projectId\);/,
+    "the stale active thread must not be moved after clearing it for a new draft",
+  );
+  assert.match(header, /onClick=\{\(\) => onNewConversation\(project\?\.id \?\? null\)\}/);
 });
 
 test("no sibling in the lead-agent row is left rigid next to a truncating name", () => {

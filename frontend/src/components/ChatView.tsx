@@ -1703,10 +1703,14 @@ export default function ChatView({
     }
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = (projectId: string | null = null) => {
     stopVoiceForNavigation();
     // A blank composer is an unsent draft, not history. Do not create a local
     // or server thread until the first real message/file/command exists.
+    // Keep its selected project on the draft itself; calling handlePickProject
+    // here would still see the previous render's activeThreadId and move the
+    // old conversation instead of scoping this new one.
+    setPendingProjectId(projectId);
     setActiveThreadId(null);
     setMessages([]);
     setGoalText(null);
@@ -2994,10 +2998,7 @@ export default function ChatView({
                 onSelectThread={(id) => {
                   openThread(id);
                 }}
-                onNewConversation={(projectId) => {
-                  handleNewChat();
-                  if (projectId !== null) void handlePickProject(projectId);
-                }}
+                onNewConversation={(projectId) => handleNewChat(projectId)}
                 onPickProject={(projectId) => {
                   void handlePickProject(projectId);
                 }}
@@ -3103,9 +3104,7 @@ export default function ChatView({
               onSwitchProject={(id) => void handlePickProject(id)}
               onSelectBot={rememberBot}
               onSelectThread={(id) => openThread(id)}
-              onNewConversation={() => {
-                handleNewChat();
-              }}
+              onNewConversation={(projectId) => handleNewChat(projectId)}
               onNewProject={() => setView("projects")}
               onOpenView={(target) => setView(target)}
               activeTab={activeContextTab}
@@ -4222,9 +4221,7 @@ export default function ChatView({
                       onOpenView={(target) => setView(target)}
                       onOpenThread={(id) => openThread(id)}
                       onNewConversationInProject={() => {
-                        handleNewChat();
-                        if (activeProjectId)
-                          void handlePickProject(activeProjectId);
+                        handleNewChat(activeProjectId);
                       }}
                       onClose={() => setInspectorOpen(false)}
                       onPickProject={(id) => void handlePickProject(id)}
