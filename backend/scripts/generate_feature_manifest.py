@@ -113,6 +113,16 @@ def collect_tools() -> list[dict[str, object]]:
             for alias in node.names:
                 if alias.name != "*":
                     symbol_map.setdefault(alias.name, module)
+        # The lazy facade declares no module-level imports at all: it maps every
+        # public symbol to the submodule that provides it via `_EXPORT_MODULES`
+        # and resolves it on first access in `__getattr__`. Without this branch
+        # the symbol map stays empty, so regenerating the manifest emits
+        # `module: ""` for all 139 tools and `test_declared_modules_exist`
+        # verifies nothing — the exact drift this map exists to catch.
+        elif isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_EXPORT_MODULES" for target in node.targets) and isinstance(node.value, ast.Dict):
+            for key, value in zip(node.value.keys, node.value.values):
+                if key is not None and isinstance(key, ast.Constant) and isinstance(key.value, str) and isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    symbol_map.setdefault(key.value, f"alpha.tools.builtins.{value.value}")
 
     entries: list[dict[str, object]] = []
     literal = registry_literal(ast.parse(read(tools_py)))

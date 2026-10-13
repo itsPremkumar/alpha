@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-12T08:32:09Z",
+ "generated_at": "2026-10-13T02:49:42Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
