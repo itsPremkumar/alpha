@@ -100,9 +100,9 @@ DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
     ),
     # 5. VERIFICATION & LINTING (Runs automatically post-edit or when requested)
     TriggerRule(
-        rule_id="auto_verify_all",
+        rule_id="auto_verify_tests",
         phase=LifecyclePhase.VERIFICATION,
-        target_command="/verify all",
+        target_command="/verify tests",
         description="Automatically executes test suites, type checkers, and semantic invariants",
         keywords=["verify", "test", "run tests", "pytest", "check invariants", "unit tests", "typecheck", "validate code", "proof"],
         regex_patterns=[r"run\s+(?:the\s+)?tests?", r"check\s+if\s+it\s+works?"],
@@ -230,7 +230,10 @@ class AutonomousCommandEngine:
                     break
 
             # Check keyword matches
-            matched_kw = [kw for kw in rule.keywords if kw in text_lower]
+            # Keywords are natural-language tokens, not substrings. Without
+            # boundaries, mentioning the read-only tool `verify_command_approval`
+            # or the noun `verification` accidentally launches a verify command.
+            matched_kw = [kw for kw in rule.keywords if re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", text_lower)]
             if matched_kw:
                 score += min(0.5, len(matched_kw) * 0.25)
                 if not best_reason:

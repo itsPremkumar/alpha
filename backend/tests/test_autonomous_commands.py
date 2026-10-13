@@ -80,14 +80,27 @@ def test_intent_identification_research():
 
 
 def test_intent_identification_verification():
-    # Request to test or check invariants triggers /verify all
+    # Explicit test and invariant requests route to the catalogued test command.
     result = autonomous_command_engine.identify_and_trigger(
         "Please run pytest and check invariants across all modules",
         auto_execute=True,
     )
     assert result.matched is True
     assert result.phase == LifecyclePhase.VERIFICATION
-    assert result.command == "/verify all"
+    assert result.command == "/verify tests"
+    assert result.execution_result is not None
+    assert result.execution_result.status == "unimplemented"
+    assert result.execution_result.data["has_handler"] is False
+
+
+def test_command_tool_name_does_not_trigger_verification():
+    for prompt in (
+        "Call verify_command_approval on `python --version`, but do not run it.",
+        "The verification field is present in this record.",
+    ):
+        result = autonomous_command_engine.identify_and_trigger(prompt, auto_execute=True)
+        assert result.matched is False
+        assert result.rule_id == "none"
 
 
 def test_phase_transition_self_heal():
@@ -109,7 +122,7 @@ def test_phase_transition_verification():
         details="Refactored database layer in db.py",
     )
     assert result.matched is True
-    assert result.command == "/verify all"
+    assert result.command == "/verify tests"
     assert result.phase == LifecyclePhase.VERIFICATION
 
 

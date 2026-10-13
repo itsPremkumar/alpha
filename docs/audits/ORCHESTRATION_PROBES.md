@@ -189,6 +189,15 @@ approvals. The focused gate tests pass, but this follow-up is **not** a live
 agent-task success: the smoke task's runner was still refused and needs a
 separate sandbox execution path or explicit operator approval.
 
+The same UI transcript exposed a detector false positive: substring matching
+treated `verify_command_approval` as a request to launch `/verify all`, which is
+not a registered command. The detector now matches whole keywords and routes
+explicit test requests to catalogued `/verify tests`; a tool-name mention no
+longer triggers verification. Its actual implementation remains unbound, so
+the command reports that nothing ran and the agent still needs an available
+test runner. The detector and grounding regression suites pass **152 tests**;
+that result does not upgrade the interrupted smoke task to verified.
+
 ### One more probe defect found and fixed
 
 `ralph_loop` first re-run came back **FAIL** with
