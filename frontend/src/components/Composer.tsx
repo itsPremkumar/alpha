@@ -5,14 +5,11 @@ import {
   Send,
   Square,
   Wand2,
-  Paperclip,
   Terminal,
   ChevronRight,
   ExternalLink,
   Check,
   X,
-  Image as ImageIcon,
-  Code2,
   Network,
   AtSign,
   Users,
@@ -38,6 +35,7 @@ import {
   FALLBACK_LADDER,
   type EffortChoice,
 } from "@/lib/reasoning-effort";
+import { InsertMenu } from "@/components/InsertMenu";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import type { FreeProviderHealth } from "@/lib/freeModels";
@@ -374,7 +372,6 @@ export function Composer({
   currentUserHandle = null,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   /**
    * The scroll container holding the palette rows.
    *
@@ -1165,58 +1162,24 @@ export function Composer({
               onModelsUpdated={onModelsUpdated}
             />
 
-            {/* Attachments */}
-            {onAttach && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 cursor-pointer"
-                  title={uploading ? "Uploading…" : "Attach files (clip)"}
-                  aria-label="Attach files"
-                >
-                  <Paperclip className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 cursor-pointer"
-                  title="Upload images or media"
-                  aria-label="Upload images or media"
-                >
-                  <ImageIcon className="size-4" />
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0)
-                      onAttach(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-              </>
-            )}
-
-            {/* Code Block Snippet insert button */}
-            <button
-              type="button"
-              onClick={() => {
+            {/* Insert menu — one control for every way to get something into
+                the draft. Replaces a paperclip, an image glyph and a code
+                glyph in a row: the first two were the *same* button on the
+                same unfiltered `<input type="file">`, so "Upload images or
+                media" offered `Q3-report.pdf` as readily as a PNG. The rows
+                and their `accept` filters live in `lib/insert-menu.ts`, where
+                a test pins each filter against the label that claims it. */}
+            <InsertMenu
+              canUpload={!!onAttach}
+              uploading={uploading === true}
+              onAttach={onAttach}
+              onInsertCode={() => {
                 setInput((prev) =>
                   prev ? `${prev}\n\`\`\`\n\n\`\`\`` : "```\n\n```",
                 );
                 setTimeout(() => textareaRef.current?.focus(), 50);
               }}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-              title="Insert code block (</>)"
-              aria-label="Insert code block"
-            >
-              <Code2 className="size-4" />
-            </button>
+            />
 
             {onPolish && (
               <button
