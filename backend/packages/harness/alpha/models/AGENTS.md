@@ -149,8 +149,10 @@ reports.
 - **"Undeclared" stays distinguishable from "declared false"**: a minimal
   OpenAI-compatible `{"data":[{"id":...}]}` entry leaves every richer field
   `None` rather than guessing.
-- **Operational bounds**: 12s per-request timeout, 6h success TTL, 15m negative
-  TTL (a down provider is not re-probed on every request), results cached under
+- **Operational bounds**: 6s per-provider timeout, independent provider catalogs
+  fetched concurrently so the settings request is bounded by the slowest provider
+  rather than the sum of their timeouts, 6h success TTL, 15m negative TTL (a
+  down provider is not re-probed on every request), results cached under
   `runtime_home()/models/discovery/` so a restart does not re-fetch, 2000-model
   cap, `follow_redirects=False`, and a cache filename that cannot escape its
   directory.
