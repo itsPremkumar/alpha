@@ -16,6 +16,18 @@ from alpha.rsi.models import (
     RSIStage,
 )
 from alpha.rsi.opportunity import OPPORTUNITY_CATEGORIES, Opportunity
+from alpha.rsi.predictive import (
+    MODE_ORDER,
+    CandidateFeatures,
+    ForecastLedger,
+    ObservedOutcome,
+    OutcomePrediction,
+    PredictiveMode,
+    PredictiveRSIService,
+    RankingResult,
+    assert_mode_transition,
+    record_holdout_verdict,
+)
 from alpha.rsi.rrsi import (
     RrsiParams,
     RrsiRoundStore,
@@ -55,6 +67,16 @@ __all__ = [
     "resume",
     "StrategyMemory",
     "get_strategy_memory",
+    "MODE_ORDER",
+    "CandidateFeatures",
+    "ForecastLedger",
+    "ObservedOutcome",
+    "OutcomePrediction",
+    "PredictiveMode",
+    "PredictiveRSIService",
+    "RankingResult",
+    "assert_mode_transition",
+    "record_holdout_verdict",
     "rrsi",
     "RrsiParams",
     "RrsiRoundStore",

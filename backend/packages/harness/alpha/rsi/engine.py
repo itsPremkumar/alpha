@@ -17,6 +17,12 @@ from alpha.rsi.switchboard import guard_cycle_start
 
 logger = logging.getLogger(__name__)
 
+#: The predictor tier the cycle observes with. Tier 0 is the fixed, reproducible
+#: baseline (stdlib only, no model, no network, no credentials), so a live cycle
+#: spends no tokens and no dependencies on forecasting. Swapping in the empirical
+#: tier is a constructor argument on the service, never a change here.
+DETERMINISTIC_BACKEND = "deterministic"
+
 
 def _resolve_holdout_api() -> tuple[Any, Any, str | None]:
     """Module-level seam to wave-mate A3's ``alpha.rsi.holdout`` API (stubbed in tests).
@@ -84,6 +90,7 @@ class RSIEngine:
         # has always quoted; the plan constrains what may be proposed and is
         # explicitly not presented as a result.
         evidence.extend(self._rrsi_proposal_plan(target_component))
+        evidence.extend(self._predictive_forecast(candidate, target_component))
         evidence.append("Promotion blocked: preview evidence is not release evidence; no runtime configuration was changed.")
         evidence.append(
             "To obtain a real verdict, evaluate the candidate with alpha.rsi.holdout.run_holdout (requires registered hidden suites) and route it through alpha.rsi.promotion.decide; holdout_gate only passes on evidence_kind='measured'."
@@ -171,6 +178,78 @@ class RSIEngine:
             lines.append(f"RRSI round {round_index} recorded as UNMEASURED: no evolve-set measurement was taken, so S* and the incumbent score/cost are unchanged.")
         else:
             lines.append(f"RRSI round state write did NOT land ({write.error}); the next cycle re-reads the previous round index. The plan above was still computed from the state on disk.")
+        return lines
+
+    def _predictive_forecast(self, candidate: RSICandidate, target_component: str) -> list[str]:
+        """Pre-execution forecast for this cycle's candidate, as disclosure lines.
+
+        What runs here: :class:`alpha.rsi.predictive.PredictiveRSIService` in
+        ``observe_only``, asked to forecast the candidate this cycle is about to
+        preview, plus the current calibration standing.
+
+        Why the engine observes even though the shipped default is ``disabled``:
+        ``observe_only`` is **provably inert** — ``rank()`` reports
+        ``influenced_selection=False`` in every shipped mode, which
+        ``tests/test_rsi_predictive.py`` pins against every member of
+        ``MODE_ORDER``. A predictor that no live cycle ever calls can never be
+        calibrated, so a cycle that neither changes behaviour nor spends a token
+        is the only way the evidence this subsystem is built to gather ever
+        arrives. The ``disabled`` default is unchanged for any other caller.
+
+        Four properties this method has to keep:
+
+        * **It forecasts; it never measures.** No outcome is recorded here,
+          because a preview measures nothing — recording one would put a
+          fabricated label into the very ledger that calibrates the predictor.
+        * **It is a forecast, not a result.** Every line says so, and the
+          numbers are named ``predicted_*`` so they cannot be read as a score.
+        * **It cannot change a verdict.** The lines land before the two closing
+          evidence lines, so ``evidence[-1]`` keeps the meaning
+          ``_last_summary`` has always quoted, and ``promoted`` stays ``False``.
+        * **A gap is disclosed, never dropped.** An unreadable ledger, an
+          unavailable predictor or a failed write each produce their own line.
+          Returning ``[]`` would render a missing forecast as "nothing to say".
+
+        Every read and write here is best-effort and none may raise into the
+        cycle: a telemetry failure must not fail a preview.
+        """
+        try:
+            from alpha.rsi.predictive import CandidateFeatures, ForecastLedger, PredictiveMode, PredictiveRSIService
+            from alpha.rsi.rrsi import component_for
+
+            tag = component_for("code", target=target_component)
+            service = PredictiveRSIService(
+                backend=DETERMINISTIC_BACKEND,
+                mode=PredictiveMode.OBSERVE_ONLY,
+                ledger=ForecastLedger(),
+            )
+            features = CandidateFeatures(
+                candidate_id=candidate.id,
+                component=tag.component,
+                regime=target_component,
+                steps=1,
+                components=(tag.component,),
+            )
+            prediction = service.forecast(features)
+            write = service._ledger.forecasts() is not None  # noqa: SLF001 - readability, not contents
+            calibration = service.calibration_report()
+        except Exception as exc:  # noqa: BLE001 - a preview must not fail because a forecast could not be produced
+            return [f"Predictive RSI forecast: NOT PRODUCED ({type(exc).__name__}: {exc}). This round ran without a pre-execution estimate — a gap in the instrumentation, not permission to ignore it."]
+
+        lines = [
+            f"Predictive RSI forecast (observe_only, evidence_kind='forecast'): {prediction.reason_text()} for candidate {candidate.id!r}.",
+            "This is a forecast made BEFORE execution, not a measurement of it. It is not a score, a confidence or an approval, and it changed no verdict above.",
+        ]
+        if prediction.assumptions:
+            lines.append("Forecast basis: " + " | ".join(prediction.assumptions))
+        if not write:
+            lines.append("Forecast record did NOT land in the durable ledger; the next cycle re-reads the previous state. The forecast above was still computed.")
+        if calibration.brier is None:
+            total = calibration.scored + calibration.unscored
+            lines.append(f"Predictor calibration: UNKNOWN — {calibration.scored} of {total} recorded forecast(s) scored, because this preview measures nothing and records no outcome.")
+            lines.append("It stays UNKNOWN until a measured outcome exists; it does not become good by default.")
+        else:
+            lines.append(f"Predictor calibration: Brier={calibration.brier:.4f}, coverage={calibration.coverage:.2f}, high-confidence failures={calibration.high_confidence_failures} over {calibration.scored} scored forecast(s).")
         return lines
 
     def _generate_hypothesis(self, bottleneck: str, target_component: str) -> RSIHypothesis:

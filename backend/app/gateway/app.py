@@ -74,6 +74,7 @@ from app.gateway.routers import (
     peer_network,
     plan_mode,
     policy,
+    predictive_rsi,
     projects,
     runs,
     scheduled_tasks,
@@ -1272,6 +1273,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Alpha Capability Mesh: the read/preview plane. It exposes the mesh's pure
     # library functions and dispatches nothing — there is no executor wiring.
     app.include_router(capability_mesh.router)
+    # Predictive RSI: the read-only operator surface over the advisory forecast
+    # ledger. It exposes posture and calibration and mutates nothing.
+    app.include_router(predictive_rsi.router)
     app.include_router(swarms.router)
     # The team read plane. Mounted here rather than inside `create_swarm` so the
     # roster and report are reachable for a swarm that already exists; the

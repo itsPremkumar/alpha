@@ -170,6 +170,7 @@ from alpha.rsi.errors import annotate, classify, classify_gate
 from alpha.rsi.evidence_bundle import BUNDLES_DIR_NAME, INDEX_FILE_NAME, Bundle, verify_bundle
 from alpha.rsi.holdout import holdout_gate
 from alpha.rsi.lineage import EVIDENCE_KINDS, RsiLineageStore
+from alpha.rsi.predictive import record_holdout_verdict
 from alpha.rsi.releases import create_release
 from alpha.rsi.review import human_reviewed, review_decision
 
@@ -322,7 +323,15 @@ def _holdout_gate(candidate_id: str) -> tuple[bool, str]:
         payload = json.loads(raw)
     except ValueError as exc:
         return False, f"holdout evidence {path} is corrupt: {exc}"
-    return holdout_gate(payload)
+    verdict = holdout_gate(payload)
+    # Predictive RSI observes a genuinely measured verdict here — this is the
+    # only place in the tree where a REAL holdout suite has actually run, so it
+    # is the only honest source of an outcome to calibrate a forecast against.
+    # Purely additive: `record_holdout_verdict` returns None for anything not
+    # stamped evidence_kind='measured', never raises, and its result is
+    # discarded — this gate's (ok, reason) is computed above and is untouched.
+    record_holdout_verdict(candidate_id, payload if isinstance(payload, dict) else None)
+    return verdict
 
 
 def _human_review_gate(candidate_id: str) -> tuple[bool, str]:

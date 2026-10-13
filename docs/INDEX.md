@@ -145,6 +145,7 @@
 - [GROK_VS_ALPHA_GAP_ANALYSIS.md](GROK_VS_ALPHA_GAP_ANALYSIS.md) — Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.
 - [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md) — Living implementation status matrix for production work.
 - [MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md) — Enhanced multi-agent project collaboration plan.
+- [PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md](PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md) — Predictive RSI: the Phase 0 audit of what Alpha's RSI plane already has, the one responsibility it provably lacked (estimating a candidate's outcome before choosing it), and the eleven invariants an advisory forecast layer must hold.
 - [PRIME_INSPIRED_CAPABILITY_AUDIT.md](PRIME_INSPIRED_CAPABILITY_AUDIT.md) — Capability-by-capability audit against the Prime Agent design note: verified, partial, documented-only and missing verdicts with test evidence.
 - [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) — Live research: computer-use and browser agents, with a benchmark-trust audit.
 - [RESEARCH_CODING_AGENTS.md](RESEARCH_CODING_AGENTS.md) — Live research: terminal- and IDE-first coding agents, mapped against Alpha.

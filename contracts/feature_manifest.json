@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-13T02:49:42Z",
+ "generated_at": "2026-10-13T13:39:46Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1550,6 +1550,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.predictive_rsi",
+   "module": "app.gateway.routers.predictive_rsi",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.projects",
    "module": "app.gateway.routers.projects",
    "symbol": "router",
@@ -2710,6 +2718,7 @@
    "id": "alpha.rsi",
    "kind": "package",
    "submodules": [
+    "predictive",
     "rrsi"
    ]
   },

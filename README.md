@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 73 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 74 routers |
 | **Startup imports** | Checkpoint and deferred-tool implementations load when their route or prompt path is used, not while importing the Gateway router modules. |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
@@ -1129,7 +1129,7 @@ bash scripts/verify_versions.sh                 # version lockstep gate
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 139 tools, 73 routers, 46 middlewares, and 13 supervisor loops. CI fails
+  pins all 139 tools, 74 routers, 46 middlewares, and 13 supervisor loops. CI fails
   on drift, so the documented capability counts cannot silently rot.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
