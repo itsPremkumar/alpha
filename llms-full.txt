@@ -197,7 +197,8 @@ The APEX executive records an objective and decision history. The Gateway
 host adapter dispatches admitted work through the shared `RunManager`, observes
 durable run state, and projects measured input/output tokens and LLM calls back to
 the session. Owners can submit a complete measured report to
-`POST /api/apex/sessions/{id}/acceptance`; failed evidence is journaled and
+`POST /api/apex/sessions/{id}/acceptance` or through the APEX UI's per-criterion
+evidence form; failed evidence is journaled and
 selects a fresh dispatch generation. After a run completes, registered
 `AcceptanceRegistry` probes may submit fully measured reports; absent or
 inconclusive probes leave the session awaiting owner evidence. Alpha ships no

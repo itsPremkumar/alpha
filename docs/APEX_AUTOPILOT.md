@@ -584,9 +584,21 @@ states inside the menu what the control does **not** do — it sets the autonomy
 contract for the scope but does not itself create or dispatch an objective. The
 APEX panel's explicit **Create and dispatch** form uses that enabled server
 profile and scope to create a session and start its run through the Gateway
-adapter. A read that failed renders `unknown` with the
+adapter. The form requires at least one acceptance criterion because a run
+without declared criteria has no measurable route to an accepted completion.
+A read that failed renders `unknown` with the
 server's reason and offers no rung at all; a write that was refused changes
 nothing and keeps its reason on screen.
+
+When a linked run succeeds and the session awaits verification, the session
+card presents every declared criterion with an explicit `Met` / `Not met`
+choice and an evidence field. The operator must evaluate each criterion and
+provide non-empty evidence; the UI posts the complete report to
+`POST /api/apex/sessions/{id}/acceptance`. The server applies the acceptance
+gate and returns its decision and session state. This is owner-submitted
+evidence: the UI does not claim that arbitrary evidence text was independently
+measured by Alpha, and a successful RunManager status alone never completes a
+session.
 
 ### The `/apex` commands
 

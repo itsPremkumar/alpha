@@ -567,6 +567,41 @@ export async function dispatchApexSession(
   };
 }
 
+export interface ApexAcceptanceResultInput {
+  criterion: string;
+  met: boolean;
+  evidence: string;
+}
+
+export interface ApexAcceptanceSubmission {
+  reportId: string;
+  passed: boolean;
+  sessionState: string;
+  decision: ApexCycleResult["decision"];
+}
+
+/** `POST /apex/sessions/{id}/acceptance`; evidence is owner-submitted and server evaluated. */
+export async function submitApexAcceptance(
+  sessionId: string,
+  results: ApexAcceptanceResultInput[],
+): Promise<ApexAcceptanceSubmission> {
+  const raw = rec(
+    await send<Rec>(
+      `/apex/sessions/${encodeURIComponent(sessionId)}/acceptance`,
+      "POST",
+      { results },
+    ),
+  );
+  const report = rec(raw.report);
+  const session = rec(raw.session);
+  return {
+    reportId: str(report.report_id),
+    passed: bool(report.passed),
+    sessionState: str(session.state),
+    decision: mapCycle(raw.cycle).decision,
+  };
+}
+
 /** `POST /apex/sessions/{id}/replan`; requires reviewed terminal failure and operator acknowledgement. */
 export async function requestApexReplan(
   sessionId: string,

@@ -26,6 +26,7 @@ import {
   formatMeasuredCount,
   profileToAdopt,
   requestApexReplan,
+  submitApexAcceptance,
   type ApexApprovals,
   type ApexBlock,
   type ApexContract,
@@ -507,6 +508,9 @@ function SessionControlCard({
   const [replanReason, setReplanReason] = useState("");
   const [acknowledgePossibleSideEffects, setAcknowledgePossibleSideEffects] =
     useState(false);
+  const [acceptanceDraft, setAcceptanceDraft] = useState<
+    Record<string, { verdict: "" | "met" | "not_met"; evidence: string }>
+  >({});
   const [notice, setNotice] = useState<string | null>(null);
   const [runDiagnostic, setRunDiagnostic] = useState<{
     runId: string;
@@ -663,6 +667,63 @@ function SessionControlCard({
   };
 
   const session = mode?.active_session ?? null;
+  const acceptanceCriteriaKey =
+    session?.acceptance_criteria.join("\u0000") ?? "";
+  useEffect(() => {
+    setAcceptanceDraft(
+      Object.fromEntries(
+        (session?.acceptance_criteria ?? []).map((criterion) => [
+          criterion,
+          { verdict: "", evidence: "" },
+        ]),
+      ),
+    );
+  }, [session?.session_id, acceptanceCriteriaKey]);
+
+  const submitAcceptance = async () => {
+    if (!session || busy) return;
+    const results = session.acceptance_criteria.map((criterion) => {
+      const draft = acceptanceDraft[criterion];
+      return {
+        criterion,
+        met: draft?.verdict === "met",
+        evidence: draft?.evidence.trim() ?? "",
+      };
+    });
+    if (
+      results.length === 0 ||
+      results.some(
+        (result, index) =>
+          !acceptanceDraft[session.acceptance_criteria[index]]?.verdict ||
+          !result.evidence,
+      )
+    ) {
+      onError("Evaluate every acceptance criterion and provide measured evidence before submitting.");
+      return;
+    }
+    setBusy("acceptance");
+    onError(null);
+    setNotice(null);
+    try {
+      const outcome = await submitApexAcceptance(session.session_id, results);
+      await reload();
+      setNotice(
+        `Acceptance report ${outcome.reportId || "recorded"}: ${outcome.passed ? "all criteria passed" : "one or more criteria did not pass"}. APEX decision: ${outcome.decision.action}${outcome.sessionState ? ` · session ${outcome.sessionState}` : ""}.`,
+      );
+    } catch (exc) {
+      onError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const canSubmitAcceptance = Boolean(
+    session?.state === "active" &&
+      session.dispatch_state === "awaiting_verification" &&
+      ["success", "completed"].includes(session.run_status ?? "") &&
+      session.acceptance_criteria.length > 0,
+  );
+
   useEffect(() => {
     let current = true;
     const runId = session?.run_id;
@@ -749,6 +810,93 @@ function SessionControlCard({
               <p className="text-xs text-neutral-500" aria-live="polite">
                 {executionSummary}
               </p>
+            )}
+            {canSubmitAcceptance && session && (
+              <form
+                className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitAcceptance();
+                }}
+                aria-label="Submit APEX acceptance evidence"
+              >
+                <div>
+                  <p className="text-sm font-medium">Evaluate acceptance criteria</p>
+                  <p className="text-xs text-neutral-500">
+                    A successful run is not proof by itself. Record what you
+                    checked for each criterion; Alpha will apply the acceptance
+                    gate after submission.
+                  </p>
+                </div>
+                {session.acceptance_criteria.map((criterion, index) => {
+                  const draft = acceptanceDraft[criterion] ?? {
+                    verdict: "" as const,
+                    evidence: "",
+                  };
+                  return (
+                    <fieldset
+                      key={`${index}:${criterion}`}
+                      className="space-y-2 rounded-md border border-border/60 p-3"
+                    >
+                      <legend className="px-1 text-xs font-medium">
+                        Criterion {index + 1}
+                      </legend>
+                      <p className="text-xs">{criterion}</p>
+                      <label className="block space-y-1 text-xs">
+                        <span>Measured result</span>
+                        <select
+                          className={inputCls}
+                          value={draft.verdict}
+                          disabled={busyNow}
+                          required
+                          aria-label={`Result for criterion ${index + 1}`}
+                          onChange={(event) =>
+                            setAcceptanceDraft((current) => ({
+                              ...current,
+                              [criterion]: {
+                                ...draft,
+                                verdict: event.target.value as
+                                  | ""
+                                  | "met"
+                                  | "not_met",
+                              },
+                            }))
+                          }
+                        >
+                          <option value="">Choose a result</option>
+                          <option value="met">Met</option>
+                          <option value="not_met">Not met</option>
+                        </select>
+                      </label>
+                      <label className="block space-y-1 text-xs">
+                        <span>Evidence</span>
+                        <textarea
+                          className={inputCls}
+                          rows={2}
+                          maxLength={4000}
+                          value={draft.evidence}
+                          disabled={busyNow}
+                          required
+                          aria-label={`Evidence for criterion ${index + 1}`}
+                          placeholder="Describe the artifact, check, or observation you measured"
+                          onChange={(event) =>
+                            setAcceptanceDraft((current) => ({
+                              ...current,
+                              [criterion]: {
+                                ...draft,
+                                evidence: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </label>
+                    </fieldset>
+                  );
+                })}
+                <Btn type="submit" disabled={busyNow}>
+                  {busy === "acceptance" ? "Evaluating…" : "Submit evidence and evaluate"}
+                </Btn>
+              </form>
             )}
             {session.dispatch_state === "failed" && (
               <div className="space-y-2" aria-live="polite">
@@ -1109,6 +1257,14 @@ export function ApexSection() {
 
   const createAndDispatch = async () => {
     if (busy || !objective.trim()) return;
+    const acceptance_criteria = criteriaText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (acceptance_criteria.length === 0) {
+      setError("Add at least one acceptance criterion so APEX can verify completion.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setDispatchNotice(null);
@@ -1141,10 +1297,6 @@ export function ApexSection() {
           `The enabled profile '${mode.profile}' cannot be used for dispatch.`,
         );
       }
-      const acceptance_criteria = criteriaText
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
       const created = await createApexSession({
         objective: objective.trim(),
         profile: mode.profile as ApexProfile,
@@ -1255,17 +1407,21 @@ export function ApexSection() {
             />
           </label>
           <label className="block space-y-1 text-sm">
-            <span>Acceptance criteria (one per line, optional)</span>
+            <span>Acceptance criteria (one per line, required)</span>
             <textarea
               aria-label="APEX acceptance criteria"
               className={inputCls}
               rows={2}
+              required
               value={criteriaText}
               onChange={(event) => setCriteriaText(event.target.value)}
               placeholder="Evidence that would show the objective is satisfied"
             />
           </label>
-          <Btn onClick={createAndDispatch} disabled={busy || !objective.trim()}>
+          <Btn
+            onClick={createAndDispatch}
+            disabled={busy || !objective.trim() || !criteriaText.trim()}
+          >
             {busy ? "Dispatching…" : "Create and dispatch"}
           </Btn>
           {dispatchNotice && <Notice tone="neutral" message={dispatchNotice} />}

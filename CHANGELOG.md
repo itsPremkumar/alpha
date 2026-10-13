@@ -12,6 +12,13 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **apex-acceptance-ui:** The APEX session card now lets an operator evaluate
+  every declared criterion and submit non-empty evidence after a successful
+  run. The objective form requires a criterion so the run has a measurable
+  path to completion. It calls the existing acceptance route and displays the
+  server's report and cycle decision; it does not label a successful run as
+  verified or independently validate owner-submitted evidence.
+
 - **prime-limit-authority:** `alpha.config.limits` is now the single owner of
   every mechanically-enforced depth/fan-out ceiling — delegation depth (3),
   children per parent (10), fan-out per node (4), delegation hops (6), native

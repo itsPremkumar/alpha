@@ -261,6 +261,47 @@ test("dispatch starts the named session and preserves measured counters", async 
   assert.equal(result.awaiting_verification, 0);
 });
 
+test("acceptance submission sends every measured criterion and maps the server gate result", async () => {
+  record("POST /apex/sessions/apx-77/acceptance", {
+    body: {
+      report: { report_id: "acc-1", passed: true },
+      cycle: {
+        session_id: "apx-77",
+        decision: { action: "report", reason: "acceptance_passed", confidence: 1, blocked: false },
+        steps: [],
+        state_before: "active",
+        state_after: "completed",
+        changed: true,
+      },
+      session: { state: "completed" },
+    },
+  });
+  const results = [
+    { criterion: "file exists", met: true, evidence: "Read file returned marker" },
+    { criterion: "build passes", met: false, evidence: "Build exited 1" },
+  ];
+  const outcome = await apex.submitApexAcceptance("apx-77", results);
+  assert.equal(lastCall().path, "/apex/sessions/apx-77/acceptance");
+  assert.equal(lastCall().method, "POST");
+  assert.deepEqual(lastCall().body, { results });
+  assert.equal(outcome.reportId, "acc-1");
+  assert.equal(outcome.passed, true);
+  assert.equal(outcome.sessionState, "completed");
+  assert.equal(outcome.decision.reason, "acceptance_passed");
+});
+
+test("acceptance submission preserves a server refusal", async () => {
+  record("POST /apex/sessions/apx-77/acceptance", {
+    reject: "HTTP 409: acceptance evidence is accepted only after a linked RunManager run completes",
+  });
+  await assert.rejects(
+    apex.submitApexAcceptance("apx-77", [
+      { criterion: "file exists", met: true, evidence: "marker" },
+    ]),
+    /accepted only after a linked RunManager run completes/,
+  );
+});
+
 test("operator replan sends a reason and explicit side-effect acknowledgement", async () => {
   record("POST /apex/sessions/apx%2F77/replan", {
     body: {
@@ -302,6 +343,9 @@ test("the APEX panel creates against the confirmed mode and dispatches through t
   assert.match(source, /does not reuse its checkpoint/);
   assert.match(source, /await createApexSession\(/);
   assert.match(source, /await dispatchApexSession\(created\.session_id\)/);
+  assert.match(source, /acceptance_criteria\.length === 0/);
+  assert.match(source, /Acceptance criteria \(one per line, required\)/);
+  assert.match(source, /!criteriaText\.trim\(\)/);
   assert.match(source, /requestApexReplan\(/);
   assert.match(source, /acknowledgePossibleSideEffects/);
   assert.match(source, /I reviewed the failed run/);
@@ -310,6 +354,13 @@ test("the APEX panel creates against the confirmed mode and dispatches through t
     source,
     /mission reaches COMPLETED only through an acceptance report/,
   );
+  assert.match(source, /Evaluate acceptance criteria/);
+  assert.match(source, /submitApexAcceptance\(session\.session_id, results\)/);
+  assert.match(source, /Submit evidence and evaluate/);
+  assert.match(source, /session\.state === "active"/);
+  assert.match(source, /session\.dispatch_state === "awaiting_verification"/);
+  assert.match(source, /\["success", "completed"\]\.includes\(session\.run_status \?\? ""\)/);
+  assert.match(source, /Evidence/);
 });
 
 test("cycle posts an empty body rather than none, because the route declares a body", async () => {
