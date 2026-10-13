@@ -91,13 +91,14 @@ def test_both_seams_produce_identical_directive_messages(monkeypatch):
         lambda *a, **k: detection,
     )
 
-    middleware = AutonomousCommandMiddleware()
+    sync_middleware = AutonomousCommandMiddleware()
+    async_middleware = AutonomousCommandMiddleware()
     request = _FakeRequest([HumanMessage(content="something")])
 
     sync_seen: list[Any] = []
-    middleware.wrap_model_call(request, _sync_handler(sync_seen))
+    sync_middleware.wrap_model_call(request, _sync_handler(sync_seen))
     async_seen: list[Any] = []
-    asyncio.run(middleware.awrap_model_call(request, _async_handler(async_seen)))
+    asyncio.run(async_middleware.awrap_model_call(request, _async_handler(async_seen)))
 
     assert [m.content for m in sync_seen[0]] == [m.content for m in async_seen[0]]
 
@@ -113,25 +114,83 @@ def test_sync_seam_triggers_self_heal_on_a_tool_error():
     assert "SELF_HEAL" in str(seen[0][-1].content)
 
 
-def test_sync_seam_triggers_verification_after_a_code_edit_when_a_directive_was_injected():
-    """Both lifecycle detectors are reachable, on both seams.
-
-    The post-edit VERIFICATION branch is the second arm of the detector chain in
-    ``_apply_lifecycle_directives``.  This test pins it by arranging for the
-    first arm (self-heal on a tool error) *not* to consume the turn, which is
-    what the current chain does: the ``elif`` is attached to the self-heal
-    arm's outer condition, so a plain code-edit turn is served by neither arm.
-    That dead arm is reported separately; here we only pin that both seams run
-    the detector chain without raising.
-    """
+def test_sync_seam_triggers_verification_after_a_successful_code_edit():
     middleware = AutonomousCommandMiddleware()
     seen: list[Any] = []
-    request = _FakeRequest([HumanMessage(content="carry on"), ToolMessage(content="wrote 3 files", tool_call_id="1", name="write_file")])
+    request = _FakeRequest(
+        [
+            HumanMessage(content="carry on"),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "write_file", "args": {"file_path": "src/main.py"}, "id": "1", "type": "tool_call"}],
+            ),
+            ToolMessage(content="wrote 3 files", tool_call_id="1", name="write_file"),
+        ]
+    )
 
     result = middleware.wrap_model_call(request, _sync_handler(seen))
 
     assert isinstance(result, AIMessage)
-    assert len(seen[0]) == 2, "a code-edit turn with no error and no intent match adds no directive"
+    assert _directive_count(seen[0]) == 1
+    assert "VERIFICATION" in str(seen[0][-1].content)
+
+
+def test_sync_seam_does_not_request_code_verification_for_a_text_artifact():
+    middleware = AutonomousCommandMiddleware()
+    seen: list[Any] = []
+    request = _FakeRequest(
+        [
+            HumanMessage(content="Create a text artifact"),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "write_file", "args": {"file_path": "notes/smoke.txt"}, "id": "1", "type": "tool_call"}],
+            ),
+            ToolMessage(content="wrote text file", tool_call_id="1", name="write_file"),
+        ]
+    )
+
+    middleware.wrap_model_call(request, _sync_handler(seen))
+
+    assert _directive_count(seen[0]) == 0
+
+
+def test_natural_language_command_is_dispatched_once_per_user_message(monkeypatch):
+    from alpha.agents.middlewares import autonomous_command_middleware as middleware_module
+    from alpha.commands.autonomous_engine import AutonomousDetectionResult, LifecyclePhase
+
+    calls: list[str] = []
+    detection = AutonomousDetectionResult(
+        matched=True,
+        command="/verify tests",
+        phase=LifecyclePhase.VERIFICATION,
+        confidence=0.9,
+        reason="explicit verification request",
+        rule_id="test",
+        autonomous_directives=["Run the requested check."],
+    )
+
+    def detect(prompt, **_kwargs):
+        calls.append(prompt)
+        return detection
+
+    monkeypatch.setattr(middleware_module.autonomous_command_engine, "identify_and_trigger", detect)
+    middleware = AutonomousCommandMiddleware()
+    request = _FakeRequest([HumanMessage(content="Please run pytest.", id="user-turn-1")])
+    first: list[Any] = []
+    second: list[Any] = []
+
+    middleware.wrap_model_call(request, _sync_handler(first))
+    middleware.wrap_model_call(request, _sync_handler(second))
+
+    assert calls == ["Please run pytest."]
+    assert _directive_count(first[0]) == 1
+    assert _directive_count(second[0]) == 0
+
+    next_turn: list[Any] = []
+    next_request = _FakeRequest([HumanMessage(content="Please run pytest.", id="user-turn-2")])
+    middleware.wrap_model_call(next_request, _sync_handler(next_turn))
+    assert calls == ["Please run pytest.", "Please run pytest."]
+    assert _directive_count(next_turn[0]) == 1
 
 
 def test_seams_do_not_mutate_the_caller_request():

@@ -103,6 +103,24 @@ def test_command_tool_name_does_not_trigger_verification():
         assert result.rule_id == "none"
 
 
+def test_incidental_smoke_test_mention_does_not_hijack_a_file_task():
+    result = autonomous_command_engine.identify_and_trigger(
+        "Bounded smoke test: create one file and read it back with a tool.",
+        auto_execute=True,
+    )
+    assert result.matched is False
+    assert result.rule_id == "none"
+
+
+def test_explicitly_declining_verification_does_not_trigger_tests():
+    result = autonomous_command_engine.identify_and_trigger(
+        "Do not run tests; just report what is missing.",
+        auto_execute=True,
+    )
+    assert result.matched is False
+    assert result.rule_id == "none"
+
+
 def test_phase_transition_self_heal():
     # At error time, automatically triggers /self-heal
     result = autonomous_command_engine.trigger_phase_transition(

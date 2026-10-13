@@ -200,6 +200,7 @@ def test_a_raising_critic_withholds_approval_even_for_an_otherwise_clean_turn():
     state = {
         "messages": [
             HumanMessage(content="Refactor the auth handler"),
+            AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"file_path": "src/auth.py"}, "id": "c1", "type": "tool_call"}]),
             ToolMessage(content="File updated", name="write_file", tool_call_id="c1"),
             AIMessage(content="I have refactored the auth handler successfully!", id="final"),
         ]
@@ -398,6 +399,7 @@ def test_finish_first_notice_still_fires_when_the_critic_approves():
     state = {
         "messages": [
             HumanMessage(content="Refactor the auth handler"),
+            AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"file_path": "src/auth.py"}, "id": "c1", "type": "tool_call"}]),
             ToolMessage(content="File updated", name="write_file", tool_call_id="c1"),
             AIMessage(content="I have refactored the auth handler successfully!", id="final"),
         ]

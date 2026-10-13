@@ -543,6 +543,10 @@ exactly-once execution.
 
 - **Autonomous one-prompt planner** — turns an unformatted, complex prompt into a
   structured multi-step plan.
+- **Lifecycle directives** — request intent is evaluated once per user turn;
+  incidental mentions such as “smoke test” do not dispatch verification. A
+  successful code-edit tool result can request follow-up verification, but the
+  `/verify tests` catalog entry has no handler today and does not itself run tests.
 - **8-dimension plan mode** — clarity, safety, feasibility, reversibility, resource
   intensity, architectural impact, empirical evidence, mission alignment.
 - **Mission hierarchy & work-queue DAG** — macro goals decomposed into

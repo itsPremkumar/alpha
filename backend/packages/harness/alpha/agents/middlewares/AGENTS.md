@@ -1,5 +1,21 @@
 ### Middleware Chain
 
+`AutonomousCommandMiddleware` evaluates natural-language lifecycle intent once
+per real user message id; it must not execute a trigger again on every model/tool
+cycle for the same turn. If a message has no provider/framework id, the middleware
+uses that in-memory message object's identity as a per-run fallback. Verification
+intent requires an explicit action (for example, “run pytest”); incidental nouns
+such as “smoke test” must not hijack unrelated work. A successful code-edit tool
+result with a correlated tool call targeting a known source-code suffix may add
+one follow-up verification directive; ordinary text artifacts do not. A failed
+tool result takes the self-heal path instead. The finish-first notice uses the
+same call-to-result path correlation before claiming an unverified code edit.
+The `/verify tests` catalog item currently has no handler, so neither its
+detection nor its directive is evidence that tests ran.
+Keep the trigger, once-per-turn, and post-edit regressions in
+`tests/test_autonomous_commands.py` and
+`tests/test_autonomous_command_middleware_sync_path.py` aligned.
+
 After latest-user rescue, if the inherited trimmer empties an AI/Tool-only
 window, format it and use `_build_summary_input_text(strategy="last")`.
 Keep normal human-anchored trimming and the final-message fallback for mixed

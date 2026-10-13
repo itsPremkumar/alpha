@@ -104,8 +104,14 @@ DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
         phase=LifecyclePhase.VERIFICATION,
         target_command="/verify tests",
         description="Automatically executes test suites, type checkers, and semantic invariants",
-        keywords=["verify", "test", "run tests", "pytest", "check invariants", "unit tests", "typecheck", "validate code", "proof"],
-        regex_patterns=[r"run\s+(?:the\s+)?tests?", r"check\s+if\s+it\s+works?"],
+        # Treat verification as an explicit action. A bare mention such as
+        # "smoke test" in a task description must not hijack the whole run.
+        keywords=[],
+        regex_patterns=[
+            r"\b(?:run|execute)\s+(?:the\s+)?(?:tests?|pytest|test suite|typecheck)\b",
+            r"\b(?:verify|validate|check)\s+(?:that\s+)?(?:it|this|invariants|(?:all|the)\s+(?:tests?|invariants|build|code|changes?|results?))\b",
+            r"\bcheck\s+if\s+it\s+works?\b",
+        ],
         priority=90,
     ),
     # 6. SELF-HEALING & INCIDENT RECOVERY (Runs automatically upon error or crash)
@@ -210,12 +216,20 @@ class AutonomousCommandEngine:
             )
 
         text_lower = text.lower()
+        verification_negated = bool(
+            re.search(
+                r"\b(?:do not|don't|dont|never|avoid|without|no need to)\s+(?:run|execute|verify|validate|check|test)\b",
+                text_lower,
+            )
+        )
         best_rule: TriggerRule | None = None
         best_score = 0.0
         best_reason = ""
 
         # Scan rules
         for rule in sorted(self.rules, key=lambda r: r.priority, reverse=True):
+            if rule.rule_id == "auto_verify_tests" and verification_negated:
+                continue
             score = 0.0
 
             # Check phase hint bias

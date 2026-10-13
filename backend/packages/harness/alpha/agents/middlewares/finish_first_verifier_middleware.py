@@ -49,6 +49,7 @@ from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, Tool
 from langgraph.runtime import Runtime
 
 from alpha.agents.middlewares._bounded_dict import BoundedDict
+from alpha.agents.middlewares.edit_detection import is_source_code_edit_result
 from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY
 from alpha.agents.middlewares.tool_result_meta import _SUBAGENT_FAILURE_STATUSES, TOOL_META_KEY
 from alpha.critic import CriticPipeline
@@ -295,7 +296,7 @@ class FinishFirstVerifierMiddleware(AgentMiddleware[AgentState]):
         for m in turn_messages:
             if isinstance(m, ToolMessage):
                 tool_name = getattr(m, "name", "")
-                if tool_name in _WRITE_TOOLS:
+                if tool_name in _WRITE_TOOLS and is_source_code_edit_result(turn_messages, m):
                     code_write_count += 1
                 elif tool_name in _VERIFY_TOOLS:
                     had_verification = True

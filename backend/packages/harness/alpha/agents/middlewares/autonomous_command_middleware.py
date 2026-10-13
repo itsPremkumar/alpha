@@ -16,6 +16,7 @@ detection logic lives in one pure method so the two seams cannot drift.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any, override
 
@@ -23,6 +24,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import SystemMessage, ToolMessage
 
+from alpha.agents.middlewares.edit_detection import is_source_code_edit_result
 from alpha.commands.autonomous_engine import (
     AutonomousDetectionResult,
     LifecyclePhase,
@@ -38,6 +40,8 @@ class AutonomousCommandMiddleware(AgentMiddleware):
 
     def __init__(self, confidence_threshold: float = 0.3) -> None:
         self.confidence_threshold = confidence_threshold
+        self._processed_user_turns: dict[str, None] = {}
+        self._processed_user_turns_lock = threading.Lock()
 
     def _apply_lifecycle_directives(self, request: ModelRequest) -> ModelRequest:
         """Return *request* with any autonomous directive messages inserted.
@@ -50,13 +54,15 @@ class AutonomousCommandMiddleware(AgentMiddleware):
 
         # 1. Analyze latest user message for autonomous slash intent
         latest_user_text = ""
+        latest_user_message: Any | None = None
         for msg in reversed(messages):
             if is_real_user_message(msg):
+                latest_user_message = msg
                 latest_user_text = get_original_user_content_text(getattr(msg, "content", ""), getattr(msg, "additional_kwargs", None))
                 break
 
         directive_injected = False
-        if latest_user_text:
+        if latest_user_text and latest_user_message is not None and self._claim_user_turn(latest_user_message):
             detection = autonomous_command_engine.identify_and_trigger(
                 latest_user_text,
                 auto_execute=True,
@@ -86,11 +92,11 @@ class AutonomousCommandMiddleware(AgentMiddleware):
                 logger.info("Autonomous self-heal triggered for tool error.")
 
         # 3. Check for code edit tool completion (trigger VERIFICATION phase)
-        elif not directive_injected and len(messages) > 0:
+        if not directive_injected and len(messages) > 0:
             last_msg = messages[-1]
-            if isinstance(last_msg, ToolMessage):
-                tool_name = getattr(last_msg, "name", "").lower()
-                if any(k in tool_name for k in ["write", "edit", "patch", "replace", "code"]):
+            if isinstance(last_msg, ToolMessage) and not ("error" in str(last_msg.content).lower() or "traceback" in str(last_msg.content).lower()):
+                if is_source_code_edit_result(messages, last_msg):
+                    tool_name = getattr(last_msg, "name", "").lower()
                     verify_detection = autonomous_command_engine.trigger_phase_transition(
                         LifecyclePhase.VERIFICATION,
                         details=f"Code modified via {tool_name}. Verification required.",
@@ -102,6 +108,24 @@ class AutonomousCommandMiddleware(AgentMiddleware):
         if not directive_injected and len(messages) == len(request.messages):
             return request
         return request.override(messages=messages)
+
+    def _claim_user_turn(self, message: Any) -> bool:
+        """Run natural-language command detection once per real user message.
+
+        The same HumanMessage remains in graph state for every model/tool cycle.
+        Without this per-turn claim, a command can execute and its directive be
+        injected again on every cycle, duplicating work and preventing the
+        agent from reaching a final response.
+        """
+        message_id = getattr(message, "id", None)
+        key = f"id:{message_id}" if message_id else f"object:{id(message)}"
+        with self._processed_user_turns_lock:
+            if key in self._processed_user_turns:
+                return False
+            self._processed_user_turns[key] = None
+            if len(self._processed_user_turns) > 256:
+                self._processed_user_turns.pop(next(iter(self._processed_user_turns)))
+            return True
 
     @override
     def wrap_model_call(

@@ -77,6 +77,7 @@ class TestAutopilotAndVerifier(unittest.TestCase):
         state_unverified = {
             "messages": [
                 HumanMessage(content="Refactor the auth handler"),
+                AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"file_path": "src/auth.py"}, "id": "c1", "type": "tool_call"}]),
                 ToolMessage(content="File updated", name="write_file", tool_call_id="c1"),
                 AIMessage(content="I have refactored the auth handler successfully!"),
             ]
@@ -90,6 +91,7 @@ class TestAutopilotAndVerifier(unittest.TestCase):
         state_verified = {
             "messages": [
                 HumanMessage(content="Refactor the auth handler"),
+                AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"file_path": "src/auth.py"}, "id": "c1", "type": "tool_call"}]),
                 ToolMessage(content="File updated", name="write_file", tool_call_id="c1"),
                 ToolMessage(content=json.dumps({"status": "passed"}), name="auto_test_and_repair", tool_call_id="c2"),
                 AIMessage(content="I have refactored the auth handler and all tests pass!"),
@@ -97,6 +99,17 @@ class TestAutopilotAndVerifier(unittest.TestCase):
         }
         res_verified = middleware.after_model(state_verified, runtime)
         self.assertIsNone(res_verified)
+
+        # Case 3: An ordinary text artifact is not an unverified code change.
+        state_text_artifact = {
+            "messages": [
+                HumanMessage(content="Create a note"),
+                AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"file_path": "notes/report.txt"}, "id": "c3", "type": "tool_call"}]),
+                ToolMessage(content="File updated", name="write_file", tool_call_id="c3"),
+                AIMessage(content="I created the note."),
+            ]
+        }
+        self.assertIsNone(middleware.after_model(state_text_artifact, runtime))
 
     def test_avo_auto_rollback_on_failure(self):
         test_file = os.path.join(self.test_dir, "lib.py")
