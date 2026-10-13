@@ -156,6 +156,36 @@ test("a pet already clear is left exactly where it is", () => {
   assert.equal(out, 12, "a clear position must not be nudged - that would make the pet drift on every resize");
 });
 
+test("the companion moves below a full-width workspace header instead of obscuring navigation", () => {
+  const header = { left: 0, right: 1125, top: 0, bottom: 178 };
+  const placement = pet.resolveLionPetPlacement({
+    desiredRight: 300,
+    desiredBottom: 530,
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 1125,
+    viewportHeight: 797,
+    keepOut: header,
+  });
+
+  assert.ok(placement, "the companion should find a visible slot below the header");
+  const rect = {
+    left: 1125 - placement.right - 190,
+    right: 1125 - placement.right,
+    top: 797 - placement.bottom - 193,
+    bottom: 797 - placement.bottom,
+  };
+  assert.equal(pet.lionPetOverlapsAny(rect, [header]), false);
+  assert.ok(rect.top >= header.bottom, "the pet must sit below the full-width navigation region");
+});
+
+test("both workspace navigation rows are registered as companion keep-outs", () => {
+  const topBar = readFileSync(new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url), "utf8");
+  const contextHeader = readFileSync(new URL("../components/chat-shell/ProjectContextHeader.tsx", import.meta.url), "utf8");
+  assert.match(topBar, /<header[^>]*data-lion-pet-keepout/);
+  assert.match(contextHeader, /data-shell="project-context"[^>]*data-lion-pet-keepout/);
+});
+
 test("no keep-out, or no viewport, leaves the requested position untouched", () => {
   const base = {
     desiredRight: 400,

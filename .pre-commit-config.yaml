@@ -21,19 +21,14 @@ repos:
         pass_filenames: false
         files: ^backend/(pyproject\.toml|uv\.lock|packages/harness/pyproject\.toml)$
 
-  # Frontend: eslint + prettier (must run from frontend/ for node_modules resolution)
+  # Frontend: use the declared TypeScript gate. ESLint and Prettier are not
+  # frontend dependencies, so `npx` here downloaded unpinned tools (ESLint 10
+  # with no flat config) and rewrote unrelated files before failing.
   - repo: local
     hooks:
-      - id: frontend-eslint
-        name: eslint (frontend)
-        entry: bash -c 'cd frontend && npx eslint --fix "${@/#frontend\//}"' --
+      - id: frontend-typecheck
+        name: TypeScript typecheck (frontend)
+        entry: bash -c 'cd frontend && node node_modules/typescript/bin/tsc --noEmit'
         language: system
-        types_or: [javascript, tsx, ts]
+        pass_filenames: false
         files: ^frontend/
-
-      - id: frontend-prettier
-        name: prettier (frontend)
-        entry: bash -c 'cd frontend && npx prettier --write "${@/#frontend\//}"' --
-        language: system
-        files: ^frontend/
-        types_or: [javascript, tsx, ts, json, css]

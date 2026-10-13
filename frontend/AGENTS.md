@@ -76,6 +76,11 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
 - Thread metadata merges field-wise. A server row that omits `bot_name` /
   `project_id` (older Gateway) must not erase a locally known value, in either
   `history-store.ts` or `ChatView.mergeThreads`.
+- When the first prompt commits a bot-scoped draft, the new local thread becomes
+  active before Gateway admission finishes. Bot restoration must also resolve
+  `botName` from current thread rows, because the local metadata ref is not yet
+  populated; otherwise the UI drops specialist scope mid-turn. Coverage:
+  `frontend/src/lib/bot-thread-routing.test.mjs`.
 - Opening **New Chat**, changing bot, or choosing a project is an unsent draft.
   Do not call `POST /threads` until a real prompt, slash command, or attachment
   occurs. A first-turn attachment that fails must remove its uncommitted draft

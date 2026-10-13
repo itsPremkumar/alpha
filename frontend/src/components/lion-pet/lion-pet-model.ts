@@ -166,9 +166,9 @@ export function lionPetOverlaps(a: LionPetRect, b: LionPetRect, gap = LION_PET_K
  * keep-out, so the vertical offset moves as well.
  *
  * Order is deliberate: try the requested placement, then every horizontal
- * position at the requested height, then raise the pet above each keep-out in
- * turn. That keeps the pet as close to where the user put it as the layout
- * allows, and never moves it further than it has to.
+ * position at the requested height, then the nearest vertical edge of each
+ * keep-out (below or above). That keeps the pet as close to where the user put
+ * it as the layout allows, and never moves it further than it has to.
  */
 export function resolveLionPetPlacement(args: {
   desiredRight: number;
@@ -214,13 +214,19 @@ export function resolveLionPetPlacement(args: {
     }
   }
 
-  // No horizontal slot at this height: raise the pet above each region, nearest
-  // first, and re-run the horizontal sweep at that height.
-  const tops = keepOuts
-    .map((region) => Math.max(0, viewportHeight - region.top + (gap ?? LION_PET_KEEPOUT_GAP) - petHeight))
-    .sort((a, b) => b - a)
-    .filter((bottom) => bottom >= 0 && bottom <= maxBottom);
-  for (const bottom of tops) {
+  // No horizontal slot at this height: try the nearest free vertical edge of
+  // each region. A top bar spans the viewport, so moving horizontally cannot
+  // clear it; placing the companion below it is the useful direction. The
+  // above-edge candidate handles drawers and panels that fill the lower area.
+  const keepOutGap = gap ?? LION_PET_KEEPOUT_GAP;
+  const verticalOffsets = keepOuts
+    .flatMap((region) => [
+      viewportHeight - region.bottom - keepOutGap - petHeight,
+      viewportHeight - region.top + keepOutGap,
+    ])
+    .filter((bottom) => bottom >= 0 && bottom <= maxBottom && Math.abs(bottom - startBottom) >= 1)
+    .sort((a, b) => Math.abs(a - startBottom) - Math.abs(b - startBottom));
+  for (const bottom of verticalOffsets) {
     if (!lionPetOverlapsAny(rectFor(startRight, bottom), keepOuts, gap)) {
       return { right: startRight, bottom };
     }

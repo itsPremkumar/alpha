@@ -1557,10 +1557,16 @@ export default function ChatView({
   // Restore this conversation's specialist bot once bots are known.
   useEffect(() => {
     if (!activeThreadId || bots.length === 0) return;
-    const name = localThreadMetaRef.current[activeThreadId]?.botName || null;
+    // A just-committed draft enters `threads` before the local metadata ref is
+    // rehydrated. Resolve the draft's botName too, or activating it clears the
+    // selected specialist in the middle of its first turn.
+    const name =
+      localThreadMetaRef.current[activeThreadId]?.botName ||
+      threads.find((thread) => thread.thread_id === activeThreadId)?.botName ||
+      null;
     setActiveBot(name ? bots.find((bot) => bot.name === name) || null : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeThreadId, bots]);
+  }, [activeThreadId, bots, threads]);
 
   // Auto-scroll follows the answer only while the reader is already at the
   // bottom. Without that test, every SSE frame called

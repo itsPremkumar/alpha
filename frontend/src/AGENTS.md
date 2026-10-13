@@ -24,6 +24,12 @@ rig, action registry, settings normalization, lifecycle adapter, bounded local
 travel, and feature CSS inside that folder. `ChatView.tsx` may pass only
 bounded lifecycle state and an optional chat action; it must not receive prompt
 content or thread identifiers.
+The workspace top bar, chat context header, composer, sidebar archive footer,
+and modal dialogs are keep-out regions because the companion's hit area can
+intercept the controls beneath it. `findLionPetKeepOuts()` collects the marked
+regions; `resolveLionPetPlacement()` must find both a horizontal or vertical
+escape when possible. Keep the live-navigation regression in
+`src/lib/lion-pet.test.mjs`.
 The compatibility exports at `components/LionPet.tsx` and `lib/lion-pet.ts` are
 facades only. Regression coverage lives in `src/lib/lion-pet.test.mjs`.
 

@@ -750,6 +750,8 @@ exactly-once execution.
 - **Agent response workspace** — readable terminal, file-diff, search, browser,
   artifact, and subagent cards; transcript search and Markdown export; and a
   side pane for the files, commands, pages, and artifacts a run produced.
+- **Workspace-aware lion companion** — the movable companion clears navigation,
+  chat controls, archive actions and open dialogs so it does not block the UI.
 - **Complete on-device chat history** — uncapped IndexedDB archive, full server
   history pagination, migration from the old capped cache, and honest degraded
   states (a banner when you are reading the local copy, a partial-load notice, and
@@ -759,6 +761,9 @@ exactly-once execution.
 - **Bot-led multi-bot projects** - every bot profile can create a project with
   itself as lead; other bot profiles can be added, assigned a role, and managed
   together, with every change confirmed by re-reading the server roster.
+- **Bot-scoped chats** - selecting a specialist carries through a new
+  conversation and its first turn; active chats restore their bot from thread
+  metadata.
 - **Projects tab, list to end to end** - every project on the installation is
   listed, with single-agent and team crews distinguished from the roster the
   server reports. `View more` reads one project in full: lifecycle state, crew

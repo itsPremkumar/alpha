@@ -88,7 +88,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
     : [];
 
   return (
-    <div className="border-b border-border/60 bg-card/30 shrink-0 select-none" data-shell="project-context">
+    <div className="border-b border-border/60 bg-card/30 shrink-0 select-none" data-shell="project-context" data-lion-pet-keepout="">
       {/* ── Top Row: Agent Profile & Project Chip ─────────────────────── */}
       <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-4 flex-wrap">
         {/* Active Agent Info with Bot Dropdown */}
