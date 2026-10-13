@@ -201,6 +201,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     <div
       className="flex flex-col h-full select-none divide-y divide-border/40"
       data-shell="bot-workspace"
+      data-lion-pet-keepout=""
     >
       {/* ── 1. Roster summary ───────────────────────────────────────────
           The scrolling "AI Agents (N)" profile list was removed here. It
@@ -239,7 +240,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       </section>
 
       {/* ── 2. Current Agent Card & Primary New Chat ──────────────────── */}
-      <section className="p-3 bg-card/30 space-y-2">
+      <section data-lion-pet-keepout="" className="p-3 bg-card/30 space-y-2">
         <BotDropdownMenu
           bots={rosterBots}
           activeBot={activeBot}

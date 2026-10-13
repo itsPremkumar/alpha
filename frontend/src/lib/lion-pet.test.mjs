@@ -364,3 +364,10 @@ test("the sidebar footer is a keep-out, so Backup and Restore stay clickable", (
   assert.match(sidebar, /Backup/, "the marked footer is the one holding Backup");
   assert.match(sidebar, /Restore/, "and Restore");
 });
+
+test("the bot profile and new-conversation controls are companion keep-outs", () => {
+  const rail = readFileSync(new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url), "utf8");
+  assert.match(rail, /data-shell="bot-workspace"[\s\S]*?data-lion-pet-keepout=""/);
+  assert.match(rail, /<section data-lion-pet-keepout="" className="p-3 bg-card\/30 space-y-2">/);
+  assert.match(rail, /title=\{`Start a new conversation with \$\{currentBotDisplayName\}`\}/);
+});
