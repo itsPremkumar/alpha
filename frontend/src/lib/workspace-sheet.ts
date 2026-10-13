@@ -7,7 +7,8 @@
  * already on screen. No network, no second source: every row
  * links back to the message (and tool call) that reported it.
  * A category with nothing reported is an empty list, and the
- * sheet counts only what the transcript holds.
+ * sheet counts only what one of its tabs can render — a call
+ * with no tab belongs to the transcript, not to this badge.
  */
 
 import type { ArtifactItem, ChatMessage, ToolCall } from "../types/chat";
@@ -40,13 +41,21 @@ export interface WorkspaceContent {
   files: WorkspaceFileChange[];
   browser: WorkspaceCall[];
   terminal: WorkspaceCall[];
-  reads: WorkspaceCall[];
-  searches: WorkspaceCall[];
-  other: WorkspaceCall[];
   artifacts: WorkspaceArtifact[];
-  /** Total rows across every tab. `0` means the sheet is empty. */
+  /** Rows across the tabs. `0` means the sheet is empty. */
   total: number;
 }
+
+/**
+ * Exactly one bucket per `WorkspaceTab`, and nothing else.
+ *
+ * The badge is summed from this list rather than written out beside
+ * it, and `workspace-sheet.test.mjs` pins it against both the
+ * interface and `countFor`. That three-way check is what stops the
+ * badge counting a row no tab can render — the defect that let a
+ * header advertise 68 items over tabs summing to 8.
+ */
+const ROW_KEYS = ["files", "browser", "terminal", "artifacts"] as const;
 
 function filePathOf(call: ToolCall): string {
   const args = call.args ?? {};
@@ -77,9 +86,6 @@ export function collectWorkspaceContent(
     files: [],
     browser: [],
     terminal: [],
-    reads: [],
-    searches: [],
-    other: [],
     artifacts: [],
     total: 0,
   };
@@ -109,15 +115,12 @@ export function collectWorkspaceContent(
         case "terminal":
           content.terminal.push(entry);
           break;
-        case "read":
-          content.reads.push(entry);
-          break;
-        case "search":
-        case "research":
-          content.searches.push(entry);
-          break;
         default:
-          content.other.push(entry);
+          // Reads, searches, research and unclassified calls have no
+          // tab in this sheet. They are reported in the transcript by
+          // TurnSummaryStrip, so they are not collected here: a
+          // bucket nothing renders would only let the badge advertise
+          // rows the operator cannot open.
           break;
       }
     }
@@ -125,13 +128,6 @@ export function collectWorkspaceContent(
       content.artifacts.push({ messageId: message.id, artifact });
     }
   }
-  content.total =
-    content.files.length +
-    content.browser.length +
-    content.terminal.length +
-    content.reads.length +
-    content.searches.length +
-    content.other.length +
-    content.artifacts.length;
+  content.total = ROW_KEYS.reduce((sum, key) => sum + content[key].length, 0);
   return content;
 }

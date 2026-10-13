@@ -3,8 +3,9 @@
 // The sheet renders what the transcript holds, so these pin the
 // split: file writes land on Changes with their parsed diff,
 // browser/terminal calls on their own tabs, artifacts travel
-// with the message that delivered them, and the total counts
-// only reported rows — never an invented one.
+// with the message that delivered them — and the total counts
+// only rows a tab can render, so the header badge can never
+// advertise work the operator has no way to open.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -94,9 +95,9 @@ test("tool calls split into the sheet's tabs with their message attached", () =>
   assert.equal(content.terminal.length, 1);
   assert.equal(content.terminal[0].messageId, "m1");
   assert.equal(content.terminal[0].call.name, "shell");
+  assert.equal(content.files.length, 1);
   assert.equal(content.browser.length, 1);
   assert.equal(content.browser[0].call.name, "browser_navigate_and_inspect");
-  assert.equal(content.searches.length, 1);
   assert.equal(content.artifacts.length, 1);
   assert.equal(content.artifacts[0].messageId, "m2");
   assert.equal(content.artifacts[0].artifact.name, "report.md");
@@ -135,32 +136,93 @@ test("a file write with no diff still lands on Changes, marked as such", () => {
   assert.equal(content.files[0].hasDiff, false);
 });
 
-test("the total counts only reported rows", () => {
+test("the total equals exactly the rows the four tabs can show", () => {
   const content = collectWorkspaceContent(messages);
-  // 2 (m1) + 2 calls + 1 artifact (m2) = 5. The user message adds none.
-  assert.equal(content.total, 5);
+  // 1 file + 1 terminal + 1 browser + 1 artifact = 4.
+  // `deep_web_search` has no tab, so the badge must not count it —
+  // a total the operator cannot reach is the reported bug.
+  assert.equal(content.total, 4);
+  assert.equal(
+    content.total,
+    content.files.length +
+      content.terminal.length +
+      content.browser.length +
+      content.artifacts.length,
+  );
   assert.deepEqual(collectWorkspaceContent([]), {
     files: [],
     browser: [],
     terminal: [],
-    reads: [],
-    searches: [],
-    other: [],
     artifacts: [],
     total: 0,
   });
 });
 
-test("unknown tools land on Other, never dropped", () => {
+test("a call with no tab is never counted in the badge", () => {
   const content = collectWorkspaceContent([
     {
       id: "m",
       role: "assistant",
       content: "",
       createdAt: null,
-      toolCalls: [{ id: "c", name: "frobnicate", args: {} }],
+      toolCalls: [
+        { id: "c1", name: "deep_web_search", args: { query: "q" } },
+        { id: "c2", name: "read_file", args: { path: "a.ts" } },
+        { id: "c3", name: "frobnicate", args: {} },
+      ],
     },
   ]);
-  assert.equal(content.other.length, 1);
-  assert.equal(content.total, 1);
+  // Reads, searches and unclassified calls are reported by
+  // TurnSummaryStrip in the transcript; the sheet has no tab for
+  // them, so it must not advertise a row it cannot render.
+  assert.equal(content.files.length, 0);
+  assert.equal(content.terminal.length, 0);
+  assert.equal(content.browser.length, 0);
+  assert.equal(content.artifacts.length, 0);
+  assert.equal(content.total, 0);
+});
+
+test("every bucket the badge counts has a tab to render it in", () => {
+  const source = readFileSync(
+    new URL("./workspace-sheet.ts", import.meta.url),
+    "utf8",
+  );
+  const iface = source.match(/export interface WorkspaceContent \{([\s\S]*?)\n\}/)[1];
+  const buckets = [...iface.matchAll(/^\s*(\w+):/gm)]
+    .map((m) => m[1])
+    .filter((key) => key !== "total");
+
+  const rowKeys = [
+    ...source.match(/const ROW_KEYS = \[([^\]]+)\]/)[1].matchAll(/"(\w+)"/g),
+  ].map((m) => m[1]);
+
+  const view = readFileSync(
+    new URL("../components/WorkspaceSheet.tsx", import.meta.url),
+    "utf8",
+  );
+  const counted = [...view.matchAll(/case "(\w+)":\s*\n\s*return content\.(\w+)\.length;/g)]
+    .map((m) => m[2]);
+
+  assert.equal(
+    counted.length,
+    4,
+    "every WorkspaceTab case must name the bucket it counts",
+  );
+  assert.deepEqual(
+    [...buckets].sort(),
+    [...counted].sort(),
+    "WorkspaceContent may hold no bucket the sheet has no tab for",
+  );
+  assert.deepEqual(
+    [...rowKeys].sort(),
+    [...buckets].sort(),
+    "the badge must be summed from every bucket, and no others",
+  );
+  // `total` is derived from ROW_KEYS, never written out a third time
+  // where it could drift away from the tabs it summarizes.
+  assert.match(
+    source,
+    /content\.total = ROW_KEYS\.reduce/,
+    "total must be derived from ROW_KEYS rather than listed inline",
+  );
 });
