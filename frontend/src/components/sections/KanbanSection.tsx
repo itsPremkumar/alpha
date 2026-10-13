@@ -67,7 +67,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
   // "you have no projects", and a failed server-board fetch must not silently
   // degrade to local-only cards without saying so.
   const [projectsError, setProjectsError] = useState<string | null>(null);
-  const [serverBoardDown, setServerBoardDown] = useState(false);
+  const [serverBoardError, setServerBoardError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [botFilter, setBotFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -81,7 +81,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
     setLoading(true);
     setError(null);
     setProjectsError(null);
-    setServerBoardDown(false);
+    setServerBoardError(null);
     try {
       const local = loadCards();
       listProjects()
@@ -97,9 +97,13 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
       try {
         const server = await listKanbanTasks();
         setCards(mergeServerCards(local, server));
-      } catch {
+      } catch (e) {
         setCards(local);
-        setServerBoardDown(true);
+        // Keep the API client's status and Gateway detail visible. `errMsg`
+        // intentionally turns some common HTTP statuses into generic copy,
+        // which would hide actionable setup failures such as a missing active
+        // organization behind a vague "board unavailable" banner.
+        setServerBoardError(e instanceof Error ? e.message : errMsg(e));
       }
     } catch (e) {
       setError(errMsg(e));
@@ -276,9 +280,9 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
           onRetry={load}
         />
       )}
-      {serverBoardDown && (
+      {serverBoardError && (
         <ErrorBox
-          message="Server board unavailable — showing local cards only. Server-synced tasks may be missing."
+          message={`Server board unavailable — showing local cards only. Server-synced tasks may be missing. ${serverBoardError}`}
           onRetry={load}
         />
       )}

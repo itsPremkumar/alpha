@@ -433,7 +433,9 @@ test("KanbanSection surfaces project and server-board fetch failures", () => {
   const src = read("../components/sections/KanbanSection.tsx");
   assert.doesNotMatch(src, /\.catch\(\(\) => setProjects\(\[\]\)\)/);
   assert.match(src, /projectsError/);
-  assert.match(src, /serverBoardDown/);
+  assert.match(src, /serverBoardError/);
+  assert.match(src, /e instanceof Error \? e\.message : errMsg\(e\)/);
+  assert.match(src, /\$\{serverBoardError\}/);
   assert.match(src, /showing local cards only/i);
 });
 

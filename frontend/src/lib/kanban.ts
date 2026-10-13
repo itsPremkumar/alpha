@@ -98,7 +98,7 @@ function asEpoch(value: unknown): number | null {
 /**
  * Failure propagates: an unreachable `/company/kanban/tasks` must not resolve
  * to `[]`, or the board would render "Work board (0)" for a Gateway that is
- * down. Callers show the reason instead (`serverBoardDown` in KanbanSection,
+ * down. Callers show the reason instead (`serverBoardError` in KanbanSection,
  * `onError` in TeamOpsSection).
  */
 export async function listKanbanTasks(): Promise<KanbanTask[]> {
