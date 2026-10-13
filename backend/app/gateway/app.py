@@ -699,7 +699,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("Capability loader failed (non-fatal)")
 
+        # The same leader-owned catalogue that feeds bot proposals is the
+        # executable swarm roster. Workers resolve it at dispatch time so a
+        # config reload cannot leave a stale set of authorities in memory.
+        from alpha.swarm.team import load_specialists_from_config, register_roster_provider
+
+        register_roster_provider(load_specialists_from_config, source="config")
+        logger.info("Registered the config-backed swarm specialist roster")
+
         yield
+
+        from alpha.swarm.team import registered_roster_source, unregister_roster_provider
+
+        if registered_roster_source() == "config":
+            unregister_roster_provider()
 
         # Stop the supervisor FIRST: its loops must not observe a half-stopped
         # stack (channels/scheduler already draining below).

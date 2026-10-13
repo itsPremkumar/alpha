@@ -28,7 +28,7 @@ from alpha.swarm.coordinator import SwarmCoordinator
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
 from alpha.swarm.runner import AsyncSwarmRunner
 from alpha.swarm.scheduler import SwarmScheduler
-from alpha.swarm.team import SPECIALIST_WORKER_TYPE, SpecialistProfile, assign_specialists, register_roster_provider, unregister_roster_provider
+from alpha.swarm.team import SPECIALIST_WORKER_TYPE, SpecialistProfile, assign_specialists, load_specialists_from_config, register_roster_provider, unregister_roster_provider
 from alpha.swarm.worker import SpecialistSubagentWorker
 
 RUNTIME = 0.05
@@ -259,6 +259,80 @@ def test_the_specialist_worker_refuses_an_unknown_agent_type():
     worker = SpecialistSubagentWorker("coder", agent_type="deep-aeronautics", tool_pool=[object()])
     with pytest.raises(RuntimeError, match="unknown agent_type"):
         worker.execute_task(SwarmTaskNode(task_id="t1", objective="x"), _plan())
+
+
+def test_config_backed_roster_projects_only_enabled_specialists_and_exact_tool_groups():
+    entries = [
+        SimpleNamespace(
+            name="researcher",
+            title="Researcher",
+            role="researcher",
+            description="Research technical topics and provide cited findings.",
+            capabilities=["web_search"],
+            not_for=["editing production files"],
+            skills=["research"],
+            tool_groups=["web", "file:read"],
+        )
+    ]
+    catalog = SimpleNamespace(enabled=True, enabled_specialists=lambda: entries)
+    app_config = SimpleNamespace(
+        specialists=catalog,
+        tools=[
+            SimpleNamespace(name="web_search", group="web"),
+            SimpleNamespace(name="read_file", group="file:read"),
+            SimpleNamespace(name="bash", group="bash"),
+        ],
+    )
+
+    roster = load_specialists_from_config(app_config)
+
+    assert len(roster) == 1
+    assert roster[0].name == "researcher"
+    assert roster[0].tools == ["read_file", "web_search"]
+    assert "Never handle: editing production files" in roster[0].system_prompt
+
+
+def test_explicit_specialist_allowlist_and_skills_disable_inherited_authority():
+    worker = SpecialistSubagentWorker("researcher", tools=["web_search"], skills=["research"], system_prompt="Research only.")
+
+    config = worker._resolve_agent_config()
+
+    assert config.tools == ["web_search"]
+    assert config.inherit_all is False
+    assert config.skills == ["research"]
+    assert config.system_prompt == "Research only."
+
+
+def test_runner_builds_worker_from_the_current_declared_profile():
+    profile = SpecialistProfile(name="researcher", capabilities=["web_search"], tools=["web_search"], skills=["research"], system_prompt="Research only.")
+    register_roster_provider(lambda: [profile], source="config")
+    task = SwarmTaskNode(task_id="t1", objective="Research this", assigned_worker="researcher", worker_type=SPECIALIST_WORKER_TYPE)
+
+    runner = AsyncSwarmRunner(coordinator=object())
+    runner._specialist_tool_pool = [SimpleNamespace(name="web_search")]
+    worker = runner._build_worker(task)
+
+    assert worker.tools == ["web_search"]
+    assert worker.skills == ["research"]
+    assert worker.system_prompt == "Research only."
+
+
+def test_runner_refuses_persisted_specialist_missing_from_current_roster():
+    task = SwarmTaskNode(task_id="t1", objective="Do work", assigned_worker="retired-specialist", worker_type=SPECIALIST_WORKER_TYPE)
+
+    with pytest.raises(RuntimeError, match="refusing to run it as a generalist"):
+        AsyncSwarmRunner(coordinator=object())._build_worker(task)
+
+
+def test_runner_reports_configured_tools_missing_from_the_assembled_pool():
+    profile = SpecialistProfile(name="researcher", capabilities=["web_search"], tools=["web_search", "read_file"])
+    register_roster_provider(lambda: [profile], source="config")
+    task = SwarmTaskNode(task_id="t1", objective="Research this", assigned_worker="researcher", worker_type=SPECIALIST_WORKER_TYPE)
+    runner = AsyncSwarmRunner(coordinator=object())
+    runner._specialist_tool_pool = [SimpleNamespace(name="web_search")]
+
+    with pytest.raises(RuntimeError, match="read_file"):
+        runner._build_worker(task)
 
 
 def test_the_specialist_worker_reports_child_measured_usage_and_its_absence(monkeypatch):

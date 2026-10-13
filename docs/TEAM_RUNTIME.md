@@ -77,6 +77,16 @@ from alpha.swarm.team import register_roster_provider
 register_roster_provider(lambda: load_specialists_from_config(), source="config")
 ```
 
+The Gateway registers `load_specialists_from_config` during its lifespan with
+source `config`; it reads the current operator-owned catalogue at dispatch
+time. Each specialist's `tool_groups` is projected to the exact configured
+tool names, and its description, role, capability tags, skills, and exclusions
+form its profile and system prompt. `SpecialistSubagentWorker` passes those
+tool names as an explicit allowlist with `inherit_all=False`. The shared pool
+is only an input to that filter. A persisted assignment whose specialist no
+longer exists fails by name instead of silently becoming a generalist, and a
+declared tool missing from the assembled pool fails with the missing names.
+
 `provider` is any zero-argument callable returning a roster, as any of:
 
 - `list[SpecialistProfile]`
@@ -93,7 +103,8 @@ A recognised entry key is `name` (or `id`), `role`/`title`, `mission`/`descripti
 
 - A provider that **raises** → the plan is still constructed; the failure is
   recorded in `metrics["team"]["roster_provenance"]["error"]` with the reason.
-- **No provider registered** (the state today) → every task keeps its existing
+- **No provider registered** (for non-Gateway callers that did not install one)
+  → every task keeps its existing
   swarm worker, `assigned == 0`, and the report says
   `no_roster_registered` under **What Remains Unknown**. This is the
   pre-team behaviour, and it is disclosed rather than silently presented as a

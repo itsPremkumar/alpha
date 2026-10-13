@@ -261,6 +261,50 @@ def registered_roster_source() -> str:
         return _roster_source
 
 
+def load_specialists_from_config(app_config: Any | None = None) -> list[SpecialistProfile]:
+    """Project the operator-owned specialist catalogue into the swarm roster.
+
+    Tool groups are translated to the exact configured tool names. This keeps
+    the roster a projection of config.yaml and lets the worker enforce the
+    same declaration as an actual SubagentConfig allowlist.
+    """
+
+    if app_config is None:
+        from alpha.config import get_app_config
+
+        app_config = get_app_config()
+    catalog = getattr(app_config, "specialists", None)
+    if catalog is None or not getattr(catalog, "enabled", False):
+        return []
+
+    profiles: list[SpecialistProfile] = []
+    for entry in catalog.enabled_specialists():
+        groups = set(entry.tool_groups or [])
+        tool_names = sorted({str(tool.name) for tool in app_config.tools if getattr(tool, "group", None) in groups and getattr(tool, "name", None)})
+        exclusions = "; ".join(entry.not_for)
+        profile_prompt = (
+            f"You are the {entry.title or entry.name} specialist ({entry.role}).\n"
+            f"Mission: {entry.description}\n"
+            f"Capabilities: {', '.join(entry.capabilities)}\n"
+            f"Never handle: {exclusions}\n"
+            "Use only your assigned tools. Report actions and evidence actually obtained; "
+            "state clearly when a required action is unavailable."
+        )
+        profiles.append(
+            SpecialistProfile(
+                name=entry.name,
+                role=entry.role,
+                mission=entry.description,
+                capabilities=list(entry.capabilities),
+                skills=list(entry.skills),
+                status="active",
+                system_prompt=profile_prompt,
+                tools=tool_names,
+            )
+        )
+    return profiles
+
+
 def _empty_roster() -> tuple[list[SpecialistProfile], dict[str, Any]]:
     return [], {
         "registered": False,

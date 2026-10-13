@@ -21,7 +21,7 @@ from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState, is_terminal_swarm_status
 from alpha.swarm.reflection import SwarmReflector
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
-from alpha.swarm.team import SPECIALIST_WORKER_TYPE
+from alpha.swarm.team import SPECIALIST_WORKER_TYPE, resolve_roster
 from alpha.swarm.watchdog import SwarmWatchdog
 from alpha.swarm.worker import (
     CodingWorktreeWorker,
@@ -94,9 +94,22 @@ class AsyncSwarmRunner:
             # Resolved lazily and by name so an unknown specialist is an
             # honest, named failure rather than a silent downgrade to a
             # generic worker.
+            roster, provenance = resolve_roster()
+            profile = next((item for item in roster if item.name == task_node.assigned_worker), None)
+            if profile is None:
+                source = provenance.get("source") or "no registered specialist roster"
+                raise RuntimeError(f"assigned specialist {task_node.assigned_worker!r} is unavailable in the current roster ({source}); refusing to run it as a generalist")
+            if self._specialist_tool_pool is not None:
+                available_tools = {str(getattr(tool, "name", "")) for tool in self._specialist_tool_pool}
+                missing_tools = sorted(set(profile.tools or []) - available_tools)
+                if missing_tools:
+                    raise RuntimeError(f"assigned specialist {profile.name!r} declares configured tools that are unavailable in the assembled pool: {', '.join(missing_tools)}")
             return SpecialistSubagentWorker(
                 task_node.assigned_worker,
-                agent_type=(task_node.result_payload or {}).get("specialist_agent_type") or None,
+                agent_type=profile.agent_type or (task_node.result_payload or {}).get("specialist_agent_type") or None,
+                tools=profile.tools,
+                skills=profile.skills or None,
+                system_prompt=profile.system_prompt,
                 model=task_node.model_override,
                 tool_pool=self._specialist_tool_pool,
                 tool_pool_error=self._specialist_tool_pool_error,

@@ -198,6 +198,9 @@ class SpecialistSubagentWorker:
         specialist: str,
         *,
         agent_type: str | None = None,
+        tools: list[str] | None = None,
+        skills: list[str] | None = None,
+        system_prompt: str | None = None,
         model: str | None = None,
         tool_pool: list[Any] | None = None,
         tool_pool_error: str | None = None,
@@ -206,6 +209,9 @@ class SpecialistSubagentWorker:
     ):
         self.specialist = str(specialist)
         self.agent_type = agent_type
+        self.tools = list(tools) if tools is not None else None
+        self.skills = list(skills) if skills is not None else None
+        self.system_prompt = str(system_prompt).strip() if system_prompt else None
         self.model = model
         self.tool_pool = tool_pool
         self.tool_pool_error = tool_pool_error
@@ -239,11 +245,11 @@ class SpecialistSubagentWorker:
             return SubagentConfig(
                 name=f"team-{self.specialist}",
                 description=f"{self.specialist} ({chosen.description})",
-                system_prompt=chosen.system_prompt,
-                tools=list(chosen.tools) if chosen.tools is not None else None,
-                inherit_all=bool(chosen.inherit_all),
+                system_prompt=self.system_prompt or chosen.system_prompt,
+                tools=list(self.tools) if self.tools is not None else (list(chosen.tools) if chosen.tools is not None else None),
+                inherit_all=False if self.tools is not None else bool(chosen.inherit_all),
                 disallowed_tools=list(chosen.disallowed_tools or []),
-                skills=list(chosen.skills) if chosen.skills else None,
+                skills=list(self.skills) if self.skills is not None else (list(chosen.skills) if chosen.skills else None),
                 model=self.model or "inherit",
                 max_turns=chosen.max_turns,
                 timeout_seconds=chosen.timeout_seconds,
@@ -253,11 +259,11 @@ class SpecialistSubagentWorker:
         return SubagentConfig(
             name=f"team-{self.specialist}",
             description=f"{self.specialist} team specialist",
-            system_prompt=base.system_prompt,
-            tools=list(base.tools) if base.tools is not None else None,
-            inherit_all=bool(base.inherit_all),
+            system_prompt=self.system_prompt or base.system_prompt,
+            tools=list(self.tools) if self.tools is not None else (list(base.tools) if base.tools is not None else None),
+            inherit_all=False if self.tools is not None else bool(base.inherit_all),
             disallowed_tools=list(base.disallowed_tools or []),
-            skills=list(base.skills) if base.skills else None,
+            skills=list(self.skills) if self.skills is not None else (list(base.skills) if base.skills else None),
             model=self.model or "inherit",
             max_turns=base.max_turns,
             timeout_seconds=base.timeout_seconds,
@@ -327,7 +333,7 @@ class SpecialistSubagentWorker:
             {
                 "source": f"specialist:{self.specialist}",
                 "agent_type": config.name,
-                "system_prompt_source": "builtin" if self.agent_type else "builtin_default",
+                "system_prompt_source": "catalogue" if self.system_prompt else ("builtin" if self.agent_type else "builtin_default"),
                 "turn_budget": config.max_turns,
             }
         ]

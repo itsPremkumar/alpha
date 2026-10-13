@@ -42,6 +42,8 @@ Editing a specialist means editing `config.yaml` and reloading — never a
 model-visible write. `tests/test_specialist_catalog.py` pins this from both
 directions: no specialist field name is in `_SELF_EDITABLE`, and every field
 that maps onto a `BotProfile` attribute is one of the leader-only names.
+The swarm roster is a runtime projection of the same catalogue; it does not
+forge a Bot or alter the Bot Registry.
 
 ---
 
@@ -80,7 +82,7 @@ specialists:
 | `description` | The territory claim, and the text a duplicate check and a selection both read. | `territory()`, `to_soul()`, load-time guards |
 | `not_for` | The negative scope. Required and non-empty: a specialist that only says what it is good at cannot be told apart from its neighbours, and a prohibition is the half of a routing decision that makes it safe to automate. | `to_soul()` ("Never handle this") |
 | `capabilities` | What the specialist is offered — the vocabulary a leader selects on. | `BotProfile.capabilities` |
-| `tool_groups` | The declared toolset, narrowed to groups `tool_groups[]` actually declares. | `BotProfile.toolsets` |
+| `tool_groups` | The declared toolset, narrowed to groups `tool_groups[]` actually declares. For swarm execution, those groups become the exact configured tool-name allowlist enforced by the subagent. | `BotProfile.toolsets`, `alpha.swarm.team.load_specialists_from_config` |
 | `skills` | Skills to load. | `BotProfile.skills` |
 | `approvals` | The approval posture, reusing the forge's two states: `draft_first` composes `forge.DEFAULT_APPROVALS`, `autonomous` is the deliberate `approvals=[]` opt-out. A catalogue cannot invent a third answer, so a declaration cannot quietly lose the checkpoints the forge gives by default. | `build_guardrail_soul()` |
 | `extra_approvals` | Additional always-ask items on top of the posture. | `build_guardrail_soul()` |
