@@ -12,6 +12,23 @@ This project recognizes contributions from humans, AI agents, and tooling framew
   - Contributions: Advanced @ bot tagging palette, Messages UI/UX, arena tool infrastructure, mentions grammar unification, model identity correction, backend integration merges
   - Commits co-authored as: `Nemotron 3 Ultra Free (via opencode) <noreply@nvidia.com>`
 
+The entries below are recognized at the maintainer's designation. None of them
+carries a `Co-Authored-By` trailer in the commit history, so they are labelled as
+such rather than presented as commit-backed — the two are different kinds of
+claim and should not read as the same one.
+
+- **ChatGPT** ([OpenAI](https://openai.com)) — AI assistant
+  - Research and analysis support during development
+  - Maintainer-designated; no commit trailer
+
+- **Gemini** ([Google](https://gemini.google.com)) — AI assistant
+  - Research and analysis support during development; also a free-tier provider surfaced in the model catalog
+  - Maintainer-designated; no commit trailer
+
+- **Antigravity** ([Google](https://antigravity.google)) — agentic coding IDE
+  - Research and analysis support during development, including the coding-agent landscape the research dossiers survey
+  - Maintainer-designated; no commit trailer
+
 ## Framework / Tooling Contributors
 
 - **opencode** ([sst/opencode](https://github.com/sst/opencode)) — AI coding agent harness
