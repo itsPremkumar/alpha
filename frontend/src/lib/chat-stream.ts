@@ -258,7 +258,12 @@ export async function consumeChatStream(
         runId: state.runId,
         sse,
       };
-    if (!state.runId || !state.lastEventId)
+    // Content-Location identifies a run as soon as the response headers arrive.
+    // If the proxy drops the initial SSE connection before its first event id,
+    // the Gateway can still replay from the beginning when Last-Event-ID is
+    // omitted. The reducer deduplicates replayed event ids, so preserving the
+    // current state is safe and avoids losing a run that already started.
+    if (!state.runId)
       throw new StreamRunFailure(state.error ?? null);
     // 2 attempts used to be the whole budget: a laptop that slept for two
     // seconds was enough to lose the rest of an answer irreversibly, because
@@ -290,7 +295,9 @@ export async function consumeChatStream(
             signal: options.signal,
             headers: {
               Accept: "text/event-stream",
-              "Last-Event-ID": state.lastEventId,
+              ...(state.lastEventId
+                ? { "Last-Event-ID": state.lastEventId }
+                : {}),
             },
           },
         );

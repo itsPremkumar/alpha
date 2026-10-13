@@ -269,6 +269,15 @@ and `workspace-nav.test.mjs` fails on it.
 - **The list answers "which projects exist", not "what is in one".** Every
   project is listed by default; the bot filter and the crew-type filter both
   default to `all`.
+- **Creating is one field.** The create card opens with a name and `Create`;
+  the template, instructions and the staffing roster sit behind a settings
+  disclosure whose summary line states what is staged, so a hidden crew is never
+  an invisible one. Opening a project leads with its staff list, and the project
+  name is editable alongside its instructions (a blank name is refused locally,
+  not sent as a 422). Inside that staff block the add-agent roster is behind its
+  own **Add agent** control: what is already on the project stays visible, what
+  is not on it appears only when adding is the task, and a staged selection is
+  still announced (and still attachable) while the list is closed.
 - **Single-agent vs team crew is the server's claim, not a guess.** The crew
   service provisions a shared group room at the *second* member, so
   `members.length >= 2` is a crew and `=== 1` is solo. A roster read that is in
@@ -299,10 +308,19 @@ and `workspace-nav.test.mjs` fails on it.
   *absent* from `member_briefs`, not present and empty. Every timestamp goes
   through `parseTime`, because `new Date("")` is the epoch and would claim the
   event happened in 1970.
+- **A project named anywhere can be opened from there.** One
+  `openProjectDetails(projectId)` handler in `ChatView` records a one-shot
+  `{ projectId, nonce }` request and switches to `projects`, where
+  `ProjectsSection` opens the drill-down and clears the request. It is offered
+  at every surface that names a project (conversation footer, chat header menu,
+  sidebar group headers, rail menu, inspector header, company rows, Workforce
+  pickers, the board's single-project filter) and withheld wherever there is no
+  project to open.
 - Regression coverage: `src/lib/project-inspector.test.mjs` (routes, verbs, the
-  read-only guarantee, partial reads, and the honesty inversions) and
+  read-only guarantee, partial reads, and the honesty inversions),
   `src/lib/project-inspector-view.test.mjs` (tab placement and ordering, the
-  crew-type classification, the drill-down wiring, and the rendered claims).
+  crew-type classification, the drill-down wiring, and the rendered claims) and
+  `src/lib/project-deep-links.test.mjs` (the cross-surface redirect).
 
 ## Testing (required for client changes)
 

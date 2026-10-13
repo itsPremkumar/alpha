@@ -59,6 +59,16 @@ export interface ProjectDetailPanelProps {
   onClose?: () => void;
   onPickProject?: (projectId: string | null) => void;
   onNewProject?: () => void;
+  /**
+   * Open this project's *full* read — the Projects view's drill-down.
+   *
+   * This panel is the summary *beside* the transcript (name, agent, status and
+   * the conversations it has had). It is deliberately not a second copy of the
+   * inspector: the header offers a way out to the whole project rather than
+   * pretending five tabs are seventeen reads. Without a handler the control is
+   * not offered, so a surface that has no route cannot advertise one.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
 }
 
 export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
@@ -72,6 +82,7 @@ export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
     onClose,
     onPickProject,
     onNewProject,
+    onOpenProjectDetails,
   } = props;
 
   const [tab, setTab] = useState<"overview" | "conversations" | "files" | "tasks" | "settings">("overview");
@@ -215,6 +226,23 @@ export function ProjectDetailPanel(props: ProjectDetailPanelProps) {
             Project: {project.name || project.id}
           </span>
         </div>
+
+        {onOpenProjectDetails && (
+          /* The way out of the summary and into the whole project: the staff
+             list, the crew, the seventeen live reads. Sits in the header
+             because that is the one row that is visible on every tab of this
+             panel — a control buried in Overview would only be reachable from
+             the tab already showing what it leads to. */
+          <button
+            type="button"
+            onClick={() => onOpenProjectDetails(project.id)}
+            className="ml-auto inline-flex items-center gap-1 shrink-0 px-2 py-1 rounded-lg text-[11px] font-semibold text-primary hover:bg-muted/60 transition-colors cursor-pointer"
+            title="Open this project's full read: staff, crew, runs, memory and health"
+          >
+            <ExternalLink className="size-3" aria-hidden="true" />
+            Full details
+          </button>
+        )}
 
         {onClose && (
           <button

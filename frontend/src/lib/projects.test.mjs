@@ -220,3 +220,112 @@ test("the Projects view confirms membership and re-reads the parent's thread lis
   assert.match(section, /props\.onThreadsChanged\?\.\(\)/);
   assert.match(section, /onThreadsChanged\?: \(\) => void/);
 });
+
+// ------------------------------------------------------------- create/edit surface
+
+test("the roster sits behind the create form's settings disclosure", () => {
+  const section = readFileSync(new URL("../components/sections/ProjectsSection.tsx", import.meta.url), "utf8");
+
+  // Creating is one field; the roster, template and instructions are gated.
+  assert.match(section, /\{createSettingsOpen && \(/, "the advanced block must be gated on the disclosure");
+  const create = section.slice(section.indexOf("Create project session"), section.indexOf("{createSettingsOpen && ("));
+  assert.match(create, /aria-label="New project name"/, "the name field is reachable without opening anything");
+  assert.match(create, /creatingProject \? "Creating…" : "Create"/, "Create sits beside the name");
+  // What is hidden is still announced: a staged crew cannot become invisible.
+  assert.match(create, /agent\$\{draftBots\.length === 1 \? "" : "s"\} staged/);
+  assert.match(create, /name only — nothing staged/);
+  // The whole roster must be searchable, and "Select shown" stages exactly the
+  // rows the search currently displays — never the roster behind it.
+  assert.match(section, /const staffRows = \(bots: ProjectBot\[\], query: string, selected: string\[\]\)/);
+  assert.match(section, /staffRows\(props\.bots, draftBotQuery, draftBots\)/);
+});
+
+test("an opened project leads with its staff list and can be renamed", () => {
+  const section = readFileSync(new URL("../components/sections/ProjectsSection.tsx", import.meta.url), "utf8");
+
+  // Staff first: opening a project is how you find out who is on it, and the
+  // roster used to sit below the instructions block.
+  const expanded = section.slice(section.indexOf("{open === p.id && ("), section.indexOf("<ProjectOverviewPanel"));
+  assert.ok(expanded.indexOf("Staff &amp; agents") >= 0, "the expanded card names its staff block");
+  assert.ok(
+    expanded.indexOf("Staff &amp; agents") < expanded.indexOf("Project details"),
+    "the staff list must come before the details block",
+  );
+  // The add-agents roster is searchable per project, and the filter typed in
+  // one project never narrows the next one's list.
+  assert.match(expanded, /staffQuery/);
+  assert.match(
+    section.slice(section.indexOf("const toggle = async"), section.indexOf("const act = async")),
+    /setStaffQuery\(""\)/,
+    "each project's roster search starts empty",
+  );
+
+  // The name travels with the instructions, because renaming used to mean
+  // deleting the project and stranding its conversations.
+  assert.ok(
+    section.includes("useState<{ id: string; name: string; instructions: string } | null>"),
+    "the edit draft carries the project name",
+  );
+  const save = section.slice(section.indexOf("updateProject(p.id, {"), section.indexOf("Cancel"));
+  assert.match(save, /updateProject\(p\.id, \{\s*name: editing\.name\.trim\(\) \|\| p\.name,/);
+  assert.match(save, /instructions: editing\.instructions/,);
+  // A blank name would silently rename the project to nothing, so it is refused
+  // locally rather than discovered as a 422.
+  assert.match(save, /disabled=\{!editing\.name\.trim\(\)/);
+  // The editor is reachable straight from the card, not only once expanded.
+  assert.match(
+    section,
+    /setEditing\(\{ id: p\.id, name: p\.name, instructions: p\.instructions \}\)/,
+  );
+});
+
+test("the add-agent roster shows only where adding an agent is the task", () => {
+  const section = readFileSync(
+    new URL("../components/sections/ProjectsSection.tsx", import.meta.url),
+    "utf8",
+  );
+  const expanded = section.slice(
+    section.indexOf("{open === p.id && ("),
+    section.indexOf("<ProjectOverviewPanel"),
+  );
+
+  // The chips answer "who is on this project" and stay on screen. The roster
+  // — every agent who is NOT on it — is a decision, so it sits behind an
+  // explicit control rather than under them as a wall of checkboxes.
+  assert.ok(
+    expanded.indexOf("Staff &amp; agents") < expanded.indexOf("{addAgentOpen && ("),
+    "the staff list must lead; the roster is what follows it",
+  );
+  assert.match(
+    section,
+    /const \[addAgentOpen, setAddAgentOpen\] = useState\(false\)/,
+    "the roster starts closed — nothing opens it but the operator",
+  );
+  assert.match(expanded, /setAddAgentOpen\(\(previous\) => !previous\)/, "one control toggles it");
+  assert.match(expanded, /\{addAgentOpen && \(/, "the roster must be gated, not merely scrolled");
+
+  // The gate holds the roster itself, not just its heading.
+  const gated = expanded.slice(expanded.indexOf("{addAgentOpen && ("));
+  assert.match(gated, /Search agents not on this project/, "the search lives inside the gate");
+  assert.match(gated, /type="checkbox"/, "the agent checkboxes live inside the gate");
+  assert.match(gated, /New bot role/, "the role field belongs to adding, so it lives there too");
+  assert.ok(
+    expanded.indexOf("type=\"checkbox\"") > expanded.indexOf("{addAgentOpen && ("),
+    "no agent checkbox may render while the roster is closed",
+  );
+
+  // Switching projects must not carry the previous project's open picker.
+  assert.match(
+    section.slice(section.indexOf("const toggle = async"), section.indexOf("const act = async")),
+    /setAddAgentOpen\(false\)/,
+    "each project's roster starts closed",
+  );
+
+  // Hiding the list must not hide work already staged in it.
+  assert.match(expanded, /staged, not added yet/, "a staged selection stays announced");
+  assert.match(
+    expanded,
+    /!addAgentOpen && selectedCount > 0 &&/,
+    "the attach action stays available while the list is closed",
+  );
+});

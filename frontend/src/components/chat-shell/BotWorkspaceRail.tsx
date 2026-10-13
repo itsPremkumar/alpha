@@ -54,6 +54,19 @@ import { threadTitle } from "@/lib/threads-ext";
 import type { Thread } from "@/types/chat";
 import type { WorkspaceView } from "@/lib/workspace-view";
 
+/**
+ * How many rows a rail list shows before its `Show more` control.
+ *
+ * One fixed number, written once, so the compact reading of the sidebar is a
+ * deliberate setting rather than two literals that can drift apart — and so an
+ * operator changing it edits one place. Expanding a list is a *manual*
+ * decision: the rows that stay hidden are hidden by this number, never by the
+ * viewport. What changed is that an expanded list is now reachable — the
+ * sidebar hands its whole column to one scroll region (see `ThreadSidebar`),
+ * so 237 rows scroll instead of overflowing a container that could not scroll.
+ */
+const SIDEBAR_ROW_LIMIT = 6;
+
 export interface BotWorkspaceRailProps {
   bots: BotProfile[];
   activeBot: BotProfile | null;
@@ -70,6 +83,16 @@ export interface BotWorkspaceRailProps {
   onPickProject: (projectId: string | null) => void;
   onOpenView: (view: WorkspaceView) => void;
   onProjectsChanged: () => void;
+  /**
+   * Open a project's full read (the Projects view's drill-down).
+   *
+   * Offered in the rail's per-project menu, because this list is where a
+   * project is reached from the sidebar — and "Project overview" beside it
+   * only points the *view* at Projects, leaving the operator to find the
+   * project again in a list that may hold hundreds. Optional: without it the
+   * menu simply omits the row.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
 }
 
 export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
@@ -86,6 +109,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     onPickProject,
     onOpenView,
     onProjectsChanged,
+    onOpenProjectDetails,
   } = props;
 
   const [standaloneCollapsed, setStandaloneCollapsed] = useState(false);
@@ -177,15 +201,21 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       ? botProjectRows
       : projectRows;
 
+  // A fixed number of rows, then a manual `Show more` / `Show fewer`.
+  // The cap used to be the *only* defence against an unscrollable sidebar —
+  // Projects alone owned the scroll budget, so expanding Standalone pushed it
+  // out of a container that could not scroll. With the scroll region fixed the
+  // cap is back to being a plain display setting: expand it and everything,
+  // footer included, is reachable by scrolling.
   const visibleProjects = showAllProjects
     ? displayedProjectRows
-    : displayedProjectRows.slice(0, 6);
+    : displayedProjectRows.slice(0, SIDEBAR_ROW_LIMIT);
   const hiddenProjects = displayedProjectRows.length - visibleProjects.length;
 
   const standalone = groups.standalone.items;
   const visibleStandalone = showAllStandalone
     ? standalone
-    : standalone.slice(0, 6);
+    : standalone.slice(0, SIDEBAR_ROW_LIMIT);
   const hiddenStandalone = standalone.length - visibleStandalone.length;
 
   const toggleProjectExpand = (id: string, e?: React.MouseEvent) => {
@@ -199,7 +229,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   return (
     <div
-      className="flex flex-col h-full select-none divide-y divide-border/40"
+      className="flex flex-col select-none divide-y divide-border/40"
       data-shell="bot-workspace"
     >
       {/* ── 1. Roster summary ───────────────────────────────────────────
@@ -378,7 +408,8 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                   >
                     Show {hiddenStandalone} more chats...
                   </button>
-                ) : showAllStandalone && standalone.length > 6 ? (
+                ) : showAllStandalone &&
+                  standalone.length > SIDEBAR_ROW_LIMIT ? (
                   <button
                     type="button"
                     onClick={() => setShowAllStandalone(false)}
@@ -396,7 +427,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
       {/* ── 4. Projects & Nested Project Conversations ───────────────── */}
       <section
         data-lion-pet-keepout=""
-        className="p-3 space-y-1.5 flex-1 min-h-0 overflow-y-auto"
+        className="p-3 space-y-1.5"
         aria-label="Projects"
       >
         <div className="flex items-center justify-between pb-0.5 px-0.5">
@@ -617,6 +648,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             onSwitchProject={onPickProject}
                             onNewConversation={(id) => onNewConversation(id)}
                             onSelectThread={onSelectThread}
+                            onOpenDetails={onOpenProjectDetails}
                             onOpenOverview={() => {
                               onPickProject(row.projectId);
                               onOpenView("projects");
@@ -804,7 +836,8 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                   );
                 })}
 
-                {/* Clean pagination toggle */}
+                {/* Manual list maintenance: a fixed number of rows shown,
+                    then the operator's own decision about the rest. */}
                 {hiddenProjects > 0 ? (
                   <button
                     type="button"
@@ -813,7 +846,8 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                   >
                     Show {hiddenProjects} more projects...
                   </button>
-                ) : showAllProjects && displayedProjectRows.length > 6 ? (
+                ) : showAllProjects &&
+                  displayedProjectRows.length > SIDEBAR_ROW_LIMIT ? (
                   <button
                     type="button"
                     onClick={() => setShowAllProjects(false)}

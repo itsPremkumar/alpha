@@ -33,6 +33,8 @@ export interface ChatShellProps {
   onPickProject: (projectId: string | null) => void;
   onOpenView: (view: WorkspaceView) => void;
   onProjectsChanged: () => void | Promise<void>;
+  /** Open a project's full read; forwarded to the rail's project menu. */
+  onOpenProjectDetails?: (projectId: string) => void;
 }
 
 /**
@@ -53,6 +55,7 @@ export function ChatShell(props: ChatShellProps) {
     onPickProject,
     onOpenView,
     onProjectsChanged,
+    onOpenProjectDetails,
   } = props;
 
   return (
@@ -69,6 +72,7 @@ export function ChatShell(props: ChatShellProps) {
       onPickProject={onPickProject}
       onOpenView={onOpenView}
       onProjectsChanged={onProjectsChanged}
+      onOpenProjectDetails={onOpenProjectDetails}
     />
   );
 }

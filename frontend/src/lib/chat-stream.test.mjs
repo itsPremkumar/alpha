@@ -75,6 +75,49 @@ test("reconnect waits for retry, deduplicates replay, emits a gap and rejects la
   ]);
 });
 
+test("reconnects from the beginning when the initial stream drops before its first event id", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const updates = [];
+  const requests = [];
+  let deliveredRetry = false;
+  const brokenBody = new ReadableStream({
+    pull(controller) {
+      if (!deliveredRetry) {
+        deliveredRetry = true;
+        controller.enqueue(new TextEncoder().encode("retry: 1\n\n"));
+      } else {
+        controller.error(new Error("proxy reset before first SSE event"));
+      }
+    },
+  });
+  const initial = new Response(brokenBody, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Content-Location": "/threads/thread-1/runs/run-1",
+    },
+  });
+  const pending = consumeChatStream(initial, {
+    threadId: "thread-1",
+    signal: new AbortController().signal,
+    onUpdate: (messages) => updates.push(messages),
+    reconnect: async (path, options) => {
+      requests.push({ path, options });
+      return response(`${chunk("100-1", "Recovered")}${frame("end", "100-2", null)}`);
+    },
+  });
+  await flush();
+  assert.equal(requests.length, 0);
+  t.mock.timers.tick(1);
+  const result = await pending;
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].path, "/threads/thread-1/runs/run-1/join");
+  assert.deepEqual(requests[0].options.headers, { Accept: "text/event-stream" });
+  assert.equal(result.runId, "run-1");
+  assert.equal(result.messages[0].content, "Recovered");
+  assert.equal(updates.at(-1)[0].content, "Recovered");
+});
+
 test("retry delay is capped and retained across connections", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let requests = 0;

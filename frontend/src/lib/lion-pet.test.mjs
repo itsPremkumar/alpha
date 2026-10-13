@@ -369,6 +369,10 @@ test("the bot profile and new-conversation controls are companion keep-outs", ()
   const rail = readFileSync(new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url), "utf8");
   assert.match(rail, /<section data-lion-pet-keepout="" className="p-3 bg-card\/30 space-y-2">/);
   assert.match(rail, /data-lion-pet-keepout=""\s+className="p-3 space-y-1\.5"\s+aria-label="Standalone conversations"/);
-  assert.match(rail, /data-lion-pet-keepout=""\s+className="p-3 space-y-1\.5 flex-1 min-h-0 overflow-y-auto"\s+aria-label="Projects"/);
+  // `findLionPetKeepOuts()` selects on the attribute alone, so what matters is
+  // that the project list still carries the marker beside its identity — the
+  // class is layout, and pinning it here would bar the sidebar from ever
+  // changing how that list scrolls.
+  assert.match(rail, /data-lion-pet-keepout=""\s+className="[^"]*"\s+aria-label="Projects"/);
   assert.match(rail, /title=\{`Start a new conversation with \$\{currentBotDisplayName\}`\}/);
 });

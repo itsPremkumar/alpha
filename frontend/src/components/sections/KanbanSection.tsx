@@ -42,6 +42,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 
 export interface BoardBot {
@@ -62,7 +63,17 @@ const PRIORITY_TONE: Record<Priority, "gray" | "blue" | "amber" | undefined> = {
   urgent: undefined,
 };
 
-export function KanbanSection(props: { bots: BoardBot[] }) {
+export function KanbanSection(props: {
+  bots: BoardBot[];
+  /**
+   * Open one project's full read (the Projects view's drill-down).
+   *
+   * Offered only while the board is filtered to a single project — a board
+   * showing every project has no one project to open, and "All projects" plus
+   * a link named after no project would be a control pointing nowhere.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
+}) {
   const [cards, setCards] = useState<Card[]>([]);
   const [projects, setProjects] = useState<BoardProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -332,6 +343,21 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
               </option>
             ))}
           </select>
+          {/* The board answers "what is queued"; the drill-down answers "what is
+              this project". It appears only on a single-project filter —
+              `""` is the honest *No project* half of the filter, and a link
+              there would have no project to open. */}
+          {projectFilter && projectFilter !== "all" && props.onOpenProjectDetails && (
+            <button
+              type="button"
+              onClick={() => props.onOpenProjectDetails?.(projectFilter)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors cursor-pointer"
+              title="Open this project's full read: staff, crew, runs, memory and health"
+              aria-label="Open full project details"
+            >
+              <ExternalLink className="size-3.5" />
+            </button>
+          )}
           <select
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}

@@ -27,6 +27,7 @@ import {
   Check, Ban, CheckCircle2, AlertTriangle, FileText, DollarSign, Layers, ChevronDown, ChevronRight,
   ShieldCheck, CheckSquare, Trophy, Eye, Save, RotateCcw,
   Dna, Compass, Cpu, Play, Plus, GitFork, Zap, Sparkles, Repeat, SlidersHorizontal,
+  ExternalLink,
 } from "lucide-react";
 
 export interface WorkforceBot {
@@ -177,7 +178,11 @@ const STATE_FIELDS: Array<{ key: keyof ProjectStateSnapshot; label: string }> = 
   { key: "open_conflicts", label: "open conflicts" },
 ];
 
-function PresenceTab(props: { focusedProjectId: string | null }) {
+function PresenceTab(props: {
+  focusedProjectId: string | null;
+  /** Open the selected project's full read (Projects → drill-down). */
+  onOpenProjectDetails?: (projectId: string) => void;
+}) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [projectId, setProjectId] = useState("");
   useEffect(() => {
@@ -203,9 +208,28 @@ function PresenceTab(props: { focusedProjectId: string | null }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <Panel title="Project presence" hint="Who is on the project and what they hold."
-        actions={<select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputCls} aria-label="Project">
-          {projects.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
-        </select>}>
+        actions={
+          <span className="inline-flex items-center gap-1.5">
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputCls} aria-label="Project">
+              {projects.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+            </select>
+            {/* Presence lists *who* is on the project; the drill-down is where the
+                rest of it (crew, runs, memory, health) is read. Offered only when a
+                project is actually selected, so the control can never name a
+                project that does not exist yet. */}
+            {projectId && props.onOpenProjectDetails && (
+              <button
+                type="button"
+                onClick={() => props.onOpenProjectDetails?.(projectId)}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors cursor-pointer"
+                title="Open this project's full read: staff, crew, runs, memory and health"
+                aria-label="Open full project details"
+              >
+                <ExternalLink className="size-3.5" />
+              </button>
+            )}
+          </span>
+        }>
         {presence.loading ? <p className="text-xs text-muted-foreground">Loading…</p>
           : presence.error ? <ErrorBox message={presence.error} />
           : !presence.data || presence.data.length === 0 ? <EmptyState title="Nobody here" hint="Join a bot to this project to staff it." />
@@ -475,7 +499,11 @@ function InsightsTab() {
   );
 }
 
-function WarRoomTab(props: { focusedProjectId: string | null }) {
+function WarRoomTab(props: {
+  focusedProjectId: string | null;
+  /** Open the selected project's full read (Projects → drill-down). */
+  onOpenProjectDetails?: (projectId: string) => void;
+}) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   /* Empty means "no project chosen", and it is deliberately **not** the literal
      * "default"*.
@@ -846,6 +874,21 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
               <option key={p.id} value={p.id}>{p.name} ({p.id})</option>
             ))}
           </select>
+          {/* The war room shows telemetry *about* this project; the drill-down
+              is the rest of the read, and the picker defaults to whichever
+              project was focused — so this is the one control that can move
+              from "watching" to "reading" without a trip through the list. */}
+          {selectedProject && props.onOpenProjectDetails && (
+            <button
+              type="button"
+              onClick={() => props.onOpenProjectDetails?.(selectedProject)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors cursor-pointer"
+              title="Open this project's full read: staff, crew, runs, memory and health"
+              aria-label="Open full project details"
+            >
+              <ExternalLink className="size-3.5" />
+            </button>
+          )}
         </div>
         <Btn variant="ghost" onClick={() => warRoom.reload()}>
           <RefreshCw className="size-3 mr-1" /> Refresh Telemetry
@@ -1931,7 +1974,12 @@ function WarRoomTab(props: { focusedProjectId: string | null }) {
   );
 }
 
-export function WorkforceSection(props: { bots: WorkforceBot[]; focusedProjectId: string | null }) {
+export function WorkforceSection(props: {
+  bots: WorkforceBot[];
+  focusedProjectId: string | null;
+  /** Open the project these controls act on, in full, without leaving the tab. */
+  onOpenProjectDetails?: (projectId: string) => void;
+}) {
   const [tab, setTab] = useState<TabId>("warroom");
   return (
     <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 w-full">
@@ -1948,9 +1996,19 @@ export function WorkforceSection(props: { bots: WorkforceBot[]; focusedProjectId
             </button>
           ))}
         </div>
-        {tab === "warroom" && <WarRoomTab focusedProjectId={props.focusedProjectId} />}
+        {tab === "warroom" && (
+          <WarRoomTab
+            focusedProjectId={props.focusedProjectId}
+            onOpenProjectDetails={props.onOpenProjectDetails}
+          />
+        )}
         {tab === "inbox" && <InboxTab bots={props.bots} />}
-        {tab === "presence" && <PresenceTab focusedProjectId={props.focusedProjectId} />}
+        {tab === "presence" && (
+          <PresenceTab
+            focusedProjectId={props.focusedProjectId}
+            onOpenProjectDetails={props.onOpenProjectDetails}
+          />
+        )}
         {tab === "curator" && <CuratorTab />}
         {tab === "automation" && <AutomationTab />}
         {tab === "oversight" && <OversightTab />}

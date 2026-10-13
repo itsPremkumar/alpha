@@ -1211,6 +1211,38 @@ inheriting the bot roster would label an installation with 2 projects "42".
 
 - **The list shows every project by default.** Both filters (bot, crew type)
   default to `all`.
+- **Creating is one field; staffing is behind the gear.** The create card opens
+  with a project name and `Create` — the template, the instructions and the
+  whole agent roster sit behind `createSettingsOpen`, because the list used to
+  open with every agent checkbox on screen, so the roster was the first thing on
+  the tab when it is really the last decision. What the disclosure hides is not
+  invisible: the line beside the gear states how many agents are staged, which
+  template is loaded and whether instructions were written, and reads
+  `name only — nothing staged` when nothing is. The roster is filtered by
+  `staffRows()` (substring on handle *or* display name, staged agents first) and
+  `Select shown` stages exactly the rows the search displays — never the roster
+  behind them, and never a hidden selection.
+- **An opened project leads with its staff list**, then `Project details`.
+  Staff comes first because opening a project is how you find out who is on it,
+  and the roster used to sit below the instructions block. Each project's
+  `staffQuery` starts empty on `toggle()`, so a filter typed in one project
+  cannot silently narrow the next one's roster to a handful of rows that happen
+  to match — which reads as "this project has almost nobody to add".
+- **The roster appears only where adding an agent is the task.** The staff
+  chips stay on screen; every agent *not* on the project sits behind
+  `addAgentOpen` and an explicit **Add agent** button. The card used to open
+  with that wall of checkboxes directly under a staff list that had already
+  answered the question. The search, the role field and the checkboxes all
+  live inside the gate (they exist only to add), `toggle()` closes it beside
+  `staffQuery`, and what hiding cannot hide is announced beside the button —
+  `N staged, not added yet`, with the attach action still offered while the
+  list is closed, so closing a roster can never strand a selection.
+- **A project can be renamed.** The edit draft carries `{ id, name,
+  instructions }` and saves both through `updateProject`, because a name was
+  previously unchangeable from this surface and fixing a typo meant deleting the
+  project and stranding its conversations. A blank name is refused locally
+  (Save disabled) rather than discovered as a 422, and the card's own `Edit`
+  button opens the detail block straight into the editor.
 - **Single-agent vs team crew comes from the roster the server reported.** The
   crew service provisions a shared group room at the *second* member, so
   `members.length >= 2` is a crew. A roster read in flight or failed is
@@ -1228,9 +1260,29 @@ inheriting the bot roster would label an installation with 2 projects "42".
   (`onOpenLiveProject`), not merely switch views.
 - **A conversation in the drill-down opens in the chat view**, so the inspection
   is a step in a task rather than a dead end.
+- **A project named anywhere can be opened from there.** `ChatView` owns one
+  one-shot `projectDetailRequest` (`{ projectId, nonce }`) and a single
+  `openProjectDetails(projectId)` handler that records it and switches to
+  `projects` — the drill-down lives *inside* `ProjectsSection`, so a bare view
+  switch would land on the list. The nonce makes a repeat request for the
+  project already on screen a new event, and `ProjectsSection` clears the
+  request through `onOpenProjectRequestHandled` once it has acted: a request
+  left standing re-fires on every mount, so closing the inspector and returning
+  to the tab would pop it open again. Every surface that names a project
+  carries the handler — the conversation footer, the chat header's project
+  menu, the sidebar's per-project group headers, the rail's project menu, the
+  in-chat inspector header, a company's linked rows, both Workforce pickers and
+  the board's single-project filter — and each **withholds** the control when
+  there is no project to open: `All projects`, `No project`, no selection, or
+  an id that never resolved to a name (the footer links on the raw id
+  instead of hiding).
 - Coverage: `src/lib/project-inspector.test.mjs` (routes, read-only guarantee,
   partial reads, honesty inversions) and `src/lib/project-inspector-view.test.mjs`
-  (tab placement/ordering, crew classification, wiring, rendered claims).
+  (tab placement/ordering, crew classification, wiring, rendered claims), plus
+  `src/lib/projects.test.mjs` for the create disclosure, the staff-first
+  expanded card and the rename draft, and `src/lib/project-deep-links.test.mjs`
+  for the cross-surface redirect (the request's order, the one-shot
+  acknowledgement, every entry point and every withheld control).
 
 ## Alpha Network client boundary
 

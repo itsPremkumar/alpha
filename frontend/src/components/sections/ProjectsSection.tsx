@@ -26,7 +26,7 @@ import { moveThread } from "@/lib/threads-ext";
 import { Thread } from "@/types/chat";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash, ChevronRight } from "lucide-react";
+import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash, ChevronRight, Settings2, CheckCheck } from "lucide-react";
 import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
 import { ProjectOverviewPanel } from "@/components/sections/ProjectOverviewPanel";
 import { ProjectInspectorSection } from "@/components/sections/ProjectInspectorSection";
@@ -62,6 +62,35 @@ const SHAPE_META: Record<ProjectShape, { label: string; tone: "purple" | "cyan" 
   unknown: { label: "crew unknown", tone: "amber", title: "The project roster could not be read, so this is unknown — not empty." },
 };
 
+/**
+ * Whether one roster row matches the staffing search box.
+ *
+ * Substring on the handle *or* the display name, so `data` finds both
+ * "Data Analyst" and `@data-analyst`. An empty query matches everything —
+ * a search box nobody has typed in must not hide the roster it exists to find.
+ */
+const botMatchesQuery = (bot: ProjectBot, query: string): boolean => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return bot.name.toLowerCase().includes(needle) || bot.display_name.toLowerCase().includes(needle);
+};
+
+/**
+ * The staffing rows to render: filtered by the search box, staged agents first.
+ *
+ * A roster of a hundred-plus agents behind a single field is what made the
+ * picker unusable, and sorting the already-selected rows to the top is what
+ * keeps a choice visible while you keep adding — otherwise every further search
+ * pushes what you picked below the fold with no way to see it.
+ */
+const staffRows = (bots: ProjectBot[], query: string, selected: string[]): ProjectBot[] => {
+  const staged = new Set(selected);
+  return bots
+    .filter((bot) => botMatchesQuery(bot, query))
+    .slice()
+    .sort((a, b) => Number(staged.has(b.name)) - Number(staged.has(a.name)));
+};
+
 export function ProjectsSection(props: {
   onOpenThread: (id: string) => void;
   /** All known conversations (server list, carries bot + project links). */
@@ -83,6 +112,17 @@ export function ProjectsSection(props: {
    * else's project. The view owner must select this project, not just switch.
    */
   onOpenLiveProject?: (projectId: string) => void;
+  /**
+   * A request from another surface (chat header, conversation footer, sidebar
+   * group, a Companies row …) to open this project's full read — the same
+   * drill-down the card's "View more" opens.
+   *
+   * It is a *request*, not a mirror of local state: the owner switches the view
+   * and hands over the id, and the section opens it on the next render.
+   */
+  openProjectRequest?: { projectId: string; nonce: number } | null;
+  /** Acknowledge the request above, so it cannot re-fire on the next mount. */
+  onOpenProjectRequestHandled?: () => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +131,14 @@ export function ProjectsSection(props: {
   const [name, setName] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [threads, setThreads] = useState<Record<string, ProjectThread[]>>({});
-  const [editing, setEditing] = useState<{ id: string; instructions: string } | null>(null);
+  /**
+   * The project being edited, or null.
+   *
+   * `name` travels with `instructions` because a project's name was previously
+   * unchangeable from this surface — renaming meant deleting and re-creating,
+   * which would strand every conversation already inside it.
+   */
+  const [editing, setEditing] = useState<{ id: string; name: string; instructions: string } | null>(null);
   const [botFilter, setBotFilter] = useState<string>("all");
   const [membersByProject, setMembersByProject] = useState<Record<string, ProjectMember[]>>({});
   const [teamLoading, setTeamLoading] = useState<Record<string, boolean>>({});
@@ -107,6 +154,29 @@ export function ProjectsSection(props: {
   const [draftInstructions, setDraftInstructions] = useState("");
   const [draftBots, setDraftBots] = useState<string[]>([]);
   const [touchedDraft, setTouchedDraft] = useState(false);
+  /**
+   * The create form's staffing/instructions/template block is collapsed by
+   * default: the list used to open with every agent checkbox on screen, so the
+   * first thing the Projects tab showed was a roster instead of the one field
+   * needed to make a project. The gear opens it; the summary line beside the
+   * gear keeps what is hidden from being invisible.
+   */
+  const [createSettingsOpen, setCreateSettingsOpen] = useState(false);
+  /** Search over the roster inside the create form's staffing picker. */
+  const [draftBotQuery, setDraftBotQuery] = useState("");
+  /** Search over the roster inside an open project's staffing card. */
+  const [staffQuery, setStaffQuery] = useState("");
+  /**
+   * Whether an open project's "add agents" roster is showing.
+   *
+   * Closed by default. The roster is needed only when adding an agent (or
+   * choosing the role one is added under) — the chips above already answer
+   * "who is on this project", and it used to sit open under them as a wall of
+   * checkboxes for everyone who is *not* on it. What hiding it cannot hide is
+   * a selection already staged: that count is printed beside the button, and
+   * the attach action stays available while the list is closed.
+   */
+  const [addAgentOpen, setAddAgentOpen] = useState(false);
   /**
    * The project whose full end-to-end read is open, or null for the list.
    *
@@ -262,6 +332,21 @@ export function ProjectsSection(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Open a project another surface asked for, then acknowledge it.
+   *
+   * The acknowledgement matters: a request left standing would re-open the
+   * inspector every time this view is mounted again, so closing the drill-down
+   * and visiting another tab would land the operator back in it.
+   */
+  useEffect(() => {
+    const request = props.openProjectRequest;
+    if (!request) return;
+    setInspectedProjectId(request.projectId);
+    props.onOpenProjectRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openProjectRequest]);
+
   const flash = (m: string) => {
     setNotice(m);
     window.setTimeout(() => setNotice(null), 4000);
@@ -271,6 +356,13 @@ export function ProjectsSection(props: {
     const isOpen = open === project.id;
     setOpen(isOpen ? null : project.id);
     if (isOpen) return;
+    // Each project's "add agents" search starts empty: a filter typed in the
+    // last project would otherwise silently narrow this one's roster to rows
+    // that match, which reads as "this project has almost nobody to add".
+    setStaffQuery("");
+    // …and its roster starts closed: this project is being *read*, and the
+    // add-agent picker belongs to the moment someone adds.
+    setAddAgentOpen(false);
     const tasks: Promise<unknown>[] = [refreshTeam(project.id)];
     if (!threads[project.id]) {
       tasks.push(
@@ -330,6 +422,7 @@ export function ProjectsSection(props: {
       setDraftBots([]);
       setTouchedDraft(false);
       setTemplateId("blank");
+      setDraftBotQuery("");
       flash(
         agents.length > 0
           ? `Project created with ${agents.length} agent${agents.length === 1 ? "" : "s"}.`
@@ -419,44 +512,37 @@ export function ProjectsSection(props: {
       {notice && <Notice message={notice} />}
 
       <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
-        <Field
-          label="Start from a template"
-          hint="A template fills the instructions and suggests which roles to staff. Nothing is created until you press Create."
-        >
-          <div className="flex gap-2">
-            <select
-              value={templateId}
-              onChange={(e) => applyTemplate(e.target.value)}
-              className={`${inputCls} !w-auto font-medium`}
-              aria-label="Project template"
-            >
-              {PROJECT_TEMPLATES.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name} — {option.summary}
-                </option>
-              ))}
-            </select>
-            <Btn variant="ghost" onClick={() => applyTemplate(templateId)} title="Re-apply this template's suggestions">
-              <Sparkles className="size-3.5" /> Apply
-            </Btn>
-          </div>
-        </Field>
-
-        {template.roles.length > 0 && (
-          <p className="text-[10px] text-muted-foreground">
-            Looks for: {template.roles.join(", ")}.
-            {suggestBots(template.roles).length < template.roles.length && (
-              <>
-                {" "}
-                No bot matched{" "}
-                {template.roles
-                  .filter((role) => !suggestBots(template.roles).some((bot) => bot.toLowerCase().includes(role.toLowerCase().split("-")[0])))
-                  .join(", ")}{" "}
-                — create or rename a bot with that role, or pick one by hand below.
-              </>
+        {/*
+          Create is one field. Everything else a project can carry — a template,
+          instructions, the staffing roster — sits behind the gear: this list
+          used to open with every agent checkbox on screen, so the roster was
+          the first thing on the tab when it is really the last decision. The
+          line beside the gear keeps what is hidden from being invisible.
+        */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-xs font-semibold flex-1 min-w-40">Create project session</p>
+          <span className="text-[10px] text-muted-foreground">
+            {createSettingsOpen
+              ? "settings open"
+              : draftBots.length > 0 || templateId !== "blank" || draftInstructions.trim()
+                ? `${draftBots.length} agent${draftBots.length === 1 ? "" : "s"} staged${
+                    templateId !== "blank" ? ` · ${template.name}` : ""
+                  }${draftInstructions.trim() ? " · instructions written" : ""}`
+                : "name only — nothing staged"}
+          </span>
+          <Btn
+            variant="ghost"
+            onClick={() => setCreateSettingsOpen((previous) => !previous)}
+            title="Template, instructions and staffing"
+          >
+            <Settings2 className="size-3.5" /> Settings
+            {draftBots.length > 0 && (
+              <span className="rounded-full bg-primary text-primary-foreground text-[10px] px-1.5">
+                {draftBots.length}
+              </span>
             )}
-          </p>
-        )}
+          </Btn>
+        </div>
 
         <Field label="New project" hint="Example: Website redesign, Q4 planning, Customer support.">
           <div className="flex gap-2">
@@ -476,57 +562,138 @@ export function ProjectsSection(props: {
           </div>
         </Field>
 
-        <Field
-          label="Project instructions"
-          hint="Every conversation inside this project follows these."
-        >
-          <textarea
-            value={draftInstructions}
-            onChange={(e) => {
-              setDraftInstructions(e.target.value);
-              setTouchedDraft(true);
-            }}
-            rows={2}
-            placeholder="Optional — what should the agent do in this project?"
-            className={inputCls}
-            aria-label="Project instructions"
-          />
-        </Field>
+        {!createSettingsOpen && (
+          <p className="text-[11px] text-muted-foreground">
+            A project can be created from its name alone. Open <strong>Settings</strong> to pick a
+            template, write instructions or staff it now — agents can also be added from inside the
+            project afterwards.
+          </p>
+        )}
 
-        {props.bots.length > 0 && (
-          <Field
-            label={`Staff this project${draftBots.length > 0 ? ` (${draftBots.length} selected)` : ""}`}
-            hint="Two or more agents get a shared group room. One agent works solo."
-          >
-            <div className="grid sm:grid-cols-2 gap-1.5">
-              {props.bots.map((bot) => {
-                const checked = draftBots.includes(bot.name);
-                return (
-                  <label
-                    key={bot.name}
-                    className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-2 cursor-pointer hover:border-primary/40"
+        {createSettingsOpen && (
+          <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
+            <Field
+              label="Start from a template"
+              hint="A template fills the instructions and suggests which roles to staff. Nothing is created until you press Create."
+            >
+              <div className="flex gap-2">
+                <select
+                  value={templateId}
+                  onChange={(e) => applyTemplate(e.target.value)}
+                  className={`${inputCls} !w-auto font-medium`}
+                  aria-label="Project template"
+                >
+                  {PROJECT_TEMPLATES.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name} — {option.summary}
+                    </option>
+                  ))}
+                </select>
+                <Btn variant="ghost" onClick={() => applyTemplate(templateId)} title="Re-apply this template's suggestions">
+                  <Sparkles className="size-3.5" /> Apply
+                </Btn>
+              </div>
+            </Field>
+
+            {template.roles.length > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Looks for: {template.roles.join(", ")}.
+                {suggestBots(template.roles).length < template.roles.length && (
+                  <>
+                    {" "}
+                    No bot matched{" "}
+                    {template.roles
+                      .filter((role) => !suggestBots(template.roles).some((bot) => bot.toLowerCase().includes(role.toLowerCase().split("-")[0])))
+                      .join(", ")}{" "}
+                    — create or rename a bot with that role, or pick one by hand below.
+                  </>
+                )}
+              </p>
+            )}
+
+            <Field
+              label="Project instructions"
+              hint="Every conversation inside this project follows these."
+            >
+              <textarea
+                value={draftInstructions}
+                onChange={(e) => {
+                  setDraftInstructions(e.target.value);
+                  setTouchedDraft(true);
+                }}
+                rows={2}
+                placeholder="Optional — what should the agent do in this project?"
+                className={inputCls}
+                aria-label="Project instructions"
+              />
+            </Field>
+
+            {props.bots.length > 0 && (
+              <Field
+                label={`Staff this project${draftBots.length > 0 ? ` (${draftBots.length} selected)` : ""}`}
+                hint="Two or more agents get a shared group room. One agent works solo."
+              >
+                <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                  <input
+                    value={draftBotQuery}
+                    onChange={(e) => setDraftBotQuery(e.target.value)}
+                    placeholder="Search agents by name or handle…"
+                    className={`${inputCls} !w-auto flex-1 min-w-40`}
+                    aria-label="Search agents to staff"
+                  />
+                  <Btn
+                    variant="ghost"
+                    onClick={() =>
+                      setDraftBots((previous) =>
+                        Array.from(new Set([...previous, ...staffRows(props.bots, draftBotQuery, previous).map((bot) => bot.name)])),
+                      )
+                    }
+                    disabled={staffRows(props.bots, draftBotQuery, draftBots).length === 0}
+                    title="Stage every agent this search currently shows"
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) =>
-                        setDraftBots((previous) =>
-                          event.target.checked
-                            ? [...previous, bot.name]
-                            : previous.filter((botName) => botName !== bot.name),
-                        )
-                      }
-                      className="accent-primary"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-[11px] font-medium truncate">{bot.display_name || bot.name}</span>
-                      <span className="block text-[10px] text-muted-foreground font-mono truncate">@{bot.name}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </Field>
+                    <CheckCheck className="size-3.5" /> Select shown
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => setDraftBots([])} disabled={draftBots.length === 0}>
+                    <X className="size-3.5" /> Clear
+                  </Btn>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-1.5">
+                  {staffRows(props.bots, draftBotQuery, draftBots).map((bot) => {
+                    const checked = draftBots.includes(bot.name);
+                    return (
+                      <label
+                        key={bot.name}
+                        className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-2 cursor-pointer hover:border-primary/40"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setDraftBots((previous) =>
+                              event.target.checked
+                                ? [...previous, bot.name]
+                                : previous.filter((botName) => botName !== bot.name),
+                            )
+                          }
+                          className="accent-primary"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-[11px] font-medium truncate">{bot.display_name || bot.name}</span>
+                          <span className="block text-[10px] text-muted-foreground font-mono truncate">@{bot.name}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {staffRows(props.bots, draftBotQuery, draftBots).length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    No agent matches “{draftBotQuery.trim()}” — the roster reported{" "}
+                    {props.bots.length} agent{props.bots.length === 1 ? "" : "s"} in total.
+                  </p>
+                )}
+              </Field>
+            )}
+          </div>
         )}
       </div>
 
@@ -602,6 +769,13 @@ export function ProjectsSection(props: {
                 const members = membersByProject[p.id] || [];
                 const selectedCount = (selectedBots[p.id] || []).length;
                 const shapeMeta = SHAPE_META[shapeOf(p.id)];
+                // Who can still be added: the roster minus the project's own
+                // members, filtered by the search box, staged picks first.
+                const addable = staffRows(
+                  props.bots.filter((bot) => !members.some((member) => member.bot_name === bot.name)),
+                  staffQuery,
+                  selectedBots[p.id] || [],
+                );
                 return (
                   <div key={p.id} className="rounded-xl border border-border/60 bg-card">
                     <div className="flex items-start gap-2 px-4 py-3 cursor-pointer" onClick={() => toggle(p)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && toggle(p)}>
@@ -670,6 +844,25 @@ export function ProjectsSection(props: {
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <Badge tone={p.status === "archived" ? "gray" : "green"}>{p.status}</Badge>
                         {/*
+                          Rename/retarget lives on the card itself: it opens the
+                          detail block and lands straight in the editor, so
+                          fixing a typo is one click rather than expand-then-hunt.
+                          It stops the row's own toggle, which would otherwise
+                          fold the block it just opened.
+                        */}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpen(p.id);
+                            setEditing({ id: p.id, name: p.name, instructions: p.instructions });
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
+                          title={`Edit ${p.name} — rename it or change its instructions`}
+                        >
+                          <Pencil className="size-3" /> Edit
+                        </button>
+                        {/*
                           "View more" is a real button rather than the row's own
                           expand: it swaps this whole surface for the project's
                           full read, so it must not be nested inside the clickable
@@ -688,33 +881,21 @@ export function ProjectsSection(props: {
                     </div>
               {open === p.id && (
                 <div className="px-4 pb-4 space-y-3 border-t border-border/50 pt-3">
-                  {editing?.id === p.id ? (
-                    <div className="space-y-2">
-                      <Field label="Project instructions" hint="The agent follows these in every conversation inside this project.">
-                        <textarea value={editing.instructions} onChange={(e) => setEditing({ id: p.id, instructions: e.target.value })} rows={3} className={inputCls} />
-                      </Field>
-                      <div className="flex gap-2">
-                        <Btn onClick={() => act(() => updateProject(p.id, { instructions: editing.instructions }).then(() => setEditing(null)), "Instructions saved.")}>Save</Btn>
-                        <Btn variant="ghost" onClick={() => setEditing(null)}>Cancel</Btn>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-2">
-                      <p className="text-xs text-muted-foreground flex-1 whitespace-pre-wrap">{p.instructions || "No instructions yet."}</p>
-                      <Btn variant="ghost" onClick={() => setEditing({ id: p.id, instructions: p.instructions })}>
-                        <Pencil className="size-3.5" /> Edit
-                      </Btn>
-                    </div>
-                  )}
-
+                  {/*
+                    Staff leads the expanded card: opening a project is how you
+                    find out who is on it, and the roster used to sit below the
+                    instructions block. Every mutation here re-reads the roster
+                    before it claims anything, so a 2xx attach is never painted
+                    as a joined agent.
+                  */}
                   <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
                         <p className="text-[11px] font-semibold inline-flex items-center gap-1.5">
-                          <Users className="size-3.5 text-primary" /> Project team {teamLoading[p.id] ? "(loading…)" : `(${members.length})`}
+                          <Users className="size-3.5 text-primary" /> Staff &amp; agents {teamLoading[p.id] ? "(loading…)" : `(${members.length})`}
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Add several bot profiles to collaborate in this project.
+                          Attach the agents this project works with. Two or more open a shared room.
                         </p>
                       </div>
                       <Btn variant="ghost" onClick={() => void refreshTeam(p.id)} disabled={teamLoading[p.id]}>
@@ -727,7 +908,10 @@ export function ProjectsSection(props: {
                     {teamLoading[p.id] ? (
                       <p className="text-[11px] text-muted-foreground">Loading project team…</p>
                     ) : members.length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground">No bots are attached yet.</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        No agents are attached yet — open <strong>Add agent</strong> to pick
+                        some.
+                      </p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {members.map((member) => (
@@ -752,56 +936,189 @@ export function ProjectsSection(props: {
 
                     {props.bots.length > 0 && (
                       <div className="space-y-2 border-t border-border/50 pt-3">
+                        {/*
+                          The roster shows only where it is needed: adding an
+                          agent, or choosing the role one is added under. The
+                          chips above already answer "who is on this project";
+                          this is every agent who is NOT on it, and it sat open
+                          under them by default — a wall of checkboxes for a
+                          decision nobody had asked for yet. The line beside the
+                          button keeps a staged selection from vanishing with
+                          the list it was staged from.
+                        */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          <label className="text-[10px] font-semibold text-muted-foreground" htmlFor={`role-${p.id}`}>
-                            New bot role
-                          </label>
-                          <input
-                            id={`role-${p.id}`}
-                            value={memberRole}
-                            onChange={(event) => setMemberRole(event.target.value)}
-                            maxLength={64}
-                            className="bg-card border border-border/70 rounded-lg px-2 py-1 text-[11px] min-w-32"
-                            placeholder="worker"
-                          />
+                          <Btn
+                            variant="ghost"
+                            onClick={() => setAddAgentOpen((previous) => !previous)}
+                            title={
+                              addAgentOpen
+                                ? "Hide the agent roster"
+                                : "Show the agent roster to add someone to this project"
+                            }
+                          >
+                            {addAgentOpen ? <X className="size-3.5" /> : <UserPlus className="size-3.5" />}
+                            {addAgentOpen ? "Hide roster" : "Add agent"}
+                          </Btn>
+                          {selectedCount > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {selectedCount} staged, not added yet
+                            </span>
+                          )}
+                          {/* Staged agents stay attachable while the list is
+                              closed: closing the roster must not be the way a
+                              selection becomes unreachable. */}
+                          {!addAgentOpen && selectedCount > 0 && (
+                            <Btn onClick={() => void attachSelectedBots(p.id)} disabled={memberBusy === p.id}>
+                              <UserPlus className="size-3.5" /> Add {selectedCount} selected bot{selectedCount === 1 ? "" : "s"}
+                            </Btn>
+                          )}
                         </div>
-                        <div className="grid sm:grid-cols-2 gap-1.5">
-                          {props.bots
-                            .filter((bot) => !members.some((member) => member.bot_name === bot.name))
-                            .map((bot) => {
-                              const checked = (selectedBots[p.id] || []).includes(bot.name);
-                              return (
-                                <label key={bot.name} className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-2 cursor-pointer hover:border-primary/40">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(event) =>
-                                      setSelectedBots((previous) => {
-                                        const current = previous[p.id] || [];
-                                        return {
-                                          ...previous,
-                                          [p.id]: event.target.checked
-                                            ? [...current, bot.name]
-                                            : current.filter((name) => name !== bot.name),
-                                        };
-                                      })
-                                    }
-                                    className="accent-primary"
-                                  />
-                                  <span className="min-w-0">
-                                    <span className="block text-[11px] font-medium truncate">{bot.display_name || bot.name}</span>
-                                    <span className="block text-[10px] text-muted-foreground font-mono truncate">@{bot.name}</span>
-                                  </span>
-                                </label>
-                              );
-                            })}
-                        </div>
+
+                        {addAgentOpen && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <label className="text-[10px] font-semibold text-muted-foreground" htmlFor={`role-${p.id}`}>
+                                New bot role
+                              </label>
+                              <input
+                                id={`role-${p.id}`}
+                                value={memberRole}
+                                onChange={(event) => setMemberRole(event.target.value)}
+                                maxLength={64}
+                                className="bg-card border border-border/70 rounded-lg px-2 py-1 text-[11px] min-w-32"
+                                placeholder="worker"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <input
+                                value={staffQuery}
+                                onChange={(event) => setStaffQuery(event.target.value)}
+                                placeholder="Search agents not on this project…"
+                                className={`${inputCls} !w-auto flex-1 min-w-40`}
+                                aria-label={`Search agents to add to ${p.name}`}
+                              />
+                              <Btn
+                                variant="ghost"
+                                onClick={() =>
+                                  setSelectedBots((previous) => ({
+                                    ...previous,
+                                    [p.id]: Array.from(new Set([...(previous[p.id] || []), ...addable.map((bot) => bot.name)])),
+                                  }))
+                                }
+                                disabled={addable.length === 0}
+                                title="Stage every agent this search currently shows"
+                              >
+                                <CheckCheck className="size-3.5" /> Select shown
+                              </Btn>
+                              <Btn
+                                variant="ghost"
+                                onClick={() => setSelectedBots((previous) => ({ ...previous, [p.id]: [] }))}
+                                disabled={selectedCount === 0}
+                              >
+                                <X className="size-3.5" /> Clear
+                              </Btn>
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-1.5">
+                              {addable.map((bot) => {
+                                const checked = (selectedBots[p.id] || []).includes(bot.name);
+                                return (
+                                  <label key={bot.name} className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-2 cursor-pointer hover:border-primary/40">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(event) =>
+                                        setSelectedBots((previous) => {
+                                          const current = previous[p.id] || [];
+                                          return {
+                                            ...previous,
+                                            [p.id]: event.target.checked
+                                              ? [...current, bot.name]
+                                              : current.filter((name) => name !== bot.name),
+                                          };
+                                        })
+                                      }
+                                      className="accent-primary"
+                                    />
+                                    <span className="min-w-0">
+                                      <span className="block text-[11px] font-medium truncate">{bot.display_name || bot.name}</span>
+                                      <span className="block text-[10px] text-muted-foreground font-mono truncate">@{bot.name}</span>
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {addable.length === 0 && (
+                              <p className="text-[11px] text-muted-foreground">
+                                {staffQuery.trim()
+                                  ? `No agent outside this project matches “${staffQuery.trim()}”.`
+                                  : "Every agent on the roster is already on this project."}
+                              </p>
+                            )}
+                            <Btn
+                              onClick={() => void attachSelectedBots(p.id)}
+                              disabled={memberBusy === p.id || selectedCount === 0}
+                            >
+                              <UserPlus className="size-3.5" /> {selectedCount > 0 ? `Add ${selectedCount} selected bot${selectedCount === 1 ? "" : "s"}` : "Select bots to add"}
+                            </Btn>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/*
+                    Rename travels with the instructions: a project's name was
+                    previously unchangeable from here, so fixing a typo meant
+                    deleting the project and stranding its conversations.
+                  */}
+                  <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <p className="text-[11px] font-semibold">Project details</p>
+                      {editing?.id !== p.id && (
                         <Btn
-                          onClick={() => void attachSelectedBots(p.id)}
-                          disabled={memberBusy === p.id || selectedCount === 0}
+                          variant="ghost"
+                          onClick={() => setEditing({ id: p.id, name: p.name, instructions: p.instructions })}
                         >
-                          <UserPlus className="size-3.5" /> {selectedCount > 0 ? `Add ${selectedCount} selected bot${selectedCount === 1 ? "" : "s"}` : "Select bots to add"}
+                          <Pencil className="size-3.5" /> Edit
                         </Btn>
+                      )}
+                    </div>
+                    {editing?.id === p.id ? (
+                      <div className="space-y-2">
+                        <Field label="Project name" hint="Shown everywhere this project is listed.">
+                          <input
+                            value={editing.name}
+                            onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                            className={inputCls}
+                            aria-label="Project name"
+                          />
+                        </Field>
+                        <Field label="Project instructions" hint="The agent follows these in every conversation inside this project.">
+                          <textarea value={editing.instructions} onChange={(e) => setEditing({ ...editing, instructions: e.target.value })} rows={3} className={inputCls} />
+                        </Field>
+                        <div className="flex gap-2">
+                          <Btn
+                            onClick={() =>
+                              act(
+                                () =>
+                                  updateProject(p.id, {
+                                    name: editing.name.trim() || p.name,
+                                    instructions: editing.instructions,
+                                  }).then(() => setEditing(null)),
+                                "Project updated.",
+                              )
+                            }
+                            disabled={!editing.name.trim() || (editing.name === p.name && editing.instructions === p.instructions)}
+                          >
+                            Save changes
+                          </Btn>
+                          <Btn variant="ghost" onClick={() => setEditing(null)}>Cancel</Btn>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-semibold">{p.name}</p>
+                        <p className="text-xs text-muted-foreground whitespace-pre-wrap">{p.instructions || "No instructions yet."}</p>
                       </div>
                     )}
                   </div>

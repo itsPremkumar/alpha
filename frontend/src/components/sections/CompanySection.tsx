@@ -25,6 +25,7 @@ import {
   ChevronRight,
   CircleDot,
   Coins,
+  ExternalLink,
   GitBranch,
   Loader2,
   Megaphone,
@@ -65,7 +66,10 @@ function reasonOf(err: unknown): string {
   return err instanceof Error && err.message.trim() ? err.message : "The Gateway gave no reason.";
 }
 
-export function CompanySection() {
+export function CompanySection(props: {
+  /** Open a linked project's full read (the Projects view's drill-down). */
+  onOpenProjectDetails?: (projectId: string) => void;
+}) {
   const [companies, setCompanies] = useState<CompanySummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -151,7 +155,14 @@ export function CompanySection() {
               ))}
             </div>
 
-            {selectedId && <CompanyDetail companyId={selectedId} panel={panel} setPanel={setPanel} />}
+            {selectedId && (
+              <CompanyDetail
+                companyId={selectedId}
+                panel={panel}
+                setPanel={setPanel}
+                onOpenProjectDetails={props.onOpenProjectDetails}
+              />
+            )}
           </>
         )
       )}
@@ -165,10 +176,13 @@ function CompanyDetail({
   companyId,
   panel,
   setPanel,
+  onOpenProjectDetails,
 }: {
   companyId: string;
   panel: Panel;
   setPanel: (p: Panel) => void;
+  /** Open a linked project's full read (the Projects view's drill-down). */
+  onOpenProjectDetails?: (projectId: string) => void;
 }) {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -244,7 +258,9 @@ function CompanyDetail({
       {panel === "overview" && <OverviewPanel data={data} onReload={reload} busy={busy} setBusy={setBusy} />}
       {panel === "workforce" && <WorkforcePanel data={data} onReload={reload} />}
       {panel === "work" && <WorkPanel data={data} onReload={reload} />}
-      {panel === "projects" && <ProjectsPanel data={data} />}
+      {panel === "projects" && (
+        <ProjectsPanel data={data} onOpenProjectDetails={onOpenProjectDetails} />
+      )}
       {panel === "groups" && <GroupsPanel data={data} onReload={reload} />}
       {panel === "budget" && <BudgetPanel data={data} />}
       {panel === "loop" && <LoopPanel data={data} onReload={reload} />}
@@ -625,7 +641,14 @@ function WorkPanel({ data, onReload }: { data: Overview; onReload: () => Promise
   );
 }
 
-function ProjectsPanel({ data }: { data: Overview }) {
+function ProjectsPanel({
+  data,
+  onOpenProjectDetails,
+}: {
+  data: Overview;
+  /** Open a linked project's full read. Optional: the panel works without it. */
+  onOpenProjectDetails?: (projectId: string) => void;
+}) {
   const [pid, setPid] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -669,6 +692,23 @@ function ProjectsPanel({ data }: { data: Overview }) {
                 <Badge tone="gray" title="The project store has not reported this project's status yet.">
                   not measured
                 </Badge>
+              )}
+              {/*
+                A linked project used to be a label you could read but not
+                follow: the id was shown, and the only route to the project
+                itself was the Projects tab plus a search for that id. The
+                company portfolio is exactly where you are looking at a project
+                you did not create here.
+              */}
+              {onOpenProjectDetails && (
+                <Btn
+                  variant="ghost"
+                  onClick={() => onOpenProjectDetails(p.project_id)}
+                  className="ml-auto"
+                  title={`Open the full read of ${p.title || p.project_id}`}
+                >
+                  <ExternalLink className="size-3.5" /> Full details
+                </Btn>
               )}
             </div>
           ))}

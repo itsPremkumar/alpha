@@ -8,6 +8,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  FolderSearch,
   LayoutGrid,
   ListTodo,
   Brain,
@@ -34,6 +35,16 @@ export interface ProjectDropdownMenuProps {
   onNewConversation: (projectId: string | null) => void;
   onSelectThread?: (threadId: string) => void;
   onOpenOverview?: () => void;
+  /**
+   * Open this project's *full* read — the Projects view's drill-down, which
+   * re-reads every route the Gateway holds for the project.
+   *
+   * Distinct from `onOpenOverview`, which toggles the in-chat inspector beside
+   * the transcript: one is a summary next to the conversation, the other is the
+   * whole project. The id is passed in so the caller never re-derives which
+   * project the menu was opened for.
+   */
+  onOpenDetails?: (projectId: string) => void;
   onOpenFiles?: () => void;
   onOpenTasks?: () => void;
   onOpenKnowledge?: () => void;
@@ -57,6 +68,7 @@ export function ProjectDropdownMenu({
   onNewConversation,
   onSelectThread,
   onOpenOverview,
+  onOpenDetails,
   onOpenFiles,
   onOpenTasks,
   onOpenKnowledge,
@@ -195,6 +207,32 @@ export function ProjectDropdownMenu({
                 </span>
               </div>
             </button>
+
+            {/* 1b. The whole project, not the summary beside the transcript.
+                "Project overview" toggles the in-chat inspector; this leaves the
+                conversation and opens the Projects view's own drill-down, which
+                re-reads every route the Gateway holds for this project. Two
+                controls that both said "details" would be indistinguishable, so
+                each names what it actually opens. */}
+            {project && onOpenDetails && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenDetails(project.id);
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-xs text-foreground hover:bg-muted/70 transition-colors cursor-pointer"
+              >
+                <FolderSearch className="size-3.5 text-primary shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium block truncate">Full project details</span>
+                  <span className="text-[10px] text-muted-foreground block truncate">
+                    Staff, crew, runs, memory & health
+                  </span>
+                </div>
+              </button>
+            )}
 
             {/* 2. New Conversation */}
             <button

@@ -45,6 +45,14 @@ export interface ProjectContextHeaderProps {
   onNewConversation: (projectId: string | null) => void;
   onNewProject?: () => void;
   onOpenView: (view: WorkspaceView) => void;
+  /**
+   * Open the selected project's full read (Projects → drill-down).
+   *
+   * The header already offers the in-chat inspector through
+   * `onToggleInspector`; this is the way out to the *whole* project from the
+   * conversation you are reading it from.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
   activeTab?: WorkspaceContextTab;
   onTabChange?: (tab: WorkspaceContextTab) => void;
   onToggleInspector?: () => void;
@@ -67,6 +75,7 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
     onNewConversation,
     onNewProject,
     onOpenView,
+    onOpenProjectDetails,
     activeTab = "conversation",
     onTabChange,
     onToggleInspector,
@@ -152,6 +161,11 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
             onNewConversation={onNewConversation}
             onSelectThread={onSelectThread}
             onOpenOverview={onToggleInspector || (() => onOpenView("projects"))}
+            /* No fallback here on purpose: a bare view switch would show the
+               "Full project details" item and then open the project *list*,
+               which is not what the label promises. Without a real handler the
+               item is not offered at all. */
+            onOpenDetails={onOpenProjectDetails}
             onOpenFiles={() => onTabChange?.("files")}
             onOpenTasks={() => onTabChange?.("tasks")}
             onOpenKnowledge={() => onTabChange?.("knowledge")}

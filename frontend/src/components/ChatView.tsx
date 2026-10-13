@@ -142,6 +142,8 @@ import {
   Check,
   FileDown,
   PanelRight,
+  FolderOpen,
+  ChevronRight,
 } from "lucide-react";
 
 /**
@@ -773,6 +775,31 @@ export default function ChatView({
    * project's controls" lands on someone else's project.
    */
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(null);
+  /**
+   * One-shot request to open one project's *full* read from anywhere in the
+   * shell (chat header, conversation footer, sidebar group, Companies row …).
+   *
+   * The full read is `ProjectInspectorSection`, which only exists inside
+   * `ProjectsSection`, so a deep link has to switch the view *and* hand the
+   * section the project it must open. `nonce` makes a repeat request for the
+   * same project a new event: without it, asking for the project the section is
+   * already showing would be a state change React sees as "unchanged".
+   *
+   * The section clears this through `onOpenProjectRequestHandled` once it has
+   * opened the project, which is what stops the inspector from popping open
+   * again on the next mount of the view — a kept request would re-fire every
+   * time the operator came back to the Projects tab.
+   */
+  const [projectDetailRequest, setProjectDetailRequest] = useState<{
+    projectId: string;
+    nonce: number;
+  } | null>(null);
+  const projectDetailNonceRef = useRef(0);
+  const openProjectDetails = (projectId: string) => {
+    projectDetailNonceRef.current += 1;
+    setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current });
+    setView("projects");
+  };
   const voiceViewRef = useRef(view);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "models" | "connectivity" | "appearance" | "diagnostics"
@@ -2990,6 +3017,7 @@ export default function ChatView({
             onImportHistory={handleImportHistory}
             serverOnline={gatewayOk === true && serverHistoryError === null}
             onOpenSettings={() => setView("settings")}
+            onOpenProjectDetails={openProjectDetails}
             onProjectsChanged={async () => {
               setProjects(await listProjects());
             }}
@@ -3019,6 +3047,7 @@ export default function ChatView({
                   void handlePickProject(projectId);
                 }}
                 onOpenView={(target) => setView(target)}
+                onOpenProjectDetails={openProjectDetails}
                 onProjectsChanged={async () => {
                   setProjects(await listProjects());
                 }}
@@ -3123,6 +3152,7 @@ export default function ChatView({
               onNewConversation={(projectId) => handleNewChat(projectId)}
               onNewProject={() => setView("projects")}
               onOpenView={(target) => setView(target)}
+              onOpenProjectDetails={openProjectDetails}
               activeTab={activeContextTab}
               onTabChange={(tab) => setActiveContextTab(tab)}
               onToggleInspector={() => setInspectorOpen((v) => !v)}
@@ -3310,11 +3340,12 @@ export default function ChatView({
                     display_name: b.display_name || b.name,
                     avatar: b.avatar,
                   }))}
+                  onOpenProjectDetails={openProjectDetails}
                 />
               </Suspense>
             ) : view === "company" ? (
               <Suspense fallback={<SectionFallback />}>
-                <CompanySection />
+                <CompanySection onOpenProjectDetails={openProjectDetails} />
               </Suspense>
             ) : view === "runs" ? (
               <Suspense fallback={<SectionFallback />}>
@@ -3385,6 +3416,8 @@ export default function ChatView({
                     setFocusedProjectId(projectId);
                     setView("workforce");
                   }}
+                  openProjectRequest={projectDetailRequest}
+                  onOpenProjectRequestHandled={() => setProjectDetailRequest(null)}
                   onThreadsChanged={() => {
                     void reloadThreads().catch((error) =>
                       flash(`Could not refresh chat history. ${errMsg(error)}`),
@@ -3419,6 +3452,7 @@ export default function ChatView({
                     display_name: b.display_name || b.name,
                   }))}
                   focusedProjectId={focusedProjectId}
+                  onOpenProjectDetails={openProjectDetails}
                 />
               </Suspense>
             ) : view === "system" ? (
@@ -3532,6 +3566,7 @@ export default function ChatView({
                         display_name: b.display_name || b.name,
                         avatar: b.avatar,
                       }))}
+                      onOpenProjectDetails={openProjectDetails}
                     />
                   </Suspense>
                 ) : activeContextTab === "knowledge" ? (
@@ -4106,6 +4141,36 @@ export default function ChatView({
             inset is read from the viewport so the bar clears the indicator
             without padding it on devices that have none. */}
                     <footer className="shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+                      {/*
+                        The project this conversation belongs to, with a way out
+                        to the whole of it. It sits at the *bottom*, where the
+                        conversation is being read: the header's project chip
+                        only toggles the inspector beside the transcript, so
+                        from inside a project-scoped chat there was previously no
+                        route to the project's staff, crew, runs or health at
+                        all. The raw id is used when the name could not be
+                        resolved — an unresolved project can still be opened by
+                        id, and hiding the link would be the one case where the
+                        operator most needs it.
+                      */}
+                      {(activeProject || activeProjectId) && (
+                        <div className="flex items-center gap-1.5 flex-wrap pb-2 text-[11px] text-muted-foreground">
+                          <FolderOpen className="size-3 shrink-0" aria-hidden="true" />
+                          <span className="truncate max-w-48" title={activeProjectId ? `Project id: ${activeProjectId}` : undefined}>
+                            {activeProject?.name || activeProjectId}
+                          </span>
+                          <span aria-hidden="true">·</span>
+                          <button
+                            type="button"
+                            onClick={() => activeProjectId && openProjectDetails(activeProjectId)}
+                            disabled={!activeProjectId}
+                            className="inline-flex items-center gap-1 font-semibold text-primary hover:underline cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                            title="Open this project's staff, crew, runs, memory and health"
+                          >
+                            View full project details <ChevronRight className="size-3" aria-hidden="true" />
+                          </button>
+                        </div>
+                      )}
                       <Composer
                         botDisplayName={
                           activeBot
@@ -4248,6 +4313,7 @@ export default function ChatView({
                       onClose={() => setInspectorOpen(false)}
                       onPickProject={(id) => void handlePickProject(id)}
                       onNewProject={() => setView("projects")}
+                      onOpenProjectDetails={openProjectDetails}
                     />
                   </aside>
                 )}
