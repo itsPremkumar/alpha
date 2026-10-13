@@ -46,12 +46,16 @@ from alpha.budgets.spend import (
 class _Gateway:
     id: str
     documented_models: list[str] = field(default_factory=list)
+    base_url: str | None = None
 
 
 @dataclass
 class _Priced:
     name: str
     pricing: Any = None
+    use: str | None = None
+    model: str | None = None
+    base_url: str | None = None
 
 
 @dataclass
@@ -164,6 +168,42 @@ class TestFreeVerdict:
         assert verdict.is_free is False
         assert verdict.source == "unpriced"
         assert "never assumed free" in verdict.reason
+
+    def test_declared_alpha_free_router_is_free_in_zero_cost_mode(self) -> None:
+        """The configured keyless router is a declared free adapter, not an unknown model."""
+        config = _Config(
+            models=[_Priced(name="alpha-free", use="alpha.models.free_router:ChatFreeLLM", model="auto")],
+            free_gateways=[_Gateway(id="kilo", documented_models=["kilo-auto/free"])],
+        )
+
+        verdict = is_model_free("alpha-free", config=config)
+
+        assert verdict.is_free is True
+        assert verdict.source == "free_router"
+        assert "declared free gateways" in verdict.reason
+
+    def test_direct_model_requires_matching_declared_free_gateway(self) -> None:
+        config = _Config(
+            models=[_Priced(name="vireonix-free", use="langchain_openai:ChatOpenAI", model="auto", base_url="https://vireonix.ai/v1")],
+            free_gateways=[_Gateway(id="vireonix", documented_models=["auto"], base_url="https://vireonix.ai")],
+        )
+
+        verdict = is_model_free("vireonix-free", config=config)
+
+        assert verdict.is_free is True
+        assert verdict.source == "free_gateways"
+        assert "vireonix" in verdict.reason
+
+    def test_free_named_direct_model_is_not_free_without_endpoint_declaration(self) -> None:
+        config = _Config(
+            models=[_Priced(name="paid-free-label", use="langchain_openai:ChatOpenAI", model="auto", base_url="https://paid.example/v1")],
+            free_gateways=[_Gateway(id="vireonix", documented_models=["auto"], base_url="https://vireonix.ai")],
+        )
+
+        verdict = is_model_free("paid-free-label", config=config)
+
+        assert verdict.is_free is False
+        assert verdict.source == "unpriced"
 
     def test_zero_price_on_both_axes_is_free(self) -> None:
         config = _Config(model_pricing={"free-thing": _block(0.0, 0.0)})
@@ -302,7 +342,13 @@ class TestFactoryGate:
     """
 
     @staticmethod
-    def _config(models: list[dict[str, Any]], *, mode: str | None, default: str) -> Any:
+    def _config(
+        models: list[dict[str, Any]],
+        *,
+        mode: str | None,
+        default: str,
+        free_gateways: list[dict[str, Any]] | None = None,
+    ) -> Any:
         """A real ``AppConfig``.
 
         ``models[].model`` and ``sandbox`` are both required by the schema, so a
@@ -318,6 +364,8 @@ class TestFactoryGate:
             "sandbox": SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
             "default_model": default,
         }
+        if free_gateways is not None:
+            payload["free_gateways"] = free_gateways
         if mode is not None:
             payload["spend"] = {"mode": mode}
         return AppConfig(**payload)
@@ -340,6 +388,34 @@ class TestFactoryGate:
         with pytest.raises(PaidCallRefused) as excinfo:
             create_chat_model("probe-model", app_config=config)
         assert excinfo.value.model_name == "probe-model"
+
+    def test_declared_free_router_is_constructed_in_zero_cost(self) -> None:
+        """The production keyless router must remain usable under the no-spend gate."""
+        from alpha.models.factory import create_chat_model
+
+        config = self._config(
+            [
+                {
+                    "name": "alpha-free",
+                    "display_name": "Alpha Free",
+                    "use": "alpha.models.free_router:ChatFreeLLM",
+                    "model": "auto",
+                }
+            ],
+            mode="zero_cost",
+            default="alpha-free",
+            free_gateways=[
+                {
+                    "id": "kilo",
+                    "base_url": "https://api.kilo.ai",
+                    "documented_models": ["kilo-auto/free"],
+                }
+            ],
+        )
+
+        model = create_chat_model("alpha-free", app_config=config)
+
+        assert model._llm_type == "free-llm-router"
 
     def test_a_zero_priced_model_passes_the_gate_in_zero_cost(self) -> None:
         """The gate must not refuse everything — that is a DoS, not a policy.

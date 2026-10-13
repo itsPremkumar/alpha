@@ -360,6 +360,7 @@ async def test_completed_apex_run_uses_registered_acceptance_probes(tmp_path: Pa
         assert updated.acceptance["evaluator"] == "test_probe"
         assert updated.acceptance["passed"] is True
         assert updated.state is ApexSessionState.COMPLETED
+        assert updated.dispatch_state == "completed"
         assert result["completed"] == 1
         assert result["awaiting_verification"] == 0
     elif measured is False:
@@ -380,6 +381,73 @@ async def test_completed_apex_run_uses_registered_acceptance_probes(tmp_path: Pa
         assert result["completed"] == 0
     acceptance_events = [event for event in store.read_events(session.session_id) if event.event_type == "acceptance.registry_report_submitted"]
     assert bool(acceptance_events) is (measured is not None)
+
+
+@pytest.mark.asyncio
+async def test_completed_apex_run_auto_verifies_explicit_file_readback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.executive as executive_module
+    import alpha.apex.mode as mode_module
+    import alpha.apex.store as store_module
+    import alpha.mission.acceptance as acceptance_module
+    import app.gateway.autonomy.supervisor as supervisor_module
+    from alpha.mission.acceptance import AcceptanceRegistry
+    from app.gateway.autonomy.loops import apex_execution_tick
+
+    owner, thread_id = "operator", "apex-auto-readback"
+    expected = "apex-verifier-evidence"
+    contract = profile_for("autonomous")
+    store = ApexStore(tmp_path / "sessions.json")
+    modes = ApexModeStore(tmp_path / "mode.json")
+    modes.enable(thread_id, "autonomous", owner=owner)
+    session = store.create(
+        owner=owner,
+        objective="write and verify a marker",
+        profile="autonomous",
+        contract_digest=contract.digest(),
+        contract_snapshot=contract.to_dict(),
+        thread_id=thread_id,
+        acceptance_criteria=[f'Read the file back and verify it contains exactly "{expected}".'],
+    )
+    store.update(session.session_id, state=ApexSessionState.ACTIVE, dispatch_state="running", run_id="run-apex-readback", run_status="running")
+    monkeypatch.setattr(acceptance_module, "get_acceptance_registry", lambda: AcceptanceRegistry())
+    monkeypatch.setattr(executive_module, "_fleet_stopped", lambda: (False, ""))
+    monkeypatch.setattr(store_module, "get_apex_store", lambda: store)
+    monkeypatch.setattr(mode_module, "get_apex_mode_store", lambda: modes)
+    monkeypatch.setattr(supervisor_module, "_fleet_admits_tick", lambda _loop_id: True)
+
+    class CompletedRunManager:
+        async def get(self, run_id, *, user_id=None, raise_on_store_error=False):
+            assert run_id == "run-apex-readback"
+            assert user_id == owner
+            return SimpleNamespace(
+                run_id=run_id,
+                status=SimpleNamespace(value="success"),
+                total_input_tokens=7,
+                total_output_tokens=3,
+                llm_call_count=2,
+            )
+
+    class ReadbackEventStore:
+        async def list_events(self, thread, run, *, event_types, limit, after_seq):
+            assert (thread, run) == (thread_id, "run-apex-readback")
+            assert after_seq == 0
+            return [
+                {"seq": 1, "event_type": "llm.ai.response", "content": {"type": "ai", "tool_calls": [{"id": "write-1", "name": "write_file", "args": {"path": "/workspace/marker.txt", "content": expected}}]}},
+                {"seq": 2, "event_type": "llm.tool.result", "content": {"name": "write_file", "tool_call_id": "write-1", "status": "success"}},
+                {"seq": 3, "event_type": "llm.ai.response", "content": {"type": "ai", "tool_calls": [{"id": "read-1", "name": "read_file", "args": {"path": "/workspace/marker.txt"}}]}},
+                {"seq": 4, "event_type": "llm.tool.result", "content": {"name": "read_file", "tool_call_id": "read-1", "status": "success", "content": expected}},
+            ]
+
+    app = SimpleNamespace(state=SimpleNamespace(run_manager=CompletedRunManager(), run_event_store=ReadbackEventStore()))
+    result = await apex_execution_tick(app, session_id=session.session_id)
+
+    updated = store.get(session.session_id)
+    assert updated is not None
+    assert updated.acceptance["evaluator"] == "run_tool_readback"
+    assert updated.acceptance["passed"] is True
+    assert updated.state is ApexSessionState.COMPLETED
+    assert result["completed"] == 1
+    assert any(event.event_type == "acceptance.tool_readback_report_submitted" for event in store.read_events(session.session_id))
 
 
 @pytest.mark.asyncio

@@ -186,7 +186,12 @@ def test_the_harness_checkpoint_still_stores_a_float(tmp_path: Path) -> None:
     from alpha.tools.builtins.code_agentic_core import create_shadow_checkpoint
 
     (tmp_path / "file.txt").write_text("x", encoding="utf-8")
-    cp = create_shadow_checkpoint(label="stored shape", root_path=str(tmp_path), target_files=["file.txt"])
+    cp = create_shadow_checkpoint(
+        label="stored shape",
+        root_path=str(tmp_path),
+        target_files=["file.txt"],
+        root_is_trusted=True,
+    )
     assert isinstance(cp.created_at, float), "the harness model must keep its float; the fix belongs at the API boundary"
     assert cp.created_at > 1_600_000_000, "the checkpoint claims a pre-2020 creation time"
 

@@ -68,6 +68,15 @@ def _make_models_app(app_config: AppConfig) -> FastAPI:
     return app
 
 
+@pytest.fixture(autouse=True)
+def _isolate_augmented_model_catalogs(monkeypatch):
+    """Keep authorization tests hermetic; live gateway discovery is separate."""
+    from alpha.models import free_router, provider_manager
+
+    monkeypatch.setattr(provider_manager, "get_active_provider_models", lambda _config: [])
+    monkeypatch.setattr(free_router, "get_free_router", lambda: SimpleNamespace(available_free_models=lambda: []))
+
+
 class _RecordingProvider:
     """Provider that records all requests and can deny/error specific targets."""
 
@@ -122,6 +131,50 @@ def test_list_models_disabled_returns_all(monkeypatch):
     names = [m["name"] for m in response.json()["models"]]
     assert names == ["gpt-4", "claude-3"]
     cached.assert_not_called()
+
+
+def test_get_alpha_free_model_preserves_free_router_metadata():
+    """The detail endpoint must not label the configured free router as paid."""
+    app_config = _make_app_config(["alpha-free"])
+
+    with TestClient(_make_models_app(app_config)) as client:
+        response = client.get("/api/models/alpha-free")
+
+    assert response.status_code == 200
+    model = response.json()
+    assert model["is_free"] is True
+    assert model["provider"] == "free"
+    assert model["quota_type"] == "keyless"
+    assert model["free_status"] == "online"
+
+
+def test_list_models_authorization_filters_augmented_catalogs(monkeypatch):
+    """Provider and keyless catalog entries obey the same role allowlist."""
+    from alpha.models import free_router, provider_manager
+
+    provider = RbacAuthorizationProvider(roles={"user": {"models": {"allow": ["gpt-4"]}}})
+    _enable_authorization(monkeypatch, provider)
+    app_config = _make_app_config(["gpt-4", "claude-3"])
+    monkeypatch.setattr(
+        "app.gateway.routers.models.get_optional_user_from_request",
+        AsyncMock(return_value=_user()),
+    )
+    monkeypatch.setattr(
+        provider_manager,
+        "get_active_provider_models",
+        lambda _config: [{"name": "provider-secret", "model": "secret", "display_name": "Secret", "description": "", "supports_thinking": False}],
+    )
+    monkeypatch.setattr(
+        free_router,
+        "get_free_router",
+        lambda: SimpleNamespace(available_free_models=lambda: [{"id": "free:provider:secret", "model_id": "secret", "name": "Secret free model", "provider": "provider"}]),
+    )
+
+    with TestClient(_make_models_app(app_config)) as client:
+        response = client.get("/api/models")
+
+    assert response.status_code == 200
+    assert [model["name"] for model in response.json()["models"]] == ["gpt-4"]
 
 
 def test_list_models_anonymous_user_returns_all(monkeypatch):

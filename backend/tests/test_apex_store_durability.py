@@ -305,6 +305,44 @@ def test_apex_dispatch_link_and_run_usage_are_durable_and_idempotent(store: Apex
     assert restarted.usage.measured_run_ids == ["run-1"]
 
 
+def test_completed_acceptance_does_not_regress_and_legacy_projection_is_normalized(store: ApexStore) -> None:
+    session = _session(store)
+    store.update(
+        session.session_id,
+        state=ApexSessionState.COMPLETED,
+        run_id="run-accepted",
+        run_status="success",
+        dispatch_state="awaiting_verification",
+        acceptance={
+            "passed": True,
+            "all_evaluated": True,
+            "all_hold": True,
+            "criteria": [{"verdict": "met", "evaluated": True, "holds": True}],
+        },
+    )
+
+    restarted = ApexStore(store.storage_path)
+    restored = restarted.get(session.session_id)
+    assert restored is not None
+    assert restored.dispatch_state == "completed"
+    assert restarted.record_run_status(session.session_id, run_id="run-accepted", status="success")
+    assert restarted.get(session.session_id).dispatch_state == "completed"
+
+
+def test_completed_session_without_complete_passing_report_is_not_normalized(store: ApexStore) -> None:
+    session = _session(store)
+    store.update(
+        session.session_id,
+        state=ApexSessionState.COMPLETED,
+        dispatch_state="awaiting_verification",
+        acceptance={"passed": True, "all_evaluated": True, "all_hold": True, "criteria": []},
+    )
+
+    restored = ApexStore(store.storage_path).get(session.session_id)
+    assert restored is not None
+    assert restored.dispatch_state == "awaiting_verification"
+
+
 def test_apex_recovered_run_link_is_compare_and_set(store: ApexStore) -> None:
     session = _session(store)
     store.set_state(session.session_id, ApexSessionState.ACTIVE)

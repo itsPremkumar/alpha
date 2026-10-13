@@ -21,7 +21,6 @@ from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.skills.storage import get_or_new_skill_storage, get_or_new_user_skill_storage
 from alpha.skills.types import Skill, SkillCategory
 from alpha.subagents import get_available_subagent_names
-from alpha.tools.builtins.tool_search import get_deferred_tools_prompt_section
 
 if TYPE_CHECKING:
     from alpha.config.app_config import AppConfig
@@ -1397,6 +1396,8 @@ def apply_prompt_template(
     )
 
     # Get deferred tools section (tool_search)
+    from alpha.tools.builtins.tool_search import get_deferred_tools_prompt_section
+
     deferred_tools_section = get_deferred_tools_prompt_section(deferred_names=deferred_names)
 
     # Build ACP agent section only if ACP agents are configured

@@ -100,6 +100,11 @@ def _pricing_value(model: Any, key: str) -> Any:
     return pricing.get(key)
 
 
+def _is_free_model(model: Any) -> bool:
+    """Keep configured keyless router names free in both model projections."""
+    return bool(model.name in ("alpha-free", "free") or model.name.startswith(("free:", "alpha-free:")) or getattr(model, "is_free", False))
+
+
 class ModelsListResponse(BaseModel):
     """Response model for listing all models."""
 
@@ -299,17 +304,18 @@ async def list_models(
     request: Request,
     config: AppConfig = Depends(get_config),
 ) -> ModelsListResponse:
-    """List all available models from configuration.
+    """List all models declared in config and the live provider catalogs.
 
     Returns model information suitable for frontend display,
     excluding sensitive fields like API keys and internal configuration.
 
     When ``authorization.enabled`` is true, only models the caller's role may
-    ``list`` are returned (filtered via ``provider.filter_resources``). A
-    provider error yields an empty list (fail-closed) or all models (fail-open).
+    ``list`` are returned (filtered via ``provider.filter_resources``) across
+    every source. A provider error yields an empty list (fail-closed) or all
+    models (fail-open).
 
     Returns:
-        A list of all configured models with their metadata and token usage display settings.
+        A list of available models with their metadata and token usage display settings.
 
     Example Response:
         ```json
@@ -341,30 +347,11 @@ async def list_models(
     visible_models = config.models
     fail_closed = config.authorization.fail_closed
 
-    user = await get_optional_user_from_request(request)
-    if user is not None:
-        try:
-            provider, principal = resolve_model_authorization(user, is_internal=_is_internal_caller(request, user))
-        except _AuthorizationUnavailable as exc:
-            if exc.fail_closed:
-                visible_models = []
-        else:
-            if provider is not None and principal is not None:
-                try:
-                    allowed_names = provider.filter_resources(principal, "model", [m.name for m in config.models])
-                    if not isinstance(allowed_names, list) or any(not isinstance(n, str) for n in allowed_names):
-                        raise TypeError("AuthorizationProvider.filter_resources must return list[str]")
-                    allowed_set = set(allowed_names)
-                    visible_models = [m for m in config.models if m.name in allowed_set]
-                except Exception:
-                    logger.warning("Authorization provider failed while filtering models", exc_info=True)
-                    visible_models = [] if fail_closed else config.models
-
     models = []
     seen_names: set[str] = set()
 
     for model in visible_models:
-        is_free_model = bool(model.name in ("alpha-free", "free") or model.name.startswith("free:") or model.name.startswith("alpha-free:") or getattr(model, "is_free", False))
+        is_free_model = _is_free_model(model)
         models.append(
             ModelResponse(
                 name=model.name,
@@ -455,6 +442,29 @@ async def list_models(
                 seen_names.add(fm["id"])
     except Exception as exc:
         logger.debug("Could not augment models list with free models: %s", exc)
+
+    # Apply authorization after every namespace has been projected. The
+    # configured, provider-managed, and keyless-router catalogs are one model
+    # resource set; filtering only `config.models` leaks catalog entries when
+    # a role allowlist or denylist is active.
+    user = await get_optional_user_from_request(request)
+    if user is not None:
+        try:
+            provider, principal = resolve_model_authorization(user, is_internal=_is_internal_caller(request, user))
+        except _AuthorizationUnavailable as exc:
+            if exc.fail_closed:
+                models = []
+        else:
+            if provider is not None and principal is not None:
+                try:
+                    allowed_names = provider.filter_resources(principal, "model", [model.name for model in models])
+                    if not isinstance(allowed_names, list) or any(not isinstance(name, str) for name in allowed_names):
+                        raise TypeError("AuthorizationProvider.filter_resources must return list[str]")
+                    allowed_set = set(allowed_names)
+                    models = [model for model in models if model.name in allowed_set]
+                except Exception:
+                    logger.warning("Authorization provider failed while filtering models", exc_info=True)
+                    models = [] if fail_closed else models
 
     return ModelsListResponse(
         models=models,
@@ -858,6 +868,10 @@ async def get_model(
         context_window=_positive_int(getattr(model, "context_window", None)),
         input_price_per_million=_positive_float(_pricing_value(model, "input_per_million")),
         output_price_per_million=_positive_float(_pricing_value(model, "output_per_million")),
+        provider=getattr(model, "provider", None) or ("free" if _is_free_model(model) else None),
+        is_free=_is_free_model(model),
+        quota_type="keyless" if _is_free_model(model) else "paid",
+        free_status="online" if _is_free_model(model) else None,
     )
 
 

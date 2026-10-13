@@ -20,7 +20,7 @@ Two honest problems this module refuses to paper over
    reached by accident.
 
 2. **"Free" is a verdict with a source, not a boolean.** The answer comes from
-   one of four config namespaces, and each has different authority. A caller
+   one of five sources, and each has different authority. A caller
    needs to know *which* one decided, because an operator who adds a gateway to
    ``free_gateways`` and an entry to ``models[]`` with different pricing is
    looking at a configuration conflict, not a rounding error.
@@ -43,6 +43,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
+from urllib.parse import urlsplit
 
 __all__ = [
     "DEFAULT_COST_INPUT_PER_1K",
@@ -106,7 +107,7 @@ _LOCAL_NAME_MARKERS: Final[tuple[str, ...]] = ("ollama/", "lmstudio/", "local/",
 class FreeVerdict:
     """Whether a model costs money, and which configuration said so.
 
-    ``source`` is not decoration. ``config.yaml`` carries four namespaces that
+    ``source`` is not decoration. ``config.yaml`` carries multiple sources that
     can each claim a different answer for the same model, and an operator
     resolving "why did it refuse?" needs the winning one named.
     """
@@ -264,11 +265,14 @@ def is_model_free(model_name: str, *, config: Any | None = None) -> FreeVerdict:
     Checked in **authority order**, and the first hit wins:
 
     1. ``local_model`` — a name fragment meaning operator hardware. Always free.
-    2. ``free_gateways`` — a gateway the operator declared keyless.
-    3. ``zero_price`` — ``model_pricing`` / ``models[].pricing`` say zero on both
+    2. ``free_router`` — the named model is built by Alpha's keyless router,
+       which can call only the declared ``free_gateways``.
+    3. ``free_gateways`` — a documented model, or a direct model whose endpoint
+       host and served model id match the operator declaration.
+    4. ``zero_price`` — ``model_pricing`` / ``models[].pricing`` say zero on both
        axes. Computed, not trusted: a free-input/paid-output model is **not**
        free, which is the rule ``models/discovery.py`` already applies.
-    4. ``unpriced`` — nothing priced it. **Not free.** Assuming free is the
+    5. ``unpriced`` — nothing priced it. **Not free.** Assuming free is the
        exact mistake that turns a budget into a suggestion.
 
     An unknown model in a permissive mode is still reported honestly here; only
@@ -289,7 +293,45 @@ def is_model_free(model_name: str, *, config: Any | None = None) -> FreeVerdict:
     if any(clean.startswith(marker) or marker in clean for marker in _LOCAL_NAME_MARKERS):
         return FreeVerdict(True, "local_model", "model name declares operator-hosted execution")
 
-    for gateway in getattr(config, "free_gateways", None) or []:
+    # A configured ChatFreeLLM is a router over the operator-declared keyless
+    # gateways, not an unpriced provider. Requiring the concrete adapter and a
+    # non-empty gateway declaration keeps a model's display name from granting
+    # free status by itself.
+    configured_models = getattr(config, "models", None) or []
+    configured_model = next(
+        (entry for entry in configured_models if str(getattr(entry, "name", "")).strip().lower() == clean),
+        None,
+    )
+    gateways = getattr(config, "free_gateways", None) or []
+    if configured_model is not None:
+        use = str(getattr(configured_model, "use", "") or "").strip()
+        adapter_module, separator, adapter_name = use.partition(":")
+        if separator and adapter_module == "alpha.models.free_router" and adapter_name == "ChatFreeLLM" and gateways:
+            return FreeVerdict(True, "free_router", "configured keyless router uses declared free gateways")
+
+        # A direct OpenAI-compatible model is free only when both its exact
+        # served model id and endpoint host match an operator-declared keyless
+        # gateway. A '-free' model name or a matching model id alone is not
+        # enough to establish the route.
+        configured_model_id = str(getattr(configured_model, "model", "") or "").strip().lower()
+        configured_base_url = str(getattr(configured_model, "base_url", "") or "").strip()
+        try:
+            configured_host = (urlsplit(configured_base_url).hostname or "").lower().rstrip(".")
+        except ValueError:
+            configured_host = ""
+        if configured_host and configured_model_id:
+            for gateway in gateways:
+                documented = {str(item).strip().lower() for item in (getattr(gateway, "documented_models", None) or ())}
+                gateway_base_url = str(getattr(gateway, "base_url", "") or "").strip()
+                try:
+                    gateway_host = (urlsplit(gateway_base_url).hostname or "").lower().rstrip(".")
+                except ValueError:
+                    gateway_host = ""
+                if configured_host == gateway_host and configured_model_id in documented:
+                    gateway_name = str(getattr(gateway, "id", "configured free gateway"))
+                    return FreeVerdict(True, "free_gateways", f"served by the keyless gateway '{gateway_name}'")
+
+    for gateway in gateways:
         documented = {str(m).lower() for m in (getattr(gateway, "documented_models", None) or ())}
         if clean in documented:
             return FreeVerdict(True, "free_gateways", f"served by the keyless gateway '{getattr(gateway, 'id', '?')}'")

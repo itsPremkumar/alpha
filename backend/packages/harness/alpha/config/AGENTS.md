@@ -126,6 +126,12 @@ The deprecated `checkpointer` section remains backward compatible and, when
 present, overrides `database` for the LangGraph checkpointer and Store only;
 application repositories continue to use `database`.
 
+Run messages and execution events use that same SQL engine in the shipped
+`config.example.yaml` (`run_events.backend: db`) so the UI history survives a
+Gateway restart. `memory` is for disposable tests, while `jsonl` is a single-node
+persistent alternative. `run_events` is startup-only; changing its backend
+requires a Gateway restart.
+
 Configuration priority:
 1. Explicit `config_path` argument
 2. `ALPHA_CONFIG_PATH` environment variable

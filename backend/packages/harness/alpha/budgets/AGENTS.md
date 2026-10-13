@@ -36,7 +36,7 @@ gate.
 * **Pricing data.** Prices are read from `config.yaml`; this package never holds
   a table of its own beyond the documented per-1k defaults.
 
-## Four load-bearing invariants
+## Five load-bearing invariants
 
 1. **An unpriced model reports `None`, never `0.0`.**
    `CostGovernor.MODEL_COST_PER_1K` falls back to a `"default"` rate, so an
@@ -49,12 +49,19 @@ gate.
    price of zero. `is_model_free` returns `source="unpriced"`, `is_free=False`,
    and `zero_cost` refuses it.
 
-3. **Free is zero on BOTH axes, computed not trusted.** Providers label
+3. **The configured keyless router is free by adapter provenance.** The
+   `alpha.models.free_router:ChatFreeLLM` adapter may use only the declared
+   `free_gateways`; its configured model name (`alpha-free`) is not treated as
+   an arbitrary unpriced model. A direct OpenAI-compatible model is recognized
+   as free only when both its endpoint host and model id match a declared
+   keyless gateway. A `-free` label alone proves nothing.
+
+4. **Free is zero on BOTH axes, computed not trusted.** Providers label
    free-input/paid-output models `:free` too. This is the rule
    `models/discovery.py` already applies; the `:free` suffix alone is honoured
    only through a **declared** `free_gateways` entry.
 
-4. **The default changes nothing.** No `spend:` section means
+5. **The default changes nothing.** No `spend:` section means
    `SpendMode.BUDGETED`, which is exactly today's behaviour. A misspelled mode
    is a **load error**, not a silent fallback to the permissive default — a
    typo in `zero_cost` must not read as `budgeted` while the operator believes
@@ -114,7 +121,9 @@ This package does **not** claim:
 
 * `None` vs `0.0` for unpriced models, both directions;
 * both pricing key shapes resolving to the **same** number;
-* the four free-verdict sources, and that the order prefers `local_model`;
+* the free-verdict sources, and that the order prefers `local_model`;
+* the declared keyless router and direct gateway endpoint/model binding in
+  `zero_cost` mode;
 * free-input/paid-output is **not** free; a bare `:free` with no declared
   gateway is not free;
 * `zero_cost` refusing a paid model, an unpriced model, and **a paid fallback

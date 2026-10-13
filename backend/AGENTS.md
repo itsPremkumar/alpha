@@ -360,6 +360,12 @@ inside it. Internal modules needing only lightweight types, config or registries
 import the concrete submodule instead of eager package-root imports that pull in
 the tool graph or subagent executor during state/schema imports.
 
+The Gateway checkpoint router and lead-agent prompt module also keep heavyweight
+builtin implementations out of module import: `code_agentic_core` is imported by
+the checkpoint handler that uses it, and `tool_search` when the system prompt is
+built. `tests/test_builtin_lazy_imports.py` pins both edges so an API router or
+prompt-module import cannot silently restore the expensive import path.
+
 `ThreadMetaStore.search()` keeps JSON filter semantics identical across memory, SQLite,
 and PostgreSQL: missing differs from null, bool differs from int, and float filters
 accept integer or real JSON numbers through `json_value_matches`.

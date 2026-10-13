@@ -522,6 +522,40 @@ def _projected_dispatch_status(status: str) -> str:
     return _APEX_PROJECTED_RUN_STATUSES.get(status, status)
 
 
+async def _complete_apex_run_event_scan(event_store: Any, *, thread_id: str, run_id: str) -> list[dict[str, Any]] | None:
+    """Read a bounded, complete run event stream or refuse automatic evidence.
+
+    A full final page means the scan may be truncated. Missing, malformed, or
+    non-progressing cursors therefore return ``None`` rather than allowing a
+    partial transcript to satisfy an acceptance criterion.
+    """
+    cursor = 0
+    rows: list[dict[str, Any]] = []
+    for _ in range(20):
+        page = await event_store.list_events(
+            thread_id,
+            run_id,
+            event_types=["llm.ai.response", "llm.tool.result"],
+            limit=500,
+            after_seq=cursor,
+        )
+        if not page:
+            return rows
+        previous = cursor
+        for event in page:
+            if not isinstance(event, dict):
+                return None
+            seq = event.get("seq")
+            if not isinstance(seq, int) or isinstance(seq, bool) or seq <= previous:
+                return None
+            previous = seq
+            rows.append(event)
+        cursor = previous
+        if len(page) < 500:
+            return rows
+    return None
+
+
 async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dict[str, Any]:
     """Dispatch and observe APEX objectives through the Gateway run owner.
 
@@ -742,6 +776,36 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                                     run_id=session.run_id,
                                 )
                                 latest = stored
+                    # A deliberately small native verifier can measure an
+                    # explicit exact-text file readback from this same run's
+                    # correlated tool events. It never interprets arbitrary
+                    # prose or runs model-selected commands; unsupported
+                    # criteria remain parked for owner/operator verification.
+                    latest = store.get(session.session_id)
+                    if event_store is not None and latest is not None and latest.state is ApexSessionState.ACTIVE and latest.acceptance is None and latest.acceptance_criteria:
+                        try:
+                            from alpha.apex.auto_acceptance import evaluate_tool_readback_criteria
+
+                            run_events = await _complete_apex_run_event_scan(
+                                event_store,
+                                thread_id=session.thread_id,
+                                run_id=session.run_id,
+                            )
+                            report = evaluate_tool_readback_criteria(latest.acceptance_criteria, run_events or []) if run_events is not None else None
+                            if report is not None:
+                                stored = store.update(session.session_id, acceptance=report.to_dict())
+                                if stored is None:
+                                    raise RuntimeError("APEX session disappeared before automatic acceptance could be stored")
+                                store.emit(
+                                    session.session_id,
+                                    "acceptance.tool_readback_report_submitted",
+                                    report=report.to_dict(),
+                                    run_id=session.run_id,
+                                )
+                                latest = stored
+                        except Exception as exc:  # noqa: BLE001 - verifier failures must stay unverified
+                            summary["errors"].append({"session_id": session.session_id, "run_id": session.run_id, "error": f"automatic_readback_verifier_unavailable: {type(exc).__name__}: {exc}"})
+                            logger.warning("APEX automatic readback verification unavailable for %s: %s", session.session_id, exc)
                     # An operator may approve an exact tool call after the
                     # RunManager turn that requested it has already ended.
                     # Requeue only when that approval remains unused and no

@@ -241,6 +241,24 @@ class ApexSession:
         payload["acceptance_criteria"] = [str(c) for c in payload.get("acceptance_criteria", []) or []]
         if not isinstance(payload.get("acceptance"), dict):
             payload["acceptance"] = None
+        # Older completed sessions retained the linked RunManager projection
+        # (`awaiting_verification`) after the acceptance gate had already
+        # passed. Normalize only a complete, explicit pass; malformed or
+        # partial reports never upgrade a session's execution projection.
+        acceptance = payload.get("acceptance")
+        criteria = acceptance.get("criteria") if isinstance(acceptance, dict) else None
+        if (
+            payload["state"] is ApexSessionState.COMPLETED
+            and payload.get("dispatch_state") == "awaiting_verification"
+            and isinstance(acceptance, dict)
+            and acceptance.get("passed") is True
+            and acceptance.get("all_evaluated") is True
+            and acceptance.get("all_hold") is True
+            and isinstance(criteria, list)
+            and bool(criteria)
+            and all(isinstance(item, dict) and item.get("evaluated") is True and item.get("holds") is True and item.get("verdict") == "met" for item in criteria)
+        ):
+            payload["dispatch_state"] = "completed"
         payload["acceptance_history"] = [item for item in payload.get("acceptance_history", []) or [] if isinstance(item, dict)][-20:]
         if not isinstance(payload.get("contract_snapshot"), dict):
             payload["contract_snapshot"] = None
@@ -858,6 +876,10 @@ class ApexStore:
             session = self._rows.get(session_id)
             if session is None or session.run_id != run_id:
                 return False
+            if session.state is ApexSessionState.COMPLETED:
+                # A late supervisor observation must not regress a goal that
+                # already passed its acceptance gate back to awaiting review.
+                return True
             if session.run_status == normalized and session.dispatch_state in {"running", "awaiting_verification", "failed"}:
                 return True
             session.run_status = normalized
@@ -1130,8 +1152,14 @@ class ApexStore:
                 return None
             session.state = state
             session.blocked_reason = reason if state is ApexSessionState.BLOCKED else ""
+            if state is ApexSessionState.COMPLETED and isinstance(session.acceptance, dict) and session.acceptance.get("passed") is True and session.acceptance.get("all_evaluated") is True and session.acceptance.get("all_hold") is True:
+                session.dispatch_state = "completed"
             session.updated_at = time.time()
-        self.emit(session_id, "session.state_changed", **{"from": previous.value, "to": state.value, "reason": reason})
+        self.emit(
+            session_id,
+            "session.state_changed",
+            **{"from": previous.value, "to": state.value, "reason": reason, "dispatch_state": session.dispatch_state},
+        )
         return session
 
     def record_constraint(self, session_id: str, instruction: str, *, source: str = "user", priority: str = "normal") -> SteeringConstraint | None:

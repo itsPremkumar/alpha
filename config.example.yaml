@@ -4010,7 +4010,9 @@ database:
 #   max_trace_content: 10240    # Truncation threshold for trace content (db backend, bytes)
 #   track_token_usage: true     # Accumulate token counts to RunRow
 run_events:
-  backend: memory
+  # Persist chat messages and execution events in the configured SQL database.
+  # Use memory only for disposable development or tests.
+  backend: db
   max_trace_content: 10240
   track_token_usage: true
 

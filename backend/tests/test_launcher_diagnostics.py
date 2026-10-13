@@ -91,7 +91,9 @@ def _run(harness_source: str, root: Path, env: dict[str, str]) -> dict[str, str]
         if line.startswith("RESULT_"):
             key, _, value = line.partition("=")
             out[key] = value
-    assert "RESULT_STATUS" in out or "RESULT_ORIGINAL_EXISTS" in out or "RESULT_GW" in out or "RESULT_KILLED" in out or "RESULT_LIVENESS" in out, f"harness produced no result\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
+    assert "RESULT_STATUS" in out or "RESULT_ORIGINAL_EXISTS" in out or "RESULT_GW" in out or "RESULT_KILLED" in out or "RESULT_LIVENESS" in out or "RESULT_READY" in out, (
+        f"harness produced no result\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
+    )
     return out
 
 
@@ -438,6 +440,42 @@ def test_boot_wait_probes_are_not_latched_in_source() -> None:
     launcher = _launcher_source()
     assert "if (-not $gatewayReady) {" not in launcher, "the gateway boot probe is guarded by its own previous result; readiness must be re-probed every pass"
     assert "if (-not $frontendReady) {" not in launcher, "the frontend boot probe is guarded by its own previous result; readiness must be re-probed every pass"
+
+
+HARNESS_WAIT_FOR_HEALTHY = r"""
+$src = Get-Content -LiteralPath $env:ALPHA_LS_SRC -Raw
+$from = $src.IndexOf('function Wait-ForHealthy')
+$to   = $src.IndexOf('function Start-SleepWithHeartbeat', $from)
+if ($from -lt 0 -or $to -le $from) {
+    Write-Output "HARNESS_BROKEN: Wait-ForHealthy markers missing"
+    exit 3
+}
+Invoke-Expression ($src.Substring($from, $to - $from))
+$script:ProbeCalls = 0
+function Test-MaintenanceMode { return $false }
+function Stop-OnMaintenance {}
+function Start-Sleep { param([int]$Seconds) }
+function Refresh-Heartbeat {}
+function Get-ListeningProcessIds { param([int]$Port) return @() }
+function Invoke-WebRequest {
+    [CmdletBinding()]
+    param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec = 5)
+    $script:ProbeCalls += 1
+    if ($script:ProbeCalls -eq 1) { throw 'Connection refused while the app imports' }
+    return [pscustomobject]@{ StatusCode = 200; Content = '' }
+}
+$result = Wait-ForHealthy -Port 8001 -Path '/health/ready' -MaxWaitSeconds 20
+Write-Output ("RESULT_READY=" + [string]$result)
+Write-Output ("RESULT_PROBES=" + $script:ProbeCalls)
+"""
+
+
+def test_gateway_restart_waits_through_import_before_listener_binds(tmp_path: Path) -> None:
+    """A closed port during app import is still booting, not a failed launch."""
+    out = _run(HARNESS_WAIT_FOR_HEALTHY, tmp_path, {})
+
+    assert out["RESULT_READY"] == "True", "Wait-ForHealthy must retry readiness while the import-time port is still closed"
+    assert out["RESULT_PROBES"] == "2", "the second ready probe must be reached after an initial connection refusal"
 
 
 # ===========================================================================

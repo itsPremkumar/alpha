@@ -29,12 +29,6 @@ from pydantic import BaseModel, Field
 
 from alpha.config.paths import get_paths
 from alpha.runtime.user_context import get_effective_user_id
-from alpha.tools.builtins.code_agentic_core import (
-    create_shadow_checkpoint,
-    get_all_checkpoints,
-    get_checkpoint_diff,
-    rollback_to_checkpoint,
-)
 from alpha.utils.time import coerce_iso
 
 logger = logging.getLogger(__name__)
@@ -144,6 +138,8 @@ def _confined_target_files(root: Path, target_files: list[str] | None) -> list[s
 @router.get("", response_model=list[dict])
 def list_checkpoints() -> list[dict[str, Any]]:
     """List the recorded checkpoints this caller can act on, oldest first."""
+    from alpha.tools.builtins.code_agentic_core import get_all_checkpoints
+
     # ``_ACTIVE_CHECKPOINTS`` is a process-global registry shared by every
     # authenticated user, so a checkpoint rooted in another area must not be
     # listed here: its label and absolute host root are not this caller's data.
@@ -154,13 +150,19 @@ def list_checkpoints() -> list[dict[str, Any]]:
 @router.post("", response_model=dict)
 def create_checkpoint(req: CheckpointCreateRequest) -> dict[str, Any]:
     """Create a new lightweight checkpoint capturing the current workspace state."""
+    from alpha.tools.builtins.code_agentic_core import create_shadow_checkpoint
+
     root = _resolve_confined_root(req.root_path)
     target_files = _confined_target_files(root, req.target_files)
     try:
+        # A new user's owned data area may not exist until the first write.
+        # The path has already been resolved and confined to that user's area.
+        root.mkdir(parents=True, exist_ok=True)
         cp = create_shadow_checkpoint(
             label=req.label,
             root_path=str(root),
             target_files=target_files,
+            root_is_trusted=True,
         )
         return {
             "status": "created",
@@ -180,8 +182,10 @@ def create_checkpoint(req: CheckpointCreateRequest) -> dict[str, Any]:
 @router.post("/{checkpoint_id}/rollback")
 def rollback_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict[str, Any]:
     """Restore the workspace to the specified checkpoint state."""
+    from alpha.tools.builtins.code_agentic_core import rollback_to_checkpoint
+
     root = _resolve_confined_root(root_path)
-    res = rollback_to_checkpoint(checkpoint_id=checkpoint_id, root_path=str(root))
+    res = rollback_to_checkpoint(checkpoint_id=checkpoint_id, root_path=str(root), root_is_trusted=True)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("error", "Rollback failed"))
     return res
@@ -190,8 +194,10 @@ def rollback_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict[str, A
 @router.get("/{checkpoint_id}/diff")
 def preview_checkpoint_diff(checkpoint_id: str, root_path: str = ".") -> dict[str, Any]:
     """Preview file diffs between current workspace files and the checkpoint state."""
+    from alpha.tools.builtins.code_agentic_core import get_checkpoint_diff
+
     root = _resolve_confined_root(root_path)
-    diff = get_checkpoint_diff(checkpoint_id=checkpoint_id, root_path=str(root))
+    diff = get_checkpoint_diff(checkpoint_id=checkpoint_id, root_path=str(root), root_is_trusted=True)
     if "error" in diff:
         raise HTTPException(status_code=404, detail=diff["error"])
     return diff

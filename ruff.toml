@@ -34,9 +34,8 @@ ignore = []
 # logging, serialization, and debugging. Converting to `StrEnum` would change
 # `str()` and `f"{}"` semantics and is a separate behavioral refactor tracked
 # independently; these are not oversights.
-per-file-ignores = {
-    "*.py" = ["UP042"],
-}
+[lint.per-file-ignores]
+"*.py" = ["UP042"]
 
 [lint.isort]
 # alpha/ and app/ are this repository's own packages and must group as

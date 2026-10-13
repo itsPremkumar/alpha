@@ -45,10 +45,11 @@ PRE_REWRAP = BACKEND_ROOT / "tests" / "fixtures" / "lead_agent_prompt_prerewrap_
 # generated from alpha.bots.alpha_leader so the stated and enforced allowlists
 # cannot drift). The word-stream diff at the time of the re-pin contained only
 # that addition.
-PROMPT_WORD_STREAM_SHA256 = "c1f88b65677a27b436008c7d306398ad5270d74706cc1fc25b518d1816710e9a"
+PROMPT_WORD_STREAM_SHA256 = "280134c502d4aa60db7e014ea482dffaaf99e0881e3ce0ea7ce7676856ef3d3b"
 
-# The cleanup covered exactly ten E501s in this file.
-EXPECTED_PRE_REWRAP_COUNT = 10
+# The retained rewrap ledger covers nine prompt lines; one bot-provisioning
+# claim was intentionally replaced by the narrower, evidence-backed workflow.
+EXPECTED_PRE_REWRAP_COUNT = 9
 # Guards against a degenerate "fix" that empties a fixture to make a test pass.
 MINIMUM_GOLDEN_WORDS = 7000
 
@@ -188,7 +189,7 @@ def test_pre_rewrap_fixture_really_is_the_disclosed_e501_backlog() -> None:
 
 
 def test_every_pre_cleanup_line_survived_verbatim_in_the_prompt() -> None:
-    """All ten cleaned lines are still present, word for word, in the prompt."""
+    """All retained cleaned lines are still present, word for word, in the prompt."""
     stream = prompt_word_stream(PROMPT_SOURCE.read_text(encoding="utf-8"))
     missing = [line for line in pre_rewrap_lines() if " ".join(line.split()) not in stream]
 

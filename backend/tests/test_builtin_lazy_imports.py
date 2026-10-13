@@ -29,6 +29,17 @@ assert 'alpha.tools.builtins.tool_search_tool' in sys.modules
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
+def test_gateway_and_prompt_imports_do_not_load_heavy_builtin_tools() -> None:
+    code = """
+import sys
+import app.gateway.routers.checkpoints
+import alpha.agents.lead_agent.prompt
+assert 'alpha.tools.builtins.code_agentic_core' not in sys.modules
+assert 'alpha.tools.builtins.tool_search' not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
 def test_subagent_tool_export_survives_submodule_import_order() -> None:
     code = """
 from alpha.tools.builtins.task_tool import task_tool as direct_tool

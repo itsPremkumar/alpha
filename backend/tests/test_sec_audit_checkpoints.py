@@ -140,7 +140,7 @@ def test_list_checkpoints_does_not_disclose_another_areas_checkpoints(client: Te
     from alpha.tools.builtins import code_agentic_core
 
     outside = _outside_dir(tmp_path)
-    foreign = code_agentic_core.create_shadow_checkpoint(label="someone-elses", root_path=str(outside))
+    foreign = code_agentic_core.create_shadow_checkpoint(label="someone-elses", root_path=str(outside), root_is_trusted=True)
     try:
         rows = client.get("/api/checkpoints")
         assert rows.status_code == 200, rows.text
