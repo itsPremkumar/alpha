@@ -39,6 +39,26 @@ $logDir = Join-Path $env:TEMP 'opencode'
 $log = Join-Path $logDir 'nextdev.log'
 $err = Join-Path $logDir 'nextdev.err'
 
+# Port 2026 is only an entry point while nginx is actually serving it. This
+# launcher starts the frontend alone - `make nginx` (foreground) or `make up`
+# (Docker) are what bring nginx up - so printing the 2026 URL unconditionally
+# advertised a dead link on every direct-dev boot: the script said READY and the
+# URL it named opened nothing. Kept as a pure function so both branches are
+# reachable from a test without binding a port.
+function Get-AlphaEntryPointAdvice {
+    param(
+        [Parameter(Mandatory = $true)][int]$NginxPort,
+        [Parameter(Mandatory = $true)][bool]$NginxListening
+    )
+    if ($NginxListening) {
+        return @("Full stack: http://127.0.0.1:$NginxPort  (nginx proxies here)")
+    }
+    return @(
+        "nginx is not serving port $NginxPort, so the unified entry point is not up.",
+        "This script starts the frontend only. Run 'make nginx' for port $NginxPort, or 'make up' for the Docker stack."
+    )
+}
+
 if (-not (Test-Path $cli)) {
     throw "next CLI missing at $cli - run 'make install' (or pnpm install in frontend/) first."
 }
@@ -106,7 +126,10 @@ while ($sw.Elapsed.TotalSeconds -lt $deadline) {
         $resp = Invoke-WebRequest "http://127.0.0.1:$Port" -TimeoutSec 20 -UseBasicParsing
         if ($resp.StatusCode -eq 200) {
             Write-Host ("READY in {0:N0}s - open http://127.0.0.1:{1}" -f $sw.Elapsed.TotalSeconds, $Port) -ForegroundColor Green
-            Write-Host "Full stack: http://127.0.0.1:2026  (nginx proxies here)"
+            $nginxListener = Get-NetTCPConnection -LocalPort 2026 -State Listen -ErrorAction SilentlyContinue
+            foreach ($line in (Get-AlphaEntryPointAdvice -NginxPort 2026 -NginxListening ([bool]$nginxListener))) {
+                Write-Host $line
+            }
             exit 0
         }
     } catch {
