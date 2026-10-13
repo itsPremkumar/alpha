@@ -60,11 +60,18 @@ const httpStubUrl = toUrl(`
   export function errMsg(err) { return err instanceof Error ? err.message : "Something went wrong."; }
 `);
 const { setHttpHandler } = await import(httpStubUrl);
+// This suite pins the legacy company-board contract. Return no active Company
+// OS company so the adapter intentionally exercises that compatibility path.
+const companyStubUrl = toUrl(`
+  export async function listCompanies() { return []; }
+  export async function getCompanyWork() { return []; }
+`);
 
 const compileTs = (name, deps = {}) => {
   let src = read(`./${name}.ts`);
   for (const [spec, url] of Object.entries(deps))
     src = src.replaceAll(`from "./${spec}"`, `from "${url}"`);
+  src = src.replaceAll('import("./company")', `import("${companyStubUrl}")`);
   return transpile(src);
 };
 

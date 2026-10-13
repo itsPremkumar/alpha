@@ -356,6 +356,28 @@ export async function listCompanies(): Promise<CompanySummary[]> {
   });
 }
 
+/** Read a company's owner-scoped work board. Failures are never returned as an empty board. */
+export async function getCompanyWork(companyId: string): Promise<WorkItem[]> {
+  const body = await get<unknown>(`/companies/${encodeURIComponent(companyId)}/work`);
+  if (!body || typeof body !== "object" || !Array.isArray((body as Record<string, unknown>).items)) {
+    throw new Error("The server returned an unreadable company work board.");
+  }
+  return (body as { items: unknown[] }).items.map((value) => {
+    const item = (value ?? {}) as Record<string, unknown>;
+    return {
+      task_id: String(pick(item, ["task_id"], "")),
+      board_id: String(pick(item, ["board_id"], "")),
+      title: String(pick(item, ["title"], "")),
+      assignee_agent_handle: (pick(item, ["assignee_agent_handle"], null) as string | null),
+      column: String(pick(item, ["column"], "")),
+      priority: String(pick(item, ["priority"], "medium")),
+      definition_of_done: asList(item, ["definition_of_done"]).map(String),
+      cost_usd: numOrNull(item.cost_usd),
+      cost_basis: String(pick(item, ["cost_basis"], "unmeasured")),
+    };
+  });
+}
+
 export async function getCompany(companyId: string): Promise<Overview> {
   const d = await get<Record<string, unknown>>(`/companies/${encodeURIComponent(companyId)}/overview`);
   const rawHealth = (d.health ?? {}) as Record<string, unknown>;

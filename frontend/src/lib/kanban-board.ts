@@ -70,6 +70,8 @@ export interface Card {
   updatedAt: string;
   /** Server company-board card mirror (status moves sync back). */
   serverId: string | null;
+  /** Company OS owner for server cards backed by /companies/{id}/work. */
+  serverCompanyId?: string | null;
 }
 
 const KEY = "alpha.kanban.v1";
@@ -104,6 +106,7 @@ export function emptyCard(): Card {
     createdAt: now,
     updatedAt: now,
     serverId: null,
+    serverCompanyId: null,
   };
 }
 
@@ -117,6 +120,7 @@ export function emptyCard(): Card {
 function normalizeStatus(s: string): CardStatus {
   const v = (s || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (v === "ready") return "todo";
+  if (v === "in_review") return "review";
   const ids = COLUMNS.map((c) => c.id);
   if ((ids as string[]).includes(v)) return v as CardStatus;
   if (v.includes("progress") || v === "doing") return "in_progress";
@@ -235,6 +239,7 @@ function serverToCard(t: ServerTask): Card {
     updatedAt,
     history: [{ at: updatedAt, text: "Mirrored from the server board." }],
     serverId: t.id,
+    serverCompanyId: t.companyId ?? null,
   };
 }
 
@@ -281,6 +286,7 @@ export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
         status: serverStatus,
         // A local assignee the user chose wins; otherwise adopt the server's.
         agent: existing.agent ?? (t.assignee || null),
+        serverCompanyId: t.companyId ?? existing.serverCompanyId ?? null,
         // The server's own clock, when it sent one. Never `new Date()`.
         updatedAt:
           t.updatedAt != null ? new Date(t.updatedAt * 1000).toISOString() : existing.updatedAt,
@@ -316,6 +322,16 @@ export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
  */
 export async function pushStatus(card: Card, status: CardStatus): Promise<void> {
   if (!card.serverId) return;
+  if (card.serverCompanyId) {
+    const column = status === "review" ? "in_review" : status;
+    if (!("backlog todo in_progress in_review done blocked".split(" ").includes(column))) {
+      throw new Error(`The company board has no "${status}" stage.`);
+    }
+    const taskId = card.serverId.slice(card.serverId.indexOf("::") + 2);
+    const { moveWorkItem } = await import("./company");
+    await moveWorkItem(card.serverCompanyId, taskId, column);
+    return;
+  }
   if (!SYNCABLE_STAGES.includes(status)) {
     throw new Error(
       `The server board has no "${status}" stage, so it was not sent. This stage is only in your browser.`,

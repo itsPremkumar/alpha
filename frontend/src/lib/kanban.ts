@@ -89,6 +89,7 @@ export interface KanbanTask {
   priority: string | null;
   /** Server `result` text, or null when the server sent none. */
   result: string | null;
+  companyId?: string;
 }
 
 function asEpoch(value: unknown): number | null {
@@ -102,13 +103,48 @@ function asEpoch(value: unknown): number | null {
  * `onError` in TeamOpsSection).
  */
 export async function listKanbanTasks(): Promise<KanbanTask[]> {
+  const { listCompanies, getCompanyWork } = await import("./company");
+  const companies = (await listCompanies()).filter((company) => company.state === "active");
+  if (companies.length) {
+    const boards = await Promise.all(companies.map(async (company) => ({
+      companyId: company.company_id,
+      items: await getCompanyWork(company.company_id),
+    })));
+    const companyTasks = boards.flatMap(({ companyId, items }) => items.map((item) => ({
+      id: `${companyId}::${item.task_id}`,
+      title: item.title,
+      status: item.column === "in_review" ? "review" : item.column,
+      assignee: item.assignee_agent_handle ?? "",
+      description: item.definition_of_done.join("\n"),
+      createdAt: null,
+      updatedAt: null,
+      priority: item.priority ?? null,
+      result: null,
+      companyId,
+    })));
+    // The Company OS and the older autonomous-company engine use separate
+    // stores. Preserve legacy cards when present; its documented 404 means
+    // only that this owner has no legacy organization to read.
+    try {
+      return [...companyTasks, ...legacyTaskRows(await get<unknown>("/company/kanban/tasks?limit=100"))];
+    } catch (error) {
+      const status = error && typeof error === "object" && "status" in error
+        ? (error as { status?: unknown }).status
+        : null;
+      if (status === 404 && error instanceof Error && /No active organizations found/i.test(error.message)) {
+        return companyTasks;
+      }
+      throw error;
+    }
+  }
   const d = await get<unknown>("/company/kanban/tasks?limit=100");
-  return asList(d, ["tasks", "data"]).map((t) => ({
+  return legacyTaskRows(d);
+}
+
+function legacyTaskRows(data: unknown): KanbanTask[] {
+  return asList(data, ["tasks", "data"]).map((t) => ({
     id: String(pick(t, ["id", "task_id"], "")),
-    // Verbatim, and NOT defaulted to a real column. A row with no status is a
-    // row the server did not report a stage for; the board shows it in the
-    // unmapped column with the stage named "not reported" rather than filing
-    // it under "To do" as though the server had said so.
+    // Preserve the server's status verbatim so unfamiliar states stay visible.
     status: String(pick(t, ["status", "state"], "")),
     title: String(pick(t, ["title", "name", "summary"], "")),
     assignee: String(pick(t, ["assignee", "bot_name", "owner"], "")),
