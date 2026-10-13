@@ -10,6 +10,7 @@ requires a deliberate audit before it can be claimed in a production release.
 | Lease ownership and orphan recovery | implemented | `runtime/runs/manager.py`; `run_ownership` config | Exercise multi-worker failure recovery in release drills. |
 | Scheduled execution queue | implemented | Scheduler contract in `backend/AGENTS.md` | Add operational SLO and queue-depth alert thresholds. |
 | Durable MCP tasks | implemented | `alpha.mcp.tasks` contract | Audit every integration driver for idempotent external delivery. |
+| Swarm specialist execution | partial | `alpha.swarm.team`, `SpecialistSubagentWorker`; live `GET /api/teams/roster` reports no registered roster while the active config declares six enabled specialists; a UI-inspected completed swarm had workers report that repository contents were unavailable | Connect the operator-owned specialist catalogue to the swarm roster with role-bounded tool assembly, then verify a real repository task through the UI with task-level evidence. The generic ephemeral worker is one model call without tools and cannot satisfy repository-inspection objectives. |
 | Authentication and thread ownership | implemented | Gateway auth/authz and thread admission checks | Run an API-wide authorization matrix in CI. |
 | Internal-context trust boundary | implemented | Gateway run-context stripping contract | Add fuzz/property tests for every newly reserved key. |
 | Run event history | implemented | Run events store/journal | Define retention, redaction, and audit export policy. |
@@ -45,6 +46,9 @@ requires a deliberate audit before it can be claimed in a production release.
 3. Add adversarial regression tests and a release scorecard before enabling more
    autonomy by default.
 4. Run a backup/restore drill and publish an operator runbook.
+5. Wire specialist configuration into swarm execution without widening tool
+   authority, then pass a UI-backed repository task with measured acceptance
+   evidence.
 
 The inventory is intentionally conservative: a marketing claim or an existing
 module is not proof of production readiness. Update status only with a concrete
