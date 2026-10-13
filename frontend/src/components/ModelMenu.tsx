@@ -269,8 +269,15 @@ export function ModelMenu(props: ModelMenuProps) {
 
               {models.length === 0 ? <div className="rounded-lg border border-border/50 px-2 py-3 text-[11px] text-muted-foreground">The Gateway reported no models.</div> : null}
 
-              {onRefresh || onOpenSettings ? (
-                <div className="border-t border-border/50 pt-1.5 space-y-1">
+              {/* The action block is sticky. This menu was built to consolidate
+                  three controls into one, and with fifty models in the list they
+                  were all below the fold — you had to scroll past the entire
+                  catalog to reach the probe that would shorten it. Pinned to the
+                  panel's floor they are reachable at any scroll position, and the
+                  disclosure travels with them because a scope note you have to
+                  hunt for is not a disclosure. */}
+              {onRefresh || onOpenSettings || providers.length > 0 || props.readFailed ? (
+                <div className="sticky bottom-0 z-10 -mx-2.5 -mb-2.5 -mt-2 px-2.5 pb-2.5 pt-2 bg-card border-t border-border/50 space-y-1">
                   {onRefresh ? (
                     <>
                       {/* The probe that used to be an unlabelled amber icon beside
@@ -357,14 +364,13 @@ export function ModelMenu(props: ModelMenuProps) {
                       Model & API key settings
                     </button>
                   ) : null}
+                  {providers.length > 0 || props.readFailed ? (
+                    <p className="px-1 text-[9px] leading-relaxed text-muted-foreground/80 border-t border-border/50 pt-1.5">
+                      <AlertTriangle className="size-2.5 inline mr-1 -mt-px" aria-hidden="true" />
+                      {providers.length === 0 && props.readFailed ? summary : HEALTH_SCOPE_DISCLOSURE}
+                    </p>
+                  ) : null}
                 </div>
-              ) : null}
-
-              {providers.length > 0 || props.readFailed ? (
-                <p className="px-1 text-[9px] leading-relaxed text-muted-foreground/80 border-t border-border/50 pt-1.5">
-                  <AlertTriangle className="size-2.5 inline mr-1 -mt-px" aria-hidden="true" />
-                  {providers.length === 0 && props.readFailed ? summary : HEALTH_SCOPE_DISCLOSURE}
-                </p>
               ) : null}
             </div>,
             document.body,

@@ -248,8 +248,26 @@ test("ModelMenu never paints a result from a click", () => {
 
 test("ModelMenu closes before leaving for settings, and hides rows it cannot serve", () => {
   assert.match(menu, /\{\s*close\(\);\s*onOpenSettings\(\);/);
-  // A surface with no probe or no settings route gets no dead control.
-  assert.match(menu, /\{onRefresh \|\| onOpenSettings \? \(/);
+  // A surface with no probe or no settings route gets no dead control — and
+  // the whole action block now also gates on having a disclosure to show,
+  // because the disclosure moved inside it.
+  assert.match(menu, /\{onRefresh \|\| onOpenSettings \|\| providers\.length > 0 \|\| props\.readFailed \? \(/);
   assert.match(menu, /\{onRefresh \? \(/);
   assert.match(menu, /\{onOpenSettings \? \(/);
+});
+
+test("ModelMenu pins its action block to the panel floor so the controls stay reachable", () => {
+  // With fifty models above it, probe/key/settings sat below the fold — the
+  // consolidation this menu exists for was only nominal until you scrolled the
+  // whole catalog. The block is sticky, carries the panel's own background so
+  // rows cannot show through it, and pulls up over the container's `space-y`
+  // gap for the same reason.
+  assert.match(menu, /sticky bottom-0/);
+  assert.match(menu, /bg-card/);
+  assert.match(menu, /-mx-2\.5 -mb-2\.5 -mt-2/);
+  // The disclosure travels with it: a scope note you have to hunt for is not
+  // a disclosure, so it renders inside the pinned block, not after it.
+  const stickyIdx = menu.indexOf("sticky bottom-0");
+  const disclosureIdx = menu.indexOf("HEALTH_SCOPE_DISCLOSURE", menu.indexOf("return ("));
+  assert.ok(stickyIdx > 0 && disclosureIdx > stickyIdx, "the disclosure must render inside the pinned block");
 });
