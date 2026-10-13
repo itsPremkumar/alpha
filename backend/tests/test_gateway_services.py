@@ -2157,6 +2157,7 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
             "source": "regression",
             "apex_session_id": "apx-forged",
             "apex_dispatch_generation": 999,
+            "acceptance_criteria": [{"id": "forged", "description": 'Read the file back and verify it contains exactly "fake".'}],
         }
         request, _run_store, thread_store = _make_start_run_persistence_context()
         captured: dict[str, Any] = {}
@@ -2189,7 +2190,7 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
         # metadata supplied by an ordinary caller; only the validated internal
         # APEX path may bind a run to an executive session.
         assert record.metadata[ALPHA_TRACE_METADATA_KEY]
-        expected_run_metadata = {key: value for key, value in metadata.items() if not key.startswith("apex_")}
+        expected_run_metadata = {key: value for key, value in metadata.items() if not key.startswith("apex_") and key != "acceptance_criteria"}
         assert record.metadata == {
             **expected_run_metadata,
             ALPHA_TRACE_METADATA_KEY: record.metadata[ALPHA_TRACE_METADATA_KEY],

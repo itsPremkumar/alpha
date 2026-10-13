@@ -29,6 +29,7 @@ import {
   fetchRecentRuns,
   fetchOlderRuns,
   fetchRunRecord,
+  fetchRunVerification,
   fetchRunTimeline,
   fetchRunTranscript,
   fetchThreadDelegations,
@@ -51,6 +52,7 @@ import {
   type RunDelegation,
   type RunFailureReport,
   type RunRecord,
+  type RunVerification,
   type ServingModelReport,
   type ThreadTokenUsage,
   type Timeline,
@@ -1308,6 +1310,42 @@ function RunLinkControl(props: {
 
 /* ── the view (pure) ──────────────────────────────────────────────────────── */
 
+function RunVerificationPanel(props: { verification: RunVerification | null; error: string | null }) {
+  const verification = props.verification;
+  const tone: Tone = verification?.status === "verified" ? "green" : verification?.status === "failed" ? "red" : "amber";
+  return (
+    <section aria-label="Acceptance verification" className="rounded-2xl border border-border/60 bg-card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold">Acceptance verification</h4>
+        {verification?.status ? <Badge tone={tone}>{verification.status}</Badge> : null}
+      </div>
+      {props.error ? (
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400">Verification could not be read: {props.error}</p>
+      ) : !verification ? (
+        <p className="mt-2 text-xs text-muted-foreground">Reading measured acceptance evidence…</p>
+      ) : (
+        <>
+          {verification.reason ? <p className="mt-2 text-xs text-muted-foreground">{verification.reason}</p> : null}
+          {verification.evaluator ? <p className="mt-1 text-[11px] text-muted-foreground">Measured by {verification.evaluator}; run success alone is not acceptance evidence.</p> : null}
+          {verification.criteria?.length ? (
+            <ul className="mt-3 space-y-2">
+              {verification.criteria.map((criterion, index) => (
+                <li key={`${criterion.criterion ?? "criterion"}-${index}`} className="rounded-lg border border-border/50 p-2">
+                  <p className="text-xs font-medium">{criterion.criterion ?? "Criterion not reported"}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {criterion.verdict ?? "unverified"}{criterion.evaluated === false ? " · no measurement" : ""}
+                  </p>
+                  {criterion.evidence ? <p className="mt-1 break-words text-[11px] text-muted-foreground">{criterion.evidence}</p> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 export interface RunInspectorState {
   threadId: string;
   runs: RunRecord[];
@@ -1315,6 +1353,7 @@ export interface RunInspectorState {
   runsError: string | null;
   selectedRunId: string | null;
   record: RunRecord | null;
+  verification: RunVerification | null;
   transcript: Transcript | null;
   timeline: Timeline | null;
   workspace: WorkspaceChanges | null;
@@ -1329,7 +1368,7 @@ export interface RunInspectorState {
   loadingDelegations: boolean;
   /** Per-read failures, so one failed panel never blanks the rest. */
   errors: Partial<
-    Record<"record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest" | "delegations", string>
+    Record<"record" | "verification" | "transcript" | "timeline" | "workspace" | "usage" | "manifest" | "delegations", string>
   >;
   loadingRun: boolean;
   showPicker: boolean;
@@ -1468,6 +1507,7 @@ export function RunInspectorView(props: {
               serving={serving}
               failure={failure}
             />
+            <RunVerificationPanel verification={state.verification} error={state.errors.verification ?? null} />
             <ConversationPanel record={state.record} transcript={state.transcript} error={state.errors.transcript ?? null} />
             <ToolCallsPanel calls={calls.calls} unattributedCount={calls.unattributedCount} error={state.errors.transcript ?? null} />
             <DelegationPanel
@@ -1504,6 +1544,7 @@ const EMPTY_STATE: RunInspectorState = {
   runsError: null,
   selectedRunId: null,
   record: null,
+  verification: null,
   transcript: null,
   timeline: null,
   workspace: null,
@@ -1610,7 +1651,7 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
     let cancelled = false;
     setState((prev) => ({ ...prev, loadingRun: true, loadingDelegations: true, errors: {} }));
     const read = async <T,>(
-      key: "record" | "transcript" | "timeline" | "workspace" | "usage" | "manifest" | "delegations",
+      key: "record" | "verification" | "transcript" | "timeline" | "workspace" | "usage" | "manifest" | "delegations",
       call: () => Promise<T>
     ): Promise<[typeof key, T | null, string | null]> => {
       try {
@@ -1622,6 +1663,7 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
     void (async () => {
       const results = await Promise.all([
         read("record", () => fetchRunRecord(props.threadId!, runId)),
+        read("verification", () => fetchRunVerification(props.threadId!, runId)),
         read("transcript", () => fetchRunTranscript(props.threadId!, runId)),
         read("timeline", () => fetchRunTimeline(props.threadId!, runId)),
         read("workspace", () => fetchWorkspaceChangesForRun(props.threadId!, runId)),
@@ -1642,6 +1684,7 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
           continue;
         }
         if (key === "record") patch.record = value as RunRecord | null;
+        if (key === "verification") patch.verification = value as RunVerification | null;
         if (key === "transcript") patch.transcript = value as Transcript | null;
         if (key === "timeline") patch.timeline = value as Timeline | null;
         if (key === "workspace") patch.workspace = value as WorkspaceChanges | null;
@@ -1664,6 +1707,7 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
         ...prev,
         selectedRunId: next,
         record: null,
+        verification: null,
         transcript: null,
         timeline: null,
         workspace: null,

@@ -201,6 +201,7 @@ const BASE_STATE = {
   runsError: null,
   selectedRunId: "r-1",
   record: null,
+  verification: null,
   transcript: null,
   timeline: null,
   workspace: null,
@@ -415,6 +416,7 @@ test("each panel issues exactly one documented GET, with no invented query", asy
   const calls = route({
     "/runs/page?limit=50": { data: [SUCCESS_RUN], has_more: false, next_before_created_at: null, next_before_run_id: null },
     "/runs/r-1": SUCCESS_RUN,
+    "/runs/r-1/verification": { status: "unverified", reason: "unsupported criteria", report: null },
     "/runs/r-1/messages?limit=100": { data: TOOL_MESSAGES, has_more: false },
     "/runs/r-1/events?limit=500": TOOL_MESSAGES,
     "/runs/r-1/workspace-changes": WORKSPACE_AVAILABLE,
@@ -424,6 +426,7 @@ test("each panel issues exactly one documented GET, with no invented query", asy
 
   await inspector.fetchRunPage("t-1");
   await inspector.fetchRunRecord("t-1", "r-1");
+  await inspector.fetchRunVerification("t-1", "r-1");
   await inspector.fetchRunTranscript("t-1", "r-1");
   await inspector.fetchRunTimeline("t-1", "r-1");
   await inspector.fetchWorkspaceChangesForRun("t-1", "r-1");
@@ -433,6 +436,7 @@ test("each panel issues exactly one documented GET, with no invented query", asy
   assert.deepEqual(calls, [
     "GET /threads/t-1/runs/page?limit=50",
     "GET /threads/t-1/runs/r-1",
+    "GET /threads/t-1/runs/r-1/verification",
     "GET /threads/t-1/runs/r-1/messages?limit=100",
     "GET /threads/t-1/runs/r-1/events?limit=500",
     "GET /threads/t-1/runs/r-1/workspace-changes",
@@ -468,6 +472,24 @@ test("a successful run record maps its prompt, model, tokens and per-model split
   assert.deepEqual(record.token_usage_by_model, [
     { model: "kilo:kilo-auto/free", input: 52992, output: 252, total: 53244 },
   ]);
+});
+
+test("automatic readback verification maps its measured provenance for the inspector", async () => {
+  route({
+    "/runs/r-1/verification": {
+      status: "verified",
+      reason: null,
+      report: {
+        evaluator: "run_tool_readback",
+        criteria: [{ criterion: 'Read the file back and verify it contains exactly "expected marker".', verdict: "met", evidence: "write_file and later read_file succeeded", evaluated: true, holds: true }],
+      },
+    },
+  });
+  const result = await inspector.fetchRunVerification("t-1", "r-1");
+  assert.equal(result.status, "verified");
+  assert.equal(result.evaluator, "run_tool_readback");
+  assert.equal(result.criteria?.[0]?.verdict, "met");
+  assert.match(result.criteria?.[0]?.evidence ?? "", /read_file succeeded/);
 });
 
 test("a failed run keeps its own error, stop reason and real zero token counts", async () => {
@@ -1154,6 +1176,23 @@ test("a measured zero stays a real zero in the same tiles", () => {
   const markup = renderView({ ...BASE_STATE, record: inspector.toRunRecord(FAILED_RUN) });
   assert.match(markup, />0</, "the Gateway measured zero tokens for this run, so zero is shown");
   assert.match(markup, /recovery_blocked/);
+});
+
+test("the run inspector displays measured acceptance and evidence", () => {
+  const markup = renderView({
+    ...BASE_STATE,
+    record: inspector.toRunRecord(SUCCESS_RUN),
+    verification: {
+      status: "verified",
+      reason: null,
+      evaluator: "run_tool_readback",
+      criteria: [{ criterion: "Read the file back", verdict: "met", evidence: "read_file returned the exact written text", evaluated: true, holds: true }],
+    },
+  });
+  assert.match(markup, /Acceptance verification/);
+  assert.match(markup, />verified</);
+  assert.match(markup, /read_file returned the exact written text/);
+  assert.match(markup, /run success alone is not acceptance evidence/);
 });
 
 /* ══ 11. The whole view, on a real run ══════════════════════════════════════ */
