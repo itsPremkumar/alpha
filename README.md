@@ -477,8 +477,11 @@ make doctor    # verify the environment
   bot alive after it answers a smoke test; without one it reports the build as
   unverified. It can bind a validated model from the operator's existing
   `config.yaml` and an avatar label. Approvals and the sandbox are written into
-  its SOUL at birth; the lead can search and audit relevant skills, forge the
-  profile, inspect it, and run a bounded task to check that it responds.
+  its SOUL at birth; the lead can search online for relevant skills, inspect
+  package findings, install a reviewed exact digest through Alpha's user-scoped
+  security scanners, forge the profile, inspect it, and run a bounded task to
+  check that it responds. Marketplace popularity is not treated as a quality
+  or safety guarantee.
 - **Work journal & blocker roll-up** — every bot keeps an append-only work
   journal that refuses credentials and chain-of-thought;
   `bot_roster(action="waiting_on")` answers "anything waiting on me?" across

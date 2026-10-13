@@ -316,6 +316,27 @@ def test_generated_stub_omits_every_forbidden_surface():
     assert "def script_bridge(" not in source
 
 
+def test_generated_stub_trims_truncated_tool_descriptions_and_final_blank_line():
+    class Tool:
+        name = "example_tool"
+        description = "x" * 199 + " " + "truncated"
+
+    assert stubgen._description(Tool()) == "x" * 199
+    assert stubgen.render_stub([Tool()]).endswith("\n")
+    assert not stubgen.render_stub([Tool()]).endswith("\n\n")
+
+
+def test_generated_index_uses_stable_rich_and_compact_entry_layouts():
+    class Tools:
+        def __init__(self, name, description):
+            self.name = name
+            self.description = description
+
+    source = stubgen.render_stub([Tools("short", "Brief."), Tools("long", "A" * 100)])
+    assert '    "short": {"description": "Brief."},' in source
+    assert '    "long": {\n        "description": "' + "A" * 100 + '"\n    },' in source
+
+
 # ---------------------------------------------------------------------------
 # (d) a script that ignores SIGTERM still dies
 # ---------------------------------------------------------------------------

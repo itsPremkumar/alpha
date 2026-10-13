@@ -260,16 +260,23 @@ class DynamicResourceAssembler:
         skill_generation = "not requested"
         if intent.need_skill_download or intent.need_skill_creation:
             # 4a. Search in skills hub (real seam)
-            discovered = self.skills_hub.search(intent.primary_domain)
-            for pkg in discovered:
-                active_skills.append(
-                    {
-                        "name": pkg.name,
-                        "description": pkg.description,
-                        "status": "discovered_in_hub",
-                        "source": pkg.source,
-                    }
-                )
+            try:
+                discovered = self.skills_hub.search(intent.primary_domain)
+                for pkg in discovered:
+                    active_skills.append(
+                        {
+                            "name": pkg.name,
+                            "description": pkg.description,
+                            "status": "discovered_in_hub",
+                            "source": pkg.source,
+                            "install_ref": pkg.install_ref,
+                            "install_count": pkg.installs,
+                        }
+                    )
+            except Exception as exc:
+                # Marketplace availability is optional: a transient upstream
+                # outage must not take down resource assembly or user work.
+                skill_generation = f"unavailable — online Skills Hub search failed ({type(exc).__name__})"
 
             # 4b. Authoring requested but no generator bound: honest skip.
             #     (No hardcoded body, no add_to_catalog() call.)

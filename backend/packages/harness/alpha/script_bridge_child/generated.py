@@ -16,17 +16,19 @@ from __future__ import annotations
 from .client import get_client, verify_stub_fingerprint
 
 #: Fingerprint of the tool registry this file was generated from.
-STUB_REGISTRY_SHA256 = "8ef69f7f8aa76ae45a9aaf0f7524964d1c9e8c57c1761ab9080a8eb386183b21"
+STUB_REGISTRY_SHA256 = "b8212c21ed3d22d5e69dcd0414465fa663199d4c5ac5ac79ded1293d2f8aef5b"
 
 #: Registry snapshot the generator saw: name -> {"description": str}
 STUB_TOOL_INDEX = {
     "a2a_protocol": {"description": "Discover agents, inspect Google A2A capability cards, and delegate tasks."},
+    "alpha_capability": {"description": "Report what this Alpha installation is and what it can actually do. Use this for any question about your own capabilities before guessing or"},
     "alpha_peer_network": {"description": "Use the free Alpha-to-Alpha network. Actions:"},
     "analyze_semantic_git_delta": {"description": "Convert a git line diff into structured semantic AST transformations and risk. Rather than reporting which lines changed, this tool reports what meaning"},
+    "arena": {"description": "Run a single-elimination tournament of sub-agents."},
     "ask_clarification": {
         "description": "Ask the user for clarification when you need more information to proceed. Use this tool when you encounter situations where you cannot proceed without user input: - **Missing information**: Required d"
     },
-    "ask_oracle": {"description": "Consult the isolated Oracle advisor on technical standards, API contracts, or architecture best practices. Uses an isolated subagent interface to retrieve authoritative guidance without polluting the "},
+    "ask_oracle": {"description": "Consult the isolated Oracle advisor on technical standards, API contracts, or architecture best practices. Uses an isolated subagent interface to retrieve authoritative guidance without polluting the"},
     "ast_grep_rewrite": {"description": "Rewrite code using structural AST pattern and template."},
     "ast_grep_search": {"description": "Search code using structural pattern matching."},
     "audit_finish_first_evidence": {"description": "Track, corroborate, and audit physical execution proof for task claims. Implements the MYTHOS Finish-First Doctrine: tasks cannot be declared 'done'"},
@@ -40,6 +42,7 @@ STUB_TOOL_INDEX = {
     "browser_navigate_and_inspect": {"description": "Automate headless browser navigation, DOM inspection, and System One driven interaction."},
     "build_autonomous_plan": {"description": "Turn one raw user prompt into a fully decided autonomous execution plan. Decides research need, subagent delegation, subtask split with waves,"},
     "canvas_widget": {"description": "Render and manage live, interactive HTML5/JS Canvas widgets for chat and dashboards."},
+    "capability_mesh": {"description": "Read what Alpha knows about how well its agents, models, tools and skills actually perform, and preview who *would* be assigned."},
     "catalog_tool_describe": {"description": "Retrieve full schema, parameter definitions, and documentation for a catalog tool. Call this once you have found a tool with `catalog_tool_search` to inspect its parameters."},
     "catalog_tool_search": {"description": "Search available tools in the universal catalog by name, category, or description keywords. This provides deferred tool discovery: instead of loading dozens of tool definitions into"},
     "check_metacognitive_health": {"description": "Assess metacognitive health, detect cognitive biases, and calibrate confidence. Monitors for confirmation bias, premature convergence, plan stagnation,"},
@@ -84,7 +87,7 @@ STUB_TOOL_INDEX = {
     "execute_sandboxed_computer_action": {"description": "Evaluate a desktop/terminal command against the 3-tier blast-radius safety gate. The gate classifies and validates; it never runs anything. ``SAFE`` commands"},
     "execute_slash_command": {"description": "Execute a Master Slash Command from the catalog across 28 categories."},
     "execute_transactional_action": {"description": "Execute a file action within an ACID-like 4-stage transaction envelope with automatic rollback. Stages: PREPARE (shadow snapshot) -> VALIDATE -> COMMIT -> VERIFY."},
-    "external_job": {"description": "Manage asynchronous background OS jobs decoupled from reasoning loops."},
+    "external_job": {"description": "Manage asynchronous background OS jobs decoupled from reasoning loops. Model-submitted jobs are gated: submit() discloses ``execution_blocked``"},
     "forge_skill_from_trace": {"description": "Forge a tested, parameterized SKILL.md tool from a sequence of successful execution steps. Extracts parameters, dedups via content hash, and registers the skill for autonomous reuse."},
     "generate_curriculum_plan": {"description": "Analyze agent capability gaps and generate an autonomous training curriculum. Computes urgency priority = (Target - Current) / Difficulty and schedules targeted exercises."},
     "generate_repo_map": {"description": "Generate a token-efficient structural map of the repository with AST symbol signatures. Provides high-level codebase awareness (directory layout, key classes, functions, and methods)"},
@@ -112,7 +115,8 @@ STUB_TOOL_INDEX = {
     "manage_mission_hierarchy": {"description": "Manage the 6-level Goal -> Mission -> Task -> Subtask -> Action -> ToolCall execution hierarchy."},
     "manage_model_performance_registry": {"description": "Manage empirical model benchmarks and dynamically route tasks to Pareto-optimal models."},
     "manage_reflexion_memory": {"description": "Manage Reflexion failure memory."},
-    "moa_multi_model_reasoning": {"description": "Execute a Mixture-of-Agents (MoA) parallel multi-LLM reasoning round. Dispatches complex questions to multiple candidate models simultaneously, redacts"},
+    "mission_memory": {"description": "Record/inspect the durable mission memory for an autonomous long-horizon run. Offline and deterministic: no model, provider, network or sandbox is called."},
+    "moa_multi_model_reasoning": {"description": "Consult several models in parallel and synthesize their independent perspectives. Dispatches the question to every named model simultaneously, redacts PII and"},
     "present_files": {"description": "Make files visible to the user for viewing and rendering in the client interface. When to use the present_files tool: - Making any file available for the user to view, download, or interact with"},
     "process_handle": {"description": "Manage asynchronous background processes, check handles, and tail output. Inspired by Prime Agent's rlm/bash.py background execution model. Allows long-running"},
     "propose_skill": {"description": "Propose a new skill for human review and installation. Use this when repeated work deserves a reusable skill, or the user asks"},
@@ -133,7 +137,7 @@ STUB_TOOL_INDEX = {
     "run_differential_regression_oracle": {"description": "Execute differential invariant validation and regression testing between code revisions. Synthesizes property-based fuzz tests and executes dual shadow sandboxes with randomized"},
     "run_introspective_tree_search": {"description": "Execute tree-guided multi-path search (I-MCTS / CodeTree) to resolve complex bugs. Coordinates Monte Carlo Tree Search with introspective node expansion, pruning invalid"},
     "run_rsi_cycle": {
-        "description": "Execute an autonomous Recursive Self-Improvement (RSI) cycle: Bottleneck -> Hypothesis -> Candidate -> A/B Test -> Holdout -> Promote. Analyzes agent performance bottlenecks, generates an optimization"
+        "description": "PREVIEW an optimization candidate for an observed performance bottleneck. It never measures, never benchmarks, and never changes anything. This is a proposal generator, not an experiment. It runs Bott"
     },
     "run_task_evaluation_benchmark": {"description": "Run standard agentic benchmarks (research, coding, browser, computer, multi-agent) and report scores."},
     "run_variation_operator_step": {"description": "Execute an Autonomous Agentic Variation Operator (AVO) step. Supports multi-dimensional vector evaluation, Pareto dominance tracking,"},
@@ -147,9 +151,10 @@ STUB_TOOL_INDEX = {
     "simulate_consequences": {
         "description": "Simulate potential environmental side-effects, blast radius, and cascading failures before execution. Probes the host environment affordances, checks if the workspace is git-tracked, analyzes package"
     },
-    "skills_hub_manage": {"description": "Manage Skills Hub discovery, AST security audits, and skill installation."},
+    "skills_hub_manage": {"description": "Search, inspect, and securely acquire community Agent Skills."},
+    "subagent_registry": {"description": "List, inspect, create, update and delete deployment subagent definitions. A subagent is a delegated worker with its own instructions and tool list. Use"},
     "supervisor_watchdog": {"description": "Monitor agent health, report heartbeats, inspect anomalies, and trigger recovery."},
-    "swarm": {"description": "Evaluate, spawn, run, communicate with, and monitor bounded agent swarms."},
+    "swarm": {"description": "Evaluate, spawn, run, communicate with, and monitor bounded agent swarms. Also drives group-relative orchestration (GRO): `compete` runs one bounded"},
     "synthesize_reusable_skill": {"description": "Synthesize a structured and validated SKILL.md package from execution steps."},
     "synthesize_runtime_tool": {"description": "Synthesize, security-verify, self-test and register a new agent tool at runtime. The source is first screened by a static AST security validator that blocks"},
     "tom_consult": {"description": "Consult the Theory of Mind cognitive model to infer unstated user expectations, invariants, and pitfalls. Before executing high-impact, destructive, or ambiguous modifications, this tool models the hu"},
@@ -192,6 +197,15 @@ def a2a_protocol(**kwargs) -> object:
     return get_client().call("a2a_protocol", dict(kwargs))
 
 
+def alpha_capability(**kwargs) -> object:
+    """Report what this Alpha installation is and what it can actually do. Use this for any question about your own capabilities before guessing or
+
+    Generated shim.  ``kwargs`` are forwarded verbatim to the ``alpha_capability`` tool
+    through the script bridge; authorisation is evaluated parent-side.
+    """
+    return get_client().call("alpha_capability", dict(kwargs))
+
+
 def alpha_peer_network(**kwargs) -> object:
     """Use the free Alpha-to-Alpha network. Actions:
 
@@ -208,6 +222,15 @@ def analyze_semantic_git_delta(**kwargs) -> object:
     through the script bridge; authorisation is evaluated parent-side.
     """
     return get_client().call("analyze_semantic_git_delta", dict(kwargs))
+
+
+def arena(**kwargs) -> object:
+    """Run a single-elimination tournament of sub-agents.
+
+    Generated shim.  ``kwargs`` are forwarded verbatim to the ``arena`` tool
+    through the script bridge; authorisation is evaluated parent-side.
+    """
+    return get_client().call("arena", dict(kwargs))
 
 
 def ask_clarification(**kwargs) -> object:
@@ -343,6 +366,15 @@ def canvas_widget(**kwargs) -> object:
     through the script bridge; authorisation is evaluated parent-side.
     """
     return get_client().call("canvas_widget", dict(kwargs))
+
+
+def capability_mesh(**kwargs) -> object:
+    """Read what Alpha knows about how well its agents, models, tools and skills actually perform, and preview who *would* be assigned.
+
+    Generated shim.  ``kwargs`` are forwarded verbatim to the ``capability_mesh`` tool
+    through the script bridge; authorisation is evaluated parent-side.
+    """
+    return get_client().call("capability_mesh", dict(kwargs))
 
 
 def catalog_tool_describe(**kwargs) -> object:
@@ -688,7 +720,7 @@ def execute_transactional_action(**kwargs) -> object:
 
 
 def external_job(**kwargs) -> object:
-    """Manage asynchronous background OS jobs decoupled from reasoning loops.
+    """Manage asynchronous background OS jobs decoupled from reasoning loops. Model-submitted jobs are gated: submit() discloses ``execution_blocked``
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``external_job`` tool
     through the script bridge; authorisation is evaluated parent-side.
@@ -921,8 +953,17 @@ def manage_reflexion_memory(**kwargs) -> object:
     return get_client().call("manage_reflexion_memory", dict(kwargs))
 
 
+def mission_memory(**kwargs) -> object:
+    """Record/inspect the durable mission memory for an autonomous long-horizon run. Offline and deterministic: no model, provider, network or sandbox is called.
+
+    Generated shim.  ``kwargs`` are forwarded verbatim to the ``mission_memory`` tool
+    through the script bridge; authorisation is evaluated parent-side.
+    """
+    return get_client().call("mission_memory", dict(kwargs))
+
+
 def moa_multi_model_reasoning(**kwargs) -> object:
-    """Execute a Mixture-of-Agents (MoA) parallel multi-LLM reasoning round. Dispatches complex questions to multiple candidate models simultaneously, redacts
+    """Consult several models in parallel and synthesize their independent perspectives. Dispatches the question to every named model simultaneously, redacts PII and
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``moa_multi_model_reasoning`` tool
     through the script bridge; authorisation is evaluated parent-side.
@@ -1102,7 +1143,7 @@ def run_introspective_tree_search(**kwargs) -> object:
 
 
 def run_rsi_cycle(**kwargs) -> object:
-    """Execute an autonomous Recursive Self-Improvement (RSI) cycle: Bottleneck -> Hypothesis -> Candidate -> A/B Test -> Holdout -> Promote. Analyzes agent performance bottlenecks, generates an optimization
+    """PREVIEW an optimization candidate for an observed performance bottleneck. It never measures, never benchmarks, and never changes anything. This is a proposal generator, not an experiment. It runs Bott
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``run_rsi_cycle`` tool
     through the script bridge; authorisation is evaluated parent-side.
@@ -1183,12 +1224,21 @@ def simulate_consequences(**kwargs) -> object:
 
 
 def skills_hub_manage(**kwargs) -> object:
-    """Manage Skills Hub discovery, AST security audits, and skill installation.
+    """Search, inspect, and securely acquire community Agent Skills.
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``skills_hub_manage`` tool
     through the script bridge; authorisation is evaluated parent-side.
     """
     return get_client().call("skills_hub_manage", dict(kwargs))
+
+
+def subagent_registry(**kwargs) -> object:
+    """List, inspect, create, update and delete deployment subagent definitions. A subagent is a delegated worker with its own instructions and tool list. Use
+
+    Generated shim.  ``kwargs`` are forwarded verbatim to the ``subagent_registry`` tool
+    through the script bridge; authorisation is evaluated parent-side.
+    """
+    return get_client().call("subagent_registry", dict(kwargs))
 
 
 def supervisor_watchdog(**kwargs) -> object:
@@ -1201,7 +1251,7 @@ def supervisor_watchdog(**kwargs) -> object:
 
 
 def swarm(**kwargs) -> object:
-    """Evaluate, spawn, run, communicate with, and monitor bounded agent swarms.
+    """Evaluate, spawn, run, communicate with, and monitor bounded agent swarms. Also drives group-relative orchestration (GRO): `compete` runs one bounded
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``swarm`` tool
     through the script bridge; authorisation is evaluated parent-side.

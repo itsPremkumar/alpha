@@ -126,10 +126,14 @@ allowlists, bounded fan-out, SSRF-safe fetching, and DDGS fallback.
 Bot roster with distinct personalities and isolated system prompts; SOUL protocol;
 private inboxes; fire-and-forget DMs at `POST /api/bots/{name}/dm`; transactional
 Bot Forge creates a tailored SOUL, draft-first approvals, work journal, and
-accepts only `config.yaml -> models[]` model names. Prompt-driven setup can
-search/audit skills, inspect the saved profile, and run a bounded task in the
-Bot-scoped chat. A DM is inbox delivery, not task execution; a Forge build with
-no smoke probe is unverified. An avatar label is not a generated photo.
+accepts only `config.yaml -> models[]` model names. Prompt-driven setup searches
+the live Skills.sh catalog, inspects GitHub packages at immutable source
+identities, applies Alpha Review Core, and installs an exact reviewed digest
+through user-scoped static/content scanners; provenance is retained. Popularity
+is not a quality or safety guarantee, and remote installer/code is never run.
+The model can inspect the saved profile and run a bounded task in the Bot-scoped
+chat. A DM is inbox delivery, not task execution; a Forge build with no smoke
+probe is unverified. An avatar label is not a generated photo.
 multi-agent
 group chat rooms; a real-time collaborative Kanban board; Agent-to-Agent (A2A)
 messaging; project membership, presence, resource locks, constitutions, and ADR

@@ -12,6 +12,18 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **online-skills-hub-for-forge:** Replaced the fake two-entry Skills Hub catalog
+  and placeholder installer with live Skills.sh search, immutable GitHub blob
+  inspection, Alpha Review Core findings, and exact-digest installation through
+  the caller's user-scoped skill security scanners. Marketplace popularity is
+  explicitly not a quality/safety claim; remote installers and downloaded code
+  are never executed. Per-user source commit and package digest provenance is
+  recorded. Optional `GITHUB_TOKEN`/`GH_TOKEN` is scoped to GitHub API requests;
+  API quota exhaustion is reported as unavailable, never as an empty or clean
+  result. The Bot specialist workflow now searches online, verifies actual
+  installation, and routes newly authored skills through the existing approval
+  queue instead of making proposals active.
+
 - **forge-specialist-setup:** Prompt-driven specialist creation now directs the
   lead to inspect the roster, search and audit matching Skills Hub entries,
   install suitable skills through the audited installer, forge with the

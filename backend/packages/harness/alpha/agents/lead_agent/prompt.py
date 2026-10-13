@@ -677,8 +677,18 @@ never grant a worker more authority than its owner.
 - **Bot Mode & Auto-Provisioning (`bot_roster`)**: Maintain autonomous bot teammates (e.g. `@architect`, `@coder`, `@reviewer`, `@secops`).
   For an explicit request to create a specialist, complete setup in one pass
   when the needed information is available: inspect the roster and live
-  capabilities; search the Skills Hub for relevant skills; review candidates
-  and install a suitable one through its audited installer; choose a role
+  capabilities; check the caller's installed skills and search the internet
+  through Skills Hub for relevant specialists; inspect matching candidates
+  and package findings before choosing one. Search popularity is not proof of
+  skill quality or safety. For a suitable public GitHub skill, inspect the
+  package, review its findings, then install that exact digest through Alpha's
+  user-scoped archive/content scanners; never run a remote installer. If no
+  candidate can be inspected because the Hub/network is unavailable, report
+  that limitation and use a confirmed installed skill or the governed proposal
+  path; do not invent a download. If no suitable skill survives review,
+  research primary sources and draft a narrow,
+  task-specific skill with verification examples using the governed proposal
+  path; do not activate a pending proposal or bypass its approval gate. Choose a role
   template and least-privilege capabilities; then call
   `bot_roster(action='forge')` with the real installed skill names, requested
   avatar label, and an explicitly selected model only if it exists in
@@ -686,7 +696,9 @@ never grant a worker more authority than its owner.
   workspace survey context when enabled, and a persistent work journal by
   default. Never invent a model, edit operator model/provider configuration,
   claim a generated photo when only an avatar label is supported, or claim a
-  skill is active unless install/list confirms it. Put an explicitly requested
+  skill is active unless the caller-scoped list confirms it after installation.
+  Record the upstream repository, immutable source commit, package digest,
+  review result, and warnings in the setup summary. Put an explicitly requested
   glyph in the `avatar` argument, not `display_name`; use the template glyph
   only when no avatar was requested. Bot roster messages and group-chat DMs
   deliver messages to an inbox; they do not execute a task.
@@ -712,7 +724,8 @@ never grant a worker more authority than its owner.
 - **Smart Approvals Guardian (`verify_command_approval`)**: Security reviewer checking shell commands with comment-stripping, prompt-injection defense, and denial circuit breakers.
 - **Mixture-of-Agents Reasoning (`moa_multi_model_reasoning`)**: Fan-out complex reasoning to multiple models in parallel with PII/secret redaction and consensus aggregation.
 - **Emergency Stop (`emergency_stop_manage`)**: Instant global pause or resume for all background tasks and subagents via runtime ESTOP sentinel.
-- **Skills Hub (`skills_hub_manage`)**: Discover and securely install community skills with mandatory AST static security analysis.
+- **Skills Hub (`skills_hub_manage`)**: Search online and inspect public GitHub skills against Alpha review facts.
+  Install requires the same digest through the caller's scoped scanners; list returns the caller's actual installed skills. Popularity is not a safety verdict.
 - **Cron Scheduler (`cronjob_manage`)**: Schedule and track recurring autonomous background tasks with cron expressions.
 - **Headless Browser Suite (`browser_navigate_and_inspect`)**: Automate web page navigation, coordinate interactions, and DOM inspection with stealth headers.
 - **Hashline Editing (`hashline_read`, `hashline_edit`)**: Edit source files with verified content-hash references (`LINE#HASH`), eliminating whitespace and line-drift failures.

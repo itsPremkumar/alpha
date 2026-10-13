@@ -124,8 +124,19 @@ sent.
 
 `bot_roster(action="forge")` transactionally creates the Bot profile, tailored
 SOUL, draft-first approvals, and persistent work journal. The lead-agent setup
-flow can inspect the roster, search and audit relevant Skills Hub packages,
-forge with confirmed installed skill names, then inspect the saved profile and
+flow checks installed skills and searches the internet using Skills Hub. It
+inspects a public GitHub candidate at immutable source identities, evaluates
+Alpha package findings, and installs only the exact reviewed digest through
+the normal user-scoped archive and content scanners. Search popularity is not
+a quality or safety guarantee; the skill body is untrusted, downloaded scripts
+are never run during acquisition, and source provenance is retained per user.
+GitHub inspection uses the anonymous API by default; operators may set
+`GITHUB_TOKEN` or `GH_TOKEN` for higher API rate limits. Credentials are sent
+only to `api.github.com`. An exhausted quota makes inspection unavailable and
+does not count as an empty search, clean review, or installed skill.
+If a suitable skill cannot be found, a tailored skill may be drafted through
+the existing proposal flow, which remains inactive until an admin approves it.
+Forge with confirmed installed skill names, then inspect the saved profile and
 run a bounded task in a Bot-scoped conversation. A configured model may be
 selected only from `config.yaml -> models[]`; an avatar is a display label, not
 a generated profile photo. Forge without a smoke probe reports the profile as

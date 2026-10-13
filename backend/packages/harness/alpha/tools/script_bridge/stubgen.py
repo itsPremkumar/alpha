@@ -109,7 +109,7 @@ def registry_names(tools: Iterable[Any] | None = None) -> list[str]:
 def _description(tool: Any) -> str:
     text = getattr(tool, "description", "") or ""
     first = text.strip().split("\n", 1)[0].strip()
-    return first[:200]
+    return first[:200].rstrip()
 
 
 def stub_index(tools: Iterable[Any] | None = None) -> dict[str, dict[str, Any]]:
@@ -143,17 +143,38 @@ def registry_fingerprint(tools: Iterable[Any] | None = None) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _format_tool_index(index: dict[str, dict[str, Any]]) -> str:
+    """Render the index using stable Ruff-compatible Python dictionary layout."""
+    lines = ["{"]
+    for name, metadata in index.items():
+        name_literal = json.dumps(name, ensure_ascii=False)
+        description_literal = json.dumps(metadata["description"], ensure_ascii=False)
+        compact = f'    {name_literal}: {{"description": {description_literal}}},'
+        if len(compact) <= 88:
+            lines.append(compact)
+            continue
+        lines.extend(
+            [
+                f"    {name_literal}: {{",
+                f'        "description": {description_literal}',
+                "    },",
+            ]
+        )
+    lines.append("}")
+    return "\n".join(lines)
+
+
 def render_stub(tools: Iterable[Any] | None = None) -> str:
     """Render the full stub module source for the given registry state."""
     index = stub_index(tools)
     fingerprint = hashlib.sha256(json.dumps(index, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
     # Explicit substitution, not str.format: the index is JSON and contains
     # braces that format() would try to interpret.
-    body = _HEADER.replace("{fingerprint}", fingerprint).replace("{index}", json.dumps(index, indent=4, sort_keys=True, ensure_ascii=False))
+    body = _HEADER.replace("{fingerprint}", fingerprint).replace("{index}", _format_tool_index(index))
     for name, meta in index.items():
         doc = (meta["description"] or name).replace('"""', "'''").replace("\\", "\\\\")
         body += _FUNC.format(name=name, doc=doc)
-    return body
+    return body.rstrip() + "\n"
 
 
 def read_generated_fingerprint(path: Path | None = None) -> str | None:

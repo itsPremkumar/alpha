@@ -38,7 +38,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 - [Extensions](EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
 - [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).
-- [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, and Kanban.
+- [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, Kanban, and Bot Forge with online skill discovery, digest-pinned package review, user-scoped scanned install, and task verification.
 - [Per-bot model configuration](BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling and mixture panels, named only from `config.yaml` `models[]`.
 - [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
 - [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.

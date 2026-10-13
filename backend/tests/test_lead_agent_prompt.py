@@ -694,7 +694,11 @@ def test_system_prompt_encourages_self_aware_one_prompt_setup():
 def test_system_prompt_defines_end_to_end_specialist_forge_verification():
     template = prompt_module.SYSTEM_PROMPT_TEMPLATE
 
-    assert "install a suitable one through its audited installer" in template
+    assert "search the internet" in template
+    assert "not proof of" in template
+    assert "install that exact digest" in template
+    assert "do not activate a pending proposal" in template
+    assert "immutable source commit" in template
     assert "Put an explicitly requested" in template
     assert "in the `avatar` argument" in template
     assert "Bot-scoped chat/run (with its `assistant_id`)" in template
