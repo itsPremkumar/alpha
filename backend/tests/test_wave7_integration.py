@@ -1,5 +1,6 @@
 import json
 
+from alpha.sandbox.computer_use import NO_EXECUTION_DISCLOSURE
 from alpha.tools.builtins import (
     execute_sandboxed_computer_action,
     manage_durable_orchestration,
@@ -107,7 +108,7 @@ def test_run_task_evaluation_benchmark_tool():
     assert data_eval["result"]["success"] is True
 
 
-def test_execute_sandboxed_computer_action_tool():
+def test_sandboxed_computer_action_tool_classifies_without_running():
     # 1. Classify forbidden
     res_cls = execute_sandboxed_computer_action.invoke(
         {
@@ -117,14 +118,19 @@ def test_execute_sandboxed_computer_action_tool():
     )
     assert json.loads(res_cls)["tier"] == "forbidden"
 
-    # 2. Execute safe command
+    # 2. Safe command validation is not command execution. This tool has no
+    # subprocess path; the real execution boundary is elsewhere and separately
+    # guarded.
     res_safe = execute_sandboxed_computer_action.invoke(
         {
             "action": "execute_command",
             "command": "pytest --version",
         }
     )
-    assert json.loads(res_safe)["status"] == "executed"
+    safe_result = json.loads(res_safe)
+    assert safe_result["status"] == "validated"
+    assert safe_result["executed"] is False
+    assert safe_result["disclosure"] == NO_EXECUTION_DISCLOSURE
 
 
 def test_manage_durable_orchestration_tool():

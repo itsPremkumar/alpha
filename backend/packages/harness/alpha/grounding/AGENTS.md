@@ -158,3 +158,12 @@ user-scoped, digest-pinned, reviewed, and passed through the normal skill
 scanners; this classification lets Forge reach those checks and does not skip
 them. Keep its regression in `tests/test_grounding_layer.py` aligned. Unknown
 tools remain blocked, as do irreversible execution and external publication.
+
+For a multifunction tool, classify the action boundary rather than granting
+the whole tool a global effect. `execute_sandboxed_computer_action` remains
+absent from `DEFAULT_SIDE_EFFECTS`: only its exact `classify_command` and
+`get_audit_log` actions are read-only, using the structured tool arguments
+carried by `GateSubject.tool_input`. Missing, malformed, `execute_command`, and
+unknown actions remain `UNKNOWN` and fail closed in both the side-effect and
+reuse-probe gates. Its pure actions must remain reachable without widening
+command execution.
