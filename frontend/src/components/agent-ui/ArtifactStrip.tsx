@@ -62,12 +62,13 @@ function ArtifactChip({ artifact }: { artifact: ArtifactItem }) {
       className="my-1.5 overflow-hidden rounded-lg border border-border/60 bg-muted/30 text-xs"
       data-artifact
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/60 transition-colors"
-      >
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-muted/60 transition-colors"
+        >
         <Icon className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
         <span className="shrink-0 rounded bg-primary/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary">
           {artifact.type || "file"}
@@ -83,15 +84,16 @@ function ArtifactChip({ artifact }: { artifact: ArtifactItem }) {
             {artifact.content.length} chars
           </span>
         )}
-        <CopyButton
-          text={isText ? artifact.content : artifact.name}
-          label="Copy artifact content"
-        />
         <ChevronDown
           className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
           aria-hidden="true"
         />
-      </button>
+        </button>
+        <CopyButton
+          text={isText ? artifact.content : artifact.name}
+          label="Copy artifact content"
+        />
+      </div>
 
       {open && (
         <div className="border-t border-border/50">
