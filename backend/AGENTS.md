@@ -77,7 +77,10 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   run acceptance criteria against independently collected evidence; `RunManager`
   stays the sole lifecycle owner. Gateway run requests may persist validated
   `acceptance_criteria` into run metadata, but a terminal `success` is never
-  presented as verified without passing evidence for every required kind. Tests:
+  presented as verified without passing evidence for every required kind. For
+  the same criterion and evidence kind, any recorded pass/fail disagreement is
+  a conflict and fails closed; a passing duplicate cannot erase a failed
+  measurement. Tests:
   `tests/test_run_acceptance_criteria.py`.
 - **Autonomous run mode** — `RunCreateRequest.autonomous` is the Gateway-owned
   opt-in for prompt-to-completion execution. `start_run()` applies plan mode,
