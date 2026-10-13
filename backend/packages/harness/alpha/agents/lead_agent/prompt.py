@@ -675,7 +675,27 @@ never grant a worker more authority than its owner.
   Inspect status with `action='poll'` and tail output with `action='tail'` without blocking the turn.
 - **Direct Agent Coordination (`agent_message`, `agent_observe`)**: In multi-agent tasks, inspect active siblings with `agent_observe` and steer or follow-up directly via `agent_message`.
 - **Bot Mode & Auto-Provisioning (`bot_roster`)**: Maintain autonomous bot teammates (e.g. `@architect`, `@coder`, `@reviewer`, `@secops`).
-  Any addressed or created bot automatically provisions its custom SOUL, toolset, and capability epoch.
+  For an explicit request to create a specialist, complete setup in one pass
+  when the needed information is available: inspect the roster and live
+  capabilities; search the Skills Hub for relevant skills; review candidates
+  and install a suitable one through its audited installer; choose a role
+  template and least-privilege capabilities; then call
+  `bot_roster(action='forge')` with the real installed skill names, requested
+  avatar label, and an explicitly selected model only if it exists in
+  `config.yaml`. Forge writes a tailored SOUL, draft-first approval rules,
+  workspace survey context when enabled, and a persistent work journal by
+  default. Never invent a model, edit operator model/provider configuration,
+  claim a generated photo when only an avatar label is supported, or claim a
+  skill is active unless install/list confirms it. Put an explicitly requested
+  glyph in the `avatar` argument, not `display_name`; use the template glyph
+  only when no avatar was requested. Bot roster messages and group-chat DMs
+  deliver messages to an inbox; they do not execute a task.
+  After forging, inspect the persisted profile and run a small, reversible task
+  addressed to that Bot through a Bot-scoped chat/run (with its `assistant_id`),
+  not by treating an inbox delivery as execution. Report the observed result
+  and distinguish a response from task-specific verification. Forge without a
+  smoke probe is created but unverified, never "alive". Do not widen tool access, disable approvals, or
+  install unrelated skills to make a setup look complete.
 - **Multi-Agent Group Chat (`group_chat`)**: Collaborate in dedicated group rooms with 5 speaker modes (`mention`, `moderated`, `quorum`, `parallel`, `round_robin`).
   Rooms and missing bots auto-provision on demand. Use `action='propose_vote'` to resolve architectural decisions by consensus.
 - **Collaborative Kanban Board (`kanban_board`)**: Manage tasks across `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`.

@@ -331,6 +331,47 @@ def test_forge_without_a_smoke_test_reports_the_bot_as_unverified(registry):
     assert result.ok is True
     assert result.smoke_tested is False
     assert any("UNVERIFIED" in w for w in result.warnings)
+    assert "unverified" in result.reply().lower()
+    assert "is alive" not in result.reply().lower()
+
+
+def test_forge_persists_avatar_and_configured_model(registry, monkeypatch):
+    from types import SimpleNamespace
+
+    import alpha.config
+
+    monkeypatch.setattr(alpha.config, "get_app_config", lambda: SimpleNamespace(models=[SimpleNamespace(name="test-model")]))
+    result = forge_bot(
+        name="frontend-specialist",
+        role="Build and review accessible frontend interfaces",
+        registry=registry,
+        avatar="🧑‍💻",
+        model="test-model",
+        workspace_survey=False,
+        smoke_test=lambda bot: "responded",
+    )
+    assert result.ok, result.reply()
+    bot = registry.get_bot("frontend-specialist")
+    assert bot.avatar == "🧑‍💻"
+    assert bot.model == "test-model"
+
+
+def test_forge_refuses_model_not_in_operator_config_before_creation(registry, monkeypatch):
+    from types import SimpleNamespace
+
+    import alpha.config
+
+    monkeypatch.setattr(alpha.config, "get_app_config", lambda: SimpleNamespace(models=[SimpleNamespace(name="configured")]))
+    result = forge_bot(
+        name="frontend-specialist",
+        role="Build frontend interfaces",
+        registry=registry,
+        model="invented-model",
+        workspace_survey=False,
+    )
+    assert not result.ok
+    assert "config.yaml models[]" in result.reason
+    assert registry.get_bot("frontend-specialist") is None
 
 
 def test_forge_refuses_a_malformed_handle(registry):
@@ -631,9 +672,32 @@ def test_tool_forge_reports_a_complete_build(tmp_path, monkeypatch):
             "objective": "draft the day's posts",
         }
     )
-    assert "is alive" in out
+    assert "unverified" in out.lower()
+    assert "is alive" not in out.lower()
     assert "smoke test: skipped" in out  # honest: no probe was supplied
     assert "UNVERIFIED" in out
+
+
+def test_tool_forge_wires_avatar_and_model(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import alpha.config
+    from alpha.bots.registry import get_bot_registry
+
+    monkeypatch.setattr(alpha.config, "get_app_config", lambda: SimpleNamespace(models=[SimpleNamespace(name="test-model")]))
+    out = bot_roster_tool.invoke(
+        {
+            "action": "forge",
+            "name": "frontend-specialist",
+            "role": "Build accessible frontend interfaces",
+            "avatar": "🧑‍💻",
+            "model": "test-model",
+        }
+    )
+    assert "forged" in out
+    bot = get_bot_registry().get_bot("frontend-specialist")
+    assert bot.avatar == "🧑‍💻"
+    assert bot.model == "test-model"
 
 
 def test_tool_forge_writes_default_approvals_into_the_soul():

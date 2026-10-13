@@ -895,6 +895,14 @@ exist" and "the Bot works" must never be reported the same way.
   swallowed.
 - **No model is called.** The workspace survey, overlap check and routine guard
   are deterministic word/rule matching: same inputs, same build.
+- Forge accepts an avatar label and a per-Bot model only from the operator's
+  existing `config.yaml -> models[]`; unknown models are refused before a
+  roster mutation. The `bot_roster` tool must pass these fields through. An
+  avatar label is not a generated photo. A build without a caller-supplied
+  smoke probe is created but explicitly **unverified**, never reported alive.
+  The lead-agent specialist setup path searches and audits candidate skills,
+  installs only through Skills Hub, inspects the persisted profile, and runs a
+  bounded task addressed to the new Bot before reporting runtime behavior.
 
 Guardrails are written into the SOUL at birth by `build_guardrail_soul()` —
 approvals, escalation target, where the Bot runs — because approvals that live

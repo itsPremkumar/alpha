@@ -156,7 +156,10 @@ class ForgeResult:
         if not self.ok:
             return f"{_BLOCKED_GLYPH} @{self.name} was not created: {self.reason}"
 
-        lines = [f"{_ALIVE_GLYPH} {self.name} is alive."]
+        if self.smoke_tested:
+            lines = [f"{_ALIVE_GLYPH} {self.name} is alive."]
+        else:
+            lines = [f"{_DONE_GLYPH} @{self.name} was forged; runtime behavior is unverified."]
         lines.append(f"steps: {', '.join(self.step_names)}")
         if self.smoke_tested:
             lines.append(f"smoke test: passed — {self.smoke_output[:200]}")
@@ -451,6 +454,8 @@ def forge_bot(
     department: str | None = None,
     reports_to: str | None = None,
     display_name: str | None = None,
+    avatar: str | None = None,
+    model: str | None = None,
     skills: list[str] | None = None,
     toolsets: list[str] | None = None,
     capabilities: list[str] | None = None,
@@ -509,6 +514,23 @@ def forge_bot(
         result.reason = f"@{clean} already exists — use update, not create"
         result.elapsed_seconds = time.monotonic() - started
         return result
+
+    # A Bot may only select a model already declared by the operator. This is
+    # checked before the transaction claims a roster entry; forge never edits
+    # config.yaml or invents a model/provider.
+    if model:
+        try:
+            from alpha.config import get_app_config
+
+            configured_models = {item.name for item in get_app_config().models}
+        except Exception as exc:
+            result.reason = f"could not validate requested model against config.yaml models[]: {type(exc).__name__}: {exc}"
+            result.elapsed_seconds = time.monotonic() - started
+            return result
+        if model.strip() not in configured_models:
+            result.reason = f"model '{model.strip()}' is not declared in config.yaml models[]; choose an existing configured model"
+            result.elapsed_seconds = time.monotonic() - started
+            return result
 
     # ---- pre-flight checks: nothing is created yet ----------------------
     if sandbox:
@@ -592,6 +614,7 @@ def forge_bot(
             template=template,
             department=department,
             reports_to=reports_to,
+            avatar=avatar,
             capabilities=capabilities,
             skills=skills,
             toolsets=toolsets,
@@ -605,7 +628,10 @@ def forge_bot(
     # ---- step 2: identity + approvals in the SOUL ------------------------
     try:
         previous_soul = getattr(bot, "soul", "")
+        previous_model = getattr(bot, "model", None)
         bot.soul = final_soul
+        if model:
+            bot.model = model.strip()
         bot.metadata.setdefault("approvals", list(final_approvals))
         bot.metadata["forged_at"] = datetime.now(UTC).isoformat()
         bot.metadata["forged_by"] = "forge"
@@ -617,6 +643,7 @@ def forge_bot(
 
         def _undo_soul() -> None:
             bot.soul = previous_soul
+            bot.model = previous_model
 
         if hasattr(registry, "_save"):
             registry._save()

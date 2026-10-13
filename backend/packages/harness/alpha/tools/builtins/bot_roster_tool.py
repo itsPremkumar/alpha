@@ -683,6 +683,8 @@ def bot_roster_tool(
             department=department or None,
             reports_to=reports_to or None,
             display_name=display_name or None,
+            avatar=avatar or None,
+            model=model or None,
             skills=[s.strip() for s in skills.split(",") if s.strip()] or None,
             toolsets=[t.strip() for t in capabilities.split(",") if t.strip()] or None,
             approvals=approvals_list,

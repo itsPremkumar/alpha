@@ -12,6 +12,16 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **forge-specialist-setup:** Prompt-driven specialist creation now directs the
+  lead to inspect the roster, search and audit matching Skills Hub entries,
+  install suitable skills through the audited installer, forge with the
+  persisted skill names, inspect the saved profile, and run a bounded task
+  addressed to the new Bot. Forge now persists the tool's avatar label and
+  accepts only models already declared in operator `config.yaml -> models[]`;
+  an unknown model is refused before creation. A forge without a smoke probe is
+  honestly reported as created but unverified, not alive. An avatar label does
+  not represent a generated profile photo.
+
 - **apex-acceptance-ui:** The APEX session card now lets an operator evaluate
   every declared criterion and submit non-empty evidence after a successful
   run. The objective form requires a criterion so the run has a measurable

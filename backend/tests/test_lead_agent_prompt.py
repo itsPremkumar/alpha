@@ -691,6 +691,17 @@ def test_system_prompt_encourages_self_aware_one_prompt_setup():
     assert "Ask the user only when a required value cannot be discovered or inferred" in template
 
 
+def test_system_prompt_defines_end_to_end_specialist_forge_verification():
+    template = prompt_module.SYSTEM_PROMPT_TEMPLATE
+
+    assert "install a suitable one through its audited installer" in template
+    assert "Put an explicitly requested" in template
+    assert "in the `avatar` argument" in template
+    assert "Bot-scoped chat/run (with its `assistant_id`)" in template
+    assert "inbox delivery as execution" in template
+    assert 'unverified, never "alive"' in template
+
+
 def _make_minimal_app_config():
     return SimpleNamespace(
         sandbox=SimpleNamespace(mounts=[]),

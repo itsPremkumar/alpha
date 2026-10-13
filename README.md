@@ -474,8 +474,11 @@ make doctor    # verify the environment
   bot (persona, approvals, routines, journal) as a single transaction: it
   refuses duplicate roles and unaffordable schedules *before* creating
   anything, rolls the whole build back if any step fails, and only reports a
-  bot alive after it answers a smoke test. Approvals and the sandbox are
-  written into its SOUL at birth.
+  bot alive after it answers a smoke test; without one it reports the build as
+  unverified. It can bind a validated model from the operator's existing
+  `config.yaml` and an avatar label. Approvals and the sandbox are written into
+  its SOUL at birth; the lead can search and audit relevant skills, forge the
+  profile, inspect it, and run a bounded task to check that it responds.
 - **Work journal & blocker roll-up** — every bot keeps an append-only work
   journal that refuses credentials and chain-of-thought;
   `bot_roster(action="waiting_on")` answers "anything waiting on me?" across

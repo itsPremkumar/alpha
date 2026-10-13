@@ -120,6 +120,20 @@ sent.
 - **Health monitoring** - track last active, error rate
 - **Presence** - online/offline/busy status
 
+### Creating a specialist with Bot Forge
+
+`bot_roster(action="forge")` transactionally creates the Bot profile, tailored
+SOUL, draft-first approvals, and persistent work journal. The lead-agent setup
+flow can inspect the roster, search and audit relevant Skills Hub packages,
+forge with confirmed installed skill names, then inspect the saved profile and
+run a bounded task in a Bot-scoped conversation. A configured model may be
+selected only from `config.yaml -> models[]`; an avatar is a display label, not
+a generated profile photo. Forge without a smoke probe reports the profile as
+created but unverified. A roster DM or group-chat message only delivers to an
+inbox; it is not evidence that the Bot executed a task. See
+`backend/packages/harness/alpha/AGENTS.md#bot-forge` for the transaction and
+verification contract.
+
 ### Bot DMs (Direct Messages)
 ```
 POST /api/bots/{bot_name}/dm
