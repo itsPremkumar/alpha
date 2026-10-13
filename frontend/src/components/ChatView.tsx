@@ -3013,7 +3013,7 @@ export default function ChatView({
         <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
           {/* Workspace navigation for non-chat views */}
           {view !== "chat" && (
-            <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
+            <header data-lion-pet-keepout="" className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
               <div className="overflow-x-auto">
                 {/* Each badge is that tab's own measured count. The Projects tab must
                   read the project list, not inherit the bot roster: an

@@ -131,11 +131,12 @@ test("mergeServerCards is idempotent across repeated syncs", () => {
 
 test("company board mirrors retain the company owner and namespace duplicate task ids", () => {
   const mirrored = board.mergeServerCards([], [
-    serverTask("company-a::TASK-1", { companyId: "company-a", status: "in_review" }),
-    serverTask("company-b::TASK-1", { companyId: "company-b", status: "blocked" }),
+    serverTask("company-a::TASK-1", { companyId: "company-a", status: "in_review", priority: "high" }),
+    serverTask("company-b::TASK-1", { companyId: "company-b", status: "blocked", priority: "critical" }),
   ]);
 
   assert.equal(mirrored.length, 2);
   assert.deepEqual(mirrored.map((card) => card.serverCompanyId), ["company-a", "company-b"]);
   assert.deepEqual(mirrored.map((card) => card.status), ["review", "blocked"]);
+  assert.deepEqual(mirrored.map((card) => card.priority), ["high", "urgent"]);
 });

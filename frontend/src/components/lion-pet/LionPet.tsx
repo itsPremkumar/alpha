@@ -508,7 +508,11 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const shell = shellRef.current;
-    if (!shell || !settings.visible || settings.desktopOverlay) return;
+    // Persisted positions are loaded by the hydration effect above. Without
+    // `hydrated` here, this effect ran once against the default position while
+    // the shell was still null, then never re-ran for a stored position that
+    // could cover navigation or controls.
+    if (!hydrated || !shell || !settings.visible || settings.desktopOverlay) return;
 
     const nudgeClear = () => {
       const rect = shell.getBoundingClientRect();
@@ -580,7 +584,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       observer?.disconnect();
       mutations?.disconnect();
     };
-  }, [settings.visible, settings.desktopOverlay]);
+  }, [hydrated, settings.visible, settings.desktopOverlay]);
 
   useEffect(() => {
     const unsubscribe = desktopBridge()?.onLionPetVisibility?.(({ visible }) => {

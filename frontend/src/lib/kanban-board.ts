@@ -131,6 +131,19 @@ function normalizeStatus(s: string): CardStatus {
   return "backlog";
 }
 
+/** Map only the server's documented priorities; absent or novel values stay local. */
+function serverPriority(value: string | null): Priority | null {
+  switch (value?.toLowerCase()) {
+    case "low": return "low";
+    case "normal":
+    case "medium": return "medium";
+    case "high": return "high";
+    case "critical":
+    case "urgent": return "urgent";
+    default: return null;
+  }
+}
+
 export function loadCards(): Card[] {
   try {
     const raw = localStorage.getItem(KEY);
@@ -231,6 +244,7 @@ function serverToCard(t: ServerTask): Card {
     title: t.title || t.id,
     description: t.description || "",
     status: normalizeStatus(t.status),
+    priority: serverPriority(t.priority) ?? base.priority,
     agent: t.assignee || null,
     // The server has no progress channel, so this stays absent rather than
     // inheriting a measured 0%.
@@ -284,6 +298,7 @@ export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
         ...existing,
         // The server owns the stage of a card it owns.
         status: serverStatus,
+        priority: serverPriority(t.priority) ?? existing.priority,
         // A local assignee the user chose wins; otherwise adopt the server's.
         agent: existing.agent ?? (t.assignee || null),
         serverCompanyId: t.companyId ?? existing.serverCompanyId ?? null,

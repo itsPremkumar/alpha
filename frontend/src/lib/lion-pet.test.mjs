@@ -101,6 +101,11 @@ test("the pet is a fixed, local companion without a remote asset URL", () => {
   assert.match(componentSource, /viewBox="0 0 220 210"/);
 });
 
+test("stored companion positions are corrected after browser settings hydrate", () => {
+  assert.match(componentSource, /if \(!hydrated \|\| !shell \|\| !settings\.visible \|\| settings\.desktopOverlay\) return/);
+  assert.match(componentSource, /\}, \[hydrated, settings\.visible, settings\.desktopOverlay\]\);/);
+});
+
 /**
  * The companion's hit area sets `pointer-events: auto`, so wherever it sits it
  * intercepts clicks meant for whatever is under it. Measured in a live browser,
@@ -179,11 +184,12 @@ test("the companion moves below a full-width workspace header instead of obscuri
   assert.ok(rect.top >= header.bottom, "the pet must sit below the full-width navigation region");
 });
 
-test("both workspace navigation rows are registered as companion keep-outs", () => {
+test("global, project, and section navigation headers are companion keep-outs", () => {
   const topBar = readFileSync(new URL("../components/chat-shell/WorkspaceTopBar.tsx", import.meta.url), "utf8");
   const contextHeader = readFileSync(new URL("../components/chat-shell/ProjectContextHeader.tsx", import.meta.url), "utf8");
   assert.match(topBar, /<header[^>]*data-lion-pet-keepout/);
   assert.match(contextHeader, /data-shell="project-context"[^>]*data-lion-pet-keepout/);
+  assert.match(chatSource, /\{view !== "chat" && \(\s*<header data-lion-pet-keepout/);
 });
 
 test("no keep-out, or no viewport, leaves the requested position untouched", () => {
