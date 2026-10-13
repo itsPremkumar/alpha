@@ -115,6 +115,16 @@ def test_delegation_passes_even_with_forbid_unconfirmed_side_effects() -> None:
     assert result.blocked is False, f"strict branch still refuses delegation: {result.reason}"
 
 
+def test_command_safety_review_is_read_only_and_computer_execution_stays_blocked() -> None:
+    """A pure guardian is usable, while the computer execution surface stays fail-closed."""
+    assert DEFAULT_SIDE_EFFECTS["verify_command_approval"] is SideEffectClass.READ_ONLY
+    review = check_side_effect(_subject(tool_calls=("verify_command_approval",), forbid_unconfirmed_side_effects=True, planned_tools=()))
+    assert review.blocked is False, f"pure command review was refused: {review.reason}"
+    assert "execute_sandboxed_computer_action" not in DEFAULT_SIDE_EFFECTS
+    execution = check_side_effect(_subject(tool_calls=("execute_sandboxed_computer_action",), forbid_unconfirmed_side_effects=True, planned_tools=()))
+    assert execution.blocked is True
+
+
 def test_a_registered_tool_is_classified_or_the_gate_will_refuse_it() -> None:
     """The failure this table keeps producing, turned into a build error.
 
@@ -178,7 +188,7 @@ def test_unclassified_tool_count_is_disclosed_not_silently_large() -> None:
     """
     names = sorted({getattr(t, "name", str(t)) for t in BUILTIN_TOOLS})
     missing = [n for n in names if n not in DEFAULT_SIDE_EFFECTS]
-    assert len(missing) == 110, (
+    assert len(missing) == 112, (
         f"{len(missing)} of {len(names)} builtin tools have no side-effect classification "
         f"({len(names) - len(missing)} classified). If this moved because tools were "
         f"classified, update docs/audits/ORCHESTRATION_PROBES.md. Newly unclassified: "

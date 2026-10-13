@@ -165,6 +165,30 @@ specialist's per the instruction. Its findings included a confirmation of the
 
 Two independent runs and the live tool both point at the same fix.
 
+### Grounding classification follow-up — 2026-10-13
+
+The current builtin registry has **136 tools**. The strict side-effect table
+classifies **24**, leaving **112 fail-closed as unknown**. The regression test
+`backend/tests/test_grounding_side_effect_classification.py` pins that current
+count; the historical 132/110 figures above describe the 2026-10-05 probe and
+are retained as such.
+
+This follow-up adds one narrow classification observed missing during a live
+UI-backed smoke run:
+
+- `verify_command_approval` → `READ_ONLY`: it evaluates a command string and
+  returns a verdict; it neither approves nor executes the command.
+- `execute_sandboxed_computer_action` remains unclassified and blocked. An
+  existing gate regression explicitly preserves that boundary; validation-only
+  documentation is not enough evidence to relax it.
+
+Host process launch (`process_handle`), external jobs (`external_job`), generic
+shell tools, and code mode remain blocked unless their separate safety and
+operator-approval paths admit them. This table change does not supply those
+approvals. The focused gate tests pass, but this follow-up is **not** a live
+agent-task success: the smoke task's runner was still refused and needs a
+separate sandbox execution path or explicit operator approval.
+
 ### One more probe defect found and fixed
 
 `ralph_loop` first re-run came back **FAIL** with

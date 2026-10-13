@@ -166,6 +166,9 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     # through the sandbox. Local and reversible like `str_replace`, and
     # ReadBeforeWriteMiddleware still gates it independently.
     "hashline_edit": SideEffectClass.REVERSIBLE_WRITE,
+    # This guardian only evaluates a command string and returns a verdict. It
+    # does not grant approval or execute the command.
+    "verify_command_approval": SideEffectClass.READ_ONLY,
     # `tool_search` is a catalog read, but the run promotes the schemas it
     # returns (a local, reversible state change), so it is not read-only.
     "tool_search": SideEffectClass.REVERSIBLE_WRITE,
