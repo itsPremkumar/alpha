@@ -856,7 +856,7 @@ export default function ChatView({
    * delegation reachable, and it is a per-message decision because it spends
    * tokens and starts background workers.
    */
-  const [delegationEnabled, setDelegationEnabled] = useState(false);
+  const [delegationMode, setDelegationMode] = useState("off");
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
   // Project scope for the active chat (creation + permission/selection in-chat).
@@ -2142,6 +2142,12 @@ export default function ChatView({
                   ...(reasoningEffort !== DEFAULT_EFFORT
                     ? { reasoning_effort: reasoningEffort }
                     : {}),
+                  ...(delegationMode.startsWith("type:")
+                    ? { preferred_subagent_type: delegationMode.slice("type:".length) }
+                    : {}),
+                  ...(delegationMode.startsWith("category:")
+                    ? { preferred_subagent_category: delegationMode.slice("category:".length) }
+                    : {}),
                 },
               },
               // The delegation opt-in. `RunCreateRequest.autonomous` is the
@@ -2152,7 +2158,7 @@ export default function ChatView({
               //
               // Sent only when on. `false` is the default posture, and writing the
               // literal would be indistinguishable from a caller asserting it.
-              ...(delegationEnabled ? { autonomous: true } : {}),
+              ...(delegationMode !== "off" ? { autonomous: true } : {}),
             }),
           },
         },
@@ -4101,8 +4107,8 @@ export default function ChatView({
                         onSubmit={handleSubmit}
                         onStop={handleStop}
                         isLoading={isLoading}
-                        delegationEnabled={delegationEnabled}
-                        onDelegationChange={setDelegationEnabled}
+                        delegationMode={delegationMode}
+                        onDelegationModeChange={setDelegationMode}
                         models={models}
                         selectedModel={selectedModel}
                         onSelectModel={(m) => {

@@ -377,6 +377,45 @@ def test_task_tool_enforces_caller_subagent_snapshot(monkeypatch):
     assert "Available: planner" in message.content
 
 
+def test_task_tool_revalidates_composer_selected_type_against_caller_policy(monkeypatch):
+    runtime = _make_runtime()
+    runtime.config["configurable"] = {"preferred_subagent_type": "planner"}
+    monkeypatch.setattr(task_tool_module, "get_available_subagent_names", lambda: ["general-purpose"])
+    monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: _make_subagent_config())
+
+    result = _run_task_tool(
+        runtime=runtime,
+        description="policy-filtered selection",
+        prompt="do work",
+        subagent_type="general-purpose",
+        tool_call_id="tc-selected-policy",
+    )
+
+    message = _task_tool_message(result)
+    assert message.additional_kwargs[SUBAGENT_STATUS_KEY] == "failed"
+    assert "Unknown subagent type 'planner'" in message.content
+    assert "Available: general-purpose" in message.content
+
+
+def test_task_tool_applies_composer_category_and_reports_unknown_preset(monkeypatch):
+    runtime = _make_runtime()
+    runtime.config["configurable"] = {"preferred_subagent_category": "not-configured"}
+    monkeypatch.setattr(task_tool_module, "get_available_subagent_names", lambda: ["general-purpose"])
+    monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: _make_subagent_config())
+
+    result = _run_task_tool(
+        runtime=runtime,
+        description="unknown category preference",
+        prompt="do work",
+        subagent_type="general-purpose",
+        tool_call_id="tc-selected-category",
+    )
+
+    message = _task_tool_message(result)
+    assert message.additional_kwargs[SUBAGENT_STATUS_KEY] == "failed"
+    assert "Unknown task category 'not-configured'" in message.content
+
+
 def test_task_tool_explains_when_caller_policy_permits_no_subagents(monkeypatch):
     runtime = _make_runtime()
     runtime.config["metadata"]["allowed_subagents"] = []

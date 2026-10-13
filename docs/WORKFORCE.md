@@ -384,6 +384,41 @@ Delegation is guided by intent categories that configure model chains, turn budg
 - **`quick`**: Low-latency, terse execution for small tasks (`max_turns=30`).
 - **`deep-research`**: Autonomous 5-pass research, recursive gap filling, contradiction detection, and publication-ready citations (`max_turns=150`).
 
+### Chat composer selection
+
+The composer’s **Subagents** selector controls the native `task` delegation path.
+`Off` leaves the task tool out of the run; `Auto` enables it and lets Alpha
+choose the worker and category. Selecting a category (`research`, `quick`, or
+`deep-research`) keeps the worker type model-selected but applies that preset.
+Selecting a named worker from the live `/api/subagents` catalog pins the worker
+type for delegated calls in that run. The Gateway validates that choice against
+the caller’s effective `allowed_subagents` policy at execution time; stale,
+disabled, conflicting, or policy-filtered entries fail with an explicit reason.
+The selector lists only enabled, non-conflicting catalog entries and does not
+pretend a catalog read failure means no workers exist.
+
+### Related orchestration methods (separate engines)
+
+These are useful multi-agent methods, but they are not `task` subagent types and
+are therefore documented in the selector rather than offered as interchangeable
+worker choices:
+
+| Method | Use it for | Execution and verification boundary |
+| --- | --- | --- |
+| Native `task` delegation | A bounded isolated helper, specialist instructions, category preset, or parallel independent subtasks | `SubagentExecutor` and its shared admission, sandbox, receipt, and usage controls; child completion is not task acceptance |
+| Arena | A bracketed adversarial contest: competitors attack/defend and a judge compares outcomes | `arena` tool / `alpha.arena`; opt-in and budget bounded |
+| GRO | One-wave candidate comparison when acceptance gates can be stated up front | `swarm` tool `compete`; hard gates decide eligibility before ranking; no criteria means unverified |
+| Swarm | A persistent team plan with explicit dependencies, leases, retries, pause/resume, and audit history | `swarm` tool / `/api/swarms`; owner-scoped plan lifecycle, not implicit chat delegation |
+| Dynamic workflow | A typed graph with conditions, loops, waits, approvals, compensation, or child workflows | Workflow API/tool paths; real domain executors remain opt-in and unbound executors refuse |
+| APEX | A bounded executive control plane that chooses among already-wired work engines | APEX session and mode surfaces; it does not replace `RunManager` or make every engine available |
+
+The composer currently selects only native `task` worker/category behavior. To
+run Arena, GRO, Swarm, or a dynamic workflow, ask Alpha for that named method or
+use its dedicated surface; the composer never labels a generic task delegation
+as one of those engine runs. The run request carries the chosen worker/category
+as a preference, and the `task` tool revalidates it against the effective
+allowlist before execution.
+
 ## Workforce Frontend (WorkforceSection)
 
 ### Tabs

@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Check,
   X,
-  Network,
   AtSign,
   Users,
   ArrowLeftRight,
@@ -38,6 +37,7 @@ import {
 import { InsertMenu } from "@/components/InsertMenu";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
+import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
 import type { FreeProviderHealth } from "@/lib/freeModels";
 import {
   applyMention,
@@ -293,16 +293,9 @@ interface ComposerProps {
    */
   effort?: EffortChoice;
   onEffortChange?: (effort: EffortChoice) => void;
-  /**
-   * Whether this message may delegate work to background subagents.
-   *
-   * Sent as the server's `autonomous` run flag, which is what applies
-   * `subagent_enabled` and puts the `task` tool in the toolset. Defaults off:
-   * delegation spends tokens and starts workers, so it is opt-in and the control
-   * renders its own state rather than implying a capability that is not active.
-   */
-  delegationEnabled?: boolean;
-  onDelegationChange?: (enabled: boolean) => void;
+  /** Selected native task mode: off, automatic, a category, or a catalog worker. */
+  delegationMode?: string;
+  onDelegationModeChange?: (mode: string) => void;
   /** Canonical ladder + labels from `GET /api/models` (weakest → strongest). */
   effortLadder?: readonly string[];
   effortLabels?: Readonly<Record<string, string>>;
@@ -363,8 +356,8 @@ export function Composer({
   onMentionSwitchAgent,
   effort = DEFAULT_EFFORT,
   onEffortChange,
-  delegationEnabled = false,
-  onDelegationChange,
+  delegationMode = "off",
+  onDelegationModeChange,
   effortLadder = FALLBACK_LADDER,
   effortLabels = FALLBACK_LABELS,
   roomName = null,
@@ -372,6 +365,20 @@ export function Composer({
   currentUserHandle = null,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [subagentChoices, setSubagentChoices] = useState<SubagentDef[] | null>(null);
+  const [subagentCatalogError, setSubagentCatalogError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void listSubagentCatalog().then((rows) => {
+      if (active) {
+        setSubagentChoices(rows.filter((row) => row.enabled === true && !row.conflict));
+        setSubagentCatalogError(null);
+      }
+    }).catch((error: unknown) => {
+      if (active) setSubagentCatalogError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { active = false; };
+  }, []);
   /**
    * The scroll container holding the palette rows.
    *
@@ -1196,41 +1203,38 @@ export function Composer({
               </button>
             )}
 
-            {/* Delegation opt-in. This control exists because the composer could
-                not delegate at all: `sendMessage` sent `model_name`,
-                `is_plan_mode` and `reasoning_effort`, and never the server's
-                `autonomous` flag, so `subagent_enabled` stayed false and the
-                `task` tool was never in the toolset. Measured against the live
-                Gateway: `autonomous=false` -> tools `alpha_capability,
-                catalog_tool_search`; `autonomous=true` -> `alpha_capability,
-                task`. Typing a prompt therefore could not produce a working
-                subagent, and that was the wiring rather than the operator.
-
-                It defaults OFF and says so. Delegation spends tokens and starts
-                workers, so silently enabling it would change what a prompt does;
-                a control that is off must look off, not idle. */}
-            {onDelegationChange && (
-              <button
-                type="button"
-                onClick={() => onDelegationChange(!delegationEnabled)}
+            {onDelegationModeChange && (
+              <label className="sr-only" htmlFor="composer-subagent-mode">Subagent mode</label>
+            )}
+            {onDelegationModeChange && (
+              <select
+                id="composer-subagent-mode"
+                value={delegationMode}
                 disabled={isLoading}
-                aria-pressed={delegationEnabled}
-                aria-label="Allow this message to delegate work to subagents"
-                title={
-                  delegationEnabled
-                    ? "Subagents ON — the agent may split this into helpers that run in the background. Costs extra tokens."
-                    : "Subagents OFF — the agent answers this itself. Turn on to let it delegate work to background helpers."
-                }
-                className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
-                  delegationEnabled
-                    ? "text-primary bg-primary/10"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
+                onChange={(event) => onDelegationModeChange(event.target.value)}
+                aria-label="Subagent mode"
+                title={subagentCatalogError ? `Subagent catalog unavailable: ${subagentCatalogError}` : "Choose whether and how Alpha delegates this message"}
+                className={`max-w-44 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 ${delegationMode !== "off" ? "border-primary/40 text-primary" : "text-muted-foreground"}`}
               >
-                <Network
-                  className={`size-4 ${delegationEnabled ? "" : "opacity-60"}`}
-                />
-              </button>
+                <option value="off">Subagents: Off</option>
+                <option value="auto">Subagents: Auto</option>
+                <option value="category:general">General · standard bounded helper</option>
+                <option value="category:research">Research · multi-source specialist</option>
+                <option value="category:quick">Quick · low-latency specialist</option>
+                <option value="category:deep-research">Deep research · five-pass evidence workflow</option>
+                {subagentCatalogError && <option disabled>Worker catalog unavailable · see details</option>}
+                {subagentChoices?.length === 0 && <option disabled>No named workers reported</option>}
+                {(subagentChoices ?? []).map((choice) => (
+                  <option key={`${choice.source}:${choice.name}`} value={`type:${choice.name}`}>
+                    {`${choice.displayName || choice.name} · ${(choice.description || "specialist worker").replace(/\s+/g, " ").slice(0, 72)}`}
+                  </option>
+                ))}
+                <option disabled>Other orchestration tools (not task subagents)</option>
+                <option disabled>Arena · bracketed attack, defense, and judging</option>
+                <option disabled>Swarm · bounded task DAG with leases and recovery</option>
+                <option disabled>GRO · compare candidates against acceptance gates</option>
+                <option disabled>Dynamic workflow · typed graphs, routes, and approvals</option>
+              </select>
             )}
             <VoiceControls
               onTranscript={(text) => {

@@ -864,6 +864,19 @@ async def task_tool(
         return _task_result_command(tool_call_id=tool_call_id, status="failed", error=f"Unknown context_mode '{context_mode}'. Use isolated or snapshot.")
     runtime_app_config = _get_runtime_app_config(runtime)
     metadata: dict = runtime.config.get("metadata", {}) if runtime is not None else {}
+    configurable = runtime.config.get("configurable", {}) if runtime is not None else {}
+    if not isinstance(configurable, dict) and runtime is not None:
+        configurable = runtime.context if isinstance(runtime.context, dict) else {}
+    # A composer selection is a preference scoped to this run, never an
+    # authority grant. Re-validate it against the same effective allowlist as
+    # the model-selected value below; stale or policy-filtered selections fail
+    # with an explicit result instead of silently running another worker.
+    preferred_type = configurable.get("preferred_subagent_type") if isinstance(configurable, dict) else None
+    preferred_category = configurable.get("preferred_subagent_category") if isinstance(configurable, dict) else None
+    if isinstance(preferred_type, str) and preferred_type.strip():
+        subagent_type = preferred_type.strip()
+    if isinstance(preferred_category, str) and preferred_category.strip():
+        category = preferred_category.strip()
     allowed_subagents = metadata.get("allowed_subagents")
     if allowed_subagents is None:
         available_subagent_names = get_available_subagent_names(app_config=runtime_app_config) if runtime_app_config is not None else get_available_subagent_names()

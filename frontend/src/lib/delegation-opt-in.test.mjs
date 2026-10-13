@@ -12,9 +12,8 @@
 // is the wiring, not the operator — and it is invisible from the UI, because a
 // missing capability and an idle one look identical on screen.
 //
-// The three properties pinned here are the ones a refactor would quietly break:
-// the flag reaches the request body, it is absent unless asked for, and the
-// control cannot be "on" while the request is silent.
+// The mode choice, worker/category preference, and task progress channel must
+// all reach the same real Gateway execution path.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -29,27 +28,27 @@ const composer = read("../components/Composer.tsx");
 // The flag reaches the server
 // ---------------------------------------------------------------------------
 
-test("the run request carries the server's autonomous opt-in", () => {
+test("the run request carries the server's autonomous opt-in for any selected mode", () => {
   // `RunCreateRequest.autonomous` is the server-owned switch; `start_run` applies
   // `subagent_enabled` only after client context is sanitized. A different field
   // name here would be accepted by the boundary and silently ignored.
   assert.match(
     chat,
-    /\.\.\.\(delegationEnabled\s*\?\s*\{\s*autonomous:\s*true\s*\}\s*:\s*\{\}\)/,
+    /\.\.\.\(delegationMode\s*!==\s*"off"\s*\?\s*\{\s*autonomous:\s*true\s*\}\s*:\s*\{\}\)/,
     "the request body must send `autonomous: true` when delegation is on",
   );
 });
 
-test("the opt-in defaults to off", () => {
+test("the selector defaults to off", () => {
   assert.match(
     chat,
-    /const \[delegationEnabled, setDelegationEnabled\] = useState\(false\)/,
+    /const \[delegationMode, setDelegationMode\] = useState\("off"\)/,
     "delegation must default to false: it spends tokens and starts background workers",
   );
   assert.match(
     composer,
-    /delegationEnabled = false/,
-    "the composer prop must default to false too",
+    /delegationMode = "off"/,
+    "the composer prop must default to off too",
   );
 });
 
@@ -72,44 +71,32 @@ test("the literal false is never sent", () => {
 // The control is visible and honest
 // ---------------------------------------------------------------------------
 
-test("the composer renders a delegation control with an accessible name", () => {
+test("the composer renders a mode selector with an accessible name", () => {
   assert.match(
     composer,
-    /aria-label="Allow this message to delegate work to subagents"/,
-    "the control must name what it does for assistive tech, not just show an icon",
+    /aria-label="Subagent mode"/,
+    "the selector must name its function for assistive tech",
   );
 });
 
-test("the control renders its pressed state rather than implying a capability", () => {
-  // A control that is off must look off. `aria-pressed` plus a visual class is
-  // what separates "you may delegate" from "delegation is happening".
-  assert.match(composer, /aria-pressed=\{delegationEnabled\}/);
+test("the selector exposes real worker and category choices", () => {
   assert.match(
     composer,
-    /delegationEnabled\s*\?\s*"text-primary bg-primary\/10"/,
-    "the ON state must be visually distinct, not the same neutral icon",
+    /listSubagentCatalog\(\)/,
+    "worker choices must come from the Gateway catalog",
   );
-});
-
-test("both states explain the consequence in the tooltip", () => {
-  const off = composer.match(/Subagents OFF[^"]*/);
-  const on = composer.match(/Subagents ON[^"]*/);
-  assert.ok(off, "the OFF state must say delegation is off");
-  assert.ok(on, "the ON state must say delegation is on");
-  assert.match(
-    off[0],
-    /answers? this itself/i,
-    "OFF must say what will happen instead",
-  );
-  assert.match(on[0], /Costs extra tokens/i, "ON must disclose the cost");
+  assert.match(composer, /category:research/);
+  assert.match(composer, /category:quick/);
+  assert.match(composer, /category:deep-research/);
+  assert.match(composer, /type:\$\{choice\.name\}/);
+  assert.match(composer, /Arena · bracketed attack, defense, and judging/);
+  assert.match(composer, /Dynamic workflow · typed graphs, routes, and approvals/);
 });
 
 test("the control is disabled while a run is in flight", () => {
   // Toggling mid-run would change nothing about the run already admitted, so the
   // control implying otherwise is a lie about the current run.
-  const idx = composer.indexOf(
-    'aria-label="Allow this message to delegate work to subagents"',
-  );
+  const idx = composer.indexOf('aria-label="Subagent mode"');
   assert.ok(idx > 0);
   const window = composer.slice(Math.max(0, idx - 700), idx);
   assert.match(
@@ -123,9 +110,11 @@ test("the control is disabled while a run is in flight", () => {
 // The wiring between the two files
 // ---------------------------------------------------------------------------
 
-test("ChatView passes both the state and the setter to the composer", () => {
-  assert.match(chat, /delegationEnabled=\{delegationEnabled\}/);
-  assert.match(chat, /onDelegationChange=\{setDelegationEnabled\}/);
+test("ChatView passes the selected mode and run-scoped preferences", () => {
+  assert.match(chat, /delegationMode=\{delegationMode\}/);
+  assert.match(chat, /onDelegationModeChange=\{setDelegationMode\}/);
+  assert.match(chat, /preferred_subagent_type:/);
+  assert.match(chat, /preferred_subagent_category:/);
 });
 
 // ---------------------------------------------------------------------------
