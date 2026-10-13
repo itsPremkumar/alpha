@@ -82,6 +82,35 @@ The rung is also settable per run (`context.reasoning_effort` or
 (`channels.<name>.run_context.reasoning_effort`). A value that names no rung is
 a 422 at the run boundary rather than a silent fallback.
 
+### Free-only automatic routing
+
+To keep automatic tasks on Alpha's keyless free router and refuse paid or
+unpriced models before constructing a provider client, configure:
+
+```yaml
+default_model: alpha-free
+model_routing:
+  enabled: true
+  categories:
+    deep: [alpha-free]
+    writing: [alpha-free]
+  tiers:
+    fast: [alpha-free]
+    coding: [alpha-free]
+    frontier: [alpha-free]
+spend:
+  mode: zero_cost
+```
+
+Add every category and tier used by your specialists to the routing table. The
+`alpha-free` entry is admitted in `zero_cost` only when it uses
+`alpha.models.free_router:ChatFreeLLM` and the configuration declares keyless
+`free_gateways`. Direct gateway models must match both a declared endpoint host
+and a documented model id. A model name or `:free` label alone is not proof.
+Free public gateways have no availability guarantee; the router may fail over
+among its declared free gateways, but the spend guard will not fall through to a
+paid or unpriced model.
+
 ### Root Structure
 ```yaml
 # Model Configuration
@@ -579,6 +608,15 @@ sandbox:
 - Requires K8s cluster
 
 ## Database Backends
+
+### Run event history
+
+The shipped `config.example.yaml` stores run messages and execution events in
+the configured SQL database (`run_events.backend: db`), so history survives a
+Gateway restart. `memory` is appropriate only for disposable tests; `jsonl` is
+available for lightweight single-node persistence. This setting is captured at
+Gateway startup, so changing it requires a Gateway restart. The SQL backend
+shares the `database` section above.
 
 ### SQLite (Development)
 ```yaml

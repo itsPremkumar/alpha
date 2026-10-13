@@ -395,7 +395,11 @@ type for delegated calls in that run. The Gateway validates that choice against
 the caller’s effective `allowed_subagents` policy at execution time; stale,
 disabled, conflicting, or policy-filtered entries fail with an explicit reason.
 The selector lists only enabled, non-conflicting catalog entries and does not
-pretend a catalog read failure means no workers exist.
+pretend a catalog read failure means no workers exist. Once delegation is on,
+the composer also exposes per-run concurrent and total delegation ceilings. Its
+safe defaults are 3 concurrent and 6 total; the Gateway intersects these with
+the process capacity and configured policy, so a UI choice cannot raise the
+server's authority.
 
 ### Related orchestration methods (separate engines)
 
@@ -412,12 +416,19 @@ worker choices:
 | Dynamic workflow | A typed graph with conditions, loops, waits, approvals, compensation, or child workflows | Workflow API/tool paths; real domain executors remain opt-in and unbound executors refuse |
 | APEX | A bounded executive control plane that chooses among already-wired work engines | APEX session and mode surfaces; it does not replace `RunManager` or make every engine available |
 
-The composer currently selects only native `task` worker/category behavior. To
-run Arena, GRO, Swarm, or a dynamic workflow, ask Alpha for that named method or
-use its dedicated surface; the composer never labels a generic task delegation
-as one of those engine runs. The run request carries the chosen worker/category
-as a preference, and the `task` tool revalidates it against the effective
-allowlist before execution.
+The composer controls only native `task` worker/category behavior; it does not
+pretend to launch another engine. Team Ops → Swarms selects all eight backend
+topologies and a per-plan concurrency ceiling (safe default 4; Gateway maximum
+64). Team Ops → Arena selects among server-declared run modes, profiles and a
+custom competitor count up to the operator's configured ceiling; modes absent
+from `implemented_modes` remain disabled with the server's explanation. Arena
+starts separately from draft creation and its confirmation gate is preserved.
+Workflows → Run turn exposes the backend's seven execution paradigms. Dynamic
+Workflow remains an intent-driven graph; its default digest executor is a
+projection, not domain work, and real executors must be explicitly bound. GRO
+is still a policy/tool capability rather than a standalone UI runner. The run
+request carries the chosen native worker/category as a preference, and the
+`task` tool revalidates it against the effective allowlist before execution.
 
 ## Workforce Frontend (WorkforceSection)
 

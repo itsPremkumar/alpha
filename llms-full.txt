@@ -211,15 +211,20 @@ the session. Owners can submit a complete measured report to
 evidence form; failed evidence is journaled and
 selects a fresh dispatch generation. After a run completes, registered
 `AcceptanceRegistry` probes may submit fully measured reports; absent or
-inconclusive probes leave the session awaiting owner evidence. Alpha ships no
-default probe for arbitrary natural-language criteria and does not infer
-success from model summaries. Producers exist for two evidence kinds —
+inconclusive probes fall through to a narrow automatic verifier for criteria
+that explicitly request a file readback matching exact quoted text. The
+verifier requires correlated successful `write_file` and later `read_file`
+calls on the same path from the same complete run event stream; missing,
+truncated, mismatched, or ambiguous evidence cannot pass. Unsupported criteria
+remain awaiting owner evidence. Alpha has no default probe for arbitrary
+natural-language criteria and does not infer success from model summaries.
+Producers exist for two additional evidence kinds —
 `alpha.mission.collectors` runs a check command through the shared gate
 runner (exit 0 measures pass, a real non-zero exit measures fail, and a
 timeout, spawn error, empty command, missing exit code or exit 126/127 stay
 `UNVERIFIED` because the shell never ran) or hashes an artifact — but a caller
-must choose the collector; nothing selects one for a criterion automatically,
-and there is no HTTP-check collector.
+must choose the command or artifact collector for its criterion, and there is no
+HTTP-check collector.
 Every enabled APEX profile has unlimited token, tool-call, and runtime spending ceilings
 while engine capacity, approvals, and the emergency stop remain. The ordinary
 `task` tool enforces persisted active-agent and parallel-task ceilings. An
@@ -232,8 +237,9 @@ Durable `batch_task` still uses separate engine limits and is not included in
 the per-session active-agent count.
 `POST /api/apex/sessions/{id}/dispatch` drives one session; the
 background `apex` loop remains opt-in under `config.yaml -> autonomy.loops.apex`.
-A completed run is only `awaiting_verification` until its owner submits measured
-acceptance evidence. Session, mode, and goal JSON mutations serialize across
+A completed run remains `awaiting_verification` until registered probes, the
+narrow exact-text file-readback verifier, or owner-submitted measured evidence
+covers every criterion. Session, mode, and goal JSON mutations serialize across
 workers sharing a local runtime directory; goal decomposition commits the child
 and parent link in one snapshot. The state snapshot and event journal are separate
 writes, and this is not cross-host exactly-once. CPU/RAM budgets and
@@ -415,6 +421,9 @@ exact-path public surfaces with their own token checks, while local management
 routes keep Gateway auth and `threads:read/write` permissions. mDNS is optional
 (`peer-discovery` extra); GitHub is an opt-in Agent Card rendezvous, not a public
 mailbox; libp2p must report unavailable until a real authenticated adapter exists.
+Invites can be rendered and scanned locally as QR codes using the bundled encoder
+and decoder; camera frames and uploaded images stay in the browser. The peer
+network itself remains disabled by default.
 
 ## 11. Known boundaries — state these honestly
 

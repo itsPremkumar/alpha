@@ -288,9 +288,12 @@ in another layer; follow the pointer.
   it is **single use via an issuer-side epoch**, *not* by rotating the code on
   redemption, which would protect nothing — the redeemer has no authority over
   the credential that leaked. `GET /invite` is admin-gated because the string
-  *is* the inbound bearer. Reading a QR code is not enabled yet
-  (`canDecodeQr()` is `false`); showing one works, and the manual
-  address+code path still works.
+  *is* the inbound bearer. Reading a QR code is enabled: the camera and
+  image-upload paths decode in the browser with `jsqr`, and the production
+  decoder stays gated on the round-trip test in
+  `frontend/src/lib/qr-decode.test.mjs`, so it cannot be enabled by flipping
+  the boolean alone. Showing one works, and the manual address+code path
+  still works.
 
 - **Integration health + autonomy ownership** — generated feature manifest wiring,
   orphan-module scan, `@tool` signature rules, and the background-loop lifecycle

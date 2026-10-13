@@ -841,7 +841,9 @@ function Wait-ForHealthy {
             $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port$Path" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             if ($r.StatusCode -eq 200) { return $true }
         } catch {}
-        if ((Get-ListeningProcessIds -Port $Port).Count -eq 0) { return $false }
+        # A closed port is expected while Uvicorn imports the app and applies migrations.
+        # Readiness is bounded by the caller's boot budget; do not fail early just
+        # because the socket has not been bound yet.
     }
     return $false
 }

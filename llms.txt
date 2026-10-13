@@ -30,7 +30,8 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 - **Observability**: Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts
 - **Governance**: Tool risk policies, approval gates, capability ceilings, emergency stop
 - **Durable Runtime**: Crash recovery, network partitions, graceful shutdown, session persistence
-- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion, submitted from the APEX UI or API.
+- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion. Registered probes and a narrow exact-text file-readback verifier can supply evidence automatically; arbitrary criteria remain unverified until a typed collector or owner evidence covers them.
+- **Alpha-to-Alpha peer network**: Pair installations with single-use invites shown as QR codes and scanned locally from a camera or image; the peer network is disabled by default.
 
 ## Key Commands
 

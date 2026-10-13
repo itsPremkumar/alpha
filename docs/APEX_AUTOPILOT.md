@@ -222,13 +222,18 @@ error rows, not their contents, so a long progress summary cannot hide a failing
 run or copy task details into the health view.
 
 When a RunManager run completes, the Gateway adapter evaluates registered
-`AcceptanceRegistry` probes off the event loop. Only a fully evaluated report
-is submitted to the executive gate; a pass can complete the session and a
-measured failure can trigger bounded recovery. If no probe is registered or a
-probe cannot decide, APEX remains awaiting owner evidence. Probes must return a
-boolean or `None`; any other result stays unverified. Alpha ships no default
-probe that can verify arbitrary natural-language criteria. The Gateway host
-adapter reads durable `llm.ai.response` and `subagent.end` events
+`AcceptanceRegistry` probes off the event loop. If those do not produce a
+complete report, the adapter can also verify a deliberately narrow criterion:
+an explicit exact-quoted-text file readback, backed by correlated successful
+`write_file` and later `read_file` calls in the same run. It requires a complete,
+bounded scan of that run's durable tool events; missing, truncated, mismatched,
+or ambiguous evidence never passes. Only a fully evaluated report is submitted
+to the executive gate; a pass can complete the session and a measured failure
+can trigger bounded recovery. Unsupported criteria remain awaiting owner
+evidence. Probes must return a boolean or `None`; any other result stays
+unverified. Alpha ships no default probe that can verify arbitrary
+natural-language criteria. The Gateway host adapter reads durable
+`llm.ai.response` and `subagent.end` events
 with a persisted per-run sequence cursor, so a repeated supervisor tick or
 restart does not count an event twice. If the event store is unavailable or has
 not emitted token usage, it upserts cumulative RunManager snapshots for live
@@ -279,7 +284,10 @@ exist (`alpha.mission.collectors`, fail-closed to `UNVERIFIED`) but nothing
 selects one for a criterion automatically, and HTTP-check collectors are not
 shipped; the submitted evidence must identify the actual
 check or artifact. A report that passes closes through the executive acceptance
-gate. A complete report with a failed criterion is journaled and selects a new
+gate and changes the session's `dispatch_state` from `awaiting_verification` to
+`completed`; late RunManager status observations cannot regress that projection.
+Older persisted sessions with a complete passing report are normalized when
+loaded. A complete report with a failed criterion is journaled and selects a new
 dispatch generation for recovery. The usage projection still lacks estimated
 cost and per-session CPU/RAM measurements; those remain in separate runtime
 surfaces or unmeasured.
@@ -600,6 +608,14 @@ evidence: the UI does not claim that arbitrary evidence text was independently
 measured by Alpha, and a successful RunManager status alone never completes a
 session.
 
+The APEX panel also lists the latest 50 owner-scoped sessions separately from
+the active-session controls. Each history row reports the session state, linked
+run status, and persisted acceptance verdict; expanding a row shows its report
+id, criterion verdicts and submitted evidence, run id, dispatch state, and
+measured usage. A missing report is shown as **not verified**. Historical rows
+are read-only, so selecting one cannot redirect pause, resume, stop, or steering
+actions away from the server-designated active session.
+
 ### The `/apex` commands
 
 The same switch, reachable from chat, from `POST /api/commands/execute`, and
@@ -765,6 +781,7 @@ or an unreadable journal.
 | `tests/test_apex_mode.py` | the ON/OFF switch: fail-closed, the fourteen `/apex` verbs, the mode routes |
 | `tests/test_apex_control.py` | the approval gate and its side-door refusals, the scope joins, the goal operating system, the control/approval/goal routes |
 | `tests/test_apex_acceptance_evidence.py` | trusted evidence: provenance refusals, the two bounded collectors, and the unverified-on-conflict rule |
+| `tests/test_apex_auto_acceptance.py` | explicit exact-text file readback: tool correlation, order, failure, mismatch, and unsupported criteria |
 | `tests/test_apex_authz.py` | the admin predicate (`is_admin_user`, PAT refused), owner scoping on every member route, `401`/`403`/`404`/`503` disambiguation, the approvals bound, and the SSE `gap` disclosure |
 
 Gates that must also stay green: `test_feature_manifest_wiring.py`,

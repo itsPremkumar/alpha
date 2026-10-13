@@ -117,6 +117,7 @@ In one sentence:
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
 | **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 73 routers |
+| **Startup imports** | Checkpoint and deferred-tool implementations load when their route or prompt path is used, not while importing the Gateway router modules. |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
 | **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
@@ -331,7 +332,7 @@ subsystem.
 | :--- | :--- | :--- |
 | **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
 | **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, and submit measured evidence for every acceptance criterion from the APEX UI or API. The acceptance gate, not a successful run, decides completion. An administrator can request a bounded replan after reviewing terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined. Command and artifact evidence collectors exist, but nothing selects one for a criterion automatically | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
+| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, and submit measured evidence for every acceptance criterion from the APEX UI or API. The acceptance gate, not a successful run, decides completion. A narrow automatic verifier can confirm explicit exact-text file readbacks from correlated write/read tool events; arbitrary criteria remain unverified until a typed collector or owner evidence covers them. An administrator can request a bounded replan after reviewing terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
 | **Event-driven execution governance** | The Alpha Mod Kernel runs ordered policy middleware on lead-agent tool and model lifecycle events, with first-party emergency-stop, risk, evidence, routing, and failure controllers. Held actions are persisted with an admin approve/reject flow, and a static manifest report shows what each mod declares versus what it is wired to. Kernel journal replay/dead-letter processing is not implemented; see the [production inventory](docs/PRODUCTION_READINESS_INVENTORY.md) | [docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) |
 | **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
 | **A community of agent groups** | Nest group rooms inside group rooms at any time, staff them by rule instead of by name, inherit membership from a parent, and split direct / inherited / rule-matched members in the roster | [AGENTS.md](AGENTS.md#nested-groups-the-community-shape) |
@@ -339,7 +340,7 @@ subsystem.
 | **A support/ops agent on chat** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal | [docs/API.md](docs/API.md) |
 | **An OpenAI-compatible endpoint** | Drop-in `POST /api/compat/openai/chat/completions` for your own clients | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | **Hands-free voice** | Local Whisper transcription + local Piper speech (Kokoro natural voice on faster hosts) + openWakeWord wake word, sentence-level streaming, no paid speech API | [docs/VOICE_CONVERSATION.md](docs/VOICE_CONVERSATION.md) |
-| **A local-first agent mesh** | Alpha-to-Alpha peer network: LAN UDP discovery, explicit pairing, HTTP/WebSocket delivery, SQLite conversations | [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) |
+| **A local-first agent mesh** | Alpha-to-Alpha peer network: LAN UDP discovery, explicit pairing, local QR invite display and scan, HTTP/WebSocket delivery, SQLite conversations; disabled by default | [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) |
 | **Literature reviews & papers** | PRISMA-compliant systematic review and academic peer-review skills | [skills/public/](skills/public/) |
 | **Data and chart work** | Sandboxed Python/REPL, data-analysis skill, chart-visualization skill | [skills/public/](skills/public/) |
 
@@ -528,7 +529,14 @@ make doctor    # verify the environment
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
   exposes the same to authorized agents, plus `strategy` (why this mode was
   chosen), `telemetry`, and `trace` (ranked advisory context workers leave each
-  other).
+  other). Team Ops exposes all eight swarm topologies and an operator-selectable
+  concurrency ceiling (safe UI default: four workers; the Gateway caps at 64).
+- **Multi-agent run controls** — the chat composer lets users opt into specialist
+  task delegation and select bounded per-run concurrency/total limits (defaults
+  3 and 6). Team Ops → Arena exposes server-supported bracket modes, profiles,
+  custom competitor counts and the explicit spend-confirmation gate; Workflows
+  exposes the seven execution paradigms declared by the backend. Unsupported
+  Arena modes stay unavailable rather than being presented as executable.
 - **Live collaborative Kanban** — agents create, assign, transition, and audit
   cards on a shared board.
 - **Agent-to-Agent (A2A) messaging** — structured protocol for peer requests and
@@ -856,7 +864,8 @@ exactly-once execution.
   bounded by a hop guard.
 - **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
   pairing, transport, delivery receipts and DM bridging scoped to one
-  installation. Discovery grants no credentials, pairing uses a high-entropy
+  installation. Invites can be shown and scanned as QR codes entirely in the
+  browser; the peer-network service stays disabled by default. Discovery grants no credentials, pairing uses a high-entropy
   out-of-band code, and libp2p reports *unavailable* until a real authenticated
   adapter is wired.
 - **Free model gateways & fail-closed routing** — keyless `alpha-free` routing
@@ -977,7 +986,16 @@ make config   # config.example.yaml -> config.yaml, extensions_config.example.js
 
 Rules of thumb:
 
+- Run messages and execution events are persisted in the configured SQL
+  database by the shipped config (`run_events.backend: db`), so task history
+  survives a Gateway restart. This setting is startup-only; `memory` is for
+  disposable tests and `jsonl` for lightweight single-node persistence.
 - Reference secrets as `$ENV_VAR`, never as literals in `config.yaml`.
+- To prevent paid model calls, set `spend.mode: zero_cost` and route automatic
+  categories/tiers to `alpha-free`. Alpha recognizes that model only when it is
+  built by the declared keyless free-router adapter; direct free gateways must
+  match both their configured endpoint and documented model id. Public free
+  gateways can still be unavailable or impose their own usage limits.
 - A `models:` list with at least one entry is required or the runtime will not
   start.
 - Third-party Python extensions go in the top-level `plugins:` list in

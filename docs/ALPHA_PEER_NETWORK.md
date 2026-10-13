@@ -157,17 +157,13 @@ Agent Card, whose `agent_id` will not match the `a=` the editor left behind, so
 the pairing is refused. There is no signature to forge, because the string
 carries the secret itself.
 
-### Reading a QR code is not enabled yet
+### Reading a QR code
 
-Showing a QR code **works** — the invite renders, and the recipient pastes the
-text. Reading one is **not** wired up: `frontend/src/lib/qr-decode.ts` documents
-why its finder-location stage is not yet reliable, and the panel disables the
-camera and screenshot buttons with that reason rather than reporting "no QR code
-found" for a code that is plainly on screen.
-
-A failing round-trip test in `frontend/src/lib/qr-decode.test.mjs` is the gate.
-When it passes, delete that test, flip `canDecodeQr()`, and the camera path turns
-on.
+The UI supports scanning local camera frames and uploaded images with the bundled
+`jsqr` decoder. Camera pixels remain in the browser. The production decoder path
+is pinned by an encode→render→decode round-trip test in
+`frontend/src/lib/qr-decode.test.mjs`; image-upload decoding shares the same pixel
+path and closes decoded bitmaps after use.
 
 ## First-run setup
 
