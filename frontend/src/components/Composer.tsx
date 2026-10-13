@@ -8,9 +8,6 @@ import {
   Paperclip,
   Terminal,
   ChevronRight,
-  Zap,
-  Settings,
-  Key,
   ExternalLink,
   Check,
   X,
@@ -41,10 +38,9 @@ import {
   FALLBACK_LADDER,
   type EffortChoice,
 } from "@/lib/reasoning-effort";
-import {
-  formatContextWindow,
-  modelCapabilities,
-} from "@/lib/model-capabilities";
+import { ModelMenu } from "@/components/ModelMenu";
+import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
+import type { FreeProviderHealth } from "@/lib/freeModels";
 import {
   applyMention,
   buildMentionRows,
@@ -252,6 +248,10 @@ interface ComposerProps {
   onVoiceConversationStateChange?: (active: boolean) => void;
   /** Honest free-model status line shown under the selector tooltip. */
   freeNote?: string | null;
+  /** Per-provider probe results, so the menu can show health beside each model. */
+  freeProviders?: FreeProviderHealth[];
+  /** Why the last catalog read failed; `null` means it succeeded. */
+  freeReadError?: string | null;
   /** Live probe and refresh of free models */
   onRefreshFree?: () => Promise<void> | void;
   refreshingFree?: boolean;
@@ -351,6 +351,8 @@ export function Composer({
   voiceResumeToken,
   onVoiceConversationStateChange,
   freeNote,
+  freeProviders,
+  freeReadError,
   onRefreshFree,
   refreshingFree,
   onOpenModelSettings,
@@ -423,13 +425,6 @@ export function Composer({
    */
   const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set());
   const [navigationPath, setNavigationPath] = useState<string[]>([]);
-
-  // Quick API Key configuration popover state
-  const [showKeyPopover, setShowKeyPopover] = useState(false);
-  const [quickProvider, setQuickProvider] = useState("gemini");
-  const [quickApiKey, setQuickApiKey] = useState("");
-  const [savingKey, setSavingKey] = useState(false);
-  const [keyStatusMsg, setKeyStatusMsg] = useState<string | null>(null);
 
   // Load registered backend commands on mount, then merge the prop list.
   // A failed registry read keeps the local defaults (so the palette still works)
@@ -676,70 +671,13 @@ export function Composer({
     return `No agent matches ${mentionTrigger?.kind ? `@${mentionTrigger.kind}:` : ""}${mentionTrigger?.query || "—"} exactly. A tag must name a real handle; use @role: for a whole department.`;
   })();
 
-  const { standardModels, keylessModels, quotaModels } = useMemo(() => {
-    const effectiveModels = models.length > 0 ? models : BUILTIN_FREE_MODELS;
-    const standard: AIModel[] = [];
-    const keyless: AIModel[] = [];
-    const quota: AIModel[] = [];
-
-    for (const m of effectiveModels) {
-      if (m.is_free || m.id.startsWith("free:") || m.id === "alpha-free") {
-        if (
-          m.free_status === "no_key_free" ||
-          m.quota_type === "keyless_free" ||
-          m.quota_type === "keyless" ||
-          m.id.startsWith("free:ovhcloud") ||
-          m.id.startsWith("free:pollinations") ||
-          m.id.startsWith("free:vireonix") ||
-          m.id.startsWith("free:llm7") ||
-          m.id.startsWith("free:cehpoint") ||
-          m.id.startsWith("free:aihorde") ||
-          m.id === "alpha-free"
-        ) {
-          keyless.push(m);
-        } else {
-          quota.push(m);
-        }
-      } else {
-        standard.push(m);
-      }
-    }
-    return {
-      standardModels: standard,
-      keylessModels: keyless,
-      quotaModels: quota,
-    };
-  }, [models]);
-
-  /**
-   * A compact capability hint appended to an option's label: image input,
-   * tools, and reasoning. A native `<option>` cannot render chips, so the
-   * signal has to ride in the text — and it is derived from the same tri-state
-   * resolver the Settings cards use, so a model nobody measured about shows
-   * nothing rather than a crossed-out "no".
-   */
-  const optionLabel = (m: AIModel): string => {
-    const c = modelCapabilities(m, null);
-    const marks: string[] = [];
-    if (c.vision === true) marks.push("👁");
-    if (c.tools === true) marks.push("🔧");
-    if (c.reasoningEffort === true) marks.push("🧠");
-    return marks.length ? `${m.name} ${marks.join("")}` : m.name;
-  };
-
-  /** Tooltip carrying the full detail, including "not reported" states. */
-  const modelOptionTitle = (m: AIModel): string => {
-    const c = modelCapabilities(m, null);
-    const parts: string[] = [m.name];
-    const label = (state: boolean | null, yes: string, no: string) =>
-      state === null ? `${yes}: not reported` : `${yes}: ${state ? "yes" : no}`;
-    parts.push(label(c.vision, "image input", "no"));
-    parts.push(label(c.tools, "tools", "no"));
-    parts.push(label(c.reasoningEffort, "reasoning effort", "no"));
-    const window = formatContextWindow(c.contextWindow);
-    if (window) parts.push(`context: ${window} tokens`);
-    return parts.join(" · ");
-  };
+  // The fallback is applied here so `ModelMenu` receives one effective list.
+  // Grouping itself moved into `lib/model-menu.ts` (`groupModels`), where it is
+  // testable — it was inlined in the render and therefore only ever exercised by
+  // looking at a browser. The capability marks and tooltips moved with it, for
+  // the same reason: a native `<option>` could not render a chip, so those
+  // signals had to ride in the label text, which is now real markup.
+  const effectiveModels = useMemo(() => (models.length > 0 ? models : BUILTIN_FREE_MODELS), [models]);
 
   useEffect(() => {
     // Reopen on a token we did not just fill in ourselves. A bare `/` clears
@@ -1096,143 +1034,6 @@ export function Composer({
         </div>
       )}
 
-      {showKeyPopover && (
-        <div className="mb-2.5 rounded-2xl border border-primary/30 bg-card/95 backdrop-blur-md elev-3 p-3.5 space-y-3 animate-in fade-in slide-in-from-bottom-2">
-          <div className="flex items-center justify-between border-b border-border/50 pb-2">
-            <div className="flex items-center gap-2">
-              <Key className="size-4 text-primary" />
-              <span className="text-xs font-bold text-foreground">
-                Quick API Key & Provider Setup
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {onOpenModelSettings && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowKeyPopover(false);
-                    onOpenModelSettings();
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline px-2 py-0.5 rounded-md bg-primary/10"
-                >
-                  <Settings className="size-3" /> Full Model & Key Studio{" "}
-                  <ExternalLink className="size-2.5" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShowKeyPopover(false)}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                aria-label="Close quick setup"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-                Provider
-              </label>
-              <select
-                value={quickProvider}
-                onChange={(e) => setQuickProvider(e.target.value)}
-                className="w-full text-xs bg-muted/60 border border-border rounded-lg px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <optgroup label="🎁 Recurring $0 Free Tier">
-                  <option value="gemini">Google Gemini (15 RPM Free)</option>
-                  <option value="groq">GroqCloud (14,400 RPD Free)</option>
-                  <option value="sambanova">SambaNova Cloud (Free Tier)</option>
-                  <option value="mistral">Mistral La Plateforme (Free)</option>
-                  <option value="cohere">
-                    Cohere Coral (1,000 req/mo Free)
-                  </option>
-                  <option value="cloudflare">
-                    Cloudflare Workers AI (Free)
-                  </option>
-                </optgroup>
-                <optgroup label="🌐 Free-Model Gateways">
-                  <option value="openrouter">
-                    OpenRouter (:free & Union Alpha)
-                  </option>
-                </optgroup>
-                <optgroup label="🎟️ Free Trial Credits">
-                  <option value="nvidia">NVIDIA NIM (1,000 Credits)</option>
-                  <option value="cerebras">Cerebras (1M Tokens/day)</option>
-                </optgroup>
-                <optgroup label="🚀 Commercial Frontier">
-                  <option value="openai">OpenAI (GPT-4o / o3-mini)</option>
-                  <option value="anthropic">
-                    Anthropic (Claude 3.7 Sonnet)
-                  </option>
-                  <option value="deepseek">DeepSeek Official (V3 & R1)</option>
-                </optgroup>
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-                API Key
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  value={quickApiKey}
-                  onChange={(e) => setQuickApiKey(e.target.value)}
-                  placeholder={`Paste your ${quickProvider.toUpperCase()} API key...`}
-                  className="flex-1 text-xs bg-muted/60 border border-border rounded-lg px-2.5 py-1.5 text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                <button
-                  type="button"
-                  disabled={!quickApiKey.trim() || savingKey}
-                  onClick={async () => {
-                    setSavingKey(true);
-                    setKeyStatusMsg(null);
-                    try {
-                      await configureProviderCredentials({
-                        provider: quickProvider,
-                        api_key: quickApiKey.trim(),
-                      });
-                      setQuickApiKey("");
-                      setKeyStatusMsg(
-                        `✅ Saved & unlocked ${quickProvider.toUpperCase()} models!`,
-                      );
-                      if (onModelsUpdated) await onModelsUpdated();
-                    } catch (err: any) {
-                      setKeyStatusMsg(
-                        `❌ ${err?.message || "Failed to save key"}`,
-                      );
-                    } finally {
-                      setSavingKey(false);
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95 disabled:opacity-40 shrink-0 flex items-center gap-1"
-                >
-                  <Check className="size-3.5" />{" "}
-                  {savingKey ? "Saving…" : "Save Key"}
-                </button>
-              </div>
-            </div>
-          </div>
-          {keyStatusMsg && (
-            <div className="text-[11px] font-medium text-primary flex items-center justify-between pt-1">
-              <span>{keyStatusMsg}</span>
-              {onOpenModelSettings && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowKeyPopover(false);
-                    onOpenModelSettings();
-                  }}
-                  className="underline hover:opacity-80"
-                >
-                  View all models in Settings →
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* The lion companion reads this rect to stay off the composer. Without a
           marked keep-out region the pet's own hit area (`pointer-events: auto`)
@@ -1338,116 +1139,31 @@ export function Composer({
 
         <div className="flex items-center justify-between pt-2 border-t border-border/40 px-2 mt-1 gap-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-            {/* Model Selector */}
-            <div className="flex items-center gap-1">
-              <select
-                value={selectedModel}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "__configure_models__") {
-                    if (onOpenModelSettings) onOpenModelSettings();
-                    return;
-                  }
-                  if (val === "__quick_api_key__") {
-                    setShowKeyPopover(true);
-                    return;
-                  }
-                  onSelectModel(val);
-                }}
-                className="text-xs bg-muted/60 border border-border/80 rounded-lg px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-60 truncate"
-                title={
-                  freeNote || "Select LLM reasoning model or configure API keys"
-                }
-                aria-label="Language model"
-              >
-                <option value="default">⚡ Default (Auto-Routed)</option>
-                {keylessModels.length > 0 && (
-                  <optgroup label="✨ Free Models (No API Key Needed)">
-                    {keylessModels.map((m) => (
-                      <option
-                        key={m.id}
-                        value={m.id}
-                        title={modelOptionTitle(m)}
-                      >
-                        {optionLabel(m)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {quotaModels.length > 0 && (
-                  <optgroup label="🎁 Free Tier / Gateway (Quota)">
-                    {quotaModels.map((m) => (
-                      <option
-                        key={m.id}
-                        value={m.id}
-                        title={modelOptionTitle(m)}
-                      >
-                        {optionLabel(m)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {standardModels.length > 0 && (
-                  <optgroup label="🚀 Standard & Custom Models">
-                    {standardModels.map((m) => (
-                      <option
-                        key={m.id}
-                        value={m.id}
-                        title={modelOptionTitle(m)}
-                      >
-                        {optionLabel(m)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="⚙️ Configure API Keys & Models">
-                  <option value="__quick_api_key__">
-                    🔑 Quick Set API Key (Gemini / Groq / OpenRouter)…
-                  </option>
-                  <option value="__configure_models__">
-                    ⚙️ Open Model & API Key Configuration Page…
-                  </option>
-                </optgroup>
-              </select>
-              {onRefreshFree && (
-                <button
-                  type="button"
-                  onClick={onRefreshFree}
-                  disabled={refreshingFree}
-                  className="p-1.5 rounded-lg text-amber-500 hover:text-amber-400 hover:bg-muted transition-colors disabled:opacity-40"
-                  title="⚡ Find & Probe Today's Free Models (Live health probe and catalog refresh)"
-                  aria-label="Find and probe today's free models"
-                >
-                  <Zap
-                    className={`size-3.5 ${refreshingFree ? "animate-spin text-amber-400" : ""}`}
-                  />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShowKeyPopover((v) => !v)}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  showKeyPopover
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
-                title="🔑 Quick Configure Provider API Key"
-                aria-label="Quick configure API key"
-              >
-                <Key className="size-3.5" />
-              </button>
-              {onOpenModelSettings && (
-                <button
-                  type="button"
-                  onClick={onOpenModelSettings}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
-                  title="⚙️ Open Full Model & API Key Configuration Page"
-                  aria-label="Open model settings"
-                >
-                  <Settings className="size-3.5" />
-                </button>
-              )}
-            </div>
+            {/* Model Selector — a rich menu, not a `<select>`.
+
+                The probe, the API-key form and the settings link are rows
+                *inside* it now. They used to live in two places at once: two
+                pseudo-options in the `<select>` that were not models, plus
+                three icon buttons beside it — one of them (the amber probe)
+                with no label at all. A native `<option>` cannot host a chip, a
+                field or a link, which is exactly why they had to sit outside;
+                this panel can, so they do. */}
+            <ModelMenu
+              models={effectiveModels}
+              selectedModel={selectedModel}
+              onSelectModel={onSelectModel}
+              providers={freeProviders ?? []}
+              refreshing={refreshingFree === true}
+              onRefresh={onRefreshFree}
+              note={freeNote ?? null}
+              readFailed={freeReadError != null}
+              onOpenSettings={onOpenModelSettings}
+              keyProviders={QUICK_KEY_PROVIDERS}
+              onSaveKey={(provider, apiKey) =>
+                configureProviderCredentials({ provider, api_key: apiKey })
+              }
+              onModelsUpdated={onModelsUpdated}
+            />
 
             {/* Attachments */}
             {onAttach && (

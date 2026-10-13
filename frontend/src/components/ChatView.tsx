@@ -4160,6 +4160,8 @@ export default function ChatView({
                           if (!active) cancelSpeech();
                         }}
                         freeNote={freeNote}
+                        freeProviders={freeProviders}
+                        freeReadError={freeReadError}
                         onRefreshFree={refreshFreeCatalog}
                         refreshingFree={freeRefreshing}
                         onOpenModelSettings={() => {
