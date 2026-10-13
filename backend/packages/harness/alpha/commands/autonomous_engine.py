@@ -71,8 +71,11 @@ DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
         phase=LifecyclePhase.SWARM,
         target_command="/swarm create",
         description="Automatically provisions a multi-agent specialized swarm for distributed workloads",
-        keywords=["swarm", "multi-agent", "team", "parallel agents", "subagents", "workers", "collaborate", "consensus"],
-        regex_patterns=[r"(?:use|spawn|start)\s+(?:a\s+)?(?:swarm|team|multi-agent)"],
+        # Swarm provisioning is a persistent orchestration action. Mentioning
+        # subagents, teams, workers, or swarms is not consent to create one;
+        # only an explicit creation verb should trigger this command.
+        keywords=[],
+        regex_patterns=[r"(?:use|spawn|start|create|launch|provision|deploy)\s+(?:(?:a|the)\s+)?(?:swarm|multi-agent(?:\s+swarm)?|team)"],
         priority=85,
     ),
     # 3. RESEARCH & DEEP SEARCH

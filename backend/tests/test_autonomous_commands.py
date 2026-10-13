@@ -10,6 +10,8 @@ Verifies:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from alpha.commands import (
@@ -46,6 +48,24 @@ def test_intent_identification_swarm():
     assert result.phase == LifecyclePhase.SWARM
     assert result.command == "/swarm create"
     assert len(result.autonomous_directives) > 0
+
+
+def test_subagent_delegation_does_not_implicitly_create_a_swarm(monkeypatch):
+    """Helper delegation and mentioning a swarm must not provision a persistent one."""
+    executed: list[str] = []
+    monkeypatch.setattr(
+        "alpha.commands.autonomous_engine.command_registry.execute",
+        lambda command, context=None: executed.append(command) or SimpleNamespace(autonomous_directives=[]),
+    )
+
+    for prompt in (
+        "Delegate two independent read-only calculations to subagents.",
+        "What is a swarm, and when would I use one?",
+    ):
+        result = autonomous_command_engine.identify_and_trigger(prompt, auto_execute=True)
+        assert result.matched is False
+        assert result.rule_id == "none"
+    assert executed == []
 
 
 def test_intent_identification_research():
