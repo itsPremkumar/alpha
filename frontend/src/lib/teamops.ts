@@ -214,7 +214,7 @@ export async function createSwarm(objective: string, options?: { mode?: string; 
   await send("/swarms", "POST", {
     goal: objective,
     mode: options?.mode ?? "auto",
-    max_concurrency: options?.maxConcurrency ?? 8,
+    max_concurrency: options?.maxConcurrency ?? 4,
     items: options?.items,
   });
 }

@@ -95,19 +95,18 @@ test("a paste is inspected before the textarea consumes it, and text falls throu
   assert.match(connect, /Let the textarea have it|falls through|falls? through/);
 });
 
-test("the QR camera and screenshot paths are gated on canDecodeQr()", () => {
+test("the QR camera and screenshot paths check decoder availability", () => {
   assert.match(connect, /canDecodeQr\(\)/);
-  // The reason must be visible, not just the disabled state — a disabled button
-  // with no explanation reads as a bug.
-  assert.match(connect, /not enabled in this build yet|not available in this build/);
-  assert.match(connect, /Reading a QR code is not enabled/);
+  assert.match(connect, /decodeQrFromImageFile/);
+  assert.match(connect, /decodeQrFromImageData/);
+  assert.match(connect, /isQrScanFrameDue\(now, lastDecodeAt\)/);
+  assert.match(connect, /getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
 });
 
-test("the decoder does not claim to work", () => {
+test("the QR decoder uses the local jsQR implementation and advertises availability", () => {
   const decoder = lib("qr-decode.ts");
-  assert.match(decoder, /export function canDecodeQr\(\): boolean \{\s*return false;/);
-  // The status banner is what stops the next reader from trusting this module.
-  assert.match(decoder, /NOT YET USABLE/);
+  assert.match(decoder, /import jsQR from "jsqr"/);
+  assert.match(decoder, /export function canDecodeQr\(\): boolean \{\s*return true;/);
 });
 
 // ---------------------------------------------------------------------------

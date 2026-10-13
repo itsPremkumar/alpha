@@ -89,8 +89,10 @@ test("the selector exposes real worker and category choices", () => {
   assert.match(composer, /category:quick/);
   assert.match(composer, /category:deep-research/);
   assert.match(composer, /type:\$\{choice\.name\}/);
-  assert.match(composer, /Arena · bracketed attack, defense, and judging/);
-  assert.match(composer, /Dynamic workflow · typed graphs, routes, and approvals/);
+  assert.match(composer, /Concurrent subagents/);
+  assert.match(composer, /Total subagents/);
+  assert.match(chat, /max_total_subagents/);
+  assert.doesNotMatch(composer, /<option disabled>Arena/);
 });
 
 test("the control is disabled while a run is in flight", () => {

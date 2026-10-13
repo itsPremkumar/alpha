@@ -760,6 +760,10 @@ const inboxUrl = toUrl(`
   export const fetchInbox = async () => { throw new Error("stub: not called"); };
   export const setRosterStatus = async () => { throw new Error("stub: not called"); };
 `);
+// TeamOps mounts ArenaPanel, but these honesty checks target its surrounding
+// surface and do not exercise Arena. Keep the isolated component render from
+// trying to resolve a Next.js @/ alias inside a data URL.
+const arenaPanelUrl = toUrl("export function ArenaPanel() { return null; }");
 
 const loadSection = async (file) => {
   const code = transpile(read(`../components/sections/${file}`), {
@@ -786,7 +790,11 @@ const loadSection = async (file) => {
     .replace(/from\s+"@\/lib\/kanban"/, `from "${kanbanUrl}"`)
     .replace(/from\s+"@\/lib\/kanban-board"/, `from "${kanbanBoardUrl}"`)
     .replace(/from\s+"@\/lib\/subagents"/, `from "${subagentsUrl}"`)
-    .replace(/from\s+"@\/lib\/inbox"/, `from "${inboxUrl}"`);
+    .replace(/from\s+"@\/lib\/inbox"/, `from "${inboxUrl}"`)
+    .replace(
+      /from\s+"@\/components\/sections\/ArenaPanel"/,
+      `from "${arenaPanelUrl}"`,
+    );
   return load(code);
 };
 

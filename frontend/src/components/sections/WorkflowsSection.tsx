@@ -1213,13 +1213,22 @@ function WorkflowsPanel(props: {
           </Field>
           <Field
             label="Paradigm"
-            hint="Unknown paradigms are refused by the server with its reason."
+            hint="Choose an execution strategy; the planner may refuse a strategy it cannot satisfy for this task."
           >
-            <input
+            <select
               value={turn.paradigm}
               onChange={(e) => setTurn({ ...turn, paradigm: e.target.value })}
-              className={`${inputCls} font-mono`}
-            />
+              className={inputCls}
+              aria-label="Workflow execution paradigm"
+            >
+              <option value="direct_agent">Direct agent · one lead handles the work</option>
+              <option value="subagent">Subagent · delegate bounded specialist work</option>
+              <option value="swarm">Swarm · coordinate a durable task DAG</option>
+              <option value="deep_research">Deep research · structured research workflow</option>
+              <option value="deep_think">Deep think · extended reasoning workflow</option>
+              <option value="moa">Mixture of agents · compare and synthesize candidates</option>
+              <option value="bot_profile">Bot profile · run with a specialized bot</option>
+            </select>
           </Field>
           <Field label="Max waves" hint="1–500.">
             <input

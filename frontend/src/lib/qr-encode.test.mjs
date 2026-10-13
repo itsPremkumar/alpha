@@ -8,15 +8,16 @@ const transpile = (file) =>
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
 
-function load(source) {
+function load(source, dependencies = {}) {
   const exports = {};
-  new Function("exports", "require", source)(exports, () => {
-    throw new Error("qr-encode must not depend on anything");
+  new Function("exports", "require", source)(exports, (name) => {
+    assert.ok(Object.hasOwn(dependencies, name), `Unexpected dependency: ${name}`);
+    return dependencies[name];
   });
   return exports;
 }
 
-const qr = load(transpile("qr-encode.ts"));
+const qr = load(transpile("qr-encode.ts"), { qrcode: await import("qrcode") });
 
 /** The three finder patterns must be present with the right 7x7 ring/core shape. */
 function hasFinderAt(modules, top, left) {

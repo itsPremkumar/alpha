@@ -45,6 +45,7 @@ import {
 import * as qr from "@/lib/qr-encode";
 import type { QrMatrix } from "@/lib/qr-encode";
 import { canDecodeQr } from "@/lib/qr-decode";
+import { isQrScanFrameDue } from "@/lib/qr-scan-loop";
 import { useCopyButton } from "@/lib/use-copy-button";
 import { errMsg } from "@/lib/http";
 
@@ -323,8 +324,8 @@ function JoinInvite({ enabled, onConnected }: { enabled: boolean; onConnected: (
   /**
    * The pre-existing manual route, kept working alongside the invite flow.
    *
-   * It matters because reading a QR code is not enabled yet: without this, a
-   * deployment that cannot paste would have no way in at all. It goes through
+   * It matters because scanning depends on browser camera support: without this,
+   * a deployment that cannot paste would have no way in at all. It goes through
    * the same `POST /pair` and the same admin-gated status, so it grants nothing
    * the invite path does not.
    */
@@ -474,7 +475,7 @@ function JoinInvite({ enabled, onConnected }: { enabled: boolean; onConnected: (
             title={
               canDecodeQr()
                 ? "Scan a QR code with this device's camera"
-                : "QR scanning is not available in this build yet — paste the connection string instead"
+                : "QR scanning is unavailable — paste the connection string instead"
             }
           >
             <QrCode className="size-3.5" />
@@ -507,7 +508,7 @@ function JoinInvite({ enabled, onConnected }: { enabled: boolean; onConnected: (
           title={
             canDecodeQr()
               ? "Read a connection string from a screenshot"
-              : "QR scanning is not available in this build yet — paste the connection string instead"
+              : "QR scanning is unavailable — paste the connection string instead"
           }
         >
           <Upload className="size-3.5" />
@@ -517,7 +518,7 @@ function JoinInvite({ enabled, onConnected }: { enabled: boolean; onConnected: (
         {!canDecodeQr() && (
           <Notice
             tone="neutral"
-            message="Reading a QR code is not enabled in this build yet. Pasting the connection string works now, and the code you share displays normally."
+            message="QR scanning is unavailable here. Pasting the connection string still works, and the code you share displays normally."
           />
         )}
 
@@ -624,6 +625,7 @@ function QrScanner(props: { onClose: () => void; onDecoded: (text: string) => vo
     let stream: MediaStream | null = null;
     let frame = 0;
     let cancelled = false;
+    let lastDecodeAt: number | null = null;
 
     const start = async () => {
       try {
@@ -647,13 +649,26 @@ function QrScanner(props: { onClose: () => void; onDecoded: (text: string) => vo
         setStarting(false);
 
         const { decodeQrFromImageData } = await import("@/lib/qr-decode");
+        const canvas = canvasRef.current;
+        const context = canvas?.getContext("2d", { willReadFrequently: true });
+        if (!canvas || !context) {
+          setStarting(false);
+          setError("This browser could not provide a canvas for camera scanning. Use “Choose a screenshot” instead.");
+          stream?.getTracks().forEach((track) => track.stop());
+          return;
+        }
         const tick = () => {
           if (cancelled) return;
-          const canvas = canvasRef.current;
-          const context = canvas?.getContext("2d", { willReadFrequently: true });
-          if (canvas && context && video.readyState >= 2 && video.videoWidth > 0) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+          const now = performance.now();
+          if (
+            video.readyState >= 2 && video.videoWidth > 0 &&
+            isQrScanFrameDue(now, lastDecodeAt)
+          ) {
+            lastDecodeAt = now;
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+            }
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             try {
               const text = decodeQrFromImageData(context.getImageData(0, 0, canvas.width, canvas.height));
@@ -670,6 +685,7 @@ function QrScanner(props: { onClose: () => void; onDecoded: (text: string) => vo
         };
         frame = window.requestAnimationFrame(tick);
       } catch (cause) {
+        stream?.getTracks().forEach((track) => track.stop());
         const name = cause instanceof DOMException ? cause.name : "";
         setError(
           name === "NotAllowedError"

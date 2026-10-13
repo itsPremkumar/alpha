@@ -1272,7 +1272,24 @@ built around, each of which has a tempting wrong reading:
   silent no-op.
 - **A failed request is never an empty panel.** Each panel owns its own error.
 
-**Reading a QR code is not enabled.** `canDecodeQr()` in `lib/qr-decode.ts` is
-`false` and the camera/screenshot buttons are disabled with that reason. Showing
-a code works and is verified. Do not mount the scanner by flipping the boolean
-alone — the failing round-trip gate in `qr-decode.test.mjs` is what turns it on.
+QR invites use the `qrcode` encoder and the local `jsqr` decoder. Keep the
+round-trip test in `lib/qr-decode.test.mjs` as the capability gate; camera and
+image decoding must remain covered by that test before changing decoder wiring.
+
+## Multi-agent orchestration controls
+
+- The composer delegates only through native `task`; its per-run concurrency and
+  total counts ride `config.configurable` as `max_concurrent_subagents` and
+  `max_total_subagents`. Keep safe defaults bounded (3 concurrent / 6 total),
+  and let the backend middleware intersect them with process and policy caps.
+- Team Ops → Swarms must offer every `SwarmMode` supported by the Gateway and
+  send the selected `mode` and `max_concurrency` in the create request. Its safe
+  UI default is four concurrent workers; the Gateway hard cap is 64.
+- Team Ops → Arena reads `/arena/profiles`, `/arena/config`, and
+  `implemented_modes`. Do not enable a declared mode the backend marks
+  unimplemented. Custom competitor counts omit the named profile; starting a
+  draft is a separate, budgeted action and must preserve explicit spend
+  confirmation.
+- Workflows → Run turn uses the `ExecutionParadigm` enum as a select, not free
+  text. Dynamic Workflow execution is still described honestly as a graph
+  projection when real domain executors are not bound.

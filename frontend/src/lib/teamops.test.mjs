@@ -43,11 +43,28 @@ test("createSwarm sends goal and explicit execution-neutral options", async () =
     assert.deepEqual(payload, {
       goal: "Audit services",
       mode: "auto",
-      max_concurrency: 8,
+      max_concurrency: 4,
       items: undefined,
     });
   });
   await teamops.createSwarm("Audit services");
+});
+
+test("createSwarm sends the selected topology and worker concurrency", async () => {
+  setHttpHandler((_path, _method, payload) => {
+    assert.equal(payload.mode, "map_reduce");
+    assert.equal(payload.max_concurrency, 16);
+  });
+  await teamops.createSwarm("Process a document collection", { mode: "map_reduce", maxConcurrency: 16 });
+});
+
+test("Team Ops presents every Gateway swarm topology and a safe selectable capacity", () => {
+  const component = readFileSync(new URL("../components/sections/TeamOpsSection.tsx", import.meta.url), "utf8");
+  for (const mode of ["auto", "parallel", "map_reduce", "scatter_gather", "hierarchical", "debate", "ensemble", "coding_worktree"]) {
+    assert.match(component, new RegExp(`\\["${mode}",`));
+  }
+  assert.match(component, /value=\{swarmConcurrency\}/);
+  assert.match(component, /maxConcurrency: swarmConcurrency/);
 });
 
 test("swarm actions and message helpers use encoded swarm ids and bounded routes", async () => {

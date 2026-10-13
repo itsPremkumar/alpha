@@ -694,8 +694,58 @@ export interface ApexSessionRecord {
     replans: number | null;
   };
   acceptance_criteria: string[];
+  acceptance: ApexAcceptanceSummary | null;
   created_at: number | null;
   updated_at: number | null;
+}
+
+export interface ApexAcceptanceSummary {
+  report_id: string | null;
+  passed: boolean | null;
+  all_evaluated: boolean | null;
+  all_hold: boolean | null;
+  evaluator: string | null;
+  generated_at: number | null;
+  criteria: Array<{
+    criterion: string;
+    verdict: string;
+    evidence: string;
+    evaluated: boolean | null;
+    holds: boolean | null;
+  }>;
+}
+
+export interface ApexSessionList {
+  available: boolean;
+  reason: string;
+  /** Null when the store could not be read; otherwise the rows returned. */
+  count: number | null;
+  sessions: ApexSessionRecord[];
+}
+
+/** `GET /apex/sessions` is owner-scoped unless the caller is an admin. */
+export async function fetchApexSessions(opts?: {
+  state?: string;
+  limit?: number;
+}): Promise<ApexSessionList> {
+  const query = new URLSearchParams();
+  if (opts?.state) query.set("state", opts.state);
+  const limit = opts?.limit;
+  if (limit !== undefined) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+      throw new Error("APEX session history limit must be an integer from 1 to 200.");
+    }
+    query.set("limit", String(limit));
+  }
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : "";
+  const r = rec(await get<Rec>(`/apex/sessions${suffix}`));
+  return {
+    available: bool(r.available),
+    reason: optStr(r.reason) ?? "",
+    count: optNum(r.count),
+    sessions: (Array.isArray(r.sessions) ? r.sessions : []).map(mapSessionRecord),
+  };
 }
 
 /** Human-readable execution state; a successful run is never called verified. */
@@ -715,6 +765,8 @@ export function apexExecutionSummary(
         session.run_status === "completed"
         ? "Run finished successfully; acceptance evidence is still unverified."
         : `Run ended${session.run_status ? ` (${session.run_status})` : ""}; acceptance evidence is still unverified.`;
+    case "completed":
+      return "Acceptance passed; the objective is complete.";
     case "failed":
       return `Dispatch failed${session.run_status ? `; linked run status is ${session.run_status}` : ""}. Inspect the run and recovery outcome.`;
     default:
@@ -722,10 +774,29 @@ export function apexExecutionSummary(
   }
 }
 
+/** Keep the provenance of an acceptance result legible in the session history. */
+export function apexAcceptanceEvaluatorLabel(evaluator: string | null | undefined): string {
+  switch (evaluator) {
+    case "run_tool_readback":
+      return "Automatic exact-text file readback";
+    case "owner_submitted_measured_evidence":
+      return "Owner-submitted evidence";
+    case null:
+    case undefined:
+    case "":
+      return "Not reported";
+    default:
+      return evaluator;
+  }
+}
+
 function mapSessionRecord(v: unknown): ApexSessionRecord {
   const r = rec(v);
   const usage = rec(r.usage);
   const budget = rec(rec(r.contract_snapshot).budget);
+  const acceptance = r.acceptance && typeof r.acceptance === "object"
+    ? rec(r.acceptance)
+    : null;
   return {
     session_id: str(r.session_id),
     owner: str(r.owner),
@@ -754,6 +825,28 @@ function mapSessionRecord(v: unknown): ApexSessionRecord {
     acceptance_criteria: Array.isArray(r.acceptance_criteria)
       ? (r.acceptance_criteria as unknown[]).map(String)
       : [],
+    acceptance: acceptance
+      ? {
+          report_id: optStr(acceptance.report_id),
+          passed: typeof acceptance.passed === "boolean" ? acceptance.passed : null,
+          all_evaluated: typeof acceptance.all_evaluated === "boolean" ? acceptance.all_evaluated : null,
+          all_hold: typeof acceptance.all_hold === "boolean" ? acceptance.all_hold : null,
+          evaluator: optStr(acceptance.evaluator),
+          generated_at: optNum(acceptance.generated_at),
+          criteria: Array.isArray(acceptance.criteria)
+            ? acceptance.criteria.map((item) => {
+                const criterion = rec(item);
+                return {
+                  criterion: str(criterion.criterion),
+                  verdict: str(criterion.verdict),
+                  evidence: str(criterion.evidence),
+                  evaluated: typeof criterion.evaluated === "boolean" ? criterion.evaluated : null,
+                  holds: typeof criterion.holds === "boolean" ? criterion.holds : null,
+                };
+              })
+            : [],
+        }
+      : null,
     created_at: optNum(r.created_at),
     updated_at: optNum(r.updated_at),
   };

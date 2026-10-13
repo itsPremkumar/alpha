@@ -21,8 +21,10 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jsqr": "1.4.0",
     "lucide-react": "^0.475.0",
     "next": "^15.2.1",
+    "qrcode": "1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "playwright": "^1.64.0",

@@ -28,8 +28,10 @@ function load(source, dependencies = {}) {
   return exports;
 }
 
-const enc = load(transpile("qr-encode.ts"));
-const dec = load(transpile("qr-decode.ts"), { "./qr-encode": enc });
+const qrcode = await import("qrcode");
+const jsQR = (await import("jsqr")).default;
+const enc = load(transpile("qr-encode.ts"), { qrcode });
+const dec = load(transpile("qr-decode.ts"), { "./qr-encode": enc, jsqr: { default: jsQR } });
 
 // ---------------------------------------------------------------------------
 // What is pinned, and why
@@ -110,26 +112,39 @@ test("decodeQrFromImageFile refuses when the browser cannot decode a file", asyn
   );
 });
 
-/**
- * The round-trip gate.
- *
- * This is a **known-failing** test, asserted as failing rather than skipped or
- * deleted. Three reasons that is the right shape:
- *
- * 1. A skipped test says "this does not apply". It applies — it is simply not
- *    implemented yet, and a skip would let the gap disappear from every report.
- * 2. A deleted test leaves the encoder looking verified in both directions when
- *    only one direction is. The encoder is the half that ships, so its
- *    correctness must not imply a decoder exists.
- * 3. This assertion fails *the moment* the decoder starts working, which is the
- *    signal to remove it and turn the camera path on. That is the intended
- *    trigger, not an oversight.
- *
- * When it passes, delete this test, flip `QR_DECODER_AVAILABLE` in
- * `PeerConnectPanel` to mount the scanner, and drop the `canDecodeQr` export
- * below.
- */
-test("KNOWN FAILING: a correctly rendered encoded code should round-trip", () => {
+test("image upload decodes through the same path and releases the bitmap", async () => {
+  const text = "alpha://connect?v=1&a=upload-test";
+  const image = dec.matrixToImageData(enc.encodeQr(text), 6);
+  let closed = false;
+  const previousBitmap = globalThis.createImageBitmap;
+  const previousDocument = globalThis.document;
+  globalThis.createImageBitmap = async () => ({
+    width: image.width,
+    height: image.height,
+    close() { closed = true; },
+  });
+  globalThis.document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        drawImage() {},
+        getImageData: () => image,
+      }),
+    }),
+  };
+  try {
+    assert.equal(await dec.decodeQrFromImageFile({ size: 100 }), text);
+    assert.equal(closed, true, "decoded image memory is released after scanning");
+  } finally {
+    if (previousBitmap === undefined) delete globalThis.createImageBitmap;
+    else globalThis.createImageBitmap = previousBitmap;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("a standards-compliant rendered code round-trips through the production decoder", () => {
   const text = "alpha://connect?v=1&a=alpha-7f3a2b&u=http://192.168.1.20:8001";
   const matrix = enc.encodeQr(text);
   const image = dec.matrixToImageData(matrix, 6);
@@ -137,15 +152,10 @@ test("KNOWN FAILING: a correctly rendered encoded code should round-trip", () =>
   assert.equal(
     decoded,
     text,
-    decoded === null
-      ? "the geometry stage does not yet lock onto a clean render; see the status banner in qr-decode.ts"
-      : "round-trip succeeded — delete this test and enable the camera path",
+    "encoder and decoder must agree on the complete invite payload",
   );
 });
 
-test("the decoder advertises that it cannot yet be trusted with real input", () => {
-  // The UI reads this rather than hardcoding a boolean beside the code that
-  // would have to change. It must be `false` while the round-trip gate above
-  // fails, so the scanner cannot be mounted by accident.
-  assert.equal(dec.canDecodeQr(), false);
+test("the bundled decoder advertises the scanner capability", () => {
+  assert.equal(dec.canDecodeQr(), true);
 });

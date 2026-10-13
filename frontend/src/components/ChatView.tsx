@@ -857,6 +857,10 @@ export default function ChatView({
    * tokens and starts background workers.
    */
   const [delegationMode, setDelegationMode] = useState("off");
+  // Safe per-run defaults. The Gateway applies the same middleware ceilings and
+  // clamps these against process capacity; these settings only narrow them.
+  const [subagentConcurrency, setSubagentConcurrency] = useState(3);
+  const [subagentTotal, setSubagentTotal] = useState(6);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
   // Project scope for the active chat (creation + permission/selection in-chat).
@@ -2148,6 +2152,12 @@ export default function ChatView({
                   ...(delegationMode.startsWith("category:")
                     ? { preferred_subagent_category: delegationMode.slice("category:".length) }
                     : {}),
+                  ...(delegationMode !== "off"
+                    ? {
+                        max_concurrent_subagents: subagentConcurrency,
+                        max_total_subagents: subagentTotal,
+                      }
+                    : {}),
                 },
               },
               // The delegation opt-in. `RunCreateRequest.autonomous` is the
@@ -2787,8 +2797,8 @@ export default function ChatView({
         "The goal is saved on the server, but its local copy could not be updated.",
       );
       flash("Goal set — the agent works toward it until done.");
-    } catch {
-      flash("Couldn't save the goal.");
+    } catch (error) {
+      flash(`Couldn't save the goal: ${errMsg(error)}`);
     }
   };
 
@@ -4109,6 +4119,10 @@ export default function ChatView({
                         isLoading={isLoading}
                         delegationMode={delegationMode}
                         onDelegationModeChange={setDelegationMode}
+                        subagentConcurrency={subagentConcurrency}
+                        onSubagentConcurrencyChange={setSubagentConcurrency}
+                        subagentTotal={subagentTotal}
+                        onSubagentTotalChange={setSubagentTotal}
                         models={models}
                         selectedModel={selectedModel}
                         onSelectModel={(m) => {

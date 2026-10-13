@@ -515,10 +515,22 @@ test("execution summaries distinguish run completion from acceptance", async () 
     }),
     "Run finished successfully; acceptance evidence is still unverified.",
   );
+  assert.equal(
+    apexExecutionSummary({ dispatch_state: "completed", run_status: "success" }),
+    "Acceptance passed; the objective is complete.",
+  );
   assert.match(
     apexExecutionSummary({ dispatch_state: "failed", run_status: "error" }),
     /Dispatch failed.*error.*Inspect the run and recovery outcome/,
   );
+});
+
+test("acceptance history labels automatic and owner-submitted verifier provenance", async () => {
+  const { apexAcceptanceEvaluatorLabel } = await import(apexUrl);
+  assert.equal(apexAcceptanceEvaluatorLabel("run_tool_readback"), "Automatic exact-text file readback");
+  assert.equal(apexAcceptanceEvaluatorLabel("owner_submitted_measured_evidence"), "Owner-submitted evidence");
+  assert.equal(apexAcceptanceEvaluatorLabel("custom_probe"), "custom_probe");
+  assert.equal(apexAcceptanceEvaluatorLabel(null), "Not reported");
 });
 
 test("a measured zero stays a real zero", async () => {
@@ -1321,6 +1333,53 @@ test("session fields absent from the payload map to null, never 0", async () => 
   assert.equal(outcome.session.replan_limit, undefined);
   assert.equal(outcome.session.created_at, null);
   assert.equal(outcome.session.blocked_reason, "");
+  assert.equal(outcome.session.acceptance, null);
+});
+
+test("session history uses the bounded owner-scoped list route and maps real run fields", async () => {
+  record("GET /apex/sessions?state=completed&limit=50", {
+    body: { available: true, count: 1, sessions: [{ ...SESSION_RECORD, state: "completed", run_status: "success", acceptance: { report_id: "acc-1", passed: true, all_evaluated: true, all_hold: true, evaluator: "operator", generated_at: 1700000200, criteria: [{ criterion: "tests pass", verdict: "met", evidence: "CI run 42", evaluated: true, holds: true }] } }] },
+  });
+  const result = await apex.fetchApexSessions({ limit: 50, state: "completed" });
+  assert.equal(lastCall().path, "/apex/sessions?state=completed&limit=50");
+  assert.equal(lastCall().method, "GET");
+  assert.equal(result.available, true);
+  assert.equal(result.count, 1);
+  assert.equal(result.sessions[0].session_id, "apx-1");
+  assert.equal(result.sessions[0].state, "completed");
+  assert.equal(result.sessions[0].run_status, "success");
+  assert.equal(result.sessions[0].usage.total_tokens, 1500);
+  assert.equal(result.sessions[0].acceptance?.report_id, "acc-1");
+  assert.equal(result.sessions[0].acceptance?.passed, true);
+  assert.equal(result.sessions[0].acceptance?.criteria[0].evidence, "CI run 42");
+});
+
+test("a degraded session history preserves unknown count and reason", async () => {
+  record("GET /apex/sessions?limit=50", {
+    body: { available: false, reason: "session store unreadable", count: null, sessions: [] },
+  });
+  const result = await apex.fetchApexSessions({ limit: 50 });
+  assert.equal(result.available, false);
+  assert.equal(result.count, null);
+  assert.equal(result.sessions.length, 0);
+  assert.match(result.reason, /unreadable/);
+});
+
+test("session history refuses unsupported client limits before transport", async () => {
+  const before = calls.length;
+  await assert.rejects(() => apex.fetchApexSessions({ limit: 201 }), /1 to 200/);
+  assert.equal(calls.length, before);
+});
+
+test("APEX renders recent history separately from active-session controls", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /function RecentApexSessions\(/);
+  assert.match(source, /<RecentApexSessions reloadKey=\{reloadKey\} \/>/);
+  assert.match(source, /Read-only owner-scoped history/);
+  assert.match(source, /A run status is not acceptance verification/);
+  assert.match(source, /session\.acceptance\?\.passed === true[\s\S]{0,120}"passed"/);
+  assert.match(source, /Evaluated criteria and evidence/);
+  assert.match(source, /setApexControl\(verb\)/);
 });
 
 /* ── The approval gate over HTTP ─────────────────────────────────────────── */

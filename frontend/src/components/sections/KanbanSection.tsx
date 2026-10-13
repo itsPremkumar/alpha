@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   loadCards,
   saveCard,
@@ -16,6 +16,10 @@ import {
 } from "@/lib/kanban-board";
 import { listKanbanTasks } from "@/lib/kanban";
 import { listProjects } from "@/lib/projects";
+import {
+  handleKanbanCardKeyDown,
+  handleKanbanCardKeyUp,
+} from "@/lib/kanban-card-keyboard";
 import {
   Section,
   EmptyState,
@@ -76,6 +80,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
   const [dragId, setDragId] = useState<string | null>(null);
   /** Card whose move is in flight. See `move()` for what this prevents. */
   const [busyCard, setBusyCard] = useState<string | null>(null);
+  const spacePress = useRef<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -406,7 +411,16 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
                     onClick={() => setEditing({ ...c })}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && setEditing({ ...c })}
+                    onKeyDown={(e) =>
+                      handleKanbanCardKeyDown(e, c.id, spacePress, () =>
+                        setEditing({ ...c }),
+                      )
+                    }
+                    onKeyUp={(e) =>
+                      handleKanbanCardKeyUp(e, c.id, spacePress, () =>
+                        setEditing({ ...c }),
+                      )
+                    }
                     className={`rounded-xl border bg-card p-2.5 cursor-pointer hover:border-primary/50 hover:shadow transition-all ${dragId === c.id ? "opacity-40" : ""} ${c.priority === "urgent" ? "border-l-4 !border-l-destructive" : c.priority === "high" ? "border-l-4 !border-l-amber-500" : "border-border/60"}`}
                   >
                     <p className="text-xs font-semibold leading-snug">

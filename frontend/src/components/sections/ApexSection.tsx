@@ -15,12 +15,14 @@ import {
 import {
   APEX_PROFILES,
   ENABLE_PROFILES,
+  apexAcceptanceEvaluatorLabel,
   apexExecutionSummary,
   decideApexApproval,
   fetchApexApprovals,
   fetchApexMode,
   fetchApexPolicy,
   fetchApexStatus,
+  fetchApexSessions,
   createApexSession,
   dispatchApexSession,
   formatMeasuredCount,
@@ -34,6 +36,7 @@ import {
   type ApexMode,
   type ApexProfile,
   type ApexStatus,
+  type ApexSessionList,
   runApexCycle,
   setApexControl,
   setApexMode,
@@ -58,7 +61,7 @@ import { fetchRun, type RunInfo } from "@/lib/runs";
  *
  * **Dispatch is explicit.** Creating and dispatching an objective starts a
  * real run through the Gateway adapter. "Run one cycle" still records a
- * decision only; neither action can mark acceptance as verified.
+ * decision only; neither route marks acceptance without measured evidence.
  *
  * **Control actions re-read before they render.** The session card acts, then
  * re-reads mode and approvals from the server; no verb or verdict paints a
@@ -1132,6 +1135,185 @@ function SessionControlCard({
   );
 }
 
+function sessionTimestamp(value: number | null): string {
+  if (value === null) return "Time not reported";
+  const date = new Date(value * 1000);
+  return Number.isNaN(date.getTime())
+    ? "Time not reported"
+    : date.toLocaleString();
+}
+
+/** Read-only history keeps terminal sessions discoverable without changing the
+ * server's active-session selection or enabling controls on old runs. */
+function RecentApexSessions({ reloadKey }: { reloadKey: number }) {
+  const [history, setHistory] = useState<ApexSessionList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setBusy(true);
+    try {
+      setHistory(await fetchApexSessions({ limit: 50 }));
+      setError(null);
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh, reloadKey]);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/60 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium">Recent APEX sessions</h3>
+          <p className="text-xs text-neutral-500">Read-only owner-scoped history. A run status is not acceptance verification.</p>
+        </div>
+        <Btn onClick={() => void refresh()} disabled={busy}>{busy ? "Refreshing…" : "Refresh history"}</Btn>
+      </div>
+      {error && <ErrorBox message={`Session history could not be read: ${error}`} />}
+      {history && !history.available && (
+        <Notice
+          tone="warn"
+          message={`Session history unavailable — ${history.reason || "the server did not provide a reason"}`}
+        />
+      )}
+      {history?.available && history.sessions.length === 0 && (
+        <p className="text-sm text-neutral-500">The server reported no sessions for this account.</p>
+      )}
+      {history?.available && history.sessions.length > 0 && (
+        <>
+          <p className="text-xs text-neutral-500">
+            {formatMeasuredCount(history.count)} sessions returned by the Gateway;
+            the request is bounded to 50 rows.
+          </p>
+          <ul className="space-y-2">
+            {history.sessions.map((session) => (
+              <li key={session.session_id}>
+                <button
+                  type="button"
+                  aria-expanded={selectedId === session.session_id}
+                  onClick={() => {
+                    const closing = selectedId === session.session_id;
+                    setSelectedId(closing ? null : session.session_id);
+                  }}
+                  className="w-full rounded-lg border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                >
+                  <span className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="line-clamp-2 break-words font-medium">
+                      {session.objective || "Objective not reported"}
+                    </span>
+                    <span className="flex flex-wrap gap-2">
+                      <Badge
+                        tone={
+                          session.state === "completed"
+                            ? "green"
+                            : session.state === "failed" || session.state === "error"
+                              ? "red"
+                              : "gray"
+                        }
+                      >
+                        {session.state || "state not reported"}
+                      </Badge>
+                      <Badge tone="gray">
+                        run: {session.run_status ?? "unreported"}
+                      </Badge>
+                      <Badge
+                        tone={
+                          session.acceptance?.passed === true
+                            ? "green"
+                            : session.acceptance?.passed === false
+                              ? "red"
+                              : "gray"
+                        }
+                      >
+                        acceptance: {session.acceptance?.passed === true
+                          ? "passed"
+                          : session.acceptance?.passed === false
+                            ? "failed"
+                            : "not verified"}
+                      </Badge>
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs text-neutral-500">{session.session_id} · {session.profile || "profile not reported"} · updated {sessionTimestamp(session.updated_at)}</span>
+                </button>
+                {selectedId === session.session_id && (
+                  <dl className="grid gap-2 border-x border-b border-neutral-200 px-3 py-2 text-xs dark:border-neutral-800 sm:grid-cols-2">
+                    <div>
+                      <dt className="text-neutral-500">Run ID</dt>
+                      <dd className="break-all">{session.run_id || "Not reported"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-neutral-500">Run dispatch state</dt>
+                      <dd>{session.dispatch_state ?? "Not reported"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-neutral-500">Updated</dt>
+                      <dd>{sessionTimestamp(session.updated_at)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-neutral-500">Acceptance report</dt>
+                      <dd>
+                        {session.acceptance?.report_id ?? "No report recorded"}
+                        {session.acceptance?.passed === true
+                          ? " · all checks passed"
+                          : session.acceptance?.passed === false
+                            ? " · criteria did not pass"
+                            : " · not verified"}
+                      </dd>
+                    </div>
+                    {session.acceptance && (
+                      <div>
+                        <dt className="text-neutral-500">Evidence verifier</dt>
+                        <dd>{apexAcceptanceEvaluatorLabel(session.acceptance.evaluator)}</dd>
+                      </div>
+                    )}
+                    {session.acceptance && session.acceptance.criteria.length > 0 && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-neutral-500">Evaluated criteria and evidence</dt>
+                        <dd><ul className="mt-1 space-y-2">{session.acceptance.criteria.map((item, index) => (
+                          <li
+                            key={`${session.session_id}-${index}`}
+                            className="rounded border border-neutral-200 p-2 dark:border-neutral-800"
+                          >
+                            <span className="font-medium">
+                              {item.criterion || "Criterion not reported"}
+                            </span>{" "}
+                            · {item.verdict || "verdict not reported"}
+                            {item.evidence && (
+                              <p className="mt-1 whitespace-pre-wrap text-neutral-500">
+                                {item.evidence}
+                              </p>
+                            )}
+                          </li>
+                        ))}</ul></dd>
+                      </div>
+                    )}
+                    {session.blocked_reason && <div className="sm:col-span-2"><dt className="text-neutral-500">Blocker</dt><dd>{session.blocked_reason}</dd></div>}
+                    <div>
+                      <dt className="text-neutral-500">Usage</dt>
+                      <dd>
+                        {formatMeasuredCount(session.usage.llm_calls)} LLM calls ·{" "}
+                        {formatMeasuredCount(session.usage.tool_calls)} tool calls ·{" "}
+                        {formatMeasuredCount(session.usage.total_tokens)} tokens
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Which session this panel acts on.
  *
@@ -1433,6 +1615,8 @@ export function ApexSection() {
             an approval, and a card that read only on mount would render the
             pre-cycle state beside the panel's own fresh status. */}
         <SessionControlCard onError={setError} reloadKey={reloadKey} />
+
+        <RecentApexSessions reloadKey={reloadKey} />
 
         <ContractCard contract={policy} />
 

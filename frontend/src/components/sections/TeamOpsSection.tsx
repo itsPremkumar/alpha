@@ -20,6 +20,7 @@ import {
 } from "@/lib/kanban";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, RosterAgent, InboxMessage } from "@/lib/inbox";
 import { swarmProgressView } from "@/lib/teamops-progress";
+import { ArenaPanel } from "@/components/sections/ArenaPanel";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { absoluteStamp, clockTime, type TimeInput } from "@/lib/time";
@@ -42,7 +43,18 @@ function rowStamp(value: TimeInput) {
   );
 }
 
-type SubTab = "groups" | "inbox" | "swarms" | "jobs" | "company";
+type SubTab = "groups" | "inbox" | "swarms" | "arena" | "jobs" | "company";
+
+const SWARM_MODES = [
+  ["auto", "Auto · route from the goal and measured task graph"],
+  ["parallel", "Parallel · independent tasks run together"],
+  ["map_reduce", "Map–Reduce · split inputs, then combine results"],
+  ["scatter_gather", "Scatter–Gather · broad exploration with a collection phase"],
+  ["hierarchical", "Hierarchical · delegate planning through task levels"],
+  ["debate", "Debate · independent positions challenge one another"],
+  ["ensemble", "Ensemble · independent solutions feed a synthesis"],
+  ["coding_worktree", "Coding Worktree · isolate coding workers in worktrees"],
+] as const;
 
 /**
  * Button caption per lifecycle verb. The verbs themselves are the Gateway's
@@ -98,6 +110,8 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
 
   const [swarms, setSwarms] = useState<Swarm[]>([]);
   const [swarmObjective, setSwarmObjective] = useState("");
+  const [swarmMode, setSwarmMode] = useState("auto");
+  const [swarmConcurrency, setSwarmConcurrency] = useState(4);
   const [openSwarmBoard, setOpenSwarmBoard] = useState<string | null>(null);
   /**
    * Which swarm's structure panel is open.
@@ -286,6 +300,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
     { id: "groups", label: `Group chats (${tabCount(groups.length, "groups")})` },
     { id: "inbox", label: "Agent inbox" },
     { id: "swarms", label: `Swarms (${tabCount(swarms.length, "swarms")})` },
+    { id: "arena", label: "Arena" },
     { id: "jobs", label: `Jobs (${tabCount(jobs.length, "jobs")})` },
     { id: "company", label: "Company" },
   ];
@@ -424,16 +439,27 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
             })
           )}
         </div>
+      ) : tab === "arena" ? (
+        <ArenaPanel />
       ) : tab === "swarms" ? (
         <div className="space-y-2">
           <div className="rounded-2xl border border-border/60 bg-card p-4">
             <Field label="Create a swarm plan" hint="Create a bounded DAG, then run it explicitly when you are ready.">
-              <div className="flex gap-2">
-                <input value={swarmObjective} onChange={(e) => setSwarmObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim()).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} placeholder="Objective…" className={inputCls} />
-                <Btn onClick={() => swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim()).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} disabled={!swarmObjective.trim()}>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+                <input value={swarmObjective} onChange={(e) => setSwarmObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim(), { mode: swarmMode, maxConcurrency: swarmConcurrency }).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} placeholder="Objective…" className={inputCls} aria-label="Swarm objective" />
+                <label className="sr-only" htmlFor="swarm-mode">Swarm coordination mode</label>
+                <select id="swarm-mode" aria-label="Swarm coordination mode" title="Choose the swarm topology; Auto routes from the goal and task graph" value={swarmMode} onChange={(event) => setSwarmMode(event.target.value)} className={inputCls}>
+                  {SWARM_MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <label className="sr-only" htmlFor="swarm-concurrency">Maximum concurrent swarm agents</label>
+                <select id="swarm-concurrency" aria-label="Maximum concurrent swarm agents" title="Maximum workers scheduled at once; Gateway and provider capacity may reduce effective concurrency" value={swarmConcurrency} onChange={(event) => setSwarmConcurrency(Number(event.target.value))} className={inputCls}>
+                  {[2, 4, 6, 8, 12, 16, 24, 32, 48, 64].map((count) => <option key={count} value={count}>{count} agents at once</option>)}
+                </select>
+                <Btn onClick={() => swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim(), { mode: swarmMode, maxConcurrency: swarmConcurrency }).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} disabled={!swarmObjective.trim()}>
                   <Play className="size-3.5" /> Create plan
                 </Btn>
               </div>
+              <p className="mt-2 text-[10px] text-muted-foreground">Safe default: Auto with 4 concurrent workers. You can choose up to 64; runtime admission, provider capacity and budget can reduce the effective parallelism.</p>
             </Field>
           </div>
           {readErrors.swarms ? (

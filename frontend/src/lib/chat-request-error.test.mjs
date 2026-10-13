@@ -121,13 +121,13 @@ async function send(
     // exercises a non-default effort, so the unset value is the honest one.
     reasoningEffort: "default",
     DEFAULT_EFFORT: "default",
-    // The delegation opt-in, for the same reason as `reasoningEffort` above:
-    // `sendMessage` reads it to decide whether to send the server's `autonomous`
-    // flag, and a missing binding throws inside the request, which masks every
-    // status-code assertion below behind the generic "request could not be
-    // completed". `false` is the honest value because no scenario here turns
-    // delegation on, so the request body must not carry `autonomous: true`.
-    delegationEnabled: false,
+    // The composer selection drives both delegation limits and `autonomous`.
+    // Keep the harness explicitly off; the old `delegationEnabled` name is no
+    // longer read by ChatView and left `delegationMode` unbound, masking every
+    // request outcome as a generic network failure.
+    delegationMode: "off",
+    subagentConcurrency: 3,
+    subagentTotal: 6,
     setInput: setter("input"),
     setIsLoading: setter("loading"),
     setRequestError: setter("error"),
