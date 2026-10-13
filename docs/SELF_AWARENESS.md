@@ -53,6 +53,23 @@ yes/no question.
 | `symbol` | Every symbol under a name in one file | File-scoped drill-down |
 | `symbols_status` | Roots, limits and pruning for the symbol index | |
 
+## Prompt-driven setup
+
+The lead agent is instructed to handle an actionable setup request in one pass:
+inspect the live inventory and relevant configuration diagnosis, reuse resources
+that already fit, create only the missing requested resources through their owning
+tools, then read them back to verify creation. A bot, managed subagent, specialist
+team, company, project, and group room are distinct resource types; creating one
+does not prove another exists or can execute.
+
+The agent uses conservative defaults for reversible choices and asks only when a
+required value cannot be discovered or inferred, ownership/scope is unclear, or a
+policy approval boundary applies. Configuration diagnosis remains read-only: it may
+name a missing setting and the supported operator path, but it does not write
+`config.yaml`, `extensions_config.json`, or secrets. Inventory describes what is
+declared; a read-back or real task is required before the agent reports something
+as working.
+
 ### Identity
 
 ```

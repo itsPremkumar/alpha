@@ -680,6 +680,17 @@ def test_system_prompt_template_preserves_placeholders():
         assert ph in template, f"placeholder {ph} accidentally removed"
 
 
+def test_system_prompt_encourages_self_aware_one_prompt_setup():
+    template = prompt_module.SYSTEM_PROMPT_TEMPLATE
+
+    assert "<self_aware_resource_setup>" in template
+    assert "reuse matching resources" in template
+    assert "verify each result by reading it back" in template
+    assert "configuration diagnosis is read-only" in template.lower()
+    assert "MUST ask for clarification FIRST" not in template
+    assert "Ask the user only when a required value cannot be discovered or inferred" in template
+
+
 def _make_minimal_app_config():
     return SimpleNamespace(
         sandbox=SimpleNamespace(mounts=[]),
