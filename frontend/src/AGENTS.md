@@ -22,8 +22,10 @@ lifecycle, bounded local travel and CSS. `ChatView` passes only bounded
 lifecycle state and an optional chat action; never prompt text or thread IDs.
 The top bar, chat header, composer, sidebar footer and dialogs are keep-out
 regions. Placement must escape those regions when a safe position exists. The
-compatibility exports `components/LionPet.tsx` and `lib/lion-pet.ts` stay facades.
-Tests: `lib/lion-pet.test.mjs`.
+clickable hit area must stay inside the measured shell at responsive widths;
+CSS scaling and placement geometry must agree. The compatibility exports
+`components/LionPet.tsx` and `lib/lion-pet.ts` stay facades. Tests:
+`lib/lion-pet.test.mjs`.
 
 ## Adding a backend surface to the UI
 

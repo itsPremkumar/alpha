@@ -17,7 +17,8 @@
 }
 
 .lion-pet-hit-area {
-  width: 190px;
+  width: 100%;
+  max-width: 100%;
   cursor: grab;
   filter: drop-shadow(0 18px 20px rgb(15 23 42 / 0.28));
   transition: filter 180ms ease, transform 180ms ease;
@@ -375,6 +376,20 @@
   box-shadow: 0 14px 30px rgb(15 23 42 / 0.3);
   backdrop-filter: blur(14px);
   animation: lion-bubble-in 180ms ease-out;
+}
+
+@media (max-width: 640px) {
+  .lion-pet-shell {
+    width: min(132px, 32vw);
+    max-width: 32vw;
+  }
+
+  .lion-pet-bubble {
+    right: 0;
+    bottom: calc(100% - 8px);
+    max-width: min(180px, calc(100vw - 32px));
+    font-size: 0.62rem;
+  }
 }
 
 .lion-pet-state-dot {

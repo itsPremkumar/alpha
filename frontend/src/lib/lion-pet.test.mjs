@@ -11,7 +11,14 @@ const { outputText } = ts.transpileModule(source, {
 const pet = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 
 const componentSource = readFileSync(new URL("../components/lion-pet/LionPet.tsx", import.meta.url), "utf8");
+const styleSource = readFileSync(new URL("../components/lion-pet/lion-pet.css", import.meta.url), "utf8");
 const chatSource = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
+
+test("companion hit area follows its responsive shell size", () => {
+  assert.match(styleSource, /\.lion-pet-hit-area\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;/s);
+  assert.match(styleSource, /@media\s*\(max-width:\s*640px\)[\s\S]*?\.lion-pet-shell\s*\{[^}]*width:\s*min\(132px,\s*32vw\)/);
+  assert.match(styleSource, /@media\s*\(max-width:\s*640px\)[\s\S]*?\.lion-pet-bubble\s*\{[^}]*max-width:\s*min\(180px,\s*calc\(100vw - 32px\)\)/);
+});
 
 test("lion settings are bounded and local-first", () => {
   const settings = pet.normalizeLionPetSettings({
