@@ -219,8 +219,13 @@ Three stores carried exactly that shape and now carry the same disclosure:
   read. It exposes `load_error` / `is_degraded`, and `_save` returns whether the
   write landed (`is_durable`, `save_error`): a full disk used to return a `Goal`
   as though persisted, so `resume` reported success on state that vanished on
-  restart. `goal_engine` now refuses on a degraded store and refuses to claim a
-  resume it could not persist.
+  restart. `goal_engine` refuses a degraded store, persists and confirms
+  pause/resume transitions (resume must actually write `executing`), and does
+  not claim start/step success when the latest state write failed. Goal
+  listings report status counts and cap detail rows at 50; `/loop:status`
+  reports active versus total goals and uses the same bounded detail page.
+  Keep these output and durability contracts covered by
+  `tests/test_continuous_goal_engine.py` and `tests/test_backend_handlers.py`.
 - **`continual/state.py` (`HarnessState`)** backs `ContinualHarnessMiddleware`,
   which is appended to **every** lead agent and builds its system-reminder from
   `self.entries`. A corrupt state file therefore injected *no* reminder at all —

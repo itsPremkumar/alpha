@@ -425,7 +425,7 @@ def handle_loop_start(args: str, context: dict[str, Any] | None = None) -> Comma
 
 
 def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Inspects the active loop, current milestones, iterations, and blockers."""
+    """Summarize loop state and show a bounded page of goals and milestones."""
     from alpha.harness.continuous.store import get_goal_store
 
     store = get_goal_store()
@@ -439,17 +439,34 @@ def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> Comm
             data={"active_loops": 0},
         )
 
-    out = [f"=== Active Autonomous Loops ({len(goals)}) ==="]
-    for g in goals:
+    active_statuses = {"planning", "executing", "verifying", "adapting"}
+    active = [g for g in goals if g.status in active_statuses]
+    counts: dict[str, int] = {}
+    for goal in goals:
+        counts[goal.status] = counts.get(goal.status, 0) + 1
+    out = [
+        f"=== Continuous Goal Status ({len(active)} active, {len(goals)} total) ===",
+        "Status counts: " + ", ".join(f"{status}={count}" for status, count in sorted(counts.items())),
+    ]
+    limit = 50
+    for g in goals[:limit]:
         out.append(f"• [{g.goal_id}] {g.title} | Status: `{g.status}` | Iteration: {g.iteration}/{g.max_iterations}")
         for m in g.milestones.values():
             out.append(f"    - {m.title} [{m.status}]")
+    if len(goals) > limit:
+        out.append(f"• {len(goals) - limit} additional goal(s) omitted; use an ID-specific inspect command for details.")
 
     return CommandExecutionResult(
         status="success",
         command="/loop:status",
         output="\n".join(out),
-        data={"active_loops": len(goals), "goals": [g.to_dict() for g in goals]},
+        data={
+            "active_loops": len(active),
+            "total_goals": len(goals),
+            "status_counts": counts,
+            "goals": [g.to_dict() for g in goals[:limit]],
+            "omitted_goals": max(0, len(goals) - limit),
+        },
     )
 
 

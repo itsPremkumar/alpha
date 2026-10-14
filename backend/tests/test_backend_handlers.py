@@ -160,6 +160,28 @@ def test_loop_pause_and_resume_require_an_unambiguous_target(monkeypatch, tmp_pa
     assert store.get_goal(second.goal_id).status == "executing"
 
 
+def test_loop_status_summarizes_history_and_bounds_goal_details(monkeypatch, tmp_path):
+    from alpha.harness.continuous.store import GoalStore
+
+    store = GoalStore(storage_path=tmp_path / "goals.json")
+    goals = [store.create_goal(title=f"Goal {index}") for index in range(55)]
+    for goal in goals[:-1]:
+        store.update_goal_status(goal.goal_id, "executing")
+    store.update_goal_status(goals[-1].goal_id, "paused")
+    monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
+
+    result = bh.handle_loop_status("")
+
+    assert result.status == "success"
+    assert result.data["active_loops"] == 54
+    assert result.data["total_goals"] == 55
+    assert result.data["status_counts"] == {"executing": 54, "paused": 1}
+    assert len(result.data["goals"]) == 50
+    assert result.data["omitted_goals"] == 5
+    assert "54 active, 55 total" in result.output
+    assert "5 additional goal(s) omitted" in result.output
+
+
 def test_goal_decompose_handler():
     res_decomp = command_registry.execute("/goal:decompose Build an automated trading execution engine")
     assert res_decomp.status == "success"

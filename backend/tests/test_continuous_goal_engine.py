@@ -1,5 +1,6 @@
 """Unit and integration tests for Continuous Goal Engine, Runner, and Tools."""
 
+import importlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -69,7 +70,13 @@ def test_continuous_goal_runner_autonomous_lifecycle(tmp_path: Path):
     assert trace.total_steps >= 4
 
 
-def test_goal_engine_and_canvas_tools():
+def test_goal_engine_and_canvas_tools(monkeypatch, tmp_path: Path):
+    goal_engine_module = importlib.import_module("alpha.tools.builtins.goal_engine_tool")
+    store = GoalStore(storage_path=tmp_path / "goals.json")
+    runner = ContinuousGoalRunner(store=store)
+    monkeypatch.setattr(goal_engine_module, "get_goal_store", lambda: store)
+    monkeypatch.setattr(goal_engine_module, "get_goal_runner", lambda: runner)
+
     # 1. Start goal via tool
     goal_title = f"Goal_{uuid4().hex[:6]}"
     res_start = goal_engine_tool.invoke(
@@ -94,9 +101,11 @@ def test_goal_engine_and_canvas_tools():
     # 4. Pause and resume
     res_pause = goal_engine_tool.invoke({"action": "pause", "goal_id": goal_id})
     assert "paused" in res_pause
+    assert store.get_goal(goal_id).status == "paused"
 
     res_resume = goal_engine_tool.invoke({"action": "resume", "goal_id": goal_id})
     assert "executing" in res_resume
+    assert store.get_goal(goal_id).status == "executing"
 
     # 5. Canvas widget tool
     res_canvas = canvas_widget_tool.invoke(
@@ -117,3 +126,22 @@ def test_goal_engine_and_canvas_tools():
     # 6. Trajectory audit tool
     res_traj = trajectory_audit_tool.invoke({"action": "inspect", "goal_id": goal_id})
     assert "Execution Trajectory for Goal" in res_traj
+
+
+def test_goal_engine_pause_and_resume_report_persistence_failure(monkeypatch, tmp_path: Path):
+    goal_engine_module = importlib.import_module("alpha.tools.builtins.goal_engine_tool")
+    store_path = tmp_path / "goals.json"
+    store = GoalStore(storage_path=store_path)
+    runner = ContinuousGoalRunner(store=store)
+    monkeypatch.setattr(goal_engine_module, "get_goal_store", lambda: store)
+    monkeypatch.setattr(goal_engine_module, "get_goal_runner", lambda: runner)
+    goal = runner.start_goal(title="Persistence failure probe")
+
+    monkeypatch.setattr(
+        store,
+        "_save",
+        lambda: setattr(store, "save_error", "disk full") or False,
+    )
+    failed_pause = goal_engine_tool.invoke({"action": "pause", "goal_id": goal.goal_id})
+    assert "could NOT be durably paused" in failed_pause
+    assert GoalStore(storage_path=store_path).get_goal(goal.goal_id).status == "executing"
