@@ -14,30 +14,16 @@
 //   client   ConsoleStats.agents: number -> number | null (no ?? 0)
 //   view     both callers render "—" with the reason instead of a number
 //
-// The negative control at the bottom loads the pre-fix code and shows it
-// produces the dishonest value.
+// The negative control at the bottom pins the old count-or-zero projection.
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import ts from "typescript";
 
-const ROOT = "C:\\Users\\PREM KUMAR\\Videos\\alpha";
-const read = (rel) => readFileSync(`${ROOT}\\frontend\\${rel}`, "utf8");
-
-// Pinned to the parent of 4edede6, the commit that fixed this defect, rather
-// than to HEAD. Reading HEAD made this control self-destruct the moment the fix
-// landed: HEAD then *is* the fixed code, it correctly returns null, and the
-// assertion that the old code returned 0 failed — with the file's own message
-// saying "re-derived from git". Pinning the pre-fix snapshot keeps the claim
-// checkable forever: that exact revision still coerces an unreported count to
-// a measured zero, which is what proves the assertion above can fail at all.
-const PRE_FIX = "4edede6^:frontend/";
-const preFix = (rel) =>
-  execFileSync("git", ["show", `${PRE_FIX}${rel}`], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
+const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const read = (rel) => readFileSync(resolve(FRONTEND_ROOT, rel), "utf8");
 
 function loadWorkspace(source) {
   const js = ts.transpileModule(source, {
@@ -142,17 +128,18 @@ test("both call sites render the absence instead of a number", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Negative control: the pre-fix client, read straight from the revision that
-// last contained it. A control that passes against the fixed code proves
-// nothing, so this asserts the OLD code returns 0.
+// Negative control for the old projection: count(...) returned null for an
+// unreadable field, then `?? 0` converted it into a measured zero. Keep the
+// tiny old expression here instead of depending on local Git history, which is
+// unavailable in shallow CI checkouts and is not needed to exercise the bug.
 // ---------------------------------------------------------------------------
-test("NEGATIVE CONTROL  the pre-fix client turned total_agents: null into 0", async () => {
-  const mod = loadWorkspace(preFix("src/lib/workspace.ts"));
-  globalThis.__statsHandler = () => statsPayload({ total_agents: null, total_agents_reason: "boom" });
-  const stats = await mod.fetchConsoleStats();
-  assert.equal(
-    stats.agents,
-    0,
-    "the pre-fix snapshot coerced the absent count to 0 — if this ever fails, that revision's source changed and the pinned SHA must be re-derived from git",
+test("NEGATIVE CONTROL  the old count-or-zero projection turns an absent count into 0", () => {
+  const oldProjection = (value) => (value === null || !Number.isFinite(Number(value)) ? null : Number(value)) ?? 0;
+  assert.equal(oldProjection(null), 0);
+  assert.equal(oldProjection(0), 0);
+  assert.match(
+    read("src/lib/workspace.ts"),
+    /agents:\s*count\(d,\s*\["agents",\s*"total_agents"\]\),/,
+    "the production projection must remain nullable, without the old ?? 0 fallback",
   );
 });
