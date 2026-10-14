@@ -104,6 +104,8 @@ test("the primitives module owns the failed-read and not-reported sentences", ()
 
 test("redirections are built by workspaceViewUrl, never by a hand-built query", () => {
   assert.match(view, /workspaceViewUrl\(r\.view\)/);
+  assert.match(view, /workspaceViewUrl\("projects",\s*"\/",\s*\{ project: row\.id \}\)/);
+  assert.match(view, /\{row\.id && \(/, "do not offer a project link without a project id");
   // A hand-built `/?view=` would bypass the helper that owns the shape and
   // would not survive a change to how a view is addressed.
   assert.doesNotMatch(view, /href=\{`\/\?view=/);

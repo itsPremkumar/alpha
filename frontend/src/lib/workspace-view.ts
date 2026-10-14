@@ -82,9 +82,16 @@ export function workspaceViewFromSearch(search: string): WorkspaceView {
   return isWorkspaceView(requested) ? requested : "chat";
 }
 
-export function workspaceViewUrl(view: WorkspaceView, pathname = "/"): string {
+export function workspaceViewUrl(
+  view: WorkspaceView,
+  pathname = "/",
+  query: Readonly<Record<string, string>> = {},
+): string {
   const params = new URLSearchParams();
   if (view !== "chat") params.set("view", view);
-  const query = params.toString();
-  return query ? `${pathname}?${query}` : pathname;
+  for (const [key, value] of Object.entries(query)) {
+    if (key !== "view") params.set(key, value);
+  }
+  const search = params.toString();
+  return search ? `${pathname}?${search}` : pathname;
 }

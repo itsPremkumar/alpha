@@ -18,6 +18,7 @@ import {
 import { errMsg } from "@/lib/http";
 import { Badge, Btn, ErrorBox, Field, Notice, inputCls } from "@/components/ui";
 import { Radio, Users, MessagesSquare, Settings2, MemoryStick, ShieldAlert, RefreshCw, Lock } from "lucide-react";
+import Link from "next/link";
 
 /**
  * The crew inspector for one project: who is on it, whether they share a room,
@@ -208,7 +209,20 @@ export function ProjectCrewPanel(props: {
                   className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-2"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-medium truncate">{member.bot_name}</span>
+                    {/*
+                      A member row is a project UI, so the name leads to that
+                      agent's full record — the inspector's crew rows already
+                      do, and this panel is rendered from two places (the
+                      project card and the in-chat project panel) where the
+                      same expectation holds.
+                    */}
+                    <Link
+                      href={`/bots/${encodeURIComponent(member.bot_name)}`}
+                      className="block text-[11px] font-medium truncate hover:text-primary hover:underline"
+                      title={`Open ${member.bot_name}'s full profile: soul, capabilities, skills, model and performance`}
+                    >
+                      {member.bot_name}
+                    </Link>
                     <span className="block text-[10px] text-muted-foreground">
                       {member.role_in_project}
                       {member.current_task_id ? ` · on ${member.current_task_id}` : ""}

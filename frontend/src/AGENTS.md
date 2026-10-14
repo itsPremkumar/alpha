@@ -130,3 +130,8 @@ The detail contract is covered by `lib/bot-detail.test.mjs` and
 `lib/bot-detail-view.test.mjs`; Gateway company/group projections are covered
 by `backend/tests/test_bot_companies_route.py` and
 `backend/tests/test_bot_groups_route.py`.
+
+Bot-to-project rows link with `/?view=projects&project=<id>` so the project
+surface opens the matching inspector after hydration. Keep that one-shot URL
+request in `ChatView` and its cross-surface coverage in
+`lib/project-deep-links.test.mjs`.

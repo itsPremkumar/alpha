@@ -26,10 +26,14 @@ import { moveThread } from "@/lib/threads-ext";
 import { Thread } from "@/types/chat";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, Hash, ChevronRight, Settings2, CheckCheck } from "lucide-react";
+import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles, MessagesSquare, MessageSquareText, Hash, ChevronRight, Settings2, CheckCheck, Building2, LayoutGrid, Brain, Wrench } from "lucide-react";
 import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
 import { ProjectOverviewPanel } from "@/components/sections/ProjectOverviewPanel";
 import { ProjectInspectorSection } from "@/components/sections/ProjectInspectorSection";
+import type { InspectorTab } from "@/components/sections/ProjectInspectorSection";
+import Link from "next/link";
+import { projectCompanyIndex, projectRooms, ProjectCompanyRef } from "@/lib/project-hub";
+import { projectStatusText, projectStatusTone } from "@/lib/chat-shell";
 
 export interface ProjectBot {
   name: string;
@@ -120,9 +124,21 @@ export function ProjectsSection(props: {
    * It is a *request*, not a mirror of local state: the owner switches the view
    * and hands over the id, and the section opens it on the next render.
    */
-  openProjectRequest?: { projectId: string; nonce: number } | null;
+  openProjectRequest?: { projectId: string; nonce: number; tab?: InspectorTab } | null;
   /** Acknowledge the request above, so it cannot re-fire on the next mount. */
   onOpenProjectRequestHandled?: () => void;
+  /**
+   * Open one of this project's message rooms in the Messages view.
+   *
+   * Handed down to the inspector (its "Crew & room" tab names the room) and
+   * used by the card's own room shortcut, so one project never needs two ways
+   * to reach the same transcript.
+   */
+  onOpenRoom?: (name: string) => void;
+  /** Open this project's board in the Kanban view, filtered to it. */
+  onOpenProjectBoard?: (projectId: string) => void;
+  /** Open the company this project is linked to. */
+  onOpenCompany?: (companyId: string) => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -186,8 +202,34 @@ export function ProjectsSection(props: {
    * had fetched", which was the gap that made the deep state unreachable.
    */
   const [inspectedProjectId, setInspectedProjectId] = useState<string | null>(null);
+  /**
+   * The inspector tab the drill-down opens on.
+   *
+   * The hub row's Memory / Conversations chips are a *destination*, not a
+   * hint: landing on Overview and making the operator find the tab the chip
+   * named would be a link that only half works. Every path into the
+   * drill-down goes through `openInspector`, which always sets both pieces of
+   * state together, so a tab left behind by one chip cannot leak into the next
+   * open — "View more" and a deep link always start at Overview.
+   */
+  const [inspectedTab, setInspectedTab] = useState<InspectorTab>("overview");
+  const openInspector = (projectId: string, tab: InspectorTab = "overview") => {
+    setInspectedTab(tab);
+    setInspectedProjectId(projectId);
+  };
   /** "all" | "crew" | "solo" — a view filter, never a claim about the data. */
   const [shapeFilter, setShapeFilter] = useState<"all" | "crew" | "solo">("all");
+  /**
+   * Which company each project sits under, or null while that is unread.
+   *
+   * The link lives on the company, so this is a reverse read over every
+   * company's portfolio. A failed read stays `null` — the badges then do not
+   * render at all rather than claiming "no company", which is the one claim a
+   * broken attribution read can never make.
+   */
+  const [companiesByProject, setCompaniesByProject] = useState<Map<string, ProjectCompanyRef[]> | null>(null);
+  /** Companies whose own read failed, so a badge may be missing for a real reason. */
+  const [companyReadFailures, setCompanyReadFailures] = useState<string[]>([]);
 
   const template = useMemo(() => getProjectTemplate(templateId), [templateId]);
 
@@ -324,6 +366,19 @@ export function ProjectsSection(props: {
     } finally {
       setLoading(false);
     }
+    // Attribution is a separate read with its own failure: a company that will
+    // not answer must not take the project list down with it, and a list that
+    // loaded must not wait on the slowest company.
+    projectCompanyIndex()
+      .then((index) => {
+        setCompaniesByProject(index.byProject);
+        setCompanyReadFailures(index.unreadable);
+      })
+      .catch(() => {
+        // Stays null: no badges, and no "no company" claim either.
+        setCompaniesByProject(null);
+        setCompanyReadFailures([]);
+      });
   };
 
   useEffect(() => {
@@ -342,7 +397,10 @@ export function ProjectsSection(props: {
   useEffect(() => {
     const request = props.openProjectRequest;
     if (!request) return;
-    setInspectedProjectId(request.projectId);
+    // The tab travels with the request so a caller that named one (the
+    // sidebar's Knowledge row) lands on it, and everything else — "View more",
+    // a company row, the board's filter — still opens on the Overview.
+    openInspector(request.projectId, request.tab);
     props.onOpenProjectRequestHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.openProjectRequest]);
@@ -350,6 +408,30 @@ export function ProjectsSection(props: {
   const flash = (m: string) => {
     setNotice(m);
     window.setTimeout(() => setNotice(null), 4000);
+  };
+
+  /**
+   * Open this project's team room, or say why there is none.
+   *
+   * The room's name is the server's to give: the crew service creates it at the
+   * second member and it can be renamed or parked afterwards, so this reads
+   * `GET /groups/by-project/{id}` rather than composing `project-{id}` in the
+   * client. "No room" and "the rooms could not be read" are different answers
+   * and get different sentences.
+   */
+  const openProjectRoom = async (project: Project) => {
+    if (!props.onOpenRoom) return;
+    try {
+      const view = await projectRooms(project.id);
+      const room = view.rooms[0];
+      if (!room) {
+        flash(`${project.name} has no room yet — a shared room opens once two agents are on the project.`);
+        return;
+      }
+      props.onOpenRoom(room.name);
+    } catch (err) {
+      flash(`The rooms for ${project.name} could not be read: ${errMsg(err)}`);
+    }
   };
 
   const toggle = async (project: Project) => {
@@ -491,9 +573,13 @@ export function ProjectsSection(props: {
     return (
       <ProjectInspectorSection
         projectId={inspectedProjectId}
+        initialTab={inspectedTab}
         onOpenThread={props.onOpenThread}
         onClose={() => setInspectedProjectId(null)}
         onOpenLiveProject={props.onOpenLiveProject}
+        onOpenRoom={props.onOpenRoom}
+        onOpenProjectBoard={props.onOpenProjectBoard}
+        onOpenCompany={props.onOpenCompany}
       />
     );
   }
@@ -797,6 +883,36 @@ export function ProjectsSection(props: {
                           <Badge tone={shapeMeta.tone} title={shapeMeta.title}>
                             {shapeMeta.label}
                           </Badge>
+                          {/*
+                            Which company owns this project, when the reverse
+                            read answered. Rendered only when the attribution
+                            is in: a failed read must not paint "no company"
+                            over every card, and a project in no company says
+                            so itself inside the drill-down.
+                          */}
+                          {(companiesByProject?.get(p.id) || []).map((company) => (
+                            <button
+                              key={company.company_id}
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                props.onOpenCompany?.(company.company_id);
+                              }}
+                              disabled={!props.onOpenCompany}
+                              className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium inline-flex items-center gap-0.5 hover:bg-primary/20 disabled:opacity-60 disabled:hover:bg-primary/10"
+                              title={`This project is linked to ${company.name || company.company_id}. Open it in Companies.`}
+                            >
+                              <Building2 className="size-2.5" /> {company.name || company.company_id}
+                            </button>
+                          ))}
+                          {companyReadFailures.length > 0 ? (
+                            <span
+                              className="text-[10px] text-muted-foreground"
+                              title={`${companyReadFailures.length} company read failed, so a project here may sit under a company that was not listed.`}
+                            >
+                              company partly unread
+                            </span>
+                          ) : null}
                         </div>
                         {/* Instructions were in the payload the whole time and were
                             never rendered outside the expanded editor, so a project
@@ -842,7 +958,18 @@ export function ProjectsSection(props: {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <Badge tone={p.status === "archived" ? "gray" : "green"}>{p.status}</Badge>
+                        {/*
+                          The tone is earned, not defaulted. This badge painted
+                          green for every status except `archived`, so a
+                          project whose status the Gateway never filled in wore
+                          the same emerald as a live one — and after `toProject`
+                          stopped inventing `"active"`, that case renders an
+                          empty green pill. `projectStatusTone` is the single
+                          place the green is decided, and only `active` wins it.
+                        */}
+                        <Badge tone={projectStatusTone(p.status)} title={`status: ${projectStatusText(p.status)}`}>
+                          {projectStatusText(p.status)}
+                        </Badge>
                         {/*
                           Rename/retarget lives on the card itself: it opens the
                           detail block and lands straight in the editor, so
@@ -870,7 +997,7 @@ export function ProjectsSection(props: {
                         */}
                         <button
                           type="button"
-                          onClick={() => setInspectedProjectId(p.id)}
+                          onClick={() => openInspector(p.id)}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
                           title={`Read every detail the Gateway knows about ${p.name}`}
                         >
@@ -881,6 +1008,77 @@ export function ProjectsSection(props: {
                     </div>
               {open === p.id && (
                 <div className="px-4 pb-4 space-y-3 border-t border-border/50 pt-3">
+                  {/*
+                    The project hub row: opening a project is how you get to
+                    *everything* it owns — its room, its board, its memory, its
+                    skills, its conversations, its company. Each control here
+                    withholds itself when there is nothing to open: a solo
+                    project has no room, a project in no company has no company
+                    to open, and a control pointing nowhere is worse than its
+                    absence.
+
+                    Memory and Conversations are *destinations*, not hints —
+                    they open the hub on that tab. The text hint that used to
+                    say "these live in the hub" made the operator do the second
+                    half of the trip themselves.
+                  */}
+                  <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label={`Jump into ${p.name}`}>
+                    <Btn
+                      variant="ghost"
+                      onClick={() => openInspector(p.id)}
+                      title={`Read every detail of ${p.name}: crew, room, board, memory, skills and company`}
+                    >
+                      <Sparkles className="size-3.5" /> Open hub
+                    </Btn>
+                    {shapeOf(p.id) === "crew" ? (
+                      <Btn
+                        variant="ghost"
+                        onClick={() => void openProjectRoom(p)}
+                        title="Open this project's team room in the Messages view"
+                      >
+                        <MessagesSquare className="size-3.5" /> Room
+                      </Btn>
+                    ) : null}
+                    <Btn
+                      variant="ghost"
+                      onClick={() => props.onOpenProjectBoard?.(p.id)}
+                      title="Open this project's board in the Kanban view"
+                    >
+                      <LayoutGrid className="size-3.5" /> Board
+                    </Btn>
+                    <Btn
+                      variant="ghost"
+                      onClick={() => openInspector(p.id, "memory")}
+                      title={`Open ${p.name}'s shared memory in the hub`}
+                    >
+                      <Brain className="size-3.5" /> Memory
+                    </Btn>
+                    <Btn
+                      variant="ghost"
+                      onClick={() => openInspector(p.id, "conversations")}
+                      title={`Open the conversations belonging to ${p.name} in the hub`}
+                    >
+                      <MessageSquareText className="size-3.5" /> Conversations
+                    </Btn>
+                    {/*
+                      The first linked company, and only while the reverse read
+                      answered: a failed attribution read must not present
+                      itself as "no company to open". The card's own badges
+                      carry the full list when there is more than one.
+                    */}
+                    {props.onOpenCompany && companiesByProject?.get(p.id)?.[0] ? (
+                      <Btn
+                        variant="ghost"
+                        onClick={() => props.onOpenCompany?.(companiesByProject.get(p.id)![0].company_id)}
+                        title={`Open ${companiesByProject.get(p.id)![0].name || companiesByProject.get(p.id)![0].company_id} in Companies`}
+                      >
+                        <Building2 className="size-3.5" /> Company
+                      </Btn>
+                    ) : null}
+                    <span className="text-[10px] text-muted-foreground">
+                      Skills and crew are on the hub&apos;s Overview.
+                    </span>
+                  </div>
                   {/*
                     Staff leads the expanded card: opening a project is how you
                     find out who is on it, and the roster used to sit below the
@@ -916,7 +1114,21 @@ export function ProjectsSection(props: {
                       <div className="flex flex-wrap gap-1.5">
                         {members.map((member) => (
                           <span key={member.bot_name} className="inline-flex items-center gap-1 rounded-lg border border-border/70 bg-card px-2 py-1 text-[11px]">
-                            <strong>{botLabel(member.bot_name)}</strong>
+                            {/*
+                              A staff chip is a project UI, so picking an agent
+                              here has to reach that agent's full record —
+                              soul, capabilities, skills, model, performance —
+                              which lives on its own page. The name is the
+                              link; the remove control stays a separate target
+                              so the two can never be confused.
+                            */}
+                            <Link
+                              href={`/bots/${encodeURIComponent(member.bot_name)}`}
+                              className="font-semibold hover:text-primary hover:underline"
+                              title={`Open ${botLabel(member.bot_name)}'s full profile: soul, capabilities, skills, model and performance`}
+                            >
+                              {botLabel(member.bot_name)}
+                            </Link>
                             <span className="text-muted-foreground">{member.role_in_project}</span>
                             <Badge tone={member.status === "active" ? "green" : "gray"}>{member.status}</Badge>
                             <button

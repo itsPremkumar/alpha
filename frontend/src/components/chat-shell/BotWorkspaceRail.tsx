@@ -35,6 +35,8 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
+import Link from "next/link";
+import type { InspectorTab } from "@/components/sections/ProjectInspectorSection";
 import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import {
@@ -84,15 +86,28 @@ export interface BotWorkspaceRailProps {
   onOpenView: (view: WorkspaceView) => void;
   onProjectsChanged: () => void;
   /**
-   * Open a project's full read (the Projects view's drill-down).
+   * Open a project's full read (the Projects view's drill-down), optionally on
+   * one of its tabs.
    *
    * Offered in the rail's per-project menu, because this list is where a
    * project is reached from the sidebar — and "Project overview" beside it
    * only points the *view* at Projects, leaving the operator to find the
    * project again in a list that may hold hundreds. Optional: without it the
    * menu simply omits the row.
+   *
+   * `onPickProject` is deliberately NOT this rail's navigation handler: it
+   * moves the active conversation into the project (see `ChatView`), which a
+   * control that only wants to *look at* a project must never do.
    */
-  onOpenProjectDetails?: (projectId: string) => void;
+  onOpenProjectDetails?: (projectId: string, tab?: InspectorTab) => void;
+  /**
+   * Open this project's board in the Kanban view, already filtered to it.
+   *
+   * Optional, so the rail stays renderable without it: the Tasks controls are
+   * withheld rather than falling back to an unfiltered board that would show
+   * every project at once.
+   */
+  onOpenProjectBoard?: (projectId: string) => void;
 }
 
 export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
@@ -110,6 +125,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     onOpenView,
     onProjectsChanged,
     onOpenProjectDetails,
+    onOpenProjectBoard,
   } = props;
 
   const [standaloneCollapsed, setStandaloneCollapsed] = useState(false);
@@ -584,7 +600,6 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                         <button
                           type="button"
                           onClick={() => {
-                            onPickProject(row.projectId);
                             toggleProjectExpand(row.projectId);
                           }}
                           className="flex items-center gap-1.5 min-w-0 flex-1 text-left cursor-pointer"
@@ -640,6 +655,15 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                           </button>
 
                           {/* Project Options Menu using ProjectDropdownMenu */}
+                          {/*
+                            Navigation only. Every handler below used to call
+                            `onPickProject` first, which is `moveThread` on the
+                            active conversation: opening a project's tasks
+                            moved the chat into that project as a side effect
+                            nobody asked for and no label mentioned. Each one
+                            now goes to a real project-scoped destination
+                            instead.
+                          */}
                           <ProjectDropdownMenu
                             project={project}
                             projects={projects}
@@ -649,26 +673,16 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             onNewConversation={(id) => onNewConversation(id)}
                             onSelectThread={onSelectThread}
                             onOpenDetails={onOpenProjectDetails}
-                            onOpenOverview={() => {
-                              onPickProject(row.projectId);
-                              onOpenView("projects");
-                            }}
-                            onOpenFiles={() => {
-                              onPickProject(row.projectId);
-                              onOpenView("files");
-                            }}
-                            onOpenTasks={() => {
-                              onPickProject(row.projectId);
-                              onOpenView("kanban");
-                            }}
-                            onOpenKnowledge={() => {
-                              onPickProject(row.projectId);
-                              onOpenView("memory");
-                            }}
-                            onOpenSettings={() => {
-                              onPickProject(row.projectId);
-                              onOpenView("projects");
-                            }}
+                            onOpenOverview={() => onOpenProjectDetails?.(row.projectId)}
+                            onOpenFiles={undefined}
+                            onOpenTasks={
+                              onOpenProjectBoard
+                                ? () => onOpenProjectBoard(row.projectId)
+                                : undefined
+                            }
+                            onOpenKnowledge={() => onOpenProjectDetails?.(row.projectId, "memory")}
+                            onOpenSettings={() => onOpenProjectDetails?.(row.projectId)}
+                            hideFiles
                             onOpenView={onOpenView}
                             triggerClassName="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 opacity-60 group-hover:opacity-100 transition-opacity"
                           >
@@ -706,31 +720,30 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                               <Plus className="size-3 shrink-0" />
                               <span>New in Project</span>
                             </button>
-                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          {/*
+                            Quick links for the expanded row. This is navigation:
+                            it may not touch the active conversation, which the
+                            previous `onPickProject` call before it did (it moved
+                            the current chat into this project purely so the
+                            view that opened next would have something to
+                            show). Tasks lands on the board already filtered to
+                            this project; Files had no equivalent real
+                            destination — the Gateway has no project-scoped
+                            files read — so it is withheld rather than served by
+                            relocating the chat.
+                          */}
+                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            {onOpenProjectBoard && (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  onPickProject(row.projectId);
-                                  onOpenView("files");
-                                }}
+                                onClick={() => onOpenProjectBoard(row.projectId)}
                                 className="hover:text-primary transition-colors cursor-pointer"
-                                title="Project files"
-                              >
-                                Files
-                              </button>
-                              <span>•</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onPickProject(row.projectId);
-                                  onOpenView("kanban");
-                                }}
-                                className="hover:text-primary transition-colors cursor-pointer"
-                                title="Project tasks"
+                                title="This project's board"
                               >
                                 Tasks
                               </button>
-                            </div>
+                            )}
+                          </div>
                           </div>
 
                           {/* Who is on this project.
@@ -765,12 +778,21 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             ) : (
                               <ul className="mt-0.5 space-y-0.5">
                                 {row.members.map((member) => (
-                                  <li
-                                    key={member}
-                                    className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
-                                  >
-                                    <span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                                    <span className="truncate">{member}</span>
+                                  /*
+                                    The rail's Agents list is a project UI, so a
+                                    name here reaches that agent's own page
+                                    rather than sitting as text beside a project
+                                    that already links to it.
+                                  */
+                                  <li key={member} className="text-[10px] text-muted-foreground">
+                                    <Link
+                                      href={`/bots/${encodeURIComponent(member)}`}
+                                      className="flex items-center gap-1.5 hover:text-primary transition-colors truncate"
+                                      title={`Open ${member}'s full profile: soul, capabilities, skills, model and performance`}
+                                    >
+                                      <span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                                      <span className="truncate">{member}</span>
+                                    </Link>
                                   </li>
                                 ))}
                               </ul>

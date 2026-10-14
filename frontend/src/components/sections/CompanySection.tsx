@@ -27,6 +27,7 @@ import {
   Coins,
   ExternalLink,
   GitBranch,
+  LayoutGrid,
   Loader2,
   Megaphone,
   Play,
@@ -69,12 +70,33 @@ function reasonOf(err: unknown): string {
 export function CompanySection(props: {
   /** Open a linked project's full read (the Projects view's drill-down). */
   onOpenProjectDetails?: (projectId: string) => void;
+  /** Open a linked project's board in the Kanban view, filtered to it. */
+  onOpenProjectBoard?: (projectId: string) => void;
+  /**
+   * One-shot request from another surface (a project card's company badge, the
+   * project hub's company panel) to select ONE company here.
+   *
+   * The selection is local state that otherwise defaults to the first company,
+   * so a bare view switch would land on someone else's portfolio and the
+   * operator would have to find the right row by hand.
+   */
+  openCompanyRequest?: { companyId: string; nonce: number } | null;
+  /** Acknowledge the request above, so it cannot re-fire on the next mount. */
+  onOpenCompanyRequestHandled?: () => void;
 }) {
   const [companies, setCompanies] = useState<CompanySummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("overview");
+  /**
+   * Why the last company request was not applied, or null.
+   *
+   * Requesting a company this registry does not list is a real answer (it was
+   * deleted, or the list is stale), and silently keeping the previous
+   * selection would present a different company as the one that was asked for.
+   */
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -93,6 +115,30 @@ export function CompanySection(props: {
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  /**
+   * Select the company another surface asked for, then acknowledge it.
+   *
+   * The nonce makes it an event, the acknowledgement stops it re-firing on the
+   * next mount, and a company the list does not carry is reported rather than
+   * quietly ignored — the previous selection is not the one that was asked for
+   * and must not be presented as it.
+   */
+  useEffect(() => {
+    const request = props.openCompanyRequest;
+    if (!request) return;
+    if (companies.some((c) => c.company_id === request.companyId)) {
+      setSelectedId(request.companyId);
+      setPanel("overview");
+      setRequestError(null);
+    } else {
+      setRequestError(
+        `This installation's company list does not contain ${request.companyId}, so it was not opened.`,
+      );
+    }
+    props.onOpenCompanyRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openCompanyRequest, companies]);
 
   if (loadingList) {
     return (
@@ -125,6 +171,13 @@ export function CompanySection(props: {
           onRetry={loadList}
         />
       )}
+
+      {/*
+        A company another surface asked for that this registry does not carry is
+        a real answer, not a no-op: silently keeping the previous selection
+        would present some other portfolio as the one that was requested.
+      */}
+      {requestError && <Notice message={requestError} tone="warn" />}
 
       {!listError && companies.length === 0 ? (
         <EmptyState
@@ -161,6 +214,7 @@ export function CompanySection(props: {
                 panel={panel}
                 setPanel={setPanel}
                 onOpenProjectDetails={props.onOpenProjectDetails}
+                onOpenProjectBoard={props.onOpenProjectBoard}
               />
             )}
           </>
@@ -177,12 +231,15 @@ function CompanyDetail({
   panel,
   setPanel,
   onOpenProjectDetails,
+  onOpenProjectBoard,
 }: {
   companyId: string;
   panel: Panel;
   setPanel: (p: Panel) => void;
   /** Open a linked project's full read (the Projects view's drill-down). */
   onOpenProjectDetails?: (projectId: string) => void;
+  /** Open a linked project's board in the Kanban view, filtered to it. */
+  onOpenProjectBoard?: (projectId: string) => void;
 }) {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -259,7 +316,11 @@ function CompanyDetail({
       {panel === "workforce" && <WorkforcePanel data={data} onReload={reload} />}
       {panel === "work" && <WorkPanel data={data} onReload={reload} />}
       {panel === "projects" && (
-        <ProjectsPanel data={data} onOpenProjectDetails={onOpenProjectDetails} />
+        <ProjectsPanel
+          data={data}
+          onOpenProjectDetails={onOpenProjectDetails}
+          onOpenProjectBoard={onOpenProjectBoard}
+        />
       )}
       {panel === "groups" && <GroupsPanel data={data} onReload={reload} />}
       {panel === "budget" && <BudgetPanel data={data} />}
@@ -644,10 +705,13 @@ function WorkPanel({ data, onReload }: { data: Overview; onReload: () => Promise
 function ProjectsPanel({
   data,
   onOpenProjectDetails,
+  onOpenProjectBoard,
 }: {
   data: Overview;
   /** Open a linked project's full read. Optional: the panel works without it. */
   onOpenProjectDetails?: (projectId: string) => void;
+  /** Open a linked project's board. Optional: the panel works without it. */
+  onOpenProjectBoard?: (projectId: string) => void;
 }) {
   const [pid, setPid] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -700,16 +764,26 @@ function ProjectsPanel({
                 company portfolio is exactly where you are looking at a project
                 you did not create here.
               */}
-              {onOpenProjectDetails && (
-                <Btn
-                  variant="ghost"
-                  onClick={() => onOpenProjectDetails(p.project_id)}
-                  className="ml-auto"
-                  title={`Open the full read of ${p.title || p.project_id}`}
-                >
-                  <ExternalLink className="size-3.5" /> Full details
-                </Btn>
-              )}
+              <div className="ml-auto inline-flex items-center gap-1">
+                {onOpenProjectBoard && (
+                  <Btn
+                    variant="ghost"
+                    onClick={() => onOpenProjectBoard(p.project_id)}
+                    title={`Open ${p.title || p.project_id}'s board in the Kanban view, filtered to this project`}
+                  >
+                    <LayoutGrid className="size-3.5" /> Board
+                  </Btn>
+                )}
+                {onOpenProjectDetails && (
+                  <Btn
+                    variant="ghost"
+                    onClick={() => onOpenProjectDetails(p.project_id)}
+                    title={`Open the full read of ${p.title || p.project_id}`}
+                  >
+                    <ExternalLink className="size-3.5" /> Full details
+                  </Btn>
+                )}
+              </div>
             </div>
           ))}
         </div>

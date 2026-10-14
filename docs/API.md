@@ -517,6 +517,17 @@ GET /api/bots
 GET /api/bots/{bot_name}
 ```
 
+##### Projects This Bot Belongs To
+
+The bot→project half of the project hub: which projects this bot is a member
+of, each row carrying the project's own `status`, this bot's `role` /
+`member_status`, and an `unreadable` list naming any project whose crew view
+could not be read (with the server's own `reason`). Cognitive memory is stored
+per project, so the response states `memory_scoped: "project"`.
+```http
+GET /api/bots/{bot_name}/projects
+```
+
 ##### Send DM to Bot
 ```http
 POST /api/bots/{bot_name}/dm

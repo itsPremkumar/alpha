@@ -405,7 +405,7 @@ export function BotDetailView({ name }: { name: string }) {
               <ListState
                 list={p.projects}
                 noListText="The Gateway sent no project list, so membership is unknown rather than empty."
-                emptyText="This bot is not a member of any project."
+                emptyText="The server reported no projects for this bot."
               >
                 {(rows) => (
                   <ul className="space-y-1.5">
@@ -419,6 +419,14 @@ export function BotDetailView({ name }: { name: string }) {
                           {row.role ? `role: ${row.role}` : "role not reported"}
                           {row.member_status ? ` · membership: ${row.member_status}` : ""}
                         </p>
+                        {row.id && (
+                          <Link
+                            href={workspaceViewUrl("projects", "/", { project: row.id })}
+                            className="mt-2 inline-block text-[11px] font-medium text-primary hover:underline"
+                          >
+                            Open project hub
+                          </Link>
+                        )}
                       </li>
                     ))}
                   </ul>

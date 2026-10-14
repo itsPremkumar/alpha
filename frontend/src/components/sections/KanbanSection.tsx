@@ -75,6 +75,16 @@ export function KanbanSection(props: {
    * a link named after no project would be a control pointing nowhere.
    */
   onOpenProjectDetails?: (projectId: string) => void;
+  /**
+   * One-shot request from another surface (a project card, its hub, a company
+   * row) to open the board ALREADY filtered to that project.
+   *
+   * The filter is local state, so a bare view switch would land on every
+   * project at once and the operator would have to find the filter and re-pick.
+   */
+  openProjectRequest?: { projectId: string; nonce: number } | null;
+  /** Acknowledge the request above, so it cannot re-fire on the next mount. */
+  onOpenProjectRequestHandled?: () => void;
 }) {
   const [cards, setCards] = useState<Card[]>([]);
   const [projects, setProjects] = useState<BoardProject[]>([]);
@@ -134,6 +144,22 @@ export function KanbanSection(props: {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Apply a board request from another surface, then acknowledge it.
+   *
+   * The acknowledgement is the same one-shot discipline the project drill-down
+   * uses: a request left standing re-fires on every later mount, so coming
+   * back to the Board tab would silently snap the filter to a project the
+   * operator had already navigated away from.
+   */
+  useEffect(() => {
+    const request = props.openProjectRequest;
+    if (!request) return;
+    setProjectFilter(request.projectId);
+    props.onOpenProjectRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openProjectRequest]);
 
   const botName = (name: string | null) =>
     !name
@@ -349,6 +375,24 @@ export function KanbanSection(props: {
                 {projectFilterLabels.get(p.id) ?? p.name}
               </option>
             ))}
+            {/*
+              A filter set from a deep link can name a project this list does
+              not carry — the project list failed to load, or the project was
+              deleted after the link was made. Without this option the select
+              would fall back to displaying "All projects" while filtering to
+              one id: the control and the rows it shows would disagree about
+              what is being displayed. The label comes from the board's own
+              cards when they carry the name, and falls back to the raw id
+              rather than to a name nobody sent.
+            */}
+            {projectFilter !== "all" &&
+              projectFilter !== "" &&
+              !projects.some((p) => p.id === projectFilter) && (
+                <option value={projectFilter}>
+                  {cards.find((c) => c.projectId === projectFilter && c.projectName)?.projectName ||
+                    `project ${projectFilter}`}
+                </option>
+              )}
           </select>
           {/* The board answers "what is queued"; the drill-down answers "what is
               this project". It appears only on a single-project filter —
@@ -470,9 +514,40 @@ export function KanbanSection(props: {
                       )}
                     </div>
                     {(c.projectId || c.projectName) && (
-                      <p className="text-[10px] text-muted-foreground mt-1 truncate">
-                        📁 {projectName(c)}
-                      </p>
+                      /*
+                        The card's project label is inert text today: the board
+                        names a project on every card, and "a project named
+                        anywhere can be opened from there" — the filter already
+                        offers its own control. Withheld for a card that carries
+                        only a `projectName` and no id: there would be nothing
+                        to open, and pointing at an empty query is worse than
+                        not offering it.
+                      */
+                      c.projectId && props.onOpenProjectDetails ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            // The card itself opens the editor; this must not.
+                            event.stopPropagation();
+                            props.onOpenProjectDetails?.(c.projectId as string);
+                          }}
+                          /*
+                            A control inside the clickable card has to keep its
+                            keypresses to itself: `onKeyDown` bubbles, so an
+                            Enter pressed on this button would otherwise ALSO
+                            run the card's own activation and open the editor
+                            beside the project read.
+                          */
+                          onKeyDown={(event) => event.stopPropagation()}
+                          onKeyUp={(event) => event.stopPropagation()}
+                          className="block text-[10px] text-muted-foreground hover:text-primary mt-1 truncate w-full text-left cursor-pointer"
+                          title={`Open this project's full read: crew, room, board, memory, skills and company`}
+                        >
+                          📁 {projectName(c)}
+                        </button>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground mt-1 truncate">📁 {projectName(c)}</p>
+                      )
                     )}
                     {c.status === "blocked" && c.blockedReason && (
                       <p className="text-[10px] text-amber-600 mt-1 line-clamp-2">

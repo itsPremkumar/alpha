@@ -62,7 +62,7 @@ const transpile = (src) =>
   }).outputText;
 
 // workspace-view.ts has no imports, so it transpiles and loads directly.
-const { isWorkspaceView, workspaceViewFromSearch } = await import(
+const { isWorkspaceView, workspaceViewFromSearch, workspaceViewUrl } = await import(
   dataUrl(transpile(viewModule))
 );
 
@@ -95,6 +95,14 @@ test("a repeated view parameter takes the first value", () => {
   // server and `URLSearchParams.get` in agreement instead of silently
   // resolving to whichever one the runtime happened to pick.
   assert.equal(workspaceViewFromSearch("?view=system&view=overview"), "system");
+});
+
+test("workspaceViewUrl encodes route-specific deep-link parameters", () => {
+  assert.equal(
+    workspaceViewUrl("projects", "/", { project: "alpha team/1" }),
+    "/?view=projects&project=alpha+team%2F1",
+  );
+  assert.equal(workspaceViewUrl("chat", "/", { view: "projects" }), "/");
 });
 
 /* ── The server must do the resolving ───────────────────────────────────── */

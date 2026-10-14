@@ -5,6 +5,7 @@ import { Search, X, Bot, Folder, MessageSquare, Plus, Settings, ArrowRight, Code
 import type { BotProfile } from "@/types/bots";
 import { botDisplayName } from "@/types/bots";
 import type { Project } from "@/lib/projects";
+import { projectStatusText } from "@/lib/chat-shell";
 import type { Thread } from "@/types/chat";
 import { threadTitle } from "@/lib/threads-ext";
 
@@ -286,7 +287,7 @@ export function OmnisearchModal({
                       <div className="truncate">
                         <span className="text-xs font-medium text-foreground">{p.name || p.id}</span>
                         <span className="text-[10px] text-muted-foreground ml-2 font-mono">
-                          {p.status || "active"}
+                          {projectStatusText(p.status)}
                         </span>
                       </div>
                     </div>

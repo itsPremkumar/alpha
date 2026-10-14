@@ -48,7 +48,7 @@ test("one handler carries the project id across views", () => {
   );
   assert.match(
     chat,
-    /setProjectDetailRequest\(\{ projectId, nonce: projectDetailNonceRef\.current \}\)/,
+    /setProjectDetailRequest\(\{ projectId, nonce: projectDetailNonceRef\.current, tab \}\)/,
     "the request must carry the project AND a nonce: re-opening the project the " +
       "section already shows would otherwise be a state change React sees as unchanged",
   );
@@ -57,7 +57,7 @@ test("one handler carries the project id across views", () => {
   // switch recorded first would mount the section before the request existed.
   const nonce = chat.indexOf("projectDetailNonceRef.current += 1");
   const hand = chat.indexOf(
-    "setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current })",
+    "setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current, tab })",
   );
   const view = chat.indexOf('setView("projects")', hand);
   assert.ok(nonce !== -1, "the nonce must be minted");
@@ -69,7 +69,7 @@ test("one handler carries the project id across views", () => {
 });
 
 test("the requested project is opened once, then acknowledged", () => {
-  const open = section.indexOf("setInspectedProjectId(request.projectId)");
+  const open = section.indexOf("openInspector(request.projectId, request.tab)");
   assert.notEqual(open, -1, "the section must open the project the request names");
 
   const ack = section.indexOf("onOpenProjectRequestHandled?.()", open);
@@ -87,8 +87,8 @@ test("the requested project is opened once, then acknowledged", () => {
   );
   assert.match(
     section,
-    /openProjectRequest\?: \{ projectId: string; nonce: number \} \| null;/,
-    "the request shape belongs in the section's contract, not in a comment",
+    /openProjectRequest\?: \{ projectId: string; nonce: number; tab\?: InspectorTab \} \| null;/,
+    "the request carries the project, its nonce, and any tab a caller asked for",
   );
 });
 
@@ -206,4 +206,116 @@ test("a control that could open nothing is not offered", () => {
 
   // And the row itself needs a project to open.
   assert.match(menu, /project && onOpenDetails &&/);
+});
+
+test("a project id in the URL is an entry point — the cross-route case", () => {
+  // The bot's own page (`/bots/[name]`) is a *different route*: none of the
+  // in-memory requests above survive that jump, so the URL is the only
+  // channel there is. It is folded into the same one-shot request rather than
+  // into a second mechanism, so there stays exactly one owner of the answer
+  // to "which project is open" — and the nonce/acknowledge contract above is
+  // inherited instead of reimplemented.
+  assert.match(
+    chat,
+    /new URLSearchParams\(window\.location\.search\)\.get\("project"\)/,
+    "the shell reads the parameter the bot page links with",
+  );
+  assert.match(
+    chat,
+    /if \(projectId\) openProjectDetails\(projectId\)/,
+    "and hands it to the same handler every other surface uses",
+  );
+
+  // Declared after `openProjectDetails`, so the effect body closes over an
+  // initialised binding, and it runs post-hydration for the reason the view
+  // seed documents: reading `window` during the first render is the SSR
+  // mismatch that discarded the server-rendered tree.
+  const declared = chat.indexOf("const openProjectDetails = ");
+  const seed = chat.indexOf('get("project")');
+  assert.notEqual(declared, -1, "the handler must exist");
+  assert.ok(declared !== -1 && seed > declared, "the seed must be declared after the handler");
+});
+
+// ---------------------------------------- the third pass: navigation is not a mutation
+
+const rail = read("chat-shell/BotWorkspaceRail.tsx");
+const groupProfile = read("sections/GroupProfilePanel.tsx");
+const messagesSection = read("sections/MessagesSection.tsx");
+
+test("no navigation control in the sidebar moves the active conversation", () => {
+  // `onPickProject` is `handlePickProject` in ChatView, which moves the active
+  // thread into the project (or scopes an unsent draft). The rail used to call
+  // it before opening a project's tasks, files, overview, settings and
+  // knowledge — so browsing a project relocated whatever the operator was
+  // working on, with no label anywhere saying it would. The only place that
+  // may move the conversation is the explicit "Switch Project" action.
+  const movingCalls = rail.match(/onPickProject\(row\.projectId\)/g) || [];
+  assert.equal(
+    movingCalls.length,
+    0,
+    `navigation must not move the chat; found ${movingCalls.length} call(s)`,
+  );
+  assert.match(
+    rail,
+    /onSwitchProject=\{onPickProject\}/,
+    "the deliberate switch action keeps the mutation — it is named for what it does",
+  );
+  // Expanding a folder is not a move either.
+  assert.match(rail, /onClick=\{\(\) => \{\s*toggleProjectExpand\(row\.projectId\);/);
+});
+
+test("a project's Tasks row lands on the filtered board, not an unfiltered one", () => {
+  assert.match(
+    rail,
+    /onOpenTasks=\{\s*onOpenProjectBoard\s*\? \(\) => onOpenProjectBoard\(row\.projectId\)/,
+    "the board the row opens must be THIS project's board",
+  );
+  // Without the handler the control is withheld: an unfiltered board shows
+  // every project at once, which is not the row it was clicked from.
+  assert.match(rail, /\{onOpenProjectBoard && \(/);
+});
+
+test("a project's Knowledge row lands on the project's memory tab", () => {
+  // The workspace Memory view is conversation-scoped, so the project's shared
+  // memory lives in the hub's own tab; the request therefore carries a tab.
+  assert.match(
+    rail,
+    /onOpenKnowledge=\{\(\) => onOpenProjectDetails\?\.\(row\.projectId, "memory"\)\}/,
+    "the destination is the project's memory, not the conversation's",
+  );
+  assert.match(chat, /const openProjectDetails = \(projectId: string, tab\?: InspectorTab\)/);
+});
+
+test("a project row no longer offers Files — the Gateway has no project-scoped files read", () => {
+  // FilesSection reads one thread's workspace; the only way the row could
+  // "work" was to move the chat first. The item is withheld in a project row
+  // and stays in the chat header's own menu, whose subject is the conversation.
+  assert.match(rail, /hideFiles/, "the project row hides the conversation-scoped item");
+  assert.match(
+    read("chat-shell/ProjectDropdownMenu.tsx"),
+    /\{!hideFiles && \(/,
+    "the menu can withhold it",
+  );
+  assert.doesNotMatch(rail, /onOpenView\("files"\)/, "no navigation path pretends files are project-scoped");
+});
+
+test("a project's room can open the project it is bound to", () => {
+  // The hub's Room shortcut lands here, so this is the way back: without it
+  // the room names its project, can unlink it, and never opens it.
+  assert.match(
+    groupProfile,
+    /Open project read/,
+    "the group profile offers the project read",
+  );
+  assert.match(groupProfile, /props\.onOpenProjectDetails\?\.\(projectId\)/);
+  assert.match(
+    messagesSection,
+    /onOpenProjectDetails=\{props\.onOpenProjectDetails\}/,
+    "the messages view threads the handler down to the group profile",
+  );
+  assert.match(
+    chat,
+    /<MessagesSection[\s\S]{0,400}onOpenProjectDetails=\{openProjectDetails\}/,
+    "the shell supplies it",
+  );
 });

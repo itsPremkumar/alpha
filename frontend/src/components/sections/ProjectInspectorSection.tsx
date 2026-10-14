@@ -33,15 +33,30 @@ import { errMsg } from "@/lib/http";
 import { absoluteStamp, parseTime } from "@/lib/time";
 import { Badge, Btn, ErrorBox, SkeletonList } from "@/components/ui";
 import {
+  boardColumns,
+  loadProjectBoard,
+  projectCompanyIndex,
+  projectRooms,
+  projectSkillUnion,
+  ProjectCompanyRef,
+  ProjectRoomsView,
+  ProjectSkill,
+} from "@/lib/project-hub";
+import { Card } from "@/lib/kanban-board";
+import Link from "next/link";
+import {
   Activity,
   AlertTriangle,
   ArrowLeft,
   Brain,
+  Building2,
   ClipboardCheck,
+  ExternalLink,
   FileText,
   Gavel,
   GitBranch,
   History,
+  LayoutGrid,
   Lock,
   RefreshCw,
   ScrollText,
@@ -53,6 +68,7 @@ import {
   Repeat,
   Cpu,
   TrendingUp,
+  Wrench,
 } from "lucide-react";
 
 /**
@@ -83,9 +99,10 @@ import {
  */
 
 /** A tab in the inspector. Each is one cluster of related reads. */
-type InspectorTab =
+export type InspectorTab =
   | "overview"
   | "crew"
+  | "board"
   | "conversations"
   | "memory"
   | "governance"
@@ -96,6 +113,7 @@ type InspectorTab =
 const TABS: Array<{ id: InspectorTab; label: string; icon: React.ReactNode }> = [
   { id: "overview", label: "Overview", icon: <ShieldCheck className="size-3" /> },
   { id: "crew", label: "Crew & room", icon: <Users className="size-3" /> },
+  { id: "board", label: "Board", icon: <LayoutGrid className="size-3" /> },
   { id: "conversations", label: "Conversations", icon: <MessagesSquare className="size-3" /> },
   { id: "memory", label: "Memory & context", icon: <Brain className="size-3" /> },
   { id: "governance", label: "Governance", icon: <Gavel className="size-3" /> },
@@ -341,7 +359,12 @@ function KillSwitchPanel(props: { kill: KillSwitch }) {
 
 // ------------------------------------------------------------------------- crew
 
-function CrewPanel(props: { section: InspectorSection<CrewView> }) {
+function CrewPanel(props: {
+  section: InspectorSection<CrewView>;
+  projectId: string;
+  /** Opens one of this project's rooms in the Messages view. */
+  onOpenRoom?: (name: string) => void;
+}) {
   const { section } = props;
   if (section.status === "error") return <Failed label="Project crew" section={section} />;
   const crew = section.data;
@@ -363,6 +386,20 @@ function CrewPanel(props: { section: InspectorSection<CrewView> }) {
                   {m.current_task_id ? (
                     <span className="text-[10px] text-muted-foreground font-mono">task {m.current_task_id}</span>
                   ) : null}
+                  {/*
+                    An agent on a project is one click from its own full record.
+                    The crew row carries a name and a role; everything that
+                    decides whether to trust that agent — soul, capabilities,
+                    skills, model, performance, liveness — lives on the bot's
+                    own page, and it was unreachable from here.
+                  */}
+                  <Link
+                    href={`/bots/${encodeURIComponent(m.bot_name)}`}
+                    className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[10px] font-semibold hover:bg-muted"
+                    title={`Open ${m.bot_name}'s full profile: soul, capabilities, skills, model and performance`}
+                  >
+                    <ExternalLink className="size-3" /> Details
+                  </Link>
                 </div>
                 {m.blocked_reason ? (
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">blocked: {m.blocked_reason}</p>
@@ -395,6 +432,23 @@ function CrewPanel(props: { section: InspectorSection<CrewView> }) {
                 <Badge tone={room.parked ? "amber" : "green"}>{room.parked ? "parked" : "active"}</Badge>
               )}
               {room.mode ? <Badge tone="blue">{room.mode}</Badge> : null}
+              {/*
+                The room was a fact you could read but not enter: this panel
+                described the transcript's size and its members, and the only
+                way to read a word of it was the Messages tab plus a search for
+                this room's name. Reading a project and joining its work are
+                the same task.
+              */}
+              {props.onOpenRoom && room.name ? (
+                <Btn
+                  variant="ghost"
+                  className="ml-auto"
+                  onClick={() => props.onOpenRoom?.(room.name)}
+                  title={`Read and post in ${room.name} in the Messages view`}
+                >
+                  <MessagesSquare className="size-3.5" /> Open room
+                </Btn>
+              ) : null}
             </div>
             <Grid cols={2}>
               <Count label="messages" value={room.message_count} />
@@ -421,6 +475,8 @@ function CrewPanel(props: { section: InspectorSection<CrewView> }) {
         )}
       </Panel>
 
+      <ProjectRoomsPanel projectId={props.projectId} onOpenRoom={props.onOpenRoom} />
+
       <Panel title="Coordination policy" icon={<GitBranch className="size-3.5 text-primary" />} note="Read-only here. Edit it in the project card, where the crew form owns it.">
         <Grid cols={2}>
           <Field2 label="orchestration mode" value={c.orchestration_mode} />
@@ -442,6 +498,375 @@ function CrewPanel(props: { section: InspectorSection<CrewView> }) {
         ) : null}
       </Panel>
     </>
+  );
+}
+
+// ----------------------------------------------------------------- project rooms
+
+/**
+ * Every room bound to this project: the crew channel plus any subgroup.
+ *
+ * `GET /groups/by-project/{id}` is the server's own answer, so a renamed or
+ * parked room still resolves and a subgroup is listed beside its parent. A
+ * project with no room is a real state (a crew under two agents has none), and
+ * an unreadable room list is a different one — the two never collapse into the
+ * same empty list.
+ */
+function ProjectRoomsPanel(props: {
+  projectId: string;
+  onOpenRoom?: (name: string) => void;
+}) {
+  const [state, setState] = useState<"loading" | "ok" | "failed">("loading");
+  const [view, setView] = useState<ProjectRoomsView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setState("loading");
+    projectRooms(props.projectId)
+      .then((value) => {
+        if (!alive) return;
+        setView(value);
+        setState("ok");
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(errMsg(err));
+        setState("failed");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [props.projectId]);
+
+  return (
+    <Panel
+      title={`Message rooms (${state === "ok" && view ? view.rooms.length : "—"})`}
+      icon={<MessagesSquare className="size-3.5 text-primary" />}
+      note="The group channel this project's agents talk in, plus any subgroup it owns. From the second agent on, a project has at least one room; subgroups are optional."
+    >
+      {state === "loading" ? (
+        <p className="text-[11px] text-muted-foreground">Reading this project&rsquo;s rooms…</p>
+      ) : state === "failed" ? (
+        <p className="text-[11px] text-muted-foreground">The rooms could not be read: {error}</p>
+      ) : view && view.rooms.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          No room is bound to this project. A project room opens automatically once the crew reaches two agents.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {view?.rooms.map((room) => (
+            <div
+              key={room.name}
+              className="rounded-lg border border-border/60 bg-card px-2.5 py-1.5 flex items-center gap-2 flex-wrap"
+            >
+              <span className="text-[11px] font-medium truncate">{room.name}</span>
+              <Badge tone="gray">{room.status}</Badge>
+              <span className="text-[10px] text-muted-foreground">
+                {room.memberCount} member{room.memberCount === 1 ? "" : "s"}
+              </span>
+              {props.onOpenRoom ? (
+                <Btn
+                  variant="ghost"
+                  className="ml-auto"
+                  onClick={() => props.onOpenRoom?.(room.name)}
+                  title={`Read and post in ${room.name} in the Messages view`}
+                >
+                  <MessagesSquare className="size-3.5" /> Open
+                </Btn>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ----------------------------------------------------------------- company
+
+/**
+ * Which company this project sits under.
+ *
+ * The link lives on the company (`Company.projects[]`) and the project row
+ * carries no company id, so attribution is this reverse read and nothing else.
+ * Companies that could not be read are named beside the answer: an unreadable
+ * company is exactly the case where "this project is in no company" would be a
+ * fabricated claim.
+ */
+function CompanyPanel(props: {
+  projectId: string;
+  onOpenCompany?: (companyId: string) => void;
+}) {
+  const [state, setState] = useState<"loading" | "ok" | "failed">("loading");
+  const [companies, setCompanies] = useState<ProjectCompanyRef[]>([]);
+  const [unreadable, setUnreadable] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setState("loading");
+    projectCompanyIndex()
+      .then((index) => {
+        if (!alive) return;
+        setCompanies(index.byProject.get(props.projectId) ?? []);
+        setUnreadable(index.unreadable);
+        setState("ok");
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(errMsg(err));
+        setState("failed");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [props.projectId]);
+
+  return (
+    <Panel
+      title="Company"
+      icon={<Building2 className="size-3.5 text-primary" />}
+      note="Which company owns this project, read from each company's own portfolio."
+    >
+      {state === "loading" ? (
+        <p className="text-[11px] text-muted-foreground">Reading the company list…</p>
+      ) : state === "failed" ? (
+        <p className="text-[11px] text-muted-foreground">Company attribution could not be read: {error}</p>
+      ) : companies.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          Not linked to any company{unreadable.length ? " that could be read" : ""}. A company&rsquo;s Projects panel links
+          an existing project to it.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {companies.map((company) => (
+            <div
+              key={company.company_id}
+              className="rounded-lg border border-border/60 bg-card px-2.5 py-1.5 flex items-center gap-2 flex-wrap"
+            >
+              <span className="text-[11px] font-medium">{company.name || company.company_id}</span>
+              {props.onOpenCompany ? (
+                <Btn
+                  variant="ghost"
+                  className="ml-auto"
+                  onClick={() => props.onOpenCompany?.(company.company_id)}
+                  title={`Open ${company.name || company.company_id}`}
+                >
+                  <ExternalLink className="size-3.5" /> Open company
+                </Btn>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+      {unreadable.length > 0 ? (
+        <p className="text-[10px] text-amber-700 dark:text-amber-400 pt-1">
+          {unreadable.length} company read{unreadable.length === 1 ? "" : "s"} failed, so this project may sit under a
+          company that was not listed.
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
+// ----------------------------------------------------------------- skills
+
+/**
+ * The skills this project's agents actually carry.
+ *
+ * A skill belongs to an agent — the Gateway has no project-scoped skill
+ * registry — so the project's skills are the union of its crew's, and each
+ * skill keeps the agents that carry it rather than implying the project owns
+ * it. An agent whose profile could not be read is named beside the union:
+ * dropping it would present a partial toolkit as the whole one.
+ */
+function SkillsPanel(props: { crew: InspectorSection<CrewView> }) {
+  const names =
+    props.crew.status === "ok" ? props.crew.data.members.map((m) => m.bot_name).join("|") : "";
+  const [state, setState] = useState<"idle" | "loading" | "ok" | "failed">("idle");
+  const [skills, setSkills] = useState<ProjectSkill[]>([]);
+  const [unreadable, setUnreadable] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!names) {
+      setState("idle");
+      setSkills([]);
+      setUnreadable([]);
+      return;
+    }
+    let alive = true;
+    setState("loading");
+    projectSkillUnion(names.split("|"))
+      .then((result) => {
+        if (!alive) return;
+        setSkills(result.skills);
+        setUnreadable(result.unreadable);
+        setState("ok");
+      })
+      .catch(() => {
+        if (!alive) return;
+        setState("failed");
+      });
+    return () => {
+      alive = false;
+    };
+    // The roster is the identity of this union: one name more or less is a
+    // different set of profiles to read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [names]);
+
+  return (
+    <Panel
+      title={`Project skills (${state === "ok" ? skills.length : "—"})`}
+      icon={<Wrench className="size-3.5 text-primary" />}
+      note="Skills are held by agents, not by projects: this is the union of what this crew carries, with the agent behind each one."
+    >
+      {state === "idle" ? (
+        <p className="text-[11px] text-muted-foreground">No crew has been read for this project, so no skills can be listed.</p>
+      ) : state === "loading" ? (
+        <p className="text-[11px] text-muted-foreground">Reading each agent&rsquo;s profile…</p>
+      ) : state === "failed" ? (
+        <p className="text-[11px] text-muted-foreground">The agents' profiles could not be read.</p>
+      ) : skills.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          None of this project&rsquo;s agents declares a skill{unreadable.length ? " that could be read" : ""}.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {skills.map((skill) => (
+            <span
+              key={skill.skill}
+              className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-card px-2 py-1 text-[11px]"
+              title={`Carried by ${skill.agents.join(", ")}`}
+            >
+              <Wrench className="size-3 text-muted-foreground" />
+              <span className="font-medium">{skill.skill}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {skill.agents.map((agent, index) => (
+                  <React.Fragment key={agent}>
+                    {index > 0 ? ", " : ""}
+                    <Link href={`/bots/${encodeURIComponent(agent)}`} className="hover:text-primary underline-offset-2 hover:underline">
+                      {agent}
+                    </Link>
+                  </React.Fragment>
+                ))}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+      {unreadable.length > 0 ? (
+        <p className="text-[10px] text-amber-700 dark:text-amber-400 pt-1">
+          {unreadable.join(", ")} could not be read, so their skills are unknown rather than absent.
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
+// ----------------------------------------------------------------- board
+
+/**
+ * This project's board, read from the same store the Board view edits.
+ *
+ * The board is shared across projects and narrowed here, because a second
+ * per-project board would drift from the one work is actually moved on. Cards
+ * that name no project are deliberately excluded: they belong to no project,
+ * and folding them in would claim work this project does not own.
+ */
+function BoardPanel(props: {
+  projectId: string;
+  onOpenBoard?: (projectId: string) => void;
+}) {
+  const [state, setState] = useState<"loading" | "ok" | "failed">("loading");
+  const [cards, setCards] = useState<Card[]>([]);
+  const [serverBoardError, setServerBoardError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setState("loading");
+    loadProjectBoard(props.projectId)
+      .then((result) => {
+        if (!alive) return;
+        setCards(result.cards);
+        setServerBoardError(result.serverBoardError);
+        setState("ok");
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setServerBoardError(errMsg(err));
+        setState("failed");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [props.projectId]);
+
+  const columns = boardColumns(cards).filter((column) => column.cards.length > 0);
+
+  return (
+    <Panel
+      title={`Board (${state === "ok" ? cards.length : "—"})`}
+      icon={<LayoutGrid className="size-3.5 text-primary" />}
+      note="Every card on the shared board that names this project. Moving and editing a card belongs to the Board view, which owns the write."
+    >
+      {state === "loading" ? (
+        <p className="text-[11px] text-muted-foreground">Reading this project&rsquo;s board…</p>
+      ) : state === "failed" ? (
+        <p className="text-[11px] text-muted-foreground">The board could not be read: {serverBoardError}</p>
+      ) : (
+        <>
+          {serverBoardError ? (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              The server&rsquo;s board did not answer ({serverBoardError}), so the cards below are this browser&rsquo;s
+              local board only.
+            </p>
+          ) : null}
+          {cards.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              No card on the board names this project yet. A card carries a project through its project field, set in
+              the Board view.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {columns.map((column) => (
+                <div key={column.id}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {column.label} ({column.cards.length})
+                  </p>
+                  <div className="space-y-1 mt-1">
+                    {column.cards.map((card) => (
+                      <div key={card.id} className="rounded-lg border border-border/60 bg-card px-2.5 py-1.5">
+                        <p className="text-[11px] font-medium">{card.title}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {card.agent ? `assigned to ${card.agent}` : "unassigned"} · {card.priority} priority
+                          {card.progress === null ? "" : ` · ${card.progress}%`}
+                        </p>
+                        {card.blockedReason ? (
+                          <p className="text-[10px] text-amber-700 dark:text-amber-400">blocked: {card.blockedReason}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {props.onOpenBoard ? (
+            <div className="pt-2">
+              <Btn
+                variant="ghost"
+                onClick={() => props.onOpenBoard?.(props.projectId)}
+                title="Open the shared board, already filtered to this project"
+              >
+                <ExternalLink className="size-3.5" /> Open this board
+              </Btn>
+            </div>
+          ) : null}
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -1526,11 +1951,38 @@ export function ProjectInspectorSection(props: {
    * project explicitly, not merely switch views.
    */
   onOpenLiveProject?: (projectId: string) => void;
+  /**
+   * Open one of this project's message rooms in the Messages view.
+   *
+   * The hub names the room and its members; reading the transcript belongs to
+   * the surface that owns it, so this switches views rather than embedding a
+   * second chat.
+   */
+  onOpenRoom?: (name: string) => void;
+  /**
+   * Open this project's board in the Kanban view, already filtered to it.
+   *
+   * The board is shared across projects and this tab only reads its slice, so
+   * moving a card belongs to the view that owns the write.
+   */
+  onOpenProjectBoard?: (projectId: string) => void;
+  /** Open the company this project is linked to, in the Companies view. */
+  onOpenCompany?: (companyId: string) => void;
+  /**
+   * The tab to open on, instead of Overview.
+   *
+   * The hub row's Memory / Conversations chips name a *destination*: landing
+   * on Overview and making the operator find the tab would be a link that
+   * only half works. Every caller passes it explicitly (defaulting to
+   * Overview), so a tab left behind by one chip cannot leak into the next
+   * open.
+   */
+  initialTab?: InspectorTab;
 }) {
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<InspectorTab>("overview");
+  const [tab, setTab] = useState<InspectorTab>(props.initialTab ?? "overview");
   const [botRole, setBotRole] = useState("worker");
   // Refresh is a repeated action, so it disables itself while a read is in
   // flight — a double-click must not open two reads of the same subsystem.
@@ -1554,9 +2006,11 @@ export function ProjectInspectorSection(props: {
 
   useEffect(() => {
     setLoading(true);
-    setTab("overview");
+    setTab(props.initialTab ?? "overview");
     void load();
-    // Re-reads when the opened project or the inspected role changes.
+    // Re-reads when the opened project or the inspected role changes. The tab
+    // is reset alongside so a project switch never keeps the previous
+    // project's destination tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.projectId, botRole]);
 
@@ -1662,12 +2116,22 @@ export function ProjectInspectorSection(props: {
               <>
                 <RecordPanel section={inspection.record} />
                 <StatePanel section={inspection.state} />
+                {/* The two facts a project card never showed and the hub exists
+                    to answer: whose project this is, and what its crew can do. */}
+                <CompanyPanel projectId={props.projectId} onOpenCompany={props.onOpenCompany} />
+                <SkillsPanel crew={inspection.crew} />
                 <KillSwitchPanel kill={inspection.warRoom.status === "ok" ? inspection.warRoom.data.kill_switch : { active: null, reason: "", paused_bots: {} }} />
                 {inspection.warRoom.status === "error" ? <Failed label="War Room aggregate" section={inspection.warRoom} /> : null}
               </>
             )}
 
-            {tab === "crew" && <CrewPanel section={inspection.crew} />}
+            {tab === "crew" && (
+              <CrewPanel section={inspection.crew} projectId={props.projectId} onOpenRoom={props.onOpenRoom} />
+            )}
+
+            {tab === "board" && (
+              <BoardPanel projectId={props.projectId} onOpenBoard={props.onOpenProjectBoard} />
+            )}
 
             {tab === "conversations" && (
               <ConversationsPanel section={inspection.conversations} onOpenThread={props.onOpenThread} />

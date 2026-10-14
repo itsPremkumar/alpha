@@ -115,6 +115,7 @@ import {
   deleteThread,
 } from "@/lib/threads-ext";
 import { listProjects, Project } from "@/lib/projects";
+import type { InspectorTab } from "@/components/sections/ProjectInspectorSection";
 import { fetchFreeCatalog, type FreeProviderHealth } from "@/lib/freeModels";
 import { freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
 import { FreeCatalogMenu } from "@/components/FreeCatalogMenu";
@@ -793,13 +794,87 @@ export default function ChatView({
   const [projectDetailRequest, setProjectDetailRequest] = useState<{
     projectId: string;
     nonce: number;
+    /**
+     * The inspector tab a caller asked for, when it named one.
+     *
+     * The sidebar's project menu uses this so "Knowledge" can land on the
+     * project's memory tab instead of its overview — a project's memory is
+     * project-scoped, while the workspace Memory view is scoped to the
+     * conversation, so the two are not interchangeable.
+     */
+    tab?: InspectorTab;
   } | null>(null);
   const projectDetailNonceRef = useRef(0);
-  const openProjectDetails = (projectId: string) => {
+  const openProjectDetails = (projectId: string, tab?: InspectorTab) => {
     projectDetailNonceRef.current += 1;
-    setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current });
+    setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current, tab });
     setView("projects");
   };
+  /**
+   * One-shot request to open ONE project's board in the Kanban view.
+   *
+   * The board is shared across projects, so a bare view switch would land on
+   * every project at once and the operator would have to re-pick the filter.
+   * `KanbanSection` consumes this and clears it through the acknowledgement,
+   * the same discipline as `projectDetailRequest`: a request left standing
+   * re-fires on every later mount of the view.
+   */
+  const [projectBoardRequest, setProjectBoardRequest] = useState<{
+    projectId: string;
+    nonce: number;
+  } | null>(null);
+  const projectBoardNonceRef = useRef(0);
+  const openProjectBoard = (projectId: string) => {
+    projectBoardNonceRef.current += 1;
+    setProjectBoardRequest({ projectId, nonce: projectBoardNonceRef.current });
+    setView("kanban");
+  };
+  /**
+   * One-shot request to open ONE message room in the Messages view.
+   *
+   * A project's room is named by the crew service, not by the client, so the
+   * caller passes the name the server gave. Same nonce/acknowledge contract as
+   * the two requests above.
+   */
+  const [roomOpenRequest, setRoomOpenRequest] = useState<{ name: string; nonce: number } | null>(null);
+  const roomOpenNonceRef = useRef(0);
+  const openRoomDetail = (name: string) => {
+    roomOpenNonceRef.current += 1;
+    setRoomOpenRequest({ name, nonce: roomOpenNonceRef.current });
+    setView("messages");
+  };
+  /** One-shot request to open ONE company in the Companies view. */
+  const [companyOpenRequest, setCompanyOpenRequest] = useState<{
+    companyId: string;
+    nonce: number;
+  } | null>(null);
+  const companyOpenNonceRef = useRef(0);
+  const openCompany = (companyId: string) => {
+    companyOpenNonceRef.current += 1;
+    setCompanyOpenRequest({ companyId, nonce: companyOpenNonceRef.current });
+    setView("company");
+  };
+  /**
+   * A `?project=` query opens that project's full read.
+   *
+   * Cross-route navigation cannot use the in-memory request above: the bot
+   * detail page (`/bots/[name]`) is a separate route, and the only thing that
+   * survives the jump is the URL. So the parameter is folded into the *same*
+   * one-shot request the shell already owns rather than into a second
+   * mechanism — one place decides which project is open, and the nonce/ack
+   * contract (a request left standing re-fires on every later mount) is
+   * inherited instead of reimplemented.
+   *
+   * It runs once, after hydration, for the same reason the view seed above
+   * does: reading `window` during the first render is what caused the SSR
+   * mismatch documented there. The parameter is deliberately left in the URL,
+   * so reloading or copying the link lands on the same project again.
+   */
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project");
+    if (projectId) openProjectDetails(projectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const voiceViewRef = useRef(view);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "models" | "connectivity" | "appearance" | "diagnostics"
@@ -3048,6 +3123,7 @@ export default function ChatView({
                 }}
                 onOpenView={(target) => setView(target)}
                 onOpenProjectDetails={openProjectDetails}
+                onOpenProjectBoard={openProjectBoard}
                 onProjectsChanged={async () => {
                   setProjects(await listProjects());
                 }}
@@ -3322,6 +3398,9 @@ export default function ChatView({
                 <MessagesSection
                   threadId={activeThreadId}
                   botNames={bots.map((b) => b.display_name || b.name)}
+                  openRoomRequest={roomOpenRequest}
+                  onOpenRoomRequestHandled={() => setRoomOpenRequest(null)}
+                  onOpenProjectDetails={openProjectDetails}
                 />
               </Suspense>
             ) : view === "peers" ? (
@@ -3341,11 +3420,18 @@ export default function ChatView({
                     avatar: b.avatar,
                   }))}
                   onOpenProjectDetails={openProjectDetails}
+                  openProjectRequest={projectBoardRequest}
+                  onOpenProjectRequestHandled={() => setProjectBoardRequest(null)}
                 />
               </Suspense>
             ) : view === "company" ? (
               <Suspense fallback={<SectionFallback />}>
-                <CompanySection onOpenProjectDetails={openProjectDetails} />
+                <CompanySection
+                  onOpenProjectDetails={openProjectDetails}
+                  onOpenProjectBoard={openProjectBoard}
+                  openCompanyRequest={companyOpenRequest}
+                  onOpenCompanyRequestHandled={() => setCompanyOpenRequest(null)}
+                />
               </Suspense>
             ) : view === "runs" ? (
               <Suspense fallback={<SectionFallback />}>
@@ -3418,6 +3504,9 @@ export default function ChatView({
                   }}
                   openProjectRequest={projectDetailRequest}
                   onOpenProjectRequestHandled={() => setProjectDetailRequest(null)}
+                  onOpenRoom={openRoomDetail}
+                  onOpenProjectBoard={openProjectBoard}
+                  onOpenCompany={openCompany}
                   onThreadsChanged={() => {
                     void reloadThreads().catch((error) =>
                       flash(`Could not refresh chat history. ${errMsg(error)}`),

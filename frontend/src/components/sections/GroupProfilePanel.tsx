@@ -47,6 +47,16 @@ export function GroupProfilePanel(props: {
   onChanged: () => void;
   /** Called with the new room's name once the server has actually created it. */
   onCloned?: (name: string) => void;
+  /**
+   * Open the full read of the project this room is bound to.
+   *
+   * A project's room is where the hub's *Room* shortcut lands, so the binding
+   * below is the way back: without it, the operator arrives at a crew room that
+   * names the project and can unlink it — but never open it. The same "a
+   * project named anywhere can be opened from there" rule the other surfaces
+   * already obey.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
 }) {
   const [profile, setProfile] = useState<GroupProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -527,6 +537,19 @@ export function GroupProfilePanel(props: {
         ) : projectId ? (
           <div className="space-y-2">
             <p className="text-[11px] font-semibold break-all">{projectLinkValue(projectLink)?.project_name || projectId}</p>
+            {/*
+              The way back to the project. Withheld without a handler, so the
+              panel never offers a control its parent cannot honour.
+            */}
+            {props.onOpenProjectDetails && (
+              <Btn
+                variant="ghost"
+                onClick={() => props.onOpenProjectDetails?.(projectId)}
+                title={`Read ${projectLinkValue(projectLink)?.project_name || projectId}'s full state: crew, room, board, memory, skills and company`}
+              >
+                Open project read
+              </Btn>
+            )}
             <Btn variant="danger" onClick={() => void onUnlinkProject()} disabled={busyKey === "project"}>
               {busyKey === "project" ? "Unlinking…" : "Unlink project"}
             </Btn>

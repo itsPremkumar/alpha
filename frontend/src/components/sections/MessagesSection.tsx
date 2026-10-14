@@ -189,6 +189,26 @@ interface Conv {
 export function MessagesSection(props: {
   threadId: string | null;
   botNames: string[];
+  /**
+   * One-shot request from another surface (a project card's Room shortcut, the
+   * project hub's room panel) to open ONE room here.
+   *
+   * A project's room is named by the crew service, so the caller passes the
+   * name the server gave rather than composing one — and the transcript it
+   * opens is this view's own, with the roster, activity and composer that go
+   * with a room.
+   */
+  openRoomRequest?: { name: string; nonce: number } | null;
+  /** Acknowledge the request above, so it cannot re-fire on the next mount. */
+  onOpenRoomRequestHandled?: () => void;
+  /**
+   * Open a project's full read from the opened room.
+   *
+   * A project's room names the project it is bound to; this is how that name
+   * reaches the project's own hub, so the hub's *Room* shortcut is a step in a
+   * task rather than a dead end.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -438,6 +458,23 @@ export function MessagesSection(props: {
       setError(errMsg(e));
     }
   };
+
+  /**
+   * Open the room another surface asked for, then acknowledge it.
+   *
+   * The nonce is what makes this an event rather than a mirror of state: a
+   * project hub asking for the room already on screen is still a deliberate
+   * re-read, and the acknowledgement is what stops the request from re-firing
+   * on every later mount of this view — which would silently yank the operator
+   * out of whatever room they had since opened.
+   */
+  useEffect(() => {
+    const request = props.openRoomRequest;
+    if (!request) return;
+    void openRoom(request.name);
+    props.onOpenRoomRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openRoomRequest]);
 
   /**
    * Re-read one room's live activity. Deliberately a **third** state alongside
@@ -2296,6 +2333,7 @@ export function MessagesSection(props: {
         {sel && showDetails && (
           <DetailsPane
             sel={sel}
+            onOpenProjectDetails={props.onOpenProjectDetails}
             members={activeMembers}
             presence={activePresence}
             presenceError={activeMembersError}
@@ -2513,6 +2551,14 @@ function DetailsPane(props: {
   canNest: boolean;
   crumbs: Breadcrumb[];
   onOpenRoom: (name: string) => void;
+  /**
+   * Open the project this room is bound to, from the group's own profile.
+   *
+   * A project's room is where the hub's *Room* shortcut lands, so this is the
+   * way back; without it the room names its project and can even unlink it, but
+   * never open it.
+   */
+  onOpenProjectDetails?: (projectId: string) => void;
   onAddSubgroup: (name: string) => void;
   onRefreshRoster: () => Promise<void>;
   onExclude: (bot: string, excluded: boolean) => Promise<void>;
@@ -2676,6 +2722,7 @@ function DetailsPane(props: {
             onError={props.onError}
             onChanged={() => props.onRefresh()}
             onCloned={(name) => props.onOpenRoom(name)}
+            onOpenProjectDetails={props.onOpenProjectDetails}
           />
         )}
 

@@ -162,9 +162,19 @@ test("every project is listed, not only the ones a bot filter selects", () => {
 
 test("View more opens one project's full read, not another accordion row", () => {
   assert.match(projectsSection, /View more/);
+  assert.match(projectsSection, /onClick=\{\(\) => openInspector\(p\.id\)\}/);
+  // Every entry into the drill-down goes through `openInspector`, which sets
+  // the destination tab *with* the project id: a tab left behind by the hub
+  // row's Memory chip must not be the tab a later "View more" opens on.
   assert.match(
     projectsSection,
-    /onClick=\{\(\) => setInspectedProjectId\(p\.id\)\}/,
+    /const openInspector = \(projectId: string, tab: InspectorTab = "overview"\)/,
+    "the helper always pairs an id with a tab",
+  );
+  assert.doesNotMatch(
+    projectsSection,
+    /setInspectedProjectId\(p\.id\)/,
+    "no caller opens the inspector without going through the helper",
   );
   // The inline `toggle` expands management controls; the inspector is a separate
   // surface. Reusing `toggle` would have kept the deep state unreachable.
@@ -181,6 +191,8 @@ test("View more opens one project's full read, not another accordion row", () =>
     projectsSection,
     /onClose=\{\(\) => setInspectedProjectId\(null\)\}/,
   );
+  // …and it opens on the tab the caller asked for, not always Overview.
+  assert.match(projectsSection, /initialTab=\{inspectedTab\}/);
 });
 
 test("the inspector is mounted, not dead code", () => {
