@@ -167,3 +167,10 @@ carried by `GateSubject.tool_input`. Missing, malformed, `execute_command`, and
 unknown actions remain `UNKNOWN` and fail closed in both the side-effect and
 reuse-probe gates. Its pure actions must remain reachable without widening
 command execution.
+
+Historical upload discovery (`list_uploaded_files`) is a read-only inventory
+scoped to the current thread and user. Keep it in both `DEFAULT_SIDE_EFFECTS`
+and `PROBE_SATISFYING_TOOLS`: it returns upload names, sizes, and optional
+outlines without changing upload state, and a lookup itself satisfies the reuse
+consultation requirement. Do not generalize this classification to upload,
+delete, or staging tools.

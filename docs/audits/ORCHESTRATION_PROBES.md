@@ -168,7 +168,7 @@ Two independent runs and the live tool both point at the same fix.
 ### Grounding classification follow-up — 2026-10-13
 
 The current builtin registry has **136 tools**. The strict side-effect table
-classifies **24**, leaving **112 fail-closed as unknown**. The regression test
+classifies **25**, leaving **111 fail-closed as unknown**. The regression test
 `backend/tests/test_grounding_side_effect_classification.py` pins that current
 count; the historical 132/110 figures above describe the 2026-10-05 probe and
 are retained as such.
@@ -188,6 +188,17 @@ operator-approval paths admit them. This table change does not supply those
 approvals. The focused gate tests pass, but this follow-up is **not** a live
 agent-task success: the smoke task's runner was still refused and needs a
 separate sandbox execution path or explicit operator approval.
+
+### Grounding classification follow-up — 2026-10-14
+
+A second live UI diagnostic attempted `list_uploaded_files` to locate the
+provided project workspace, but the strict grounding gate rejected it as
+unclassified. Inspection of the implementation confirmed it reads only the
+current thread/user upload directory and returns metadata plus optional file
+outlines. It is now classified `READ_ONLY` and added to the reuse consultation
+set; unknown tools remain fail-closed. This repairs that specific refusal. The
+diagnostic task did not complete successfully, so Alpha's coding workflow and
+workspace access remain **NOT VERIFIED** by this run.
 
 The same UI transcript exposed a detector false positive: substring matching
 treated `verify_command_approval` as a request to launch `/verify all`, which is

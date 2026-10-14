@@ -146,6 +146,9 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     # directory listing was refused as an unclassified irreversible call.
     "ls": SideEffectClass.READ_ONLY,
     "list_dir": SideEffectClass.READ_ONLY,
+    # Historical upload inventory is scoped to the current thread/user and
+    # reads filenames plus optional outlines; it does not mutate upload state.
+    "list_uploaded_files": SideEffectClass.READ_ONLY,
     "web_search": SideEffectClass.READ_ONLY,
     "web_fetch": SideEffectClass.READ_ONLY,
     "web_extract": SideEffectClass.READ_ONLY,
@@ -482,6 +485,8 @@ PROBE_SATISFYING_TOOLS: frozenset[str] = frozenset(
         # reuse probe rather than being blocked for "not consulting prior work".
         "ls",
         "list_dir",
+        # The thread-scoped historical upload inventory is itself a lookup.
+        "list_uploaded_files",
         "ast_grep_search",
         "search_project_docs",
         "session_search",

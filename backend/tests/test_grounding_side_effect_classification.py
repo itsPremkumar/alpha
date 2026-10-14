@@ -126,6 +126,20 @@ def test_command_safety_review_is_read_only_and_computer_execution_stays_blocked
     assert execution.blocked is True
 
 
+def test_thread_upload_inventory_is_read_only_and_satisfies_reuse_probe() -> None:
+    """Historical upload discovery is a thread-scoped read, not an upload action."""
+    assert DEFAULT_SIDE_EFFECTS["list_uploaded_files"] is SideEffectClass.READ_ONLY
+    subject = _subject(
+        tool_calls=("list_uploaded_files",),
+        forbid_unconfirmed_side_effects=True,
+        planned_tools=(),
+    )
+    effect = check_side_effect(subject)
+    reuse = check_reuse_probe(subject)
+    assert effect.blocked is False, f"read-only upload inventory was refused: {effect.reason}"
+    assert reuse.blocked is False, f"upload inventory could not satisfy consultation: {reuse.reason}"
+
+
 def test_computer_command_classification_and_audit_read_are_read_only_actions() -> None:
     """Pure actions on the multifunction computer tool must not inherit its unknown write action."""
     assert "execute_sandboxed_computer_action" not in DEFAULT_SIDE_EFFECTS
