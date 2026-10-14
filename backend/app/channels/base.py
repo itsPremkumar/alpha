@@ -148,7 +148,10 @@ class Channel(ABC):
             return
 
         if exc:
-            logger.error("[%s] %s failed for msg_id=%s: %s", self.name, name, msg_id, exc)
+            # Pass a string through the normal redaction path. Logging the
+            # exception object directly is intentionally redacted as an
+            # unknown type by Alpha's strict log filter, hiding the failure.
+            logger.error("[%s] %s failed for msg_id=%s: %s", self.name, name, msg_id, str(exc))
 
     def _open_threadsafe_future_intake(self) -> None:
         """Allow a newly started provider to submit work to its main loop."""

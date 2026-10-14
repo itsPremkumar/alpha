@@ -7,7 +7,8 @@ from alpha.models.category_router import (
 )
 
 
-def test_resolve_builtin_categories():
+def test_resolve_builtin_categories(monkeypatch):
+    monkeypatch.setattr("alpha.models.category_router.resolve_configured_chain", lambda _category: [])
     router = CategoryRouter()
 
     # Check ultrabrain
@@ -23,7 +24,8 @@ def test_resolve_builtin_categories():
     assert "kimi-highspeed" in qk.models
 
 
-def test_proactive_availability_filtering():
+def test_proactive_availability_filtering(monkeypatch):
+    monkeypatch.setattr("alpha.models.category_router.resolve_configured_chain", lambda _category: [])
     router = CategoryRouter()
     # Assume only deepseek-r1 and claude-opus-5 are configured
     available = {"claude-opus-5", "deepseek-r1"}
@@ -31,6 +33,17 @@ def test_proactive_availability_filtering():
     resolved = router.resolve_category("deep", available_models=available)
     assert resolved.models[0] == "claude-opus-5"
     assert "gpt-4o" not in resolved.models
+
+
+def test_operator_configured_chain_overrides_legacy_suggestions(monkeypatch):
+    monkeypatch.setattr(
+        "alpha.models.category_router.resolve_configured_chain",
+        lambda category: ["union-alpha", "alpha-free"] if category == "ultrabrain" else [],
+    )
+
+    resolved = CategoryRouter().resolve_category("ultrabrain")
+
+    assert resolved.models == ["union-alpha", "alpha-free"]
 
 
 def test_reactive_fallback_recovery():
