@@ -709,6 +709,20 @@ async def _proof_run_error(_tmp_path: Path) -> dict:
     return await _only_event(await _emit_journal(lambda j: j.on_chain_error(ValueError("boom"), run_id=uuid4())), "run.error")
 
 
+async def _proof_run_verification(_tmp_path: Path) -> dict:
+    from app.gateway.routers.thread_runs import _persist_run_verification_result
+
+    store = MemoryRunEventStore()
+    await _persist_run_verification_result(
+        store,
+        thread_id="thread-verification",
+        run_id="run-verification",
+        result={"status": "unverified", "reason": "no supported evidence", "report": None},
+        criteria_digest="a" * 64,
+    )
+    return (await store.list_events("thread-verification", "run-verification", event_types=["run.verification"]))[0]
+
+
 async def _proof_llm_human_input(_tmp_path: Path) -> dict:
     journal, store = _new_journal()
     journal.on_chat_model_start({}, [[HumanMessage(content="question", id="human-1")]], run_id=uuid4(), tags=["lead_agent"])
@@ -793,6 +807,7 @@ _EMITTER_PROOFS: dict[str, Any] = {
     "run.start": _proof_run_start,
     "run.end": _proof_run_end,
     "run.error": _proof_run_error,
+    "run.verification": _proof_run_verification,
     "llm.human.input": _proof_llm_human_input,
     "llm.ai.response": _proof_llm_ai_response,
     "llm.tool.result": _proof_llm_tool_result,

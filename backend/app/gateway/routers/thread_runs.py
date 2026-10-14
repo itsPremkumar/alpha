@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -32,6 +33,7 @@ from alpha.authz.sandbox_authz import safe_app_config_async
 from alpha.config.paths import get_paths, make_safe_user_id
 from alpha.persistence.network_waits.model import OPEN_NETWORK_WAIT_STATES
 from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
+from alpha.runtime.events.catalog import RUN_VERIFICATION_EVENT
 from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
 from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 from alpha.runtime.user_context import get_effective_user_id
@@ -1275,7 +1277,9 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
     Automatic verification is intentionally limited to exact-text file
     readback. General criteria stay unverified for an operator or a typed
     collector; neither a successful run status nor the model's final prose is
-    evidence. The report is recomputed from the durable run event stream.
+    evidence. The first complete measurement is persisted as a run event and
+    reused on subsequent reads; the source events remain the basis for that
+    measurement.
     """
     run_manager = get_run_manager(request)
     user_id = await get_current_user(request)
@@ -1294,9 +1298,21 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
     descriptions = [item.get("description") for item in criteria if isinstance(item, Mapping)]
     if len(descriptions) != len(criteria) or not all(isinstance(item, str) and item.strip() for item in descriptions):
         return {"status": "unverified", "reason": "Stored acceptance criteria are unreadable.", "report": None}
+    criteria_digest = _acceptance_criteria_digest(criteria)
+    if criteria_digest is None:
+        return {"status": "unverified", "reason": "Stored acceptance criteria cannot be fingerprinted safely.", "report": None}
+
+    event_store = get_run_event_store(request)
+    try:
+        stored = await _read_run_verification_result(event_store, thread_id=str(thread_id), run_id=run_id, criteria_digest=criteria_digest)
+    except Exception:
+        logger.exception("Could not read persisted verification result for run %s", sanitize_log_param(run_id))
+        return {"status": "unverified", "reason": "The persisted verification result could not be read.", "report": None}
+    if stored is not None:
+        return stored
 
     events = await _complete_verification_event_scan(
-        get_run_event_store(request),
+        event_store,
         thread_id=str(thread_id),
         run_id=run_id,
     )
@@ -1307,12 +1323,88 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
 
     report = evaluate_tool_readback_criteria(descriptions, events)
     if report is None:
-        return {"status": "unverified", "reason": "These criteria need evidence beyond the supported exact-text file readback check.", "report": None}
-    return {
-        "status": "verified" if report.passed else "failed",
-        "reason": report.refusal_reason(),
-        "report": report.to_dict(),
+        result = {
+            "status": "unverified",
+            "reason": "These criteria need evidence beyond the supported exact-text file readback check.",
+            "report": None,
+        }
+    else:
+        result = {
+            "status": "verified" if report.passed else "failed",
+            "reason": report.refusal_reason(),
+            "report": report.to_dict(),
+        }
+    try:
+        return await _persist_run_verification_result(event_store, thread_id=str(thread_id), run_id=run_id, result=result, criteria_digest=criteria_digest)
+    except Exception:
+        logger.exception("Could not persist verification result for run %s", sanitize_log_param(run_id))
+        return {"status": "unverified", "reason": "The measured verification result could not be persisted.", "report": None}
+
+
+def _decode_run_verification_event(event: object) -> dict[str, Any] | None:
+    if not isinstance(event, dict) or event.get("event_type") != RUN_VERIFICATION_EVENT.event_type or event.get("category") != RUN_VERIFICATION_EVENT.category:
+        return None
+    metadata = event.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    status = metadata.get("status")
+    reason = metadata.get("reason")
+    report = metadata.get("report")
+    if status not in {"verified", "failed", "unverified"} or (reason is not None and not isinstance(reason, str)) or (report is not None and not isinstance(report, Mapping)):
+        return None
+    if status in {"verified", "failed"} and not isinstance(report, Mapping):
+        return None
+    return {"status": status, "reason": reason, "report": dict(report) if isinstance(report, Mapping) else None}
+
+
+def _acceptance_criteria_digest(criteria: list[Any]) -> str | None:
+    try:
+        encoded = json.dumps(criteria, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
+async def _read_run_verification_result(event_store: Any, *, thread_id: str, run_id: str, criteria_digest: str) -> dict[str, Any] | None:
+    rows = await event_store.list_events(thread_id, run_id, event_types=[RUN_VERIFICATION_EVENT.event_type], limit=2)
+    if not rows:
+        return None
+    if len(rows) != 1:
+        return {"status": "unverified", "reason": "Persisted verification records conflict; inspect the run event history.", "report": None}
+    metadata = rows[0].get("metadata") if isinstance(rows[0], dict) else None
+    if not isinstance(metadata, Mapping) or metadata.get("criteria_sha256") != criteria_digest:
+        return {"status": "unverified", "reason": "The persisted report belongs to different acceptance criteria.", "report": None}
+    decoded = _decode_run_verification_event(rows[0])
+    return decoded or {"status": "unverified", "reason": "The persisted verification record is malformed.", "report": None}
+
+
+async def _persist_run_verification_result(
+    event_store: Any,
+    *,
+    thread_id: str,
+    run_id: str,
+    result: Mapping[str, Any],
+    criteria_digest: str,
+) -> dict[str, Any]:
+    metadata = {
+        "status": result.get("status"),
+        "reason": result.get("reason"),
+        "report": result.get("report"),
+        "evaluator_version": "exact_text_file_readback.v1",
+        "criteria_sha256": criteria_digest,
     }
+    event, _created = await event_store.put_if_absent(
+        thread_id=thread_id,
+        run_id=run_id,
+        event_type=RUN_VERIFICATION_EVENT.event_type,
+        category=RUN_VERIFICATION_EVENT.category,
+        content="",
+        metadata=metadata,
+    )
+    decoded = _decode_run_verification_event(event)
+    if decoded is None:
+        raise ValueError("verification store returned a malformed result")
+    return decoded
 
 
 async def _complete_verification_event_scan(event_store: Any, *, thread_id: str, run_id: str) -> list[dict[str, Any]] | None:

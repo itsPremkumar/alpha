@@ -162,8 +162,9 @@ def test_run_usage_reports_per_model_and_per_call_rows():
     assert sub["total_tokens"] == 580
 
 
-def test_run_usage_skips_subagent_end_without_usage():
+def test_run_usage_skips_subagent_end_without_usage(monkeypatch: pytest.MonkeyPatch):
     """An unreported usage snapshot stays absent, never a zero-token row."""
+    monkeypatch.setattr(thread_runs, "_build_pricing_map", lambda: {})
     store = _seed(("subagent.end", "subagent", {"task_id": "task-2", "status": "failed", "error": "boom"}, {"task_id": "task-2"}))
 
     record = _record(status=RunStatus.error, error="boom", total_tokens=0, total_input_tokens=0, total_output_tokens=0)
@@ -396,11 +397,52 @@ def test_run_verification_measures_exact_file_readback_from_complete_tool_events
     assert body["status"] == "verified"
     assert body["report"]["evaluator"] == "run_tool_readback"
     assert body["report"]["criteria"][0]["verdict"] == "met"
+    stored = asyncio.run(store.list_events(THREAD, RUN, event_types=["run.verification"], limit=2))
+    assert len(stored) == 1
+    assert stored[0]["category"] == "verification"
+    assert stored[0]["metadata"]["status"] == "verified"
+
+
+def test_run_verification_retrieves_its_persisted_report_without_rechecking_evidence():
+    criterion = 'Read the file back and verify it contains exactly "expected marker".'
+    record = _record(metadata={"acceptance_criteria": [{"id": "readback", "description": criterion, "required_evidence_kinds": []}]})
+    store = _seed(
+        (
+            "llm.ai.response",
+            "message",
+            {"type": "ai", "tool_calls": [{"id": "write-1", "name": "write_file", "args": {"path": "/workspace/result.txt", "content": "expected marker"}}]},
+            {},
+        ),
+        ("llm.tool.result", "message", {"name": "write_file", "tool_call_id": "write-1", "status": "success"}, {}),
+        (
+            "llm.ai.response",
+            "message",
+            {"type": "ai", "tool_calls": [{"id": "read-1", "name": "read_file", "args": {"path": "/workspace/result.txt"}}]},
+            {},
+        ),
+        ("llm.tool.result", "message", {"name": "read_file", "tool_call_id": "read-1", "status": "success", "content": "expected marker"}, {}),
+    )
+    app = _make_app(record, store)
+
+    with TestClient(app) as client:
+        first = client.get(f"/api/threads/{THREAD}/runs/{RUN}/verification")
+        assert first.json()["status"] == "verified"
+        # Simulate the evidence stream becoming unavailable while retaining the durable report.
+        store._events_by_run[THREAD][RUN] = [event for event in store._events_by_run[THREAD][RUN] if event["event_type"] == "run.verification"]
+        second = client.get(f"/api/threads/{THREAD}/runs/{RUN}/verification")
+        record.metadata["acceptance_criteria"][0]["description"] = "Different acceptance criterion"
+        third = client.get(f"/api/threads/{THREAD}/runs/{RUN}/verification")
+
+    assert second.status_code == 200
+    assert second.json() == first.json()
+    assert third.json()["status"] == "unverified"
+    assert third.json()["reason"] == "The persisted report belongs to different acceptance criteria."
 
 
 def test_run_verification_leaves_unsupported_criteria_unverified():
     record = _record(metadata={"acceptance_criteria": [{"id": "quality", "description": "The implementation is production ready", "required_evidence_kinds": []}]})
-    app = _make_app(record, MemoryRunEventStore())
+    store = MemoryRunEventStore()
+    app = _make_app(record, store)
 
     with TestClient(app) as client:
         response = client.get(f"/api/threads/{THREAD}/runs/{RUN}/verification")
@@ -408,3 +450,33 @@ def test_run_verification_leaves_unsupported_criteria_unverified():
     assert response.status_code == 200
     assert response.json()["status"] == "unverified"
     assert response.json()["report"] is None
+    stored = asyncio.run(store.list_events(THREAD, RUN, event_types=["run.verification"], limit=2))
+    assert len(stored) == 1
+    assert stored[0]["metadata"]["status"] == "unverified"
+
+
+@pytest.mark.anyio
+async def test_run_verification_result_survives_jsonl_store_restart(tmp_path):
+    from alpha.runtime.events.store.jsonl import JsonlRunEventStore
+
+    criteria = [{"id": "artifact", "description": "read artifact", "required_evidence_kinds": []}]
+    criteria_digest = thread_runs._acceptance_criteria_digest(criteria)
+    assert criteria_digest is not None
+    store = JsonlRunEventStore(base_dir=tmp_path / "events")
+    result = {"status": "verified", "reason": None, "report": {"evaluator": "test", "criteria": []}}
+
+    persisted = await thread_runs._persist_run_verification_result(
+        store,
+        thread_id="thread-restart",
+        run_id="run-restart",
+        result=result,
+        criteria_digest=criteria_digest,
+    )
+    restored = await thread_runs._read_run_verification_result(
+        JsonlRunEventStore(base_dir=tmp_path / "events"),
+        thread_id="thread-restart",
+        run_id="run-restart",
+        criteria_digest=criteria_digest,
+    )
+
+    assert restored == persisted == result

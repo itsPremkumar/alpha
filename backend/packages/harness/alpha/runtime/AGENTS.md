@@ -163,6 +163,19 @@ cancellation and text-cache drain/cleanup.
   frames. The web frontend does not request subgraph streaming; subtask progress
   rides root-namespace `task_*` custom events.
 
+### Acceptance verification result event
+
+`GET /api/threads/{thread_id}/runs/{run_id}/verification` measures exact-text
+file readback only after a complete terminal event scan. It stores the first
+result with `RunEventStore.put_if_absent()` as `run.verification`; later reads
+reuse that singleton, and a criteria SHA-256 prevents presenting it for changed
+acceptance criteria. A write/read failure or malformed/conflicting event is
+`unverified`. Persistence and multi-process guarantees follow the configured
+run-event backend: memory is process-local; JSONL is single-process; the DB
+store uses its transactional writer. This event records evidence status and
+never changes the RunManager lifecycle. Typed collectors and explicit
+re-verification history remain separate work.
+
 ### Safe Run Auto-Recovery
 
 Gateway run creation defaults SSE disconnects to `on_disconnect=continue`; the explicit cancel endpoint remains the user stop mechanism. Startup and periodic lease reconciliation still terminalize orphaned active rows as `error/orphan_recovered`, but `app.gateway.run_recovery.SafeRunRecoveryService` then performs a bounded durable scan and creates a new idempotent run from the latest safe checkpoint. Graceful shutdown persists `stop_reason=gateway_shutdown`; provider fallback persists `model_failure`. Recovery lineage is carried in run metadata (`recovery_attempt`, `resumed_from_run_id`, `auto_recovery`) and bounded by `run_ownership.max_resume_attempts` with a deterministic `auto-recovery:<source_run_id>` admission key.

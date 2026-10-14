@@ -189,6 +189,20 @@ GET /api/threads/{thread_id}/runs/{run_id}
 }
 ```
 
+#### Read Run Acceptance Verification
+
+```http
+GET /api/threads/{thread_id}/runs/{run_id}/verification
+```
+
+For a successful terminal run with declared acceptance criteria, Alpha measures
+only the supported exact-text file-readback check. A complete result is recorded
+as one idempotent `run.verification` event and reused on later reads. The result
+includes `status` (`verified`, `failed`, or `unverified`), a reason, and an
+optional evidence report. Unsupported criteria remain unverified. Persistence
+and restart guarantees follow the configured run-event backend; the memory
+backend is process-local. This endpoint does not change run status.
+
 #### Resume Run from Checkpoint
 
 Automatic safe recovery handles model-only pending checkpoints. This endpoint

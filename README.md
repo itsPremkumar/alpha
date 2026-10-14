@@ -567,6 +567,10 @@ exactly-once execution.
   dependency-ordered work queues.
 - **Continuous goal engine & integrity gate** — enforces verifiable completion
   criteria and blocks premature or hallucinated exits.
+- **Run acceptance evidence** — the Run Inspector shows the supported exact-text
+  file-readback measurement and reuses its idempotently stored report. Other
+  criterion types remain unverified until typed evidence collectors are wired;
+  see [the verification API](docs/API.md#read-run-acceptance-verification).
 - **Ralph loop** — test-driven iterative self-healing until the suite passes and
   architectural invariants hold.
 - **Boulder checkpointing & safe durable replay** — multi-session snapshots;

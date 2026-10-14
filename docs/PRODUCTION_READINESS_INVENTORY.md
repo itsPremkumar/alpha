@@ -16,9 +16,9 @@ requires a deliberate audit before it can be claimed in a production release.
 | Run event history | implemented | Run events store/journal | Define retention, redaction, and audit export policy. |
 | Health and readiness | implemented | `/health`, `/health/ready` | Deploy synthetic probes and alerting. |
 | Integration wiring checks | implemented | Feature manifest and no-orphan tests | Regenerate manifest after registry changes. |
-| Acceptance criteria | partial | `app.gateway.run_models.AcceptanceCriterion`; owner-scoped run verification endpoint and Run Inspector | Exact-text file readback is collected automatically from successful runs; other evidence types need typed collectors and a durable acceptance report. |
+| Acceptance criteria | partial | `app.gateway.run_models.AcceptanceCriterion`; owner-scoped verification endpoint; singleton `run.verification` event; `tests/test_run_usage_endpoint.py` and `test_run_event_stream_contract.py` | Complete terminal-run measurements are now stored in the configured run-event backend and retrieved on later reads; a criteria SHA-256 prevents reusing a report for changed criteria. General evidence types still need typed collectors. Memory backend remains process-local. |
 | APEX goal-driven control plane | partial | `alpha.apex.executive`, Gateway RunManager dispatcher, acceptance report gate; `tests/test_apex_executive.py`, `test_apex_dispatcher.py`, `test_apex_control.py`, `test_apex_api.py` | Goal/session/mode JSON snapshots use same-host local locks only; event journal is a separate write; background APEX loop is opt-in. The native auto-verifier covers only explicit exact-text file readback criteria; arbitrary language still needs a typed collector or owner evidence. Complete multi-process Windows restart drills and a bounded real-task acceptance run through the UI before raising status. |
-| Evidence verification | partial | `alpha.runtime.runs.verification`; `alpha.apex.auto_acceptance`; owner-scoped `GET /api/threads/{thread_id}/runs/{run_id}/verification` and the Run Inspector (`tests/test_run_usage_endpoint.py`, `frontend/src/lib/runs-inspector.test.mjs`) | Exact-text file readback is automatically measured from a complete correlated event scan and shown per run; its report is recomputed from durable events, not separately persisted. Unsupported criteria remain unverified. Add typed command/artifact/HTTP/reviewer declarations and durable report records before claiming general automatic verification. |
+| Evidence verification | partial | `alpha.runtime.runs.verification`; `alpha.apex.auto_acceptance`; owner-scoped `GET /api/threads/{thread_id}/runs/{run_id}/verification`; singleton `run.verification` event (`tests/test_run_usage_endpoint.py`, `test_run_event_stream_contract.py`, `frontend/src/lib/runs-inspector.test.mjs`) | Exact-text readback results are persisted idempotently and returned from the configured event store. Unsupported criteria remain unverified; memory storage is process-local. Add typed command/artifact/HTTP/reviewer collectors and re-verification history before claiming general automatic verification. |
 | Centralized policy decision point | partial | Existing authz/approval facilities are distributed | Define one policy grant contract at every consequential tool boundary. |
 | Secrets lifecycle | partial | Existing secret redaction in run metadata | Add rotation/revocation inventory and secret-scanning regression tests. |
 | Tool reliability contracts | partial | Sandboxing and task systems exist | Standardize pre/postconditions, timeout, retry safety, and cancellation on every tool. |
@@ -40,7 +40,8 @@ requires a deliberate audit before it can be claimed in a production release.
 
 ## Immediate implementation queue
 
-1. Persist and retrieve verified/unverified evidence results for run details.
+1. Add typed command/artifact/HTTP/reviewer collectors for run criteria, then
+   support explicit re-verification history without overwriting earlier evidence.
 2. Add server-side policy grants for consequential tools; no tool should trust a
    client-provided approval flag.
 3. Add adversarial regression tests and a release scorecard before enabling more

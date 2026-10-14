@@ -68,7 +68,8 @@
     "middleware": "Middleware state-change audit evidence.",
     "context": "Identity-only evidence about effective hidden context.",
     "subagent": "Per-step trace of a delegation on a run that subscribed to stream_mode=custom. Not the delegation record: see delegation_evidence for the surfaces that are authoritative and unconditional.",
-    "workspace": "Run-scoped workspace and output file-change evidence."
+    "workspace": "Run-scoped workspace and output file-change evidence.",
+    "verification": "Persisted acceptance-verification result for a terminal run; it is evidence about the evaluator's measured result, not a run lifecycle status."
   },
   "events": [
     {
@@ -115,6 +116,24 @@
         "type": "object",
         "required": ["error_type"],
         "properties": {"error_type": {"type": "string"}},
+        "additionalProperties": true
+      }
+    },
+    {
+      "event_type": "run.verification",
+      "category": "verification",
+      "producer": "gateway.routers.thread_runs._persist_run_verification_result() after a complete terminal-run evidence scan",
+      "content_schema": {"type": "string", "const": ""},
+      "metadata_schema": {
+        "type": "object",
+        "required": ["status", "reason", "report", "evaluator_version", "criteria_sha256"],
+        "properties": {
+          "status": {"enum": ["verified", "failed", "unverified"]},
+          "reason": {"type": ["string", "null"]},
+          "report": {"type": ["object", "null"]},
+          "evaluator_version": {"const": "exact_text_file_readback.v1"},
+          "criteria_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
         "additionalProperties": true
       }
     },
