@@ -961,8 +961,8 @@ export default function ChatView({
   const [delegationMode, setDelegationMode] = useState("off");
   // Safe per-run defaults. The Gateway applies the same middleware ceilings and
   // clamps these against process capacity; these settings only narrow them.
-  const [subagentConcurrency, setSubagentConcurrency] = useState(3);
-  const [subagentTotal, setSubagentTotal] = useState(6);
+  const [subagentConcurrency, setSubagentConcurrency] = useState(1);
+  const [subagentTotal, setSubagentTotal] = useState(3);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
   // Project scope for the active chat (creation + permission/selection in-chat).

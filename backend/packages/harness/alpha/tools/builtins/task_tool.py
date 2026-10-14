@@ -2,6 +2,7 @@
 
 import asyncio
 import concurrent.futures
+import json
 import logging
 import threading
 import time
@@ -16,6 +17,7 @@ from langchain_core.callbacks import BaseCallbackManager
 from langchain_core.messages import ToolMessage
 from langgraph.config import get_stream_writer
 from langgraph.types import Command
+from pydantic import BeforeValidator
 
 from alpha.agents.middlewares.receipt_verification import verify_receipt_citations
 from alpha.authz.principal import normalize_authz_attributes
@@ -51,6 +53,25 @@ if TYPE_CHECKING:
     from alpha.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_acceptance_criteria(value: object) -> object:
+    """Recover a JSON-encoded list emitted for an array tool argument.
+
+    The public schema remains list[str]. Some OpenAI-compatible providers
+    nevertheless serialize array-valued function arguments as JSON strings;
+    parse only a valid JSON string here and leave all other values to Pydantic's
+    normal strict validation.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+AcceptanceCriteriaInput = Annotated[list[str] | None, BeforeValidator(_normalize_acceptance_criteria)]
 
 # Poll cadence for terminal-state waits in both the interrupted unwind and the
 # deferred registry cleaner.
@@ -748,7 +769,7 @@ async def task_tool(
     subagent_type: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
     *,
-    acceptance_criteria: list[str] | None = None,
+    acceptance_criteria: AcceptanceCriteriaInput = None,
     description: str = "",
     context_mode: Literal["isolated", "snapshot"] = "isolated",
     category: str = "general",
@@ -814,6 +835,10 @@ async def task_tool(
     - A resolved citation means the cited call happened with the recorded status
       — it does not validate that the adjacent claim is correct. Before relying
       on a load-bearing claim, spot-check its verifiable handle yourself.
+    - Attach `acceptance_criteria` only when the task has an explicit,
+      objectively checkable artifact or execution condition. Omit it for
+      read-only reviews and inline reports; never invent an output-file
+      requirement for a report-only task.
     - When you attach `acceptance_criteria`, the result includes a deterministic
       acceptance checklist: decidable criteria (`file:<path> exists|non-empty`,
       `file_written:<path>`, `tests_passed:<command>`) are checked in code

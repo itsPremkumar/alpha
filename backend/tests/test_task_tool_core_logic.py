@@ -1043,6 +1043,33 @@ def test_task_tool_context_mode_schema_rejects_unknown_mode():
         schema.model_validate({"runtime": None, "prompt": "Task", "subagent_type": "general-purpose", "tool_call_id": "tc", "context_mode": "shared"})
 
 
+def test_task_tool_acceptance_criteria_schema_recovers_json_encoded_lists():
+    """Some OpenAI-compatible models serialize array tool arguments as JSON strings."""
+    from pydantic import ValidationError
+
+    schema = task_tool_module.task_tool.tool_call_schema
+    field = schema.model_json_schema()["properties"]["acceptance_criteria"]
+    assert any(option.get("type") == "array" for option in field.get("anyOf", [field]))
+
+    parsed = schema.model_validate(
+        {
+            "prompt": "Review two files and report findings inline; do not create artifacts.",
+            "subagent_type": "deep-code-reviewer",
+            "acceptance_criteria": '["file:../outputs/report.md non-empty"]',
+        }
+    )
+    assert parsed.acceptance_criteria == ["file:../outputs/report.md non-empty"]
+
+    with pytest.raises(ValidationError):
+        schema.model_validate(
+            {
+                "prompt": "Review two files.",
+                "subagent_type": "deep-code-reviewer",
+                "acceptance_criteria": "not a JSON list",
+            }
+        )
+
+
 def test_task_tool_propagates_tool_groups_to_subagent(monkeypatch):
     """Verify tool_groups from parent metadata are passed to get_available_tools(groups=...)."""
     config = _make_subagent_config()
@@ -1297,7 +1324,7 @@ def test_task_tool_runtime_none_passes_groups_none(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr("alpha.tools.get_available_tools", get_available_tools)
-    fallback_app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
+    fallback_app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")], default_model_name="default-model")
     monkeypatch.setattr(task_tool_module, "get_app_config", lambda: fallback_app_config)
 
     output = _run_task_tool(
