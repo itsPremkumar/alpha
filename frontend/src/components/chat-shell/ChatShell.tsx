@@ -5,6 +5,7 @@ import { BotProfile, botDisplayName } from "@/types/bots";
 import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import { WorkspaceView } from "@/lib/workspace-view";
+import type { InspectorTab } from "@/components/sections/ProjectInspectorSection";
 import { threadTitle } from "@/lib/threads-ext";
 import { BotWorkspaceRail } from "./BotWorkspaceRail";
 import { ProjectContextHeader } from "./ProjectContextHeader";
@@ -34,7 +35,9 @@ export interface ChatShellProps {
   onOpenView: (view: WorkspaceView) => void;
   onProjectsChanged: () => void | Promise<void>;
   /** Open a project's full read; forwarded to the rail's project menu. */
-  onOpenProjectDetails?: (projectId: string) => void;
+  onOpenProjectDetails?: (projectId: string, tab?: InspectorTab) => void;
+  /** Open one project's board, filtered to it; forwarded to the rail. */
+  onOpenProjectBoard?: (projectId: string) => void;
 }
 
 /**
@@ -56,6 +59,7 @@ export function ChatShell(props: ChatShellProps) {
     onOpenView,
     onProjectsChanged,
     onOpenProjectDetails,
+    onOpenProjectBoard,
   } = props;
 
   return (
@@ -73,6 +77,7 @@ export function ChatShell(props: ChatShellProps) {
       onOpenView={onOpenView}
       onProjectsChanged={onProjectsChanged}
       onOpenProjectDetails={onOpenProjectDetails}
+      onOpenProjectBoard={onOpenProjectBoard}
     />
   );
 }

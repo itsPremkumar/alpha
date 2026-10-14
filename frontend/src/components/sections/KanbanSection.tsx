@@ -507,9 +507,40 @@ export function KanbanSection(props: {
                       )}
                     </div>
                     {(c.projectId || c.projectName) && (
-                      <p className="text-[10px] text-muted-foreground mt-1 truncate">
-                        📁 {projectName(c)}
-                      </p>
+                      /*
+                        The card's project label is inert text today: the board
+                        names a project on every card, and "a project named
+                        anywhere can be opened from there" — the filter already
+                        offers its own control. Withheld for a card that carries
+                        only a `projectName` and no id: there would be nothing
+                        to open, and pointing at an empty query is worse than
+                        not offering it.
+                      */
+                      c.projectId && props.onOpenProjectDetails ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            // The card itself opens the editor; this must not.
+                            event.stopPropagation();
+                            props.onOpenProjectDetails?.(c.projectId as string);
+                          }}
+                          /*
+                            A control inside the clickable card has to keep its
+                            keypresses to itself: `onKeyDown` bubbles, so an
+                            Enter pressed on this button would otherwise ALSO
+                            run the card's own activation and open the editor
+                            beside the project read.
+                          */
+                          onKeyDown={(event) => event.stopPropagation()}
+                          onKeyUp={(event) => event.stopPropagation()}
+                          className="block text-[10px] text-muted-foreground hover:text-primary mt-1 truncate w-full text-left cursor-pointer"
+                          title={`Open this project's full read: crew, room, board, memory, skills and company`}
+                        >
+                          📁 {projectName(c)}
+                        </button>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground mt-1 truncate">📁 {projectName(c)}</p>
+                      )
                     )}
                     {c.status === "blocked" && c.blockedReason && (
                       <p className="text-[10px] text-amber-600 mt-1 line-clamp-2">

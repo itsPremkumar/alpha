@@ -115,6 +115,7 @@ import {
   deleteThread,
 } from "@/lib/threads-ext";
 import { listProjects, Project } from "@/lib/projects";
+import type { InspectorTab } from "@/components/sections/ProjectInspectorSection";
 import { fetchFreeCatalog, type FreeProviderHealth } from "@/lib/freeModels";
 import { freeCatalogTone, type FreeCatalogTone } from "@/lib/freeCatalogTone";
 import { FreeCatalogMenu } from "@/components/FreeCatalogMenu";
@@ -793,11 +794,20 @@ export default function ChatView({
   const [projectDetailRequest, setProjectDetailRequest] = useState<{
     projectId: string;
     nonce: number;
+    /**
+     * The inspector tab a caller asked for, when it named one.
+     *
+     * The sidebar's project menu uses this so "Knowledge" can land on the
+     * project's memory tab instead of its overview — a project's memory is
+     * project-scoped, while the workspace Memory view is scoped to the
+     * conversation, so the two are not interchangeable.
+     */
+    tab?: InspectorTab;
   } | null>(null);
   const projectDetailNonceRef = useRef(0);
-  const openProjectDetails = (projectId: string) => {
+  const openProjectDetails = (projectId: string, tab?: InspectorTab) => {
     projectDetailNonceRef.current += 1;
-    setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current });
+    setProjectDetailRequest({ projectId, nonce: projectDetailNonceRef.current, tab });
     setView("projects");
   };
   /**
@@ -3113,6 +3123,7 @@ export default function ChatView({
                 }}
                 onOpenView={(target) => setView(target)}
                 onOpenProjectDetails={openProjectDetails}
+                onOpenProjectBoard={openProjectBoard}
                 onProjectsChanged={async () => {
                   setProjects(await listProjects());
                 }}
@@ -3389,6 +3400,7 @@ export default function ChatView({
                   botNames={bots.map((b) => b.display_name || b.name)}
                   openRoomRequest={roomOpenRequest}
                   onOpenRoomRequestHandled={() => setRoomOpenRequest(null)}
+                  onOpenProjectDetails={openProjectDetails}
                 />
               </Suspense>
             ) : view === "peers" ? (

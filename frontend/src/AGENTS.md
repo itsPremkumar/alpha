@@ -1392,6 +1392,40 @@ The same work removed four invented facts, each pinned in
   that names a bot with no route to its soul, capabilities, skills, model and
   performance is the gap the second pass closed.
 
+### The third pass: navigation is not a mutation
+
+- **The sidebar's project row used to move the conversation.** `onPickProject`
+  is `ChatView.handlePickProject` — it calls `moveThread` on the active thread
+  (or scopes an unsent draft). The rail called it before opening a project's
+  *Tasks*, *Files*, *Overview*, *Settings* and *Knowledge*, and on the row's own
+  expand toggle: browsing a project relocated whatever the operator was working
+  on, with no label anywhere saying it would. It is now bound **only** to the
+  explicit *Switch Project* action, and every navigation handler goes to a real
+  project-scoped destination instead — Tasks → `openProjectBoard` (the board,
+  already filtered), Overview/Settings → the hub, Knowledge → the hub's
+  **memory** tab. That last one is why `projectDetailRequest` carries an
+  optional `tab`: the workspace Memory view is *conversation*-scoped, so a
+  project's shared memory lives in the hub's own tab and the two are not
+  interchangeable.
+- **The project row's *Files* link is gone.** `FilesSection` reads one thread's
+  workspace and the Gateway has no project-scoped files read, so the only way
+  the row could "work" was the chat move above. `ProjectDropdownMenu` takes
+  `hideFiles`, the rail passes it, and the chat header's own menu — whose
+  subject *is* the conversation — keeps the item.
+- **A board card's project label opens the project.** Every card named its
+  project as inert text. The nested control stops its own key events from
+  bubbling, because the card is a `role="button"` div whose `onKeyDown` would
+  otherwise open the editor as well on a single Enter.
+- **A project's room can open the project.** `GroupProfilePanel`'s *Linked
+  project* block renders `Open project read` beside the existing *Unlink*, and
+  `MessagesSection` threads the handler down to it: the hub's *Room* shortcut
+  lands there, so this is the way back.
+
+Coverage: `src/lib/project-deep-links.test.mjs` (no navigation handler calls
+`onPickProject`; the switch keeps it; the Tasks and Knowledge destinations; the
+withheld Files item; the room → project back link) and
+`src/lib/project-hub.test.mjs` (the card label and the rail's agent links).
+
 Coverage: `src/lib/project-hub.test.mjs` (the chips' destinations, the company
 gate, the three bot links, the filter option, the bot page's own route and
 link), `src/lib/bot-detail.test.mjs` (`normalizeProjects`: null-vs-empty,

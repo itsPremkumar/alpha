@@ -521,6 +521,10 @@ const botDetailView = readFileSync(
   "utf8",
 );
 const botDetailLib = readFileSync(new URL("./bot-detail.ts", import.meta.url), "utf8");
+const botWorkspaceRail = readFileSync(
+  new URL("../components/chat-shell/BotWorkspaceRail.tsx", import.meta.url),
+  "utf8",
+);
 
 test("the hub row's Memory and Conversations chips are destinations, not a hint", () => {
   assert.match(
@@ -566,10 +570,11 @@ test("every surface that lists a project's agents links to the agent", () => {
   for (const [name, src] of [
     ["ProjectsSection", projects],
     ["ProjectCrewPanel", crewPanel],
+    ["BotWorkspaceRail", botWorkspaceRail],
   ]) {
     assert.match(
       src,
-      /\/bots\/\$\{encodeURIComponent\(member\.bot_name\)\}/,
+      /\/bots\/\$\{encodeURIComponent\(member(\.bot_name)?\)\}/,
       `${name} renders a project's agents without a route to their own page`,
     );
   }
@@ -585,6 +590,29 @@ test("a board filter set by a deep link cannot display a different project than 
     kanbanSection,
     /`project \$\{projectFilter\}`/,
     "an id with no resolved name is shown by id rather than hidden",
+  );
+});
+
+test("a board card's project label opens that project", () => {
+  // Every card names its project. The filter already had its own control, but
+  // the label was inert text: the board named a project and offered nothing.
+  assert.match(
+    kanbanSection,
+    /c\.projectId && props\.onOpenProjectDetails/,
+    "a card with an id gets the control",
+  );
+  assert.match(
+    kanbanSection,
+    /props\.onOpenProjectDetails\?\.\(c\.projectId as string\)/,
+    "it opens THIS project's read",
+  );
+  // A control nested inside the clickable card must keep its own keypresses:
+  // `onKeyDown` bubbles, so an Enter here would otherwise also run the card's
+  // own activation and open the editor beside the project read.
+  assert.match(
+    kanbanSection,
+    /onKeyDown=\{\("event"\) => event\.stopPropagation\(\)\}|onKeyDown=\{\(event\) => event\.stopPropagation\(\)\}/,
+    "the nested control does not double-activate the card",
   );
 });
 

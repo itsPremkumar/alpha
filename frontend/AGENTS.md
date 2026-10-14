@@ -376,18 +376,32 @@ was not reported, never `0`); and a join claims only what it matched.
   URL is the only channel there is, and one handler still decides which
   project is open. An unread project is named with its reason, and an absent
   project list is `null`, not "no projects".
-- **A board filter that names a project the list does not carry is shown by
-  its id.** `All projects` displaying while the filter held one id was a control
-  and its rows disagreeing about what was on screen.
 - **Project status is a lifecycle label, not a health verdict.** `toProject`
   maps an absent status to `""` (it used to invent `"active"`), so
   `projectStatusText` renders "status not reported" and the one tone helper,
   `projectStatusTone`, awards green to `active` and nothing else. The in-chat
   panel's fabricated `Apr 26, 2025` and its always-emerald dot are gone; both
   are pinned in the suite.
+- **A board filter that names a project the list does not carry is shown by
+  its id.** `All projects` displaying while the filter held one id was a control
+  and its rows disagreeing about what was on screen. A card's own project label
+  opens that project too, and the room's group profile can open the project it is
+  bound to.
+- **Navigation is never a mutation.** The sidebar's project row bound
+  `onPickProject` — `moveThread` on the active conversation — before opening a
+  project's Tasks / Files / Overview / Settings / Knowledge, so browsing a
+  project relocated whatever the operator was working on. It is now bound only
+  to the explicit *Switch Project* action; Tasks opens the board already
+  filtered to that project, Overview/Settings open the hub, Knowledge opens the
+  hub's **memory** tab (which is why `projectDetailRequest` carries an optional
+  `tab` — the workspace Memory view is conversation-scoped), and the row's
+  *Files* link is withdrawn because the Gateway has no project-scoped files
+  read to serve it.
 - Regression coverage: `src/lib/project-hub.test.mjs` (routes, delegation to
   the existing clients, every honesty inversion above, the pure helpers driven
-  directly, and source pins on the wiring and the removed placeholders).
+  directly, and source pins on the wiring and the removed placeholders) and
+  `src/lib/project-deep-links.test.mjs` (every entry point, the URL seed, and
+  the "navigation never moves the chat" pins).
 
 ## Testing (required for client changes)
 

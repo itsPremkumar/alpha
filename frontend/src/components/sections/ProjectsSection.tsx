@@ -124,7 +124,7 @@ export function ProjectsSection(props: {
    * It is a *request*, not a mirror of local state: the owner switches the view
    * and hands over the id, and the section opens it on the next render.
    */
-  openProjectRequest?: { projectId: string; nonce: number } | null;
+  openProjectRequest?: { projectId: string; nonce: number; tab?: InspectorTab } | null;
   /** Acknowledge the request above, so it cannot re-fire on the next mount. */
   onOpenProjectRequestHandled?: () => void;
   /**
@@ -397,7 +397,10 @@ export function ProjectsSection(props: {
   useEffect(() => {
     const request = props.openProjectRequest;
     if (!request) return;
-    openInspector(request.projectId);
+    // The tab travels with the request so a caller that named one (the
+    // sidebar's Knowledge row) lands on it, and everything else — "View more",
+    // a company row, the board's filter — still opens on the Overview.
+    openInspector(request.projectId, request.tab);
     props.onOpenProjectRequestHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.openProjectRequest]);

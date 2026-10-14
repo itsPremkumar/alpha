@@ -50,6 +50,17 @@ export interface ProjectDropdownMenuProps {
   onOpenTasks?: () => void;
   onOpenKnowledge?: () => void;
   onOpenSettings?: () => void;
+  /**
+   * Withhold the "Files & Knowledge" item.
+   *
+   * The Files plane is *conversation*-scoped (`FilesSection` reads one thread's
+   * workspace); the Gateway has no project-scoped files read. Inside a project
+   * row's menu the item therefore had one way to work — move the active
+   * conversation into that project first, which is a mutation the label never
+   * mentioned. A project row must not offer it at all; the chat header's own
+   * menu, whose subject *is* the current conversation, keeps it.
+   */
+  hideFiles?: boolean;
   onOpenView?: (view: WorkspaceView) => void;
   /**
    * Classes for the custom `children` trigger wrapper. Supplied separately
@@ -75,6 +86,7 @@ export function ProjectDropdownMenu({
   onOpenKnowledge,
   onOpenSettings,
   onOpenView,
+  hideFiles,
   triggerClassName,
   children,
 }: ProjectDropdownMenuProps) {
@@ -312,25 +324,27 @@ export function ProjectDropdownMenu({
               )}
             </div>
 
-            {/* 4. Files & Knowledge */}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                if (onOpenFiles) onOpenFiles();
-                else if (onOpenView) onOpenView("files");
-              }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-xs text-foreground hover:bg-muted/70 transition-colors cursor-pointer"
-            >
-              <FileText className="size-3.5 text-muted-foreground shrink-0" />
-              <div className="min-w-0 flex-1">
-                <span className="font-medium block truncate">Files & Knowledge</span>
-                <span className="text-[10px] text-muted-foreground block truncate">
-                  Inspect workspace documents & memory
-                </span>
-              </div>
-            </button>
+            {/* 4. Files & Knowledge — withheld in a project row (see `hideFiles`). */}
+            {!hideFiles && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  if (onOpenFiles) onOpenFiles();
+                  else if (onOpenView) onOpenView("files");
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-xs text-foreground hover:bg-muted/70 transition-colors cursor-pointer"
+              >
+                <FileText className="size-3.5 text-muted-foreground shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium block truncate">Files &amp; Knowledge</span>
+                  <span className="text-[10px] text-muted-foreground block truncate">
+                    Inspect workspace documents &amp; memory
+                  </span>
+                </div>
+              </button>
+            )}
 
             {/* 5. Tasks */}
             <button
