@@ -180,7 +180,9 @@ pass only proves source syntax is compilable. Collection catches imports only
 along pytest's discovery paths; it does not import every module, because doing
 so can trigger optional-service requirements or module side effects. Ruff and
 mypy are static checks, and runtime correctness is evidenced only by tests
-that actually execute the relevant behavior. The current mypy CI step is
+that actually execute the relevant behavior. The JSON report stores normalized,
+located diagnostics for compile errors, Ruff findings, mypy findings, and pytest
+failures alongside each stage's full log path. The current mypy CI step is
 informational because the repository still has a large existing type-error
 backlog, so a mypy failure is reported honestly rather than hidden.
 

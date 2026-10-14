@@ -50,6 +50,8 @@ class StageResult:
 
 _MYPY_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(?:(\d+):)? (error|warning|note): (.*)$")
 _MYPY_FILE_DIAGNOSTIC = re.compile(r"^(.*?): (error|warning|note): (.*)$")
+_COMPILE_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(\d+): (.+)$")
+_PYTEST_FAILURE = re.compile(r"^(FAILED|ERROR) (.+?)(?: - (.*))?$")
 
 
 def _parse_mypy_diagnostics(output: str) -> list[dict[str, Any]]:
@@ -80,6 +82,63 @@ def _parse_mypy_diagnostics(output: str) -> list[dict[str, Any]]:
             }
         )
     return diagnostics
+
+
+def _parse_diagnostics(name: str, output: str) -> list[dict[str, Any]]:
+    """Parse located findings into one schema across compiler and runtime stages."""
+    if name == "mypy":
+        return _parse_mypy_diagnostics(output)
+    if name == "compile":
+        diagnostics = []
+        for line in output.splitlines():
+            match = _COMPILE_DIAGNOSTIC.match(line)
+            if match:
+                path, row, column, message = match.groups()
+                diagnostics.append(
+                    {
+                        "path": path,
+                        "line": int(row),
+                        "column": int(column),
+                        "severity": "error",
+                        "message": message,
+                        "code": "syntax-error",
+                    }
+                )
+        return diagnostics
+    if name.startswith("ruff-lint-"):
+        try:
+            findings = json.loads(output)
+        except json.JSONDecodeError:
+            return []
+        return [
+            {
+                "path": finding.get("filename"),
+                "line": (finding.get("location") or {}).get("row"),
+                "column": (finding.get("location") or {}).get("column"),
+                "severity": "error",
+                "message": finding.get("message", ""),
+                "code": finding.get("code"),
+            }
+            for finding in findings
+        ]
+    if name.startswith("pytest-"):
+        diagnostics = []
+        for line in output.splitlines():
+            match = _PYTEST_FAILURE.match(line.strip())
+            if match:
+                kind, target, message = match.groups()
+                diagnostics.append(
+                    {
+                        "path": target,
+                        "line": None,
+                        "column": None,
+                        "severity": "error",
+                        "message": message or kind,
+                        "code": "pytest-failure" if kind == "FAILED" else "pytest-error",
+                    }
+                )
+        return diagnostics
+    return []
 
 
 def _python_files() -> tuple[list[str], list[str]]:
@@ -209,6 +268,7 @@ def _run_process_stage(
     elapsed = time.monotonic() - started
     if not output_streamed_to_log:
         log_path.write_text(output, encoding="utf-8")
+    diagnostic_output = log_path.read_text(encoding="utf-8", errors="replace") if output_streamed_to_log else output
     return StageResult(
         name=name,
         ok=exit_code == 0,
@@ -216,7 +276,7 @@ def _run_process_stage(
         elapsed_seconds=round(elapsed, 3),
         log_path=_display_path(log_path),
         output_tail=_output_summary(name, output),
-        diagnostics=_parse_mypy_diagnostics(output) if name == "mypy" else [],
+        diagnostics=_parse_diagnostics(name, diagnostic_output),
     )
 
 
@@ -322,7 +382,7 @@ def main() -> int:
             elapsed_seconds=round(time.monotonic() - started, 3),
             log_path=_display_path(compile_log),
             output_tail=compile_output[-3000:],
-            diagnostics=[],
+            diagnostics=_parse_diagnostics("compile", compile_output),
         )
     )
 

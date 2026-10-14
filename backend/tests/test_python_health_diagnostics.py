@@ -110,6 +110,50 @@ def test_mypy_diagnostics_keep_windows_paths_codes_and_all_findings():
     assert "tmp_probe/probe.py: error" in summary
 
 
+def test_compile_diagnostics_are_machine_readable_with_exact_location():
+    module = _load_diagnostics_module()
+
+    diagnostics = module._parse_diagnostics("compile", "broken.py:4:9: invalid syntax")
+
+    assert diagnostics == [
+        {
+            "path": "broken.py",
+            "line": 4,
+            "column": 9,
+            "severity": "error",
+            "message": "invalid syntax",
+            "code": "syntax-error",
+        }
+    ]
+
+
+def test_ruff_and_pytest_diagnostics_are_machine_readable():
+    module = _load_diagnostics_module()
+    ruff_output = '[{"filename":"backend/a.py","location":{"row":3,"column":2},"code":"F401","message":"unused import"}]'
+    pytest_output = "FAILED tests/test_a.py::test_broken - AssertionError: expected 1, got 2"
+
+    assert module._parse_diagnostics("ruff-lint-01", ruff_output) == [
+        {
+            "path": "backend/a.py",
+            "line": 3,
+            "column": 2,
+            "severity": "error",
+            "message": "unused import",
+            "code": "F401",
+        }
+    ]
+    assert module._parse_diagnostics("pytest-offline", pytest_output) == [
+        {
+            "path": "tests/test_a.py::test_broken",
+            "line": None,
+            "column": None,
+            "severity": "error",
+            "message": "AssertionError: expected 1, got 2",
+            "code": "pytest-failure",
+        }
+    ]
+
+
 def test_streaming_runtime_stage_shows_progress_and_keeps_a_full_log(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     module = _load_diagnostics_module()
     reports = tmp_path / "reports"

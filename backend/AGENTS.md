@@ -16,8 +16,10 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   formatting, mypy, pytest collection, and executed runtime tests. Keep those
   results as distinct stages: compiling Python never proves imports or runtime
   behavior, and pytest collection never counts as executing tests.
-- The mypy stage's JSON `diagnostics` list must preserve located and
-  module-level findings, with optional line/column and error code; the stage log
+- Each stage's JSON `diagnostics` list should preserve its actionable findings
+  in a common shape, with optional line/column and stage-specific error code;
+  mypy must retain located and module-level findings. Runtime findings are
+  parsed from the full stage log, not the short terminal preview. The stage log
   preserves full raw output. Do not truncate machine findings to the preview.
 - Keep compile/type/runtime stages read-only with respect to source files and
   configuration. Update `docs/DEVELOPMENT.md` and the README command guidance
