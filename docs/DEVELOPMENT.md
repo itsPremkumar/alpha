@@ -184,6 +184,14 @@ that actually execute the relevant behavior. The current mypy CI step is
 informational because the repository still has a large existing type-error
 backlog, so a mypy failure is reported honestly rather than hidden.
 
+The mypy stage also puts every parsed diagnostic (path, optional line/column,
+severity, message, and error code) into the `mypy` stage's `diagnostics` array
+in the JSON report, including module-level findings without a source line. Its
+terminal summary shows counts and the first 40 findings;
+the full, unabridged output remains in `mypy.log`. This keeps huge type-check
+backlogs searchable without silently dropping findings from the machine-readable
+report. Use the JSON locations to jump directly to each issue in an editor.
+
 Runtime pytest stages stream progress and failures to the terminal while
 appending output to their stage log. If a long test run is interrupted, the
 partial log remains available for diagnosis; a JUnit report is authoritative

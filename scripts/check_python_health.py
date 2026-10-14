@@ -22,6 +22,7 @@ import argparse
 import codecs
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -44,6 +45,41 @@ class StageResult:
     elapsed_seconds: float
     log_path: str
     output_tail: str
+    diagnostics: list[dict[str, Any]]
+
+
+_MYPY_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(?:(\d+):)? (error|warning|note): (.*)$")
+_MYPY_FILE_DIAGNOSTIC = re.compile(r"^(.*?): (error|warning|note): (.*)$")
+
+
+def _parse_mypy_diagnostics(output: str) -> list[dict[str, Any]]:
+    """Extract every location-bearing mypy diagnostic for the JSON report."""
+    diagnostics: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        match = _MYPY_DIAGNOSTIC.match(line)
+        if match:
+            path, row, column, severity, message = match.groups()
+        else:
+            file_match = _MYPY_FILE_DIAGNOSTIC.match(line)
+            if not file_match:
+                continue
+            path, severity, message = file_match.groups()
+            row = column = None
+        code_match = re.search(r" \[([^\]]+)\]$", message)
+        code = code_match.group(1) if code_match else None
+        if code_match:
+            message = message[: code_match.start()]
+        diagnostics.append(
+            {
+                "path": path,
+                "line": int(row) if row else None,
+                "column": int(column) if column else None,
+                "severity": severity,
+                "message": message,
+                "code": code,
+            }
+        )
+    return diagnostics
 
 
 def _python_files() -> tuple[list[str], list[str]]:
@@ -73,6 +109,22 @@ def _display_path(path: Path) -> str:
 def _output_summary(name: str, output: str) -> str:
     """Render concise actionable findings while retaining the full stage log."""
     if not name.startswith("ruff-lint-"):
+        if name == "mypy":
+            diagnostics = _parse_mypy_diagnostics(output)
+            if diagnostics:
+                errors = sum(item["severity"] == "error" for item in diagnostics)
+                codes: dict[str, int] = {}
+                for item in diagnostics:
+                    code = item["code"] or "uncoded"
+                    codes[code] = codes.get(code, 0) + 1
+                preview_lines = []
+                for item in diagnostics[:40]:
+                    location = f":{item['line']}:{item['column'] or 1}" if item["line"] else ""
+                    preview_lines.append(f"{item['path']}{location}: {item['severity']}: {item['message']}")
+                preview = "\n".join(preview_lines)
+                remaining = len(diagnostics) - min(len(diagnostics), 40)
+                suffix = f"\n... {remaining} more; all findings are in the JSON report and full log" if remaining else ""
+                return f"mypy diagnostics: {errors} errors across {len(diagnostics)} findings; codes={codes}\n{preview}{suffix}"
         return output[-3000:]
     try:
         findings = json.loads(output)
@@ -164,6 +216,7 @@ def _run_process_stage(
         elapsed_seconds=round(elapsed, 3),
         log_path=_display_path(log_path),
         output_tail=_output_summary(name, output),
+        diagnostics=_parse_mypy_diagnostics(output) if name == "mypy" else [],
     )
 
 
@@ -269,6 +322,7 @@ def main() -> int:
             elapsed_seconds=round(time.monotonic() - started, 3),
             log_path=_display_path(compile_log),
             output_tail=compile_output[-3000:],
+            diagnostics=[],
         )
     )
 

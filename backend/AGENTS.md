@@ -10,6 +10,19 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 > (run `make engine-inventory`). Point here rather than hand-maintaining a package
 > list that drifts; each row also carries a `core` / `preview/partial` tier.
 
+## Python diagnostics contract
+
+- `scripts/check_python_health.py` separates syntax compilation, Ruff lint and
+  formatting, mypy, pytest collection, and executed runtime tests. Keep those
+  results as distinct stages: compiling Python never proves imports or runtime
+  behavior, and pytest collection never counts as executing tests.
+- The mypy stage's JSON `diagnostics` list must preserve located and
+  module-level findings, with optional line/column and error code; the stage log
+  preserves full raw output. Do not truncate machine findings to the preview.
+- Keep compile/type/runtime stages read-only with respect to source files and
+  configuration. Update `docs/DEVELOPMENT.md` and the README command guidance
+  with any user-visible report changes.
+
 ## Integration health + autonomy ownership
 
 - `tests/test_feature_manifest_wiring.py` pins every registry entry

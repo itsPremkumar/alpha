@@ -1262,7 +1262,9 @@ and collection result without lint/type-check debt affecting the status. Use
 PYTHON_HEALTH_ARGS=--full` to add that smoke check, mypy, and both runtime test
 suites. Per-stage logs and a JSON summary are written to `.alpha/reports/`;
 compilation checks syntax without importing modules, while pytest exercises the
-behavior covered by tests.
+behavior covered by tests. The mypy report contains every parsed location,
+severity, message, and error code, while its stage log preserves the complete
+tool output. A successful syntax compile alone does not establish runtime health.
 
 - **Read [`AGENTS.md`](./AGENTS.md) first.** It is the source of truth for repo
   orientation, commands, and conventions (`CLAUDE.md` is a thin import shim).

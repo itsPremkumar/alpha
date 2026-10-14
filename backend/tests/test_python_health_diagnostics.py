@@ -71,6 +71,45 @@ def test_diagnostics_only_flag_is_available(monkeypatch: pytest.MonkeyPatch):
     assert args.diagnostics_only is True
 
 
+def test_mypy_diagnostics_keep_windows_paths_codes_and_all_findings():
+    module = _load_diagnostics_module()
+    output = r"C:\repo\backend\a.py:12:4: error: incompatible type [arg-type]" + "\nbackend/b.py:7: note: follow-up explanation"
+    output += "\ntmp_probe/probe.py: error: duplicate module [misc]"
+
+    diagnostics = module._parse_mypy_diagnostics(output)
+    summary = module._output_summary("mypy", output)
+
+    assert diagnostics == [
+        {
+            "path": r"C:\repo\backend\a.py",
+            "line": 12,
+            "column": 4,
+            "severity": "error",
+            "message": "incompatible type",
+            "code": "arg-type",
+        },
+        {
+            "path": "backend/b.py",
+            "line": 7,
+            "column": None,
+            "severity": "note",
+            "message": "follow-up explanation",
+            "code": None,
+        },
+        {
+            "path": "tmp_probe/probe.py",
+            "line": None,
+            "column": None,
+            "severity": "error",
+            "message": "duplicate module",
+            "code": "misc",
+        },
+    ]
+    assert "2 errors across 3 findings" in summary
+    assert "arg-type" in summary
+    assert "tmp_probe/probe.py: error" in summary
+
+
 def test_streaming_runtime_stage_shows_progress_and_keeps_a_full_log(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     module = _load_diagnostics_module()
     reports = tmp_path / "reports"
