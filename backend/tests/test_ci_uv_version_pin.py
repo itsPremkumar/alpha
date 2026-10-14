@@ -53,11 +53,14 @@ def _workflow_paths() -> list[Path]:
     return sorted(path for path in WORKFLOWS_DIR.iterdir() if path.suffix in {".yml", ".yaml"})
 
 
-def _setup_uv_steps() -> list[tuple[str, str, dict]]:
-    """Return (workflow name, action ref, step mapping) for each setup-uv step."""
-    steps: list[tuple[str, str, dict]] = []
+def _setup_uv_steps() -> list[tuple[str, str, dict, dict]]:
+    """Return each setup-uv step with its workflow-level environment."""
+    steps: list[tuple[str, str, dict, dict]] = []
     for path in _workflow_paths():
         workflow = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        workflow_env = workflow.get("env") or {}
+        if not isinstance(workflow_env, dict):
+            workflow_env = {}
         for job in (workflow.get("jobs") or {}).values():
             if not isinstance(job, dict):
                 continue
@@ -69,7 +72,7 @@ def _setup_uv_steps() -> list[tuple[str, str, dict]]:
                     continue
                 match = _SETUP_UV_ACTION.match(uses.strip())
                 if match is not None:
-                    steps.append((path.name, match.group("ref"), step))
+                    steps.append((path.name, match.group("ref"), step, workflow_env))
     return steps
 
 
@@ -83,20 +86,26 @@ def test_every_setup_uv_step_pins_the_uv_version_production_ships():
 
     unpinned: list[str] = []
     mismatched: list[str] = []
-    for workflow_name, _ref, step in _setup_uv_steps():
+    env_reference = re.compile(r"^\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$")
+    for workflow_name, _ref, step, workflow_env in _setup_uv_steps():
         with_block = step.get("with")
         version = with_block.get("version") if isinstance(with_block, dict) else None
         if version is None:
             unpinned.append(f"{workflow_name}: {step.get('name', '<unnamed step>')}")
-        elif str(version) != expected:
-            mismatched.append(f"{workflow_name}: {version!r} != {expected!r}")
+            continue
+        resolved = str(version)
+        reference = env_reference.fullmatch(resolved)
+        if reference is not None:
+            resolved = str(workflow_env.get(reference.group(1), ""))
+        if resolved != expected:
+            mismatched.append(f"{workflow_name}: {version!r} resolves to {resolved!r}, expected {expected!r}")
 
     assert not unpinned, f"setup-uv steps install whatever uv is latest, so CI would not exercise the uv production ships ({expected}): {unpinned}"
     assert not mismatched, f"setup-uv steps pin a uv other than the one backend/Dockerfile ships ({expected}): {mismatched}"
 
 
 def test_every_setup_uv_step_uses_the_same_action_version():
-    refs = {ref for _workflow_name, ref, _step in _setup_uv_steps()}
+    refs = {ref for _workflow_name, ref, _step, _workflow_env in _setup_uv_steps()}
 
     assert len(refs) == 1, f"astral-sh/setup-uv is referenced at mixed action versions, so the steps do not share caching or input behavior: {sorted(refs)}"
 
