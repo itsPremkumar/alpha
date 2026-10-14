@@ -39,9 +39,10 @@ from alpha.models.free_router.catalog import (
     reset_free_router,
 )
 from alpha.models.free_router.chat_model import ChatFreeLLM
+from alpha.models.free_router.providers import ProviderChatResult
 
 # ---------------------------------------------------------------------------
-# Fixtures + stub helpers (the ONLY seam: providers.request)
+# Fixtures + stubs for the sync and async HTTP seams.
 # ---------------------------------------------------------------------------
 
 
@@ -73,6 +74,9 @@ class _Handler:
         if source is None:
             return models_ok()
         return source(url, json_body) if callable(source) else source
+
+    async def async_call(self, method, url, *, headers=None, params=None, json_body=None, timeout=None):
+        return self(method, url, headers=headers, params=params, json_body=json_body, timeout=timeout)
 
     def count(self, needle: str) -> int:
         with self._lock:
@@ -113,6 +117,7 @@ def chat_empty_content(url: str = "", body=None) -> httpx.Response:
 def install(monkeypatch, **kwargs) -> _Handler:
     handler = _Handler(**kwargs)
     monkeypatch.setattr(providers_mod, "request", handler)
+    monkeypatch.setattr(providers_mod, "arequest", handler.async_call)
     return handler
 
 
@@ -566,18 +571,19 @@ def test_chatfreellm_async_generate_and_stream(tmp_path, monkeypatch):
 def test_cancelled_async_chat_does_not_start_another_provider_attempt(tmp_path, monkeypatch):
     install(monkeypatch)
     entered = threading.Event()
-    release = threading.Event()
-    finished = threading.Event()
+    cancelled = threading.Event()
     attempts: list[str] = []
 
-    def slow_failure(spec, model_id, messages, **kwargs):
+    async def cancellable_call(spec, model_id, messages, **kwargs):
         attempts.append(spec.name)
         entered.set()
-        release.wait(5)
-        finished.set()
-        raise TimeoutError("simulated bounded provider timeout")
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
 
-    monkeypatch.setattr(providers_mod, "chat_completion", slow_failure)
+    monkeypatch.setattr(providers_mod, "achat_completion", cancellable_call)
     model = _fresh_model()
 
     async def run():
@@ -587,16 +593,94 @@ def test_cancelled_async_chat_does_not_start_another_provider_attempt(tmp_path, 
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        release.set()
-        assert await asyncio.to_thread(finished.wait, 2)
+        assert cancelled.is_set()
 
     asyncio.run(run())
-    # The sync transport cannot abort an in-flight socket request, but it must
-    # stop before starting another provider after that request returns.
-    time.sleep(0.05)
+    # Native async cancellation must reach the provider operation immediately.
     assert len(attempts) == 1
     provider_state = {item["name"]: item for item in get_free_router().catalog_dict()["providers"]}
     assert provider_state[attempts[0]]["healthy"] is None
+
+
+def test_async_router_failover_marks_only_real_provider_outcomes(tmp_path, monkeypatch):
+    install(monkeypatch)
+    router = make_router(tmp_path)
+    router.refresh()
+    attempts: list[str] = []
+
+    async def fail_then_serve(spec, model_id, messages, **kwargs):
+        attempts.append(spec.name)
+        if len(attempts) == 1:
+            raise httpx.ConnectError("gateway down")
+        return ProviderChatResult(text="served asynchronously")
+
+    monkeypatch.setattr(providers_mod, "achat_completion", fail_then_serve)
+    result = asyncio.run(router.achat([{"role": "user", "content": "hello"}]))
+
+    assert result.text == "served asynchronously"
+    assert result.provider == attempts[1]
+    health = {entry["name"]: entry["healthy"] for entry in router.catalog_dict()["providers"]}
+    assert health[attempts[0]] is False
+    assert health[attempts[1]] is True
+
+
+def test_arequest_cancellation_closes_async_client(monkeypatch):
+    started = asyncio.Event()
+    closed = asyncio.Event()
+
+    class BlockingAsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            closed.set()
+
+        async def request(self, *args, **kwargs):
+            started.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(providers_mod.httpx, "AsyncClient", BlockingAsyncClient)
+
+    async def run():
+        task = asyncio.create_task(providers_mod.arequest("POST", "https://provider.invalid/chat"))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert closed.is_set()
+
+    asyncio.run(run())
+
+
+def test_cancelled_cold_catalog_refresh_cancels_provider_discovery(monkeypatch, tmp_path):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def blocking_arequest(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(providers_mod, "arequest", blocking_arequest)
+    router = make_router(tmp_path)
+
+    async def run():
+        task = asyncio.create_task(router.achat([{"role": "user", "content": "hello"}]))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cancelled.is_set()
+        assert router._refreshing is False
+        assert router._loaded is False
+
+    asyncio.run(run())
 
 
 def test_chatfreellm_all_free_down_is_retryable_and_chain_serves_backup(tmp_path, monkeypatch):

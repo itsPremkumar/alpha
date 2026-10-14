@@ -6,8 +6,8 @@ of the standalone ``alpha_free_llm_router`` script, adapted to Alpha's
 conventions:
 
 * **Single HTTP seam.** Every request goes through the module-level
-  :func:`request`. Tests stub that one function; nothing else touches the
-  network. No personal API keys exist anywhere in this module — the only
+  :func:`request` or its cancellable async counterpart :func:`arequest`. Tests
+  stub those seams; nothing else touches the network. No personal API keys exist anywhere in this module — the only
   constants are documented public anonymous identifiers (e.g. AI Horde's
   documented anonymous apikey ``0000000000``).
 
@@ -33,6 +33,7 @@ sensitive data to anonymous endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -197,6 +198,29 @@ def request(
 ) -> httpx.Response:
     """The single module-level HTTP seam (tests stub this function)."""
     return _client().request(method, url, headers=headers, params=params, json=json_body, timeout=timeout)
+
+
+async def arequest(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
+    json_body: dict[str, Any] | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> httpx.Response:
+    """Cancellable async HTTP seam used by chat generation.
+
+    A client is scoped to one request so cancellation closes the response and
+    transport deterministically, without sharing an AsyncClient across event
+    loops or leaking loop-bound clients during test/application shutdown.
+    """
+    async with httpx.AsyncClient(
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        follow_redirects=True,
+        timeout=timeout,
+    ) as client:
+        return await client.request(method, url, headers=headers, params=params, json=json_body, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +414,34 @@ def discover(spec: ProviderSpec) -> DiscoveryResult:
             latency_ms=(time.perf_counter() - start) * 1000.0,
         )
     latency = (time.perf_counter() - start) * 1000.0
+
+    return _discovery_from_response(spec, response, latency)
+
+
+async def adiscover(spec: ProviderSpec) -> DiscoveryResult:
+    """Async catalog discovery used by first chat so cancellation is end-to-end."""
+    if spec.models_path is None:
+        return DiscoveryResult(ok=True, models=[{"id": mid, "source": "documented"} for mid in spec.documented_models])
+    start = time.perf_counter()
+    try:
+        response = await arequest(
+            "GET",
+            spec.base_url + spec.models_path,
+            headers=dict(spec.auth_header),
+            timeout=DISCOVERY_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        return DiscoveryResult(
+            ok=False,
+            models=[],
+            error=f"{type(exc).__name__}: {str(exc)[:200]}",
+            latency_ms=(time.perf_counter() - start) * 1000.0,
+        )
+    return _discovery_from_response(spec, response, (time.perf_counter() - start) * 1000.0)
+
+
+def _discovery_from_response(spec: ProviderSpec, response: httpx.Response, latency: float) -> DiscoveryResult:
+    """Apply one catalog response to the free-model policy."""
 
     if response.status_code >= 400:
         return DiscoveryResult(
@@ -629,6 +681,102 @@ def chat_completion(
     except ProviderError as exc:
         raise ProviderError(spec.name, str(exc)) from None
     return result
+
+
+async def _aihorde_achat(
+    spec: ProviderSpec,
+    model_id: str,
+    messages: list[dict[str, Any]],
+    *,
+    temperature: float,
+    max_tokens: int,
+    timeout: float,
+) -> ProviderChatResult:
+    headers = {"apikey": AI_HORDE_ANONYMOUS_KEY}
+    payload = {
+        "prompt": _aihorde_prompt(messages),
+        "params": {"temperature": temperature, "max_length": max_tokens, "max_context_length": 8192},
+        "models": [model_id],
+    }
+    response = await arequest("POST", spec.base_url + "/v2/generate/text/async", headers=headers, json_body=payload, timeout=timeout)
+    if response.status_code >= 400:
+        raise ProviderError(spec.name, _body_snippet(response), status_code=response.status_code)
+    submit = _safe_json(response)
+    request_id = submit.get("id") if isinstance(submit, dict) else None
+    if not request_id:
+        raise ProviderError(spec.name, f"no request id in response: {_body_snippet(response)}")
+
+    deadline = time.monotonic() + max(0.0, timeout)
+    while (remaining := deadline - time.monotonic()) > 0:
+        await asyncio.sleep(min(2.0, remaining))
+        status_response = await arequest(
+            "GET",
+            spec.base_url + f"/v2/generate/text/status/{request_id}",
+            headers=headers,
+            timeout=min(timeout, max(0.1, deadline - time.monotonic())),
+        )
+        if status_response.status_code >= 400:
+            raise ProviderError(spec.name, _body_snippet(status_response), status_code=status_response.status_code)
+        status_payload = _safe_json(status_response)
+        if not isinstance(status_payload, dict):
+            continue
+        if status_payload.get("faulted"):
+            raise ProviderError(spec.name, "generation faulted")
+        if status_payload.get("cancelled"):
+            raise ProviderError(spec.name, "generation cancelled")
+        generations = status_payload.get("generations")
+        if status_payload.get("done") and isinstance(generations, list) and generations:
+            first = generations[0]
+            text = first.get("text") if isinstance(first, dict) else str(first)
+            if text:
+                return ProviderChatResult(text=str(text).strip())
+    raise TimeoutError(f"AI Horde request {request_id} did not complete before timeout")
+
+
+async def achat_completion(
+    spec: ProviderSpec,
+    model_id: str,
+    messages: list[dict[str, Any]],
+    *,
+    temperature: float | None = None,
+    max_tokens: float | int | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    extra_body: dict[str, Any] | None = None,
+) -> ProviderChatResult:
+    """Send chat over native async HTTP so cancelling the run closes the socket."""
+    if not spec.openai_compat or spec.chat_path is None:
+        return await _aihorde_achat(
+            spec,
+            model_id,
+            messages,
+            temperature=temperature if temperature is not None else 0.7,
+            max_tokens=int(max_tokens) if max_tokens is not None else 1024,
+            timeout=timeout,
+        )
+
+    body: dict[str, Any] = {"model": model_id, "messages": messages}
+    if temperature is not None:
+        body["temperature"] = temperature
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
+    if extra_body:
+        body.update(extra_body)
+    response = await arequest(
+        "POST",
+        spec.base_url + spec.chat_path,
+        headers=dict(spec.auth_header),
+        json_body=body,
+        timeout=timeout,
+    )
+    if response.status_code >= 400:
+        raise ProviderError(spec.name, _body_snippet(response), status_code=response.status_code)
+    payload = _safe_json(response)
+    if not isinstance(payload, dict):
+        raise ProviderError(spec.name, "provider returned a non-JSON response")
+    try:
+        return _extract_openai_chat(payload)
+    except ProviderError as exc:
+        raise ProviderError(spec.name, str(exc)) from None
 
 
 # ---------------------------------------------------------------------------

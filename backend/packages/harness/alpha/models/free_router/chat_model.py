@@ -10,9 +10,8 @@ A normal ``BaseChatModel`` member of Alpha's model factory/fallback chains:
   provider ``tool_calls`` are parsed into LangChain ``tool_calls`` with real
   ``args`` dicts. A provider that returns neither content nor tool calls is a
   provider failure, never an empty "success".
-* **Sync + async + streaming.** ``_generate`` owns the real call (``async``
-  variants wrap it with ``asyncio.to_thread`` and signal cancellation so a
-  blocked provider's bounded request cannot fan out into more retries); providers do not stream, so
+* **Sync + async + streaming.** ``_generate`` owns the sync path and async
+  variants use the router's native async HTTP transport; providers do not stream, so
   ``_stream``/``_astream`` emit exactly one chunk carrying the complete
   message (content, tool calls, usage) and fire the token callback so UI
   streaming still works.
@@ -25,10 +24,8 @@ A normal ``BaseChatModel`` member of Alpha's model factory/fallback chains:
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
-import threading
 from collections.abc import Iterator
 from typing import Any
 
@@ -259,14 +256,21 @@ class ChatFreeLLM(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         del run_manager
-        cancel_event = threading.Event()
-        try:
-            return await asyncio.to_thread(self._generate, messages, stop, None, _cancel_event=cancel_event, **kwargs)
-        except asyncio.CancelledError:
-            # to_thread cannot stop an in-flight socket operation. Signal the
-            # worker to exit after that bounded HTTP call, before another retry.
-            cancel_event.set()
-            raise
+        del kwargs
+        router = get_free_router()
+        payload = convert_to_openai_messages(messages)
+        routed = await router.achat(
+            payload,
+            model=self.model,
+            target_provider=self.target_provider,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout=self.request_timeout,
+            extra=self._extra_body(stop),
+            reasoning_effort=self.reasoning_effort,
+        )
+        message = self._result_to_message(routed)
+        return ChatResult(generations=[ChatGeneration(message=message)])
 
     async def _astream(
         self,
@@ -275,12 +279,7 @@ class ChatFreeLLM(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> Any:
-        cancel_event = threading.Event()
-        try:
-            result = await asyncio.to_thread(self._generate, messages, stop, None, _cancel_event=cancel_event, **kwargs)
-        except asyncio.CancelledError:
-            cancel_event.set()
-            raise
+        result = await self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
         message = result.generations[0].message
         chunk = self._to_chunk(message)
         if run_manager is not None:

@@ -888,10 +888,10 @@ exactly-once execution.
   adapter is wired.
 - **Free model gateways & fail-closed routing** — keyless `alpha-free` routing
   over daily-refreshed free catalogs (free is **computed**, not trusted), with
-  automatic failover. Cancelling an async request stops additional provider
-  retries after the current bounded request returns; a routing table that
-  resolves to nothing returns an empty chain plus a reason instead of an
-  invented model.
+  automatic failover. Async cancellation closes Alpha's local provider request
+  and stops failover; remote providers may continue already-accepted work. A
+  routing table that resolves to nothing returns an empty chain plus a reason
+  instead of an invented model.
 - **System One computer control** — opt-in Windows desktop control where the model
   returns only semantic element indexes — never coordinates, selectors, keys or
   typed text — which are re-observed and locally resolved before a sentinel-guarded

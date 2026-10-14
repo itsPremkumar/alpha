@@ -159,11 +159,12 @@ reports.
 
 ### Free-router chat bounds
 
-Async cancellation of `ChatFreeLLM` signals its synchronous worker. A socket
-call already in progress cannot be forcibly stopped by `asyncio.to_thread`; it
-remains bounded by the per-attempt timeout. After that call returns, the router
-must stop before marking a cancelled attempt as provider health or starting
-failover. Keep the regression in `tests/test_free_llm_router.py`.
+Async `ChatFreeLLM` generation uses native async HTTP. Cancellation must close
+the local in-flight request and any parallel cold-catalog discovery, stop
+provider failover, and leave provider health unchanged. A remote AI Horde
+generation may continue after Alpha stops polling; the provider has no
+cancellation operation in this adapter. Keep the regression in
+`tests/test_free_llm_router.py`.
 
 `free_router/catalog.py` owns the bounded failover budget. A configured model
 `request_timeout` is a ceiling, not a per-gateway multiplier: each sequential

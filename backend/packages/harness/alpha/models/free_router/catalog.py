@@ -35,6 +35,7 @@ No API keys exist in this package: only documented anonymous constants in
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import random
@@ -257,6 +258,14 @@ class FreeLLMRouter:
         except Exception as exc:  # noqa: BLE001 - one bad provider must not sink the refresh
             return provider_layer.DiscoveryResult(ok=False, models=[], error=f"{type(exc).__name__}: {str(exc)[:200]}")
 
+    async def _safe_adiscover(self, spec: Any) -> provider_layer.DiscoveryResult:
+        try:
+            return await self._layer.adiscover(spec)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - one bad provider must not sink the refresh
+            return provider_layer.DiscoveryResult(ok=False, models=[], error=f"{type(exc).__name__}: {str(exc)[:200]}")
+
     def _merge_discovery(self, results: dict[str, provider_layer.DiscoveryResult]) -> None:
         now = self._clock()
         with self._lock:
@@ -306,6 +315,47 @@ class FreeLLMRouter:
             self._refreshing = True
         try:
             self._discover_all()
+        finally:
+            with self._lock:
+                self._refreshing = False
+                self._cond.notify_all()
+        self._save_cache()
+        return True
+
+    def _wait_for_refresh(self) -> bool:
+        """Wait for a concurrent cold-cache refresh without doing network I/O."""
+        with self._lock:
+            rounds = 0
+            while self._refreshing and rounds < MAX_WAIT_ROUNDS:
+                self._cond.wait(timeout=WAIT_ROUND_SECONDS)
+                rounds += 1
+            return not self._refreshing
+
+    async def arefresh(self, *, force: bool = False) -> bool:
+        """Cancellable async catalog refresh with the same single-flight state."""
+        while True:
+            should_wait = False
+            with self._lock:
+                if self._refreshing:
+                    if self._loaded and not force:
+                        return False
+                    should_wait = True
+                elif self._loaded and not force and (self._clock() - self._last_refresh) < self._ttl:
+                    return False
+                else:
+                    self._refreshing = True
+                    break
+            if should_wait:
+                finished = await asyncio.to_thread(self._wait_for_refresh)
+                if not finished:
+                    return False
+                with self._lock:
+                    if self._loaded and not force and (self._clock() - self._last_refresh) < self._ttl:
+                        return False
+        try:
+            names = list(self._layer.PROVIDER_ORDER)
+            results = await asyncio.gather(*(self._safe_adiscover(self._layer.PROVIDERS[name]) for name in names))
+            self._merge_discovery(dict(zip(names, results, strict=True)))
         finally:
             with self._lock:
                 self._refreshing = False
@@ -381,6 +431,7 @@ class FreeLLMRouter:
         *,
         model: str = "auto",
         target_provider: str | None = None,
+        refresh_if_stale: bool = True,
     ) -> list[tuple[Any, str]]:
         """Ordered ``(spec, model_id)`` pairs a chat call may attempt.
 
@@ -398,7 +449,7 @@ class FreeLLMRouter:
                 target_provider = target_provider or parts[1]
                 model = "auto"
 
-        if not self._loaded or (self._clock() - self._last_refresh) >= self._ttl:
+        if refresh_if_stale and (not self._loaded or (self._clock() - self._last_refresh) >= self._ttl):
             self.refresh()
         now = self._clock()
         pairs: list[tuple[Any, str]] = []
@@ -498,6 +549,73 @@ class FreeLLMRouter:
                 attempts.append((spec.name, label))
                 self.mark_failure(spec.name, label)
                 logger.warning("Free provider '%s' chat attempt failed: %s", spec.name, label)
+                continue
+            latency = (time.perf_counter() - start) * 1000.0
+            self.mark_success(spec.name, latency_ms=latency)
+            return FreeChatResult(
+                text=result.text,
+                provider=spec.name,
+                model_id=mid,
+                tool_calls=result.tool_calls,
+                usage=result.usage,
+                latency_ms=latency,
+                reasoning=result.reasoning,
+            )
+        cooling = [name for name, state in self._states.items() if state.cooldown_until > self._clock()]
+        deadline_exhausted = deadline_exhausted or time.monotonic() >= deadline
+        deadline_note = f" before the {total_budget:g}s router deadline" if deadline_exhausted else ""
+        raise FreeLLMUnavailableError(
+            f"all {len(attempts)} free provider attempt(s) failed{deadline_note} ({len(cooling)} now cooling down){self._no_failover_reason(model, target_provider, len(attempts))}",
+            attempts=attempts,
+        )
+
+    async def achat(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        model: str = "auto",
+        target_provider: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        timeout: float | None = None,
+        extra: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
+    ) -> FreeChatResult:
+        """Async routed chat; cancelling the caller cancels the provider HTTP IO."""
+        requested_timeout = provider_layer.DEFAULT_TIMEOUT if timeout is None else max(0.0, float(timeout))
+        total_budget = min(requested_timeout, CHAT_TOTAL_TIMEOUT_SECONDS)
+        attempt_budget = min(requested_timeout, CHAT_ATTEMPT_TIMEOUT_SECONDS)
+        deadline = time.monotonic() + total_budget
+        await self.arefresh()
+        pairs = self.candidates(model=model, target_provider=target_provider, refresh_if_stale=False)
+        request_extra = dict(extra) if extra else {}
+        if reasoning_effort is not None:
+            request_extra["reasoning_effort"] = reasoning_effort
+        attempts: list[tuple[str, str]] = []
+        deadline_exhausted = False
+        for spec, mid in pairs:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                deadline_exhausted = True
+                break
+            start = time.perf_counter()
+            try:
+                result = await self._layer.achat_completion(
+                    spec,
+                    mid,
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=min(attempt_budget, remaining),
+                    extra_body=request_extra or None,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - failover is explicit and bounded
+                label = _failure_label(exc)
+                attempts.append((spec.name, label))
+                self.mark_failure(spec.name, label)
+                logger.warning("Free provider '%s' async chat attempt failed: %s", spec.name, label)
                 continue
             latency = (time.perf_counter() - start) * 1000.0
             self.mark_success(spec.name, latency_ms=latency)
