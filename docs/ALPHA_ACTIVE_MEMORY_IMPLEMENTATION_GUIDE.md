@@ -1,8 +1,8 @@
 # Alpha Active Memory Engineering Guide
 
-**Research and repository audit date:** 13 October 2026  
-**Target repository:** [`itsPremkumar/alpha`](https://github.com/itsPremkumar/alpha)  
-**Implementation style:** additive, Python-first, local-first, cost-aware, evidence-driven  
+**Research and repository audit date:** 13 October 2026
+**Target repository:** [`itsPremkumar/alpha`](https://github.com/itsPremkumar/alpha)
+**Implementation style:** additive, Python-first, local-first, cost-aware, evidence-driven
 **Purpose:** audit what Alpha already has, define the missing composition layer, and provide a detailed implementation, testing, and rollout plan.
 
 > **Important scope note:** This guide audits the public GitHub `main` branch and its source/docs as accessible on the date above. It does not inspect the contents of your local `config.yaml`, execute your installed Alpha, or run its test suite on your machine. Treat every "confirmed" item below as repository evidence, not a guarantee that your local deployment has the feature enabled or is healthy. The first implementation task must verify the actual checked-out commit and effective runtime configuration.
