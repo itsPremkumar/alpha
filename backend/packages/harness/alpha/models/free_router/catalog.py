@@ -86,6 +86,10 @@ class FreeLLMUnavailableError(ConnectionError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class _FreeLLMCallCancelled(Exception):
+    """Internal signal to stop a sync worker after its current HTTP call returns."""
+
+
 @dataclass
 class ProviderState:
     """Per-provider catalog + health state (JSON-serializable for the cache)."""
@@ -445,6 +449,7 @@ class FreeLLMRouter:
         timeout: float | None = None,
         extra: dict[str, Any] | None = None,
         reasoning_effort: str | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> FreeChatResult:
         """Try eligible providers in ranked order; honest error if none serve.
 
@@ -465,6 +470,8 @@ class FreeLLMRouter:
         attempts: list[tuple[str, str]] = []
         deadline_exhausted = False
         for spec, mid in pairs:
+            if cancel_event is not None and cancel_event.is_set():
+                raise _FreeLLMCallCancelled("free provider call cancelled")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 deadline_exhausted = True
@@ -480,7 +487,13 @@ class FreeLLMRouter:
                     timeout=min(attempt_budget, remaining),
                     extra_body=request_extra or None,
                 )
+                if cancel_event is not None and cancel_event.is_set():
+                    raise _FreeLLMCallCancelled("free provider call cancelled")
+            except _FreeLLMCallCancelled:
+                raise
             except Exception as exc:  # noqa: BLE001 - classified below; BaseExceptions propagate
+                if cancel_event is not None and cancel_event.is_set():
+                    raise _FreeLLMCallCancelled("free provider call cancelled") from None
                 label = _failure_label(exc)
                 attempts.append((spec.name, label))
                 self.mark_failure(spec.name, label)

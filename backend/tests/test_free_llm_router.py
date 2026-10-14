@@ -563,6 +563,42 @@ def test_chatfreellm_async_generate_and_stream(tmp_path, monkeypatch):
     assert text == "async-hello"  # one content chunk, no duplicated/mangled text
 
 
+def test_cancelled_async_chat_does_not_start_another_provider_attempt(tmp_path, monkeypatch):
+    install(monkeypatch)
+    entered = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    attempts: list[str] = []
+
+    def slow_failure(spec, model_id, messages, **kwargs):
+        attempts.append(spec.name)
+        entered.set()
+        release.wait(5)
+        finished.set()
+        raise TimeoutError("simulated bounded provider timeout")
+
+    monkeypatch.setattr(providers_mod, "chat_completion", slow_failure)
+    model = _fresh_model()
+
+    async def run():
+        task = asyncio.create_task(model.ainvoke([HumanMessage(content="hi")]))
+        while not entered.is_set():
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 2)
+
+    asyncio.run(run())
+    # The sync transport cannot abort an in-flight socket request, but it must
+    # stop before starting another provider after that request returns.
+    time.sleep(0.05)
+    assert len(attempts) == 1
+    provider_state = {item["name"]: item for item in get_free_router().catalog_dict()["providers"]}
+    assert provider_state[attempts[0]]["healthy"] is None
+
+
 def test_chatfreellm_all_free_down_is_retryable_and_chain_serves_backup(tmp_path, monkeypatch):
     install(monkeypatch, chat=chat_http_500)
 

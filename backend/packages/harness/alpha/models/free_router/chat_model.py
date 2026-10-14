@@ -11,7 +11,8 @@ A normal ``BaseChatModel`` member of Alpha's model factory/fallback chains:
   ``args`` dicts. A provider that returns neither content nor tool calls is a
   provider failure, never an empty "success".
 * **Sync + async + streaming.** ``_generate`` owns the real call (``async``
-  variants wrap it with ``asyncio.to_thread``); providers do not stream, so
+  variants wrap it with ``asyncio.to_thread`` and signal cancellation so a
+  blocked provider's bounded request cannot fan out into more retries); providers do not stream, so
   ``_stream``/``_astream`` emit exactly one chunk carrying the complete
   message (content, tool calls, usage) and fire the token callback so UI
   streaming still works.
@@ -27,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import threading
 from collections.abc import Iterator
 from typing import Any
 
@@ -201,6 +203,7 @@ class ChatFreeLLM(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
+        cancel_event = kwargs.pop("_cancel_event", None)
         del run_manager, kwargs  # provider payloads are built explicitly below
         router = get_free_router()
         payload = convert_to_openai_messages(messages)
@@ -213,6 +216,7 @@ class ChatFreeLLM(BaseChatModel):
             timeout=self.request_timeout,
             extra=self._extra_body(stop),
             reasoning_effort=self.reasoning_effort,
+            cancel_event=cancel_event,
         )
         message = self._result_to_message(routed)
         return ChatResult(generations=[ChatGeneration(message=message)])
@@ -255,7 +259,14 @@ class ChatFreeLLM(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         del run_manager
-        return await asyncio.to_thread(self._generate, messages, stop, None, **kwargs)
+        cancel_event = threading.Event()
+        try:
+            return await asyncio.to_thread(self._generate, messages, stop, None, _cancel_event=cancel_event, **kwargs)
+        except asyncio.CancelledError:
+            # to_thread cannot stop an in-flight socket operation. Signal the
+            # worker to exit after that bounded HTTP call, before another retry.
+            cancel_event.set()
+            raise
 
     async def _astream(
         self,
@@ -264,7 +275,12 @@ class ChatFreeLLM(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> Any:
-        result = await asyncio.to_thread(self._generate, messages, stop, None, **kwargs)
+        cancel_event = threading.Event()
+        try:
+            result = await asyncio.to_thread(self._generate, messages, stop, None, _cancel_event=cancel_event, **kwargs)
+        except asyncio.CancelledError:
+            cancel_event.set()
+            raise
         message = result.generations[0].message
         chunk = self._to_chunk(message)
         if run_manager is not None:
