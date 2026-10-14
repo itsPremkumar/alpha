@@ -1396,3 +1396,164 @@ async def bot_projects(name: str, request: Request) -> dict:
         }
 
     return await asyncio.to_thread(_collect)
+
+
+# ---------------------------------------------------------------------------
+# Per-bot group membership
+#
+# The bot detail page needs "which rooms is this bot in, and why". `GET
+# /api/groups/rooms` lists rooms without rosters and `GET /api/groups/rooms/
+# {name}` needs a name you do not have yet, so membership was only answerable
+# by fanning out over every room from the client.
+#
+# Membership is resolved **live per room** through `resolved_roster()` - the
+# same projection the runner fans out to - because inheritance is a projection
+# and never a stored copy: an inherited member has to be reported as inherited,
+# not as somebody who was added to this room. Hence `origins`, which lists
+# every roster bucket the bot appears in, verbatim, and `effective`, which says
+# whether it can actually take part (an excluded or expired member is reported,
+# not hidden).
+#
+# Honesty rules for this payload:
+#   - only rooms where the bot appears in some bucket are listed.
+#   - a room whose roster cannot be read goes in `unreadable` with its reason
+#     rather than being dropped, so "in no rooms" stays distinguishable from
+#     "we could not tell".
+#   - the room list itself failing is 503, never an empty 200.
+#   - `path` is one visibility-parent chain root-first with the room appended
+#     (`breadcrumbs` deliberately excludes the room itself), so a root room
+#     renders as `[own name]` rather than an empty path.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{name}/groups", summary="Groups this bot belongs to")
+@require_permission("threads", "read")
+async def bot_groups(name: str, request: Request) -> dict:
+    from alpha.groups.service import get_group_chat_service
+
+    key = _validate_bot_name(name)
+
+    def _collect() -> dict:
+        svc = get_group_chat_service()
+        try:
+            all_rooms = svc.list_rooms()
+        except Exception as exc:  # noqa: BLE001 - an unreadable store is 503, not "no groups"
+            raise HTTPException(status_code=503, detail=f"Group store unreadable: {exc}") from exc
+
+        rooms: list[dict] = []
+        unreadable: list[dict] = []
+        for room in all_rooms:
+            try:
+                roster = svc.resolved_roster(room.name)
+                crumbs = svc.breadcrumbs(room.name)
+            except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+                unreadable.append({"id": room.room_id, "name": room.name, "reason": str(exc)})
+                continue
+            buckets = (
+                ("direct", roster.direct),
+                ("rule_matched", roster.rule_matched),
+                ("inherited", roster.inherited),
+                ("excluded", roster.excluded),
+                ("expired", roster.expired),
+            )
+            origins = [label for label, members in buckets if key in members]
+            if not origins:
+                continue
+            path = [str(c.get("name") or c.get("room_id") or "") for c in crumbs]
+            path.append(room.name)
+            rooms.append(
+                {
+                    "name": room.name,
+                    "room_id": room.room_id,
+                    "project_id": room.project_id or None,
+                    "mode": str(room.mode),
+                    "lifecycle": str(room.lifecycle),
+                    "origins": origins,
+                    "effective": key in roster.effective,
+                    "direct_count": roster.direct_count,
+                    "effective_count": roster.effective_count,
+                    "parent_count": len(room.parent_ids or []),
+                    "path": path,
+                }
+            )
+        return {
+            "bot": key,
+            "rooms": rooms,
+            "unreadable": unreadable,
+            "rooms_checked": len(all_rooms),
+            "note": ("Membership is resolved live per room: direct, rule-matched and inherited, minus excluded and expired. `effective` reports whether this bot can actually take part in the room."),
+        }
+
+    return await asyncio.to_thread(_collect)
+
+
+# ---------------------------------------------------------------------------
+# Per-bot company employment
+#
+# `GET /api/companies` lists organizations without their employments and
+# `GET /api/companies/{id}` needs an id you do not have yet, so "which
+# organizations employ this bot" was unanswerable without fanning out over
+# every company. Employment is indexed on `Company.employments[].agent_handle`,
+# which makes this the one read that does not need a company id first.
+#
+# There is deliberately no `require_permission` layer here: the Company OS
+# router carries none either. Tenancy is the boundary, and it is resolved
+# through the very same `_owner()` so this route cannot become a second
+# owner-derivation path.
+#
+# Honesty rules for this payload:
+#   - a terminated employment keeps its own `status`; it is never dropped, so
+#     "never worked here" stays distinguishable from "no longer works here".
+#   - an unreadable company store is 503 carrying the store's own reason, never
+#     an empty list - a corrupt store and an owner with no companies drive
+#     opposite decisions.
+#   - `role` / `unit` are `null` when the ids dangle, not fabricated stubs.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{name}/companies", summary="Companies that employ this bot")
+async def bot_companies(name: str, request: Request) -> dict:
+    from alpha.company_os.service import get_company_service
+    from alpha.company_os.store import CompanyStoreUnreadable
+    from app.gateway.routers.companies import _owner
+
+    key = _validate_bot_name(name)
+    owner = _owner(request)
+
+    def _collect() -> dict:
+        service = get_company_service()
+        try:
+            companies = service.list_companies(owner)
+        except CompanyStoreUnreadable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        employments: list[dict] = []
+        for company in companies:
+            hit = next(
+                (e for e in company.employments if str(e.agent_handle or "").strip().lower() == key),
+                None,
+            )
+            if hit is None:
+                continue
+            role = company.role(hit.role_id)
+            unit = company.unit(hit.unit_id)
+            employments.append(
+                {
+                    "company_id": company.company_id,
+                    "name": company.name,
+                    "archetype": company.archetype,
+                    "state": str(company.state),
+                    "created_at": company.created_at,
+                    "employment": hit.model_dump(mode="json"),
+                    "role": role.model_dump(mode="json") if role is not None else None,
+                    "unit": unit.model_dump(mode="json") if unit is not None else None,
+                }
+            )
+        return {
+            "bot": key,
+            "companies": employments,
+            "companies_checked": len(companies),
+            "note": ("Employment is indexed on `Company.employments[].agent_handle`; a past employment keeps its own `status` instead of being dropped, and `role` / `unit` are null when their ids dangle."),
+        }
+
+    return await asyncio.to_thread(_collect)

@@ -795,6 +795,18 @@ exactly-once execution.
   autonomy subsystems. Each subsystem is read independently, so one that fails
   says so instead of hiding the rest; counts the server did not send stay
   unknown rather than showing as zero.
+- **Bot detail page, end to end** - `/bots/[name]` reads everything the Gateway
+  reports about one bot: profile, SOUL, capabilities, skills and toolsets,
+  model configuration and its live read-only plan, performance, liveness,
+  whether it is working right now (and under which pause), its project
+  memberships, the group rooms it appears in (direct, rule-matched or
+  inherited), its company employment, its board tasks, its canonical chat
+  thread and inbox, its routines, its place in the organization chart, fleet
+  context and its organization events. Each of the twelve reads fails on its
+  own, so one broken store states its reason beside the sections that answered;
+  anything the server did not report renders as "not reported", never as zero.
+  Where the deeper record genuinely lives elsewhere - the roster, Projects,
+  Company, Board, Messages - the page links out instead of duplicating it.
 - **Free local real-time voice** — browser mic streaming, local Whisper interim +
   final transcription, VAD turn endpointing, normal SSE agent streaming,
   sentence-level local Piper playback, an optional more natural Kokoro voice on

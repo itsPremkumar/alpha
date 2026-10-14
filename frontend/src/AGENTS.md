@@ -119,3 +119,14 @@ pnpm test
 `test:extra`, `test:branding`, or `verify` scripts when the change reaches those
 surfaces, and ensure the corresponding CI job runs any new suite. No test is a
 substitute for exercising the affected UI and API path end to end.
+
+## Bot detail route (`/bots/[name]`)
+
+`lib/bot-detail.ts` and `components/bots/BotDetailView.tsx` provide the bot
+operator view. Keep the roster read in `lib/bots.ts` separate from per-bot
+reads; preserve independent loading/error states so one unavailable endpoint
+does not erase unrelated bot data. Mutations must show server-confirmed results.
+The detail contract is covered by `lib/bot-detail.test.mjs` and
+`lib/bot-detail-view.test.mjs`; Gateway company/group projections are covered
+by `backend/tests/test_bot_companies_route.py` and
+`backend/tests/test_bot_groups_route.py`.
