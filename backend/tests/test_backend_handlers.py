@@ -167,6 +167,7 @@ def test_loop_status_summarizes_history_and_bounds_goal_details(monkeypatch, tmp
     goals = [store.create_goal(title=f"Goal {index}") for index in range(55)]
     for goal in goals[:-1]:
         store.update_goal_status(goal.goal_id, "executing")
+    store.add_milestone(goals[-1].goal_id, "Inspect target goal")
     store.update_goal_status(goals[-1].goal_id, "paused")
     monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
 
@@ -176,10 +177,22 @@ def test_loop_status_summarizes_history_and_bounds_goal_details(monkeypatch, tmp
     assert result.data["active_loops"] == 54
     assert result.data["total_goals"] == 55
     assert result.data["status_counts"] == {"executing": 54, "paused": 1}
-    assert len(result.data["goals"]) == 50
-    assert result.data["omitted_goals"] == 5
+    assert len(result.data["goals"]) == 10
+    assert result.data["omitted_goals"] == 45
     assert "54 active, 55 total" in result.output
-    assert "5 additional goal(s) omitted" in result.output
+    assert "45 additional goal(s) omitted" in result.output
+    assert "use /loop:status <goal-id> for milestone detail" in result.output
+    assert "Analyze environment and dependencies" not in result.output
+
+    detail = bh.handle_loop_status(goals[-1].goal_id)
+    assert detail.status == "success"
+    assert detail.data["goal_id"] == goals[-1].goal_id
+    assert detail.data["status"] == "paused"
+    assert "Inspect target goal [pending]" in detail.output
+
+    missing = bh.handle_loop_status("goal_missing")
+    assert missing.status == "error"
+    assert missing.data == {"goal_id": "goal_missing", "status": "not_found"}
 
 
 def test_goal_decompose_handler():

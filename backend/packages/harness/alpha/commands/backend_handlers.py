@@ -425,18 +425,40 @@ def handle_loop_start(args: str, context: dict[str, Any] | None = None) -> Comma
 
 
 def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Summarize loop state and show a bounded page of goals and milestones."""
+    """Show a compact goal summary or milestone detail for one exact goal id."""
     from alpha.harness.continuous.store import get_goal_store
 
     store = get_goal_store()
     goals = store.list_goals()
 
+    requested_id = args.strip()
+    if requested_id:
+        goal = store.get_goal(requested_id)
+        if goal is None:
+            return CommandExecutionResult(
+                status="error",
+                command="/loop:status",
+                output=f"Goal {requested_id} was not found.",
+                data={"goal_id": requested_id, "status": "not_found"},
+            )
+        out = [
+            f"=== Goal {goal.goal_id} ===",
+            f"{goal.title} | Status: `{goal.status}` | Iteration: {goal.iteration}/{goal.max_iterations}",
+        ]
+        out.extend(f"• {milestone.title} [{milestone.status}]" for milestone in goal.milestones.values())
+        return CommandExecutionResult(
+            status="success",
+            command="/loop:status",
+            output="\n".join(out),
+            data={"goal_id": goal.goal_id, "status": goal.status, "goal": goal.to_dict()},
+        )
+
     if not goals:
         return CommandExecutionResult(
             status="success",
             command="/loop:status",
-            output="No active continuous loops running.",
-            data={"active_loops": 0},
+            output="No autonomous goals are recorded.",
+            data={"active_loops": 0, "total_goals": 0, "status_counts": {}, "goals": [], "omitted_goals": 0},
         )
 
     active_statuses = {"planning", "executing", "verifying", "adapting"}
@@ -448,13 +470,11 @@ def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> Comm
         f"=== Continuous Goal Status ({len(active)} active, {len(goals)} total) ===",
         "Status counts: " + ", ".join(f"{status}={count}" for status, count in sorted(counts.items())),
     ]
-    limit = 50
+    limit = 10
     for g in goals[:limit]:
         out.append(f"• [{g.goal_id}] {g.title} | Status: `{g.status}` | Iteration: {g.iteration}/{g.max_iterations}")
-        for m in g.milestones.values():
-            out.append(f"    - {m.title} [{m.status}]")
     if len(goals) > limit:
-        out.append(f"• {len(goals) - limit} additional goal(s) omitted; use an ID-specific inspect command for details.")
+        out.append(f"• {len(goals) - limit} additional goal(s) omitted; use /loop:status <goal-id> for milestone detail.")
 
     return CommandExecutionResult(
         status="success",

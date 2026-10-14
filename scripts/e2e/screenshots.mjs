@@ -53,6 +53,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..");
+const frontendRequire = createRequire(join(REPO_ROOT, "frontend", "package.json"));
 
 const SCHEMA = "alpha-e2e-screenshots/v1";
 
@@ -187,12 +188,14 @@ function printUsage() {
 // ---------------------------------------------------------------------------
 
 function resolvePlaywright() {
-  try {
-    return require("playwright");
-  } catch { /* fall through */ }
-  try {
-    return require("playwright-core");
-  } catch { /* fall through */ }
+  for (const resolve of [require, frontendRequire]) {
+    try {
+      return resolve("playwright");
+    } catch { /* try the next workspace location */ }
+    try {
+      return resolve("playwright-core");
+    } catch { /* try the next workspace location */ }
+  }
   return null;
 }
 

@@ -151,7 +151,9 @@ entry rather than quietly shrinking.
 
 ### Browser resolution
 
-First hit wins: `--chromium` → a Playwright-bundled browser → the newest
+The runner resolves `playwright` from both the repository root and
+`frontend/node_modules` (where this monorepo declares it). First browser hit
+wins: `--chromium` → a Playwright-bundled browser → the newest
 `chromium-*` in the Playwright user cache (`%LOCALAPPDATA%\ms-playwright` on
 Windows) → Playwright's own default. If nothing launches, the run is `blocked`
 with the install command:

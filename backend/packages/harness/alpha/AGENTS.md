@@ -223,8 +223,9 @@ Three stores carried exactly that shape and now carry the same disclosure:
   pause/resume transitions (resume must actually write `executing`), and does
   not claim start/step success when the latest state write failed. Goal
   listings report status counts and cap detail rows at 50; `/loop:status`
-  reports active versus total goals and uses the same bounded detail page.
-  Keep these output and durability contracts covered by
+  reports active versus total goals, shows a compact page of 10 goal summaries,
+  and accepts `/loop:status <goal-id>` for one goal's milestones. Keep these
+  output and durability contracts covered by
   `tests/test_continuous_goal_engine.py` and `tests/test_backend_handlers.py`.
 - **`continual/state.py` (`HarnessState`)** backs `ContinualHarnessMiddleware`,
   which is appended to **every** lead agent and builds its system-reminder from
