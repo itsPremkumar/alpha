@@ -3001,7 +3001,7 @@ export default function ChatView({
             onSelectThread={(id) => {
               openThread(id);
             }}
-            onNewChat={handleNewChat}
+            onNewChat={() => handleNewChat()}
             onThreadsChanged={() => {
               void reloadThreads().catch((error) =>
                 flash(`Could not refresh chat history. ${errMsg(error)}`),
