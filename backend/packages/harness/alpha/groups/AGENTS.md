@@ -337,6 +337,14 @@ mechanism would be worse than none. `post_message()` resolves next speakers, so 
 `POST /{name}/claims/{id}/reclaim`. Refusal shapes stay distinct: a missing claim
 is 404, a live un-reclaimable claim is 409, a non-member is 404.
 
+The live coordination panel uses the separate Gateway endpoints
+`POST /{name}/coordination/claims` and
+`POST /{name}/coordination/claims/{id}/{release|reclaim}`. Keep these under the
+`coordination` segment: the legacy `POST /{name}/claims` and
+`POST /{name}/claims/{id}/reclaim` routes in `routers/groups.py` enforce roster
+membership, and duplicate path/method registrations silently shadow one of the
+handlers while also breaking OpenAPI generation.
+
 Tests: `tests/test_group_activity.py`, `test_group_activity_ledger.py`,
 `test_group_claims.py`, `test_group_activity_routes.py`,
 `test_run_activity_observer.py`, `test_group_chat_actions.py`.

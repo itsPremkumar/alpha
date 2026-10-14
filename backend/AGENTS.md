@@ -24,6 +24,10 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 - Keep compile/type/runtime stages read-only with respect to source files and
   configuration. Update `docs/DEVELOPMENT.md` and the README command guidance
   with any user-visible report changes.
+- CI uploads syntax, mypy, backend pytest, and blocking-I/O reports as separate
+  seven-day workflow artifacts, including after failed jobs. Keep those
+  artifacts distinct: compilation is not runtime evidence, and mypy remains
+  informational until its measured backlog is cleared.
 
 ## Integration health + autonomy ownership
 

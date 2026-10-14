@@ -38,6 +38,16 @@ jobs:
         run: uv run ruff check .
       - name: Run ruff format check
         run: uv run ruff format --check .
+      - name: Upload Python compile diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-lint-diagnostics-${{ github.run_id }}
+          path: |
+            .alpha/reports/python-compile.log
+            .alpha/reports/python-health-latest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   backend-typecheck:
     name: Backend Type Check
@@ -64,7 +74,18 @@ jobs:
         # escape turns this blocking job red on every push until that backlog is
         # cleared. Re-measure before changing it — if the count reaches zero,
         # delete `|| true` in the same change that gets it there.
-        run: uv run mypy . --ignore-missing-imports || true
+        run: |
+          mkdir -p .alpha/reports
+          uv run mypy . --ignore-missing-imports > .alpha/reports/mypy.log 2>&1 || true
+          cat .alpha/reports/mypy.log
+      - name: Upload Python type diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-type-diagnostics-${{ github.run_id }}
+          path: backend/.alpha/reports/mypy.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   backend-test:
     name: Backend Tests
@@ -84,9 +105,19 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
       - name: Run tests
-        run: uv run pytest -x -q --tb=short
+        run: |
+          mkdir -p .alpha/reports
+          uv run pytest -x -q --tb=short --junitxml=.alpha/reports/pytest-backend.xml
         env:
           ALPHA_AUTH_DISABLED: 1
+      - name: Upload backend test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-diagnostics-${{ github.run_id }}
+          path: backend/.alpha/reports/pytest-backend.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
   backend-test-blocking-io:
     name: Backend Blocking I/O Tests
@@ -106,9 +137,19 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
       - name: Run blocking I/O tests
-        run: uv run pytest tests/blocking_io -x -q --tb=short
+        run: |
+          mkdir -p .alpha/reports
+          uv run pytest tests/blocking_io -x -q --tb=short --junitxml=.alpha/reports/pytest-blocking-io.xml
         env:
           ALPHA_AUTH_DISABLED: 1
+      - name: Upload blocking I/O diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-blocking-io-diagnostics-${{ github.run_id }}
+          path: backend/.alpha/reports/pytest-blocking-io.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ============================================
   # FRONTEND CHECKS

@@ -60,6 +60,19 @@ def test_openapi_operation_ids_are_unique(openapi_spec: dict) -> None:
     assert not duplicates, f"Duplicate operationIds in OpenAPI spec: {duplicates}"
 
 
+def test_gateway_has_no_duplicate_path_method_routes() -> None:
+    """A duplicate HTTP route shadows one handler even before OpenAPI is built."""
+    from app.gateway.app import app
+
+    owners: dict[tuple[str, str], list[str]] = {}
+    for route in app.routes:
+        for method in getattr(route, "methods", ()):
+            owners.setdefault((route.path, method), []).append(route.name)
+
+    duplicates = {key: names for key, names in owners.items() if len(names) > 1}
+    assert not duplicates, f"Duplicate path/method registrations shadow handlers: {duplicates}"
+
+
 def test_stream_existing_run_exposes_distinct_get_and_post(openapi_spec: dict) -> None:
     """The ``/runs/{run_id}/stream`` endpoint must expose GET and POST as distinct operations.
 

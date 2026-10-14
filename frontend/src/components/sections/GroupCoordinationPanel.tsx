@@ -721,7 +721,7 @@ function AssignWorkForm(props: {
             </span>
           </h4>
           <p className="text-[11px] text-muted-foreground mt-0.5 max-w-2xl">
-            Records a real claim through <code className="font-mono">POST /api/groups/&#123;room&#125;/claims</code>. A claim
+            Records a real claim through <code className="font-mono">POST /api/groups/&#123;room&#125;/coordination/claims</code>. A claim
             records intent to touch a subject — it is advisory, does not start a run, and never refuses two agents from
             holding the same one. That overlap is reported as contested on the board below.
           </p>
@@ -892,7 +892,7 @@ function AssignWorkForm(props: {
           title={
             problems.length > 0
               ? "Fix the fields listed above"
-              : `POST /api/groups/${props.room}/claims`
+              : `POST /api/groups/${props.room}/coordination/claims`
           }
         >
           {props.assigning ? (

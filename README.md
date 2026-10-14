@@ -1270,6 +1270,9 @@ behavior covered by tests. The mypy report contains every parsed location,
 severity, message, and error code; the JSON summary also includes normalized
 compile, Ruff, and pytest findings while stage logs preserve complete tool
 output. A successful syntax compile alone does not establish runtime health.
+CI also preserves separate seven-day reports for compilation, mypy, backend
+tests, and blocking-I/O checks on each workflow run; the mypy job remains
+informational until its existing backlog is cleared.
 
 - **Read [`AGENTS.md`](./AGENTS.md) first.** It is the source of truth for repo
   orientation, commands, and conventions (`CLAUDE.md` is a thin import shim).

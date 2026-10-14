@@ -24,12 +24,19 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.team import render_team_report_markdown, resolve_roster
 
 router = APIRouter(prefix="/api/teams", tags=["teams"])
+
+
+class MarkdownResponse(PlainTextResponse):
+    """Text response whose content type is represented accurately in OpenAPI."""
+
+    media_type = "text/markdown"
 
 
 def _request_owner(request: Request | None) -> str | None:
@@ -86,7 +93,7 @@ async def get_team_report(swarm_id: str, request: Request = None):
     return report
 
 
-@router.get("/{swarm_id}/report.md", response_class=None)
+@router.get("/{swarm_id}/report.md", response_class=MarkdownResponse)
 async def get_team_report_markdown(swarm_id: str, request: Request = None):
     """The same report rendered for a human reading a terminal."""
 
@@ -94,9 +101,7 @@ async def get_team_report_markdown(swarm_id: str, request: Request = None):
     report = await asyncio.to_thread(coordinator.team_report, swarm_id, owner_id=_owner_scope(request))
     if report.get("status") == "not_found":
         raise HTTPException(status_code=404, detail=f"Team '{swarm_id}' not found.")
-    from fastapi.responses import PlainTextResponse
-
-    return PlainTextResponse(render_team_report_markdown(report), media_type="text/markdown; charset=utf-8")
+    return MarkdownResponse(render_team_report_markdown(report))
 
 
 @router.get("/{swarm_id}/roster")

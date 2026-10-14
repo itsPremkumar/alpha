@@ -48,6 +48,7 @@ class _FakeRequest:
 
     def __init__(self, manager=None):
         self.state = type("S", (), {})()
+        self.app = type("A", (), {"state": self.state})()
         self._alpha_test_bypass_auth = True
         self.state.run_manager = manager
 
@@ -77,9 +78,9 @@ async def test_gateway_mounts_the_coordination_routes() -> None:
     paths = {route.path for route in create_app().routes}
     for expected in (
         "/api/groups/{name}/coordination",
-        "/api/groups/{name}/claims",
-        "/api/groups/{name}/claims/{claim_id}/release",
-        "/api/groups/{name}/claims/{claim_id}/reclaim",
+        "/api/groups/{name}/coordination/claims",
+        "/api/groups/{name}/coordination/claims/{claim_id}/release",
+        "/api/groups/{name}/coordination/claims/{claim_id}/reclaim",
         "/api/groups/{name}/reconcile",
     ):
         assert expected in paths, f"{expected} is not mounted"
@@ -126,8 +127,13 @@ async def test_a_terminal_failure_run_resolves_to_crashed() -> None:
     assert architect["evidence"]["run"]["stop_reason"] is None
 
 
-async def test_a_recoverable_stop_reason_is_not_a_crash() -> None:
-    """`gateway_shutdown` and friends are named recoveries, not failures."""
+async def test_a_recoverable_stop_reason_remains_a_visible_crash() -> None:
+    """A recoverable run disposition is still a named terminal failure.
+
+    Recovery eligibility does not mean the agent is currently running. The
+    activity projection keeps the terminal event visible until a later run
+    proves the agent resumed.
+    """
     await groups.create_room(groups.RoomCreateRequest(name="warroom", members=["architect"]))
     from alpha.groups.activity import get_activity_ledger
 
@@ -136,7 +142,8 @@ async def test_a_recoverable_stop_reason_is_not_a_crash() -> None:
     manager = _FakeManager({"run-2": _FakeRecord("run-2", "interrupted", stop_reason="gateway_shutdown")})
     result = await group_coordination.get_room_coordination("warroom", _FakeRequest(manager))
     architect = next(a for a in result["agents"] if a["bot_name"] == "architect")
-    assert architect["activity"] != "crashed"
+    assert architect["activity"] == "crashed"
+    assert architect["evidence"]["reason"] == "recoverable_stop_reason"
 
 
 async def test_a_missing_run_row_is_reported_as_unresponsive_not_dropped() -> None:

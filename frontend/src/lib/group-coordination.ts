@@ -52,7 +52,7 @@ export interface ClaimInput {
 
 export async function createClaim(room: string, body: ClaimInput): Promise<WorkClaim> {
   const data = await send<{ ok: boolean; claim: WorkClaim }>(
-    `/api/groups/${encodeURIComponent(room)}/claims`,
+    `/api/groups/${encodeURIComponent(room)}/coordination/claims`,
     "POST",
     {
       holder: body.holder,
@@ -79,7 +79,7 @@ export async function releaseClaim(
   claimId: string,
   opts: { holder?: string; force?: boolean } = {},
 ): Promise<{ released: boolean; by: string; owner_was: string }> {
-  return send(`/api/groups/${encodeURIComponent(room)}/claims/${encodeURIComponent(claimId)}/release`, "POST", {
+  return send(`/api/groups/${encodeURIComponent(room)}/coordination/claims/${encodeURIComponent(claimId)}/release`, "POST", {
     holder: opts.holder ?? "supervisor",
     force: opts.force ?? false,
   });
@@ -98,7 +98,7 @@ export async function reclaimClaim(
   body: { holder: string; run_id?: string | null },
 ): Promise<WorkClaim> {
   const data = await send<{ ok: boolean; claim: WorkClaim }>(
-    `/api/groups/${encodeURIComponent(room)}/claims/${encodeURIComponent(claimId)}/reclaim`,
+    `/api/groups/${encodeURIComponent(room)}/coordination/claims/${encodeURIComponent(claimId)}/reclaim`,
     "POST",
     { holder: body.holder, run_id: body.run_id ?? null },
   );

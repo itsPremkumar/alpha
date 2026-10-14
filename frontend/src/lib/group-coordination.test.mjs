@@ -91,9 +91,9 @@ function claim(over = {}) {
 test("the client calls only real coordination routes", () => {
   for (const path of [
     "/api/groups/${encodeURIComponent(room)}/coordination",
-    "/api/groups/${encodeURIComponent(room)}/claims",
-    "/api/groups/${encodeURIComponent(room)}/claims/${encodeURIComponent(claimId)}/release",
-    "/api/groups/${encodeURIComponent(room)}/claims/${encodeURIComponent(claimId)}/reclaim",
+    "/api/groups/${encodeURIComponent(room)}/coordination/claims",
+    "/api/groups/${encodeURIComponent(room)}/coordination/claims/${encodeURIComponent(claimId)}/release",
+    "/api/groups/${encodeURIComponent(room)}/coordination/claims/${encodeURIComponent(claimId)}/reclaim",
     "/api/groups/${encodeURIComponent(room)}/reconcile",
     "/api/groups/tree",
   ]) {
@@ -266,7 +266,7 @@ test("a failed read gets a specific title, never a generic one", () => {
 // ── Work assignment ─────────────────────────────────────────────────────────────
 
 /**
- * The assign form mirrors `POST /api/groups/{name}/claims`. Every bound below
+ * The assign form mirrors `POST /api/groups/{name}/coordination/claims`. Every bound below
  * is the server's own: if this mirror drifts, the form either offers what the
  * Gateway 422s on or hides a claim the Gateway would have taken.
  */

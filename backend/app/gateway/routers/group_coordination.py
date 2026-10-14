@@ -12,9 +12,9 @@ here.
 Routes:
 
 - ``GET  /api/groups/{name}/coordination``          activity + claims + conflicts
-- ``POST /api/groups/{name}/claims``                 take or renew a claim
-- ``POST /api/groups/{name}/claims/{claim_id}/release``  release a claim
-- ``POST /api/groups/{name}/claims/{claim_id}/reclaim``  take over a dead holder's work
+- ``POST /api/groups/{name}/coordination/claims``                 take or renew a claim
+- ``POST /api/groups/{name}/coordination/claims/{claim_id}/release``  release a claim
+- ``POST /api/groups/{name}/coordination/claims/{claim_id}/reclaim``  take over a dead holder's work
 - ``POST /api/groups/{name}/reconcile``              orphan a crashed holder's claims
 
 Three rules this router exists to keep:
@@ -233,7 +233,7 @@ def _roster(room_name: str) -> int:
     return get_group_chat_service().resolved_roster(room_name).direct_count
 
 
-@router.post("/{name}/claims", status_code=201, summary="Take or renew a work claim")
+@router.post("/{name}/coordination/claims", status_code=201, summary="Take or renew a work claim")
 @require_permission("threads", "write")
 async def create_claim(name: str, body: ClaimRequest) -> dict:
     """Record intent to touch something. Advisory: this never refuses.
@@ -278,7 +278,7 @@ async def create_claim(name: str, body: ClaimRequest) -> dict:
     return {"ok": True, "claim": claim}
 
 
-@router.post("/{name}/claims/{claim_id}/release", summary="Release a work claim")
+@router.post("/{name}/coordination/claims/{claim_id}/release", summary="Release a work claim")
 @require_permission("threads", "write")
 async def release_claim(name: str, claim_id: str, body: ReleaseRequest) -> dict:
     """Give a claim back so a peer can take it.
@@ -311,7 +311,7 @@ async def release_claim(name: str, claim_id: str, body: ReleaseRequest) -> dict:
     return {"ok": True, **outcome}
 
 
-@router.post("/{name}/claims/{claim_id}/reclaim", summary="Take over a dead holder's claim")
+@router.post("/{name}/coordination/claims/{claim_id}/reclaim", summary="Take over a dead holder's claim")
 @require_permission("threads", "write")
 async def reclaim_claim(name: str, claim_id: str, body: ReclaimRequest) -> dict:
     """Move a claim from a confirmed-dead holder to a live one.

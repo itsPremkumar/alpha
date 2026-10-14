@@ -281,7 +281,7 @@ export function failureTitle(error: unknown): string {
 // The War Room can *release* and *reclaim* a claim, but until now it could not
 // create one — so "assign work" was the one verb an operator could not perform
 // from the surface built to watch work. These helpers mirror the request
-// contract of `POST /api/groups/{name}/claims` so the form can explain a
+// contract of `POST /api/groups/{name}/coordination/claims` so the form can explain a
 // refusal before it sends, while the Gateway stays the authority: its 422 is
 // still rendered verbatim if the mirror and the server ever disagree.
 
