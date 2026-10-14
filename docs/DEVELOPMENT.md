@@ -144,6 +144,25 @@ cd backend && make lint
 - **Line length**: 100 characters
 - **Import style**: isort (Ruff built-in)
 
+#### Compile, lint, type, and runtime diagnostics
+
+From the repository root, run `make python-health` for a fast check across all
+tracked Python files. It compiles source without importing it, then runs Ruff
+lint and formatting checks. For mypy and executable backend checks, run:
+
+```bash
+make python-health PYTHON_HEALTH_ARGS=--full
+```
+
+The full run executes mypy, the offline backend tests, and the blocking-I/O test
+suite. Reports are written to `.alpha/reports/python-health-latest.json` and
+one log per stage; pytest also writes JUnit XML reports there. A compiler pass
+only proves source syntax is compilable. Ruff and mypy are static checks, and
+runtime correctness is evidenced only by tests that actually execute the
+relevant behavior. The current mypy CI step is informational because the
+repository still has a large existing type-error backlog, so a mypy failure is
+reported honestly rather than hidden.
+
 #### Type Hints
 - Required for all public functions
 - Use `from __future__ import annotations`

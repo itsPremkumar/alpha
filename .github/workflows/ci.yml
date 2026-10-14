@@ -32,6 +32,8 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
       - name: Install dependencies
         run: uv sync --all-extras --dev
+      - name: Compile all first-party Python sources
+        run: uv run python ../scripts/check_python_health.py --compile-only
       - name: Run ruff lint
         run: uv run ruff check .
       - name: Run ruff format check

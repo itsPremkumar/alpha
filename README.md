@@ -1253,6 +1253,12 @@ make install
 cd backend && make test
 ```
 
+For a quick Python compiler and lint report, run `make python-health` from the
+repository root. Use `make python-health PYTHON_HEALTH_ARGS=--full` to add mypy
+and both runtime test suites. Per-stage logs and a JSON summary are written to
+`.alpha/reports/`; compilation checks syntax without importing modules, while
+pytest executes the behavior covered by tests.
+
 - **Read [`AGENTS.md`](./AGENTS.md) first.** It is the source of truth for repo
   orientation, commands, and conventions (`CLAUDE.md` is a thin import shim).
 - Backend changes ship with tests in `backend/tests/` — TDD is mandatory there.
