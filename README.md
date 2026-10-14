@@ -1255,7 +1255,10 @@ cd backend && make test
 
 For a quick Python compiler and lint report, run `make python-health` from the
 repository root. Use `make python-health PYTHON_HEALTH_ARGS=--runtime-smoke` to
-check test imports and collection, or `make python-health
+check test imports and collection alongside lint, or
+`make python-health PYTHON_HEALTH_ARGS=--diagnostics-only` for a clean compile
+and collection result without lint/type-check debt affecting the status. Use
+`make python-health
 PYTHON_HEALTH_ARGS=--full` to add that smoke check, mypy, and both runtime test
 suites. Per-stage logs and a JSON summary are written to `.alpha/reports/`;
 compilation checks syntax without importing modules, while pytest exercises the

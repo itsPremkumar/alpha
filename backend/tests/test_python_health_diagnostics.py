@@ -58,3 +58,12 @@ def test_runtime_smoke_flag_is_available(monkeypatch: pytest.MonkeyPatch):
     args = module._args()
 
     assert args.runtime_smoke is True
+
+
+def test_diagnostics_only_flag_is_available(monkeypatch: pytest.MonkeyPatch):
+    module = _load_diagnostics_module()
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--diagnostics-only"])
+
+    args = module._args()
+
+    assert args.diagnostics_only is True

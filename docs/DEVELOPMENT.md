@@ -162,6 +162,18 @@ the blocking-I/O test suite. To run just the import/collection smoke check:
 make python-health PYTHON_HEALTH_ARGS=--runtime-smoke
 ```
 
+To get a clean syntax-and-import signal without existing lint/type debt affecting
+the exit status, run:
+
+```bash
+make python-health PYTHON_HEALTH_ARGS=--diagnostics-only
+```
+
+This compiles tracked Python source and collects backend tests, but does not run
+test bodies. Use `--full` to execute the offline backend and blocking-I/O suites
+as well; those are the checks that can expose runtime behavior failures. No
+static compiler can prove every runtime path works.
+
 Reports are written to `.alpha/reports/python-health-latest.json` and one log
 per stage; pytest also writes JUnit XML reports for executed suites. A compiler
 pass only proves source syntax is compilable. Collection catches imports only

@@ -161,6 +161,11 @@ def _args() -> argparse.Namespace:
         help="also run mypy, the complete offline pytest suite, and blocking-I/O tests",
     )
     parser.add_argument("--compile-only", action="store_true", help="only compile-check Python source; suitable for CI")
+    parser.add_argument(
+        "--diagnostics-only",
+        action="store_true",
+        help="compile Python and collect backend tests, without mixing in lint/type-check debt",
+    )
     parser.add_argument("--typecheck", action="store_true", help="also run mypy (known debt may fail)")
     parser.add_argument(
         "--runtime-smoke",
@@ -201,7 +206,7 @@ def main() -> int:
     )
 
     python = sys.executable
-    if not args.compile_only:
+    if not (args.compile_only or args.diagnostics_only):
         for chunk_index, chunk in enumerate(chunk_paths(python_files), start=1):
             stages.append(
                 _run_process_stage(
@@ -220,10 +225,10 @@ def main() -> int:
                 )
             )
 
-    run_runtime_smoke = not args.compile_only and (args.full or args.runtime_smoke)
-    run_typecheck = not args.compile_only and (args.full or args.typecheck)
-    run_tests = not args.compile_only and (args.full or args.tests)
-    run_blocking_io = not args.compile_only and (args.full or args.blocking_io)
+    run_runtime_smoke = args.diagnostics_only or (not args.compile_only and (args.full or args.runtime_smoke))
+    run_typecheck = not (args.compile_only or args.diagnostics_only) and (args.full or args.typecheck)
+    run_tests = not (args.compile_only or args.diagnostics_only) and (args.full or args.tests)
+    run_blocking_io = not (args.compile_only or args.diagnostics_only) and (args.full or args.blocking_io)
     if run_runtime_smoke:
         environment = os.environ.copy()
         environment.update({"PYTHONPATH": ".", "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})

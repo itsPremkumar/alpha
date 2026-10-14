@@ -87,7 +87,7 @@ help:
 	@echo "  make migrate-state-dir - Rename pre-rename .agent-workspace state dirs to .alpha (stop Alpha first)"
 	@echo "  make check           - Check if all required tools are installed"
 	@echo "  make check-agent-guidance - Validate scoped AGENTS.md file and chain budgets"
-	@echo "  make python-health   - Compile tracked Python + run Ruff; use --runtime-smoke or --full for import/runtime diagnostics"
+	@echo "  make python-health   - Compile tracked Python + run Ruff; use --diagnostics-only for compile + test-collection diagnostics"
 	@echo "  make detect-thread-boundaries - Inventory backend executor/thread/event-loop boundaries"
 	@echo "  make detect-blocking-io        - Inventory blocking IO that may block the backend event loop"
 	@echo "  make install         - Install all dependencies (frontend + backend + pre-commit hooks)"
