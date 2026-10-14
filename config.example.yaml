@@ -5106,7 +5106,7 @@ specialists:
       tool_groups: [file:read, file:write]
       approvals: draft_first
       routing: {category: writing}
-      capabilities: [technical_writing, api_reference, release_notes]
+      capabilities: [technical_writing, api_reference, release_notes, document_synthesis]
       description: >-
         Prose maintenance: keeps the setup guide, the configuration
         reference, and the API pages true to the code and the config as they

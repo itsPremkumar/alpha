@@ -507,7 +507,9 @@ make doctor    # verify the environment
   bots challenge assumptions and produce unified deliverables.
 - **Swarm v2 DAG runtime** — atomic checkpoints, ordered JSONL audit events,
   owner-scoped admission, idempotent creation, lease-fenced task attempts, retry
-  backoff, restart recovery.
+  backoff, restart recovery. Task directives are mapped to the live configured
+  specialist capability vocabulary; the team report records assignments and
+  explicit reasons for any task left unassigned.
 - **Automatic topology selection** — `mode="auto"` measures the DAG it builds and
   picks the shape (map-reduce, scatter/gather, hierarchical) from measured width,
   depth, and coupling, then escalates coordination machinery only as complexity
@@ -1284,6 +1286,8 @@ behavior covered by tests. The mypy report contains every parsed location,
 severity, message, and error code; the JSON summary also includes normalized
 compile, Ruff, and pytest findings while stage logs preserve complete tool
 output. A successful syntax compile alone does not establish runtime health.
+Runtime pytest diagnostics include the failed test summary and, when pytest
+prints a source traceback frame, a separate file-and-line exception finding.
 CI also preserves separate seven-day reports for compilation, mypy, backend
 tests, and blocking-I/O checks on each workflow run; the mypy job remains
 informational until its existing backlog is cleared.

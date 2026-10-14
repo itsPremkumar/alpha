@@ -8,9 +8,12 @@ specific pre-team behaviour it replaces, and each one is demonstrated biting in
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from alpha.capabilities.eligibility import normalize_tags
+from alpha.config.app_config import AppConfig
 from alpha.swarm.coordinator import SwarmCoordinator
 from alpha.swarm.decomposer import SwarmTaskDecomposer
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
@@ -21,6 +24,7 @@ from alpha.swarm.team import (
     SpecialistProfile,
     assign_specialists,
     build_team_report,
+    load_specialists_from_config,
     register_roster_provider,
     render_team_report_markdown,
     resolve_roster,
@@ -133,6 +137,27 @@ def test_assignment_matches_a_specialist_to_the_capability_the_task_requires(ros
             # task's tags is still refused, or the "capability match" would be
             # a decoration.
             assert required & offered, f"{assigned.name} was chosen for inferred {required} but offers {offered}"
+
+
+def test_shipped_specialists_cover_real_review_and_synthesis_tasks():
+    """Use the shipped config to prevent inferred tags drifting off its roster."""
+    repo_root = Path(__file__).resolve().parents[2]
+    config = AppConfig.from_file(str(repo_root / "config.example.yaml"))
+    roster = load_specialists_from_config(config)
+    plan = SwarmPlan(swarm_id="swm-routing", goal="", mode=SwarmMode.PARALLEL)
+    objectives = {
+        "code-reviewer": ("Review the group coordination Gateway routes for duplicate HTTP paths and request validation."),
+        "security-reviewer": ("Review authentication and authorization on group coordination endpoints, including which role can create or release claims."),
+        "test-engineer": ("Review backend/tests/test_group_coordination_routes.py for coverage gaps and missing assertions."),
+        "technical-writer": "Synthesize a final report from the collected evidence.",
+    }
+    plan.tasks = {name: SwarmTaskNode(task_id=name, objective=objective) for name, objective in objectives.items()}
+    SwarmTaskDecomposer._declare_capability_requirements(plan)
+
+    assignment = assign_specialists(plan, roster)
+
+    assert assignment.assigned_count == len(objectives), assignment.unassigned
+    assert {task_id: task.assigned_worker for task_id, task in plan.tasks.items()} == {name: name for name in objectives}
 
 
 def test_a_declared_requirement_is_strict_and_an_inferred_one_is_a_ranked_hint(roster):
