@@ -103,15 +103,85 @@ def test_both_seams_produce_identical_directive_messages(monkeypatch):
     assert [m.content for m in sync_seen[0]] == [m.content for m in async_seen[0]]
 
 
-def test_sync_seam_triggers_self_heal_on_a_tool_error():
+def test_sync_seam_triggers_self_heal_only_for_structured_recoverable_tool_error():
     middleware = AutonomousCommandMiddleware()
     seen: list[Any] = []
-    request = _FakeRequest([HumanMessage(content="carry on"), ToolMessage(content="Traceback: boom", tool_call_id="1", name="read_file")])
+    request = _FakeRequest(
+        [
+            HumanMessage(content="carry on"),
+            ToolMessage(
+                content="Traceback: boom",
+                tool_call_id="1",
+                name="read_file",
+                additional_kwargs={
+                    "alpha_tool_meta": {
+                        "status": "error",
+                        "error_type": "permission",
+                        "recoverable_by_model": True,
+                        "recommended_next_action": "try_alternative",
+                    }
+                },
+            ),
+        ]
+    )
 
     middleware.wrap_model_call(request, _sync_handler(seen))
 
     assert _directive_count(seen[0]) == 1
     assert "SELF_HEAL" in str(seen[0][-1].content)
+    assert "Traceback: boom" not in str(seen[0][-1].content)
+
+
+def test_tool_output_that_mentions_error_does_not_trigger_self_heal():
+    middleware = AutonomousCommandMiddleware()
+    seen: list[Any] = []
+    request = _FakeRequest(
+        [
+            HumanMessage(content="carry on"),
+            ToolMessage(
+                content="The review could not be completed because of permission errors.",
+                tool_call_id="1",
+                name="task",
+                additional_kwargs={
+                    "alpha_tool_meta": {
+                        "status": "success",
+                        "recoverable_by_model": False,
+                    }
+                },
+            ),
+        ]
+    )
+
+    middleware.wrap_model_call(request, _sync_handler(seen))
+
+    assert _directive_count(seen[0]) == 0
+
+
+def test_nonrecoverable_structured_tool_error_does_not_trigger_self_heal():
+    middleware = AutonomousCommandMiddleware()
+    seen: list[Any] = []
+    request = _FakeRequest(
+        [
+            HumanMessage(content="carry on"),
+            ToolMessage(
+                content="Error: credentials unavailable",
+                tool_call_id="1",
+                name="provider_call",
+                additional_kwargs={
+                    "alpha_tool_meta": {
+                        "status": "error",
+                        "error_type": "auth",
+                        "recoverable_by_model": False,
+                        "recommended_next_action": "stop",
+                    }
+                },
+            ),
+        ]
+    )
+
+    middleware.wrap_model_call(request, _sync_handler(seen))
+
+    assert _directive_count(seen[0]) == 0
 
 
 def test_sync_seam_triggers_verification_after_a_successful_code_edit():

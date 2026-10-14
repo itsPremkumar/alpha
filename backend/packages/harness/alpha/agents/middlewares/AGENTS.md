@@ -7,8 +7,11 @@ uses that in-memory message object's identity as a per-run fallback. Verificatio
 intent requires an explicit action (for example, “run pytest”); incidental nouns
 such as “smoke test” must not hijack unrelated work. A successful code-edit tool
 result with a correlated tool call targeting a known source-code suffix may add
-one follow-up verification directive; ordinary text artifacts do not. A failed
-tool result takes the self-heal path instead. The finish-first notice uses the
+one follow-up verification directive; ordinary text artifacts do not. Self-heal
+triggers only on structured `alpha_tool_meta` errors marked recoverable (or an
+explicit legacy `ToolMessage.status == "error"` when metadata is absent); prose
+keywords are not error evidence. Never copy raw tool output into a system
+directive. The finish-first notice uses the
 same call-to-result path correlation before claiming an unverified code edit.
 The `/verify tests` catalog item currently has no handler, so neither its
 detection nor its directive is evidence that tests ran.

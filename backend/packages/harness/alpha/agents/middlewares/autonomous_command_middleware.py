@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, override
 
 from langchain.agents.middleware import AgentMiddleware
@@ -25,6 +25,7 @@ from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import SystemMessage, ToolMessage
 
 from alpha.agents.middlewares.edit_detection import is_source_code_edit_result
+from alpha.agents.middlewares.tool_result_meta import TOOL_META_KEY
 from alpha.commands.autonomous_engine import (
     AutonomousDetectionResult,
     LifecyclePhase,
@@ -79,17 +80,28 @@ class AutonomousCommandMiddleware(AgentMiddleware):
                     detection.confidence,
                 )
 
-        # 2. Check for mid-flight errors in tool messages (trigger SELF_HEAL phase)
+        # 2. Check structured tool failure metadata (trigger SELF_HEAL phase).
+        # Tool result prose is untrusted: words like "error" can appear in a
+        # successful report, and copying arbitrary tool output into a
+        # SystemMessage would promote it to trusted instruction authority.
         if not directive_injected and len(messages) > 0:
             last_msg = messages[-1]
-            if isinstance(last_msg, ToolMessage) and ("error" in str(last_msg.content).lower() or "traceback" in str(last_msg.content).lower()):
-                heal_detection = autonomous_command_engine.trigger_phase_transition(
-                    LifecyclePhase.SELF_HEAL,
-                    details=f"Tool error encountered: {str(last_msg.content)[:200]}",
-                )
-                heal_msg = self._build_directive_message(heal_detection)
-                messages.append(heal_msg)
-                logger.info("Autonomous self-heal triggered for tool error.")
+            if isinstance(last_msg, ToolMessage):
+                additional_kwargs = getattr(last_msg, "additional_kwargs", {})
+                tool_meta = additional_kwargs.get(TOOL_META_KEY) if isinstance(additional_kwargs, Mapping) else None
+                structured_failure = isinstance(tool_meta, Mapping) and tool_meta.get("status") == "error"
+                recoverable = isinstance(tool_meta, Mapping) and tool_meta.get("recoverable_by_model") is True
+                legacy_failure = not isinstance(tool_meta, Mapping) and getattr(last_msg, "status", None) == "error"
+                if (structured_failure and recoverable) or legacy_failure:
+                    tool_name = str(getattr(last_msg, "name", "") or "tool")[:80]
+                    error_type = str(tool_meta.get("error_type") or "unknown")[:80] if isinstance(tool_meta, Mapping) else "unknown"
+                    heal_detection = autonomous_command_engine.trigger_phase_transition(
+                        LifecyclePhase.SELF_HEAL,
+                        details=f"Recoverable tool failure in {tool_name} (error type: {error_type}).",
+                    )
+                    heal_msg = self._build_directive_message(heal_detection)
+                    messages.append(heal_msg)
+                    logger.info("Autonomous self-heal triggered for structured recoverable tool failure.")
 
         # 3. Check for code edit tool completion (trigger VERIFICATION phase)
         if not directive_injected and len(messages) > 0:
