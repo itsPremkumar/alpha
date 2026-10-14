@@ -92,14 +92,25 @@ def store_status(store: ApexStore) -> dict[str, Any]:
     except Exception as exc:
         return _unavailable(f"{type(exc).__name__}: {exc}")
     by_state: dict[str, int] = {}
+    by_dispatch_state: dict[str, int] = {}
+    by_run_status: dict[str, int] = {}
     for session in sessions:
         by_state[session.state.value] = by_state.get(session.state.value, 0) + 1
+        dispatch_state = str(session.dispatch_state or "").strip()
+        if dispatch_state:
+            by_dispatch_state[dispatch_state] = by_dispatch_state.get(dispatch_state, 0) + 1
+        run_status = str(session.run_status or "").strip()
+        if run_status:
+            by_run_status[run_status] = by_run_status.get(run_status, 0) + 1
     return {
         "available": True,
         "total": len(sessions),
         "by_state": by_state,
+        "by_dispatch_state": by_dispatch_state,
+        "by_run_status": by_run_status,
         "active": by_state.get(ApexSessionState.ACTIVE.value, 0),
         "terminal": sum(1 for s in sessions if s.is_terminal),
+        "needs_attention": sum(1 for session in sessions if session.state is ApexSessionState.BLOCKED or session.dispatch_state == "failed"),
     }
 
 

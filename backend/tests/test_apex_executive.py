@@ -665,6 +665,25 @@ class TestHarnessBoundaryOfTheProjection:
         for key in ("contract", "fleet", "sessions", "supervisor", "invariants"):
             assert key in payload
 
+    def test_session_status_distinguishes_open_failed_blocked_and_completed_work(self, store: ApexStore) -> None:
+        failed = _session(store)
+        store.update(failed.session_id, state=ApexSessionState.ACTIVE, dispatch_state="failed", run_status="error")
+        running = _session(store)
+        store.update(running.session_id, state=ApexSessionState.ACTIVE, dispatch_state="running", run_status="running")
+        blocked = _session(store)
+        store.update(blocked.session_id, state=ApexSessionState.BLOCKED, dispatch_state="idle")
+        completed = _session(store)
+        store.update(completed.session_id, state=ApexSessionState.COMPLETED, dispatch_state="completed", run_status="success")
+
+        payload = apex_status(store, profile_for("autonomous"), include_invariants=False)["sessions"]
+
+        assert payload["by_state"] == {"active": 2, "blocked": 1, "completed": 1}
+        assert payload["by_dispatch_state"] == {"failed": 1, "running": 1, "idle": 1, "completed": 1}
+        assert payload["by_run_status"] == {"error": 1, "running": 1, "success": 1}
+        assert payload["needs_attention"] == 2
+        assert payload["active"] == 2
+        assert failed.session_id and running.session_id and blocked.session_id and completed.session_id
+
     def test_an_unbound_supervisor_is_disclosed_not_faked(self) -> None:
         # The harness may not import the app layer, so the supervisor arrives
         # by injection. With none bound the block must say so — an operator has

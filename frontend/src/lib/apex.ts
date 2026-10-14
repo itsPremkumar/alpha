@@ -222,6 +222,9 @@ export interface ApexFleet {
 export interface ApexSessions {
   total: number | null;
   by_state: Record<string, number | null>;
+  by_dispatch_state: Record<string, number | null> | null;
+  by_run_status: Record<string, number | null> | null;
+  needs_attention: number | null;
   active: number | null;
   terminal: number | null;
 }
@@ -370,11 +373,20 @@ function mapFleet(v: unknown): ApexFleet {
 function mapSessions(v: unknown): ApexSessions {
   const r = rec(v);
   const byState = rec(r.by_state);
+  const mapCounts = (value: unknown): Record<string, number | null> | null =>
+    value === null || value === undefined
+      ? null
+      : Object.fromEntries(
+          Object.entries(rec(value)).map(([key, count]) => [key, optNum(count)]),
+        );
   return {
     total: optNum(r.total),
     by_state: Object.fromEntries(
       Object.entries(byState).map(([k, n]) => [k, optNum(n)]),
     ),
+    by_dispatch_state: mapCounts(r.by_dispatch_state),
+    by_run_status: mapCounts(r.by_run_status),
+    needs_attention: optNum(r.needs_attention),
     active: optNum(r.active),
     terminal: optNum(r.terminal),
   };

@@ -495,6 +495,14 @@ stop.
 | `POST` | `/api/apex/approvals/{id}/approve` | approve and un-park; admin |
 | `POST` | `/api/apex/approvals/{id}/reject` | reject — the park stands; admin |
 
+The read-only status projection includes counts by session state, dispatch state,
+and linked RunManager status. `active` is a count of sessions in the APEX
+`active` lifecycle state, not a count of currently executing runs: an active
+session can be running, awaiting verification, parked, or awaiting review after
+a failed run. The APEX panel renders those outcome counts and a measured
+attention count so an old failed session is not presented as live progress.
+Missing fields from an older Gateway are rendered as unreported, not as zero.
+
 Collection routes are declared before `/sessions/{id}`; Starlette matches in
 registration order, and the reverse order answers
 `404 Session 'invariants' not found`. The three `/mode`, `/enable` and

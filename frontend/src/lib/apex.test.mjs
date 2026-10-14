@@ -136,6 +136,9 @@ const HEALTHY_STATUS = {
     available: true,
     total: 3,
     by_state: { active: 1, completed: 2 },
+    by_dispatch_state: { completed: 2, failed: 1 },
+    by_run_status: { error: 1, success: 2 },
+    needs_attention: 1,
     active: 1,
     terminal: 2,
   },
@@ -484,6 +487,47 @@ test("unreported per-state session counts remain null instead of becoming zero",
     completed: null,
     failed: 0,
   });
+});
+
+test("APEX preserves measured run outcomes and keeps absent outcomes unreported", async () => {
+  const status = apex.mapStatus({
+    schema: "alpha.apex.status.v1",
+    contract: { available: true, ...HEALTHY_CONTRACT },
+    fleet: { available: true, mode: "run", admits_work: true },
+    sessions: {
+      available: true,
+      total: 3,
+      by_state: { active: 2, blocked: 1 },
+      by_dispatch_state: { failed: 1, running: 1 },
+      by_run_status: { error: 1, running: 1 },
+      needs_attention: 2,
+      active: 2,
+      terminal: 0,
+    },
+  });
+
+  assert.deepEqual(status.sessions.by_dispatch_state, { failed: 1, running: 1 });
+  assert.deepEqual(status.sessions.by_run_status, { error: 1, running: 1 });
+  assert.equal(status.sessions.needs_attention, 2);
+
+  const olderGateway = apex.mapStatus({
+    schema: "alpha.apex.status.v1",
+    contract: { available: true, ...HEALTHY_CONTRACT },
+    fleet: { available: true, mode: "run", admits_work: true },
+    sessions: { available: true, by_state: {} },
+  });
+  assert.equal(olderGateway.sessions.by_dispatch_state, null);
+  assert.equal(olderGateway.sessions.by_run_status, null);
+  assert.equal(olderGateway.sessions.needs_attention, null);
+});
+
+test("APEX session summary explains open sessions and exposes run-outcome breakdowns", async () => {
+  const source = read("../components/sections/ApexSection.tsx");
+  assert.match(source, /\$\{status\.sessions\.active\} active/);
+  assert.match(source, /need attention/);
+  assert.match(source, /Dispatch states:/);
+  assert.match(source, /Linked run outcomes:/);
+  assert.match(source, /not its linked run/);
 });
 
 test("missing APEX counts stay visibly unreported in operator summaries", async () => {

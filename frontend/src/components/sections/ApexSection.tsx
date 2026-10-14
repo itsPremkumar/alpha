@@ -1704,24 +1704,52 @@ export function ApexSection() {
         )}
 
         {status.sessions.available ? (
-          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-            <Cpu className="size-4" />
-            <span>
-              Sessions:{" "}
-              <strong>{formatMeasuredCount(status.sessions.total)}</strong>
-              {status.sessions.active !== null
-                ? ` · ${status.sessions.active} active`
-                : " · active count unreported"}
-            </span>
-            {status.sessions.total === 0 && (
-              <span className="text-neutral-500">none recorded</span>
-            )}
-            {status.sessions.total !== 0 &&
-              Object.entries(status.sessions.by_state).length === 0 && (
-                <span className="text-neutral-500">
-                  state breakdown unreported
-                </span>
+          <div className="space-y-2 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+            <div className="flex flex-wrap items-center gap-2">
+              <Cpu className="size-4" />
+              <span>
+                Sessions:{" "}
+                <strong>{formatMeasuredCount(status.sessions.total)}</strong>
+                {status.sessions.active !== null
+                  ? ` · ${status.sessions.active} active`
+                  : " · active count unreported"}
+                {status.sessions.needs_attention !== null
+                  ? ` · ${status.sessions.needs_attention} need attention`
+                  : " · attention count unreported"}
+              </span>
+              {status.sessions.total === 0 && (
+                <span className="text-neutral-500">none recorded</span>
               )}
+              {status.sessions.total !== 0 &&
+                Object.entries(status.sessions.by_state).length === 0 && (
+                  <span className="text-neutral-500">
+                    state breakdown unreported
+                  </span>
+                )}
+            </div>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              Active describes the APEX session, not its linked run. It may be
+              running, awaiting verification, parked, or failed and awaiting
+              review.
+            </p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              Dispatch states: {status.sessions.by_dispatch_state === null
+                ? "unreported"
+                : Object.keys(status.sessions.by_dispatch_state).length
+                  ? Object.entries(status.sessions.by_dispatch_state)
+                      .map(([state, count]) => `${state} ${formatMeasuredCount(count)}`)
+                      .join(" · ")
+                  : "none reported"}
+            </p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              Linked run outcomes: {status.sessions.by_run_status === null
+                ? "unreported"
+                : Object.keys(status.sessions.by_run_status).length
+                  ? Object.entries(status.sessions.by_run_status)
+                      .map(([state, count]) => `${state} ${formatMeasuredCount(count)}`)
+                      .join(" · ")
+                  : "none reported"}
+            </p>
           </div>
         ) : (
           <Unavailable block={status.sessions} label="Session store" />
