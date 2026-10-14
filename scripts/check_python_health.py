@@ -283,7 +283,7 @@ def main() -> int:
     print(f"Python health: {'PASS' if report['ok'] else 'FAIL'} ({len(python_files)} Python files compiled)")
     for stage in stages:
         state = "PASS" if stage.ok else f"FAIL (exit {stage.exit_code})"
-        print(f"  {stage.name}: {state} in {stage.elapsed_seconds}s — {stage.log_path}")
+        print(f"  {stage.name}: {state} in {stage.elapsed_seconds}s - {stage.log_path}")
         if not stage.ok:
             print(stage.output_tail)
     print(f"JSON summary: {_display_path(summary_path)}")
