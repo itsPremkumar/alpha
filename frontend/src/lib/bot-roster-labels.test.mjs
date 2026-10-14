@@ -193,3 +193,15 @@ test("BotGallery computes collisions from the FULL roster, not the filtered view
   );
   assert.match(src, /rosterLabel=\{botRosterLabel\(bot, collidingLabels\)\}/);
 });
+
+test("Kanban agent filter disambiguates collisions using the full roster", () => {
+  const src = readFileSync(new URL("../components/sections/KanbanSection.tsx", import.meta.url), "utf8");
+  assert.match(src, /collidingBotLabels\(props\.bots\)/);
+  assert.match(src, /botRosterLabel\(b, botLabelCollisions\)/);
+});
+
+test("Kanban project filter disambiguates same-name projects by stable id", () => {
+  const src = readFileSync(new URL("../components/sections/KanbanSection.tsx", import.meta.url), "utf8");
+  assert.match(src, /uniqueFilterLabels\(projects\.map/);
+  assert.match(src, /projectFilterLabels\.get\(p\.id\)/);
+});

@@ -16,6 +16,8 @@ import {
 } from "@/lib/kanban-board";
 import { listKanbanTasks } from "@/lib/kanban";
 import { listProjects } from "@/lib/projects";
+import { uniqueFilterLabels } from "@/lib/kanban-filter-options";
+import { botRosterLabel, collidingBotLabels } from "@/types/bots";
 import {
   handleKanbanCardKeyDown,
   handleKanbanCardKeyUp,
@@ -160,6 +162,11 @@ export function KanbanSection(props: {
   }, [cards, search, botFilter, projectFilter, priorityFilter]);
 
   const stats = useMemo(() => boardStats(filtered), [filtered]);
+  const botLabelCollisions = useMemo(() => collidingBotLabels(props.bots), [props.bots]);
+  const projectFilterLabels = useMemo(
+    () => uniqueFilterLabels(projects.map((project) => ({ id: project.id, name: project.name }))),
+    [projects],
+  );
 
   /**
    * One card move, locked for the round trip.
@@ -324,8 +331,8 @@ export function KanbanSection(props: {
             <option value="all">All agents</option>
             <option value="">Unassigned</option>
             {props.bots.map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.display_name}
+              <option key={b.name} value={b.name} title={b.name}>
+                {botRosterLabel(b, botLabelCollisions)}
               </option>
             ))}
           </select>
@@ -339,7 +346,7 @@ export function KanbanSection(props: {
             <option value="">No project</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {projectFilterLabels.get(p.id) ?? p.name}
               </option>
             ))}
           </select>

@@ -100,7 +100,9 @@ export interface FleetHealth {
   total_tasks: number | null;
 }
 
-export function botDisplayName(bot: BotProfile): string {
+export type BotRosterIdentity = Pick<BotProfile, "name" | "display_name">;
+
+export function botDisplayName(bot: BotRosterIdentity): string {
   return bot.display_name || bot.name;
 }
 
@@ -131,7 +133,7 @@ export function botDisplayName(bot: BotProfile): string {
  * "this one is unique" - so it degrades to the plain display name rather than
  * inventing a distinction.
  */
-export function botRosterLabel(bot: BotProfile, colliding: ReadonlySet<string> | null): string {
+export function botRosterLabel(bot: BotRosterIdentity, colliding: ReadonlySet<string> | null): string {
   const label = botDisplayName(bot);
   if (!colliding || !colliding.has(label)) return label;
   const id = (bot.name ?? "").trim();
@@ -148,7 +150,7 @@ export function botRosterLabel(bot: BotProfile, colliding: ReadonlySet<string> |
 }
 
 /** The set of display labels that appear more than once across `bots`. */
-export function collidingBotLabels(bots: readonly BotProfile[]): Set<string> {
+export function collidingBotLabels(bots: readonly BotRosterIdentity[]): Set<string> {
   const seen = new Map<string, number>();
   for (const b of bots) {
     const label = botDisplayName(b);
