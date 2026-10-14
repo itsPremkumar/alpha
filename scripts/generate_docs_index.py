@@ -177,11 +177,11 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
-        "Prime Agent–inspired implementation plan: recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, bounded autonomous continuation and verification-driven task state machines, kept in Python.",
+        "Plan extending Alpha's Python agent runtime with Prime Agent ideas: recursive language models, continual harness, persistent subagents, bounded autonomous continuation and verification-driven task states; design only, with each item classified against current implementation before coding.",
     ),
     "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
-        "Research-backed plan for explicit graph-based execution: separating LangGraph orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.",
+        "Research-backed plan for advanced LangGraph execution: separate orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.",
     ),
     "ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md": DocumentSpec(
         "plans",
@@ -197,11 +197,7 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
-        "Plan for cooperating multiple Alpha agents through explicit, observable, bounded, recoverable graphs, with an honesty note that the proposals are unimplemented research rather than shipped features.",
-    ),
-    "ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md": DocumentSpec(
-        "plans",
-        "Plan extending Alpha's Python agent runtime with ideas from Prime Agent: recursive language models, a continual harness, persistent subagents, bounded autonomous continuation and verification-driven task state machines; design only, with a scope rule requiring every item to be classified against the current implementation before coding.",
+        "Plan for cooperating Alpha agents through explicit, observable, bounded, recoverable graphs across bot, subagent and swarm modes; proposals are unimplemented research, not shipped features.",
     ),
     "ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
@@ -213,11 +209,11 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "alpha-arena-advanced-implementation-plan.md": DocumentSpec(
         "plans",
-        "Arena+ specification: candidate artifacts, a bounded repair loop with concede/rebut dispositions, task contracts and rubrics, an evidence ledger, safe synthesis and independent verification on top of the tournament engine.",
+        "Arena+ specification for multi-agent candidate generation, attack/defend, candidate artifacts, bounded repair, task contracts, evidence ledger, safe synthesis and independent verification.",
     ),
     "alpha-arena-new-capability-mesh-features-plan.md": DocumentSpec(
         "plans",
-        "Capability-mesh expansion plan layered on Arena+: per-step specialist strengths, routing and mixture-of-agents ideas, adding features only rather than restating the base tournament.",
+        "Additive capability-mesh expansion layered on Arena+: specialist strengths, routing and mixture-of-agents ideas, without restating the base tournament.",
     ),
     "ALPHA-WORKFLOW-ARCHITECTURE.md": DocumentSpec(
         "architecture",
@@ -514,22 +510,6 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "PRIME_INSPIRED_CAPABILITY_AUDIT.md": DocumentSpec(
         "plans",
         "Capability-by-capability audit against the Prime Agent design note: verified, partial, documented-only and missing verdicts with test evidence.",
-    ),
-    "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
-        "plans",
-        "Research-backed plan for advanced LangGraph engineering: graph structure, subgraphs, checkpointing and resilience.",
-    ),
-    "ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md": DocumentSpec(
-        "plans",
-        "Research-backed plan for multi-agent graph orchestration across Alpha's bot, subagent and swarm modes.",
-    ),
-    "alpha-arena-advanced-implementation-plan.md": DocumentSpec(
-        "plans",
-        "Alpha Arena+ implementation specification: multi-agent candidate generation, attack/defend, synthesis and verification.",
-    ),
-    "alpha-arena-new-capability-mesh-features-plan.md": DocumentSpec(
-        "plans",
-        "Additive capability-mesh expansion plan extending Alpha Arena+ with routing, mixture-of-agents and cost-aware features.",
     ),
     "PRODUCTION.md": DocumentSpec("operations", "Production runbook for monitoring, incidents, and maintenance."),
     "PRODUCTION_READINESS_INVENTORY.md": DocumentSpec("operations", "Production-readiness status, owners, and test evidence."),
