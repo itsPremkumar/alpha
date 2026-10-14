@@ -129,7 +129,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 126 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
+| **Harness subsystems** | 127 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -285,6 +285,7 @@ none of it is hypothetical.
 | **PR checklist** | ❌ **Fixed** for the checklist. It printed `- [x] Automated unit and regression test suite passed` for every PR having run nothing; boxes are now derived from real evidence receipts, and required-but-missing evidence produces an explicit "this PR is not verified / must not be merged" callout. ⚠️ The *signatures* behind it are still a dict literal and three regexes. | `65464c1`; `projects/pr_synthesizer.py` |
 | **Concurrent subagent writes** | ❌ All subagents in a thread share one workspace directory. A per-path lock serialises writes but there is no shared version counter, so the second writer silently overwrites the first — and both report success. | `subagents/executor.py:1360-1363`; `file_operation_lock.py:20-27` |
 | **Goal hierarchy** | ⚠️ The run loop's goal is one flat objective string with no children. The versioned plan store that *does* model this has no run-loop caller. | `agents/goal_state.py:22-31`; `goals/` unimported by `runtime/` |
+| **Legacy `/loop` background execution** | ⚠️ `/loop:start` and `goal_engine` persist a goal and milestones; they do not launch a background worker. A step without an executor now explicitly refuses and records no progress. Use APEX/RunManager for a real agent run; the legacy goal record is not proof that work ran or was verified. | `harness/continuous/runner.py`; `tests/test_continuous_goal_engine.py` |
 | **Distribution tracing** | ⚠️ Off by default and **not reachable from `config.yaml` at all** — there is no `observability:`/`trace:` key in `AppConfig`. The run-event feed and `X-Trace-Id` correlation do work. | `observability/config.py:68`; `config/app_config.py:258-509` |
 | **Behavioural evaluation** | ❌ 26,933 tests, none of which asks whether the *agent* works. Loop-detection and duplicate-work guards have unit tests; plan success and tool-failure recovery have no behavioural eval. | `alpha/benchmarks/suites.py` evaluators are pure functions with fixtures |
 | **Mixture-of-Agents tool** | ❌ **Fixed.** It injected a `mock_worker` returning a fixed string and never called a model. It now resolves every named model through the real model factory: an unconfigured name is reported as a failed perspective, an all-failed round is an explicit refusal rather than a consensus, and a partial round reports `1/2 models answered`. | `65464c1`; `models/moa/workers.py` |
@@ -913,9 +914,9 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (126 harness engines)</b></summary>
+<summary><b>Full subsystem map (127 harness engines)</b></summary>
 
-Each of the 126 engine packages under `backend/packages/harness/alpha/` (counted by
+Each of the 127 engine packages under `backend/packages/harness/alpha/` (counted by
 `backend/scripts/generate_feature_manifest.py`; `backend/` and `scratch/` sit there
 but are not engines) is a dedicated engine:
 

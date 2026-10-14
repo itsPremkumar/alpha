@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-13T13:39:46Z",
+ "generated_at": "2026-10-14T17:16:08Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2778,6 +2778,11 @@
   {
    "id": "alpha.script_bridge_child",
    "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.scripts",
+   "kind": "namespace",
    "submodules": []
   },
   {

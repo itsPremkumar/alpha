@@ -368,6 +368,45 @@ class TestRepositoryIsGreen:
         assert dirty.returncode == 1, "a new silent failure must fail the CLI"
 
 
+class TestUntrackedScratchIsNotScanned:
+    """The gate certifies the tracked tree, not this machine's scratch.
+
+    ``SCAN_DIRS`` includes ``backend/...``, where local probe and scratch files
+    live beside production modules. A clean clone and CI never contain them, so
+    reporting their findings fails a build nobody else reproduces, and
+    baselining them writes waiver entries about files the repository does not
+    contain. The scan therefore keeps the same tracked-only boundary the Python
+    health runner keeps for mypy -- and a non-git root (the temp trees above)
+    keeps the full scan, so the CLI's planted-failure tests still bite.
+    """
+
+    def _git(self, *args, cwd):
+        subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True)
+
+    def test_untracked_file_is_skipped_but_tracked_file_is_scanned(self, tmp_path):
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        silent = "def f():\n    try:\n        g()\n    except ValueError:\n        pass\n"
+        (pkg / "tracked_mod.py").write_text(silent, encoding="utf-8")
+        (pkg / "local_scratch.py").write_text(silent, encoding="utf-8")
+        self._git("init", cwd=tmp_path)
+        self._git("add", "pkg/tracked_mod.py", cwd=tmp_path)  # staged == tracked; scratch stays untracked
+
+        result = GATE.scan(tmp_path, scan_dirs=("pkg",))
+        scanned = {f.path for f in result.findings}
+        assert scanned == {"pkg/tracked_mod.py"}, f"untracked scratch must not be scanned, got {scanned}"
+
+    def test_non_git_root_still_scans_everything(self, tmp_path):
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        silent = "def f():\n    try:\n        g()\n    except ValueError:\n        pass\n"
+        (pkg / "a.py").write_text(silent, encoding="utf-8")
+        (pkg / "b.py").write_text(silent, encoding="utf-8")
+
+        result = GATE.scan(tmp_path, scan_dirs=("pkg",))
+        assert {f.path for f in result.findings} == {"pkg/a.py", "pkg/b.py"}
+
+
 def _handler(body: str):
     """The first ``except`` handler in ``body``, wrapping it in a try if needed.
 

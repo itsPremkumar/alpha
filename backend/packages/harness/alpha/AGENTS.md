@@ -227,6 +227,11 @@ Three stores carried exactly that shape and now carry the same disclosure:
   and accepts `/loop:status <goal-id>` for one goal's milestones. Keep these
   output and durability contracts covered by
   `tests/test_continuous_goal_engine.py` and `tests/test_backend_handlers.py`.
+  Creating a record leaves it in `planning`; it is not a background dispatch.
+  `ContinuousGoalRunner.step()` must receive a real executor callback or return
+  `awaiting_executor` without changing iterations/milestones. Never synthesize
+  execution output or verification evidence. The Gateway has no production
+  dispatcher for this legacy store; APEX/RunManager is the real run path.
 - **`continual/state.py` (`HarnessState`)** backs `ContinualHarnessMiddleware`,
   which is appended to **every** lead agent and builds its system-reminder from
   `self.entries`. A corrupt state file therefore injected *no* reminder at all —

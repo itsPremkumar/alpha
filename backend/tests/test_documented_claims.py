@@ -88,7 +88,12 @@ BACKEND = Path(__file__).resolve().parents[1]
 ROOT = BACKEND.parent
 RUNTIME_AGENTS = BACKEND / "packages" / "harness" / "alpha" / "runtime" / "AGENTS.md"
 
-SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".agent", ".pytest_cache", ".ruff_cache", "htmlcov", ".alpha"}
+SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".agent", ".pytest_cache", ".ruff_cache", "htmlcov", ".alpha", ".worktrees", ".claude"}
+# `.worktrees/` and `.claude/worktrees/` are gitignored nested checkouts of this
+# same repository (both named in .gitignore). Their documents cite their own
+# test trees, so resolving those citations against *this* tree reports hundreds
+# of phantom breaks whose subject lives one directory over. They are not part of
+# the tree this guard certifies.
 
 # Every module that is allowed to *construct* a SqlSideEffectLedger. Deliberately
 # narrow: an entry here means the ledger has a production writer, which is a
@@ -181,6 +186,47 @@ def _parked_session_durable_registry_exists() -> bool:
     return "NetworkWaitRepository(" in deps and "set_network_wait_service(" in deps
 
 
+def _launcher_configured_in(source: str) -> bool:
+    """True when a ``NetworkWaitService(...)`` call configures a resume launcher.
+
+    The original implementation counted commas in the call *line*: "one
+    positional plus a known keyword; a third argument -- positional or keyword --
+    would be the launcher". That held until ``NetworkWaitService.__init__`` grew
+    its keyword-only ``policy=`` parameter (commit 2dca4f2, unbounded parked
+    waits), after which ``NetworkWaitService(wait_store, network_state=...,
+    policy=...)`` tripped the heuristic and reported a wait policy as a second
+    continuation authority. The predicate's own docstring demanded a review on a
+    True result, and the review found the heuristic stale rather than the code
+    wrong: ``deps.py`` passes no ``launcher=``, and the service logs "no resume
+    launcher is configured" at run time.
+
+    The check now reads the call's actual arguments instead of its commas. The
+    store is the only positional; ``network_state`` and ``policy`` are the two
+    known-harmless keywords. Everything else -- ``launcher=``, ``now_fn=``, a
+    ``**`` unpack, or a second positional -- still returns True, so an
+    unexpected argument shape keeps over-matching in the safe direction and
+    lands in review rather than slipping past as "probably fine".
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source, filename="deps.py")
+    except SyntaxError:  # an unreadable call site cannot be certified clean
+        return True
+    known_keywords = {"network_state", "policy"}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Name) and node.func.id == "NetworkWaitService"):
+            continue
+        if len(node.args) > 1:  # only the store may be positional
+            return True
+        for keyword in node.keywords:
+            if keyword.arg is None or keyword.arg not in known_keywords:
+                return True
+    return False
+
+
 def _parked_session_resume_launcher_exists() -> bool:
     """True when the Gateway installs a per-thread resume launcher for parks.
 
@@ -188,19 +234,7 @@ def _parked_session_resume_launcher_exists() -> bool:
     authority bypassing the side-effect gate -- SafeRunRecoveryService owns
     resumption. If this ever returns True that is not a doc fix, it is a review.
     """
-    deps = (BACKEND / "app" / "gateway" / "deps.py").read_text(encoding="utf-8")
-    for line in deps.splitlines():
-        if "NetworkWaitService(" not in line:
-            continue
-        call = line.split("NetworkWaitService(", 1)[1]
-        # `wait_service = NetworkWaitService(wait_store, network_state=...)`:
-        # one positional plus a known keyword. A third argument -- positional or
-        # keyword -- would be the launcher.
-        if "launcher" in call:
-            return True
-        if call.count(",") >= 2:
-            return True
-    return False
+    return _launcher_configured_in((BACKEND / "app" / "gateway" / "deps.py").read_text(encoding="utf-8"))
 
 
 def _cross_process_exactly_once_available() -> bool:
@@ -348,6 +382,37 @@ class TestHonestyClaimsMatchTheCode:
         )
 
 
+class TestLauncherPredicateShape:
+    """The launcher guard reads arguments, not commas (the policy= regression).
+
+    ``NetworkWaitService(wait_store, network_state=..., policy=...)`` is the
+    production line in ``app/gateway/deps.py`` since the unbounded-wait change.
+    The old comma-count heuristic called it a configured resume launcher, which
+    would have forced a false ``parked_session_resume_launcher: exists`` claim
+    into the honesty block -- the exact drift direction the claim guard exists
+    to prevent. These two shapes pin the review outcome: a wait policy is not a
+    launcher, and a real launcher argument still is.
+    """
+
+    PRODUCTION_LINE = "wait_service = NetworkWaitService(wait_store, network_state=lambda: monitor.state, policy=wait_policy)"
+
+    def test_production_policy_line_is_not_a_launcher(self) -> None:
+        assert not _launcher_configured_in(self.PRODUCTION_LINE)
+
+    def test_a_launcher_keyword_is_a_launcher(self) -> None:
+        assert _launcher_configured_in("NetworkWaitService(wait_store, network_state=reader, launcher=resume)")
+
+    def test_an_unknown_extra_positional_is_flagged_for_review(self) -> None:
+        assert _launcher_configured_in("NetworkWaitService(wait_store, reader, wait_policy, resume)")
+
+    def test_an_unpack_or_unknown_keyword_is_flagged_for_review(self) -> None:
+        assert _launcher_configured_in("NetworkWaitService(wait_store, **extra)")
+        assert _launcher_configured_in("NetworkWaitService(wait_store, now_fn=clock)")
+
+    def test_an_unparseable_call_site_is_not_certified_clean(self) -> None:
+        assert _launcher_configured_in("NetworkWaitService(wait_store, network_state=")
+
+
 def _normalized_prose(text: str) -> str:
     """Markdown prose flattened for phrase matching.
 
@@ -420,6 +485,33 @@ ALLOWED_DANGLING_REFERENCES: dict[tuple[str, str], str] = {
     ("docs/DEVELOPMENT.md", "test_perf.py"): ("A denial, not a citation: the paragraph says 'There is no tests/test_perf.py'. Naming a nonexistent file to say it does not exist is the corrected form."),
     ("docs/TROUBLESHOOTING.md", "test_perf.py"): ("A denial, not a citation: 'There is no tests/test_perf.py and no backend/scripts/sandbox_memory_profile.py ... in this tree'."),
     ("references/ALPHA_RSI_IMPLEMENTATION_PLAN.md", "test_x.py"): ("Hypothetical input to a protected-paths test plan: test_x.py is an example of a path that MUST be denied, so it is defined by not existing."),
+    # -- added when the quarantined root-level planning documents (commit c4c1a71,
+    #    'preserve 426 files of unattributed agent work') were first scanned; their
+    #    citations share the same three honest shapes the list already carried.
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_pathway.py"): ("Prospective: a plan table ('~30 tests') in a quarantined gap-analysis document listing tests to be written; not a claim they were."),
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_evaluator_stability.py"): ("Prospective: same plan table as test_intelligence_pathway.py."),
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_diversity.py"): ("Prospective: same plan table as test_intelligence_pathway.py."),
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_budget_protocol.py"): ("Prospective: same plan table as test_intelligence_pathway.py."),
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_evidence_ledger.py"): ("Prospective: same plan table as test_intelligence_pathway.py."),
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_loop_health.py"): ("Prospective: same plan table as test_intelligence_pathway.py."),
+    ("ALPHA_AGI_ASI_GAP_ANALYSIS_AND_PLAN.md", "test_intelligence_investigation.py"): ("Prospective: same plan table as test_intelligence_pathway.py."),
+    ("CLAUDE_ARENA_SKILL_RESEARCH.md", "test_api.py"): ("Hypothetical example: '/arena --agents 32 fix the flaky test in tests/test_api.py' illustrates a one-line arena task; the file is the example's subject, not a repository file."),
+    ("CLAUDE_ARENA_SKILL_RESEARCH.md", "test_bracket.py"): (
+        "External repository: tests/test_bracket.py belongs to Jakeschincariol/arena-skill, the third-party skill this research document studies; the doc cites it with its raw.githubusercontent.com URL beside it."
+    ),
+    ("CONTRIBUTING.md", "test_feature.py"): ("Walkthrough placeholder: the contributor workflow runs 'pytest tests/test_feature.py' as the example name for the test file the reader is adding."),
+    ("IRREVERSIBLE_GATE_PROMPT.md", "test_irreversible_action_gate.py"): ("Prospective: the prompt document's 'NEW backend/tests/test_irreversible_action_gate.py' line is an instruction to create the test, not a citation of a landed one."),
+    ("MODEL_RESILIENCE_PROMPT.md", "test_model_routing_survives_withdrawal.py"): ("Prospective: same prompt document's 'NEW' instruction as test_irreversible_action_gate.py."),
+    ("MODEL_RESILIENCE_PROMPT.md", "test_model_gateway_reachability.py"): ("Prospective: same prompt document's 'NEW' instruction as test_irreversible_action_gate.py."),
+    ("MODEL_RESILIENCE_PROMPT.md", "test_single_model_config_file.py"): (
+        "Stale name: the prompt predates the rename to backend/tests/test_single_file_model_config.py, which is the file the sentence means (the single-file model-config guard)."
+    ),
+    ("docs/alpha-arena-advanced-implementation-plan.md", "test_bracket.py"): (
+        "Prospective: a plan table row naming a test the implementation should add, plus a design reference to the external Jakeschincariol/arena-skill repository that contains such a file."
+    ),
+    ("docs/ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md", "test_foo.py"): (
+        "Hypothetical example: 'pytest tests/test_foo.py -q' illustrates registering a named check; test_foo.py is the placeholder name, deliberately not real."
+    ),
 }
 
 

@@ -115,7 +115,9 @@ def test_loop_handlers(monkeypatch, tmp_path):
     assert res_start.status == "success"
     goal_id = res_start.data.get("goal_id")
     assert goal_id is not None
-    assert "Continuous Autonomous Loop active" in res_start.output
+    assert "Goal recorded:" in res_start.output
+    assert "awaiting active agent execution" in res_start.output
+    assert store.get_goal(goal_id).status == "planning"
 
     # 2. Loop status
     res_status = command_registry.execute("/loop:status")

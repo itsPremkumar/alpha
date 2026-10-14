@@ -53,7 +53,10 @@ class ContinuousGoalRunner:
             dependencies=[m2.milestone_id] if m2 else None,
         )
 
-        self.store.update_goal_status(goal.goal_id, "executing", strategy_note="Goal started with 3 auto-decomposed milestones.")
+        # Creating a durable goal record does not start an executor.  In
+        # particular, do not expose `executing` until a real worker has claimed
+        # work; the current legacy engine is driven by an active agent turn.
+        self.store.update_goal_status(goal.goal_id, "planning", strategy_note="Goal recorded with 3 initial milestones; awaiting an active executor.")
         return goal
 
     def get_next_runnable_milestone(self, goal: Goal) -> Milestone | None:
@@ -78,11 +81,6 @@ class ContinuousGoalRunner:
         if goal.status in ("achieved", "paused", "blocked"):
             return {"status": "ok", "goal_status": goal.status, "message": f"Goal is {goal.status}."}
 
-        goal.iteration += 1
-        if goal.iteration > goal.max_iterations:
-            self.store.update_goal_status(goal.goal_id, "blocked", "Max iterations exceeded.")
-            return {"status": "blocked", "reason": "Max iterations reached."}
-
         # Select next milestone
         milestone = self.get_next_runnable_milestone(goal)
         if not milestone:
@@ -95,19 +93,32 @@ class ContinuousGoalRunner:
                 self.store.update_goal_status(goal.goal_id, "blocked", "Unresolved milestone dependencies.")
                 return {"status": "blocked", "reason": "No runnable milestones."}
 
+        if executor_fn is None:
+            # A previous fallback returned canned text and marked milestones
+            # verified despite doing no work. Missing execution capability is
+            # a refusal, not a successful no-op. Check this before incrementing
+            # iterations or mutating milestone state.
+            return {
+                "status": "awaiting_executor",
+                "goal_status": goal.status,
+                "goal_id": goal.goal_id,
+                "success": False,
+                "message": "No goal executor is configured; no milestone was run or verified.",
+            }
+
+        if goal.iteration >= goal.max_iterations:
+            self.store.update_goal_status(goal.goal_id, "blocked", "Max iterations exceeded.")
+            return {"status": "blocked", "reason": "Max iterations reached."}
+        goal.iteration += 1
+        self.store.update_goal_status(goal.goal_id, "executing", "A real milestone executor started work.")
+
         # Transition milestone to in_progress
         milestone.status = "in_progress"
         milestone.attempts += 1
         goal.current_milestone_id = milestone.milestone_id
 
         # Execute turn
-        if executor_fn:
-            success, output, error = executor_fn(milestone)
-        else:
-            # Default self-contained mock step
-            success = True
-            output = f"Executed step for milestone: {milestone.title}"
-            error = ""
+        success, output, error = executor_fn(milestone)
 
         # Self-healing and strategy adaptation
         if success:
@@ -174,7 +185,7 @@ class ContinuousGoalRunner:
         """Run continuous autonomous loop until goal is achieved or steps exhausted."""
         for _ in range(max_steps):
             res = self.step(goal_id, executor_fn=executor_fn)
-            if res.get("status") in ("achieved", "blocked", "paused", "error"):
+            if res.get("status") in ("achieved", "blocked", "paused", "error", "awaiting_executor"):
                 break
         return self.store.get_goal(goal_id)  # type: ignore[return-value]
 

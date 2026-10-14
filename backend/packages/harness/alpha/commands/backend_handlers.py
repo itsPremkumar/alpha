@@ -408,12 +408,21 @@ def handle_loop_start(args: str, context: dict[str, Any] | None = None) -> Comma
             description=task_desc,
             max_iterations=50,
         )
+        if not runner.store.is_durable:
+            return CommandExecutionResult(
+                status="error",
+                command="/loop:start",
+                output=f"Goal {goal.goal_id} was created in memory but could not be persisted; it is not durable.",
+                data={"goal_id": goal.goal_id, "status": "unknown"},
+            )
         return CommandExecutionResult(
             status="success",
             command="/loop:start",
-            output=(f"Continuous Autonomous Loop active: {goal.goal_id}\n- Objective: {goal.title}\n- Milestones provisioned: {len(goal.milestones)}\n- Loop mode: Resilient self-healing (max 50 iterations)"),
+            output=(f"Goal recorded: {goal.goal_id}\n- Objective: {goal.title}\n- Status: {goal.status} (awaiting active agent execution)\n- Initial milestones: {len(goal.milestones)}\n- Iteration budget: {goal.max_iterations}"),
             data={"goal_id": goal.goal_id, "title": goal.title, "milestones": len(goal.milestones)},
-            autonomous_directives=[f"Loop {goal.goal_id} active. Progress milestone 1 immediately."],
+            autonomous_directives=[
+                f"Work on the user's objective in the active agent run for goal {goal.goal_id}. Only report milestones as complete when the real work and its verification are done; the goal record alone does not execute work."
+            ],
         )
     except Exception as e:
         return CommandExecutionResult(

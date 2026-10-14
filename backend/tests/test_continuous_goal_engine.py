@@ -24,11 +24,14 @@ def test_continuous_goal_runner_autonomous_lifecycle(tmp_path: Path):
         title="Deploy microservice cluster",
         description="Configure k8s manifests, build docker images, verify health",
     )
-    assert goal.status == "executing"
+    assert goal.status == "planning"
     assert len(goal.milestones) == 3
 
+    def successful_executor(ms):
+        return True, f"Performed and verified: {ms.title}", ""
+
     # 2. Simulate milestone 1 execution
-    res1 = runner.step(goal.goal_id)
+    res1 = runner.step(goal.goal_id, executor_fn=successful_executor)
     assert res1["status"] == "ok"
     assert res1["success"] is True
 
@@ -96,7 +99,16 @@ def test_goal_engine_and_canvas_tools(monkeypatch, tmp_path: Path):
 
     # 3. Step goal
     res_step = goal_engine_tool.invoke({"action": "step", "goal_id": goal_id})
-    assert "Step executed on" in res_step
+    assert "was not executed" in res_step
+    assert "no milestone was run or verified" in res_step
+    assert store.get_goal(goal_id).iteration == 0
+    assert all(m.status == "pending" for m in store.get_goal(goal_id).milestones.values())
+
+    # Without an executor the legacy runner must not invent work or evidence.
+    result = runner.step(goal_id)
+    assert result["status"] == "awaiting_executor"
+    assert store.get_goal(goal_id).iteration == 0
+    assert all(m.status == "pending" for m in store.get_goal(goal_id).milestones.values())
 
     # 4. Pause and resume
     res_pause = goal_engine_tool.invoke({"action": "pause", "goal_id": goal_id})
@@ -125,7 +137,7 @@ def test_goal_engine_and_canvas_tools(monkeypatch, tmp_path: Path):
 
     # 6. Trajectory audit tool
     res_traj = trajectory_audit_tool.invoke({"action": "inspect", "goal_id": goal_id})
-    assert "Execution Trajectory for Goal" in res_traj
+    assert "No steps found" in res_traj
 
 
 def test_goal_engine_pause_and_resume_report_persistence_failure(monkeypatch, tmp_path: Path):
@@ -144,4 +156,4 @@ def test_goal_engine_pause_and_resume_report_persistence_failure(monkeypatch, tm
     )
     failed_pause = goal_engine_tool.invoke({"action": "pause", "goal_id": goal.goal_id})
     assert "could NOT be durably paused" in failed_pause
-    assert GoalStore(storage_path=store_path).get_goal(goal.goal_id).status == "executing"
+    assert GoalStore(storage_path=store_path).get_goal(goal.goal_id).status == "planning"

@@ -92,6 +92,8 @@ def goal_engine_tool(
         res = runner.step(goal_id)
         if not store.is_durable:
             return f"Error: step for goal '{goal_id}' was not durably persisted ({store.save_error}). Outcome may be incomplete."
+        if res.get("status") == "awaiting_executor":
+            return f"Goal step was not executed for {goal_id}: {res.get('message')} The goal remains {res.get('goal_status')}; do not report progress or verification."
         return f"Step executed on {goal_id}: Status={res.get('status')}, Milestone={res.get('milestone_id')}, Success={res.get('success')}."
 
     elif action == "pause":

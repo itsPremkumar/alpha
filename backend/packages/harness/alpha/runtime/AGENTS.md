@@ -17,6 +17,15 @@ continuation authority. The Python `ProcessSupervisor` is not wired into the
 Windows launcher: `recovery/` and `start.ps1` own that separate restart chain.
 Memory persistence is process-local; do not claim cross-worker exactly-once for
 JSON/JSONL state. `NetworkWaitService` records parks but does not launch resumes.
+
+<!-- honesty-claims
+side_effect_ledger_sql_repository: exists
+side_effect_ledger_production_writer: exists
+parked_session_durable_registry: exists
+parked_session_resume_launcher: absent
+cross_process_exactly_once: exists
+supervisor_in_windows_launcher: absent
+-->
 ### Workspace Snapshot Cancellation
 
 `packages/harness/alpha/workspace_changes/recorder.py`: after `_prepare_capture()`
