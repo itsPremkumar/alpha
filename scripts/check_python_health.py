@@ -213,8 +213,8 @@ def _python_files() -> tuple[list[str], list[str]]:
 
 
 def _mypy_command(python: str) -> list[str]:
-    """Type-check the backend while honoring ignored local scratch paths."""
-    return [python, "-m", "mypy", ".", "--ignore-missing-imports", "--exclude-gitignore"]
+    """Type-check tracked backend files without walking local scratch trees."""
+    return [python, str(REPO_ROOT / "scripts" / "run_tracked_mypy.py")]
 
 
 def _display_path(path: Path) -> str:
@@ -536,7 +536,7 @@ def main() -> int:
             _run_process_stage(
                 "mypy",
                 _mypy_command(python),
-                cwd=REPO_ROOT / "backend",
+                cwd=REPO_ROOT,
                 reports_dir=reports_dir,
             )
         )

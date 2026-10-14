@@ -110,16 +110,12 @@ def test_mypy_diagnostics_keep_windows_paths_codes_and_all_findings():
     assert "tmp_probe/probe.py: error" in summary
 
 
-def test_mypy_health_command_excludes_gitignored_local_scratch():
+def test_mypy_health_command_uses_tracked_source_runner():
     module = _load_diagnostics_module()
 
     assert module._mypy_command("python") == [
         "python",
-        "-m",
-        "mypy",
-        ".",
-        "--ignore-missing-imports",
-        "--exclude-gitignore",
+        str(module.REPO_ROOT / "scripts" / "run_tracked_mypy.py"),
     ]
 
 

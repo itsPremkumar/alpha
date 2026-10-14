@@ -155,8 +155,9 @@ make python-health PYTHON_HEALTH_ARGS=--full
 ```
 
 The full run first collects the backend tests to catch their import and
-collection-time failures, then executes mypy, the offline backend tests, and
-the blocking-I/O test suite. To run just the import/collection smoke check:
+collection-time failures, then runs mypy over tracked backend Python files, the
+offline backend tests, and the blocking-I/O test suite. Untracked local scratch
+does not enter the type-check stage. To run just the import/collection smoke check:
 
 ```bash
 make python-health PYTHON_HEALTH_ARGS=--runtime-smoke

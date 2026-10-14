@@ -1288,6 +1288,8 @@ compile, Ruff, and pytest findings while stage logs preserve complete tool
 output. A successful syntax compile alone does not establish runtime health.
 Runtime pytest diagnostics include the failed test summary and, when pytest
 prints a source traceback frame, a separate file-and-line exception finding.
+The full mypy stage checks tracked backend Python sources, excluding local
+untracked scratch files from the production diagnostic set.
 CI also preserves separate seven-day reports for compilation, mypy, backend
 tests, and blocking-I/O checks on each workflow run; the mypy job remains
 informational until its existing backlog is cleared.
