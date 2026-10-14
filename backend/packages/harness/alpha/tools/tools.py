@@ -77,13 +77,10 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
     ``alpha.tools.tools`` no longer pays for 3000+ modules nobody asked for.
     """
     from alpha.tools.builtins import (
-        a2a_tool,
-        agent_message_tool,
         agent_observe_tool,
         alpha_capability,
         alpha_peer_network_tool,
         analyze_semantic_git_delta,
-        arena_tool,
         ask_clarification_tool,
         ask_oracle,
         ast_grep_rewrite,
@@ -95,21 +92,15 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         await_task_event,
         blackboard_query,
         blackboard_record_evidence,
-        bot_roster_tool,
         boulder_checkpoint_manage,
         browser_navigate_and_inspect,
         build_autonomous_plan,
-        canvas_widget_tool,
-        capability_mesh_tool,
         catalog_tool_call,
         catalog_tool_describe,
         catalog_tool_search,
         check_metacognitive_health,
         check_or_set_autonomy_profile,
-        code_mode_tool,
-        cognitive_memory_tool,
         cognitive_plan,
-        company_tool,
         compile_cognitive_plan,
         compile_five_pass_search,
         compile_mission,
@@ -125,7 +116,6 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         deep_web_search,
         delegate_to_deep_agent,
         deliberate_artifact_quality,
-        deliberation_tool,
         desktop_inspect_ui_tree_tool,
         desktop_keyboard_action_tool,
         desktop_mouse_action_tool,
@@ -147,9 +137,6 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         forge_skill_from_trace,
         generate_curriculum_plan,
         generate_repo_map,
-        goal_engine_tool,
-        goal_integrity_tool,
-        group_chat_tool,
         hashline_edit,
         hashline_read,
         hyperplan_review_manage,
@@ -157,8 +144,6 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         inspect_deep_agent_telemetry,
         inspect_repo_twin,
         invoke_python_skill_tool,
-        job_tool,
-        kanban_board_tool,
         keyless_web_search,
         kibitzer_nudge_manage,
         learning_graph_manage,
@@ -172,10 +157,6 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         manage_reflexion_memory,
         mission_memory,
         moa_multi_model_reasoning,
-        present_file_tool,
-        process_handle_tool,
-        propose_skill_tool,
-        python_repl_tool,
         query_contrastive_memory,
         query_knowledge_graph,
         query_language_server_symbol,
@@ -186,6 +167,7 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         record_trajectory_outcome,
         reproduce_and_verify,
         request_secure_credential,
+        resolve_builtin_tool,
         reversible_delete,
         review_plan_invariant_gate,
         review_skill_package,
@@ -204,26 +186,53 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         search_session_memory,
         self_heal_diagnose,
         self_improvement_loop_tool,
-        session_search_tool,
         simulate_consequences,
         skills_hub_manage,
         subagent_control,
-        subagent_registry_tool,
-        supervision_tool,
-        swarm_tool,
         synthesize_reusable_skill,
         synthesize_runtime_tool,
         tom_consult,
         trace_artifact_lineage,
-        trajectory_audit_tool,
         update_progress_card,
         verify_command_approval,
         verify_web_ui_visual_regression,
         visual_verify_artifact,
-        war_room_tool,
         workflow_dag_manage,
     )
     from alpha.tools.builtins.harness_refine_tool import harness_refine_tool
+
+    # Several exports share their submodule names. If a test or caller imported
+    # that submodule first, Python leaves the module on the package attribute
+    # and ``from alpha.tools.builtins import a2a_tool`` binds the module. Always
+    # restore the mapped public export before constructing registry entries.
+    # Resolve every name collision in the imported registry surface. Resolving
+    # only the export that first failed would leave the same order-dependent
+    # failure waiting behind whichever test module imports next.
+    agent_message_tool = resolve_builtin_tool("agent_message_tool")
+    arena_tool = resolve_builtin_tool("arena_tool")
+    bot_roster_tool = resolve_builtin_tool("bot_roster_tool")
+    canvas_widget_tool = resolve_builtin_tool("canvas_widget_tool")
+    capability_mesh_tool = resolve_builtin_tool("capability_mesh_tool")
+    code_mode_tool = resolve_builtin_tool("code_mode_tool")
+    cognitive_memory_tool = resolve_builtin_tool("cognitive_memory_tool")
+    company_tool = resolve_builtin_tool("company_tool")
+    deliberation_tool = resolve_builtin_tool("deliberation_tool")
+    goal_engine_tool = resolve_builtin_tool("goal_engine_tool")
+    goal_integrity_tool = resolve_builtin_tool("goal_integrity_tool")
+    group_chat_tool = resolve_builtin_tool("group_chat_tool")
+    job_tool = resolve_builtin_tool("job_tool")
+    kanban_board_tool = resolve_builtin_tool("kanban_board_tool")
+    present_file_tool = resolve_builtin_tool("present_file_tool")
+    process_handle_tool = resolve_builtin_tool("process_handle_tool")
+    propose_skill_tool = resolve_builtin_tool("propose_skill_tool")
+    python_repl_tool = resolve_builtin_tool("python_repl_tool")
+    session_search_tool = resolve_builtin_tool("session_search_tool")
+    subagent_registry_tool = resolve_builtin_tool("subagent_registry_tool")
+    supervision_tool = resolve_builtin_tool("supervision_tool")
+    swarm_tool = resolve_builtin_tool("swarm_tool")
+    trajectory_audit_tool = resolve_builtin_tool("trajectory_audit_tool")
+    war_room_tool = resolve_builtin_tool("war_room_tool")
+    a2a_tool = resolve_builtin_tool("a2a_tool")
 
     # This export has the same name as its submodule. If the submodule was
     # imported first, Python exposes the module on the package object and a
@@ -601,8 +610,10 @@ def get_available_tools(
         cancel_batch,
         list_background_tasks,
         list_uploaded_files,
-        view_image_tool,
+        resolve_builtin_tool,
     )
+
+    view_image_tool = resolve_builtin_tool("view_image_tool")
     from alpha.tools.builtins.deepagent_tool import append_deepagent_tools
     from alpha.tools.mcp_metadata import tag_mcp_tool
 

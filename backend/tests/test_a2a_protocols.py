@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import json
 from pathlib import Path
 
@@ -20,6 +21,13 @@ from alpha.protocols.mcp_tasks import (
     MCPTaskState,
 )
 from alpha.tools.builtins.a2a_tool import a2a_tool
+
+
+def test_builtin_export_resolves_after_same_named_submodule_import() -> None:
+    package = importlib.import_module("alpha.tools.builtins")
+
+    assert package.resolve_builtin_tool("a2a_tool") is a2a_tool
+    assert package.a2a_tool is a2a_tool
 
 
 class _RecordingTransport:

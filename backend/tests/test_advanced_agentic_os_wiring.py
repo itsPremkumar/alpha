@@ -1,12 +1,12 @@
 import json
 
 from alpha.tools.builtins import (
-    a2a_tool,
     cognitive_plan,
     company_tool,
     deliberation_tool,
     goal_integrity_tool,
     job_tool,
+    resolve_builtin_tool,
     subagent_control,
     supervision_tool,
     swarm_tool,
@@ -132,7 +132,7 @@ def test_tool_invocability_end_to_end():
     assert "company" in str(comp_res).lower()
 
     # 4. a2a_tool
-    a2a_res = a2a_tool.invoke({"action": "list_agents"})
+    a2a_res = resolve_builtin_tool("a2a_tool").invoke({"action": "list_agents"})
     assert "A2A" in str(a2a_res) or "agent" in str(a2a_res).lower()
 
     # 5. goal_integrity_tool

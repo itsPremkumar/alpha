@@ -12,12 +12,14 @@ suites. Each stage gets a separate UTF-8 log and machine-readable summary under
 Compilation catches syntax/compiler errors only. Collection catches import and
 test-discovery failures on the paths exercised by pytest, not every possible
 module import. Runtime behavior is checked by pytest; mypy and Ruff are static
-checks and cannot prove runtime correctness.
+checks and cannot prove runtime correctness. Runtime pytest stages stream progress
+while also writing the full output to their stage logs.
 """
 
 from __future__ import annotations
 
 import argparse
+import codecs
 import json
 import os
 import subprocess
@@ -122,27 +124,39 @@ def _run_process_stage(
     cwd: Path,
     reports_dir: Path,
     environment: dict[str, str] | None = None,
+    stream_output: bool = False,
 ) -> StageResult:
     started = time.monotonic()
+    log_path = reports_dir / f"{name}.log"
+    output_streamed_to_log = False
     try:
-        completed = subprocess.run(
-            command,
-            cwd=cwd,
-            env=environment,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        output = completed.stdout + completed.stderr
-        exit_code = completed.returncode
+        if stream_output:
+            output, exit_code = _run_streaming_process(
+                command,
+                cwd=cwd,
+                environment=environment,
+                log_path=log_path,
+            )
+            output_streamed_to_log = True
+        else:
+            completed = subprocess.run(
+                command,
+                cwd=cwd,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            output = completed.stdout + completed.stderr
+            exit_code = completed.returncode
     except OSError as exc:
         output = f"Could not start {name}: {type(exc).__name__}: {exc}\n"
         exit_code = 127
     elapsed = time.monotonic() - started
-    log_path = reports_dir / f"{name}.log"
-    log_path.write_text(output, encoding="utf-8")
+    if not output_streamed_to_log:
+        log_path.write_text(output, encoding="utf-8")
     return StageResult(
         name=name,
         ok=exit_code == 0,
@@ -151,6 +165,59 @@ def _run_process_stage(
         log_path=_display_path(log_path),
         output_tail=_output_summary(name, output),
     )
+
+
+def _run_streaming_process(
+    command: list[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str] | None,
+    log_path: Path,
+) -> tuple[str, int]:
+    """Run a noisy stage while teeing output to the terminal and its log."""
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    output_tail = ""
+    with log_path.open("w", encoding="utf-8") as log_file:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=8192,
+        )
+        try:
+            if process.stdout is None:  # pragma: no cover - stdout is piped above
+                raise OSError("subprocess output pipe could not be opened")
+            while chunk := process.stdout.read1(8192):
+                text = decoder.decode(chunk)
+                if text:
+                    log_file.write(text)
+                    log_file.flush()
+                    sys.stdout.write(text)
+                    sys.stdout.flush()
+                    output_tail = (output_tail + text)[-3000:]
+            final_text = decoder.decode(b"", final=True)
+            if final_text:
+                log_file.write(final_text)
+                log_file.flush()
+                sys.stdout.write(final_text)
+                sys.stdout.flush()
+                output_tail = (output_tail + final_text)[-3000:]
+            exit_code = process.wait()
+        except BaseException:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            raise
+        finally:
+            if process.stdout is not None:
+                process.stdout.close()
+    return output_tail, exit_code
 
 
 def _args() -> argparse.Namespace:
@@ -272,6 +339,7 @@ def main() -> int:
                 cwd=REPO_ROOT / "backend",
                 reports_dir=reports_dir,
                 environment=environment,
+                stream_output=True,
             )
         )
     if run_blocking_io:
@@ -293,6 +361,7 @@ def main() -> int:
                 cwd=REPO_ROOT / "backend",
                 reports_dir=reports_dir,
                 environment=environment,
+                stream_output=True,
             )
         )
 

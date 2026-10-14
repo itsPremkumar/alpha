@@ -322,6 +322,18 @@ __all__ = [
 
 
 def __getattr__(name: str) -> Any:
+    return resolve_builtin_tool(name)
+
+
+def resolve_builtin_tool(name: str) -> Any:
+    """Resolve a public tool export even if its submodule was imported first.
+
+    Importing ``alpha.tools.builtins.<name>`` makes Python assign that module
+    to the package attribute ``<name>``. When the export and module share a
+    name, normal package attribute lookup then bypasses ``__getattr__``. This
+    resolver deliberately reloads the export from its mapped module and
+    restores the package-level public API.
+    """
     module_name = _EXPORT_MODULES.get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
