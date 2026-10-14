@@ -174,8 +174,11 @@ test bodies. Use `--full` to execute the offline backend and blocking-I/O suites
 as well; those are the checks that can expose runtime behavior failures. No
 static compiler can prove every runtime path works.
 
-Reports are written to `.alpha/reports/python-health-latest.json` and one log
-per stage; pytest also writes JUnit XML reports for executed suites. A compiler
+Reports are written to `.alpha/reports/python-health-latest.json`, a searchable
+`.alpha/reports/python-health-latest.html`, and one full log per stage; pytest also
+writes JUnit XML reports for executed suites. Open the HTML file in a browser to
+filter findings by stage, file, code, or message; each stage card links to its log.
+A compiler
 pass only proves source syntax is compilable. Collection catches imports only
 along pytest's discovery paths; it does not import every module, because doing
 so can trigger optional-service requirements or module side effects. Ruff and

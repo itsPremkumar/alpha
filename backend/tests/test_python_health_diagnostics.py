@@ -126,6 +126,17 @@ def test_compile_diagnostics_are_machine_readable_with_exact_location():
         }
     ]
 
+    assert module._parse_diagnostics("compile", "unreadable.py: UnicodeError: bad encoding") == [
+        {
+            "path": "unreadable.py",
+            "line": None,
+            "column": None,
+            "severity": "error",
+            "message": "UnicodeError: bad encoding",
+            "code": "compile-input-error",
+        },
+    ]
+
 
 def test_ruff_and_pytest_diagnostics_are_machine_readable():
     module = _load_diagnostics_module()
@@ -152,6 +163,53 @@ def test_ruff_and_pytest_diagnostics_are_machine_readable():
             "code": "pytest-failure",
         }
     ]
+    assert module._parse_diagnostics("ruff-format-01", "Would reformat: backend/a.py") == [
+        {
+            "path": "backend/a.py",
+            "line": None,
+            "column": None,
+            "severity": "error",
+            "message": "File is not formatted; run `ruff format` on this file.",
+            "code": "format-needed",
+        },
+    ]
+
+
+def test_html_report_exposes_all_findings_and_escapes_untrusted_text():
+    module = _load_diagnostics_module()
+    report = {
+        "ok": False,
+        "python_files_compiled": 12,
+        "stages": [
+            {
+                "name": "pytest-offline",
+                "ok": False,
+                "elapsed_seconds": 2.5,
+                "log_path": ".alpha/reports/pytest-offline.log",
+                "output_tail": "failure <script>alert(1)</script>",
+                "diagnostics": [
+                    {
+                        "path": "backend/a.py",
+                        "line": 7,
+                        "column": 3,
+                        "code": "E999",
+                        "severity": "error",
+                        "message": "bad <script>",
+                    },
+                ],
+            },
+        ],
+    }
+
+    rendered = module._html_report(report)
+
+    assert "backend/a.py:7:3" in rendered
+    assert "bad &lt;script&gt;" in rendered
+    assert "failure &lt;script&gt;alert(1)&lt;/script&gt;" in rendered
+    assert "<script>alert(1)</script>" not in rendered
+    assert "python-health-latest.html" not in rendered
+    assert "pytest-offline.log" in rendered
+    assert 'id="filter"' in rendered
 
 
 def test_streaming_runtime_stage_shows_progress_and_keeps_a_full_log(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

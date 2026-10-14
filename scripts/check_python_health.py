@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import html
 import json
 import os
 import re
@@ -51,6 +52,8 @@ class StageResult:
 _MYPY_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(?:(\d+):)? (error|warning|note): (.*)$")
 _MYPY_FILE_DIAGNOSTIC = re.compile(r"^(.*?): (error|warning|note): (.*)$")
 _COMPILE_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(\d+): (.+)$")
+_COMPILE_FILE_DIAGNOSTIC = re.compile(r"^(.+?): (OSError|UnicodeError|ValueError|MemoryError|RecursionError): (.+)$")
+_RUFF_FORMAT_DIAGNOSTIC = re.compile(r"^Would reformat: (.+)$")
 _PYTEST_FAILURE = re.compile(r"^(FAILED|ERROR) (.+?)(?: - (.*))?$")
 
 
@@ -104,6 +107,20 @@ def _parse_diagnostics(name: str, output: str) -> list[dict[str, Any]]:
                         "code": "syntax-error",
                     }
                 )
+                continue
+            file_match = _COMPILE_FILE_DIAGNOSTIC.match(line)
+            if file_match:
+                path, error_type, message = file_match.groups()
+                diagnostics.append(
+                    {
+                        "path": path,
+                        "line": None,
+                        "column": None,
+                        "severity": "error",
+                        "message": f"{error_type}: {message}",
+                        "code": "compile-input-error",
+                    }
+                )
         return diagnostics
     if name.startswith("ruff-lint-"):
         try:
@@ -120,6 +137,19 @@ def _parse_diagnostics(name: str, output: str) -> list[dict[str, Any]]:
                 "code": finding.get("code"),
             }
             for finding in findings
+        ]
+    if name.startswith("ruff-format-"):
+        return [
+            {
+                "path": match.group(1),
+                "line": None,
+                "column": None,
+                "severity": "error",
+                "message": "File is not formatted; run `ruff format` on this file.",
+                "code": "format-needed",
+            }
+            for line in output.splitlines()
+            if (match := _RUFF_FORMAT_DIAGNOSTIC.match(line.strip()))
         ]
     if name.startswith("pytest-"):
         diagnostics = []
@@ -205,6 +235,56 @@ def _output_summary(name: str, output: str) -> str:
     if len(lines) > limit:
         visible.append(f"... {len(lines) - limit} more; see the full log")
     return "\n".join(visible)
+
+
+def _html_report(report: dict[str, Any]) -> str:
+    """Build a self-contained searchable summary without trusting diagnostic text as HTML."""
+    rows: list[str] = []
+    cards: list[str] = []
+    for stage in report["stages"]:
+        state = "PASS" if stage["ok"] else "FAIL"
+        cards.append(
+            f'<section class="stage {"pass" if stage["ok"] else "fail"}">'
+            f"<h2>{html.escape(stage['name'])}: {state} ({len(stage['diagnostics'])} findings)</h2>"
+            f'<a href="{html.escape(Path(stage["log_path"]).name, quote=True)}">Full stage log</a>'
+            f"<pre>{html.escape(stage['output_tail'])}</pre></section>"
+        )
+        for finding in stage["diagnostics"]:
+            path = str(finding.get("path") or "")
+            if finding.get("line") is not None:
+                path += f":{finding['line']}"
+                if finding.get("column") is not None:
+                    path += f":{finding['column']}"
+            values = (stage["name"], path, finding.get("code") or "", finding.get("severity") or "error", finding.get("message") or "")
+            escaped = [html.escape(str(value)) for value in values]
+            rows.append("<tr>" + "".join(f"<td>{value}</td>" for value in escaped) + "</tr>")
+    if not rows:
+        rows.append('<tr><td colspan="5">No parsed diagnostics.</td></tr>')
+    overall = "PASS" if report["ok"] else "FAIL"
+    return (
+        '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" '
+        'content="width=device-width"><title>Alpha Python diagnostics</title>'
+        "<style>body{font:15px system-ui;max-width:1200px;margin:2rem auto;padding:0 1rem;"
+        "background:#10141b;color:#e8edf5}a{color:#75b5ff}.stage{border:1px solid #394456;"
+        "border-radius:10px;padding:1rem;margin:1rem 0}.pass{border-left:4px solid #36b37e}"
+        ".fail{border-left:4px solid #ff646e}pre{white-space:pre-wrap;overflow-wrap:anywhere}"
+        "table{border-collapse:collapse;width:100%;margin-top:1rem}th,td{padding:.65rem;text-align:left;"
+        "border-bottom:1px solid #394456;vertical-align:top}td:last-child{overflow-wrap:anywhere}"
+        "input{width:min(100%,32rem);padding:.7rem}</style>"
+        f"<body><h1>Python diagnostics: {overall}</h1><p>{report['python_files_compiled']} "
+        "tracked Python files compiled. Syntax compilation does not import modules or prove runtime behavior.</p>"
+        "<h2>Stages</h2>"
+        + "\n".join(cards)
+        + '<h2>Searchable findings</h2><label for="filter">Filter by stage, file, code, or message</label><br>'
+        + '<input id="filter" type="search" placeholder="e.g. mypy, backend/foo.py, F401">'
+        + "<table><thead><tr><th>Stage</th><th>Location</th><th>Code</th><th>Severity</th><th>Finding</th>"
+        + '</tr></thead><tbody id="findings">'
+        + "\n".join(rows)
+        + "</tbody></table>"
+        + '<script>const q=document.querySelector("#filter");q.addEventListener("input",()=>{'
+        + 'const s=q.value.toLowerCase();for(const r of document.querySelectorAll("#findings tr"))'
+        + "r.hidden=!r.innerText.toLowerCase().includes(s)});</script></body></html>"
+    )
 
 
 def _compile_stage(files: list[str]) -> tuple[int, str]:
@@ -489,6 +569,8 @@ def main() -> int:
     }
     summary_path = reports_dir / "python-health-latest.json"
     summary_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    html_path = reports_dir / "python-health-latest.html"
+    html_path.write_text(_html_report(report), encoding="utf-8")
 
     print(f"Python health: {'PASS' if report['ok'] else 'FAIL'} ({len(python_files)} Python files compiled)")
     for stage in stages:
@@ -497,6 +579,7 @@ def main() -> int:
         if not stage.ok:
             print(stage.output_tail)
     print(f"JSON summary: {_display_path(summary_path)}")
+    print(f"HTML report: {_display_path(html_path)}")
     if exclusions:
         print("Scoped exclusions:")
         for exclusion in exclusions:

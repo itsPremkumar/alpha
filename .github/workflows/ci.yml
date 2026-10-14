@@ -46,6 +46,7 @@ jobs:
           path: |
             .alpha/reports/python-compile.log
             .alpha/reports/python-health-latest.json
+            .alpha/reports/python-health-latest.html
           if-no-files-found: ignore
           retention-days: 7
 

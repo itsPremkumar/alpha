@@ -1264,7 +1264,9 @@ check test imports and collection alongside lint, or
 and collection result without lint/type-check debt affecting the status. Use
 `make python-health
 PYTHON_HEALTH_ARGS=--full` to add that smoke check, mypy, and both runtime test
-suites. Per-stage logs and a JSON summary are written to `.alpha/reports/`;
+suites. Per-stage logs, a JSON summary, and a searchable HTML report are written
+to `.alpha/reports/`; open `python-health-latest.html` in a browser to filter
+findings by stage, file, code, or message. Each stage card links to its full log.
 compilation checks syntax without importing modules, while pytest exercises the
 behavior covered by tests. The mypy report contains every parsed location,
 severity, message, and error code; the JSON summary also includes normalized
